@@ -25,6 +25,41 @@ def recorded_slugs(provider: str = "granicus") -> list[str]:
     return sorted(p.stem for p in (FIXTURE_DIR / provider).glob("*.xml"))
 
 
+# Deterministic CDN base used to simulate already-materialized CivicPlus audio in
+# snapshot/validation tests (the real pipeline + ffmpeg are tested separately).
+SIM_AUDIO_CDN = "https://cdn.example.gov/audio"
+
+
+def episodes_for(provider: str, slug: str):
+    """Parsed episodes ready for feed building. CivicPlus episodes get simulated
+    hosted audio URLs so the audio feed renders deterministically."""
+    from citypods.media import _audio_key
+    from citypods.providers.civicplus import parse_civicmedia_feed
+    from citypods.providers.granicus import parse_feed
+
+    data = fixture_bytes(provider, slug)
+    if provider == "granicus":
+        return parse_feed(data)
+    eps = parse_civicmedia_feed(data)
+    for e in eps:
+        e.hosted_audio_url = f"{SIM_AUDIO_CDN}/{_audio_key(slug, e.guid)}"
+    return eps
+
+
+def kinds_for(provider: str) -> tuple[str, ...]:
+    # CivicPlus is audio-only (HLS sources are not re-hosted as video).
+    return ("audio", "video") if provider == "granicus" else ("audio",)
+
+
+def all_fixture_cases() -> list[tuple[str, str, str]]:
+    cases = []
+    for provider in ("granicus", "civicplus"):
+        for slug in recorded_slugs(provider):
+            for kind in kinds_for(provider):
+                cases.append((provider, slug, kind))
+    return cases
+
+
 @pytest.fixture
 def sample_city() -> City:
     return City(

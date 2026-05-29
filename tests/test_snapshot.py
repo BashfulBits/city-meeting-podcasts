@@ -19,8 +19,7 @@ import pytest
 
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss
-from citypods.providers.granicus import parse_feed
-from tests.conftest import ROOT, SNAPSHOT_BASE_URL, fixture_bytes, recorded_slugs
+from tests.conftest import ROOT, SNAPSHOT_BASE_URL, all_fixture_cases, episodes_for
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots"
 
@@ -34,15 +33,9 @@ def _city(slug: str):
     raise AssertionError(f"no city config for recorded fixture {slug!r}")
 
 
-def _cases():
-    for slug in recorded_slugs():
-        for kind in ("audio", "video"):
-            yield slug, kind
-
-
-@pytest.mark.parametrize("slug,kind", list(_cases()))
-def test_feed_snapshot(slug, kind):
-    episodes = parse_feed(fixture_bytes("granicus", slug))
+@pytest.mark.parametrize("provider,slug,kind", all_fixture_cases())
+def test_feed_snapshot(provider, slug, kind):
+    episodes = episodes_for(provider, slug)
     generated = build_rss(_city(slug), episodes, kind, SNAPSHOT_BASE_URL)
 
     snapshot = SNAPSHOT_DIR / f"{slug}_{kind}.xml"

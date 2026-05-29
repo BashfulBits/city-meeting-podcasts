@@ -17,22 +17,23 @@ from citypods.config import load_city_configs, load_site_config
 from citypods.http import DEFAULT_TIMEOUT, make_session
 
 ROOT = Path(__file__).resolve().parent.parent
-FIXTURE_DIR = ROOT / "tests" / "fixtures" / "granicus"
+FIXTURE_DIR = ROOT / "tests" / "fixtures"
 
 
 def main() -> None:
     site_config = load_site_config(ROOT / "site_config.yml")
     cities = load_city_configs(ROOT / "cities", site_config.get("defaults", {}))
-    FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
 
     with make_session() as session:
         for city in cities:
-            if city.provider != "granicus":
+            # Both Granicus and CivicPlus expose the episode list as an RSS feed_url.
+            url = city.source.get("feed_url")
+            if not url:
                 continue
-            url = city.source["feed_url"]
             resp = session.get(url, timeout=DEFAULT_TIMEOUT)
             resp.raise_for_status()
-            out = FIXTURE_DIR / f"{city.slug}.xml"
+            out = FIXTURE_DIR / city.provider / f"{city.slug}.xml"
+            out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(resp.content)
             print(f"  wrote {out.relative_to(ROOT)} ({len(resp.content)} bytes)")
 

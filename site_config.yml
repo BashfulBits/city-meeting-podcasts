@@ -13,5 +13,12 @@ defaults:
   podcast_language: "en-us"
   podcast_category: "Government"
   max_episodes: 50
-  extract_audio: false                   # Phase 4
-  audio_storage_backend: "r2"            # "r2" | "b2" | "s3"
+  extract_audio: false                   # opt-in audio re-hosting for direct providers
+  audio_storage_backend: "r2"            # "local" | "r2"  (override per-run: AUDIO_STORAGE_BACKEND=local)
+  materialize_budget_per_city: 5         # max NEW episodes re-hosted per run (spreads backfill)
+
+# Audio materialization (CivicPlus always; Granicus when extract_audio):
+#   local backend  -> audio written to docs/audio and served from Pages (small sets only)
+#   r2 backend     -> set GitHub Actions secrets: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID,
+#                     R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL
+#   If r2 is selected but creds are absent, hosting is skipped (HLS-only feeds stay empty).

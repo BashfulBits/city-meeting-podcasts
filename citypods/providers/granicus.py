@@ -73,6 +73,10 @@ class GranicusProvider:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         return parse_feed(resp.content)
 
+    def resolve_media_url(self, episode: Episode, source: dict) -> str:
+        # Granicus enclosures are already direct progressive MP4s.
+        return episode.video_url
+
 
 def parse_feed(content: bytes) -> list[Episode]:
     """Parse Granicus RSS XML bytes into normalized episodes.

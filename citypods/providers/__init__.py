@@ -7,6 +7,7 @@ an instance here. Lookup is by the ``provider:`` key in a city's YAML.
 from __future__ import annotations
 
 from citypods.providers.base import MeetingProvider, ProviderError
+from citypods.providers.civicplus import CivicPlusProvider
 from citypods.providers.granicus import GranicusProvider
 
 _REGISTRY: dict[str, MeetingProvider] = {}
@@ -28,7 +29,8 @@ def provider_names() -> list[str]:
     return sorted(_REGISTRY)
 
 
-# Built-in providers. CivicPlus is added in Phase 2.
+# Built-in providers.
 register(GranicusProvider())
+register(CivicPlusProvider())
 
 __all__ = ["MeetingProvider", "ProviderError", "get_provider", "provider_names", "register"]

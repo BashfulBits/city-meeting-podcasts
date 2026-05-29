@@ -10,7 +10,14 @@ from citypods.models import City
 from citypods.render import get_env
 
 
-def render_city_page(city: City, base_url: str, episode_count: int) -> str:
+def render_city_page(
+    city: City,
+    base_url: str,
+    episode_count: int,
+    *,
+    has_audio: bool = True,
+    has_video: bool = True,
+) -> str:
     site = base_url.rstrip("/")
     template = get_env().get_template("city.html.j2")
     return template.render(
@@ -18,6 +25,8 @@ def render_city_page(city: City, base_url: str, episode_count: int) -> str:
         site=site,
         city_url=f"{site}/{city.slug}/",
         episode_count=episode_count,
+        has_audio=has_audio,
+        has_video=has_video,
     )
 
 
