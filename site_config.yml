@@ -1,0 +1,17 @@
+# Global site configuration. See PLAN.md "Configuration reference".
+custom_domain: ""                       # blank = github.io URL
+site_title: "City Council Podcast Directory"
+site_description: "Subscribable podcast feeds for US city council meetings."
+site_author: ""
+site_author_url: ""
+github_repo: ""                          # "user/repo" for Issue links
+schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
+request_delay_seconds: 0.1               # politeness sleep per worker thread
+max_workers: 20
+
+defaults:
+  podcast_language: "en-us"
+  podcast_category: "Government"
+  max_episodes: 50
+  extract_audio: false                   # Phase 4
+  audio_storage_backend: "r2"            # "r2" | "b2" | "s3"

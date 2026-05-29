@@ -1,0 +1,17 @@
+# Copy this file to cities/<slug>.yml and fill it in.
+slug: example-tx                 # URL path segment
+provider: granicus               # see `citypods` registered providers
+source:
+  # Granicus: full ViewPublisherRSS.php URL (find the right view_id per city)
+  feed_url: https://example.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+podcast_title: "Example City Council Meetings"
+podcast_author: "City of Example, TX"
+podcast_email: clerk@example.gov
+podcast_description: "Recordings of Example City Council meetings."
+state: TX                        # two-letter abbreviation (powers state filters)
+# Optional overrides of site_config.yml defaults:
+# city_website: https://www.example.gov
+# podcast_language: en-us
+# podcast_category: Government
+# max_episodes: 50
+# extract_audio: false
