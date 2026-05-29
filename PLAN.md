@@ -311,10 +311,16 @@ dependency rather than deferred.
 | `city_website` | optional | Artwork hint (favicon fallback) |
 | `podcast_language` / `podcast_category` / `max_episodes` / `extract_audio` | optional | Override site defaults |
 
-### GitHub Actions secrets (Phase 4 only, when `extract_audio: true`)
-R2: `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` ·
-B2: `B2_ACCESS_KEY_ID`, `B2_SECRET_ACCESS_KEY` ·
-S3: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+### GitHub Actions secrets (audio hosting — CivicPlus always, Granicus when `extract_audio`)
+Storage is S3-compatible; set the secrets for the `audio_storage_backend` in use:
+- **B2** (+ Cloudflare CDN for free egress): `B2_ENDPOINT`, `B2_KEY_ID`, `B2_APP_KEY`,
+  `B2_BUCKET`, `B2_PUBLIC_BASE_URL` (the Cloudflare-fronted domain)
+- **R2**: `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`,
+  `R2_PUBLIC_BASE_URL`
+
+Secrets live in repo Settings → Secrets and variables → Actions (encrypted, masked in logs,
+never in the repo, not exposed to fork PRs). The public repo means Actions minutes are free;
+the per-job 6-hour cap is managed by `materialize_budget_per_city`.
 
 ---
 

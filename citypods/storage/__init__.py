@@ -4,7 +4,7 @@
 local dev, e.g. ``AUDIO_STORAGE_BACKEND=local``) or ``site_config.defaults
 .audio_storage_backend``:
   - ``"local"``: writes under ``<output_dir>/audio`` served at ``<base_url>/audio``
-  - ``"r2"``: Cloudflare R2 from env (returns None if creds are absent)
+  - ``"r2"`` / ``"b2"``: S3-compatible object storage from env (None if creds absent)
 """
 
 from __future__ import annotations
@@ -14,15 +14,17 @@ from pathlib import Path
 
 from citypods.storage.base import StorageBackend
 from citypods.storage.local import LocalStorage
-from citypods.storage.r2 import R2Storage
+from citypods.storage.s3 import S3CompatibleStorage, b2_from_env, r2_from_env
 
 AUDIO_PREFIX = "audio"
+
+_S3_PRESETS = {"r2": r2_from_env, "b2": b2_from_env}
 
 
 def make_storage(site_config: dict, base_url: str, output_dir: Path) -> StorageBackend | None:
     """Return a configured backend, or None if hosting is unavailable.
 
-    None means the caller should skip materialization (e.g. R2 creds not set in a
+    None means the caller should skip materialization (e.g. cloud creds not set in a
     dry run); providers that *require* hosting will then drop unhosted episodes.
     """
     defaults = site_config.get("defaults", {})
@@ -34,9 +36,15 @@ def make_storage(site_config: dict, base_url: str, output_dir: Path) -> StorageB
             root=Path(output_dir) / AUDIO_PREFIX,
             url_prefix=f"{base_url.rstrip('/')}/{AUDIO_PREFIX}",
         )
-    if backend == "r2":
-        return R2Storage.from_env()
+    if backend in _S3_PRESETS:
+        return _S3_PRESETS[backend]()
     raise ValueError(f"unknown audio_storage_backend: {backend!r}")
 
 
-__all__ = ["StorageBackend", "LocalStorage", "R2Storage", "make_storage", "AUDIO_PREFIX"]
+__all__ = [
+    "StorageBackend",
+    "LocalStorage",
+    "S3CompatibleStorage",
+    "make_storage",
+    "AUDIO_PREFIX",
+]

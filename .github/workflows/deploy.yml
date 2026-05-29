@@ -45,7 +45,15 @@ jobs:
       - name: Build feeds
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
-          # R2 audio hosting (CivicPlus + extract_audio). If unset, HLS-only feeds stay empty.
+          # Audio hosting (CivicPlus + extract_audio). Set the secrets for whichever backend
+          # site_config.defaults.audio_storage_backend selects; if unset, HLS feeds stay empty.
+          # Backblaze B2 (+ Cloudflare CDN for free egress):
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          # Cloudflare R2:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

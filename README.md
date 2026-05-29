@@ -41,8 +41,13 @@ Copy [`cities/_template.yml`](cities/_template.yml) to `cities/<slug>.yml`, set 
 CivicPlus (always) and Granicus-with-`extract_audio` re-host audio. Backend is chosen by
 `defaults.audio_storage_backend` (or the `AUDIO_STORAGE_BACKEND` env override):
 - `local` — writes to `docs/audio`, served from Pages. Good for dev/small sets. Needs ffmpeg.
+- `b2` — Backblaze B2 (S3 API), free egress via Cloudflare CDN; set `B2_ENDPOINT`, `B2_KEY_ID`,
+  `B2_APP_KEY`, `B2_BUCKET`, `B2_PUBLIC_BASE_URL` (Cloudflare-fronted domain).
 - `r2` — Cloudflare R2; set `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
-  `R2_BUCKET`, `R2_PUBLIC_BASE_URL` (as GitHub Actions secrets for deploys).
+  `R2_BUCKET`, `R2_PUBLIC_BASE_URL`.
+
+Both cloud backends are S3-compatible (one `S3CompatibleStorage` with presets). Set the
+matching values as GitHub Actions secrets for deploys.
 
 ```bash
 # Local end-to-end build that re-hosts audio under docs/audio:
