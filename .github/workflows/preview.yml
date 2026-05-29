@@ -1,0 +1,64 @@
+name: PR Preview
+
+# Builds the site for a pull request so reviewers can inspect generated output
+# before merge. GitHub Pages has no native per-PR URL, so the built docs/ is
+# uploaded as a downloadable artifact and linked in a PR comment. (A live preview
+# URL would require a third-party host such as Cloudflare Pages / Netlify.)
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+        continue-on-error: true
+
+      - name: Build feeds
+        env:
+          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url || 'https://preview.example' }}
+        run: citypods build
+
+      - name: Upload preview artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-preview
+          path: docs
+
+      - name: Comment with preview link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '📦 **Site preview built**',
+              '',
+              `Download the generated \`docs/\` from the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) (artifact: \`site-preview\`).`,
+              'Unzip and run `python -m http.server` inside it to browse locally.',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const prev = comments.find(c => c.user.type === 'Bot' && c.body.includes('Site preview built'));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }

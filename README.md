@@ -33,5 +33,17 @@ Copy [`cities/_template.yml`](cities/_template.yml) to `cities/<slug>.yml`, set 
 
 ```bash
 ruff check . && ruff format --check .
-pytest          # added in Phase 1
+pytest                       # unit + regression-snapshot + feed-validation tests
 ```
+
+Tests run fully offline against recorded fixtures in `tests/fixtures/`. After an
+intentional change to feed output, regenerate the golden snapshots:
+
+```bash
+SNAPSHOT_UPDATE=1 pytest tests/test_snapshot.py
+python scripts/refresh_fixtures.py   # only to re-record live feeds (rare)
+```
+
+CI (`.github/workflows/`): `ci.yml` runs ruff + pytest on every PR and push;
+`preview.yml` builds a downloadable site preview per PR; `deploy.yml` builds and
+deploys to GitHub Pages on push to `main` and on a 4-hour schedule.

@@ -1,0 +1,49 @@
+name: Add a city
+description: Request a new city's meetings be turned into a podcast feed.
+title: "Add city: <City, ST>"
+labels: ["add-city"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping grow the directory! Fill this in and a maintainer will
+        add a `cities/<slug>.yml`. If you know the platform details, great — if not,
+        leave them blank and we'll investigate.
+  - type: input
+    id: city_state
+    attributes:
+      label: City and state
+      placeholder: "Denton, TX"
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Video platform (if known)
+      options:
+        - "Not sure"
+        - granicus
+        - civicplus
+        - other
+    validations:
+      required: true
+  - type: input
+    id: source_url
+    attributes:
+      label: Meeting video / feed URL
+      description: A Granicus ViewPublisherRSS URL, a CivicMedia page, or wherever meetings are posted.
+      placeholder: "https://<city>.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast"
+  - type: input
+    id: city_website
+    attributes:
+      label: City website
+      placeholder: "https://www.cityofdenton.com"
+  - type: input
+    id: contact_email
+    attributes:
+      label: Public contact email (optional)
+      description: City clerk / public information email, if published.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
