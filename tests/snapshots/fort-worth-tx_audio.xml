@@ -1,0 +1,580 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Fort Worth City Council Meetings (Audio)</title>
+    <link>https://podcasts.example.gov/fort-worth-tx/</link>
+    <atom:link href="https://podcasts.example.gov/fort-worth-tx/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Video recordings of Fort Worth City Council meetings, produced by FWTV.</description>
+    <language>en-us</language>
+    <itunes:author>City of Fort Worth, TX</itunes:author>
+    <itunes:summary>Video recordings of Fort Worth City Council meetings, produced by FWTV.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://podcasts.example.gov/fort-worth-tx/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Fort Worth, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://podcasts.example.gov/fort-worth-tx/artwork.jpg</url>
+      <title>Fort Worth City Council Meetings</title>
+      <link>https://podcasts.example.gov/fort-worth-tx/</link>
+    </image>
+    <item>
+      <title>Capital Improvements Advisory Committee - May 20, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Capital Improvements Advisory Committee dated Wednesday, 20 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6259&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6259&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6259&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 20 May 2026 12:00:00 -0800</pubDate>
+      <guid isPermaLink="false">8b0c5e26-4c4d-4d82-b900-212a1176d71c</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6259" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Board of Adjustment - May 20, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Board of Adjustment dated Wednesday, 20 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6258&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6258&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6258&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 20 May 2026 07:00:00 -0800</pubDate>
+      <guid isPermaLink="false">945af2b3-ac1d-414c-9c60-d91081d7eaa4</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6258" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Floodplain Management Plan Public Meeting - May 14, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Floodplain Management Plan Public Meeting dated Thursday, 14 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6257&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6257&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6257&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 19 May 2026 12:15:00 -0800</pubDate>
+      <guid isPermaLink="false">0a853ad1-53b6-11f1-9b4d-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6257" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Crime Control and Prevention District - May 19, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Crime Control and Prevention District dated Tuesday, 19 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6255&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6255&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6255&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 19 May 2026 11:15:00 -0800</pubDate>
+      <guid isPermaLink="false">45c11fbe-53ae-11f1-9b4d-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6255" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL WORKSESSION on 2026-05-19 11:00 AM - BUDGET WORK SESSION ON THE FY2027 BUDGET 
+IMMEDIATELY FOLLOWING THE 10:00 A.M. CCPD MEETING - May 19, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL WORKSESSION on 2026-05-19 11:00 AM - BUDGET WORK SESSION ON THE FY2027 BUDGET 
+IMMEDIATELY FOLLOWING THE 10:00 A.M. CCPD MEETING dated Tuesday, 19 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6254&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6254&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6254&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 19 May 2026 09:00:00 -0800</pubDate>
+      <guid isPermaLink="false">8609b623-9426-4403-91f0-be5e8ad88ffb</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6254" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Building Standards Commission - May 18, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Building Standards Commission dated Monday, 18 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6249&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6249&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6249&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Mon, 18 May 2026 07:45:00 -0800</pubDate>
+      <guid isPermaLink="false">8593f8d9-0f99-4cd5-9183-f07ae2583cf1</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6249" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>City Plan Commission - May 14, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for City Plan Commission dated Thursday, 14 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6248&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6248&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6248&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Thu, 14 May 2026 07:00:00 -0800</pubDate>
+      <guid isPermaLink="false">cc890140-33c4-47f1-aafb-c2b1b337075a</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6248" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>ZONING COMMISSION - May 13, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for ZONING COMMISSION dated Wednesday, 13 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6247&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6247&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6247&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 13 May 2026 11:15:00 -0800</pubDate>
+      <guid isPermaLink="false">f9bdd8f2-996f-4fbd-b45a-8ef3984eaf4f</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6247" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Infrastructure &amp; Growth Committee - May 12, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Infrastructure &amp;amp; Growth Committee dated Tuesday, 12 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6241&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6241&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6241&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 12 May 2026 10:45:00 -0800</pubDate>
+      <guid isPermaLink="false">a0747886-cb86-43b5-a6fc-d9773beba142</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6241" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL on 2026-05-12 6:00 PM - May 12, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL on 2026-05-12 6:00 PM dated Tuesday, 12 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6245&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6245&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6245&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 12 May 2026 04:15:00 -0800</pubDate>
+      <guid isPermaLink="false">94d40c5e-677e-4d8f-a842-af6b052c4d3c</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6245" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Press Conference: Illegal Gun Fire Education Campaign - May 12, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Press Conference: Illegal Gun Fire Education Campaign dated Tuesday, 12 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6244&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6244&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6244&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 12 May 2026 03:45:00 -0800</pubDate>
+      <guid isPermaLink="false">3d4eecaa-4e54-11f1-9b4d-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6244" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL on 2026-05-12 4:00 PM - SPECIAL CALLED CITY COUNCIL MEETING â ELECTION CANVASS - May 12, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL on 2026-05-12 4:00 PM - SPECIAL CALLED CITY COUNCIL MEETING â ELECTION CANVASS dated Tuesday, 12 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6243&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6243&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6243&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 12 May 2026 02:00:00 -0800</pubDate>
+      <guid isPermaLink="false">1dcb64fd-1c89-41ac-bbf9-7ee2419e29e3</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6243" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL WORKSESSION on 2026-05-12 3:00 PM - BUDGET WORK SESSION ON THE FY2027 BUDGET - May 12, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL WORKSESSION on 2026-05-12 3:00 PM - BUDGET WORK SESSION ON THE FY2027 BUDGET dated Tuesday, 12 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6242&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6242&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6242&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 12 May 2026 01:00:00 -0800</pubDate>
+      <guid isPermaLink="false">7133b90c-4a85-48bb-9ab2-9c1fc73dbaa9</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6242" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Historic &amp; Cultural Landmarks Commission - May 11, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Historic &amp;amp; Cultural Landmarks Commission dated Monday, 11 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6240&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6240&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6240&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Mon, 11 May 2026 12:00:00 -0800</pubDate>
+      <guid isPermaLink="false">e5023813-c200-440e-bdf1-1ce1e3496cd3</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6240" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL WORKSESSION on 2026-05-05 2:00 PM - IMMEDIATELY FOLLOWING EXECUTIVE SESSION - May 05, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL WORKSESSION on 2026-05-05 2:00 PM - IMMEDIATELY FOLLOWING EXECUTIVE SESSION dated Tuesday, 05 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6228&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6228&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6228&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 05 May 2026 11:30:00 -0800</pubDate>
+      <guid isPermaLink="false">752e272e-6900-4bc4-8006-d05d859c3495</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6228" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL WORKSESSION on 2026-05-05 11:00 AM - BUDGET WORK SESSION ON THE FY2027 BUDGET - May 05, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL WORKSESSION on 2026-05-05 11:00 AM - BUDGET WORK SESSION ON THE FY2027 BUDGET dated Tuesday, 05 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6227&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6227&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6227&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 05 May 2026 09:15:00 -0800</pubDate>
+      <guid isPermaLink="false">35640c03-e471-43cd-aa59-8b1ff6d89fd2</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6227" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Audit Committee - May 05, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Audit Committee dated Tuesday, 05 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6226&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6226&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6226&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 05 May 2026 08:15:00 -0800</pubDate>
+      <guid isPermaLink="false">9da73447-6103-444c-ba62-cafe0a876d37</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6226" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Legislative and Intergovernmental Affairs Committee - May 05, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Legislative and Intergovernmental Affairs Committee dated Tuesday, 05 May 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6229&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6229&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6229&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 05 May 2026 01:00:00 -0800</pubDate>
+      <guid isPermaLink="false">e616c80a-ad3f-4d4f-bcf0-17f9217e8534</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6229" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>City Plan Commission - Apr 30, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for City Plan Commission dated Thursday, 30 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6224&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6224&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6224&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Thu, 30 Apr 2026 10:30:00 -0800</pubDate>
+      <guid isPermaLink="false">d970291a-44b9-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6224" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Fort Worth Housing Finance Corporation - Apr 28, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Fort Worth Housing Finance Corporation dated Tuesday, 28 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6218&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6218&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6218&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 28 Apr 2026 12:15:00 -0800</pubDate>
+      <guid isPermaLink="false">bd9b3755-c755-4fbe-abdb-400b8ff77d23</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6218" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL on 2026-04-28 11:00 AM - Apr 28, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL on 2026-04-28 11:00 AM dated Tuesday, 28 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6217&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6217&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6217&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 28 Apr 2026 09:15:00 -0800</pubDate>
+      <guid isPermaLink="false">b6908ff6-cde8-4b66-ba3a-352da20fdedc</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6217" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL WORKSESSION on 2026-04-28 9:00 AM - Apr 28, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL WORKSESSION on 2026-04-28 9:00 AM dated Tuesday, 28 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6216&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6216&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6216&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 28 Apr 2026 07:15:00 -0800</pubDate>
+      <guid isPermaLink="false">df9b117a-26f4-4c0b-b305-a51b944844e2</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6216" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Research and Innovation Local Government Corporation - Apr 28, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Research and Innovation Local Government Corporation dated Tuesday, 28 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6219&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6219&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6219&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 28 Apr 2026 01:00:00 -0800</pubDate>
+      <guid isPermaLink="false">c3b7c563-05ff-4d7e-be3c-3f5a955bbdd9</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6219" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>test - Apr 27, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for test dated Monday, 27 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6215&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6215&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6215&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Mon, 27 Apr 2026 12:30:00 -0800</pubDate>
+      <guid isPermaLink="false">864dd6ee-29d9-4aa6-91c8-b600c3b8b170</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6215" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Building Standards Commission  - Apr 27, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Building Standards Commission  dated Monday, 27 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6213&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6213&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6213&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Mon, 27 Apr 2026 11:45:00 -0800</pubDate>
+      <guid isPermaLink="false">caee77c0-4267-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6213" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Urban Design Commission  - Apr 16, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Urban Design Commission  dated Thursday, 16 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6211&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6211&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6211&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Thu, 16 Apr 2026 01:30:00 -0800</pubDate>
+      <guid isPermaLink="false">c0f27721-39d1-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6211" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Board of Adjustment - Apr 15, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Board of Adjustment dated Wednesday, 15 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6208&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6208&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6208&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 15 Apr 2026 07:15:00 -0800</pubDate>
+      <guid isPermaLink="false">d4fc627c-25b7-4f18-9e24-cad343153135</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6208" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026 Bond &amp; Charter Public Education Meeting - Apr 13, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for 2026 Bond &amp;amp; Charter Public Education Meeting dated Monday, 13 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6207&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6207&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6207&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 14 Apr 2026 09:15:00 -0800</pubDate>
+      <guid isPermaLink="false">bcdfd899-381c-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6207" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026 Bond &amp; Charter Public Education Meeting - Apr 11, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for 2026 Bond &amp;amp; Charter Public Education Meeting dated Saturday, 11 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6206&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6206&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6206&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 14 Apr 2026 09:00:00 -0800</pubDate>
+      <guid isPermaLink="false">c449435e-381a-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6206" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026 Bond &amp; Charter Public Education Meeting - Apr 02, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for 2026 Bond &amp;amp; Charter Public Education Meeting dated Thursday, 02 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6205&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6205&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6205&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 14 Apr 2026 09:00:00 -0800</pubDate>
+      <guid isPermaLink="false">7967992b-3819-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6205" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Historic &amp; Cultural Landmarks Commission - Apr 13, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Historic &amp;amp; Cultural Landmarks Commission dated Monday, 13 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6204&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6204&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6204&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Mon, 13 Apr 2026 12:00:00 -0800</pubDate>
+      <guid isPermaLink="false">6155faa2-2f4e-4814-b240-7510c956b777</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6204" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>City Plan Commission - Apr 09, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for City Plan Commission dated Thursday, 09 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6194&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6194&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6194&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Thu, 09 Apr 2026 07:00:00 -0800</pubDate>
+      <guid isPermaLink="false">9f97b2ab-b9c3-4a07-af85-76db55fe2f52</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6194" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>ZONING COMMISSION - Apr 08, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for ZONING COMMISSION dated Wednesday, 08 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6192&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6192&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6192&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 08 Apr 2026 11:00:00 -0800</pubDate>
+      <guid isPermaLink="false">780bf7e3-0f2e-4a03-b968-74a13f5a1fa9</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6192" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Downtown Design and Review Board - Apr 02, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Downtown Design and Review Board dated Thursday, 02 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6191&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6191&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6191&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 08 Apr 2026 07:45:00 -0800</pubDate>
+      <guid isPermaLink="false">f45c8fe9-3358-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6191" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL WORKSESSION on 2026-04-07 2:00 PM - Apr 07, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL WORKSESSION on 2026-04-07 2:00 PM dated Tuesday, 07 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6190&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6190&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6190&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 07 Apr 2026 12:30:00 -0800</pubDate>
+      <guid isPermaLink="false">dbd0ab1a-006b-4cdf-88ef-f921f204d5be</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6190" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Legislative and Intergovernmental Affairs Committee - Apr 07, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Legislative and Intergovernmental Affairs Committee dated Tuesday, 07 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6187&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6187&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6187&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 07 Apr 2026 09:30:00 -0800</pubDate>
+      <guid isPermaLink="false">49129c20-4c8d-4a01-98f0-099c7053061a</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6187" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Public Safety Committee - Apr 07, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Public Safety Committee dated Tuesday, 07 April 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6186&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6186&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6186&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 07 Apr 2026 08:15:00 -0800</pubDate>
+      <guid isPermaLink="false">4545f261-b0fd-49a1-87e6-7af80d7f503f</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6186" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026 Bond &amp; Charter Public Education Meeting - Mar 30, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for 2026 Bond &amp;amp; Charter Public Education Meeting dated Monday, 30 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6185&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6185&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6185&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Fri, 03 Apr 2026 07:15:00 -0800</pubDate>
+      <guid isPermaLink="false">4f1f0acb-2f66-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6185" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL on 2026-03-31 11:00 AM - Mar 31, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL on 2026-03-31 11:00 AM dated Tuesday, 31 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6180&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6180&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6180&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 31 Mar 2026 10:00:00 -0800</pubDate>
+      <guid isPermaLink="false">1a815066-0281-4e47-b459-c8cf20a32540</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6180" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL WORKSESSION on 2026-03-31 9:00 AM - Mar 31, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL WORKSESSION on 2026-03-31 9:00 AM dated Tuesday, 31 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6179&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6179&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6179&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 31 Mar 2026 07:15:00 -0800</pubDate>
+      <guid isPermaLink="false">553b875e-142a-433d-b0fe-4831732fa0cb</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6179" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>2026 Bond &amp; Charter Public Education Meeting - Mar 25, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for 2026 Bond &amp;amp; Charter Public Education Meeting dated Wednesday, 25 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6177&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6177&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6177&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 25 Mar 2026 04:30:00 -0800</pubDate>
+      <guid isPermaLink="false">26aaa564-1fe3-4407-8927-20d982c0fe23</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6177" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Building Standards Commission - Mar 23, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Building Standards Commission dated Monday, 23 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6175&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6175&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6175&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Mon, 23 Mar 2026 07:30:00 -0800</pubDate>
+      <guid isPermaLink="false">c62be833-0bee-46fd-86e4-8a3538dccd44</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6175" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Urban Design Commission  - Mar 19, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Urban Design Commission  dated Thursday, 19 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6174&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6174&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6174&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Thu, 19 Mar 2026 11:30:00 -0800</pubDate>
+      <guid isPermaLink="false">db2e9439-23c0-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6174" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Board of Adjustment - Mar 18, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Board of Adjustment dated Wednesday, 18 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6172&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6172&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6172&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 18 Mar 2026 07:15:00 -0800</pubDate>
+      <guid isPermaLink="false">0bb9e230-4ba8-42e0-a7c4-abbd0125fce7</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6172" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>City Plan Commission - Mar 12, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for City Plan Commission dated Thursday, 12 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6168&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6168&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6168&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Thu, 12 Mar 2026 07:15:00 -0800</pubDate>
+      <guid isPermaLink="false">dfc4663e-d7e0-43cb-8081-ea1374c9e799</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6168" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Downtown Design and Review Board  - Jan 09, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Downtown Design and Review Board  dated Friday, 09 January 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6167&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6167&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6167&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 11 Mar 2026 12:00:00 -0800</pubDate>
+      <guid isPermaLink="false">919156e1-1d7b-11f1-bb28-005056a89546</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6167" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>ZONING COMMISSION - Mar 11, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for ZONING COMMISSION dated Wednesday, 11 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6166&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6166&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6166&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 11 Mar 2026 11:15:00 -0800</pubDate>
+      <guid isPermaLink="false">fc63b440-cea5-4b66-9999-64fc71ba554c</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6166" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Board of Adjustment - Mar 11, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Board of Adjustment dated Wednesday, 11 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6165&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6165&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6165&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Wed, 11 Mar 2026 07:15:00 -0800</pubDate>
+      <guid isPermaLink="false">f71b48a1-e686-40ab-8189-1b488c73cbe4</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6165" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Property Management and Environmental Services Committee - Mar 10, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for Property Management and Environmental Services Committee dated Tuesday, 10 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6158&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6158&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6158&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 10 Mar 2026 12:15:00 -0800</pubDate>
+      <guid isPermaLink="false">eef14056-c1fc-4231-a392-0efb0db18900</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6158" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>CITY COUNCIL on 2026-03-10 6:00 PM - Mar 10, 2026</title>
+      <description>&lt;p style=&#39;margin-top:2px;&#39;&gt;
+The agenda for CITY COUNCIL on 2026-03-10 6:00 PM dated Tuesday, 10 March 2026  has been archived. Access it here:&lt;br /&gt;      &lt;a href=&#34;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6163&#34; style=&#39;margin-right:50px;&#39;&gt;https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&amp;amp;clip_id=6163&lt;/a&gt;
+      &lt;a href=&#34;https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;amp;clip_id=6163&#34;&gt;Download File&lt;/a&gt;
+      &lt;/p&gt;</description>
+      <pubDate>Tue, 10 Mar 2026 04:00:00 -0800</pubDate>
+      <guid isPermaLink="false">663f3772-463c-440a-b2a2-17f52ced67ad</guid>
+      <enclosure url="https://fortworthgov.granicus.com/DownloadFile.php?view_id=5&amp;clip_id=6163" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>
