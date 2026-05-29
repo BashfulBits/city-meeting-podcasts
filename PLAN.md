@@ -201,6 +201,11 @@ Thin foundation so later phases have real code to test. No new product features.
 - CLI: `citypods build [--city SLUG] [--dry-run]`.
 - Seed `cities/` with confirmed DFW Granicus cities (grow toward ~18).
 
+> **Finding (Phase 0):** Granicus HEAD responses carry no ETag/Last-Modified, so HEAD-based
+> change detection never skips — every run fetches. This is harmless at ~18 cities and is a
+> *scale* concern, so the content-hash fallback is deferred to Phase 4 (see below), not
+> Phase 1. The `ChangeToken.content_hash` field already exists as the drop-in hook.
+
 ### Phase 1 — Testing & CI/CD foundation *(first priority)*
 - **pytest + recorded fixtures** (VCR-style): provider responses captured once, committed;
   CI never hits the network.
@@ -216,6 +221,9 @@ Thin foundation so later phases have real code to test. No new product features.
 - Implement CivicPlus adapter(s) behind the existing Protocol; add fixtures + snapshots.
 - Finalize multi-provider city YAML validation (adapter-side `validate`).
 - Add at least one real CivicPlus city to the sample set.
+- *Opportunistic:* if CivicPlus has no cheap change signal either (no ETag / `updated_at`),
+  build the content-hash change token here — with two providers in hand the abstraction can
+  be designed correctly — rather than waiting for Phase 4.
 
 ### Phase 3 — Artwork & frontend polish
 - Wikipedia seal composite + state-palette placeholder (Pillow).
@@ -224,6 +232,9 @@ Thin foundation so later phases have real code to test. No new product features.
   per-city subscribe pages. Custom artwork via committed `docs/<slug>/artwork.jpg` (never overwritten).
 
 ### Phase 4 — Scale & audio extraction
+- **Content-hash change detection** (the Phase 0 finding): when a provider exposes no ETag/
+  Last-Modified, fall back to hashing the fetched body so unchanged cities skip the
+  parse/render/write. Only worth it at hundreds+ of cities — negligible at the DFW scale.
 - `extract_audio: true`: `ffmpeg -vn -acodec copy` → M4A; upload to R2/B2/S3 with a
   per-city `audio_manifest.json` cache. Secrets per backend.
 - Index pagination/virtualization for 1,000+ cities.
@@ -238,8 +249,10 @@ Thin foundation so later phases have real code to test. No new product features.
   is too expensive at scale).
 - **Audio strategy**: default audio feed points at the same MP4 (MIME `audio/mp4`); optional
   lossless M4A demux + cloud upload (Phase 4).
-- **Change detection**: provider-defined; feed providers use one HEAD + ETag/Last-Modified
-  compare against `docs/.feed_etags.json`, skipping unchanged cities (critical at scale).
+- **Change detection**: provider-defined; feed providers attempt one HEAD + ETag/Last-Modified
+  compare against `docs/.feed_etags.json` to skip unchanged cities (critical at scale). Where a
+  provider returns no validators (e.g. Granicus HEAD), the build simply always fetches; a
+  content-hash fallback is a Phase 4 scale optimization.
 - **Concurrency**: `ThreadPoolExecutor(max_workers=20)` over I/O-bound provider calls.
 - **Rate limiting**: `request_delay_seconds` (default 0.1s) per worker thread.
 - **Actions budget**: ETag caching + concurrency keep all target scales (DFW ~18, TX ~70,
