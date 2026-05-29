@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "citypods"
+version = "0.1.0"
+description = "Convert US city meeting archives into subscribable podcast feeds, hosted on GitHub Pages."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "requests>=2.31",
+    "PyYAML>=6.0",
+    "Jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+artwork = ["Pillow>=10.0"]            # Phase 3
+svg = ["cairosvg>=2.7"]              # Phase 3 (needs libcairo)
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+citypods = "citypods.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["citypods*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

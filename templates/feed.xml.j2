@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>{{ city.podcast_title }}{% if kind == "audio" %} (Audio){% endif %}</title>
+    <link>{{ city_url }}</link>
+    <atom:link href="{{ feed_url }}" rel="self" type="application/rss+xml"/>
+    <description>{{ city.podcast_description }}</description>
+    <language>{{ city.podcast_language }}</language>
+    <itunes:author>{{ city.podcast_author }}</itunes:author>
+    <itunes:summary>{{ city.podcast_description }}</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="{{ city.podcast_category }}"/>
+    <itunes:image href="{{ artwork_url }}"/>
+    <itunes:owner>
+      <itunes:name>{{ city.podcast_author }}</itunes:name>
+      <itunes:email>{{ city.podcast_email }}</itunes:email>
+    </itunes:owner>
+    <image>
+      <url>{{ artwork_url }}</url>
+      <title>{{ city.podcast_title }}</title>
+      <link>{{ city_url }}</link>
+    </image>
+    {% for item in items %}
+    <item>
+      <title>{{ item.ep.title }}</title>
+      <description>{{ item.ep.description }}</description>
+      <pubDate>{{ item.ep.published | rfc822 }}</pubDate>
+      <guid isPermaLink="false">{{ item.ep.guid }}</guid>
+      <enclosure url="{{ item.enclosure_url }}" type="{{ mime }}" length="{{ enclosure_length }}"/>
+      {% if item.ep.duration %}
+      <itunes:duration>{{ item.ep.duration }}</itunes:duration>
+      {% endif %}
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    {% endfor %}
+  </channel>
+</rss>

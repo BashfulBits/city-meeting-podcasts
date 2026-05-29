@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+
+# Generated GitHub Pages output (CI regenerates this; keep only .nojekyll).
+# Phase 4 may revisit committing docs/ for serving without CI.
+/docs/*
+!/docs/.nojekyll
