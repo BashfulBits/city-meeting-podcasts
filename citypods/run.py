@@ -102,7 +102,9 @@ def _process_city(
     fetched = len(episodes)
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
-    detail = f"{fetched} fetched" + (f", capped to {len(episodes)}" if fetched > len(episodes) else "")
+    detail = f"{fetched} fetched"
+    if fetched > len(episodes):
+        detail += f", capped to {len(episodes)}"
 
     # Materialize hosted audio (HLS providers always; direct providers when extract_audio).
     # Skipped in dry-run (uploads are writes) and when no storage backend is available.
