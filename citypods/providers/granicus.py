@@ -13,6 +13,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 
+from citypods.bodies import granicus_body
 from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import ChangeToken, Episode
 from citypods.providers.base import ProviderError
@@ -114,6 +115,7 @@ def parse_feed(content: bytes) -> list[Episode]:
                 video_url=video_url,
                 description=_text(item, "description"),
                 duration=_parse_duration(_itunes_duration(item)),
+                body=granicus_body(title),
             )
         )
     return episodes

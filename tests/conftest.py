@@ -68,7 +68,8 @@ def episodes_for(provider: str, slug: str):
         # Travis County uses category 26 + extract_audio (hosted M4A audio, direct MP4 video).
         return _simulate_hosted(slug, parse_events(data, category_id=26))
     if provider == "swagit":
-        eps = parse_list(data, "City Council Agenda Meetings", "https://dallastx.new.swagit.com")
+        # The recorded fixture is pre-trimmed to the City Council body.
+        eps = parse_list(data, "https://dallastx.new.swagit.com")
         return _simulate_hosted(slug, eps)
     raise AssertionError(f"unknown provider {provider}")
 

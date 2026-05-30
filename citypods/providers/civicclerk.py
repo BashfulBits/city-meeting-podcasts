@@ -66,6 +66,7 @@ def parse_events(content: bytes, category_id: int | None = None) -> list[Episode
                 video_url=mp4,
                 description=e.get("eventDescription") or "",
                 media_kind="direct",
+                body=(e.get("categoryName") or e.get("meetingTypeName") or "").strip() or None,
             )
         )
     return episodes

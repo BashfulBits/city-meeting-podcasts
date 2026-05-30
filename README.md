@@ -29,6 +29,20 @@ cd docs && python -m http.server 8000   # open http://localhost:8000
 Copy [`cities/_template.yml`](cities/_template.yml) to `cities/<slug>.yml`, set the
 `provider` and provider-specific `source` block, and fill in the podcast metadata.
 
+### One feed per board/commission
+
+Most sources list many bodies (City Council, Planning & Zoning, Board of Adjustments, …) in
+one feed. Add an optional `source.body` filter (case-insensitive substring) to produce a
+**single-body feed**, and make one YAML per board you want. List a source's bodies with:
+
+```bash
+citypods bodies <slug>      # meeting count + latest date per body
+```
+
+Audio that gets re-hosted (Swagit/CivicPlus, or `extract_audio`) is bounded per run by
+`materialize_budget_per_city` and the global `materialize_budget_per_run`, so splitting into
+many board feeds backfills safely over successive runs.
+
 **Providers**
 - **granicus** — `source.feed_url` is a `ViewPublisherRSS.php` URL. Media is a direct MP4,
   used as the enclosure as-is.

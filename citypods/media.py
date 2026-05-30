@@ -17,6 +17,7 @@ import hashlib
 import json
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,6 +59,21 @@ class CommandFfmpeg:
             str(dest),
         ]
         subprocess.run(cmd, check=True, capture_output=True)
+
+
+class GlobalBudget:
+    """Thread-safe cap on total new materializations per build run (across all cities)."""
+
+    def __init__(self, total: int):
+        self._remaining = total
+        self._lock = threading.Lock()
+
+    def take(self) -> bool:
+        with self._lock:
+            if self._remaining <= 0:
+                return False
+            self._remaining -= 1
+            return True
 
 
 @dataclass
@@ -103,12 +119,15 @@ def materialize_audio(
     ffmpeg: FfmpegRunner,
     budget: int,
     resolve_media_url: Callable[[Episode], str],
+    global_budget: GlobalBudget | None = None,
 ) -> MaterializeStats:
     """Populate ``episode.hosted_audio_url`` for episodes that need hosting.
 
-    Mutates ``episodes`` (sets ``hosted_audio_url``) and ``manifest`` in place. Episodes
-    that still need hosting but exceed ``budget`` are left unhosted; the caller drops
-    them from this run's feed and they get picked up next run.
+    Mutates ``episodes`` (sets ``hosted_audio_url``) and ``manifest`` in place. A new host
+    is allowed only while the per-city ``budget`` AND the optional shared ``global_budget``
+    (total new hosts per run, across all cities) both have room; the rest are left unhosted
+    and picked up on a later run. This keeps "split into many board feeds" within the
+    Actions job time limit.
     """
     stats = MaterializeStats()
     remaining = budget
@@ -124,6 +143,9 @@ def materialize_audio(
             continue
 
         if remaining <= 0:
+            stats.skipped_budget += 1
+            continue
+        if global_budget is not None and not global_budget.take():
             stats.skipped_budget += 1
             continue
 
