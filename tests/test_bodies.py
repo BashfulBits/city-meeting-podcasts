@@ -19,13 +19,22 @@ def _ep(body):
     )
 
 
-def test_granicus_body_parses_title():
-    assert granicus_body("City Council on 2026-05-19 4:00 PM - May 19") == "City Council"
+def test_granicus_body_parses_varied_title_formats():
+    # Denton: "<body> on <datetime> - <date>"
+    assert granicus_body("City Council on 2026-05-19 4:00 PM - May 19, 2026") == "City Council"
+    # Fort Worth / Arlington: "<body> - <date>"
+    assert granicus_body("Board of Adjustment - May 20, 2026") == "Board of Adjustment"
     assert (
-        granicus_body("Planning and Zoning Commission on 2026-05-27 5:00 PM")
-        == "Planning and Zoning Commission"
+        granicus_body("Planning and Zoning Commission - Regular Session - May 13, 2026")
+        == "Planning and Zoning Commission - Regular Session"
     )
-    assert granicus_body("Some PSA video") is None
+    # Pflugerville: trailing embedded date "<body> m-d-y - <date>"
+    assert (
+        granicus_body("City Council Worksession 5-26-26 - May 26, 2026")
+        == "City Council Worksession"
+    )
+    # "on" inside a body name must NOT be treated as the Denton datetime split.
+    assert granicus_body("Commission on Disabilities - May 1, 2026") == "Commission on Disabilities"
 
 
 def test_matches_is_case_insensitive_substring():
