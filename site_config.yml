@@ -17,6 +17,12 @@ defaults:
   audio_storage_backend: "b2"            # "local" | "b2" | "r2"  (override: AUDIO_STORAGE_BACKEND=local)
   materialize_budget_per_city: 5         # max NEW episodes re-hosted per run, per city/feed
   materialize_budget_per_run: 25         # global cap on NEW episodes re-hosted per run (all feeds)
+  audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
+  min_meetings_per_body: 3               # generator: a body needs this many recent meetings to get a feed
+  # Bodies whose name contains any of these (case-insensitive) are NOT turned into feeds by
+  # the generator (procurement / public-info programs, not deliberative bodies). Override or
+  # extend per city with a `body_exclude:` list in the city YAML.
+  body_exclude: ["bid", "purchasing", "public education", "psa"]
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

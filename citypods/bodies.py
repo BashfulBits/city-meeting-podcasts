@@ -33,6 +33,11 @@ def matches(body: str | None, needle: str) -> bool:
     return needle.lower().strip() in (body or "").lower()
 
 
+def is_excluded(body: str | None, exclude: list[str]) -> bool:
+    """True if ``body`` matches any denylist term (case-insensitive substring)."""
+    return any(matches(body, term) for term in exclude)
+
+
 def filter_by_body(episodes: list[Episode], body: str | None) -> list[Episode]:
     if not body:
         return episodes

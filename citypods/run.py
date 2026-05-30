@@ -198,7 +198,7 @@ def build(
     total_budget = int(defaults.get("materialize_budget_per_run", 25))
     global_budget = GlobalBudget(total_budget) if total_budget > 0 else None
     storage = make_storage(site_config, base_url, output_dir)
-    ffmpeg = ffmpeg or CommandFfmpeg()
+    ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=int(defaults.get("audio_max_kbps", 96)))
 
     results: list[CityResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
