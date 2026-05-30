@@ -11,3 +11,4 @@ state: TX
 city_website: https://dallascityhall.com
 # Swagit media is an expiring presigned MP4, so audio is always materialized + re-hosted.
 max_episodes: 25
+colors: ["#0000ee", "#c39c34"]

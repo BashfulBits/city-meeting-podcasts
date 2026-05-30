@@ -10,3 +10,4 @@ podcast_description: "Municipal Library Board Meeting meetings for Dallas."
 state: TX
 city_website: https://dallascityhall.com
 max_episodes: 25
+colors: ["#0000ee", "#c39c34"]
