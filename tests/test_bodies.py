@@ -81,8 +81,10 @@ def test_matches_is_variant_tolerant():
     assert not matches("Board of Adjustments", "council")
     assert not matches(None, "council")
     # &/plural variant still matches (one feed captures all spellings across views).
-    assert matches("Historic and Cultural Landmark Commission on 2026-05-01",
-                   "Historic & Cultural Landmarks Commission")
+    assert matches(
+        "Historic and Cultural Landmark Commission on 2026-05-01",
+        "Historic & Cultural Landmarks Commission",
+    )
 
 
 def test_filter_by_body():

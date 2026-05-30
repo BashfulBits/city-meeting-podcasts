@@ -71,9 +71,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Skip bodies an existing feed already covers (same source + body key), so curated /
     # single-body feeds are preserved and generation is idempotent.
-    covered = {
-        (_source_key(c), body_key(c.source["body"])) for c in cities if c.source.get("body")
-    }
+    covered = {(_source_key(c), body_key(c.source["body"])) for c in cities if c.source.get("body")}
     selected_keys = sorted(
         k
         for k, n in counts.items()
