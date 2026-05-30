@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from citypods.bodies import filter_by_body
 from citypods.providers.base import ProviderError
 from citypods.providers.swagit import SwagitProvider, parse_list
 from tests.conftest import fixture_bytes
@@ -22,18 +23,20 @@ SAMPLE = b"""
 """
 
 
-def test_filters_by_body_substring():
-    eps = parse_list(SAMPLE, "City Council Agenda Meetings", ORIGIN)
-    assert [e.guid for e in eps] == ["100", "102"]  # Board of Adjustments excluded
+def test_parse_sets_body_and_media():
+    eps = parse_list(SAMPLE, ORIGIN)
+    assert [e.guid for e in eps] == ["100", "101", "102"]  # all bodies returned
     ep = eps[0]
+    assert ep.body == "City Council Agenda Meetings"
     assert ep.media_kind == "hls"
     assert ep.video_url == f"{ORIGIN}/videos/100/download"
     assert ep.published.year == 2026 and ep.published.month == 5
 
 
-def test_substring_match_captures_panels():
-    eps = parse_list(SAMPLE, "Board of Adjustments", ORIGIN)
-    assert [e.guid for e in eps] == ["101"]
+def test_generic_body_filter():
+    eps = parse_list(SAMPLE, ORIGIN)
+    assert [e.guid for e in filter_by_body(eps, "City Council Agenda Meetings")] == ["100", "102"]
+    assert [e.guid for e in filter_by_body(eps, "Board of Adjustments")] == ["101"]
 
 
 def test_validate_requires_list_url_and_body():
@@ -70,22 +73,18 @@ def test_resolve_follows_download_redirect(monkeypatch):
     monkeypatch.setattr(
         "citypods.providers.swagit.make_session", lambda: _Session(_Resp(302, presigned))
     )
-    eps = parse_list(SAMPLE, "City Council Agenda Meetings", ORIGIN)
+    eps = parse_list(SAMPLE, ORIGIN)
     assert SwagitProvider().resolve_media_url(eps[0], {}) == presigned
 
 
 def test_resolve_errors_on_failure(monkeypatch):
     monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _Session(_Resp(404)))
-    eps = parse_list(SAMPLE, "City Council Agenda Meetings", ORIGIN)
+    eps = parse_list(SAMPLE, ORIGIN)
     with pytest.raises(ProviderError):
         SwagitProvider().resolve_media_url(eps[0], {})
 
 
 def test_recorded_fixture_parses():
-    eps = parse_list(
-        fixture_bytes("swagit", "dallas-tx-city-council"),
-        "City Council Agenda Meetings",
-        ORIGIN,
-    )
+    eps = parse_list(fixture_bytes("swagit", "dallas-tx-city-council"), ORIGIN)
     assert eps
     assert all(e.media_kind == "hls" and e.video_url.endswith("/download") for e in eps)

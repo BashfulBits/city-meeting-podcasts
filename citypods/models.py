@@ -46,6 +46,7 @@ class Episode:
     duration: int | None = None  # seconds
     media_kind: str = "direct"  # "direct" | "hls"
     hosted_audio_url: str | None = None  # set by the materialization pipeline
+    body: str | None = None  # committee/meeting body, e.g. "City Council" (for per-body feeds)
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url

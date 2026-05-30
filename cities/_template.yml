@@ -4,6 +4,8 @@ provider: granicus               # see `citypods` registered providers
 source:
   # Granicus: full ViewPublisherRSS.php URL (find the right view_id per city)
   feed_url: https://example.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  # Optional: filter a mixed feed to one board/commission (see `citypods bodies <slug>`).
+  # body: "City Council"
 podcast_title: "Example City Council Meetings"
 podcast_author: "City of Example, TX"
 podcast_email: clerk@example.gov

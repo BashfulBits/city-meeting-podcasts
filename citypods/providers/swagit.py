@@ -35,19 +35,16 @@ def _origin(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
-def parse_list(content: bytes, body: str, origin: str) -> list[Episode]:
-    """Parse a Swagit view page, returning episodes whose body matches ``body``.
+def parse_list(content: bytes, origin: str) -> list[Episode]:
+    """Parse a Swagit view page into episodes (all bodies; ``Episode.body`` set).
 
-    Match is case-insensitive substring (so "Board of Adjustments" captures its panels).
-    Pure (no network); media URLs are resolved later by ``resolve_media_url``.
+    Body filtering is applied generically downstream via ``source.body``. Pure (no
+    network); media URLs are resolved later by ``resolve_media_url``.
     """
     text = content.decode("utf-8", errors="replace")
-    needle = body.lower().strip()
     episodes: list[Episode] = []
     for vid, raw_body, raw_date in ROW_RE.findall(text):
         body_name = html.unescape(raw_body).strip()
-        if needle not in body_name.lower():
-            continue
         published = _parse_date(raw_date)
         if published is None:
             continue
@@ -58,6 +55,7 @@ def parse_list(content: bytes, body: str, origin: str) -> list[Episode]:
                 published=published,
                 video_url=f"{origin}/videos/{vid}/download",
                 media_kind="hls",
+                body=body_name,
             )
         )
     return episodes
@@ -93,7 +91,7 @@ class SwagitProvider:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
-        return parse_list(resp.content, source["body"], _origin(url))
+        return parse_list(resp.content, _origin(url))
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
         """Follow /videos/{id}/download to its presigned MP4 URL."""

@@ -40,6 +40,11 @@ def parse_civicmedia_feed(content: bytes) -> list[Episode]:
     if channel is None:
         raise ProviderError("CivicMedia RSS has no <channel>")
 
+    # The CivicMedia channel is itself the body; its title is like
+    # "Gainesville, TX - Media Center - City Council" -> body "City Council".
+    channel_title = _text(channel, "title")
+    body = channel_title.split(" - ")[-1].strip() if channel_title else None
+
     episodes: list[Episode] = []
     for item in channel.findall("item"):
         link = _text(item, "link")
@@ -60,6 +65,7 @@ def parse_civicmedia_feed(content: bytes) -> list[Episode]:
                 video_url=link,  # stable watch-page reference; real HLS resolved lazily
                 description=_text(item, "description"),
                 media_kind="hls",
+                body=body,
             )
         )
     return episodes

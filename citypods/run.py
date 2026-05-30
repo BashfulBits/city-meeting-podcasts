@@ -8,11 +8,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
+from citypods.bodies import filter_by_body
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss, has_items
 from citypods.media import (
     CommandFfmpeg,
     FfmpegRunner,
+    GlobalBudget,
     load_manifest,
     materialize_audio,
     save_manifest,
@@ -72,6 +74,7 @@ def _process_city(
     storage: StorageBackend | None,
     ffmpeg: FfmpegRunner,
     budget: int,
+    global_budget: GlobalBudget | None,
 ) -> tuple[CityResult, dict | None]:
     """Returns the result and the new cache entry (or None to leave unchanged)."""
     if request_delay:
@@ -97,14 +100,16 @@ def _process_city(
     except ProviderError as exc:
         return CityResult(city.slug, "error", detail=str(exc)), None
 
-    # A feed never shows more than max_episodes, and re-hosting is expensive — so cap to the
-    # most recent max_episodes BEFORE materialization (don't host the deep archive).
+    # Filter a mixed feed to one body/committee (per-board feeds), then cap to the most
+    # recent max_episodes BEFORE materialization (a feed never shows more, and re-hosting
+    # the deep archive is expensive).
     fetched = len(episodes)
+    episodes = filter_by_body(episodes, city.source.get("body"))
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
     detail = f"{fetched} fetched"
     if fetched > len(episodes):
-        detail += f", capped to {len(episodes)}"
+        detail += f", {len(episodes)} after filter/cap"
 
     # Materialize hosted audio (HLS providers always; direct providers when extract_audio).
     # Skipped in dry-run (uploads are writes) and when no storage backend is available.
@@ -118,6 +123,7 @@ def _process_city(
             ffmpeg=ffmpeg,
             budget=budget,
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
+            global_budget=global_budget,
         )
         save_manifest(output_dir, city.slug, manifest)
         if stats.hosted or stats.reused or stats.skipped_budget:
@@ -189,6 +195,8 @@ def build(
     max_workers = int(site_config.get("max_workers", 20))
     defaults = site_config.get("defaults", {})
     budget = int(defaults.get("materialize_budget_per_city", 5))
+    total_budget = int(defaults.get("materialize_budget_per_run", 25))
+    global_budget = GlobalBudget(total_budget) if total_budget > 0 else None
     storage = make_storage(site_config, base_url, output_dir)
     ffmpeg = ffmpeg or CommandFfmpeg()
 
@@ -206,6 +214,7 @@ def build(
                 storage,
                 ffmpeg,
                 budget,
+                global_budget,
             )
             for c in cities
         ]
