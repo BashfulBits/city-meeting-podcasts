@@ -1,10 +1,11 @@
-slug: fort-worth-tx
+slug: fort-worth-tx-building-standards-commission
 provider: granicus
 source:
   feed_url: https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
-podcast_title: "Fort Worth — All Meetings"
+  body: "Building Standards Commission"
+podcast_title: "Fort Worth: Building Standards Commission"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""
-podcast_description: "Video recordings of Fort Worth City Council meetings, produced by FWTV."
+podcast_description: "Building Standards Commission meetings for Fort Worth."
 state: TX
 city_website: https://www.fortworthtexas.gov

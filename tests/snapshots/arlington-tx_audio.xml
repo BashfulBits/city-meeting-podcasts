@@ -4,7 +4,7 @@
      xmlns:atom="http://www.w3.org/2005/Atom"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>Arlington City Council Meetings (Audio)</title>
+    <title>Arlington — All Meetings (Audio)</title>
     <link>https://podcasts.example.gov/arlington-tx/</link>
     <atom:link href="https://podcasts.example.gov/arlington-tx/audio_feed.xml" rel="self" type="application/rss+xml"/>
     <description>Video recordings of Arlington City Council and Planning &amp; Zoning meetings.</description>
@@ -21,7 +21,7 @@
     </itunes:owner>
     <image>
       <url>https://podcasts.example.gov/arlington-tx/artwork.jpg</url>
-      <title>Arlington City Council Meetings</title>
+      <title>Arlington — All Meetings</title>
       <link>https://podcasts.example.gov/arlington-tx/</link>
     </image>
     <item>

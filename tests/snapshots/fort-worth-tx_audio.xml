@@ -4,7 +4,7 @@
      xmlns:atom="http://www.w3.org/2005/Atom"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>Fort Worth City Council Meetings (Audio)</title>
+    <title>Fort Worth — All Meetings (Audio)</title>
     <link>https://podcasts.example.gov/fort-worth-tx/</link>
     <atom:link href="https://podcasts.example.gov/fort-worth-tx/audio_feed.xml" rel="self" type="application/rss+xml"/>
     <description>Video recordings of Fort Worth City Council meetings, produced by FWTV.</description>
@@ -21,7 +21,7 @@
     </itunes:owner>
     <image>
       <url>https://podcasts.example.gov/fort-worth-tx/artwork.jpg</url>
-      <title>Fort Worth City Council Meetings</title>
+      <title>Fort Worth — All Meetings</title>
       <link>https://podcasts.example.gov/fort-worth-tx/</link>
     </image>
     <item>

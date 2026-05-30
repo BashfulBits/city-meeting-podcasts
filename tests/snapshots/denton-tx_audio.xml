@@ -4,7 +4,7 @@
      xmlns:atom="http://www.w3.org/2005/Atom"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>Denton City Meetings (Audio)</title>
+    <title>Denton — All Meetings (Audio)</title>
     <link>https://podcasts.example.gov/denton-tx/</link>
     <atom:link href="https://podcasts.example.gov/denton-tx/audio_feed.xml" rel="self" type="application/rss+xml"/>
     <description>Video recordings of City of Denton meetings (City Council and Planning &amp; Zoning Commission).</description>
@@ -21,7 +21,7 @@
     </itunes:owner>
     <image>
       <url>https://podcasts.example.gov/denton-tx/artwork.jpg</url>
-      <title>Denton City Meetings</title>
+      <title>Denton — All Meetings</title>
       <link>https://podcasts.example.gov/denton-tx/</link>
     </image>
     <item>

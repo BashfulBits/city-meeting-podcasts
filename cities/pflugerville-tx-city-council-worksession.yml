@@ -1,10 +1,11 @@
-slug: pflugerville-tx
+slug: pflugerville-tx-city-council-worksession
 provider: granicus
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
-podcast_title: "Pflugerville — All Meetings"
+  body: "City Council Worksession"
+podcast_title: "Pflugerville: City Council Worksession"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""
-podcast_description: "Video recordings of Pflugerville City Council meetings."
+podcast_description: "City Council Worksession meetings for Pflugerville."
 state: TX
 city_website: https://www.pflugervilletx.gov

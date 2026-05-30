@@ -85,6 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     for body in selected:
         slug = f"{args.base_slug}-{slugify(body)}"
         path = cities_dir / f"{slug}.yml"
+        if path.exists():
+            print(f"  skip (exists): {path.name}  (body={body!r})")
+            continue
         action = "WRITE" if args.write else "plan"
         print(f"  {action}: {path.name}  (body={body!r}, {counts[body]} mtgs)")
         if args.write:
