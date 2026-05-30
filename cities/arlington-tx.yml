@@ -8,3 +8,4 @@ podcast_email: ""
 podcast_description: "Video recordings of Arlington City Council and Planning & Zoning meetings."
 state: TX
 city_website: https://www.arlingtontx.gov
+colors: ["#082a55", "#990c22"]

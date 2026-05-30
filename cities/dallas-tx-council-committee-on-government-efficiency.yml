@@ -10,3 +10,4 @@ podcast_description: "Council Committee on Government Efficiency meetings for Da
 state: TX
 city_website: https://dallascityhall.com
 max_episodes: 25
+colors: ["#0000ee", "#c39c34"]

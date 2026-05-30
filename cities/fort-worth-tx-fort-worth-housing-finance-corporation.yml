@@ -9,3 +9,4 @@ podcast_email: ""
 podcast_description: "Fort Worth Housing Finance Corporation meetings for Fort Worth."
 state: TX
 city_website: https://www.fortworthtexas.gov
+colors: ["#045b9b", "#6294be"]

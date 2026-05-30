@@ -13,3 +13,4 @@ city_website: https://www.traviscountytx.gov
 # Source MP4s are multi-GB; re-host a small audio M4A so the audio feed is podcast-friendly.
 # (The video feed still points at the county's own CDN MP4 — no hosting cost to us.)
 extract_audio: true
+colors: ["#2e4b58"]

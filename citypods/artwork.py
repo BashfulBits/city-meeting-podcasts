@@ -1,15 +1,17 @@
 """Generate 1400x1400 podcast cover art per feed.
 
-Colored typographic cover using the city's two brand colors (``City.colors``) — or a
-pleasant color derived from the city name when none are set — so covers look at home in
-podcast apps rather than stark black/white. (Seal compositing is a later pass; this is
-the fallback design, kept colorful by design.)
+If a committed city seal exists (``assets/seals/<author-key>.png``, fetched once by
+``scripts/fetch_seals.py``), it's composited on a clean card with a colored band naming
+the city + board (so each feed differs). Otherwise a colored typographic card is used.
+Both use the city's two brand colors (``City.colors``), or a pleasant color derived from
+the name — never stark black/white.
 """
 
 from __future__ import annotations
 
 import colorsys
 import hashlib
+import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -19,6 +21,18 @@ from citypods.models import City
 SIZE = 1400
 MARGIN = 110
 FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
+SEAL_DIR = Path(__file__).resolve().parent / "assets" / "seals"
+
+
+def author_key(city: City) -> str:
+    """Stable per-city key (seals are shared by all of a city's feeds)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", (city.podcast_author or "").lower())
+    return re.sub(r"-+", "-", slug).strip("-")
+
+
+def seal_path(city: City) -> Path | None:
+    p = SEAL_DIR / f"{author_key(city)}.png"
+    return p if p.exists() else None
 
 
 def _font(bold: bool, size: int) -> ImageFont.FreeTypeFont:
@@ -72,27 +86,56 @@ def _wrap(draw, text, font, max_width):
     return lines
 
 
-def render_cover(city: City, dest: Path, wordmark: str = "") -> None:
+def _draw_band(draw, primary, accent, city, wordmark, band_h):
+    """Bottom band: city label + board name + wordmark, naming this specific feed."""
+    fg = _contrast(primary)
+    top = SIZE - band_h
+    draw.rectangle([0, top, SIZE, SIZE], fill=primary)
+    draw.rectangle([0, top, SIZE, top + 10], fill=accent)  # accent hairline
+    y = top + 40
+    draw.text((MARGIN, y), (city.podcast_author or "").upper(), font=_font(False, 44), fill=fg)
+    y += 64
+    main = city.source.get("body") or city.podcast_title
+    for size in (84, 72, 60, 50):
+        f = _font(True, size)
+        lines = _wrap(draw, main, f, SIZE - 2 * MARGIN)
+        if len(lines) * int(size * 1.1) <= band_h - 150:
+            break
+    for line in lines:
+        draw.text((MARGIN, y), line, font=f, fill=fg)
+        y += int(size * 1.1)
+    if wordmark:
+        draw.text((MARGIN, SIZE - 64), wordmark, font=_font(True, 38), fill=fg)
+
+
+def _render_with_seal(city, dest, wordmark, seal_file):
+    primary, accent = _resolve_colors(city)
+    img = Image.new("RGB", (SIZE, SIZE), (255, 255, 255))
+    seal = Image.open(seal_file).convert("RGBA")
+    canvas = Image.new("RGBA", seal.size, (255, 255, 255, 255))
+    seal = Image.alpha_composite(canvas, seal).convert("RGB")
+    band_h = 430
+    region = SIZE - band_h
+    box = int(min(region, SIZE) * 0.74)
+    seal.thumbnail((box, box))
+    img.paste(seal, ((SIZE - seal.width) // 2, (region - seal.height) // 2))
+    _draw_band(ImageDraw.Draw(img), primary, accent, city, wordmark, band_h)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    img.save(dest, "JPEG", quality=88)
+
+
+def _render_typographic(city, dest, wordmark):
     primary, accent = _resolve_colors(city)
     fg = _contrast(primary)
     img = Image.new("RGB", (SIZE, SIZE), primary)
     draw = ImageDraw.Draw(img)
-
-    # Accent band across the bottom.
     band_h = 150
     draw.rectangle([0, SIZE - band_h, SIZE, SIZE], fill=accent)
-
-    top_label = (city.podcast_author or "").upper()
+    draw.text((MARGIN, MARGIN), (city.podcast_author or "").upper(), font=_font(False, 50), fill=fg)
     main = city.source.get("body") or city.podcast_title
-    max_w = SIZE - 2 * MARGIN
-
-    # Top label (smaller).
-    draw.text((MARGIN, MARGIN), top_label, font=_font(False, 50), fill=fg)
-
-    # Main title (bold, wrapped, large — shrink to fit a few lines).
     for size in (150, 130, 110, 92, 78):
         title_font = _font(True, size)
-        lines = _wrap(draw, main, title_font, max_w)
+        lines = _wrap(draw, main, title_font, SIZE - 2 * MARGIN)
         line_h = int(size * 1.12)
         if len(lines) * line_h <= SIZE - band_h - MARGIN - 230:
             break
@@ -100,12 +143,36 @@ def render_cover(city: City, dest: Path, wordmark: str = "") -> None:
     for line in lines:
         draw.text((MARGIN, y), line, font=title_font, fill=fg)
         y += line_h
-
-    # Wordmark in the accent band (the deployment's domain/brand; config-driven).
     if wordmark:
-        wm_font = _font(True, 46)
         wm_y = SIZE - band_h + (band_h - 46) // 2 - 6
-        draw.text((MARGIN, wm_y), wordmark, font=wm_font, fill=_contrast(accent))
-
+        draw.text((MARGIN, wm_y), wordmark, font=_font(True, 46), fill=_contrast(accent))
     dest.parent.mkdir(parents=True, exist_ok=True)
     img.save(dest, "JPEG", quality=88)
+
+
+def render_cover(city: City, dest: Path, wordmark: str = "") -> None:
+    seal_file = seal_path(city)
+    if seal_file:
+        _render_with_seal(city, dest, wordmark, seal_file)
+    else:
+        _render_typographic(city, dest, wordmark)
+
+
+def dominant_colors(image: Image.Image, n: int = 2) -> list[str]:
+    """Extract up to ``n`` representative brand hex colors (skip near-white/black/gray)."""
+    im = image.convert("RGBA")
+    bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+    im = Image.alpha_composite(bg, im).convert("RGB").resize((120, 120))
+    quant = im.quantize(colors=12).convert("RGB")
+    picked: list[tuple[int, int, int]] = []
+    for _count, (r, g, b) in sorted(quant.getcolors(120 * 120) or [], reverse=True):
+        total, spread = r + g + b, max(r, g, b) - min(r, g, b)
+        if total > 710 or total < 70 or spread < 28:  # skip white/black/gray
+            continue
+        # Require the next color to be visibly distinct from those already chosen.
+        if any(abs(r - pr) + abs(g - pg) + abs(b - pb) < 120 for pr, pg, pb in picked):
+            continue
+        picked.append((r, g, b))
+        if len(picked) >= n:
+            break
+    return [f"#{r:02x}{g:02x}{b:02x}" for r, g, b in picked]

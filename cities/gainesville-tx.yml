@@ -11,3 +11,4 @@ state: TX
 city_website: https://www.gainesville.tx.us
 # CivicMedia media is tokenized HLS, so audio is materialized + re-hosted (see PLAN.md).
 extract_audio: true
+colors: ["#92271f", "#d5c1b8"]

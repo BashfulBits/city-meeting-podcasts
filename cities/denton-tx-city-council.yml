@@ -9,3 +9,4 @@ podcast_email: ""
 podcast_description: "City Council meetings for Denton."
 state: TX
 city_website: https://www.cityofdenton.com
+colors: ["#322357"]

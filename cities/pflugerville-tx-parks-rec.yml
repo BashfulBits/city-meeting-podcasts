@@ -9,3 +9,4 @@ podcast_email: ""
 podcast_description: "Parks & Rec meetings for Pflugerville."
 state: TX
 city_website: https://www.pflugervilletx.gov
+colors: ["#067b54", "#93bebc"]
