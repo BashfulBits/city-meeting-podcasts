@@ -54,6 +54,15 @@ def test_validate_requires_feed_url():
     with pytest.raises(ValueError):
         provider.validate({})
     provider.validate({"feed_url": "https://x"})  # no raise
+    provider.validate({"feed_urls": ["https://a", "https://b"]})  # multi-view also valid
+
+
+def test_feed_urls_normalizes_single_and_multi():
+    from citypods.providers.granicus import _feed_urls
+
+    assert _feed_urls({"feed_url": "https://a"}) == ["https://a"]
+    assert _feed_urls({"feed_urls": ["https://a", "https://b"]}) == ["https://a", "https://b"]
+    assert _feed_urls({}) == []
 
 
 @pytest.mark.parametrize("slug", recorded_slugs())

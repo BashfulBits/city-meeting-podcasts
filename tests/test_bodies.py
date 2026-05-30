@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from citypods.bodies import canonical_body, filter_by_body, granicus_body, matches
+from citypods.bodies import body_key, canonical_body, filter_by_body, granicus_body, matches
 from citypods.media import GlobalBudget
 from citypods.models import Episode
 
@@ -60,10 +60,31 @@ def test_canonical_body_keeps_distinct_meeting_types_and_bodies():
     assert canonical_body("Senior Affairs Commission") == "Senior Affairs Commission"
 
 
-def test_matches_is_case_insensitive_substring():
+def test_canonical_body_titlecases_all_caps():
+    assert canonical_body("ZONING COMMISSION") == "Zoning Commission"
+    assert canonical_body("CITY COUNCIL on 2026-05-19 4:00 PM") == "City Council"
+    # Mixed/proper casing is preserved (not forced to title-case).
+    assert canonical_body("Fort Worth Housing Finance Corporation") == (
+        "Fort Worth Housing Finance Corporation"
+    )
+
+
+def test_body_key_merges_spelling_variants():
+    assert body_key("Historic & Cultural Landmarks Commission") == body_key(
+        "Historic and Cultural Landmark Commission"
+    )
+    assert body_key("ZONING COMMISSION") == body_key("Zoning Commission")
+
+
+def test_matches_is_variant_tolerant():
     assert matches("City Council Agenda Meetings", "city council")
     assert not matches("Board of Adjustments", "council")
     assert not matches(None, "council")
+    # &/plural variant still matches (one feed captures all spellings across views).
+    assert matches(
+        "Historic and Cultural Landmark Commission on 2026-05-01",
+        "Historic & Cultural Landmarks Commission",
+    )
 
 
 def test_filter_by_body():

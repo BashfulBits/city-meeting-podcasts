@@ -23,8 +23,8 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from citypods.bodies import body_key, is_excluded
 from citypods.bodies import canonical_body as canonical
-from citypods.bodies import is_excluded
 from citypods.config import load_city_configs, load_site_config
 from citypods.media import _source_key
 from citypods.providers import get_provider
@@ -58,25 +58,28 @@ def main(argv: list[str] | None = None) -> int:
 
     episodes = get_provider(tmpl.provider).fetch_episodes(tmpl.source)
     cutoff = datetime.now(UTC) - timedelta(days=30 * args.recency_months)
-    # Count only meetings within the recency window, so "active" bodies are selected
-    # (sources like Swagit return the entire historical archive).
+    # Group by normalized body_key (merges spelling/case variants across views), counting
+    # only meetings within the recency window; the display name is the most-common spelling.
     counts: collections.Counter[str] = collections.Counter()
+    spellings: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     for e in episodes:
         if e.body and e.published >= cutoff:
-            counts[canonical(e.body)] += 1
+            disp = canonical(e.body)
+            k = body_key(disp)
+            counts[k] += 1
+            spellings[k][disp] += 1
 
-    # Skip bodies an existing feed already covers (same source + body), so curated/single-body
-    # feeds (e.g. an existing council feed) are preserved and generation is idempotent.
-    covered = {
-        (_source_key(c), canonical(c.source["body"])) for c in cities if c.source.get("body")
-    }
-    selected = sorted(
-        b
-        for b, n in counts.items()
+    # Skip bodies an existing feed already covers (same source + body key), so curated /
+    # single-body feeds are preserved and generation is idempotent.
+    covered = {(_source_key(c), body_key(c.source["body"])) for c in cities if c.source.get("body")}
+    selected_keys = sorted(
+        k
+        for k, n in counts.items()
         if n >= min_meetings
-        and not is_excluded(b, tmpl.body_exclude)
-        and (_source_key(tmpl), b) not in covered
+        and not is_excluded(k, tmpl.body_exclude)
+        and (_source_key(tmpl), k) not in covered
     )
+    selected = sorted(spellings[k].most_common(1)[0][0] for k in selected_keys)
     print(
         f"{args.template_city}: {len(selected)} feeds (>= {min_meetings} meetings, "
         f"last {args.recency_months}mo, denylist {tmpl.body_exclude or '(none)'}):"
@@ -89,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  skip (exists): {path.name}  (body={body!r})")
             continue
         action = "WRITE" if args.write else "plan"
-        print(f"  {action}: {path.name}  (body={body!r}, {counts[body]} mtgs)")
+        print(f"  {action}: {path.name}  (body={body!r}, {counts[body_key(body)]} mtgs)")
         if args.write:
             path.write_text(_render(tmpl, slug, body, args.title_prefix))
     return 0

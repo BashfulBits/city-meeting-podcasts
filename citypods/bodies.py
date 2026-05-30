@@ -46,23 +46,41 @@ _QUALIFIERS = {
 
 
 def canonical_body(body: str) -> str:
-    """Normalize a body name so variants of the same body collapse to one feed.
+    """Normalize a body name (the display/feed name) so variants collapse to one feed.
 
-    Strips a trailing " - subtype"/": panel", then leading/trailing meeting-qualifier
-    words (Evening/Afternoon/Worksession/Special/...). E.g. "Evening Council" and
-    "Afternoon Council" -> "Council"; "City Council Worksession" -> "City Council".
+    Strips a "<body> on <datetime> …" suffix (Granicus/Swagit titles that embed the
+    meeting time), a trailing " - subtype"/": panel", then leading/trailing
+    meeting-qualifier words (Evening/Afternoon/Worksession/Special/…), and title-cases
+    ALL-CAPS names. E.g. "City Council on 2026-05-19 4:00 PM" -> "City Council";
+    "ZONING COMMISSION" -> "Zoning Commission".
     """
-    b = _SUBTYPE.sub("", re.sub(r"\s+", " ", body).strip()).strip()
+    b = re.sub(r"\s+", " ", body).strip()
+    b = _ON_DATETIME.sub("", b)  # drop "on <datetime> ..." (and any trailing parenthetical)
+    b = _SUBTYPE.sub("", b).strip()
     tokens = b.split()
     while tokens and tokens[0].lower().strip(",") in _QUALIFIERS:
         tokens.pop(0)
     while tokens and tokens[-1].lower().strip(",") in _QUALIFIERS:
         tokens.pop()
-    return " ".join(tokens) or b
+    b = " ".join(tokens) or b
+    return b.title() if b.isupper() else b  # fix ALL-CAPS Granicus titles
+
+
+def body_key(body: str | None) -> str:
+    """A normalized match key that merges spelling variants of the same body:
+    lowercase, ``&``->``and``, drop punctuation, singularize words, collapse spaces.
+    So "Historic & Cultural Landmarks Commission" and
+    "Historic and Cultural Landmark Commission" share one key.
+    """
+    s = (body or "").lower().replace("&", " and ")
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    words = [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in s.split()]
+    return " ".join(words)
 
 
 def matches(body: str | None, needle: str) -> bool:
-    return needle.lower().strip() in (body or "").lower()
+    """True if ``needle`` matches ``body``, tolerant of spelling/case/plural variants."""
+    return body_key(needle) in body_key(body)
 
 
 def is_excluded(body: str | None, exclude: list[str]) -> bool:
