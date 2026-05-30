@@ -63,11 +63,33 @@ def test_hls_episode_is_hosted(tmp_path):
         budget=5,
         resolve_media_url=lambda e: e.video_url,
     )
+    city = _city()
     assert stats.hosted == 1
-    assert eps[0].hosted_audio_url == f"https://cdn/audio/{_audio_key('x-tx', 'g1')}"
+    assert eps[0].hosted_audio_url == f"https://cdn/audio/{_audio_key(city, 'g1')}"
     assert manifest["g1"]["url"] == eps[0].hosted_audio_url
     assert ff.calls == ["https://src/manifest.m3u8"]
-    assert (tmp_path / "audio" / _audio_key("x-tx", "g1")).exists()
+    assert (tmp_path / "audio" / _audio_key(city, "g1")).exists()
+
+
+def test_audio_key_dedups_across_slug_and_body():
+    # Same provider + source (ignoring body) + guid -> same key, even with different slugs,
+    # so a combined feed and a per-board feed share one hosted file.
+    combined = City(
+        slug="denton-tx", provider="granicus", source={"feed_url": "F"},
+        podcast_title="t", podcast_author="a", podcast_email="", podcast_description="d",
+    )
+    per_board = City(
+        slug="denton-tx-city-council", provider="granicus",
+        source={"feed_url": "F", "body": "City Council"},
+        podcast_title="t", podcast_author="a", podcast_email="", podcast_description="d",
+    )
+    assert _audio_key(combined, "clip-1") == _audio_key(per_board, "clip-1")
+    # Different source -> different key.
+    other = City(
+        slug="x", provider="granicus", source={"feed_url": "OTHER"},
+        podcast_title="t", podcast_author="a", podcast_email="", podcast_description="d",
+    )
+    assert _audio_key(other, "clip-1") != _audio_key(combined, "clip-1")
 
 
 def test_direct_not_hosted_unless_extract_audio(tmp_path):

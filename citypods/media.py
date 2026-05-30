@@ -84,9 +84,20 @@ class MaterializeStats:
     errors: list[str] = field(default_factory=list)
 
 
-def _audio_key(slug: str, guid: str) -> str:
-    digest = hashlib.sha1(guid.encode()).hexdigest()[:16]
-    return f"{slug}/{digest}.m4a"
+def _source_key(city: City) -> str:
+    """Stable id for a city's media source, ignoring the per-board ``body`` filter.
+
+    A combined feed and a per-board feed of the same city share this, so the same meeting
+    is hosted once and shared (dedup), not duplicated per slug.
+    """
+    src = {k: v for k, v in city.source.items() if k != "body"}
+    raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
+    return hashlib.sha1(raw.encode()).hexdigest()[:12]
+
+
+def _audio_key(city: City, guid: str) -> str:
+    digest = hashlib.sha1(f"{_source_key(city)}|{guid}".encode()).hexdigest()[:16]
+    return f"{city.provider}/{_source_key(city)}/{digest}.m4a"
 
 
 def _should_host(episode: Episode, city: City) -> bool:
@@ -149,7 +160,7 @@ def materialize_audio(
             stats.skipped_budget += 1
             continue
 
-        key = _audio_key(city.slug, ep.guid)
+        key = _audio_key(city, ep.guid)
         try:
             if storage.exists(key):
                 url = storage.public_url(key)
