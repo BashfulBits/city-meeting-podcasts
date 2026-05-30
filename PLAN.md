@@ -80,6 +80,12 @@ state: TX
 - **Granicus** — `ViewPublisherRSS.php` XML feed. HEAD + ETag change detection. Handles both
   `<enclosure>` and `<media:content>`. One `view_id` = one meeting type; multiple feeds per
   city = multiple city YAML files (or a future `view_ids` list).
+- **CivicClerk** — *characterized (2026-05).* Public OData JSON API at
+  `<tenant>.api.civicclerk.com/v1/Events`. Recorded meetings expose `mediaSourcePathMp4` as
+  an absolute progressive MP4 on CivicPlus's Azure CDN (`cpmedia.azureedge.net`) — used as a
+  direct enclosure (like Granicus). `category_id` filters meeting type; non-meeting items
+  (press conferences, relative streaming paths) are skipped. Source MP4s can be multi-GB, so
+  `extract_audio: true` re-hosts a small M4A for the audio feed while video points at the CDN.
 - **CivicPlus / CivicMedia** — *characterized (2026-05).* The CivicMedia module exposes a
   per-channel RSS feed at `/RSSFeed.aspx?ModID=92&CID=<channel>` listing meetings (title,
   pubDate, guid, and a `?VID=<n>` page link) — **but no enclosure/direct media URL**. Each

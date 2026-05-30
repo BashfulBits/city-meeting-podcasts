@@ -34,7 +34,11 @@ Copy [`cities/_template.yml`](cities/_template.yml) to `cities/<slug>.yml`, set 
   used as the enclosure as-is.
 - **civicplus** — `source.feed_url` is a CivicMedia channel RSS (`RSSFeed.aspx?ModID=92&CID=…`).
   Media is tokenized HLS, so audio is downloaded with ffmpeg, re-encoded to M4A, and hosted
-  (R2 in production). Requires `extract_audio: true`, ffmpeg, and a storage backend.
+  (R2/B2 in production). Requires `extract_audio: true`, ffmpeg, and a storage backend.
+- **civicclerk** — `source.api_base` is a CivicClerk OData API host (e.g.
+  `https://traviscotx.api.civicclerk.com`); optional `category_id` filters meeting type.
+  Recorded meetings expose a direct CDN MP4 (used as the video enclosure). Set
+  `extract_audio: true` to also publish a small hosted M4A audio feed.
 
 ## Audio hosting
 
