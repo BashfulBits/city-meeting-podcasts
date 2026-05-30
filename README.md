@@ -39,6 +39,10 @@ Copy [`cities/_template.yml`](cities/_template.yml) to `cities/<slug>.yml`, set 
   `https://traviscotx.api.civicclerk.com`); optional `category_id` filters meeting type.
   Recorded meetings expose a direct CDN MP4 (used as the video enclosure). Set
   `extract_audio: true` to also publish a small hosted M4A audio feed.
+- **swagit** — `source.list_url` is a Swagit view page and `source.body` selects one meeting
+  body (substring-matched; one feed per body). Media is an expiring presigned MP4, so audio
+  is always re-hosted (audio-only feed). List the bodies with
+  `python scripts/discover_swagit.py <list_url>`.
 
 ## Audio hosting
 

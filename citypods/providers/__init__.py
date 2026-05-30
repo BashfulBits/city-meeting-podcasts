@@ -10,6 +10,7 @@ from citypods.providers.base import MeetingProvider, ProviderError
 from citypods.providers.civicclerk import CivicClerkProvider
 from citypods.providers.civicplus import CivicPlusProvider
 from citypods.providers.granicus import GranicusProvider
+from citypods.providers.swagit import SwagitProvider
 
 _REGISTRY: dict[str, MeetingProvider] = {}
 
@@ -34,5 +35,6 @@ def provider_names() -> list[str]:
 register(GranicusProvider())
 register(CivicPlusProvider())
 register(CivicClerkProvider())
+register(SwagitProvider())
 
 __all__ = ["MeetingProvider", "ProviderError", "get_provider", "provider_names", "register"]

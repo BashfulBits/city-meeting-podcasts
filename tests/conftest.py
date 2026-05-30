@@ -57,6 +57,7 @@ def episodes_for(provider: str, slug: str):
     from citypods.providers.civicclerk import parse_events
     from citypods.providers.civicplus import parse_civicmedia_feed
     from citypods.providers.granicus import parse_feed
+    from citypods.providers.swagit import parse_list
 
     data = fixture_bytes(provider, slug)
     if provider == "granicus":
@@ -66,18 +67,21 @@ def episodes_for(provider: str, slug: str):
     if provider == "civicclerk":
         # Travis County uses category 26 + extract_audio (hosted M4A audio, direct MP4 video).
         return _simulate_hosted(slug, parse_events(data, category_id=26))
+    if provider == "swagit":
+        eps = parse_list(data, "City Council Agenda Meetings", "https://dallastx.new.swagit.com")
+        return _simulate_hosted(slug, eps)
     raise AssertionError(f"unknown provider {provider}")
 
 
 def kinds_for(provider: str) -> tuple[str, ...]:
-    # CivicPlus is audio-only (HLS not re-hosted as video). Granicus/CivicClerk are
-    # direct-MP4 so they get both an audio and a video feed.
-    return ("audio",) if provider == "civicplus" else ("audio", "video")
+    # CivicPlus and Swagit are audio-only (ephemeral media re-hosted as audio).
+    # Granicus/CivicClerk are direct-MP4 so they get both an audio and a video feed.
+    return ("audio",) if provider in ("civicplus", "swagit") else ("audio", "video")
 
 
 def all_fixture_cases() -> list[tuple[str, str, str]]:
     cases = []
-    for provider in ("granicus", "civicplus", "civicclerk"):
+    for provider in ("granicus", "civicplus", "civicclerk", "swagit"):
         for slug in recorded_slugs(provider):
             for kind in kinds_for(provider):
                 cases.append((provider, slug, kind))
