@@ -97,7 +97,14 @@ def _process_city(
     except ProviderError as exc:
         return CityResult(city.slug, "error", detail=str(exc)), None
 
-    detail = f"{len(episodes)} fetched"
+    # A feed never shows more than max_episodes, and re-hosting is expensive — so cap to the
+    # most recent max_episodes BEFORE materialization (don't host the deep archive).
+    fetched = len(episodes)
+    episodes.sort(key=lambda e: e.published, reverse=True)
+    episodes = episodes[: city.max_episodes]
+    detail = f"{fetched} fetched"
+    if fetched > len(episodes):
+        detail += f", capped to {len(episodes)}"
 
     # Materialize hosted audio (HLS providers always; direct providers when extract_audio).
     # Skipped in dry-run (uploads are writes) and when no storage backend is available.

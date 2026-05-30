@@ -26,16 +26,41 @@ def main() -> None:
 
     with make_session() as session:
         for city in cities:
-            req = _fixture_request(city)
-            if req is None:
-                continue
-            url, params, ext = req
-            resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
-            resp.raise_for_status()
+            if city.provider == "swagit":
+                content, ext = _swagit_fixture(session, city)
+            else:
+                req = _fixture_request(city)
+                if req is None:
+                    continue
+                url, params, ext = req
+                resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+                resp.raise_for_status()
+                content = resp.content
             out = FIXTURE_DIR / city.provider / f"{city.slug}.{ext}"
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(resp.content)
-            print(f"  wrote {out.relative_to(ROOT)} ({len(resp.content)} bytes)")
+            out.write_bytes(content)
+            print(f"  wrote {out.relative_to(ROOT)} ({len(content)} bytes)")
+
+
+def _swagit_fixture(session, city, max_rows: int = 20):
+    """The Swagit view page is multi-MB; trim the committed fixture to the matching
+    body's first rows so it stays small and deterministic."""
+    import re
+
+    from citypods.providers.swagit import ROW_RE
+
+    resp = session.get(city.source["list_url"], timeout=DEFAULT_TIMEOUT)
+    resp.raise_for_status()
+    text = resp.text
+    needle = city.source["body"].lower()
+    rows = []
+    for m in re.finditer(ROW_RE, text):
+        if needle in m.group(2).lower():
+            rows.append(m.group(0))
+        if len(rows) >= max_rows:
+            break
+    table = "<table>\n" + "\n".join(f"<tr><td>{r}<td></tr>" for r in rows) + "\n</table>\n"
+    return table.encode(), "html"
 
 
 def _fixture_request(city):

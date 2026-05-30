@@ -80,6 +80,13 @@ state: TX
 - **Granicus** — `ViewPublisherRSS.php` XML feed. HEAD + ETag change detection. Handles both
   `<enclosure>` and `<media:content>`. One `view_id` = one meeting type; multiple feeds per
   city = multiple city YAML files (or a future `view_ids` list).
+- **Swagit** (Granicus-owned) — *characterized (2026-05).* No public API/RSS; the archive
+  "view" page is server-rendered HTML (rows of `/videos/{id}` + body name + date). One view
+  lists every body, so a city selects one via `body:` (substring match) — one feed per body
+  (`scripts/discover_swagit.py` lists them). Media is a progressive MP4 behind an expiring
+  (~1h) presigned S3 URL (`/videos/{id}/download`), so it's re-hosted as audio via the
+  materialization pipeline (audio-only, like CivicPlus). Used by Dallas, Houston, and many
+  large cities — one adapter, broad reach.
 - **CivicClerk** — *characterized (2026-05).* Public OData JSON API at
   `<tenant>.api.civicclerk.com/v1/Events`. Recorded meetings expose `mediaSourcePathMp4` as
   an absolute progressive MP4 on CivicPlus's Azure CDN (`cpmedia.azureedge.net`) — used as a
