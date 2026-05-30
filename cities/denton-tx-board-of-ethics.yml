@@ -1,12 +1,12 @@
-slug: denton-tx-city-council
+slug: denton-tx-board-of-ethics
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body: "City Council"
-podcast_title: "Denton: City Council"
+  body: "Board of Ethics"
+podcast_title: "Denton: Board of Ethics"
 podcast_author: "City of Denton, TX"
 podcast_email: ""
-podcast_description: "City Council meetings for Denton."
+podcast_description: "Board of Ethics meetings for Denton."
 state: TX
 city_website: https://www.cityofdenton.com
 max_episodes: 25

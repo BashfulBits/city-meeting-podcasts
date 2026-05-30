@@ -1,12 +1,12 @@
-slug: denton-tx-city-council
+slug: denton-tx-historic-landmark-commission
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body: "City Council"
-podcast_title: "Denton: City Council"
+  body: "Historic Landmark Commission"
+podcast_title: "Denton: Historic Landmark Commission"
 podcast_author: "City of Denton, TX"
 podcast_email: ""
-podcast_description: "City Council meetings for Denton."
+podcast_description: "Historic Landmark Commission meetings for Denton."
 state: TX
 city_website: https://www.cityofdenton.com
 max_episodes: 25

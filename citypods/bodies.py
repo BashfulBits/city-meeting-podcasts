@@ -48,11 +48,14 @@ _QUALIFIERS = {
 def canonical_body(body: str) -> str:
     """Normalize a body name so variants of the same body collapse to one feed.
 
-    Strips a trailing " - subtype"/": panel", then leading/trailing meeting-qualifier
-    words (Evening/Afternoon/Worksession/Special/...). E.g. "Evening Council" and
-    "Afternoon Council" -> "Council"; "City Council Worksession" -> "City Council".
+    Strips a "<body> on <datetime> …" suffix (Granicus/Swagit titles that embed the
+    meeting time), a trailing " - subtype"/": panel", then leading/trailing
+    meeting-qualifier words (Evening/Afternoon/Worksession/Special/…). E.g. "City Council
+    on 2026-05-19 4:00 PM" and "Evening Council" -> "City Council" / "Council".
     """
-    b = _SUBTYPE.sub("", re.sub(r"\s+", " ", body).strip()).strip()
+    b = re.sub(r"\s+", " ", body).strip()
+    b = _ON_DATETIME.sub("", b)  # drop "on <datetime> ..." (and any trailing parenthetical)
+    b = _SUBTYPE.sub("", b).strip()
     tokens = b.split()
     while tokens and tokens[0].lower().strip(",") in _QUALIFIERS:
         tokens.pop(0)

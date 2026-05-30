@@ -45,15 +45,24 @@ def _parse_duration(raw: str) -> int | None:
     return seconds
 
 
+def _feed_urls(source: dict) -> list[str]:
+    """A Granicus source may set ``feed_url`` (one view) or ``feed_urls`` (several views,
+    merged) — useful because the RSS is capped at 100 items and busy cities split meeting
+    bodies across views, so low-frequency bodies fall off a single view."""
+    if source.get("feed_urls"):
+        return list(source["feed_urls"])
+    return [source["feed_url"]] if source.get("feed_url") else []
+
+
 class GranicusProvider:
     name = "granicus"
 
     def validate(self, source: dict) -> None:
-        if not source.get("feed_url"):
-            raise ValueError("granicus source requires 'feed_url'")
+        if not _feed_urls(source):
+            raise ValueError("granicus source requires 'feed_url' or 'feed_urls'")
 
     def detect_change(self, source: dict) -> ChangeToken | None:
-        url = source["feed_url"]
+        url = _feed_urls(source)[0]  # probe the first view; Granicus HEAD lacks validators
         with make_session() as session:
             try:
                 resp = session.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
@@ -67,12 +76,18 @@ class GranicusProvider:
         )
 
     def fetch_episodes(self, source: dict) -> list[Episode]:
-        url = source["feed_url"]
+        episodes: list[Episode] = []
+        seen: set[str] = set()
         with make_session() as session:
-            resp = session.get(url, timeout=DEFAULT_TIMEOUT)
-        if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
-        return parse_feed(resp.content)
+            for url in _feed_urls(source):
+                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                if resp.status_code >= 400:
+                    raise ProviderError(f"GET {url} returned {resp.status_code}")
+                for ep in parse_feed(resp.content):
+                    if ep.guid not in seen:  # dedup across views
+                        seen.add(ep.guid)
+                        episodes.append(ep)
+        return episodes
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
         # Granicus enclosures are already direct progressive MP4s.

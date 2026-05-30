@@ -1,7 +1,7 @@
 slug: denton-tx-sustainability-framework-advisory-committee
-provider: granicus
+provider: swagit
 source:
-  feed_url: https://denton-tx.granicus.com/ViewPublisherRSS.php?view_id=4&mode=vpodcast
+  list_url: https://dentontx.new.swagit.com/views/5
   body: "Sustainability Framework Advisory Committee"
 podcast_title: "Denton: Sustainability Framework Advisory Committee"
 podcast_author: "City of Denton, TX"
@@ -9,4 +9,5 @@ podcast_email: ""
 podcast_description: "Sustainability Framework Advisory Committee meetings for Denton."
 state: TX
 city_website: https://www.cityofdenton.com
+max_episodes: 25
 colors: ["#322357"]
