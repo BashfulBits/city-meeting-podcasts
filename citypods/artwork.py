@@ -19,7 +19,6 @@ from citypods.models import City
 SIZE = 1400
 MARGIN = 110
 FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
-WORDMARK = "citymeetings.fyi"
 
 
 def _font(bold: bool, size: int) -> ImageFont.FreeTypeFont:
@@ -73,7 +72,7 @@ def _wrap(draw, text, font, max_width):
     return lines
 
 
-def render_cover(city: City, dest: Path) -> None:
+def render_cover(city: City, dest: Path, wordmark: str = "") -> None:
     primary, accent = _resolve_colors(city)
     fg = _contrast(primary)
     img = Image.new("RGB", (SIZE, SIZE), primary)
@@ -102,11 +101,11 @@ def render_cover(city: City, dest: Path) -> None:
         draw.text((MARGIN, y), line, font=title_font, fill=fg)
         y += line_h
 
-    # Wordmark in the accent band.
-    wm_font = _font(True, 46)
-    wm_fg = _contrast(accent)
-    wm_y = SIZE - band_h + (band_h - 46) // 2 - 6
-    draw.text((MARGIN, wm_y), WORDMARK, font=wm_font, fill=wm_fg)
+    # Wordmark in the accent band (the deployment's domain/brand; config-driven).
+    if wordmark:
+        wm_font = _font(True, 46)
+        wm_y = SIZE - band_h + (band_h - 46) // 2 - 6
+        draw.text((MARGIN, wm_y), wordmark, font=wm_font, fill=_contrast(accent))
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     img.save(dest, "JPEG", quality=88)

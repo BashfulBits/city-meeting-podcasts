@@ -179,10 +179,12 @@ def _process_city(
             (city_dir / "video_feed.xml").write_text(build_rss(city, episodes, "video", base_url))
         else:
             (city_dir / "video_feed.xml").unlink(missing_ok=True)
-        # Cover art: never overwrite a hand-committed artwork.jpg.
+        # Cover art: never overwrite a hand-committed artwork.jpg. Wordmark = the
+        # deployment's domain (config-driven, so forks brand their own covers).
         artwork = city_dir / "artwork.jpg"
         if not artwork.exists():
-            render_cover(city, artwork)
+            wordmark = (site_config.get("custom_domain") or "").removeprefix("www.")
+            render_cover(city, artwork, wordmark=wordmark)
         (city_dir / "index.html").write_text(
             render_city_page(
                 city,
