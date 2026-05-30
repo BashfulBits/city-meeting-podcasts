@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Travis County Commissioners Court (Audio)</title>
+    <link>https://podcasts.example.gov/travis-county-tx/</link>
+    <atom:link href="https://podcasts.example.gov/travis-county-tx/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Meetings of the Travis County Commissioners Court (Voting &amp; Work Sessions).</description>
+    <language>en-us</language>
+    <itunes:author>Travis County, TX</itunes:author>
+    <itunes:summary>Meetings of the Travis County Commissioners Court (Voting &amp; Work Sessions).</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://podcasts.example.gov/travis-county-tx/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>Travis County, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://podcasts.example.gov/travis-county-tx/artwork.jpg</url>
+      <title>Travis County Commissioners Court</title>
+      <link>https://podcasts.example.gov/travis-county-tx/</link>
+    </image>
+    <item>
+      <title>Commissioners Court Voting Session</title>
+      <description></description>
+      <pubDate>Tue, 19 May 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">3673</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/0314d5a7190ae6d6.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Work Session</title>
+      <description></description>
+      <pubDate>Fri, 15 May 2026 11:30:00 +0000</pubDate>
+      <guid isPermaLink="false">3690</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/336fd157645184be.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Work Session</title>
+      <description></description>
+      <pubDate>Thu, 14 May 2026 13:30:00 +0000</pubDate>
+      <guid isPermaLink="false">3672</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/feb8655e7d4d6aa7.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Voting Session</title>
+      <description></description>
+      <pubDate>Tue, 12 May 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">3671</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/07f7493ccbfd787d.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Voting Session</title>
+      <description></description>
+      <pubDate>Tue, 05 May 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">3670</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/bea4375116fd66ff.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Voting Session</title>
+      <description></description>
+      <pubDate>Tue, 28 Apr 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">3613</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/56d83c5c4908932e.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Voting Session</title>
+      <description></description>
+      <pubDate>Tue, 21 Apr 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">3612</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/ddbf4be1cbc45722.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Work Session</title>
+      <description></description>
+      <pubDate>Thu, 16 Apr 2026 13:30:00 +0000</pubDate>
+      <guid isPermaLink="false">3611</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/18a118e25d3b7d55.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Commissioners Court Voting Session</title>
+      <description></description>
+      <pubDate>Tue, 14 Apr 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">3610</guid>
+      <enclosure url="https://cdn.example.gov/audio/travis-county-tx/348d7bdd17650499.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

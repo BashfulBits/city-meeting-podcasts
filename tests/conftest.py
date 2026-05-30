@@ -17,12 +17,22 @@ GRANICUS_FIXTURES = FIXTURE_DIR / "granicus"
 SNAPSHOT_BASE_URL = "https://podcasts.example.gov"
 
 
+def _fixture_file(provider: str, slug: str) -> Path:
+    matches = sorted((FIXTURE_DIR / provider).glob(f"{slug}.*"))
+    if not matches:
+        raise FileNotFoundError(f"no fixture for {provider}/{slug}")
+    return matches[0]
+
+
 def fixture_bytes(provider: str, slug: str) -> bytes:
-    return (FIXTURE_DIR / provider / f"{slug}.xml").read_bytes()
+    return _fixture_file(provider, slug).read_bytes()
 
 
 def recorded_slugs(provider: str = "granicus") -> list[str]:
-    return sorted(p.stem for p in (FIXTURE_DIR / provider).glob("*.xml"))
+    d = FIXTURE_DIR / provider
+    if not d.exists():
+        return []
+    return sorted(p.stem for p in d.glob("*.*"))
 
 
 # Deterministic CDN base used to simulate already-materialized CivicPlus audio in
@@ -30,30 +40,44 @@ def recorded_slugs(provider: str = "granicus") -> list[str]:
 SIM_AUDIO_CDN = "https://cdn.example.gov/audio"
 
 
-def episodes_for(provider: str, slug: str):
-    """Parsed episodes ready for feed building. CivicPlus episodes get simulated
-    hosted audio URLs so the audio feed renders deterministically."""
+def _simulate_hosted(slug: str, eps):
     from citypods.media import _audio_key
+
+    for e in eps:
+        e.hosted_audio_url = f"{SIM_AUDIO_CDN}/{_audio_key(slug, e.guid)}"
+    return eps
+
+
+def episodes_for(provider: str, slug: str):
+    """Parsed episodes ready for feed building.
+
+    Providers whose audio is re-hosted (CivicPlus always; CivicClerk via extract_audio)
+    get simulated hosted audio URLs so the audio feed renders deterministically.
+    """
+    from citypods.providers.civicclerk import parse_events
     from citypods.providers.civicplus import parse_civicmedia_feed
     from citypods.providers.granicus import parse_feed
 
     data = fixture_bytes(provider, slug)
     if provider == "granicus":
         return parse_feed(data)
-    eps = parse_civicmedia_feed(data)
-    for e in eps:
-        e.hosted_audio_url = f"{SIM_AUDIO_CDN}/{_audio_key(slug, e.guid)}"
-    return eps
+    if provider == "civicplus":
+        return _simulate_hosted(slug, parse_civicmedia_feed(data))
+    if provider == "civicclerk":
+        # Travis County uses category 26 + extract_audio (hosted M4A audio, direct MP4 video).
+        return _simulate_hosted(slug, parse_events(data, category_id=26))
+    raise AssertionError(f"unknown provider {provider}")
 
 
 def kinds_for(provider: str) -> tuple[str, ...]:
-    # CivicPlus is audio-only (HLS sources are not re-hosted as video).
-    return ("audio", "video") if provider == "granicus" else ("audio",)
+    # CivicPlus is audio-only (HLS not re-hosted as video). Granicus/CivicClerk are
+    # direct-MP4 so they get both an audio and a video feed.
+    return ("audio",) if provider == "civicplus" else ("audio", "video")
 
 
 def all_fixture_cases() -> list[tuple[str, str, str]]:
     cases = []
-    for provider in ("granicus", "civicplus"):
+    for provider in ("granicus", "civicplus", "civicclerk"):
         for slug in recorded_slugs(provider):
             for kind in kinds_for(provider):
                 cases.append((provider, slug, kind))

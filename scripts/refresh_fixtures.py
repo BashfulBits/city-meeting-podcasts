@@ -26,16 +26,34 @@ def main() -> None:
 
     with make_session() as session:
         for city in cities:
-            # Both Granicus and CivicPlus expose the episode list as an RSS feed_url.
-            url = city.source.get("feed_url")
-            if not url:
+            req = _fixture_request(city)
+            if req is None:
                 continue
-            resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            url, params, ext = req
+            resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
             resp.raise_for_status()
-            out = FIXTURE_DIR / city.provider / f"{city.slug}.xml"
+            out = FIXTURE_DIR / city.provider / f"{city.slug}.{ext}"
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(resp.content)
             print(f"  wrote {out.relative_to(ROOT)} ({len(resp.content)} bytes)")
+
+
+def _fixture_request(city):
+    """Return (url, params, extension) for recording a city's list response, or None."""
+    src = city.source
+    if city.provider in ("granicus", "civicplus"):
+        if not src.get("feed_url"):
+            return None
+        return src["feed_url"], None, "xml"
+    if city.provider == "civicclerk":
+        base = src["api_base"].rstrip("/")
+        params = {
+            "$filter": "hasMedia eq true",
+            "$orderby": "startDateTime desc",
+            "$top": str(src.get("max_fetch", 100)),
+        }
+        return f"{base}/v1/Events", params, "json"
+    return None
 
 
 if __name__ == "__main__":
