@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from citypods.bodies import filter_by_body, granicus_body, matches
+from citypods.bodies import canonical_body, filter_by_body, granicus_body, matches
 from citypods.media import GlobalBudget
 from citypods.models import Episode
 
@@ -19,13 +19,45 @@ def _ep(body):
     )
 
 
-def test_granicus_body_parses_title():
-    assert granicus_body("City Council on 2026-05-19 4:00 PM - May 19") == "City Council"
+def test_granicus_body_parses_varied_title_formats():
+    # Denton: "<body> on <datetime> - <date>"
+    assert granicus_body("City Council on 2026-05-19 4:00 PM - May 19, 2026") == "City Council"
+    # Fort Worth / Arlington: "<body> - <date>"
+    assert granicus_body("Board of Adjustment - May 20, 2026") == "Board of Adjustment"
     assert (
-        granicus_body("Planning and Zoning Commission on 2026-05-27 5:00 PM")
-        == "Planning and Zoning Commission"
+        granicus_body("Planning and Zoning Commission - Regular Session - May 13, 2026")
+        == "Planning and Zoning Commission - Regular Session"
     )
-    assert granicus_body("Some PSA video") is None
+    # Pflugerville: trailing embedded date "<body> m-d-y - <date>"
+    assert (
+        granicus_body("City Council Worksession 5-26-26 - May 26, 2026")
+        == "City Council Worksession"
+    )
+    # "on" inside a body name must NOT be treated as the Denton datetime split.
+    assert granicus_body("Commission on Disabilities - May 1, 2026") == "Commission on Disabilities"
+
+
+def test_canonical_body_merges_variants():
+    # Prefix time-of-day qualifier — Arlington Evening/Afternoon -> one "Council".
+    assert canonical_body("Evening Council") == "Council"
+    assert canonical_body("Afternoon Council") == "Council"
+    # Leading occurrence qualifiers.
+    assert canonical_body("Special Called City Council") == "City Council"
+    # Trailing subtype after a dash/colon.
+    assert canonical_body("Planning and Zoning Commission - Regular Session") == (
+        "Planning and Zoning Commission"
+    )
+    assert canonical_body("Board of Adjustments: Panel A") == "Board of Adjustments"
+
+
+def test_canonical_body_keeps_distinct_meeting_types_and_bodies():
+    # Distinct meeting TYPES are kept separate (not stripped).
+    assert canonical_body("City Council Worksession") == "City Council Worksession"
+    assert canonical_body("Council Briefing") == "Council Briefing"
+    assert canonical_body("City Council Agenda Meetings") == "City Council Agenda Meetings"
+    # Body-type words are never stripped; distinct bodies stay distinct.
+    assert canonical_body("Animal Advisory Commission") == "Animal Advisory Commission"
+    assert canonical_body("Senior Affairs Commission") == "Senior Affairs Commission"
 
 
 def test_matches_is_case_insensitive_substring():

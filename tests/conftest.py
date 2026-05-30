@@ -41,10 +41,13 @@ SIM_AUDIO_CDN = "https://cdn.example.gov/audio"
 
 
 def _simulate_hosted(slug: str, eps):
-    from citypods.media import _audio_key
+    # A stable, slug-based fake URL just for deterministic snapshots (independent of the
+    # real source-based audio key, which is exercised in test_media).
+    import hashlib
 
     for e in eps:
-        e.hosted_audio_url = f"{SIM_AUDIO_CDN}/{_audio_key(slug, e.guid)}"
+        digest = hashlib.sha1(e.guid.encode()).hexdigest()[:16]
+        e.hosted_audio_url = f"{SIM_AUDIO_CDN}/{slug}/{digest}.m4a"
     return eps
 
 

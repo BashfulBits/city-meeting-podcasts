@@ -36,14 +36,23 @@ class FfmpegRunner(Protocol):
         ...
 
 
-class CommandFfmpeg:
-    """Runs the real ffmpeg binary."""
+def encode_args(source_bitrate: int | None, max_kbps: int) -> list[str]:
+    """ffmpeg audio codec args: copy if the source is already <= the cap, else re-encode
+    to ``max_kbps`` mono AAC. Unknown source bitrate -> re-encode (safe upper bound)."""
+    if source_bitrate is not None and source_bitrate <= max_kbps * 1000:
+        return ["-c:a", "copy"]
+    return ["-c:a", "aac", "-b:a", f"{max_kbps}k", "-ac", "1"]
 
-    def __init__(self, binary: str = "ffmpeg"):
+
+class CommandFfmpeg:
+    """Runs the real ffmpeg binary, re-encoding only when the source exceeds the cap."""
+
+    def __init__(self, binary: str = "ffmpeg", max_kbps: int = 96):
         self.binary = binary
+        self.max_kbps = max_kbps
 
     def extract_audio(self, source_url: str, dest: Path) -> None:
-        # Copy the (typically AAC) audio track losslessly into an MP4/M4A container.
+        args = encode_args(_probe_audio_bitrate(source_url, self.binary), self.max_kbps)
         cmd = [
             self.binary,
             "-y",
@@ -52,13 +61,38 @@ class CommandFfmpeg:
             "-i",
             source_url,
             "-vn",
-            "-c:a",
-            "copy",
+            *args,
             "-movflags",
             "+faststart",
             str(dest),
         ]
         subprocess.run(cmd, check=True, capture_output=True)
+
+
+def _probe_audio_bitrate(url: str, ffmpeg_binary: str = "ffmpeg") -> int | None:
+    """Return the source's audio bitrate in bits/sec via ffprobe, or None if unknown."""
+    ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+    try:
+        out = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=bit_rate",
+                "-of",
+                "default=nw=1:nk=1",
+                url,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return int(out) if out.isdigit() else None
+    except (subprocess.CalledProcessError, OSError, ValueError):
+        return None
 
 
 class GlobalBudget:
@@ -84,9 +118,20 @@ class MaterializeStats:
     errors: list[str] = field(default_factory=list)
 
 
-def _audio_key(slug: str, guid: str) -> str:
-    digest = hashlib.sha1(guid.encode()).hexdigest()[:16]
-    return f"{slug}/{digest}.m4a"
+def _source_key(city: City) -> str:
+    """Stable id for a city's media source, ignoring the per-board ``body`` filter.
+
+    A combined feed and a per-board feed of the same city share this, so the same meeting
+    is hosted once and shared (dedup), not duplicated per slug.
+    """
+    src = {k: v for k, v in city.source.items() if k != "body"}
+    raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
+    return hashlib.sha1(raw.encode()).hexdigest()[:12]
+
+
+def _audio_key(city: City, guid: str) -> str:
+    digest = hashlib.sha1(f"{_source_key(city)}|{guid}".encode()).hexdigest()[:16]
+    return f"{city.provider}/{_source_key(city)}/{digest}.m4a"
 
 
 def _should_host(episode: Episode, city: City) -> bool:
@@ -149,7 +194,7 @@ def materialize_audio(
             stats.skipped_budget += 1
             continue
 
-        key = _audio_key(city.slug, ep.guid)
+        key = _audio_key(city, ep.guid)
         try:
             if storage.exists(key):
                 url = storage.public_url(key)

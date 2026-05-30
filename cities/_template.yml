@@ -17,3 +17,6 @@ state: TX                        # two-letter abbreviation (powers state filters
 # podcast_category: Government
 # max_episodes: 50
 # extract_audio: false
+# Bodies to skip when generating per-board feeds (inherits site_config defaults if omitted).
+# Override per city as needed, e.g. to keep a procurement feed or drop an extra body.
+# body_exclude: ["bid", "purchasing", "public education", "psa"]

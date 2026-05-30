@@ -3,7 +3,7 @@ provider: granicus
 source:
   # view_id=4 ("MVP Streaming Archive") is Denton's populated meeting archive.
   feed_url: https://denton-tx.granicus.com/ViewPublisherRSS.php?view_id=4&mode=vpodcast
-podcast_title: "Denton City Meetings"
+podcast_title: "Denton — All Meetings"
 podcast_author: "City of Denton, TX"
 podcast_email: ""
 podcast_description: "Video recordings of City of Denton meetings (City Council and Planning & Zoning Commission)."

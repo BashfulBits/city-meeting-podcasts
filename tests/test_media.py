@@ -6,7 +6,7 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.media import _audio_key, materialize_audio
+from citypods.media import _audio_key, encode_args, materialize_audio
 from citypods.models import City, Episode
 from citypods.storage.local import LocalStorage
 
@@ -63,11 +63,57 @@ def test_hls_episode_is_hosted(tmp_path):
         budget=5,
         resolve_media_url=lambda e: e.video_url,
     )
+    city = _city()
     assert stats.hosted == 1
-    assert eps[0].hosted_audio_url == f"https://cdn/audio/{_audio_key('x-tx', 'g1')}"
+    assert eps[0].hosted_audio_url == f"https://cdn/audio/{_audio_key(city, 'g1')}"
     assert manifest["g1"]["url"] == eps[0].hosted_audio_url
     assert ff.calls == ["https://src/manifest.m3u8"]
-    assert (tmp_path / "audio" / _audio_key("x-tx", "g1")).exists()
+    assert (tmp_path / "audio" / _audio_key(city, "g1")).exists()
+
+
+def test_encode_args_copies_or_reencodes_by_cap():
+    # At/under cap -> lossless copy.
+    assert encode_args(64_000, 96) == ["-c:a", "copy"]
+    assert encode_args(96_000, 96) == ["-c:a", "copy"]
+    # Over cap (e.g. 128k stereo) -> re-encode to mono at the cap.
+    assert encode_args(128_000, 96) == ["-c:a", "aac", "-b:a", "96k", "-ac", "1"]
+    # Unknown source bitrate -> re-encode (safe).
+    assert encode_args(None, 96) == ["-c:a", "aac", "-b:a", "96k", "-ac", "1"]
+
+
+def test_audio_key_dedups_across_slug_and_body():
+    # Same provider + source (ignoring body) + guid -> same key, even with different slugs,
+    # so a combined feed and a per-board feed share one hosted file.
+    combined = City(
+        slug="denton-tx",
+        provider="granicus",
+        source={"feed_url": "F"},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+    )
+    per_board = City(
+        slug="denton-tx-city-council",
+        provider="granicus",
+        source={"feed_url": "F", "body": "City Council"},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+    )
+    assert _audio_key(combined, "clip-1") == _audio_key(per_board, "clip-1")
+    # Different source -> different key.
+    other = City(
+        slug="x",
+        provider="granicus",
+        source={"feed_url": "OTHER"},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+    )
+    assert _audio_key(other, "clip-1") != _audio_key(combined, "clip-1")
 
 
 def test_direct_not_hosted_unless_extract_audio(tmp_path):

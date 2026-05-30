@@ -73,4 +73,6 @@ class City:
     podcast_category: str = "Government"
     max_episodes: int = 50
     extract_audio: bool = False
+    # body substrings to skip when generating per-board feeds
+    body_exclude: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)

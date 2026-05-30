@@ -4,7 +4,7 @@
      xmlns:atom="http://www.w3.org/2005/Atom"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>Pflugerville City Council Meetings</title>
+    <title>Pflugerville — All Meetings</title>
     <link>https://podcasts.example.gov/pflugerville-tx/</link>
     <atom:link href="https://podcasts.example.gov/pflugerville-tx/video_feed.xml" rel="self" type="application/rss+xml"/>
     <description>Video recordings of Pflugerville City Council meetings.</description>
@@ -21,7 +21,7 @@
     </itunes:owner>
     <image>
       <url>https://podcasts.example.gov/pflugerville-tx/artwork.jpg</url>
-      <title>Pflugerville City Council Meetings</title>
+      <title>Pflugerville — All Meetings</title>
       <link>https://podcasts.example.gov/pflugerville-tx/</link>
     </image>
     <item>

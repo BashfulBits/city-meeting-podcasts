@@ -6,6 +6,7 @@ import argparse
 import collections
 import sys
 
+from citypods.bodies import is_excluded
 from citypods.config import load_city_configs, load_site_config
 from citypods.providers import get_provider
 from citypods.run import build
@@ -74,10 +75,12 @@ def _bodies(args) -> int:
         if key not in latest or e.published > latest[key]:
             latest[key] = e.published
 
-    print(f"{len(episodes)} meetings across {len(counts)} bodies in {args.slug}:\n")
-    print(f"  {'count':>5}  {'latest':<12}  body")
+    print(f"{len(episodes)} meetings across {len(counts)} bodies in {args.slug}:")
+    print(f"(denylist: {city.body_exclude or '(none)'} — ✗ = excluded from feeds)\n")
+    print(f"  {'':1} {'count':>5}  {'latest':<12}  body")
     for body, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
-        print(f"  {n:>5}  {latest[body].date()!s:<12}  {body}")
+        mark = "✗" if is_excluded(body, city.body_exclude) else "✓"
+        print(f"  {mark} {n:>5}  {latest[body].date()!s:<12}  {body}")
     return 0
 
 

@@ -1,0 +1,11 @@
+slug: arlington-tx-council
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: "Council"
+podcast_title: "Arlington: Council"
+podcast_author: "City of Arlington, TX"
+podcast_email: ""
+podcast_description: "Council meetings for Arlington."
+state: TX
+city_website: https://www.arlingtontx.gov
