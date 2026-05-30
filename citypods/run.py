@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
+from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss, has_items
@@ -60,6 +61,8 @@ class CityResult:
     status: str  # "built" | "skipped" | "error"
     episode_count: int = 0
     detail: str = ""
+    has_audio: bool = True
+    has_video: bool = False
 
 
 def _token_to_dict(token: ChangeToken | None) -> dict:
@@ -101,6 +104,7 @@ def _process_city(
     budget: int,
     global_budget: GlobalBudget | None,
     fetch_cache: FetchCache,
+    site_config: dict,
 ) -> tuple[CityResult, dict | None]:
     """Returns the result and the new cache entry (or None to leave unchanged)."""
     if request_delay:
@@ -175,9 +179,20 @@ def _process_city(
             (city_dir / "video_feed.xml").write_text(build_rss(city, episodes, "video", base_url))
         else:
             (city_dir / "video_feed.xml").unlink(missing_ok=True)
+        # Cover art: never overwrite a hand-committed artwork.jpg. Wordmark = the
+        # deployment's domain (config-driven, so forks brand their own covers).
+        artwork = city_dir / "artwork.jpg"
+        if not artwork.exists():
+            wordmark = (site_config.get("custom_domain") or "").removeprefix("www.")
+            render_cover(city, artwork, wordmark=wordmark)
         (city_dir / "index.html").write_text(
             render_city_page(
-                city, base_url, len(episodes), has_audio=has_audio, has_video=has_video
+                city,
+                base_url,
+                episodes,
+                site_config=site_config,
+                has_audio=has_audio,
+                has_video=has_video,
             )
         )
         (city_dir / "meta.json").write_text(
@@ -194,7 +209,14 @@ def _process_city(
         )
 
     return (
-        CityResult(city.slug, "built", episode_count=len(episodes), detail=detail),
+        CityResult(
+            city.slug,
+            "built",
+            episode_count=len(episodes),
+            detail=detail,
+            has_audio=has_audio,
+            has_video=has_video,
+        ),
         _token_to_dict(token),
     )
 
@@ -247,6 +269,7 @@ def build(
                 budget,
                 global_budget,
                 fetch_cache,
+                site_config,
             )
             for c in cities
         ]
@@ -259,7 +282,10 @@ def build(
     if not dry_run:
         save_etag_cache(output_dir, cache)
         all_cities = load_city_configs(cities_dir, site_config.get("defaults", {}))
-        (output_dir / "index.html").write_text(render_index(all_cities, site_config, base_url))
+        feed_info = {r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results}
+        (output_dir / "index.html").write_text(
+            render_index(all_cities, site_config, base_url, feed_info)
+        )
         _write_cname(output_dir, site_config)
         (output_dir / "meta.json").write_text(
             json.dumps(
