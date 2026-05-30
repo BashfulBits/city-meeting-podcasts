@@ -29,6 +29,38 @@ def granicus_body(title: str) -> str | None:
     return t or None
 
 
+_SUBTYPE = re.compile(r"\s*[-:]\s*[^-:]+$")  # trailing " - Regular Session" / ": Panel A"
+# Non-semantic time/occurrence qualifiers stripped from the ENDS to merge variants of the
+# same body (e.g. Evening/Afternoon, Special Called). Deliberately conservative: body-type
+# words (council/commission/board/court/committee) and distinct meeting TYPES
+# (worksession/briefing/agenda/retreat) are NOT here, so those stay separate feeds.
+_QUALIFIERS = {
+    "evening",
+    "afternoon",
+    "morning",
+    "special",
+    "regular",
+    "joint",
+    "called",
+}
+
+
+def canonical_body(body: str) -> str:
+    """Normalize a body name so variants of the same body collapse to one feed.
+
+    Strips a trailing " - subtype"/": panel", then leading/trailing meeting-qualifier
+    words (Evening/Afternoon/Worksession/Special/...). E.g. "Evening Council" and
+    "Afternoon Council" -> "Council"; "City Council Worksession" -> "City Council".
+    """
+    b = _SUBTYPE.sub("", re.sub(r"\s+", " ", body).strip()).strip()
+    tokens = b.split()
+    while tokens and tokens[0].lower().strip(",") in _QUALIFIERS:
+        tokens.pop(0)
+    while tokens and tokens[-1].lower().strip(",") in _QUALIFIERS:
+        tokens.pop()
+    return " ".join(tokens) or b
+
+
 def matches(body: str | None, needle: str) -> bool:
     return needle.lower().strip() in (body or "").lower()
 

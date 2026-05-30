@@ -23,17 +23,13 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from citypods.bodies import canonical_body as canonical
 from citypods.bodies import is_excluded
 from citypods.config import load_city_configs, load_site_config
+from citypods.media import _source_key
 from citypods.providers import get_provider
 
 ROOT = Path(__file__).resolve().parent.parent
-_SUBTYPE = re.compile(r"\s*[-:]\s*[^-:]+$")
-
-
-def canonical(body: str) -> str:
-    body = re.sub(r"\s+", " ", body).strip()
-    return _SUBTYPE.sub("", body).strip() or body
 
 
 def slugify(text: str) -> str:
@@ -69,8 +65,17 @@ def main(argv: list[str] | None = None) -> int:
         if e.body and e.published >= cutoff:
             counts[canonical(e.body)] += 1
 
+    # Skip bodies an existing feed already covers (same source + body), so curated/single-body
+    # feeds (e.g. an existing council feed) are preserved and generation is idempotent.
+    covered = {
+        (_source_key(c), canonical(c.source["body"])) for c in cities if c.source.get("body")
+    }
     selected = sorted(
-        b for b, n in counts.items() if n >= min_meetings and not is_excluded(b, tmpl.body_exclude)
+        b
+        for b, n in counts.items()
+        if n >= min_meetings
+        and not is_excluded(b, tmpl.body_exclude)
+        and (_source_key(tmpl), b) not in covered
     )
     print(
         f"{args.template_city}: {len(selected)} feeds (>= {min_meetings} meetings, "
