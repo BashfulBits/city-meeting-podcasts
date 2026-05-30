@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Gainesville City Council Meetings (Audio)</title>
+    <link>https://podcasts.example.gov/gainesville-tx/</link>
+    <atom:link href="https://podcasts.example.gov/gainesville-tx/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Audio of Gainesville City Council meetings (re-hosted from CivicMedia).</description>
+    <language>en-us</language>
+    <itunes:author>City of Gainesville, TX</itunes:author>
+    <itunes:summary>Audio of Gainesville City Council meetings (re-hosted from CivicMedia).</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://podcasts.example.gov/gainesville-tx/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Gainesville, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://podcasts.example.gov/gainesville-tx/artwork.jpg</url>
+      <title>Gainesville City Council Meetings</title>
+      <link>https://podcasts.example.gov/gainesville-tx/</link>
+    </image>
+    <item>
+      <title>May 19, 2026 Regular City Council Meeting</title>
+      <description></description>
+      <pubDate>Fri, 22 May 2026 09:41:00 -0600</pubDate>
+      <guid isPermaLink="false">https://www.gainesville.tx.us/CivicMedia?VID=285/639150432600000000</guid>
+      <enclosure url="https://cdn.example.gov/audio/gainesville-tx/7eed1ca64c784be4.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>May 5, 2026 Regular City Council Meeting</title>
+      <description></description>
+      <pubDate>Thu, 07 May 2026 10:29:00 -0600</pubDate>
+      <guid isPermaLink="false">https://www.gainesville.tx.us/CivicMedia?VID=284/639137501400000000</guid>
+      <enclosure url="https://cdn.example.gov/audio/gainesville-tx/d5892e0e92b776d3.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

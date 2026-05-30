@@ -80,10 +80,20 @@ state: TX
 - **Granicus** — `ViewPublisherRSS.php` XML feed. HEAD + ETag change detection. Handles both
   `<enclosure>` and `<media:content>`. One `view_id` = one meeting type; multiple feeds per
   city = multiple city YAML files (or a future `view_ids` list).
-- **CivicPlus** — *not yet characterized.* CivicPlus spans several products (CivicMedia,
-  CivicClerk/CivicEngage, the acquired Swagit platform) which expose archives differently
-  (RSS, JSON API, or HTML only). Phase 2 begins with investigating real target instances,
-  then implements the adapter(s) that fit. The abstraction absorbs whichever shape they use.
+- **CivicPlus / CivicMedia** — *characterized (2026-05).* The CivicMedia module exposes a
+  per-channel RSS feed at `/RSSFeed.aspx?ModID=92&CID=<channel>` listing meetings (title,
+  pubDate, guid, and a `?VID=<n>` page link) — **but no enclosure/direct media URL**. Each
+  `VID` resolves to a TikiLive `videoId` (e.g. via the page's `civplus.tikiliveapi.com/embed?
+  ...&videoId=<id>` reference), whose only media URL is a **tokenized, time-limited, IP-bound
+  HLS manifest** (`.m3u8`). Consequences:
+  - HLS can't be a podcast `<enclosure>` (players need progressive MP4/M4A), and the URL
+    expires/IP-binds so it can't live in a feed regardless.
+  - Therefore CivicPlus feeds **require materialization**: download the HLS, demux audio with
+    ffmpeg → M4A, host it ourselves (R2), and point the enclosure at the hosted file. This is
+    the shared media pipeline (see Phase 2, re-scoped). Audio-only is the product scope
+    (video re-hosting is storage-heavy and deferred).
+  - The HLS token is ~24h-valid and bound to the requester's IP; the same CI runner fetches
+    the token and runs ffmpeg, so the download stays within the valid window/IP.
 
 ---
 
@@ -118,16 +128,16 @@ must be probed individually in Phase 0). **CivicPlus** targets feed Phase 2.
 Goal is ~18 cities; the confirmed three are enough to build Phase 0/1 fixtures, and the rest
 get verified and added incrementally (each new city is a small PR).
 
-### CivicPlus / CivicMedia (Phase 2 investigation seeds)
-CivicPlus video is its **CivicMedia** product, typically at `tx-<city>.civicplus.com/CivicMedia`.
-How CivicMedia exposes an episode list (RSS vs JSON API vs HTML-only) is the first Phase 2
-investigation task — the adapter shape depends on the answer.
+### CivicPlus / CivicMedia (characterized 2026-05)
+CivicPlus video is its **CivicMedia** product, at `<site>/CivicMedia`. Episode list comes
+from the per-channel RSS `<site>/RSSFeed.aspx?ModID=92&CID=<channel>`; media is tokenized
+TikiLive HLS requiring materialization (see Provider notes). Adapter built in Phase 2.
 
-| City | CivicMedia URL |
-|------|----------------|
-| Frisco, TX | `tx-frisco.civicplus.com/CivicMedia` (FTVN) |
-| Gainesville, TX | `tx-gainesville.civicplus.com/CivicMedia` |
-| Haltom City, TX | CivicPlus CMS — confirm CivicMedia path |
+| City | CivicMedia | Channel RSS (ModID=92) |
+|------|------------|------------------------|
+| Gainesville, TX | `gainesville.tx.us/CivicMedia` | `?CID=City-Council-1` (✅ verified seed city) |
+| Frisco, TX | `tx-frisco.civicplus.com/CivicMedia` (FTVN) | confirm channel CID |
+| Haltom City, TX | confirm CivicMedia path | confirm channel CID |
 
 (Note: Dallas itself cablecasts and streams from `dallascityhall.com`; its archive platform
 still needs identification.)
@@ -216,14 +226,25 @@ Thin foundation so later phases have real code to test. No new product features.
 - **Workflows**: `ci.yml` (PRs + push), `preview.yml` (per-PR preview deploy of `docs/`),
   `deploy.yml` (scheduled `0 */4 * * *` + main-push production deploy to Pages).
 
-### Phase 2 — Provider extensibility: CivicPlus
-- Investigate real CivicPlus target instances; determine RSS vs JSON vs HTML.
-- Implement CivicPlus adapter(s) behind the existing Protocol; add fixtures + snapshots.
-- Finalize multi-provider city YAML validation (adapter-side `validate`).
-- Add at least one real CivicPlus city to the sample set.
-- *Opportunistic:* if CivicPlus has no cheap change signal either (no ETag / `updated_at`),
-  build the content-hash change token here — with two providers in hand the abstraction can
-  be designed correctly — rather than waiting for Phase 4.
+### Phase 2 — Media materialization pipeline + CivicPlus *(re-scoped)*
+Investigation (done) showed CivicMedia serves only tokenized HLS, so CivicPlus can't be a
+plain feed-based adapter — it needs media re-hosting. The materialization pipeline is the
+same machinery Granicus needs for `extract_audio: true`, so it's built here as a shared
+dependency rather than deferred.
+- **Media model**: extend `Episode` with a `MediaSource` (`direct` | `hls`) plus a
+  pipeline-populated `hosted_audio_url`. Granicus default stays "point at the source MP4";
+  `extract_audio`/HLS sources go through materialization.
+- **Storage backends**: `storage/` package — `local` filesystem (dev/tests, no creds) and
+  **Cloudflare R2** (zero egress; production). Pluggable for B2/S3 later.
+- **Audio pipeline** (`media.py`): resolve media → `ffmpeg` demux/encode to M4A → upload →
+  `audio_manifest.json` cache (skip already-hosted episodes). A per-run episode budget keeps
+  large backfills under the Actions 6-hour job limit (catch up over successive runs).
+- **CivicPlus adapter**: parse the CivicMedia RSS list; resolve `VID` → TikiLive `videoId` →
+  HLS manifest; emit `Episode`s with `MediaSource(kind="hls")`. Audio-only feeds.
+- Finalize multi-provider city YAML validation (adapter-side `validate`); seed a real
+  CivicPlus city (`gainesville-tx`); add fixtures + snapshots; wire R2 secrets into deploy.
+- *Opportunistic:* if a content-hash change token is needed for CivicMedia's RSS, build it
+  here (two providers now inform the abstraction) rather than waiting for Phase 4.
 
 ### Phase 3 — Artwork & frontend polish
 - Wikipedia seal composite + state-palette placeholder (Pillow).
@@ -231,12 +252,13 @@ Thin foundation so later phases have real code to test. No new product features.
 - Index page: live search + state filters + add-city card with Canvas artwork preview;
   per-city subscribe pages. Custom artwork via committed `docs/<slug>/artwork.jpg` (never overwritten).
 
-### Phase 4 — Scale & audio extraction
+### Phase 4 — Scale & video re-hosting
 - **Content-hash change detection** (the Phase 0 finding): when a provider exposes no ETag/
   Last-Modified, fall back to hashing the fetched body so unchanged cities skip the
   parse/render/write. Only worth it at hundreds+ of cities — negligible at the DFW scale.
-- `extract_audio: true`: `ffmpeg -vn -acodec copy` → M4A; upload to R2/B2/S3 with a
-  per-city `audio_manifest.json` cache. Secrets per backend.
+- **Video re-hosting** (optional, storage-heavy): remux full MP4 alongside the audio M4A for
+  providers like CivicPlus that only serve HLS; additional storage backends (B2/S3).
+  (Audio-only materialization + R2 already shipped in Phase 2.)
 - Index pagination/virtualization for 1,000+ cities.
 - Scheduled discovery workflow (`discover_cities.py`-style) opening review Issues for new subdomains.
 
@@ -289,16 +311,28 @@ Thin foundation so later phases have real code to test. No new product features.
 | `city_website` | optional | Artwork hint (favicon fallback) |
 | `podcast_language` / `podcast_category` / `max_episodes` / `extract_audio` | optional | Override site defaults |
 
-### GitHub Actions secrets (Phase 4 only, when `extract_audio: true`)
-R2: `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` ·
-B2: `B2_ACCESS_KEY_ID`, `B2_SECRET_ACCESS_KEY` ·
-S3: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+### GitHub Actions secrets (audio hosting — CivicPlus always, Granicus when `extract_audio`)
+Storage is S3-compatible; set the secrets for the `audio_storage_backend` in use:
+- **B2** (+ Cloudflare CDN for free egress): `B2_ENDPOINT`, `B2_KEY_ID`, `B2_APP_KEY`,
+  `B2_BUCKET`, `B2_PUBLIC_BASE_URL` (the Cloudflare-fronted domain)
+- **R2**: `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`,
+  `R2_PUBLIC_BASE_URL`
+
+Secrets live in repo Settings → Secrets and variables → Actions (encrypted, masked in logs,
+never in the repo, not exposed to fork PRs). The public repo means Actions minutes are free;
+the per-job 6-hour cap is managed by `materialize_budget_per_city`.
 
 ---
 
 ## Known limitations & future work
 
-- **CivicPlus is uncharacterized** — Phase 2 starts with investigation; adapter shape TBD.
+- **CivicMedia RSS exposes only recent items** — the `ModID=92` channel feed returns just the
+  latest few meetings, not the full archive, so CivicPlus feeds are limited to what the RSS
+  currently lists (older meetings drop off and are never materialized). A future enhancement
+  could scrape the CivicMedia channel page (`?CID=…`) for the full `VID` list.
+- **CivicPlus audio is re-hosted** — feeds depend on our R2 bucket; if it's emptied or the
+  manifest/object is lost, enclosures 404 until the next run re-materializes. Audio-only:
+  no video feed for HLS-sourced providers (deferred to Phase 4).
 - **Granicus rate limiting** at large scale is untested; mitigate via `request_delay_seconds`/cadence.
 - **Wikipedia/seal coverage** is incomplete; SVG seals need `cairosvg` (system `libcairo`); placeholder fallback always works.
 - **`podcast_email`** required by RSS spec but not validated; blank passes through.

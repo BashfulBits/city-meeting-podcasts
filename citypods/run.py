@@ -9,11 +9,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from citypods.config import load_city_configs, load_site_config
-from citypods.feeds import build_rss
+from citypods.feeds import build_rss, has_items
+from citypods.media import (
+    CommandFfmpeg,
+    FfmpegRunner,
+    load_manifest,
+    materialize_audio,
+    save_manifest,
+)
 from citypods.models import ChangeToken, City
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
 from citypods.site import render_city_page, render_index
+from citypods.storage import make_storage
+from citypods.storage.base import StorageBackend
 
 ETAG_CACHE_NAME = ".feed_etags.json"
 
@@ -49,8 +58,8 @@ def save_etag_cache(output_dir: Path, cache: dict) -> None:
 
 
 def _city_outputs_exist(output_dir: Path, slug: str) -> bool:
-    base = output_dir / slug
-    return (base / "audio_feed.xml").exists() and (base / "video_feed.xml").exists()
+    # audio_feed.xml is the always-present feed (video may be absent for HLS providers).
+    return (output_dir / slug / "audio_feed.xml").exists()
 
 
 def _process_city(
@@ -60,6 +69,9 @@ def _process_city(
     cache: dict,
     request_delay: float,
     dry_run: bool,
+    storage: StorageBackend | None,
+    ffmpeg: FfmpegRunner,
+    budget: int,
 ) -> tuple[CityResult, dict | None]:
     """Returns the result and the new cache entry (or None to leave unchanged)."""
     if request_delay:
@@ -85,18 +97,61 @@ def _process_city(
     except ProviderError as exc:
         return CityResult(city.slug, "error", detail=str(exc)), None
 
+    detail = f"{len(episodes)} fetched"
+
+    # Materialize hosted audio (HLS providers always; direct providers when extract_audio).
+    # Skipped in dry-run (uploads are writes) and when no storage backend is available.
+    if not dry_run and storage is not None:
+        manifest = load_manifest(output_dir, city.slug)
+        stats = materialize_audio(
+            city,
+            episodes,
+            storage=storage,
+            manifest=manifest,
+            ffmpeg=ffmpeg,
+            budget=budget,
+            resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
+        )
+        save_manifest(output_dir, city.slug, manifest)
+        if stats.hosted or stats.reused or stats.skipped_budget:
+            detail += f", audio {stats.hosted}+{stats.reused} hosted"
+            if stats.skipped_budget:
+                detail += f", {stats.skipped_budget} queued"
+        if stats.errors:
+            detail += f", {len(stats.errors)} media errors"
+
+    has_audio = has_items(episodes, "audio")
+    has_video = has_items(episodes, "video")
+
     if not dry_run:
         city_dir = output_dir / city.slug
         city_dir.mkdir(parents=True, exist_ok=True)
-        (city_dir / "audio_feed.xml").write_text(build_rss(city, episodes, "audio", base_url))
-        (city_dir / "video_feed.xml").write_text(build_rss(city, episodes, "video", base_url))
-        (city_dir / "index.html").write_text(render_city_page(city, base_url, len(episodes)))
+        if has_audio:
+            (city_dir / "audio_feed.xml").write_text(build_rss(city, episodes, "audio", base_url))
+        if has_video:
+            (city_dir / "video_feed.xml").write_text(build_rss(city, episodes, "video", base_url))
+        else:
+            (city_dir / "video_feed.xml").unlink(missing_ok=True)
+        (city_dir / "index.html").write_text(
+            render_city_page(
+                city, base_url, len(episodes), has_audio=has_audio, has_video=has_video
+            )
+        )
         (city_dir / "meta.json").write_text(
-            json.dumps({"slug": city.slug, "episodes": len(episodes)}, indent=2) + "\n"
+            json.dumps(
+                {
+                    "slug": city.slug,
+                    "episodes": len(episodes),
+                    "has_audio": has_audio,
+                    "has_video": has_video,
+                },
+                indent=2,
+            )
+            + "\n"
         )
 
     return (
-        CityResult(city.slug, "built", episode_count=len(episodes)),
+        CityResult(city.slug, "built", episode_count=len(episodes), detail=detail),
         _token_to_dict(token),
     )
 
@@ -109,6 +164,7 @@ def build(
     base_url: str | None = None,
     only_slug: str | None = None,
     dry_run: bool = False,
+    ffmpeg: FfmpegRunner | None = None,
 ) -> list[CityResult]:
     site_config = load_site_config(site_config_path)
     cities = load_city_configs(cities_dir, site_config.get("defaults", {}))
@@ -124,11 +180,26 @@ def build(
     cache = load_etag_cache(output_dir)
     request_delay = float(site_config.get("request_delay_seconds", 0.1))
     max_workers = int(site_config.get("max_workers", 20))
+    defaults = site_config.get("defaults", {})
+    budget = int(defaults.get("materialize_budget_per_city", 5))
+    storage = make_storage(site_config, base_url, output_dir)
+    ffmpeg = ffmpeg or CommandFfmpeg()
 
     results: list[CityResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [
-            pool.submit(_process_city, c, base_url, output_dir, cache, request_delay, dry_run)
+            pool.submit(
+                _process_city,
+                c,
+                base_url,
+                output_dir,
+                cache,
+                request_delay,
+                dry_run,
+                storage,
+                ffmpeg,
+                budget,
+            )
             for c in cities
         ]
         for fut in futures:

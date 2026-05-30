@@ -29,6 +29,31 @@ cd docs && python -m http.server 8000   # open http://localhost:8000
 Copy [`cities/_template.yml`](cities/_template.yml) to `cities/<slug>.yml`, set the
 `provider` and provider-specific `source` block, and fill in the podcast metadata.
 
+**Providers**
+- **granicus** — `source.feed_url` is a `ViewPublisherRSS.php` URL. Media is a direct MP4,
+  used as the enclosure as-is.
+- **civicplus** — `source.feed_url` is a CivicMedia channel RSS (`RSSFeed.aspx?ModID=92&CID=…`).
+  Media is tokenized HLS, so audio is downloaded with ffmpeg, re-encoded to M4A, and hosted
+  (R2 in production). Requires `extract_audio: true`, ffmpeg, and a storage backend.
+
+## Audio hosting
+
+CivicPlus (always) and Granicus-with-`extract_audio` re-host audio. Backend is chosen by
+`defaults.audio_storage_backend` (or the `AUDIO_STORAGE_BACKEND` env override):
+- `local` — writes to `docs/audio`, served from Pages. Good for dev/small sets. Needs ffmpeg.
+- `b2` — Backblaze B2 (S3 API), free egress via Cloudflare CDN; set `B2_ENDPOINT`, `B2_KEY_ID`,
+  `B2_APP_KEY`, `B2_BUCKET`, `B2_PUBLIC_BASE_URL` (Cloudflare-fronted domain).
+- `r2` — Cloudflare R2; set `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+  `R2_BUCKET`, `R2_PUBLIC_BASE_URL`.
+
+Both cloud backends are S3-compatible (one `S3CompatibleStorage` with presets). Set the
+matching values as GitHub Actions secrets for deploys.
+
+```bash
+# Local end-to-end build that re-hosts audio under docs/audio:
+AUDIO_STORAGE_BACKEND=local citypods build --city gainesville-tx   # needs ffmpeg installed
+```
+
 ## Development
 
 ```bash

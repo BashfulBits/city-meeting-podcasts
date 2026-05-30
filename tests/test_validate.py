@@ -6,9 +6,8 @@ import pytest
 
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss
-from citypods.providers.granicus import parse_feed
 from citypods.validate import validate_feed
-from tests.conftest import ROOT, SNAPSHOT_BASE_URL, fixture_bytes, recorded_slugs
+from tests.conftest import ROOT, SNAPSHOT_BASE_URL, all_fixture_cases, episodes_for
 
 
 def test_validator_flags_broken_feed():
@@ -21,11 +20,10 @@ def _cities():
     return {c.slug: c for c in load_city_configs(ROOT / "cities", site_config.get("defaults", {}))}
 
 
-@pytest.mark.parametrize("slug", recorded_slugs())
-@pytest.mark.parametrize("kind", ["audio", "video"])
-def test_generated_feeds_valid(slug, kind):
+@pytest.mark.parametrize("provider,slug,kind", all_fixture_cases())
+def test_generated_feeds_valid(provider, slug, kind):
     city = _cities()[slug]
-    episodes = parse_feed(fixture_bytes("granicus", slug))
+    episodes = episodes_for(provider, slug)
     xml = build_rss(city, episodes, kind, SNAPSHOT_BASE_URL)
     errors = validate_feed(xml)
     assert not errors, f"{slug} {kind} feed invalid: {errors}"

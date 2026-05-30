@@ -22,10 +22,12 @@
 
   <h2>Subscribe</h2>
   <p>
-    <a class="btn" href="{{ city_url }}audio_feed.xml">Audio RSS</a>
-    <a class="btn" href="{{ city_url }}video_feed.xml">Video RSS</a>
+    {% if has_audio %}<a class="btn" href="{{ city_url }}audio_feed.xml">Audio RSS</a>{% endif %}
+    {% if has_video %}<a class="btn" href="{{ city_url }}video_feed.xml">Video RSS</a>{% endif %}
   </p>
+  {% if has_audio %}
   <p>Paste a feed URL into your podcast app:</p>
   <p><code>{{ city_url }}audio_feed.xml</code></p>
+  {% endif %}
 </body>
 </html>

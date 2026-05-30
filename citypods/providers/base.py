@@ -35,5 +35,20 @@ class MeetingProvider(Protocol):
         ...
 
     def fetch_episodes(self, source: dict) -> list[Episode]:
-        """Fetch and parse the full episode list for a city."""
+        """Fetch and parse the full episode list for a city.
+
+        For providers whose media is direct (Granicus), ``Episode.video_url`` is a usable
+        enclosure URL. For providers whose media must be materialized (CivicPlus/HLS),
+        ``video_url`` holds a stable *reference* (e.g. the watch-page URL) and the real,
+        often-expiring source URL is produced lazily by :meth:`resolve_media_url`.
+        """
+        ...
+
+    def resolve_media_url(self, episode: Episode, source: dict) -> str:
+        """Return the actual source media URL to hand to ffmpeg.
+
+        Called by the materialization pipeline immediately before download, only for
+        episodes being hosted this run (keeps expiring tokens fresh). The default returns
+        the already-usable ``episode.video_url`` (correct for direct-media providers).
+        """
         ...

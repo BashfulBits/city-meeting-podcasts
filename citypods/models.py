@@ -28,7 +28,14 @@ class ChangeToken:
 
 @dataclass
 class Episode:
-    """A single meeting recording, normalized across providers."""
+    """A single meeting recording, normalized across providers.
+
+    ``media_kind`` describes ``video_url``:
+      - ``"direct"``: a progressive MP4 usable as a podcast enclosure as-is (Granicus).
+      - ``"hls"``: a (typically tokenized, expiring) HLS manifest that CANNOT be an
+        enclosure; it must be materialized to a hosted M4A by the media pipeline, which
+        then sets ``hosted_audio_url`` (CivicPlus / CivicMedia).
+    """
 
     guid: str
     title: str
@@ -37,9 +44,15 @@ class Episode:
     description: str = ""
     audio_url: str | None = None  # falls back to video_url (audio/mp4) when None
     duration: int | None = None  # seconds
+    media_kind: str = "direct"  # "direct" | "hls"
+    hosted_audio_url: str | None = None  # set by the materialization pipeline
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url
+
+    def needs_materialization(self) -> bool:
+        """True when no playable enclosure exists without re-hosting audio."""
+        return self.media_kind == "hls" and not self.hosted_audio_url
 
 
 @dataclass
