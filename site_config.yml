@@ -1,10 +1,10 @@
 # Global site configuration. See PLAN.md "Configuration reference".
-custom_domain: ""                       # blank = github.io URL
-site_title: "City Council Podcast Directory"
-site_description: "Subscribable podcast feeds for US city council meetings."
+custom_domain: "www.citymeetings.fyi"   # blank = github.io URL
+site_title: "City Meeting Podcasts"
+site_description: "Subscribe to your local government."
 site_author: ""
 site_author_url: ""
-github_repo: ""                          # "user/repo" for Issue links
+github_repo: "BashfulBits/city-meeting-podcasts"   # "user/repo" for Issue links
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
 request_delay_seconds: 0.1               # politeness sleep per worker thread
 max_workers: 20

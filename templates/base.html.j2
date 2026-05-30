@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ config.site_title }}{% endblock %}</title>
+  <meta name="description" content="{{ config.site_description }}">
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #111111; --muted: #6b7280; --border: #e5e7eb;
+      --card: #ffffff; --hover: #f6f7f8; --accent: #111111; --accent-fg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d0f12; --fg: #e8eaed; --muted: #9aa0a6; --border: #23262b;
+        --card: #15171b; --hover: #1c1f24; --accent: #e8eaed; --accent-fg: #0d0f12;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: var(--fg); background: var(--bg); margin: 0;
+      line-height: 1.5; -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 2.5rem 1.1rem 4rem; }
+    a { color: var(--fg); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 { font-size: 1.7rem; margin: 0 0 .25rem; letter-spacing: -0.02em; }
+    .tagline { color: var(--muted); margin: 0 0 1.5rem; }
+    .muted { color: var(--muted); }
+    .btn {
+      display: inline-block; padding: .5rem .85rem; margin: 0 .4rem .4rem 0;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--card);
+      font-size: .92rem; cursor: pointer;
+    }
+    .btn:hover { background: var(--hover); text-decoration: none; }
+    .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+    footer {
+      max-width: 760px; margin: 0 auto; padding: 1.5rem 1.1rem 3rem;
+      border-top: 1px solid var(--border); color: var(--muted); font-size: .85rem;
+    }
+    footer a { color: var(--muted); text-decoration: underline; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <main class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <p>An independent directory — not affiliated with or endorsed by these governments.
+       Audio is re-hosted from public meeting recordings.</p>
+    <p>
+      {% if config.github_repo %}<a href="https://github.com/{{ config.github_repo }}">Open source on GitHub</a> ·
+      <a href="https://github.com/{{ config.github_repo }}/issues/new?template=add-city.yml">Add your city</a>{% endif %}
+    </p>
+  </footer>
+</body>
+</html>

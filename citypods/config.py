@@ -49,6 +49,7 @@ def _build_city(raw: dict, defaults: dict, source_file: Path) -> City:
             "max_episodes",
             "extract_audio",
             "body_exclude",
+            "colors",
         }
     )
     return City(
@@ -68,6 +69,7 @@ def _build_city(raw: dict, defaults: dict, source_file: Path) -> City:
         max_episodes=int(raw.get("max_episodes", defaults.get("max_episodes", 50))),
         extract_audio=bool(raw.get("extract_audio", defaults.get("extract_audio", False))),
         body_exclude=list(raw.get("body_exclude", defaults.get("body_exclude", []))),
+        colors=[str(c) for c in raw.get("colors", [])],
         extra={k: v for k, v in raw.items() if k not in known},
     )
 
