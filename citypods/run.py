@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import collections
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -15,6 +17,7 @@ from citypods.media import (
     CommandFfmpeg,
     FfmpegRunner,
     GlobalBudget,
+    _source_key,
     load_manifest,
     materialize_audio,
     save_manifest,
@@ -27,6 +30,28 @@ from citypods.storage import make_storage
 from citypods.storage.base import StorageBackend
 
 ETAG_CACHE_NAME = ".feed_etags.json"
+
+
+class FetchCache:
+    """Fetch each distinct source once per build and share it across its per-board feeds.
+
+    Without this, N per-board feeds of one city would each re-fetch the same (often large)
+    source page concurrently and hammer/time-out the server. Fetches are serialized per
+    source key; different sources still fetch in parallel.
+    """
+
+    def __init__(self):
+        self._data: dict[str, list] = {}
+        self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
+        self._guard = threading.Lock()
+
+    def get_or_fetch(self, key: str, fetch):
+        with self._guard:
+            lock = self._locks[key]
+        with lock:
+            if key not in self._data:
+                self._data[key] = fetch()
+            return self._data[key]
 
 
 @dataclass
@@ -75,6 +100,7 @@ def _process_city(
     ffmpeg: FfmpegRunner,
     budget: int,
     global_budget: GlobalBudget | None,
+    fetch_cache: FetchCache,
 ) -> tuple[CityResult, dict | None]:
     """Returns the result and the new cache entry (or None to leave unchanged)."""
     if request_delay:
@@ -96,7 +122,11 @@ def _process_city(
         return CityResult(city.slug, "skipped"), None
 
     try:
-        episodes = provider.fetch_episodes(city.source)
+        # Shared across all per-board feeds of this source (fetched once per build).
+        cached = fetch_cache.get_or_fetch(
+            _source_key(city), lambda: provider.fetch_episodes(city.source)
+        )
+        episodes = list(cached)
     except ProviderError as exc:
         return CityResult(city.slug, "error", detail=str(exc)), None
 
@@ -199,6 +229,7 @@ def build(
     global_budget = GlobalBudget(total_budget) if total_budget > 0 else None
     storage = make_storage(site_config, base_url, output_dir)
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=int(defaults.get("audio_max_kbps", 96)))
+    fetch_cache = FetchCache()
 
     results: list[CityResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -215,6 +246,7 @@ def build(
                 ffmpeg,
                 budget,
                 global_budget,
+                fetch_cache,
             )
             for c in cities
         ]
