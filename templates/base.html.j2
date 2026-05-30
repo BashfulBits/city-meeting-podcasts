@@ -40,10 +40,18 @@
       border-top: 1px solid var(--border); color: var(--muted); font-size: .85rem;
     }
     footer a { color: var(--muted); text-decoration: underline; }
+    .notice {
+      background: var(--hover); border-bottom: 1px solid var(--border);
+      color: var(--muted); font-size: .82rem; text-align: center; padding: .55rem 1rem;
+    }
+    .notice b { color: var(--fg); letter-spacing: .04em; }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
+  {% if config.site_notice %}
+  <div class="notice"><b>BETA</b> · {{ config.site_notice }}</div>
+  {% endif %}
   <main class="wrap">
     {% block content %}{% endblock %}
   </main>
