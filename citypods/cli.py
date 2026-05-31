@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import json
 import sys
 
 from citypods.bodies import is_excluded
@@ -35,6 +36,12 @@ def main(argv: list[str] | None = None) -> int:
     h.add_argument("--site-config", default="site_config.yml")
     h.add_argument("--cities-dir", default="cities")
 
+    r = sub.add_parser("report", help="resource cost/time projection report + admin page")
+    r.add_argument("--markdown", action="store_true", help="print a Markdown summary to stdout")
+    r.add_argument("--site-config", default="site_config.yml")
+    r.add_argument("--cities-dir", default="cities")
+    r.add_argument("--output-dir", default="docs")
+
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
@@ -42,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "doctor":
         return _doctor(args)
+
+    if args.command == "report":
+        return _report(args)
 
     if args.command == "build":
         results = build(
@@ -65,6 +75,37 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{built} built, {skipped} skipped, {len(errors)} errors{suffix}")
         return 1 if errors else 0
 
+    return 0
+
+
+def _report(args) -> int:
+    from pathlib import Path
+
+    from citypods.report import build_report, to_admin_html, to_markdown
+    from citypods.state import resolve_state_dir
+
+    site_config = load_site_config(args.site_config)
+    cities = load_city_configs(args.cities_dir, site_config.get("defaults", {}))
+    output_dir = Path(args.output_dir)
+    state_dir = resolve_state_dir(site_config, output_dir)
+
+    report = build_report(cities, site_config=site_config, state_dir=state_dir)
+
+    admin = output_dir / "admin"
+    admin.mkdir(parents=True, exist_ok=True)
+    (admin / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+    (admin / "index.html").write_text(to_admin_html(report))
+
+    md = to_markdown(report)
+    if args.markdown:
+        print(md)
+    else:
+        c = report["current"]
+        print(
+            f"{report['generated_for_feeds']} feeds · {c['storage_gb']:.1f} GB "
+            f"(${c['monthly_cost_usd']:.2f}/mo) · {c['per_run_throughput']}/run · "
+            f"backfill {c['full_backfill_days']:.0f}d → wrote {admin}/index.html + report.json"
+        )
     return 0
 
 
