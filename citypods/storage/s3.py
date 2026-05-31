@@ -57,6 +57,17 @@ class S3CompatibleStorage:
     def public_url(self, key: str) -> str:
         return f"{self.public_base_url}/{key}"
 
+    def get_file(self, key: str, local_path: Path) -> bool:
+        from botocore.exceptions import ClientError
+
+        local_path = Path(local_path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self._client.download_file(self.bucket, key, str(local_path))
+            return True
+        except ClientError:
+            return False
+
     # --- orphan GC support (optional StorageBackend capability) ---
 
     def list_objects(self, prefix: str = ""):

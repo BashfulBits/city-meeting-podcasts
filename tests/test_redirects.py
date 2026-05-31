@@ -81,6 +81,69 @@ def test_local_storage_list_and_delete(tmp_path):
     assert {k for k, _ in store.list_objects()} == {"p/keep.m4a"}
 
 
+def test_gc_keeps_durable_state_objects(tmp_path):
+    """Orphan GC must never reap the state/ snapshot, even though it's unreferenced audio."""
+    from scripts import gc_audio
+
+    out = tmp_path / "docs"
+    audio = out / "audio"
+    (audio / "p").mkdir(parents=True)
+    (audio / "p" / "orphan.m4a").write_bytes(b"x")
+    (audio / "state" / "sources").mkdir(parents=True)
+    (audio / "state" / "sources" / "ep.json").write_bytes(b"{}")
+
+    state = tmp_path / "state"
+    save_records(state, "src", {"u1": {"audio": {"key": "p/kept.m4a", "url": "x"}}})
+    (out / "audio" / "p" / "kept.m4a").write_bytes(b"k")
+    (tmp_path / "site.yml").write_text(
+        f"state_dir: {state}\ndefaults:\n  audio_storage_backend: local\n"
+    )
+    argv = ["--site-config", str(tmp_path / "site.yml"), "--output-dir", str(out)]
+    argv += ["--min-age-days", "0", "--apply"]
+    assert gc_audio.main(argv) == 0
+    assert not (audio / "p" / "orphan.m4a").exists()
+    assert (audio / "state" / "sources" / "ep.json").exists()  # state preserved
+
+
+def test_state_sync_round_trips_through_storage(tmp_path):
+    from citypods.statesync import pull_state, push_state
+
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    src = tmp_path / "state-a"
+    save_records(src, "src1", {"u1": {"audio": {"key": "k", "url": "u"}}})
+    (src / "feed_etags.json").write_text('{"slug": {"content_hash": "abc"}}')
+
+    assert push_state(store, src) == 2
+
+    dst = tmp_path / "state-b"  # simulate a fresh runner after cache eviction
+    assert pull_state(store, dst) == 2
+    from citypods.records import load_records
+
+    assert load_records(dst, "src1") == {"u1": {"audio": {"key": "k", "url": "u"}}}
+    assert (dst / "feed_etags.json").read_text() == '{"slug": {"content_hash": "abc"}}'
+
+
+def test_prune_stale_dirs_removes_dropped_slugs(tmp_path):
+    from citypods.run import _prune_stale_dirs
+
+    out = tmp_path
+    (out / "audio").mkdir()  # reserved: must survive
+    (out / "audio" / "x.m4a").write_bytes(b"1")
+    for slug in ("live-tx", "alias-tx", "dropped-tx"):
+        (out / slug).mkdir()
+        (out / slug / "audio_feed.xml").write_text("<rss/>")
+    (out / "index.html").write_text("home")  # top-level file: untouched
+
+    cities = [_city(slug="live-tx", aliases=["alias-tx"])]
+    _prune_stale_dirs(out, cities)
+
+    assert (out / "live-tx").exists()
+    assert (out / "alias-tx").exists()
+    assert not (out / "dropped-tx").exists()
+    assert (out / "audio" / "x.m4a").exists()
+    assert (out / "index.html").exists()
+
+
 def test_gc_script_dry_run_then_apply(tmp_path):
     from scripts import gc_audio
 
