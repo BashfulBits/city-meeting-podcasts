@@ -164,3 +164,13 @@ def test_chapters_stage_noop_without_provider_support(tmp_path):
     eps = [_ep("g1")]
     stats = ChaptersStage().process(FakeProvider(), _city(), eps, _ctx(tmp_path))
     assert stats.ran == 0 and not eps[0].chapters
+
+
+def test_chapters_stage_does_not_clobber_existing_transcript(tmp_path):
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("g1")]
+    eps[0].links = {"transcript": "https://pdf/better"}  # richer link already set
+    p = ChapterProvider([{"start": 1, "title": "x"}], transcript="https://srt/worse")
+    ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
+    assert eps[0].links["transcript"] == "https://pdf/better"  # preserved

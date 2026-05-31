@@ -8,7 +8,10 @@ Change detection uses a HEAD request and compares ETag / Last-Modified.
 
 from __future__ import annotations
 
+import json
+import re
 from email.utils import parsedate_to_datetime
+from html import unescape
 from urllib.parse import parse_qs, urlsplit
 from xml.etree import ElementTree as ET
 
@@ -90,6 +93,24 @@ class GranicusProvider:
                         episodes.append(ep)
         return episodes
 
+    def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:
+        """Fetch agenda-level chapter markers from Granicus' ``JSON.php`` player-data endpoint
+        (one call, no token). Granicus exposes no transcript, so the second element is None.
+        Returns ``([], None)`` when the clip carries no index."""
+        ids = _player_ids(episode.links.get("canonical_video", ""), episode.video_url)
+        if not ids:
+            return [], None
+        origin, _view_id, clip_id = ids
+        url = f"{origin}/JSON.php?clip_id={clip_id}"
+        with make_session() as session:
+            try:
+                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {url} failed: {exc}") from exc
+        if resp.status_code >= 400:
+            raise ProviderError(f"GET {url} returned {resp.status_code}")
+        return parse_index_json(resp.content), None
+
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
         # Granicus enclosures are already direct progressive MP4s.
         return episode.video_url
@@ -151,6 +172,21 @@ def parse_feed(content: bytes) -> list[Episode]:
     return episodes
 
 
+def _player_ids(*urls: str) -> tuple[str, str, str] | None:
+    """Pull ``(origin, view_id, clip_id)`` out of the first MediaPlayer/DownloadFile URL that
+    carries them. These identifiers key both the agenda doc and the chapter index."""
+    for url in urls:
+        if not url:
+            continue
+        parts = urlsplit(url)
+        q = parse_qs(parts.query)
+        view_id = (q.get("view_id") or [None])[0]
+        clip_id = (q.get("clip_id") or [None])[0]
+        if parts.netloc and view_id and clip_id:
+            return f"{parts.scheme}://{parts.netloc}", view_id, clip_id
+    return None
+
+
 def _episode_links(link: str, video_url: str) -> dict:
     """Resource links for a Granicus item, built (no network) from the (view_id, clip_id)
     pair carried in its MediaPlayer/DownloadFile URLs:
@@ -163,20 +199,38 @@ def _episode_links(link: str, video_url: str) -> dict:
     links: dict[str, str] = {}
     if link:
         links["canonical_video"] = link
-    for url in (link, video_url):
-        if not url:
-            continue
-        parts = urlsplit(url)
-        q = parse_qs(parts.query)
-        view_id = (q.get("view_id") or [None])[0]
-        clip_id = (q.get("clip_id") or [None])[0]
-        if parts.netloc and view_id and clip_id:
-            links["agenda"] = (
-                f"{parts.scheme}://{parts.netloc}/AgendaViewer.php"
-                f"?view_id={view_id}&clip_id={clip_id}"
-            )
-            break
+    ids = _player_ids(link, video_url)
+    if ids:
+        origin, view_id, clip_id = ids
+        links["agenda"] = f"{origin}/AgendaViewer.php?view_id={view_id}&clip_id={clip_id}"
     return links
+
+
+def parse_index_json(content: bytes) -> list[dict]:
+    """Parse Granicus ``JSON.php`` player data into agenda-level chapter markers.
+
+    The payload is a (sometimes nested) list of index points; each agenda heading has
+    ``text`` like ``"Agenda:<id>"`` and a ``time`` in seconds. Roll-call/motion/vote points
+    (``Rollcall:``/``Motion``/``Approve`` …) are excluded so chapters track the agenda outline
+    rather than every sub-event. Titles may contain HTML (e.g. ``<br />``) — stripped. Pure."""
+    try:
+        data = json.loads(content)
+    except (ValueError, TypeError):
+        return []
+    entries = data[0] if data and isinstance(data[0], list) else data
+    by_start: dict[int, dict] = {}
+    for e in entries if isinstance(entries, list) else []:
+        if not isinstance(e, dict) or not str(e.get("text", "")).startswith("Agenda:"):
+            continue
+        try:
+            start = int(e.get("time"))
+        except (TypeError, ValueError):
+            continue
+        title = unescape(re.sub(r"<[^>]+>", " ", e.get("title") or "")).strip()
+        title = re.sub(r"\s+", " ", title)
+        if title:
+            by_start.setdefault(start, {"start": start, "title": title})
+    return [by_start[s] for s in sorted(by_start)]
 
 
 def _enclosure_url(item: ET.Element) -> str:

@@ -142,3 +142,45 @@ def test_missing_outputs_force_rebuild_even_if_hash_matches(tmp_path, fake_provi
     shutil.rmtree(tmp_path / "docs")
     result = _build(tmp_path, cities)
     assert [r.status for r in result] == ["built"]
+
+
+def test_write_chapter_sidecars_writes_and_prunes(tmp_path):
+    import json
+    from datetime import UTC, datetime
+
+    from citypods.models import City, Episode
+    from citypods.run import _write_chapter_sidecars
+
+    city = City(
+        slug="x-tx",
+        provider="granicus",
+        source={"feed_url": "u"},
+        podcast_title="X",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="d",
+    )
+
+    def ep(uid, chapters):
+        return Episode(
+            guid=uid,
+            uid=uid,
+            title="t",
+            published=datetime(2026, 1, 1, tzinfo=UTC),
+            video_url="v",
+            media_kind="direct",
+            chapters=chapters,
+        )
+
+    city_dir = tmp_path / "x-tx"
+    city_dir.mkdir()
+    (city_dir / "chapters").mkdir()
+    (city_dir / "chapters" / "stale.json").write_text("{}")  # leftover -> should be pruned
+
+    eps = [ep("u1", [{"start": 0, "title": "Intro"}]), ep("u2", [])]  # u2 has no chapters
+    _write_chapter_sidecars(city_dir, city, eps, "https://e.test")
+
+    doc = json.loads((city_dir / "chapters" / "u1.json").read_text())
+    assert doc["chapters"] == [{"startTime": 0, "title": "Intro"}]
+    assert not (city_dir / "chapters" / "u2.json").exists()  # no chapters -> no file
+    assert not (city_dir / "chapters" / "stale.json").exists()  # pruned

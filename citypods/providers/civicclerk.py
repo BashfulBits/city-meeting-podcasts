@@ -106,6 +106,26 @@ def parse_events(
     return episodes
 
 
+def parse_bookmarks(media: dict) -> tuple[list[dict], str | None]:
+    """Extract ``(chapters, transcript_url)`` from a CivicClerk ``EventMediaApiModel``.
+
+    ``eventBookmarks`` -> ``[{"start": secs, "title": str}, ...]`` (markers at second 0 are
+    section labels with no real video position and are dropped). Transcript prefers
+    ``transcriptionUrl``, then the closed-caption track. Pure (no network)."""
+    by_start: dict[int, dict] = {}
+    for b in media.get("eventBookmarks") or []:
+        try:
+            start = int(b.get("markerTimeStart"))
+        except (TypeError, ValueError):
+            continue
+        title = (b.get("markerTitle") or b.get("markerName") or "").strip()
+        if start > 0 and title:
+            by_start.setdefault(start, {"start": start, "title": title})
+    chapters = [by_start[s] for s in sorted(by_start)]
+    transcript = (media.get("transcriptionUrl") or media.get("closedCaptionUrl") or "").strip()
+    return chapters, (transcript or None)
+
+
 class CivicClerkProvider:
     name = "civicclerk"
 
@@ -135,6 +155,27 @@ class CivicClerkProvider:
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         return parse_events(resp.content, api_base=base, category_id=source.get("category_id"))
+
+    def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:
+        """Fetch chapter markers + a transcript/caption link from the ``EventsMedia/{id}``
+        endpoint (one call). ``eventBookmarks`` carry ``markerTimeStart`` (seconds) and
+        ``markerTitle``; section headers with ``markerTimeStart == 0`` (no video position) are
+        dropped. The transcript link prefers ``transcriptionUrl``, falling back to the closed-
+        caption ``.srt``. Returns ``([], None)`` when the event has no bookmarks."""
+        base = source["api_base"].rstrip("/")
+        url = f"{base}/v1/EventsMedia/{episode.guid}"
+        with make_session() as session:
+            try:
+                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {url} failed: {exc}") from exc
+        if resp.status_code >= 400:
+            raise ProviderError(f"GET {url} returned {resp.status_code}")
+        try:
+            data = json.loads(resp.content)
+        except json.JSONDecodeError as exc:
+            raise ProviderError(f"invalid EventsMedia JSON: {exc}") from exc
+        return parse_bookmarks(data)
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
         return episode.video_url  # direct MP4

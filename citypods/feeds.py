@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from html import escape
 
 from citypods.models import City, Episode
 from citypods.render import get_env
+
+# Podcasting 2.0 chapters media type (a JSON sidecar referenced per item). This surfaces
+# chapters to apps even for direct enclosures we don't re-host, where embedding into the
+# audio bytes isn't possible.
+CHAPTERS_TYPE = "application/json+chapters"
 
 # enclosure length is intentionally 0: players re-check size at download time, and
 # a HEAD per episode would be prohibitively expensive at scale. See PLAN.md.
@@ -61,6 +67,24 @@ def episode_notes_html(ep: Episode) -> str:
     return "".join(parts).replace("]]>", "]]&gt;")
 
 
+def chapters_json(ep: Episode) -> str:
+    """Render an episode's chapters as a Podcasting 2.0 chapters document (the JSON a
+    ``<podcast:chapters>`` URL points to)."""
+    chapters = [
+        {"startTime": int(c["start"]), "title": c.get("title", "")}
+        for c in sorted(ep.chapters or [], key=lambda c: c["start"])
+    ]
+    return json.dumps({"version": "1.2.0", "chapters": chapters}, indent=2) + "\n"
+
+
+def chapters_url(city: City, ep: Episode, base_url: str) -> str | None:
+    """Public URL of an episode's chapters JSON sidecar, or None when it has no chapters.
+    Hosted alongside the feed under ``docs/<slug>/chapters/<uid>.json`` (see run.py)."""
+    if not ep.chapters or not ep.uid:
+        return None
+    return f"{base_url.rstrip('/')}/{city.slug}/chapters/{ep.uid}.json"
+
+
 def _ordered(episodes: list[Episode], max_episodes: int) -> list[Episode]:
     ordered = sorted(episodes, key=lambda e: e.published, reverse=True)
     return ordered[:max_episodes]
@@ -108,7 +132,14 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
         url = enclosure_url(ep, kind)
         if url is None:
             continue
-        items.append({"ep": ep, "enclosure_url": url, "notes_html": episode_notes_html(ep)})
+        items.append(
+            {
+                "ep": ep,
+                "enclosure_url": url,
+                "notes_html": episode_notes_html(ep),
+                "chapters_url": chapters_url(city, ep, base_url),
+            }
+        )
 
     template = get_env().get_template("feed.xml.j2")
     return template.render(

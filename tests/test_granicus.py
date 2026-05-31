@@ -99,3 +99,47 @@ def test_agenda_link_derived_from_enclosure_when_no_link():
     ep = parse_feed(rss)[0]
     assert "canonical_video" not in ep.links
     assert ep.links["agenda"].endswith("AgendaViewer.php?view_id=7&clip_id=12")
+
+
+def test_parse_index_json_keeps_agenda_level_only():
+    from citypods.providers.granicus import parse_index_json
+
+    payload = b"""[[
+      {"time":"3","type":"meta","text":"Rollcall:1","title":"Roll Call"},
+      {"time":"970","type":"meta","text":"Agenda:2","title":"I) CALL TO ORDER"},
+      {"time":"2170","type":"meta","text":"Agenda:3","title":"7.1. May 5<br />Afternoon"},
+      {"time":"2092","type":"meta","text":"Motion","title":"Motion to Approve"}
+    ]]"""
+    chapters = parse_index_json(payload)
+    assert [c["start"] for c in chapters] == [970, 2170]  # roll call + motion excluded, sorted
+    assert chapters[1]["title"] == "7.1. May 5 Afternoon"  # <br/> stripped, whitespace collapsed
+
+
+def test_fetch_chapters_uses_clip_id(monkeypatch):
+    import citypods.providers.granicus as g
+
+    ep = parse_feed(
+        b"""<rss><channel><item><title>Council</title>
+        <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
+        <enclosure url="https://c.granicus.com/DownloadFile.php?view_id=2&amp;clip_id=99"/>
+        </item></channel></rss>"""
+    )[0]
+
+    class Resp:
+        status_code = 200
+        content = b'[[{"time":"10","type":"meta","text":"Agenda:1","title":"Item"}]]'
+
+    class Sess:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, timeout=None):
+            assert url == "https://c.granicus.com/JSON.php?clip_id=99"
+            return Resp()
+
+    monkeypatch.setattr(g, "make_session", lambda: Sess())
+    chapters, transcript = g.GranicusProvider().fetch_chapters(ep, {})
+    assert chapters == [{"start": 10, "title": "Item"}] and transcript is None

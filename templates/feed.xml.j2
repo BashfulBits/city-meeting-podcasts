@@ -2,7 +2,8 @@
 <rss version="2.0"
      xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
      xmlns:atom="http://www.w3.org/2005/Atom"
-     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
   <channel>
     <title>{{ city.podcast_title }}{% if kind == "audio" %} (Audio){% endif %}</title>
     <link>{{ city_url }}</link>
@@ -30,6 +31,9 @@
       <description>{{ item.ep.description }}</description>
       {% if item.notes_html %}
       <content:encoded><![CDATA[{{ item.notes_html | safe }}]]></content:encoded>
+      {% endif %}
+      {% if item.chapters_url %}
+      <podcast:chapters url="{{ item.chapters_url }}" type="application/json+chapters"/>
       {% endif %}
       <pubDate>{{ item.ep.published | rfc822 }}</pubDate>
       <guid isPermaLink="false">{{ item.ep.uid or item.ep.guid }}</guid>
