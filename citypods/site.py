@@ -44,7 +44,9 @@ def render_index(cities, site_config, base_url, feed_info=None):
     rows = []
     for key in sorted(groups):
         g = groups[key]
-        g["search"] = " ".join(g["search_parts"]).lower()
+        # Finalize the searchable string, then drop the builder-only key so it doesn't bloat
+        # the JSON dataset embedded in the page.
+        g["search"] = " ".join(g.pop("search_parts")).lower()
         rows.append(g)
 
     template = get_env().get_template("index.html.j2")

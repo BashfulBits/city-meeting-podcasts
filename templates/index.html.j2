@@ -3,7 +3,7 @@
   <h1>{{ config.site_title }}</h1>
   <p class="tagline">{{ config.site_description }}</p>
 
-  <input id="q" type="search" placeholder="Search cities & boards…" autocomplete="off"
+  <input id="q" type="search" placeholder="Search cities &amp; boards…" autocomplete="off"
          style="width:100%;padding:.7rem .9rem;font-size:1rem;border:1px solid var(--border);
                 border-radius:10px;background:var(--card);color:var(--fg);">
   {% if config.github_repo %}
@@ -12,52 +12,113 @@
   </p>
   {% endif %}
 
-  <div id="cities">
-    {% for g in groups %}
-    <details class="city" data-search="{{ g.search }}"{% if loop.index <= 3 %} open{% endif %}
-             style="border-bottom:1px solid var(--border);">
-      <summary style="cursor:pointer;padding:.85rem 0;font-weight:600;display:flex;justify-content:space-between;">
-        <span>{{ g.label }}</span>
-        <span class="muted" style="font-weight:400;">{{ g.feeds|length }} feed{{ '' if g.feeds|length == 1 else 's' }}</span>
-      </summary>
-      <ul style="list-style:none;margin:0 0 .8rem;padding:0;">
-        {% for f in g.feeds %}
-        <li class="feed" data-search="{{ f.search }}" style="padding:.35rem 0;">
-          <a href="{{ f.url }}">{{ f.label }}</a>
-          <span class="muted" style="font-size:.8rem;">
-            {% if f.has_audio %}· audio{% endif %}{% if f.has_video %} · video{% endif %}
-          </span>
-        </li>
-        {% endfor %}
-      </ul>
-    </details>
-    {% endfor %}
-  </div>
-  <p id="empty" class="muted" style="display:none;">No cities match “<span id="term"></span>”.</p>
+  <p id="count" class="muted" style="margin:.4rem 0 1rem;font-size:.85rem;"></p>
 
+  <!-- Cities are rendered client-side in chunks from this dataset so the page stays light
+       even with hundreds of cities; search filters the full dataset, not just rendered rows. -->
+  <div id="cities"></div>
+  <p id="empty" class="muted" style="display:none;">No cities match “<span id="term"></span>”.</p>
+  <p style="margin:1.2rem 0;">
+    <button id="more" class="btn" style="display:none;">Show more cities</button>
+  </p>
+
+  <script id="data" type="application/json">{{ groups|tojson }}</script>
   <script>
-    const q = document.getElementById('q');
-    const cities = [...document.querySelectorAll('.city')];
+    const DATA = JSON.parse(document.getElementById('data').textContent);
+    const PAGE = 60;  // cities rendered per chunk
+    const list = document.getElementById('cities');
+    const more = document.getElementById('more');
     const empty = document.getElementById('empty');
-    q.addEventListener('input', () => {
-      const t = q.value.trim().toLowerCase();
-      let shown = 0;
-      for (const city of cities) {
-        const feeds = [...city.querySelectorAll('.feed')];
-        const cityMatch = city.dataset.search.includes(t);
-        let any = false;
-        for (const f of feeds) {
-          const show = !t || cityMatch || f.dataset.search.includes(t);
-          f.style.display = show ? '' : 'none';
-          any = any || show;
+    const count = document.getElementById('count');
+    const q = document.getElementById('q');
+    let filtered = DATA, shown = 0, searching = false;
+
+    function feedLi(f) {
+      const li = document.createElement('li');
+      li.className = 'feed';
+      li.style.padding = '.35rem 0';
+      const a = document.createElement('a');
+      a.href = f.url; a.textContent = f.label;
+      const tag = document.createElement('span');
+      tag.className = 'muted'; tag.style.fontSize = '.8rem';
+      tag.textContent = (f.has_audio ? ' · audio' : '') + (f.has_video ? ' · video' : '');
+      li.append(a, tag);
+      return li;
+    }
+
+    function cityEl(g, open) {
+      const d = document.createElement('details');
+      d.className = 'city';
+      d.style.borderBottom = '1px solid var(--border)';
+      if (open) d.open = true;
+      const s = document.createElement('summary');
+      s.style.cssText = 'cursor:pointer;padding:.85rem 0;font-weight:600;display:flex;justify-content:space-between;';
+      const name = document.createElement('span'); name.textContent = g.label;
+      const n = g.feeds.length;
+      const cnt = document.createElement('span');
+      cnt.className = 'muted'; cnt.style.fontWeight = '400';
+      cnt.textContent = n + ' feed' + (n === 1 ? '' : 's');
+      s.append(name, cnt);
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'list-style:none;margin:0 0 .8rem;padding:0;';
+      for (const f of g.feeds) ul.append(feedLi(f));
+      d.append(s, ul);
+      return d;
+    }
+
+    function render(reset) {
+      if (reset) { list.innerHTML = ''; shown = 0; }
+      const next = filtered.slice(shown, shown + PAGE);
+      const frag = document.createDocumentFragment();
+      next.forEach((g, i) => frag.append(cityEl(g, searching || (shown + i) < 3)));
+      list.append(frag);
+      shown += next.length;
+      more.style.display = shown < filtered.length ? '' : 'none';
+      empty.style.display = filtered.length ? 'none' : '';
+      const total = filtered.reduce((a, g) => a + g.feeds.length, 0);
+      count.textContent = filtered.length + ' cit' + (filtered.length === 1 ? 'y' : 'ies')
+        + ' · ' + total + ' feed' + (total === 1 ? '' : 's');
+    }
+
+    function applySearch(t) {
+      searching = !!t;
+      if (!t) {
+        filtered = DATA;
+      } else {
+        filtered = [];
+        for (const g of DATA) {
+          if (g.search.includes(t)) { filtered.push(g); continue; }
+          const feeds = g.feeds.filter(f => f.search.includes(t));
+          if (feeds.length) filtered.push({ ...g, feeds });
         }
-        const visible = !t ? true : (cityMatch || any);
-        city.style.display = visible ? '' : 'none';
-        if (visible) shown++;
-        if (t) city.open = true;
       }
-      empty.style.display = shown ? 'none' : '';
       document.getElementById('term').textContent = q.value;
-    });
+      render(true);
+    }
+
+    more.addEventListener('click', () => render(false));
+    q.addEventListener('input', () => applySearch(q.value.trim().toLowerCase()));
+    render(true);
   </script>
+
+  <noscript>
+    <div id="cities-noscript">
+      {% for g in groups %}
+      <details class="city" style="border-bottom:1px solid var(--border);"{% if loop.index <= 3 %} open{% endif %}>
+        <summary style="cursor:pointer;padding:.85rem 0;font-weight:600;display:flex;justify-content:space-between;">
+          <span>{{ g.label }}</span>
+          <span class="muted" style="font-weight:400;">{{ g.feeds|length }} feed{{ '' if g.feeds|length == 1 else 's' }}</span>
+        </summary>
+        <ul style="list-style:none;margin:0 0 .8rem;padding:0;">
+          {% for f in g.feeds %}
+          <li class="feed" style="padding:.35rem 0;">
+            <a href="{{ f.url }}">{{ f.label }}</a>
+            <span class="muted" style="font-size:.8rem;">{% if f.has_audio %} · audio{% endif %}{% if f.has_video %} · video{% endif %}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+    </div>
+  </noscript>
 {% endblock %}
