@@ -19,6 +19,7 @@ import pytest
 
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss
+from citypods.records import assign_uids
 from tests.conftest import ROOT, SNAPSHOT_BASE_URL, all_fixture_cases, episodes_for
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots"
@@ -35,8 +36,10 @@ def _city(slug: str):
 
 @pytest.mark.parametrize("provider,slug,kind", all_fixture_cases())
 def test_feed_snapshot(provider, slug, kind):
+    city = _city(slug)
     episodes = episodes_for(provider, slug)
-    generated = build_rss(_city(slug), episodes, kind, SNAPSHOT_BASE_URL)
+    assign_uids(city, episodes)  # mirror the real build so the snapshot pins the stable guid
+    generated = build_rss(city, episodes, kind, SNAPSHOT_BASE_URL)
 
     snapshot = SNAPSHOT_DIR / f"{slug}_{kind}.xml"
     if os.environ.get("SNAPSHOT_UPDATE"):

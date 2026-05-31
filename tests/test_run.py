@@ -9,12 +9,14 @@ import pytest
 from citypods import run
 from citypods.models import Episode
 from citypods.providers import get_provider, register
-from citypods.state import build_fingerprint, episodes_content_hash
+from citypods.records import feed_content_hash
+from citypods.state import build_fingerprint
 
 
 def _ep(guid="g1", title="City Council", hosted=None):
     return Episode(
         guid=guid,
+        uid=f"uid-{guid}",
         title=title,
         published=datetime(2026, 5, 1, tzinfo=UTC),
         video_url=f"https://x/{guid}.mp4",
@@ -31,15 +33,15 @@ def test_content_hash_stable_and_order_independent():
     fp = "fp0"
     a = [_ep("g1"), _ep("g2")]
     b = [_ep("g2"), _ep("g1")]  # reversed
-    assert episodes_content_hash(a, fp) == episodes_content_hash(b, fp)
+    assert feed_content_hash(a, fp) == feed_content_hash(b, fp)
 
 
 def test_content_hash_changes_with_episodes_and_fingerprint():
-    base = episodes_content_hash([_ep("g1")], "fp0")
-    assert base != episodes_content_hash([_ep("g1", title="Different")], "fp0")
-    assert base != episodes_content_hash([_ep("g1")], "fp1")  # fingerprint bust
+    base = feed_content_hash([_ep("g1")], "fp0")
+    assert base != feed_content_hash([_ep("g1", title="Different")], "fp0")
+    assert base != feed_content_hash([_ep("g1")], "fp1")  # fingerprint bust
     # A newly-hosted enclosure changes the hash so the feed re-renders.
-    assert base != episodes_content_hash([_ep("g1", hosted="https://cdn/g1.m4a")], "fp0")
+    assert base != feed_content_hash([_ep("g1", hosted="https://cdn/g1.m4a")], "fp0")
 
 
 def test_build_fingerprint_tracks_base_url_and_templates():

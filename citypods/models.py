@@ -37,7 +37,7 @@ class Episode:
         then sets ``hosted_audio_url`` (CivicPlus / CivicMedia).
     """
 
-    guid: str
+    guid: str  # provider-native id (volatile across provider migrations)
     title: str
     published: datetime
     video_url: str
@@ -47,6 +47,21 @@ class Episode:
     media_kind: str = "direct"  # "direct" | "hls"
     hosted_audio_url: str | None = None  # set by the materialization pipeline
     body: str | None = None  # committee/meeting body, e.g. "City Council" (for per-body feeds)
+
+    # --- stable identity + persisted derived artifacts (the EpisodeRecord, see records.py) ---
+    # uid is a provider-independent identity (author+body+date) used as the RSS <guid> so that
+    # provider migrations (Granicus<->Swagit) don't re-download a subscriber's back catalog.
+    uid: str | None = None
+    # Content-addressed audio: the key embeds the audio_spec_hash, so the object/URL changes
+    # only when the audio *bytes* would change (codec/bitrate/chapters), enabling cache-bust,
+    # rollback, and orphan detection. audio_spec_hash records the recipe the file was made with.
+    audio_key: str | None = None
+    audio_spec_hash: str | None = None
+    # Enrichment artifacts populated by later stages (transcript/summary/chapters/links).
+    links: dict = field(default_factory=dict)  # {"agenda": url, "canonical_video": url, ...}
+    chapters: list = field(default_factory=list)  # [{"start": secs, "title": str}, ...]
+    summary: str = ""
+    transcript_url: str | None = None
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url
