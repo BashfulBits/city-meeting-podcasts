@@ -128,6 +128,14 @@ This section is authoritative and supersedes the original "recommended sequencin
   **app iconography**, and clear **audio-vs-video** labeling. Coordinate in time with **#46**.
 - **#56 — User-facing "report a problem with this feed/city" issue template + triage** (P3). New-city
   requests are already covered by #28; this adds the feed/city *problem-report* path. Pairs with #52.
+- **#57 — Contributor scaffolding** (P4; do at 1.0). Stand up the open-source contribution process
+  once the project opens to outside contributors: a label taxonomy (`enhancement`, `good first
+  issue`, `help wanted`, `area:*`, `priority:*`), a `1.0` milestone, issue templates (enhancement +
+  bug, alongside the #56 user-report template), a GitHub **Projects** board (Roadmap view seeded from
+  issues, Priority field mirroring the 0–5 scale), and a fuller `CONTRIBUTING.md`. Then bulk-convert
+  the settled backlog into labeled issues and tag the well-scoped $0 items (e.g. #51/#16/#17/#13/#50,
+  front-end fixes) as **good first issue**. *Until then the roadmap (this doc + ROADMAP.md) is the
+  tracker and issues are filed just-in-time for the current working set.*
 
 ### Deletes / defers / merges / rescopes
 - **Deleted:** #5 (entities/NER) — the city's own document search is better ground truth at that detail.
@@ -166,7 +174,7 @@ budgets shipped, auto-rebalance remaining), #49 (projection page shipped, dashbo
 | **2.5** | #15 soundbites · #55 front-end design cycle (incl. #20/#54) |
 | **3**   | #4 tags · #6 full-text search · #18 newsletter (RSS-first) · #25 intro/outro stinger · #31 **Legistar** · #41 catch-up auto-rebalance · #50 accessibility · #56 user feed-problem reports |
 | **3.5** | #19 upcoming .ics · #49 admin dashboard |
-| **4**   | #8 votes (metadata+minutes) · #12+#13 custom feed builder · #14 attendees (minutes) · #17 OPML · #27 population-ranked discovery · #32 scheduled board-gen · #33 dead-city archival · #39 per-provider rate limiting · #40 B2 actual-cost dashboard · #42 index sharding |
+| **4**   | #8 votes (metadata+minutes) · #12+#13 custom feed builder · #14 attendees (minutes) · #17 OPML · #27 population-ranked discovery · #32 scheduled board-gen · #33 dead-city archival · #39 per-provider rate limiting · #40 B2 actual-cost dashboard · #42 index sharding · #57 contributor scaffolding (do at 1.0) |
 | **5**   | #18-email expansion · #31 YouTube + other providers · #34 config via issue comments · #44 structured logging · #47 map browser |
 | **defer** | #7 diarization · #9 translation · #24 bitrate ladders · #26 chapter images · #48 new-since-visit |
 | **deleted** | #5 entities/NER |
