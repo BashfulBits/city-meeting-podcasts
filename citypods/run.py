@@ -49,7 +49,7 @@ from citypods.state import (
     resolve_state_dir,
     save_etag_cache,
 )
-from citypods.statesync import pull_state, push_state
+from citypods.statesync import pull_state, push_state, reconcile_state
 from citypods.storage import make_storage
 
 
@@ -329,6 +329,11 @@ def build(
         pushed = push_state(storage, state_dir)
         if pushed:
             print(f"state: pushed {pushed} file(s) to durable storage")
+        # Reap remote state objects with no local counterpart (e.g. records orphaned by a
+        # source edit that changed source_key) so they don't leak or pin orphaned audio.
+        reclaimed = reconcile_state(storage, state_dir)
+        if reclaimed:
+            print(f"state: reclaimed {reclaimed} stale remote file(s)")
 
     return results
 

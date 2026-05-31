@@ -21,11 +21,16 @@ local dev backend simply no-op, keeping their on-disk ``.citypods-state``.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 STATE_PREFIX = "state"
 # JSON-typed; everything we persist is text. Kept conservative so a stray binary never syncs.
 _SUFFIXES = {".json"}
+# Mirror gc_audio's safety floor: a remote state object with no local counterpart is only
+# reaped once it is older than this, so an object written by a build that hasn't yet produced
+# its local copy isn't deleted out from under it.
+RECONCILE_MIN_AGE_DAYS = 7.0
 
 
 def _supported(storage) -> bool:
@@ -64,3 +69,32 @@ def push_state(storage, state_dir: Path) -> int:
         storage.put_file(f"{STATE_PREFIX}/{rel}", path, "application/json")
         pushed += 1
     return pushed
+
+
+def reconcile_state(
+    storage, state_dir: Path, *, min_age_days: float = RECONCILE_MIN_AGE_DAYS
+) -> int:
+    """Delete remote ``state/`` objects that no longer have a local counterpart (age-guarded).
+
+    ``push_state`` only ever *uploads*. When a city's ``source`` is edited its ``source_key``
+    changes (see ``records.source_key``), so the old ``state/sources/<old_key>/episodes.json``
+    would otherwise linger in the bucket forever — growing without bound and, via
+    ``referenced_audio_keys``, pinning now-orphaned audio so ``gc_audio`` can't reclaim it.
+    Run after ``push_state`` to sweep those stale records. Returns the number deleted. No-op
+    for backends without ``list_objects``/``delete``."""
+    if not _supported(storage) or not hasattr(storage, "delete"):
+        return 0
+    state_dir = Path(state_dir)
+    cutoff = datetime.now(UTC) - timedelta(days=min_age_days)
+    deleted = 0
+    for key, last_modified in storage.list_objects(f"{STATE_PREFIX}/"):
+        rel = key[len(STATE_PREFIX) + 1 :]
+        if not rel or Path(rel).suffix not in _SUFFIXES:
+            continue  # only manage the JSON snapshot push_state writes
+        if (state_dir / rel).exists():
+            continue  # still has a local counterpart — canonical, keep it
+        if last_modified is not None and last_modified > cutoff:
+            continue  # too young to be safely reaped (just-written, not yet local)
+        storage.delete(key)
+        deleted += 1
+    return deleted
