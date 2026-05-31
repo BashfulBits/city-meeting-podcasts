@@ -73,3 +73,29 @@ def test_recorded_fixtures_parse(slug):
     for e in eps:
         assert e.guid and e.title and e.video_url
         assert e.published is not None
+
+
+def test_synthesizes_agenda_and_canonical_links():
+    rss = b"""<rss><channel><item>
+      <title>City Council - Regular</title>
+      <link>https://city.granicus.com/MediaPlayer.php?view_id=2&amp;clip_id=99</link>
+      <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
+      <enclosure url="https://city.granicus.com/DownloadFile.php?view_id=2&amp;clip_id=99"/>
+    </item></channel></rss>"""
+    ep = parse_feed(rss)[0]
+    assert ep.links["canonical_video"] == (
+        "https://city.granicus.com/MediaPlayer.php?view_id=2&clip_id=99"
+    )
+    assert ep.links["agenda"] == ("https://city.granicus.com/AgendaViewer.php?view_id=2&clip_id=99")
+
+
+def test_agenda_link_derived_from_enclosure_when_no_link():
+    # No <link>; view_id/clip_id still recoverable from the DownloadFile enclosure.
+    rss = b"""<rss><channel><item>
+      <title>Council</title>
+      <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
+      <enclosure url="https://city.granicus.com/DownloadFile.php?view_id=7&amp;clip_id=12"/>
+    </item></channel></rss>"""
+    ep = parse_feed(rss)[0]
+    assert "canonical_video" not in ep.links
+    assert ep.links["agenda"].endswith("AgendaViewer.php?view_id=7&clip_id=12")

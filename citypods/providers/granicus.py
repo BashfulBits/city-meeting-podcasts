@@ -9,6 +9,7 @@ Change detection uses a HEAD request and compares ETag / Last-Modified.
 from __future__ import annotations
 
 from email.utils import parsedate_to_datetime
+from urllib.parse import parse_qs, urlsplit
 from xml.etree import ElementTree as ET
 
 import requests
@@ -144,10 +145,38 @@ def parse_feed(content: bytes) -> list[Episode]:
                 description=_text(item, "description"),
                 duration=_parse_duration(_itunes_duration(item)),
                 body=granicus_body(title),
-                links={"canonical_video": link} if link else {},
+                links=_episode_links(link, video_url),
             )
         )
     return episodes
+
+
+def _episode_links(link: str, video_url: str) -> dict:
+    """Resource links for a Granicus item, built (no network) from the (view_id, clip_id)
+    pair carried in its MediaPlayer/DownloadFile URLs:
+
+      * ``canonical_video`` — the MediaPlayer watch page (the RSS ``<link>``).
+      * ``agenda`` — ``AgendaViewer.php?view_id&clip_id``, which Granicus 302-redirects to the
+        archived agenda document for that clip (verified live). The RSS itself only links the
+        watch page, so we synthesize this from the same identifiers.
+    """
+    links: dict[str, str] = {}
+    if link:
+        links["canonical_video"] = link
+    for url in (link, video_url):
+        if not url:
+            continue
+        parts = urlsplit(url)
+        q = parse_qs(parts.query)
+        view_id = (q.get("view_id") or [None])[0]
+        clip_id = (q.get("clip_id") or [None])[0]
+        if parts.netloc and view_id and clip_id:
+            links["agenda"] = (
+                f"{parts.scheme}://{parts.netloc}/AgendaViewer.php"
+                f"?view_id={view_id}&clip_id={clip_id}"
+            )
+            break
+    return links
 
 
 def _enclosure_url(item: ET.Element) -> str:
