@@ -8,6 +8,7 @@ import yaml
 
 from citypods.models import City
 from citypods.providers import get_provider
+from citypods.security import validate_city_sources
 
 # Keys that must be present AND non-empty.
 REQUIRED_CITY_KEYS = (
@@ -37,6 +38,9 @@ def _build_city(raw: dict, defaults: dict, source_file: Path) -> City:
 
     provider = get_provider(raw["provider"])
     provider.validate(raw["source"])
+    # SSRF/abuse gate: every source URL must be https on an allowed host (audit #S1). No DNS
+    # here — the resolve/private-IP check runs at fetch time (citypods.http.GuardedHTTPAdapter).
+    validate_city_sources(raw["provider"], raw["source"], raw.get("city_website"))
 
     known = (
         set(REQUIRED_CITY_KEYS)
