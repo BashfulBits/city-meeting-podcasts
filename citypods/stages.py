@@ -150,7 +150,9 @@ class ChaptersStage:
                 continue
             if chapters:
                 ep.chapters = chapters
-                if transcript:
+                # Don't clobber a richer transcript already set (e.g. CivicClerk's published
+                # transcript PDF beats a closed-caption .srt fallback).
+                if transcript and "transcript" not in (ep.links or {}):
                     ep.links = {**(ep.links or {}), "transcript": transcript}
                 stats.ran += 1
             else:

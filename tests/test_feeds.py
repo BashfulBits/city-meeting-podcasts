@@ -90,3 +90,40 @@ def test_episode_notes_html_empty_when_no_enrichment():
         description="plain",
     )
     assert episode_notes_html(ep) == ""
+
+
+def test_chapters_json_and_podcast_chapters_tag(tmp_path):
+    from datetime import UTC, datetime
+
+    from citypods.feeds import build_rss, chapters_json, chapters_url
+    from citypods.models import City, Episode
+
+    city = City(
+        slug="x-tx",
+        provider="granicus",
+        source={"feed_url": "u"},
+        podcast_title="X",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="d",
+    )
+    ep = Episode(
+        guid="g",
+        uid="abc123",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        media_kind="direct",
+        chapters=[{"start": 60, "title": "Two"}, {"start": 5, "title": "One"}],
+    )
+    doc = chapters_json(ep)
+    assert '"version": "1.2.0"' in doc
+    assert doc.index('"One"') < doc.index('"Two"')  # sorted by startTime
+    assert chapters_url(city, ep, "https://e.test") == "https://e.test/x-tx/chapters/abc123.json"
+
+    xml = build_rss(city, [ep], "audio", "https://e.test")
+    assert 'xmlns:podcast="https://podcastindex.org/namespace/1.0"' in xml
+    assert (
+        '<podcast:chapters url="https://e.test/x-tx/chapters/abc123.json" '
+        'type="application/json+chapters"/>' in xml
+    )

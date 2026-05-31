@@ -21,7 +21,7 @@ from pathlib import Path
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
 from citypods.config import load_city_configs, load_site_config
-from citypods.feeds import build_rss, has_items
+from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.media import CommandFfmpeg, FfmpegRunner, GlobalBudget
 from citypods.models import City, Episode
 from citypods.providers import get_provider
@@ -180,6 +180,7 @@ def _process_city(
     if not dry_run:
         city_dir = output_dir / city.slug
         city_dir.mkdir(parents=True, exist_ok=True)
+        _write_chapter_sidecars(city_dir, city, feed_eps, base_url)
         if has_audio:
             (city_dir / "audio_feed.xml").write_text(build_rss(city, feed_eps, "audio", base_url))
         if has_video:
@@ -383,6 +384,26 @@ def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_inf
     (output_dir / "redirects.json").write_text(
         json.dumps(sorted(redirects, key=lambda r: r["from"]), indent=2) + "\n"
     )
+
+
+def _write_chapter_sidecars(
+    city_dir: Path, city: City, episodes: list[Episode], base_url: str
+) -> None:
+    """Write each chaptered episode's Podcasting 2.0 chapters JSON to
+    ``<slug>/chapters/<uid>.json`` (referenced by ``<podcast:chapters>``), and prune sidecars
+    for episodes that no longer have chapters. Hosted from Pages, so chapters surface even for
+    direct enclosures we don't re-host."""
+    chap_dir = city_dir / "chapters"
+    wanted: set[str] = set()
+    for ep in episodes:
+        if chapters_url(city, ep, base_url):
+            wanted.add(f"{ep.uid}.json")
+            chap_dir.mkdir(parents=True, exist_ok=True)
+            (chap_dir / f"{ep.uid}.json").write_text(chapters_json(ep))
+    if chap_dir.exists():
+        for stale in chap_dir.glob("*.json"):
+            if stale.name not in wanted:
+                stale.unlink()
 
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:

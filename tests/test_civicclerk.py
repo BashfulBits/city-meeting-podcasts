@@ -107,3 +107,36 @@ def test_published_files_become_agenda_links():
 def test_no_links_without_api_base():
     eps = parse_events(fixture_bytes("civicclerk", "travis-county-tx"), category_id=26)
     assert all(e.links == {} for e in eps)  # api_base omitted -> no file links built
+
+
+def test_parse_bookmarks_drops_zero_time_and_picks_transcript():
+    from citypods.providers.civicclerk import parse_bookmarks
+
+    media = {
+        "transcriptionUrl": None,
+        "closedCaptionUrl": "https://cdn/x.srt",
+        "eventBookmarks": [
+            {"markerTimeStart": 0, "markerTitle": "Section Header"},
+            {"markerTimeStart": 1231, "markerTitle": "Call to Order"},
+            {"markerTimeStart": 1265, "markerName": "Public Communication"},
+        ],
+    }
+    chapters, transcript = parse_bookmarks(media)
+    assert chapters == [
+        {"start": 1231, "title": "Call to Order"},
+        {"start": 1265, "title": "Public Communication"},
+    ]
+    assert transcript == "https://cdn/x.srt"  # falls back to caption track
+
+
+def test_parse_bookmarks_prefers_transcription_url():
+    from citypods.providers.civicclerk import parse_bookmarks
+
+    chapters, transcript = parse_bookmarks(
+        {
+            "transcriptionUrl": "https://t/full.pdf",
+            "closedCaptionUrl": "https://c/x.srt",
+            "eventBookmarks": [],
+        }
+    )
+    assert chapters == [] and transcript == "https://t/full.pdf"
