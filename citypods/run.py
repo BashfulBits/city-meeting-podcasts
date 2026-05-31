@@ -71,6 +71,10 @@ class SourcePipeline:
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
+        # Per-stage cost totals across all sources this run (for run history / projection).
+        self.stage_totals: dict[str, dict] = collections.defaultdict(
+            lambda: {"ran": 0, "reused": 0, "backlog": 0, "seconds": 0.0, "bytes": 0, "errors": 0}
+        )
 
     def enrich(self, city: City) -> list[Episode]:
         key = source_key(city)
@@ -87,6 +91,15 @@ class SourcePipeline:
 
             stats = run_stages(provider, city, episodes, self.stages, self.ctx)
             notes = [s.note() for s in stats if s.note()]
+            with self._guard:
+                for s in stats:
+                    t = self.stage_totals[s.name]
+                    t["ran"] += s.ran
+                    t["reused"] += s.reused
+                    t["backlog"] += s.skipped
+                    t["seconds"] += s.seconds
+                    t["bytes"] += s.bytes_written
+                    t["errors"] += len(s.errors)
             if seeded:
                 notes.append(f"{seeded} legacy")
             if not self.ctx.dry_run:
@@ -273,6 +286,24 @@ def build(
         if restored:
             print(f"state: restored {restored} file(s) from durable storage")
     cache = load_etag_cache(state_dir)
+
+    # Opt-in: derive per-run budgets from a wall-clock target so a run fills (most of) the 6h
+    # GitHub Actions window instead of stopping at a flat count — this is what drains a large
+    # backfill in days instead of months (see review/03). Disabled by default
+    # (run_time_budget_minutes = 0) so behavior is unchanged unless turned on. Reads the measured
+    # seconds/episode from restored run history when available, else a config estimate.
+    time_budget_min = float(defaults.get("run_time_budget_minutes", 0))
+    if time_budget_min > 0:
+        safety = float(defaults.get("budget_safety", 0.8))
+        window_s = time_budget_min * 60 * safety
+        sec_ep = _measured_sec_per_ep(state_dir) or float(defaults.get("seconds_per_episode", 90))
+        sec_chapter = float(defaults.get("seconds_per_chapter_fetch", 3))
+        total_budget = max(1, int(window_s / max(sec_ep, 1e-9)))
+        chapters_budget = max(1, int(window_s / max(sec_chapter, 1e-9)))
+        print(
+            f"budget: time-bounded ({time_budget_min:.0f}m × {safety}) → "
+            f"audio {total_budget}/run @ {sec_ep:.0f}s/ep, chapters {chapters_budget}/run"
+        )
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
     ctx = StageContext(
         storage=storage,
@@ -327,6 +358,7 @@ def build(
             )
             + "\n"
         )
+        _record_run_history(state_dir, results, pipeline.stage_totals)
         # Persist the updated record store + cache back to durable storage. The bucket — not
         # actions/cache — is the source of truth for derived artifacts.
         pushed = push_state(storage, state_dir)
@@ -412,6 +444,71 @@ def _write_chapter_sidecars(
         for stale in chap_dir.glob("*.json"):
             if stale.name not in wanted:
                 stale.unlink()
+
+
+RUN_HISTORY_NAME = "run_history.jsonl"
+RUN_SUMMARY_NAME = "run_summary.json"
+_RUN_HISTORY_KEEP = 1000  # cap the rolling log so the synced state stays small
+
+
+def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> None:
+    """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
+    (latest only). This is the data spine for the resource projection: it lets the model use a
+    *measured* seconds/episode and per-stage backlog instead of defaults. Lives in the durable
+    state (synced to the bucket), so trends survive cache eviction."""
+    from datetime import UTC, datetime
+
+    import citypods.records as _records  # avoid import cycle at module load
+
+    stages = {
+        name: {
+            "ran": t["ran"],
+            "reused": t["reused"],
+            "backlog": t["backlog"],
+            "seconds": round(t["seconds"], 1),
+            "bytes": t["bytes"],
+            "errors": t["errors"],
+        }
+        for name, t in stage_totals.items()
+    }
+    audio = stages.get("audio", {})
+    summary = {
+        "ts": datetime.now(UTC).isoformat(),
+        "schema_version": _records.SCHEMA_VERSION,
+        "cities": len(results),
+        "built": sum(r.status == "built" for r in results),
+        "skipped": sum(r.status == "skipped" for r in results),
+        "errors": sum(r.status == "error" for r in results),
+        # convenience keys the projection's measured_inputs() reads to calibrate sec/ep
+        "materialized": audio.get("ran", 0),
+        "materialize_seconds": audio.get("seconds", 0.0),
+        "stages": stages,
+    }
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")
+
+    path = state_dir / RUN_HISTORY_NAME
+    lines = path.read_text().splitlines() if path.exists() else []
+    lines.append(json.dumps(summary))
+    path.write_text("\n".join(lines[-_RUN_HISTORY_KEEP:]) + "\n")
+
+
+def _measured_sec_per_ep(state_dir: Path) -> float | None:
+    """Observed seconds per materialized episode from the last run summary, if present and
+    meaningful. Used to size the time-bounded budget; None falls back to a config estimate.
+    (``run_summary.json`` is written by a future run-history change; absent today → None.)"""
+    path = Path(state_dir) / "run_summary.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        eps = data.get("materialized", 0)
+        secs = data.get("materialize_seconds", 0.0)
+        if eps and secs:
+            return secs / eps
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:

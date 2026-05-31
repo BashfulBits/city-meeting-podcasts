@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Resource projection — admin</title>
+<style>
+ body{font:15px/1.5 system-ui,sans-serif;margin:0;background:#0e1116;color:#e6edf3}
+ .wrap{max-width:880px;margin:0 auto;padding:24px}
+ h1{font-size:1.3rem} h2{font-size:1rem;margin:1.4rem 0 .4rem;color:#9db2c8}
+ .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px}
+ label{display:flex;flex-direction:column;font-size:.82rem;color:#9db2c8;gap:2px}
+ input,select{background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:5px}
+ .out{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+ .card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px 14px}
+ .big{font-size:1.5rem;font-weight:700} .muted{color:#9db2c8;font-size:.8rem}
+ .warn{color:#f0b429} .ok{color:#3fb950}
+ .presets button{background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:999px;padding:5px 11px;margin:2px;cursor:pointer}
+ .presets button:hover{border-color:#58a6ff}
+ a{color:#58a6ff}
+</style></head>
+<body><div class="wrap">
+<h1>Resource cost &amp; time projection</h1>
+<p class="muted">Live what-if calculator. Defaults seed from the latest build. Storage = Backblaze B2
+($6/TB/mo, first 10&nbsp;GB free); egress is free via Cloudflare. <span id="cal"></span></p>
+
+<div class="presets" id="presets"></div>
+
+<h2>Inputs</h2>
+<div class="grid" id="inputs"></div>
+
+<div class="out" id="out"></div>
+
+<h2>Storage at scale</h2>
+<div id="chart" class="card"></div>
+
+<p class="muted">Source of truth: <code>citypods/projection.py</code>. This JS mirrors it; a parity
+test guards drift. Full report JSON: <a href="report.json">report.json</a>.</p>
+
+<script id="report" type="application/json">__REPORT_JSON__</script>
+<script>
+const SEED = __SEED_JSON__;
+const B2_GB_MO = 0.006, FREE = 10;
+const FIELDS = [
+  ["feeds","Feeds",1,5000,1],
+  ["episodes_per_feed","Episodes/feed (E)",1,200,1],
+  ["duration_hours","Avg duration (h)",0.25,8,0.25],
+  ["kbps","Bitrate (kbps)",32,256,1],
+  ["host_frac","Host fraction (0–1)",0,1,0.05],
+  ["sec_per_ep","Seconds/episode",10,600,5],
+  ["cycle_hours","Cycle (h)",1,24,1],
+  ["time_budget_hours","Time budget/run (h)",1,6,0.5],
+  ["safety","Safety (0–1)",0.3,1,0.05],
+  ["per_run_cap","Per-run cap (0=time-bound)",0,2000,1],
+  ["meetings_per_week","New meetings/feed/wk",0,7,0.5],
+];
+function project(i){
+  const g = i.kbps*1000/8*3600*i.duration_hours/1e9;
+  const hosted = i.feeds*i.host_frac;
+  const storage = hosted*i.episodes_per_feed*g;
+  const monthly = Math.max(0,storage-FREE)*B2_GB_MO;
+  const timeBound = Math.max(1, Math.floor(i.time_budget_hours*3600*i.safety/i.sec_per_ep));
+  const cap = i.per_run_cap>0 ? i.per_run_cap : null;
+  const through = cap ? Math.min(timeBound,cap) : timeBound;
+  const perDay = Math.floor(through*(24/i.cycle_hours));
+  const inflow = i.feeds*i.meetings_per_week/7;
+  const backfill = Math.floor(hosted*i.episodes_per_feed);
+  return {g,storage,monthly,timeBound,through,perDay,inflow,
+    keepsUp:perDay>=inflow, backfill, backfillDays: perDay? backfill/perDay: Infinity,
+    capBottleneck: cap!==null && cap<timeBound, recommend:timeBound};
+}
+const state = Object.assign({}, SEED);
+if(state.per_run_cap===null||state.per_run_cap===undefined) state.per_run_cap=0;
+const inputsEl=document.getElementById("inputs"), outEl=document.getElementById("out");
+document.getElementById("cal").textContent =
+  JSON.parse(document.getElementById("report").textContent).notes.calibrated
+   ? "(seconds/episode calibrated from run history)" : "(seconds/episode is an estimate until run history accrues)";
+FIELDS.forEach(([k,label,min,max,step])=>{
+  const l=document.createElement("label"); l.textContent=label;
+  const inp=document.createElement("input"); inp.type="number"; inp.min=min;inp.max=max;inp.step=step;
+  inp.value=state[k]; inp.oninput=()=>{state[k]=parseFloat(inp.value)||0; render();};
+  l.appendChild(inp); inputsEl.appendChild(l);
+});
+const PRESETS={
+  "Current":SEED,
+  "Host all audio":{...SEED,host_frac:1},
+  "Time-bounded":{...SEED,per_run_cap:0},
+  "2–3× growth":{...SEED,feeds:Math.round(SEED.feeds*2.5)},
+  "Texas statewide":{...SEED,feeds:400},
+  "1,000 cities":{...SEED,feeds:1000,host_frac:1,per_run_cap:0},
+  "Nationwide 500":{...SEED,feeds:500,host_frac:1,per_run_cap:0},
+  "+Transcripts":{...SEED,per_run_cap:0},
+};
+const pe=document.getElementById("presets");
+Object.keys(PRESETS).forEach(name=>{const b=document.createElement("button");b.textContent=name;
+  b.onclick=()=>{Object.assign(state,{per_run_cap:0,...PRESETS[name]});
+    if(state.per_run_cap===null) state.per_run_cap=0;
+    [...inputsEl.querySelectorAll("input")].forEach((inp,idx)=>inp.value=state[FIELDS[idx][0]]);render();};
+  pe.appendChild(b);});
+function card(t,v,cls){return `<div class="card"><div class="muted">${t}</div><div class="big ${cls||''}">${v}</div></div>`;}
+function render(){
+  const r=project(state);
+  outEl.innerHTML =
+    card("Audio stored", (r.storage/1000).toFixed(2)+" TB")+
+    card("Storage cost", "$"+r.monthly.toFixed(2)+"/mo")+
+    card("Per-run throughput", r.through+" eps", r.capBottleneck?"warn":"")+
+    card("Capacity / day", r.perDay+" eps")+
+    card("Backfill drain", isFinite(r.backfillDays)?r.backfillDays.toFixed(0)+" days":"∞")+
+    card("Steady state", r.keepsUp?"keeps up":"falling behind", r.keepsUp?"ok":"warn")+
+    (r.capBottleneck? `<div class="card" style="grid-column:1/3"><span class="warn">⚠ The per-run cap (${state.per_run_cap}) is the bottleneck.</span> Time-bounded would do ${r.timeBound}/run; set the cap to 0 (time-bound) or raise it to ~${r.recommend}.</div>`:"");
+  const rows=[80,200,500,1000,2000,5000].map(f=>{const p=project({...state,feeds:f,host_frac:1});
+    return `<tr><td>${f}</td><td style="text-align:right">${(p.storage/1000).toFixed(2)} TB</td><td style="text-align:right">$${p.monthly.toFixed(2)}</td></tr>`;}).join("");
+  document.getElementById("chart").innerHTML=`<table style="width:100%"><tr class="muted"><th style="text-align:left">Feeds</th><th style="text-align:right">Stored</th><th style="text-align:right">$/mo</th></tr>${rows}</table>`;
+}
+render();
+</script>
+</div></body></html>

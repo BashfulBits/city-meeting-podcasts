@@ -26,7 +26,7 @@ from pathlib import Path
 
 STATE_PREFIX = "state"
 # JSON-typed; everything we persist is text. Kept conservative so a stray binary never syncs.
-_SUFFIXES = {".json"}
+_SUFFIXES = {".json", ".jsonl"}
 # Mirror gc_audio's safety floor: a remote state object with no local counterpart is only
 # reaped once it is older than this, so an object written by a build that hasn't yet produced
 # its local copy isn't deleted out from under it.
