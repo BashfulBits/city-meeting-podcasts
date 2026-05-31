@@ -270,6 +270,24 @@ def build(
         if restored:
             print(f"state: restored {restored} file(s) from durable storage")
     cache = load_etag_cache(state_dir)
+
+    # Opt-in: derive per-run budgets from a wall-clock target so a run fills (most of) the 6h
+    # GitHub Actions window instead of stopping at a flat count — this is what drains a large
+    # backfill in days instead of months (see review/03). Disabled by default
+    # (run_time_budget_minutes = 0) so behavior is unchanged unless turned on. Reads the measured
+    # seconds/episode from restored run history when available, else a config estimate.
+    time_budget_min = float(defaults.get("run_time_budget_minutes", 0))
+    if time_budget_min > 0:
+        safety = float(defaults.get("budget_safety", 0.8))
+        window_s = time_budget_min * 60 * safety
+        sec_ep = _measured_sec_per_ep(state_dir) or float(defaults.get("seconds_per_episode", 90))
+        sec_chapter = float(defaults.get("seconds_per_chapter_fetch", 3))
+        total_budget = max(1, int(window_s / max(sec_ep, 1e-9)))
+        chapters_budget = max(1, int(window_s / max(sec_chapter, 1e-9)))
+        print(
+            f"budget: time-bounded ({time_budget_min:.0f}m × {safety}) → "
+            f"audio {total_budget}/run @ {sec_ep:.0f}s/ep, chapters {chapters_budget}/run"
+        )
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
     ctx = StageContext(
         storage=storage,
@@ -404,6 +422,24 @@ def _write_chapter_sidecars(
         for stale in chap_dir.glob("*.json"):
             if stale.name not in wanted:
                 stale.unlink()
+
+
+def _measured_sec_per_ep(state_dir: Path) -> float | None:
+    """Observed seconds per materialized episode from the last run summary, if present and
+    meaningful. Used to size the time-bounded budget; None falls back to a config estimate.
+    (``run_summary.json`` is written by a future run-history change; absent today → None.)"""
+    path = Path(state_dir) / "run_summary.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        eps = data.get("materialized", 0)
+        secs = data.get("materialize_seconds", 0.0)
+        if eps and secs:
+            return secs / eps
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:

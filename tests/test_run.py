@@ -184,3 +184,32 @@ def test_write_chapter_sidecars_writes_and_prunes(tmp_path):
     assert doc["chapters"] == [{"startTime": 0, "title": "Intro"}]
     assert not (city_dir / "chapters" / "u2.json").exists()  # no chapters -> no file
     assert not (city_dir / "chapters" / "stale.json").exists()  # pruned
+
+
+def test_time_bounded_budget_overrides_flat_cap(tmp_path, fake_provider, monkeypatch):
+    import citypods.run as run_mod
+
+    captured = {}
+    real_ctx = run_mod.StageContext
+
+    def spy_ctx(*a, **kw):
+        captured["budgets"] = kw.get("budgets")
+        return real_ctx(*a, **kw)
+
+    monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
+    cities = _setup(tmp_path)
+    # 300 min × 0.8 / 90 s = 160 audio; 300×0.8×60 / 3 = 4800 chapters
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\n"
+        "defaults:\n"
+        "  audio_storage_backend: local\n"
+        "  materialize_budget_per_run: 25\n"
+        "  run_time_budget_minutes: 300\n"
+        "  seconds_per_episode: 90\n"
+    )
+    _build(tmp_path, cities)
+    budgets = captured["budgets"]
+    assert budgets["audio"] is not None
+    # GlobalBudget is opaque; re-derive expected and check it's the time-bounded value, not 25
+    assert budgets["audio"]._remaining == 160
+    assert budgets["chapters"]._remaining == 4800
