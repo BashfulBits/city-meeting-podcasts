@@ -69,6 +69,9 @@ def test_js_python_parity():
 
     html = to_admin_html(build_report(_cities(), site_config=SITE))
     js_fn = re.search(r"function project\(i\)\{.*?\n\}", html, re.S).group(0)
+    # project() references module-level consts in the page; include them so node can run it.
+    consts = re.search(r"const B2_GB_MO\s*=.*?;", html, re.S).group(0)
+    js_fn = consts + "\n" + js_fn
     cases = [
         dict(
             feeds=1000,
