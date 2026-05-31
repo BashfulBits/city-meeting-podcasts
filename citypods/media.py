@@ -155,6 +155,7 @@ class MaterializeStats:
     reused: int = 0  # already in manifest / storage
     skipped_budget: int = 0  # deferred to a later run
     errors: list[str] = field(default_factory=list)
+    bytes_written: int = 0  # total bytes of objects uploaded this run (for cost accounting)
 
 
 def _should_host(episode: Episode, city: City) -> bool:
@@ -210,6 +211,10 @@ def materialize_audio(
                     source_url = resolve_media_url(ep)
                     ffmpeg.extract_audio(source_url, dest, ep.chapters or None)
                     url = storage.put_file(key, dest, CONTENT_TYPE)
+                    try:
+                        stats.bytes_written += dest.stat().st_size
+                    except OSError:
+                        pass
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url

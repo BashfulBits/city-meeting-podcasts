@@ -71,6 +71,10 @@ class SourcePipeline:
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
+        # Per-stage cost totals across all sources this run (for run history / projection).
+        self.stage_totals: dict[str, dict] = collections.defaultdict(
+            lambda: {"ran": 0, "reused": 0, "backlog": 0, "seconds": 0.0, "bytes": 0, "errors": 0}
+        )
 
     def enrich(self, city: City) -> list[Episode]:
         key = source_key(city)
@@ -87,6 +91,15 @@ class SourcePipeline:
 
             stats = run_stages(provider, city, episodes, self.stages, self.ctx)
             notes = [s.note() for s in stats if s.note()]
+            with self._guard:
+                for s in stats:
+                    t = self.stage_totals[s.name]
+                    t["ran"] += s.ran
+                    t["reused"] += s.reused
+                    t["backlog"] += s.skipped
+                    t["seconds"] += s.seconds
+                    t["bytes"] += s.bytes_written
+                    t["errors"] += len(s.errors)
             if seeded:
                 notes.append(f"{seeded} legacy")
             if not self.ctx.dry_run:
@@ -327,6 +340,7 @@ def build(
             )
             + "\n"
         )
+        _record_run_history(state_dir, results, pipeline.stage_totals)
         # Persist the updated record store + cache back to durable storage. The bucket — not
         # actions/cache — is the source of truth for derived artifacts.
         pushed = push_state(storage, state_dir)
@@ -412,6 +426,53 @@ def _write_chapter_sidecars(
         for stale in chap_dir.glob("*.json"):
             if stale.name not in wanted:
                 stale.unlink()
+
+
+RUN_HISTORY_NAME = "run_history.jsonl"
+RUN_SUMMARY_NAME = "run_summary.json"
+_RUN_HISTORY_KEEP = 1000  # cap the rolling log so the synced state stays small
+
+
+def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> None:
+    """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
+    (latest only). This is the data spine for the resource projection: it lets the model use a
+    *measured* seconds/episode and per-stage backlog instead of defaults. Lives in the durable
+    state (synced to the bucket), so trends survive cache eviction."""
+    from datetime import UTC, datetime
+
+    import citypods.records as _records  # avoid import cycle at module load
+
+    stages = {
+        name: {
+            "ran": t["ran"],
+            "reused": t["reused"],
+            "backlog": t["backlog"],
+            "seconds": round(t["seconds"], 1),
+            "bytes": t["bytes"],
+            "errors": t["errors"],
+        }
+        for name, t in stage_totals.items()
+    }
+    audio = stages.get("audio", {})
+    summary = {
+        "ts": datetime.now(UTC).isoformat(),
+        "schema_version": _records.SCHEMA_VERSION,
+        "cities": len(results),
+        "built": sum(r.status == "built" for r in results),
+        "skipped": sum(r.status == "skipped" for r in results),
+        "errors": sum(r.status == "error" for r in results),
+        # convenience keys the projection's measured_inputs() reads to calibrate sec/ep
+        "materialized": audio.get("ran", 0),
+        "materialize_seconds": audio.get("seconds", 0.0),
+        "stages": stages,
+    }
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")
+
+    path = state_dir / RUN_HISTORY_NAME
+    lines = path.read_text().splitlines() if path.exists() else []
+    lines.append(json.dumps(summary))
+    path.write_text("\n".join(lines[-_RUN_HISTORY_KEEP:]) + "\n")
 
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:
