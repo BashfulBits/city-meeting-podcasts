@@ -93,6 +93,18 @@ class GranicusProvider:
         # Granicus enclosures are already direct progressive MP4s.
         return episode.video_url
 
+    def fetch_view_counts(self, source: dict) -> list[int]:
+        """Per-view item counts, for the feed-health view-cap check: Granicus RSS is
+        hard-capped at 100 items/view, so a view at the cap is probably truncated."""
+        counts: list[int] = []
+        with make_session() as session:
+            for url in _feed_urls(source):
+                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                if resp.status_code >= 400:
+                    raise ProviderError(f"GET {url} returned {resp.status_code}")
+                counts.append(len(parse_feed(resp.content)))
+        return counts
+
 
 def parse_feed(content: bytes) -> list[Episode]:
     """Parse Granicus RSS XML bytes into normalized episodes.

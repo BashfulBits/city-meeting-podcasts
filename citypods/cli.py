@@ -29,10 +29,19 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--site-config", default="site_config.yml")
     d.add_argument("--cities-dir", default="cities")
 
+    h = sub.add_parser("doctor", help="run feed-health checks (no GitHub side effects)")
+    h.add_argument("--city", help="check only this city slug")
+    h.add_argument("--enclosures", action="store_true", help="also HEAD-probe enclosures (slow)")
+    h.add_argument("--site-config", default="site_config.yml")
+    h.add_argument("--cities-dir", default="cities")
+
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
         return _bodies(args)
+
+    if args.command == "doctor":
+        return _doctor(args)
 
     if args.command == "build":
         results = build(
@@ -82,6 +91,30 @@ def _bodies(args) -> int:
         mark = "✗" if is_excluded(body, city.body_exclude) else "✓"
         print(f"  {mark} {n:>5}  {latest[body].date()!s:<12}  {body}")
     return 0
+
+
+def _doctor(args) -> int:
+    from citypods.audit import audit_all
+
+    site_config = load_site_config(args.site_config)
+    cities = load_city_configs(args.cities_dir, site_config.get("defaults", {}))
+    if args.city:
+        cities = [c for c in cities if c.slug == args.city]
+        if not cities:
+            print(f"no city with slug {args.city!r}")
+            return 1
+
+    findings = audit_all(cities, site_config=site_config, check_enclosures_net=args.enclosures)
+    if not findings:
+        print(f"✓ no issues across {len(cities)} feed(s)")
+        return 0
+
+    icon = {"error": "✗", "warn": "⚠"}
+    for f in sorted(findings, key=lambda f: (f.severity != "error", f.slug, f.check)):
+        print(f"  {icon.get(f.severity, '?')} {f.slug} [{f.check}] {f.message}")
+    errors = sum(f.severity == "error" for f in findings)
+    print(f"\n{len(findings)} finding(s): {errors} error(s), {len(findings) - errors} warning(s)")
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

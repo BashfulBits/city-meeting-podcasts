@@ -1,0 +1,56 @@
+name: Feed health audit
+
+# Daily feed-health audit. Files/updates/closes one GitHub issue per (city, check) so the
+# tracker stays a live, deduplicated view of feed health. Runs independently of deploy.yml
+# so an audit failure never blocks publishing. Free: Actions minutes are unlimited on public
+# repos. (Scheduled workflows run only from the default branch and GitHub disables crons
+# after 60 days of repo inactivity; the 4h deploy cron keeps the repo active.)
+
+on:
+  schedule:
+    - cron: "0 12 * * *" # daily at 12:00 UTC
+  workflow_dispatch:
+    inputs:
+      enclosures:
+        description: "Also HEAD-probe enclosures (slower)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: feed-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      # The audio manifest (state) lets the rehost-backlog check distinguish a stalled
+      # pipeline from a normal in-progress backfill. Read-only here; deploy.yml owns writes.
+      - name: Restore build state
+        uses: actions/cache@v4
+        with:
+          path: .citypods-state
+          key: build-state-${{ github.run_id }}
+          restore-keys: |
+            build-state-
+
+      - name: Run audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          PYTHONPATH=. python scripts/audit_feeds.py
+          ${{ (github.event_name == 'workflow_dispatch' && inputs.enclosures) && '--enclosures' || '' }}
