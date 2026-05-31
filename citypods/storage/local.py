@@ -36,6 +36,15 @@ class LocalStorage:
     def public_url(self, key: str) -> str:
         return f"{self.url_prefix}/{key}"
 
+    def get_file(self, key: str, local_path: Path) -> bool:
+        src = self._path(key)
+        if not src.exists():
+            return False
+        local_path = Path(local_path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, local_path)
+        return True
+
     # --- orphan GC support (optional StorageBackend capability) ---
 
     def list_objects(self, prefix: str = "") -> Iterator[tuple[str, datetime]]:

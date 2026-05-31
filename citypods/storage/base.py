@@ -24,3 +24,19 @@ class StorageBackend(Protocol):
     def public_url(self, key: str) -> str:
         """Public URL a podcast player can fetch ``key`` from."""
         ...
+
+    # --- optional capabilities -------------------------------------------------------
+    # ``get_file`` / ``list_objects`` / ``delete`` back durable state sync and orphan GC.
+    # Not every backend implements them; callers must feature-detect via ``hasattr``.
+
+    def get_file(self, key: str, local_path: Path) -> bool:
+        """Download ``key`` into ``local_path``. Return False if the object is absent."""
+        ...
+
+    def list_objects(self, prefix: str = ""):
+        """Yield ``(key, last_modified)`` for every object under ``prefix``."""
+        ...
+
+    def delete(self, key: str) -> None:
+        """Delete the object at ``key``."""
+        ...

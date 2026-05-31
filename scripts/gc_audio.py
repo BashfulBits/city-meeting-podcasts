@@ -24,6 +24,7 @@ from datetime import UTC, datetime, timedelta
 from citypods.config import load_site_config
 from citypods.records import referenced_audio_keys
 from citypods.state import resolve_state_dir
+from citypods.statesync import STATE_PREFIX
 from citypods.storage import make_storage
 
 
@@ -51,8 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     cutoff = datetime.now(UTC) - timedelta(days=args.min_age_days)
     deleted = kept_young = 0
     for key, last_modified in storage.list_objects(args.prefix):
-        if key in referenced:
-            continue
+        if key in referenced or key.startswith(f"{STATE_PREFIX}/"):
+            continue  # never reap the durable state snapshot
         if last_modified is not None and last_modified > cutoff:
             kept_young += 1
             continue

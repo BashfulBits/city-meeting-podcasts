@@ -49,6 +49,7 @@ from citypods.state import (
     resolve_state_dir,
     save_etag_cache,
 )
+from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
 
 
@@ -249,7 +250,6 @@ def build(
     base_url = _resolve_base_url(base_url, site_config)
 
     state_dir = resolve_state_dir(site_config, output_dir)
-    cache = load_etag_cache(state_dir)
     fingerprint = build_fingerprint(base_url)
     request_delay = float(site_config.get("request_delay_seconds", 0.1))
     max_workers = int(site_config.get("max_workers", 20))
@@ -258,6 +258,14 @@ def build(
     total_budget = int(defaults.get("materialize_budget_per_run", 25))
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     storage = make_storage(site_config, base_url, output_dir)
+
+    # Restore the durable state snapshot from the bucket (canonical) before loading any state,
+    # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
+    if not dry_run:
+        restored = pull_state(storage, state_dir)
+        if restored:
+            print(f"state: restored {restored} file(s) from durable storage")
+    cache = load_etag_cache(state_dir)
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
     ctx = StageContext(
         storage=storage,
@@ -301,6 +309,7 @@ def build(
         )
         _write_aliases(output_dir, base_url, all_cities, feed_info)
         _write_cname(output_dir, site_config)
+        _prune_stale_dirs(output_dir, all_cities)
         (output_dir / "meta.json").write_text(
             json.dumps(
                 {"cities": len(all_cities), "built": sum(r.status == "built" for r in results)},
@@ -308,8 +317,36 @@ def build(
             )
             + "\n"
         )
+        # Persist the updated record store + cache back to durable storage. The bucket — not
+        # actions/cache — is the source of truth for derived artifacts.
+        pushed = push_state(storage, state_dir)
+        if pushed:
+            print(f"state: pushed {pushed} file(s) to durable storage")
 
     return results
+
+
+# Top-level files/dirs the build owns directly; never pruned as a stale slug.
+_RESERVED_DOC_NAMES = {"audio", "assets", "static", ".git"}
+
+
+def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
+    """Remove ``docs/<slug>`` directories left over from a deleted city or a renamed slug.
+    ``docs/`` is restored from actions/cache between runs, so without this a removed feed (or
+    the old slug after a rename) would keep serving forever. Only directories that look like a
+    feed/alias slug and aren't in the current set are removed; reserved names (audio, etc.) and
+    files are left alone."""
+    import shutil
+
+    live = {c.slug for c in cities}
+    for c in cities:
+        live.update(c.aliases)
+    for child in output_dir.iterdir():
+        if not child.is_dir() or child.name in _RESERVED_DOC_NAMES or child.name in live:
+            continue
+        # A feed/alias dir is identifiable by its audio_feed.xml or redirect index.html.
+        if (child / "audio_feed.xml").exists() or (child / "index.html").exists():
+            shutil.rmtree(child)
 
 
 def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_info: dict) -> None:

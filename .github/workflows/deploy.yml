@@ -32,11 +32,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      # Persist build state across runs. docs/ is otherwise rebuilt from scratch every run,
-      # so without this the audio-manifest dedup is lost (the per-run materialize budget gets
-      # wasted re-confirming already-hosted objects and backfill never progresses) and
-      # content-hash change detection can't skip unchanged cities. The unique key forces a
-      # fresh save each run; restore-keys pulls the most recent previous cache.
+      # Latency optimization only: the object bucket is the source of truth for build state
+      # (citypods/statesync.py restores it at build start and pushes at the end), so an evicted
+      # or missing cache self-heals from the bucket. This cache just avoids re-downloading that
+      # snapshot and lets unchanged cities skip re-rendering. The unique key forces a fresh save
+      # each run; restore-keys pulls the most recent previous cache.
       - name: Restore build state
         uses: actions/cache@v4
         with:

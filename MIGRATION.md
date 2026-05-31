@@ -46,6 +46,26 @@ site is fronted by Cloudflare. Turn `docs/redirects.json` into a **Cloudflare Bu
 list** (or a Redirect Rule) to serve true `301`s. The `itunes:new-feed-url` stubs already
 cover podcast apps, so this is belt-and-suspenders.
 
+## Durable build state
+
+The record store and change-detection cache hold **derived, expensive-to-recompute** data
+(hosted-audio provenance, and soon transcripts/summaries). They live in `state_dir`
+(`.citypods-state`), but the **source of truth is the object bucket**, not `actions/cache`:
+
+- at build start, `pull_state` (citypods/statesync.py) downloads the snapshot from the bucket's
+  `state/` prefix into `state_dir` (bucket wins);
+- at build end, `push_state` uploads it back.
+
+`actions/cache` is now a pure latency optimization — if GitHub evicts it (after ~7 days idle or
+at the 10 GB repo-cache limit), the next run self-heals from the bucket instead of losing the
+derived state. The local dev backend has no bucket, so it just keeps its on-disk `state_dir`.
+
+The orphan GC (`gc_audio.py`) skips anything under the `state/` prefix, so the snapshot is never
+mistaken for orphaned audio.
+
+`docs/<slug>/` directories for deleted cities or renamed slugs are pruned automatically each
+build (`_prune_stale_dirs`), so removed feeds stop serving rather than lingering in the cache.
+
 ## Orphaned audio cleanup
 
 Because audio is content-addressed, regenerating a file (e.g. adding chapters) leaves the old
