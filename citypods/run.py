@@ -36,6 +36,7 @@ from citypods.records import (
     save_records,
     source_key,
 )
+from citypods.security import SecurityError
 from citypods.site import (
     render_city_page,
     render_index,
@@ -134,7 +135,9 @@ def _process_city(
 
     try:
         episodes = pipeline.enrich(city)
-    except ProviderError as exc:
+    except (ProviderError, SecurityError) as exc:
+        # SecurityError: a source/redirect URL was blocked by the SSRF gate (audit #S1) —
+        # treat as a per-city error so one bad submission can't fail the whole build.
         return CityResult(city.slug, "error", detail=str(exc)), None
 
     # Filter the shared source episodes to this feed's body, then cap to the most-recent
