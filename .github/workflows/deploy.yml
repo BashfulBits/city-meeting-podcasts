@@ -76,6 +76,12 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: citypods build
 
+      # Resource cost/time projection: writes docs/admin/{index.html,report.json} (the live
+      # what-if calculator) and appends a summary to the run page. Reads the same state the
+      # build just wrote, so storage/backlog/throughput reflect this run.
+      - name: Resource report
+        run: citypods report --markdown >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
