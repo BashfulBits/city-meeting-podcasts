@@ -17,10 +17,12 @@ MAX_KBPS = 96
 class FakeFfmpeg:
     def __init__(self, fail: bool = False):
         self.calls: list[str] = []
+        self.chapters: list[list[dict] | None] = []
         self.fail = fail
 
-    def extract_audio(self, source_url: str, dest: Path) -> None:
+    def extract_audio(self, source_url: str, dest: Path, chapters=None) -> None:
         self.calls.append(source_url)
+        self.chapters.append(chapters)
         if self.fail:
             raise subprocess.CalledProcessError(1, "ffmpeg")
         dest.write_bytes(b"fake-m4a")
@@ -156,3 +158,37 @@ def test_ffmpeg_error_recorded(tmp_path):
     eps = [_ep("g1")]
     stats = _materialize(_city(), eps, _store(tmp_path), FakeFfmpeg(fail=True))
     assert stats.errors and eps[0].hosted_audio_url is None
+
+
+def test_ffmetadata_renders_chapters():
+    from citypods.media import _ffmetadata
+
+    meta = _ffmetadata(
+        [
+            {"start": 51, "end": 491, "title": "AGENDA"},
+            {"start": 491, "title": "Open; Mic"},  # no end -> next start; title escaped
+        ]
+    )
+    assert meta.startswith(";FFMETADATA1")
+    assert "START=51000\nEND=491000\ntitle=AGENDA" in meta
+    assert "START=491000\nEND=492000" in meta  # last chapter falls back to start+1s
+    assert r"title=Open\; Mic" in meta  # ';' escaped for ffmetadata
+
+
+def test_chapters_passed_through_to_ffmpeg(tmp_path):
+    from citypods.media import materialize_audio
+
+    ffmpeg = FakeFfmpeg()
+    storage = LocalStorage(root=tmp_path, url_prefix="https://cdn")
+    ep = _ep("g1", kind="hls")
+    ep.chapters = [{"start": 0, "end": 10, "title": "Intro"}]
+    materialize_audio(
+        _city(),
+        [ep],
+        storage=storage,
+        ffmpeg=ffmpeg,
+        budget=5,
+        max_kbps=96,
+        resolve_media_url=lambda e: e.video_url,
+    )
+    assert ffmpeg.chapters == [[{"start": 0, "end": 10, "title": "Intro"}]]

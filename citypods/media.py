@@ -13,6 +13,7 @@ blowing the Actions 6-hour job limit.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 import threading
@@ -30,9 +31,33 @@ CONTENT_TYPE = "audio/mp4"
 
 
 class FfmpegRunner(Protocol):
-    def extract_audio(self, source_url: str, dest: Path) -> None:
-        """Demux/encode audio from ``source_url`` (URL or HLS manifest) into ``dest`` (.m4a)."""
+    def extract_audio(
+        self, source_url: str, dest: Path, chapters: list[dict] | None = None
+    ) -> None:
+        """Demux/encode audio from ``source_url`` (URL or HLS manifest) into ``dest`` (.m4a).
+
+        ``chapters`` (``[{"start": secs, "end": secs|None, "title": str}, ...]``) are embedded
+        as M4A chapter markers when provided.
+        """
         ...
+
+
+def _ffmetadata(chapters: list[dict]) -> str:
+    """Render chapter markers as an ffmpeg metadata file (millisecond timebase). The end of a
+    chapter is its own ``end`` when known, else the next chapter's start; the last falls back to
+    start+1s so ffmpeg always has a valid span."""
+    out = [";FFMETADATA1"]
+    ordered = sorted(chapters, key=lambda c: c["start"])
+    for i, ch in enumerate(ordered):
+        start = int(ch["start"]) * 1000
+        nxt = int(ordered[i + 1]["start"]) * 1000 if i + 1 < len(ordered) else None
+        end_s = ch.get("end")
+        end = int(end_s) * 1000 if end_s is not None else (nxt if nxt is not None else start + 1000)
+        if end <= start:
+            end = start + 1000
+        title = re.sub(r"([=;#\\\n])", r"\\\1", ch.get("title", "").strip())
+        out += ["[CHAPTER]", "TIMEBASE=1/1000", f"START={start}", f"END={end}", f"title={title}"]
+    return "\n".join(out) + "\n"
 
 
 def encode_args(source_bitrate: int | None, max_kbps: int) -> list[str]:
@@ -50,22 +75,33 @@ class CommandFfmpeg:
         self.binary = binary
         self.max_kbps = max_kbps
 
-    def extract_audio(self, source_url: str, dest: Path) -> None:
+    def extract_audio(
+        self, source_url: str, dest: Path, chapters: list[dict] | None = None
+    ) -> None:
         args = encode_args(_probe_audio_bitrate(source_url, self.binary), self.max_kbps)
-        cmd = [
-            self.binary,
-            "-y",
-            "-loglevel",
-            "error",
-            "-i",
-            source_url,
-            "-vn",
-            *args,
-            "-movflags",
-            "+faststart",
-            str(dest),
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            inputs = ["-i", source_url]
+            chapter_args: list[str] = []
+            if chapters:
+                meta = Path(tmp) / "chapters.ffmeta"
+                meta.write_text(_ffmetadata(chapters))
+                inputs += ["-i", str(meta)]
+                # take chapters from the metadata input; keep audio from the media input
+                chapter_args = ["-map_chapters", "1", "-map", "0:a:0"]
+            cmd = [
+                self.binary,
+                "-y",
+                "-loglevel",
+                "error",
+                *inputs,
+                "-vn",
+                *chapter_args,
+                *args,
+                "-movflags",
+                "+faststart",
+                str(dest),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
 
 
 def _probe_audio_bitrate(url: str, ffmpeg_binary: str = "ffmpeg") -> int | None:
@@ -168,7 +204,7 @@ def materialize_audio(
                 with tempfile.TemporaryDirectory() as tmp:
                     dest = Path(tmp) / "audio.m4a"
                     source_url = resolve_media_url(ep)
-                    ffmpeg.extract_audio(source_url, dest)
+                    ffmpeg.extract_audio(source_url, dest, ep.chapters or None)
                     url = storage.put_file(key, dest, CONTENT_TYPE)
             ep.audio_key = key
             ep.audio_spec_hash = spec

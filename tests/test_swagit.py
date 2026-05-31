@@ -90,3 +90,77 @@ def test_recorded_fixture_parses():
     eps = parse_list(fixture_bytes("swagit", "dallas-tx-city-council"), ORIGIN)
     assert eps
     assert all(e.media_kind == "hls" and e.video_url.endswith("/download") for e in eps)
+
+
+VIDEO_PAGE = b"""<html><body>
+<a class="playerControl" data-id="1" data-ts="51" data-end-ts="491"
+   data-title="AGENDA\nCITY COUNCIL MEETING" href="/play/100/51">
+   <span class="glyphicon"></span> AGENDA</a>
+<a class="playerControl" data-id="2" data-ts="491" data-end-ts="2131"
+   data-title="Open Microphone" href="/play/100/491">Open Microphone</a>
+<a class="playerControl" data-id="3" data-ts="2131" data-title="Consent &amp; Agenda"
+   href="/play/100/2131">Consent</a>
+<a href="/videos/100/transcript">Download Transcript</a>
+</body></html>"""
+
+
+def test_parse_chapters_extracts_timestamps_and_titles():
+    from citypods.providers.swagit import parse_chapters
+
+    chapters = parse_chapters(VIDEO_PAGE)
+    assert [c["start"] for c in chapters] == [51, 491, 2131]
+    assert chapters[0] == {"start": 51, "end": 491, "title": "AGENDA CITY COUNCIL MEETING"}
+    assert chapters[2]["title"] == "Consent & Agenda"  # entity unescaped
+    assert chapters[2]["end"] is None  # no data-end-ts on the last item
+
+
+def test_fetch_chapters_returns_chapters_and_transcript(monkeypatch):
+    import citypods.providers.swagit as sw
+
+    class FakeResp:
+        status_code = 200
+        content = VIDEO_PAGE
+        text = VIDEO_PAGE.decode()
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, timeout=None):
+            assert url == f"{ORIGIN}/videos/100"
+            return FakeResp()
+
+    monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
+    ep = parse_list(SAMPLE, ORIGIN)[0]  # guid "100"
+    chapters, transcript = SwagitProvider().fetch_chapters(ep, {"list_url": f"{ORIGIN}/x"})
+    assert len(chapters) == 3
+    assert transcript == f"{ORIGIN}/videos/100/transcript"
+
+
+def test_fetch_chapters_no_transcript_link(monkeypatch):
+    import citypods.providers.swagit as sw
+
+    page = b'<a class="playerControl" data-ts="10" data-title="Item" href="/play/100/10">x</a>'
+
+    class FakeResp:
+        status_code = 200
+        content = page
+        text = page.decode()
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, timeout=None):
+            return FakeResp()
+
+    monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
+    ep = parse_list(SAMPLE, ORIGIN)[0]
+    chapters, transcript = SwagitProvider().fetch_chapters(ep, {"list_url": f"{ORIGIN}/x"})
+    assert chapters and transcript is None

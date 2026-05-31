@@ -112,6 +112,52 @@ class AudioStage:
         return StageStats(self.name, ms.hosted, ms.reused, ms.skipped_budget, ms.errors)
 
 
+class ChaptersStage:
+    """Fetch agenda-item chapter markers (and a transcript link) for providers that expose
+    them. Audio-affecting, so it runs *before* ``audio``: chapters are part of
+    ``audio_spec_hash``, so adding them changes the spec and the next audio pass re-encodes the
+    file with embedded markers — spread over runs by the audio budget, exactly like backfill.
+
+    Each chapter fetch is one network call, so the stage draws from its own ``"chapters"``
+    budget (global + per-source) and defers the rest to later runs. No-op for providers without
+    a ``fetch_chapters`` method.
+    """
+
+    name = "chapters"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        stats = StageStats(self.name)
+        fetch = getattr(provider, "fetch_chapters", None)
+        if ctx.dry_run or fetch is None:
+            return stats
+        budget = ctx.budgets.get(self.name)
+        remaining = ctx.per_source_budget
+        for ep in _materialize_set(episodes, city.max_episodes):
+            if ep.chapters:  # already captured; chapters don't change once set
+                stats.reused += 1
+                continue
+            if remaining <= 0 or (budget is not None and not budget.take()):
+                stats.skipped += 1
+                continue
+            remaining -= 1
+            try:
+                chapters, transcript = fetch(ep, city.source)
+            except Exception as exc:  # one bad page must not fail the whole source
+                stats.errors.append(f"{ep.uid}: {exc}")
+                continue
+            if chapters:
+                ep.chapters = chapters
+                if transcript:
+                    ep.links = {**(ep.links or {}), "transcript": transcript}
+                stats.ran += 1
+            else:
+                stats.reused += 1  # no agenda items on this page; nothing to embed
+        return stats
+
+
 class LinksStage:
     """Attach resource links (canonical video, agenda, minutes, ...) to each episode.
 
@@ -151,9 +197,9 @@ class LinksStage:
 
 
 def default_stages() -> list[EnrichmentStage]:
-    """Ordered: audio-affecting stages (e.g. a future ``chapters`` stage) must precede
-    ``audio``; feed-only stages (``summary``, ``links``) follow it."""
-    return [AudioStage(), LinksStage()]
+    """Ordered: audio-affecting stages (``chapters``) must precede ``audio`` so a chapter
+    change re-encodes; feed-only stages (``summary``, ``links``) follow it."""
+    return [ChaptersStage(), AudioStage(), LinksStage()]
 
 
 def run_stages(

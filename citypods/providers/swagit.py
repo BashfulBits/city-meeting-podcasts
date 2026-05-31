@@ -29,6 +29,38 @@ ROW_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Agenda-item links on a video page double as chapter markers:
+#   <a class="playerControl" data-ts="51" data-end-ts="491" data-title="..." href="/play/ID/51">
+CHAPTER_ANCHOR_RE = re.compile(r'<a\b[^>]*class="[^"]*playerControl[^"]*"[^>]*>', re.IGNORECASE)
+
+
+def _attr(tag: str, name: str) -> str | None:
+    m = re.search(rf'\b{name}="([^"]*)"', tag)
+    return m.group(1) if m else None
+
+
+def parse_chapters(content: bytes) -> list[dict]:
+    """Parse a Swagit video page's timestamped agenda items into chapter markers.
+
+    Each ``playerControl`` anchor carries ``data-ts`` (start seconds), ``data-end-ts`` (end),
+    and ``data-title``. Returns ``[{"start": int, "end": int|None, "title": str}, ...]`` sorted
+    by start with duplicate starts collapsed. Pure (no network)."""
+    text = content.decode("utf-8", errors="replace")
+    by_start: dict[int, dict] = {}
+    for tag in CHAPTER_ANCHOR_RE.findall(text):
+        ts = _attr(tag, "data-ts")
+        if ts is None or not ts.isdigit():
+            continue
+        start = int(ts)
+        title = html.unescape(_attr(tag, "data-title") or "").strip()
+        title = re.sub(r"\s+", " ", title)
+        if not title:
+            continue
+        end_raw = _attr(tag, "data-end-ts")
+        end = int(end_raw) if end_raw and end_raw.isdigit() else None
+        by_start.setdefault(start, {"start": start, "end": end, "title": title})
+    return [by_start[s] for s in sorted(by_start)]
+
 
 def _origin(url: str) -> str:
     parts = urlsplit(url)
@@ -95,6 +127,27 @@ class SwagitProvider:
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         return parse_list(resp.content, _origin(url))
+
+    def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:
+        """Fetch a video page and extract (chapter markers, transcript URL).
+
+        One network call per episode, so the chapters stage budgets/spreads these. Returns
+        ``([], None)`` on a page with no agenda items. The transcript URL is only returned when
+        the page actually links it (so we never emit a transcript link a meeting doesn't have).
+        """
+        origin = _origin(source["list_url"])
+        url = f"{origin}/videos/{episode.guid}"
+        with make_session() as session:
+            try:
+                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {url} failed: {exc}") from exc
+        if resp.status_code >= 400:
+            raise ProviderError(f"GET {url} returned {resp.status_code}")
+        chapters = parse_chapters(resp.content)
+        transcript_path = f"/videos/{episode.guid}/transcript"
+        transcript = f"{origin}{transcript_path}" if transcript_path in resp.text else None
+        return chapters, transcript
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
         """Follow /videos/{id}/download to its presigned MP4 URL."""

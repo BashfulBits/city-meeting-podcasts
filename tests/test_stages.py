@@ -15,7 +15,7 @@ class FakeFfmpeg:
     def __init__(self):
         self.calls: list[str] = []
 
-    def extract_audio(self, source_url: str, dest: Path) -> None:
+    def extract_audio(self, source_url: str, dest: Path, chapters=None) -> None:
         self.calls.append(source_url)
         dest.write_bytes(b"fake")
 
@@ -60,9 +60,10 @@ def _ctx(tmp_path, *, dry_run=False, audio_budget=10, per_source=10, storage=Tru
     )
 
 
-def test_default_stages_starts_with_audio():
-    stages = default_stages()
-    assert [s.name for s in stages][0] == "audio"
+def test_default_stage_order_audio_affecting_before_audio():
+    names = [s.name for s in default_stages()]
+    # chapters change audio_spec_hash, so they must run before audio; links is feed-only after.
+    assert names.index("chapters") < names.index("audio") < names.index("links")
 
 
 def test_audio_stage_hosts_within_budget(tmp_path):
@@ -88,11 +89,11 @@ def test_audio_stage_noop_without_storage(tmp_path):
 def test_run_stages_returns_stats_per_stage(tmp_path):
     eps = [_ep("g1")]
     stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
-    assert [s.name for s in stats] == ["audio", "links"]
-    assert stats[0].ran == 1
-    assert "audio" in stats[0].note()
-    # links runs after audio (feed-only) and sets a canonical_video default on each episode.
-    assert stats[1].name == "links"
+    assert [s.name for s in stats] == ["chapters", "audio", "links"]
+    # chapters is a no-op (FakeProvider has no fetch_chapters); audio hosts; links defaults.
+    audio = next(s for s in stats if s.name == "audio")
+    assert audio.ran == 1
+    assert "audio" in audio.note()
     assert eps[0].links.get("canonical_video")
 
 
@@ -119,3 +120,47 @@ def test_links_stage_merges_provider_supplied_links(tmp_path):
         "canonical_video": "https://watch/page",
         "agenda": "https://docs/agenda.pdf",
     }
+
+
+class ChapterProvider(FakeProvider):
+    def __init__(self, chapters, transcript=None):
+        self._chapters = chapters
+        self._transcript = transcript
+        self.calls = 0
+
+    def fetch_chapters(self, episode, source):
+        self.calls += 1
+        return self._chapters, self._transcript
+
+
+def test_chapters_stage_sets_chapters_and_transcript_link(tmp_path):
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("g1")]
+    p = ChapterProvider([{"start": 5, "end": 60, "title": "Item"}], transcript="https://t/x")
+    stats = ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
+    assert stats.ran == 1 and eps[0].chapters[0]["title"] == "Item"
+    assert eps[0].links["transcript"] == "https://t/x"
+    # idempotent: episode already has chapters -> reused, no second fetch
+    stats2 = ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
+    assert stats2.reused == 1 and p.calls == 1
+
+
+def test_chapters_stage_budget_defers(tmp_path):
+    from citypods.media import GlobalBudget
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("a"), _ep("b")]
+    ctx = _ctx(tmp_path, per_source=1)
+    ctx.budgets["chapters"] = GlobalBudget(1)
+    p = ChapterProvider([{"start": 0, "end": 1, "title": "x"}])
+    stats = ChaptersStage().process(p, _city(), eps, ctx)
+    assert stats.ran == 1 and stats.skipped == 1  # second episode deferred to a later run
+
+
+def test_chapters_stage_noop_without_provider_support(tmp_path):
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("g1")]
+    stats = ChaptersStage().process(FakeProvider(), _city(), eps, _ctx(tmp_path))
+    assert stats.ran == 0 and not eps[0].chapters

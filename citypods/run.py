@@ -256,6 +256,9 @@ def build(
     defaults = site_config.get("defaults", {})
     per_source_budget = int(defaults.get("materialize_budget_per_city", 5))
     total_budget = int(defaults.get("materialize_budget_per_run", 25))
+    # Chapter scrapes are one cheap page fetch each (no encode), so they can run ahead of the
+    # audio re-encode budget; defaults to the same cap.
+    chapters_budget = int(defaults.get("chapters_budget_per_run", total_budget))
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     storage = make_storage(site_config, base_url, output_dir)
 
@@ -273,7 +276,10 @@ def build(
         max_kbps=max_kbps,
         per_source_budget=per_source_budget,
         dry_run=dry_run,
-        budgets={"audio": GlobalBudget(total_budget) if total_budget > 0 else None},
+        budgets={
+            "audio": GlobalBudget(total_budget) if total_budget > 0 else None,
+            "chapters": GlobalBudget(chapters_budget) if chapters_budget > 0 else None,
+        },
     )
     pipeline = SourcePipeline(state_dir=state_dir, stages=default_stages(), ctx=ctx)
 
