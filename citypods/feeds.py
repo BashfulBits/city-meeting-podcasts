@@ -21,8 +21,17 @@ LINK_LABELS: dict[str, str] = {
 }
 
 
-def _link_label(key: str) -> str:
+def link_label(key: str) -> str:
     return LINK_LABELS.get(key, key.replace("_", " ").title())
+
+
+def ordered_links(links: dict | None) -> list[tuple[str, str]]:
+    """``(label, url)`` pairs for a links dict, in display order (known kinds first, then
+    alphabetical), with empties dropped. Shared by the feed notes and the city HTML page."""
+    links = {k: v for k, v in (links or {}).items() if v}
+    order = list(LINK_LABELS)
+    keys = sorted(links, key=lambda k: (order.index(k) if k in order else len(order), k))
+    return [(link_label(k), links[k]) for k in keys]
 
 
 def episode_notes_html(ep: Episode) -> str:
@@ -41,12 +50,10 @@ def episode_notes_html(ep: Episode) -> str:
         parts.append(f"<p>{escape(ep.summary)}</p>")
     elif ep.description:
         parts.append(ep.description)  # provider HTML, rendered as-is inside CDATA
-    links = ep.links or {}
-    if links:
-        order = list(LINK_LABELS)
-        ordered = sorted(links, key=lambda k: (order.index(k) if k in order else len(order), k))
+    pairs = ordered_links(ep.links)
+    if pairs:
         lis = "".join(
-            f'<li><a href="{escape(links[k])}">{escape(_link_label(k))}</a></li>' for k in ordered
+            f'<li><a href="{escape(url)}">{escape(label)}</a></li>' for label, url in pairs
         )
         parts.append(f"<p>Resources:</p><ul>{lis}</ul>")
     return "".join(parts).replace("]]>", "]]&gt;")
