@@ -23,7 +23,6 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from citypods.models import Episode
 from citypods.render import TEMPLATE_DIR
 
 DEFAULT_STATE_DIR = ".citypods-state"
@@ -61,29 +60,6 @@ def build_fingerprint(base_url: str) -> str:
     h.update(base_url.encode())
     h.update(_template_fingerprint().encode())
     return h.hexdigest()[:16]
-
-
-def episodes_content_hash(episodes: list[Episode], fingerprint: str) -> str:
-    """A stable hash of the rendered-relevant fields of the (already filtered+capped)
-    episode list. Includes ``hosted_audio_url`` so that when a queued episode finally gets
-    hosted on a later run the hash changes and the feed re-renders with the new enclosure.
-    """
-    payload = [
-        [
-            e.guid,
-            e.title,
-            e.published.isoformat(),
-            e.video_url,
-            e.audio_url,
-            e.hosted_audio_url,
-            e.duration,
-            e.body,
-            e.media_kind,
-        ]
-        for e in sorted(episodes, key=lambda e: e.guid)
-    ]
-    blob = json.dumps([fingerprint, payload], separators=(",", ":"), sort_keys=True)
-    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def load_etag_cache(state_dir: Path) -> dict:

@@ -13,8 +13,6 @@ blowing the Actions 6-hour job limit.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import subprocess
 import tempfile
 import threading
@@ -25,6 +23,7 @@ from typing import Protocol
 
 from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
+from citypods.records import audio_object_key, audio_spec_hash
 from citypods.storage.base import StorageBackend
 
 CONTENT_TYPE = "audio/mp4"
@@ -118,41 +117,10 @@ class MaterializeStats:
     errors: list[str] = field(default_factory=list)
 
 
-def _source_key(city: City) -> str:
-    """Stable id for a city's media source, ignoring the per-board ``body`` filter.
-
-    A combined feed and a per-board feed of the same city share this, so the same meeting
-    is hosted once and shared (dedup), not duplicated per slug.
-    """
-    src = {k: v for k, v in city.source.items() if k != "body"}
-    raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
-    return hashlib.sha1(raw.encode()).hexdigest()[:12]
-
-
-def _audio_key(city: City, guid: str) -> str:
-    digest = hashlib.sha1(f"{_source_key(city)}|{guid}".encode()).hexdigest()[:16]
-    return f"{city.provider}/{_source_key(city)}/{digest}.m4a"
-
-
 def _should_host(episode: Episode, city: City) -> bool:
     if episode.media_kind == "hls":
         return True
     return city.extract_audio  # direct source, opt-in extraction
-
-
-def manifest_path(output_dir: Path, slug: str) -> Path:
-    return Path(output_dir) / slug / "audio_manifest.json"
-
-
-def load_manifest(output_dir: Path, slug: str) -> dict:
-    path = manifest_path(output_dir, slug)
-    return json.loads(path.read_text()) if path.exists() else {}
-
-
-def save_manifest(output_dir: Path, slug: str, manifest: dict) -> None:
-    path = manifest_path(output_dir, slug)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
 
 def materialize_audio(
@@ -160,19 +128,20 @@ def materialize_audio(
     episodes: list[Episode],
     *,
     storage: StorageBackend,
-    manifest: dict,
     ffmpeg: FfmpegRunner,
     budget: int,
+    max_kbps: int,
     resolve_media_url: Callable[[Episode], str],
     global_budget: GlobalBudget | None = None,
 ) -> MaterializeStats:
-    """Populate ``episode.hosted_audio_url`` for episodes that need hosting.
+    """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
-    Mutates ``episodes`` (sets ``hosted_audio_url``) and ``manifest`` in place. A new host
-    is allowed only while the per-city ``budget`` AND the optional shared ``global_budget``
-    (total new hosts per run, across all cities) both have room; the rest are left unhosted
-    and picked up on a later run. This keeps "split into many board feeds" within the
-    Actions job time limit.
+    Mutates each episode in place (``audio_key`` / ``audio_spec_hash`` / ``hosted_audio_url``);
+    the caller persists these onto the record store. An episode is re-encoded only when its
+    audio spec changed (e.g. chapters added, bitrate policy bumped) — otherwise the existing
+    object (matched by content-addressed key, or carried over as ``"legacy"``) is reused for
+    free. New hosts are gated by the per-source ``budget`` and the shared ``global_budget`` so
+    a large backfill spreads over successive runs.
     """
     stats = MaterializeStats()
     remaining = budget
@@ -181,20 +150,17 @@ def materialize_audio(
         if not _should_host(ep, city):
             continue
 
-        cached = manifest.get(ep.guid)
-        if cached and cached.get("url"):
-            ep.hosted_audio_url = cached["url"]
+        spec = audio_spec_hash(ep, max_kbps=max_kbps)
+        # Already hosted with a matching spec (or carried over from the legacy manifest)?
+        if ep.hosted_audio_url and ep.audio_spec_hash in (spec, "legacy"):
             stats.reused += 1
             continue
 
-        if remaining <= 0:
-            stats.skipped_budget += 1
-            continue
-        if global_budget is not None and not global_budget.take():
+        if remaining <= 0 or (global_budget is not None and not global_budget.take()):
             stats.skipped_budget += 1
             continue
 
-        key = _audio_key(city, ep.guid)
+        key = audio_object_key(city, ep, spec)
         try:
             if storage.exists(key):
                 url = storage.public_url(key)
@@ -204,11 +170,12 @@ def materialize_audio(
                     source_url = resolve_media_url(ep)
                     ffmpeg.extract_audio(source_url, dest)
                     url = storage.put_file(key, dest, CONTENT_TYPE)
+            ep.audio_key = key
+            ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
-            manifest[ep.guid] = {"key": key, "url": url}
             stats.hosted += 1
             remaining -= 1
         except (subprocess.CalledProcessError, OSError, ProviderError) as exc:
-            stats.errors.append(f"{ep.guid}: {exc}")
+            stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
 
     return stats

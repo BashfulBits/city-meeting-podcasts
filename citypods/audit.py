@@ -101,14 +101,15 @@ def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Find
     return None
 
 
-def check_rehost_backlog(slug: str, episodes: list[Episode], manifest: dict) -> Finding | None:
+def check_rehost_backlog(slug: str, episodes: list[Episode]) -> Finding | None:
     """Flag only a *wholly* stalled audio pipeline: there are HLS episodes that need
     re-hosting but none have been hosted at all (transient per-run backlog is normal and
-    not flagged)."""
+    not flagged). Episodes carry ``hosted_audio_url`` from the record store via
+    ``merge_persisted``."""
     hls = [e for e in episodes if e.media_kind == "hls"]
     if not hls:
         return None
-    hosted = sum(1 for e in hls if manifest.get(e.guid, {}).get("url"))
+    hosted = sum(1 for e in hls if e.hosted_audio_url)
     if hosted == 0:
         return Finding(
             slug,
@@ -152,15 +153,23 @@ def audit_city(
     provider,
     now: datetime,
     min_meetings: int = 3,
-    manifest: dict | None = None,
+    records: dict | None = None,
     view_counts: list[int] | None = None,
     head: Callable[[str], int] | None = None,
 ) -> list[Finding]:
     """Fetch a city once and run every applicable check, returning all findings."""
+    from citypods.records import assign_uids, merge_persisted
+
     try:
         episodes = provider.fetch_episodes(city.source)
     except ProviderError as exc:
         return [Finding(city.slug, "unreachable", ERROR, str(exc))]
+
+    # Stable identity + persisted artifacts (hosted audio) so the backlog check can tell a
+    # stalled pipeline from a normal in-progress backfill.
+    assign_uids(city, episodes)
+    if records is not None:
+        merge_persisted(episodes, records)
 
     episodes = filter_by_body(episodes, city.source.get("body"))
     episodes.sort(key=lambda e: e.published, reverse=True)
@@ -178,8 +187,8 @@ def audit_city(
             cap = check_view_cap(city.slug, view_counts)
             if cap:
                 findings.append(cap)
-        if manifest is not None:
-            backlog = check_rehost_backlog(city.slug, episodes, manifest)
+        if records is not None:
+            backlog = check_rehost_backlog(city.slug, episodes)
             if backlog:
                 findings.append(backlog)
         if head is not None:
@@ -213,9 +222,9 @@ def audit_all(
     now: datetime | None = None,
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
-    audio manifest are gathered per provider so the provider-specific checks apply."""
-    from citypods.media import load_manifest
+    per-source record store are gathered so the provider-specific checks apply."""
     from citypods.providers import get_provider
+    from citypods.records import load_records, source_key
     from citypods.state import resolve_state_dir
 
     now = now or datetime.now(UTC)
@@ -232,14 +241,14 @@ def audit_all(
                 view_counts = provider.fetch_view_counts(city.source)
             except ProviderError:
                 view_counts = None  # an unreachable source is caught by audit_city's fetch
-        manifest = load_manifest(state_dir, city.slug)
+        records = load_records(state_dir, source_key(city))
         findings.extend(
             audit_city(
                 city,
                 provider=provider,
                 now=now,
                 min_meetings=min_meetings,
-                manifest=manifest,
+                records=records,
                 view_counts=view_counts,
                 head=head,
             )

@@ -1,4 +1,12 @@
-"""Build orchestration: change detection, concurrency, and writing docs/."""
+"""Build orchestration: source-level enrichment, per-feed rendering, and writing docs/.
+
+Two phases per build:
+  1. **Per source** (once, shared across a city's combined + per-board feeds): fetch episodes,
+     assign stable uids, merge persisted records, (re-)host audio content-addressed by spec,
+     and persist the record store. See citypods/records.py.
+  2. **Per feed/slug**: filter the source's episodes to one body, cap, and — unless the
+     feed_content_hash is unchanged and outputs already exist — render feeds/page/artwork.
+"""
 
 from __future__ import annotations
 
@@ -11,25 +19,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from citypods.artwork import render_cover
-from citypods.bodies import filter_by_body
+from citypods.bodies import body_key, canonical_body, filter_by_body
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss, has_items
-from citypods.media import (
-    CommandFfmpeg,
-    FfmpegRunner,
-    GlobalBudget,
-    _source_key,
-    load_manifest,
-    materialize_audio,
-    save_manifest,
-)
-from citypods.models import City
+from citypods.media import CommandFfmpeg, FfmpegRunner, GlobalBudget, materialize_audio
+from citypods.models import City, Episode
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
+from citypods.records import (
+    assign_uids,
+    episode_to_record,
+    feed_content_hash,
+    load_records,
+    merge_persisted,
+    migrate_legacy_manifests,
+    save_records,
+    source_key,
+)
 from citypods.site import render_city_page, render_index
 from citypods.state import (
     build_fingerprint,
-    episodes_content_hash,
     load_etag_cache,
     resolve_state_dir,
     save_etag_cache,
@@ -38,26 +47,94 @@ from citypods.storage import make_storage
 from citypods.storage.base import StorageBackend
 
 
-class FetchCache:
-    """Fetch each distinct source once per build and share it across its per-board feeds.
+def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode]:
+    """The subset worth hosting: the most-recent ``max_per_body`` per body. Every per-board
+    feed shows at most that many of its body, and the combined feed is a subset of the union,
+    so this hosts exactly what some feed can display — never the deep archive."""
+    by_body: dict[str, list[Episode]] = collections.defaultdict(list)
+    for ep in episodes:
+        by_body[body_key(canonical_body(ep.body or ""))].append(ep)
+    out: list[Episode] = []
+    for eps in by_body.values():
+        eps.sort(key=lambda e: e.published, reverse=True)
+        out.extend(eps[:max_per_body])
+    return out
 
-    Without this, N per-board feeds of one city would each re-fetch the same (often large)
-    source page concurrently and hammer/time-out the server. Fetches are serialized per
-    source key; different sources still fetch in parallel.
+
+class SourcePipeline:
+    """Fetch + enrich each distinct source once per build and share the result across all of
+    its per-board feeds. Work is serialized per source key (so N board feeds don't re-fetch /
+    re-materialize the same source concurrently); different sources still run in parallel.
     """
 
-    def __init__(self):
-        self._data: dict[str, list] = {}
+    def __init__(
+        self,
+        *,
+        state_dir: Path,
+        storage: StorageBackend | None,
+        ffmpeg: FfmpegRunner,
+        max_kbps: int,
+        per_source_budget: int,
+        global_budget: GlobalBudget | None,
+        dry_run: bool,
+    ):
+        self.state_dir = state_dir
+        self.storage = storage
+        self.ffmpeg = ffmpeg
+        self.max_kbps = max_kbps
+        self.per_source_budget = per_source_budget
+        self.global_budget = global_budget
+        self.dry_run = dry_run
+        self._cache: dict[str, list[Episode]] = {}
+        self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
 
-    def get_or_fetch(self, key: str, fetch):
+    def enrich(self, city: City) -> list[Episode]:
+        key = source_key(city)
         with self._guard:
             lock = self._locks[key]
         with lock:
-            if key not in self._data:
-                self._data[key] = fetch()
-            return self._data[key]
+            if key in self._cache:
+                return self._cache[key]
+            provider = get_provider(city.provider)
+            episodes = provider.fetch_episodes(city.source)  # ProviderError propagates
+            assign_uids(city, episodes)
+            merge_persisted(episodes, load_records(self.state_dir, key))
+            seeded = migrate_legacy_manifests(self.state_dir, episodes)
+
+            note = ""
+            if not self.dry_run and self.storage is not None:
+                stats = materialize_audio(
+                    city,
+                    _materialize_set(episodes, city.max_episodes),
+                    storage=self.storage,
+                    ffmpeg=self.ffmpeg,
+                    budget=self.per_source_budget,
+                    max_kbps=self.max_kbps,
+                    resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
+                    global_budget=self.global_budget,
+                )
+                if stats.hosted or stats.reused or stats.skipped_budget:
+                    note = f"audio {stats.hosted}+{stats.reused} hosted"
+                    if stats.skipped_budget:
+                        note += f", {stats.skipped_budget} queued"
+                if seeded:
+                    note += f", {seeded} legacy"
+                if stats.errors:
+                    note += f", {len(stats.errors)} media errors"
+            if not self.dry_run:
+                save_records(
+                    self.state_dir,
+                    key,
+                    {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid},
+                )
+            self._cache[key] = episodes
+            self._notes[key] = note
+            return episodes
+
+    def note(self, city: City) -> str:
+        return self._notes.get(source_key(city), "")
 
 
 @dataclass
@@ -75,14 +152,6 @@ def _city_outputs_exist(output_dir: Path, slug: str) -> bool:
     return (output_dir / slug / "audio_feed.xml").exists()
 
 
-def _read_meta(output_dir: Path, slug: str) -> dict:
-    path = output_dir / slug / "meta.json"
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
-
-
 def _process_city(
     city: City,
     base_url: str,
@@ -90,105 +159,41 @@ def _process_city(
     cache: dict,
     request_delay: float,
     dry_run: bool,
-    storage: StorageBackend | None,
-    ffmpeg: FfmpegRunner,
-    budget: int,
-    global_budget: GlobalBudget | None,
-    fetch_cache: FetchCache,
+    pipeline: SourcePipeline,
     site_config: dict,
-    state_dir: Path,
     fingerprint: str,
 ) -> tuple[CityResult, dict | None]:
     """Returns the result and the new cache entry (or None to leave unchanged)."""
     if request_delay:
         time.sleep(request_delay)
-    provider = get_provider(city.provider)
 
     try:
-        token = provider.detect_change(city.source)
+        episodes = pipeline.enrich(city)
     except ProviderError as exc:
         return CityResult(city.slug, "error", detail=str(exc)), None
 
-    cache_entry = cache.get(city.slug)
-    # Fast path: a provider that supplies an HTTP validator (ETag/Last-Modified) and whose
-    # token is unchanged lets us skip the fetch entirely. Granicus/Swagit have none, so they
-    # fall through to the content-hash path below (which still skips the expensive
-    # render/materialize work, just not the fetch).
-    if (
-        token is not None
-        and (token.etag or token.last_modified)
-        and cache_entry is not None
-        and cache_entry.get("etag") == token.etag
-        and cache_entry.get("last_modified") == token.last_modified
-        and _city_outputs_exist(output_dir, city.slug)
-    ):
-        meta = _read_meta(output_dir, city.slug)
-        return (
-            CityResult(
-                city.slug,
-                "skipped",
-                episode_count=meta.get("episodes", 0),
-                has_audio=meta.get("has_audio", True),
-                has_video=meta.get("has_video", False),
-            ),
-            cache_entry,  # keep existing entry (preserves content_hash)
-        )
-
-    try:
-        # Shared across all per-board feeds of this source (fetched once per build).
-        cached = fetch_cache.get_or_fetch(
-            _source_key(city), lambda: provider.fetch_episodes(city.source)
-        )
-        episodes = list(cached)
-    except ProviderError as exc:
-        return CityResult(city.slug, "error", detail=str(exc)), None
-
-    # Filter a mixed feed to one body/committee (per-board feeds), then cap to the most
-    # recent max_episodes BEFORE materialization (a feed never shows more, and re-hosting
-    # the deep archive is expensive).
+    # Filter the shared source episodes to this feed's body, then cap to the most-recent
+    # max_episodes (a feed never shows more).
     fetched = len(episodes)
-    episodes = filter_by_body(episodes, city.source.get("body"))
-    episodes.sort(key=lambda e: e.published, reverse=True)
-    episodes = episodes[: city.max_episodes]
+    feed_eps = filter_by_body(episodes, city.source.get("body"))
+    feed_eps.sort(key=lambda e: e.published, reverse=True)
+    feed_eps = feed_eps[: city.max_episodes]
     detail = f"{fetched} fetched"
-    if fetched > len(episodes):
-        detail += f", {len(episodes)} after filter/cap"
+    if fetched > len(feed_eps):
+        detail += f", {len(feed_eps)} after filter/cap"
+    note = pipeline.note(city)
+    if note:
+        detail += f", {note}"
 
-    # Materialize hosted audio (HLS providers always; direct providers when extract_audio).
-    # Skipped in dry-run (uploads are writes) and when no storage backend is available.
-    if not dry_run and storage is not None:
-        manifest = load_manifest(state_dir, city.slug)
-        stats = materialize_audio(
-            city,
-            episodes,
-            storage=storage,
-            manifest=manifest,
-            ffmpeg=ffmpeg,
-            budget=budget,
-            resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
-            global_budget=global_budget,
-        )
-        save_manifest(state_dir, city.slug, manifest)
-        if stats.hosted or stats.reused or stats.skipped_budget:
-            detail += f", audio {stats.hosted}+{stats.reused} hosted"
-            if stats.skipped_budget:
-                detail += f", {stats.skipped_budget} queued"
-        if stats.errors:
-            detail += f", {len(stats.errors)} media errors"
+    has_audio = has_items(feed_eps, "audio")
+    has_video = has_items(feed_eps, "video")
 
-    has_audio = has_items(episodes, "audio")
-    has_video = has_items(episodes, "video")
-
-    # Content-hash change detection: now that audio is materialized (so hosted URLs are
-    # final), hash the render-relevant fields + build fingerprint. If unchanged and the
-    # outputs already exist, skip the (re-)render/write entirely. This is what makes the
-    # build incremental for Granicus/Swagit, which expose no HTTP validator.
-    content_hash = episodes_content_hash(episodes, fingerprint)
-    new_entry = {
-        "etag": token.etag if token else None,
-        "last_modified": token.last_modified if token else None,
-        "content_hash": content_hash,
-    }
+    # feed_content_hash drives the re-render skip: hash the render-relevant fields + build
+    # fingerprint. Unchanged + outputs present -> skip the (re-)render entirely. (Audio is a
+    # separate concern, gated by audio_spec_hash inside materialize_audio.)
+    content_hash = feed_content_hash(feed_eps, fingerprint)
+    new_entry = {"content_hash": content_hash}
+    cache_entry = cache.get(city.slug)
     if (
         not dry_run
         and cache_entry is not None
@@ -199,7 +204,7 @@ def _process_city(
             CityResult(
                 city.slug,
                 "skipped",
-                episode_count=len(episodes),
+                episode_count=len(feed_eps),
                 detail=detail + ", unchanged",
                 has_audio=has_audio,
                 has_video=has_video,
@@ -211,9 +216,9 @@ def _process_city(
         city_dir = output_dir / city.slug
         city_dir.mkdir(parents=True, exist_ok=True)
         if has_audio:
-            (city_dir / "audio_feed.xml").write_text(build_rss(city, episodes, "audio", base_url))
+            (city_dir / "audio_feed.xml").write_text(build_rss(city, feed_eps, "audio", base_url))
         if has_video:
-            (city_dir / "video_feed.xml").write_text(build_rss(city, episodes, "video", base_url))
+            (city_dir / "video_feed.xml").write_text(build_rss(city, feed_eps, "video", base_url))
         else:
             (city_dir / "video_feed.xml").unlink(missing_ok=True)
         # Cover art: never overwrite a hand-committed artwork.jpg. Wordmark = the
@@ -226,7 +231,7 @@ def _process_city(
             render_city_page(
                 city,
                 base_url,
-                episodes,
+                feed_eps,
                 site_config=site_config,
                 has_audio=has_audio,
                 has_video=has_video,
@@ -236,7 +241,7 @@ def _process_city(
             json.dumps(
                 {
                     "slug": city.slug,
-                    "episodes": len(episodes),
+                    "episodes": len(feed_eps),
                     "has_audio": has_audio,
                     "has_video": has_video,
                 },
@@ -249,7 +254,7 @@ def _process_city(
         CityResult(
             city.slug,
             "built",
-            episode_count=len(episodes),
+            episode_count=len(feed_eps),
             detail=detail,
             has_audio=has_audio,
             has_video=has_video,
@@ -285,12 +290,21 @@ def build(
     request_delay = float(site_config.get("request_delay_seconds", 0.1))
     max_workers = int(site_config.get("max_workers", 20))
     defaults = site_config.get("defaults", {})
-    budget = int(defaults.get("materialize_budget_per_city", 5))
+    per_source_budget = int(defaults.get("materialize_budget_per_city", 5))
     total_budget = int(defaults.get("materialize_budget_per_run", 25))
     global_budget = GlobalBudget(total_budget) if total_budget > 0 else None
+    max_kbps = int(defaults.get("audio_max_kbps", 96))
     storage = make_storage(site_config, base_url, output_dir)
-    ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=int(defaults.get("audio_max_kbps", 96)))
-    fetch_cache = FetchCache()
+    ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
+    pipeline = SourcePipeline(
+        state_dir=state_dir,
+        storage=storage,
+        ffmpeg=ffmpeg,
+        max_kbps=max_kbps,
+        per_source_budget=per_source_budget,
+        global_budget=global_budget,
+        dry_run=dry_run,
+    )
 
     results: list[CityResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -303,13 +317,8 @@ def build(
                 cache,
                 request_delay,
                 dry_run,
-                storage,
-                ffmpeg,
-                budget,
-                global_budget,
-                fetch_cache,
+                pipeline,
                 site_config,
-                state_dir,
                 fingerprint,
             )
             for c in cities

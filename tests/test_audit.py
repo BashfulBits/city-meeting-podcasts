@@ -63,11 +63,12 @@ def test_check_view_cap():
 
 def test_check_rehost_backlog_only_when_fully_stalled():
     hls = [_ep(1, "g1", kind="hls"), _ep(8, "g2", kind="hls")]
-    assert check_rehost_backlog("s", hls, {}).check == "rehost-backlog"
-    # Some progress -> not flagged.
-    assert check_rehost_backlog("s", hls, {"g1": {"url": "https://cdn/a.m4a"}}) is None
+    assert check_rehost_backlog("s", hls).check == "rehost-backlog"
+    # Some progress (one hosted) -> not flagged.
+    hls[0].hosted_audio_url = "https://cdn/a.m4a"
+    assert check_rehost_backlog("s", hls) is None
     # No HLS episodes -> never flagged.
-    assert check_rehost_backlog("s", [_ep(1)], {}) is None
+    assert check_rehost_backlog("s", [_ep(1)]) is None
 
 
 def test_check_enclosures_uses_injected_head():
