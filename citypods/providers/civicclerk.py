@@ -35,11 +35,44 @@ def _parse_dt(raw: str) -> datetime | None:
         return None
 
 
-def parse_events(content: bytes, category_id: int | None = None) -> list[Episode]:
+# CivicClerk "published file" types -> our normalized link keys. Each published file has a
+# stable ``fileId`` served by the OData file-stream endpoint (verified live), so we can link
+# to the agenda/packet/minutes/transcript PDFs that back every meeting.
+_FILE_TYPE_LINKS = {
+    "Agenda": "agenda",
+    "Agenda Packet": "agenda_packet",
+    "Minutes": "minutes",
+    "Transcript": "transcript",
+}
+
+
+def _file_stream_url(api_base: str, file_id: int) -> str:
+    base = api_base.rstrip("/")
+    return f"{base}/v1/Meetings/GetMeetingFileStream(fileId={file_id},plainText=false)"
+
+
+def _published_links(event: dict, api_base: str) -> dict:
+    """Map a CivicClerk event's ``publishedFiles`` to resource links (agenda, packet,
+    minutes, transcript). Needs ``api_base`` to build absolute file-stream URLs."""
+    if not api_base:
+        return {}
+    links: dict[str, str] = {}
+    for f in event.get("publishedFiles") or []:
+        key = _FILE_TYPE_LINKS.get((f.get("type") or "").strip())
+        fid = f.get("fileId")
+        if key and fid and key not in links:  # first of each type wins (handles "REVISED" dupes)
+            links[key] = _file_stream_url(api_base, fid)
+    return links
+
+
+def parse_events(
+    content: bytes, api_base: str = "", category_id: int | None = None
+) -> list[Episode]:
     """Parse a CivicClerk OData Events payload into direct-MP4 episodes.
 
     Includes only published events whose ``mediaSourcePathMp4`` is an absolute URL
-    (recorded meetings); relative/streaming-only items are skipped. Pure (no network).
+    (recorded meetings); relative/streaming-only items are skipped. ``api_base`` (when given)
+    is used to build absolute agenda/minutes/transcript file links. Pure (no network).
     """
     try:
         data = json.loads(content)
@@ -67,6 +100,7 @@ def parse_events(content: bytes, category_id: int | None = None) -> list[Episode
                 description=e.get("eventDescription") or "",
                 media_kind="direct",
                 body=(e.get("categoryName") or e.get("meetingTypeName") or "").strip() or None,
+                links=_published_links(e, api_base),
             )
         )
     return episodes
@@ -100,7 +134,7 @@ class CivicClerkProvider:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
-        return parse_events(resp.content, category_id=source.get("category_id"))
+        return parse_events(resp.content, api_base=base, category_id=source.get("category_id"))
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
         return episode.video_url  # direct MP4

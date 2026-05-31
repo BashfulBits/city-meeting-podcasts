@@ -56,6 +56,9 @@ def parse_list(content: bytes, origin: str) -> list[Episode]:
                 video_url=f"{origin}/videos/{vid}/download",
                 media_kind="hls",
                 body=body_name,
+                # video_url is the expiring /download redirect; the canonical human watch
+                # page is /videos/{id}, so link there rather than the download endpoint.
+                links={"canonical_video": f"{origin}/videos/{vid}"},
             )
         )
     return episodes

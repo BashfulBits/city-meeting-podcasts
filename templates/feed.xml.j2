@@ -28,6 +28,9 @@
     <item>
       <title>{{ item.ep.title }}</title>
       <description>{{ item.ep.description }}</description>
+      {% if item.notes_html %}
+      <content:encoded><![CDATA[{{ item.notes_html | safe }}]]></content:encoded>
+      {% endif %}
       <pubDate>{{ item.ep.published | rfc822 }}</pubDate>
       <guid isPermaLink="false">{{ item.ep.uid or item.ep.guid }}</guid>
       <enclosure url="{{ item.enclosure_url }}" type="{{ mime }}" length="{{ enclosure_length }}"/>

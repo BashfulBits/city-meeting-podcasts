@@ -112,10 +112,48 @@ class AudioStage:
         return StageStats(self.name, ms.hosted, ms.reused, ms.skipped_budget, ms.errors)
 
 
+class LinksStage:
+    """Attach resource links (canonical video, agenda, minutes, ...) to each episode.
+
+    Feed-only (runs after ``audio``): links never affect the audio bytes, only the rendered
+    show notes, so a change re-renders via ``feed_content_hash`` but never re-encodes. The
+    link data is already in hand from the provider fetch, so this stage costs no network and
+    needs no budget — it normalizes what providers set on ``ep.links``, fills a
+    ``canonical_video`` default, and is the seam where future link enrichers (e.g. resolving
+    agenda PDFs, which *would* cost a request) plug in with their own budget.
+    """
+
+    name = "links"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        stats = StageStats(self.name)
+        episode_links = getattr(provider, "episode_links", None)
+        for ep in _materialize_set(episodes, city.max_episodes):
+            links = dict(ep.links or {})
+            if episode_links is not None:
+                try:
+                    links.update(episode_links(ep, city.source))
+                except Exception as exc:  # one bad episode must not fail the whole source
+                    stats.errors.append(f"{ep.uid}: {exc}")
+            # A canonical video reference is always available: the provider's watch-page URL,
+            # or the direct media URL when that's all there is.
+            links.setdefault("canonical_video", ep.video_url)
+            links = {k: v for k, v in links.items() if v}
+            if links != (ep.links or {}):
+                ep.links = links
+                stats.ran += 1
+            else:
+                stats.reused += 1
+        return stats
+
+
 def default_stages() -> list[EnrichmentStage]:
     """Ordered: audio-affecting stages (e.g. a future ``chapters`` stage) must precede
-    ``audio``; feed-only stages (``summary``, ``links``) would follow it."""
-    return [AudioStage()]
+    ``audio``; feed-only stages (``summary``, ``links``) follow it."""
+    return [AudioStage(), LinksStage()]
 
 
 def run_stages(

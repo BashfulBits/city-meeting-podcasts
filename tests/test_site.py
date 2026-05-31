@@ -60,3 +60,24 @@ def test_index_has_noscript_fallback_listing_all_feeds():
     noscript = html[html.index("<noscript>") : html.index("</noscript>")]
     assert "City of A, TX" in noscript
     assert "https://e.test/a-tx-council/" in noscript
+
+
+def test_city_page_renders_episode_resource_links():
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.site import render_city_page
+
+    ep = Episode(
+        guid="g",
+        title="City Council – May 1",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://cdn/x.mp4",
+        media_kind="direct",
+        links={"canonical_video": "https://watch/page", "agenda": "https://agenda.pdf"},
+    )
+    html = render_city_page(_city("x-tx", "City of X", "X — Council"), "https://e.test", [ep])
+    # agenda label appears before the video link (LINK_LABELS order) and both are linked
+    assert '<a href="https://agenda.pdf">Agenda</a>' in html
+    assert '<a href="https://watch/page">Watch the video</a>' in html
+    assert html.index("Agenda</a>") < html.index("Watch the video</a>")

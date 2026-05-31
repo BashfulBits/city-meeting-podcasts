@@ -2,12 +2,63 @@
 
 from __future__ import annotations
 
+from html import escape
+
 from citypods.models import City, Episode
 from citypods.render import get_env
 
 # enclosure length is intentionally 0: players re-check size at download time, and
 # a HEAD per episode would be prohibitively expensive at scale. See PLAN.md.
 ENCLOSURE_LENGTH = "0"
+
+# Human labels + display order for resource links (see LinksStage). Keys not listed here
+# still render, after these, with a title-cased fallback label.
+LINK_LABELS: dict[str, str] = {
+    "agenda": "Agenda",
+    "agenda_packet": "Agenda packet",
+    "minutes": "Minutes",
+    "transcript": "Transcript",
+    "documents": "Meeting documents",
+    "canonical_video": "Watch the video",
+}
+
+
+def link_label(key: str) -> str:
+    return LINK_LABELS.get(key, key.replace("_", " ").title())
+
+
+def ordered_links(links: dict | None) -> list[tuple[str, str]]:
+    """``(label, url)`` pairs for a links dict, in display order (known kinds first, then
+    alphabetical), with empties dropped. Shared by the feed notes and the city HTML page."""
+    links = {k: v for k, v in (links or {}).items() if v}
+    order = list(LINK_LABELS)
+    keys = sorted(links, key=lambda k: (order.index(k) if k in order else len(order), k))
+    return [(link_label(k), links[k]) for k in keys]
+
+
+def episode_notes_html(ep: Episode) -> str:
+    """Rich show-notes HTML (summary/description + a resource-link list) for
+    ``content:encoded``. Returns "" when there's nothing richer than the plain ``<description>``
+    (no summary and no links), so those feeds stay clean.
+
+    Body text: our own ``summary`` is plain text and is HTML-escaped; a provider ``description``
+    is often already HTML (e.g. Granicus emits ``<p>...<a>``), so it's emitted raw. Everything
+    lives inside a CDATA section in the template, so the only sequence we must neutralize is the
+    CDATA terminator ``]]>``."""
+    if not ep.summary and not (ep.links or {}):
+        return ""
+    parts: list[str] = []
+    if ep.summary:
+        parts.append(f"<p>{escape(ep.summary)}</p>")
+    elif ep.description:
+        parts.append(ep.description)  # provider HTML, rendered as-is inside CDATA
+    pairs = ordered_links(ep.links)
+    if pairs:
+        lis = "".join(
+            f'<li><a href="{escape(url)}">{escape(label)}</a></li>' for label, url in pairs
+        )
+        parts.append(f"<p>Resources:</p><ul>{lis}</ul>")
+    return "".join(parts).replace("]]>", "]]&gt;")
 
 
 def _ordered(episodes: list[Episode], max_episodes: int) -> list[Episode]:
@@ -57,7 +108,7 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
         url = enclosure_url(ep, kind)
         if url is None:
             continue
-        items.append({"ep": ep, "enclosure_url": url})
+        items.append({"ep": ep, "enclosure_url": url, "notes_html": episode_notes_html(ep)})
 
     template = get_env().get_template("feed.xml.j2")
     return template.render(

@@ -30,6 +30,8 @@ def test_parse_sets_body_and_media():
     assert ep.body == "City Council Agenda Meetings"
     assert ep.media_kind == "hls"
     assert ep.video_url == f"{ORIGIN}/videos/100/download"
+    # canonical_video points at the human watch page, not the expiring download endpoint
+    assert ep.links == {"canonical_video": f"{ORIGIN}/videos/100"}
     assert ep.published.year == 2026 and ep.published.month == 5
 
 

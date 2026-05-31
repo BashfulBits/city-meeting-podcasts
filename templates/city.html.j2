@@ -31,11 +31,16 @@
          style="width:100%;margin:.4rem 0 .8rem;display:none;"></audio>
   <ul style="list-style:none;margin:0;padding:0;">
     {% for e in episodes %}
-    <li style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--border);">
+    <li style="display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--border);">
       <button class="btn play" data-src="{{ e.audio }}" data-title="{{ e.title }}"
               style="margin:0;padding:.25rem .6rem;">▶</button>
       <span style="flex:1;">{{ e.title }}</span>
       {% if e.duration %}<span class="muted" style="font-size:.85rem;">{{ e.duration }}</span>{% endif %}
+      {% if e.links %}
+      <span class="muted" style="flex-basis:100%;font-size:.85rem;padding-left:2.4rem;">
+        {% for label, url in e.links %}<a href="{{ url }}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+      </span>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
