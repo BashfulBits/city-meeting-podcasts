@@ -23,6 +23,7 @@ automatically (``audio_spec_hash`` -> re-encode, ``feed_content_hash`` -> re-ren
 from __future__ import annotations
 
 import collections
+import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -63,8 +64,11 @@ class StageStats:
     name: str
     ran: int = 0  # newly produced this run
     reused: int = 0  # already up to date
-    skipped: int = 0  # deferred to a later run (budget)
+    skipped: int = 0  # deferred to a later run (budget) — i.e. the remaining backlog for this stage
     errors: list[str] = field(default_factory=list)
+    # Cost accounting (for the resource projection / run history). Additive; default 0.
+    seconds: float = 0.0  # wall time spent in this stage this run (set by run_stages)
+    bytes_written: int = 0  # object bytes uploaded by this stage this run
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -109,7 +113,14 @@ class AudioStage:
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
             global_budget=ctx.budgets.get(self.name),
         )
-        return StageStats(self.name, ms.hosted, ms.reused, ms.skipped_budget, ms.errors)
+        return StageStats(
+            self.name,
+            ms.hosted,
+            ms.reused,
+            ms.skipped_budget,
+            ms.errors,
+            bytes_written=ms.bytes_written,
+        )
 
 
 class ChaptersStage:
@@ -211,4 +222,10 @@ def run_stages(
     stages: list[EnrichmentStage],
     ctx: StageContext,
 ) -> list[StageStats]:
-    return [stage.process(provider, city, episodes, ctx) for stage in stages]
+    out: list[StageStats] = []
+    for stage in stages:
+        t0 = time.perf_counter()
+        stat = stage.process(provider, city, episodes, ctx)
+        stat.seconds = time.perf_counter() - t0
+        out.append(stat)
+    return out

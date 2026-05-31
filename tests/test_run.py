@@ -184,3 +184,21 @@ def test_write_chapter_sidecars_writes_and_prunes(tmp_path):
     assert doc["chapters"] == [{"startTime": 0, "title": "Intro"}]
     assert not (city_dir / "chapters" / "u2.json").exists()  # no chapters -> no file
     assert not (city_dir / "chapters" / "stale.json").exists()  # pruned
+
+
+def test_build_writes_run_history_and_summary(tmp_path, fake_provider):
+    import json as _json
+
+    cities = _setup(tmp_path)
+    _build(tmp_path, cities)
+    state = tmp_path / "state"
+    summary = _json.loads((state / "run_summary.json").read_text())
+    assert summary["cities"] >= 1
+    assert "stages" in summary and "materialized" in summary
+    hist = (state / "run_history.jsonl").read_text().strip().splitlines()
+    assert len(hist) == 1
+    # a second build appends, not overwrites
+    _build(tmp_path, cities)
+    hist2 = (state / "run_history.jsonl").read_text().strip().splitlines()
+    assert len(hist2) == 2
+    assert all(_json.loads(line)["schema_version"] for line in hist2)

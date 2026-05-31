@@ -25,7 +25,7 @@ from pathlib import Path
 
 STATE_PREFIX = "state"
 # JSON-typed; everything we persist is text. Kept conservative so a stray binary never syncs.
-_SUFFIXES = {".json"}
+_SUFFIXES = {".json", ".jsonl"}
 
 
 def _supported(storage) -> bool:
