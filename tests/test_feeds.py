@@ -53,3 +53,40 @@ def test_xml_escaping(sample_city, sample_episodes):
 def test_invalid_kind_raises(sample_city, sample_episodes):
     with pytest.raises(ValueError):
         build_rss(sample_city, sample_episodes, "transcript", "https://x")
+
+
+def test_episode_notes_html_renders_links_and_summary():
+    from datetime import UTC, datetime
+
+    from citypods.feeds import episode_notes_html
+    from citypods.models import Episode
+
+    ep = Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="v",
+        summary="A short recap.",
+        links={"canonical_video": "https://watch", "agenda": "https://agenda.pdf"},
+    )
+    html = episode_notes_html(ep)
+    assert "<p>A short recap.</p>" in html
+    # agenda is ordered before canonical_video per LINK_LABELS
+    assert html.index("Agenda") < html.index("Watch the video")
+    assert '<a href="https://agenda.pdf">Agenda</a>' in html
+
+
+def test_episode_notes_html_empty_when_no_enrichment():
+    from datetime import UTC, datetime
+
+    from citypods.feeds import episode_notes_html
+    from citypods.models import Episode
+
+    ep = Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="v",
+        description="plain",
+    )
+    assert episode_notes_html(ep) == ""

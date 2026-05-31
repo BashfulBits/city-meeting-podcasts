@@ -126,7 +126,8 @@ def parse_feed(content: bytes) -> list[Episode]:
         if not video_url:
             continue  # skip items without a media URL
         title = _text(item, "title") or "Untitled meeting"
-        guid = _text(item, "guid") or _text(item, "link") or video_url
+        link = _text(item, "link")  # Granicus MediaPlayer watch page for this clip
+        guid = _text(item, "guid") or link or video_url
         pub = _text(item, "pubDate")
         try:
             published = parsedate_to_datetime(pub) if pub else None
@@ -143,6 +144,7 @@ def parse_feed(content: bytes) -> list[Episode]:
                 description=_text(item, "description"),
                 duration=_parse_duration(_itunes_duration(item)),
                 body=granicus_body(title),
+                links={"canonical_video": link} if link else {},
             )
         )
     return episodes

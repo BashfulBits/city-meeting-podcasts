@@ -7,7 +7,7 @@ from pathlib import Path
 
 from citypods.media import GlobalBudget
 from citypods.models import City, Episode
-from citypods.stages import AudioStage, StageContext, default_stages, run_stages
+from citypods.stages import AudioStage, LinksStage, StageContext, default_stages, run_stages
 from citypods.storage.local import LocalStorage
 
 
@@ -88,6 +88,34 @@ def test_audio_stage_noop_without_storage(tmp_path):
 def test_run_stages_returns_stats_per_stage(tmp_path):
     eps = [_ep("g1")]
     stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
-    assert [s.name for s in stats] == ["audio"]
+    assert [s.name for s in stats] == ["audio", "links"]
     assert stats[0].ran == 1
     assert "audio" in stats[0].note()
+    # links runs after audio (feed-only) and sets a canonical_video default on each episode.
+    assert stats[1].name == "links"
+    assert eps[0].links.get("canonical_video")
+
+
+def test_links_stage_defaults_canonical_video_and_is_idempotent(tmp_path):
+    eps = [_ep("g1")]
+    s1 = LinksStage().process(FakeProvider(), _city(), eps, _ctx(tmp_path))
+    assert s1.ran == 1 and s1.reused == 0
+    assert eps[0].links == {"canonical_video": "https://src/x.m3u8"}
+    # Re-running with the link already present is a no-op (reused, not re-written).
+    s2 = LinksStage().process(FakeProvider(), _city(), eps, _ctx(tmp_path))
+    assert s2.ran == 0 and s2.reused == 1
+
+
+def test_links_stage_merges_provider_supplied_links(tmp_path):
+    class P(FakeProvider):
+        def episode_links(self, ep, source):
+            return {"agenda": "https://docs/agenda.pdf", "minutes": ""}
+
+    eps = [_ep("g1")]
+    eps[0].links = {"canonical_video": "https://watch/page"}
+    LinksStage().process(P(), _city(), eps, _ctx(tmp_path))
+    # provider agenda merged, empty minutes dropped, existing canonical_video preserved
+    assert eps[0].links == {
+        "canonical_video": "https://watch/page",
+        "agenda": "https://docs/agenda.pdf",
+    }
