@@ -15,7 +15,9 @@ ENCLOSURE_LENGTH = "0"
 # still render, after these, with a title-cased fallback label.
 LINK_LABELS: dict[str, str] = {
     "agenda": "Agenda",
+    "agenda_packet": "Agenda packet",
     "minutes": "Minutes",
+    "transcript": "Transcript",
     "documents": "Meeting documents",
     "canonical_video": "Watch the video",
 }

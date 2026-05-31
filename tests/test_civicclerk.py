@@ -89,3 +89,21 @@ def test_recorded_fixture_parses():
     eps = parse_events(fixture_bytes("civicclerk", "travis-county-tx"), category_id=26)
     assert eps
     assert all(e.media_kind == "direct" and e.video_url.startswith("http") for e in eps)
+
+
+def test_published_files_become_agenda_links():
+    base = "https://traviscotx.api.civicclerk.com"
+    eps = parse_events(
+        fixture_bytes("civicclerk", "travis-county-tx"), api_base=base, category_id=26
+    )
+    with_agenda = [e for e in eps if "agenda" in e.links]
+    assert with_agenda, "expected at least one meeting with a published agenda"
+    ep = with_agenda[0]
+    assert ep.links["agenda"].startswith(f"{base}/v1/Meetings/GetMeetingFileStream(fileId=")
+    # known kinds mapped from publishedFiles types
+    assert set(ep.links) & {"agenda", "agenda_packet", "minutes", "transcript"}
+
+
+def test_no_links_without_api_base():
+    eps = parse_events(fixture_bytes("civicclerk", "travis-county-tx"), category_id=26)
+    assert all(e.links == {} for e in eps)  # api_base omitted -> no file links built
