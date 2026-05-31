@@ -36,7 +36,12 @@ from citypods.records import (
     save_records,
     source_key,
 )
-from citypods.site import render_city_page, render_index
+from citypods.site import (
+    render_city_page,
+    render_index,
+    render_redirect_feed,
+    render_redirect_page,
+)
 from citypods.stages import StageContext, default_stages, run_stages
 from citypods.state import (
     build_fingerprint,
@@ -294,6 +299,7 @@ def build(
         (output_dir / "index.html").write_text(
             render_index(all_cities, site_config, base_url, feed_info)
         )
+        _write_aliases(output_dir, base_url, all_cities, feed_info)
         _write_cname(output_dir, site_config)
         (output_dir / "meta.json").write_text(
             json.dumps(
@@ -304,6 +310,36 @@ def build(
         )
 
     return results
+
+
+def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_info: dict) -> None:
+    """For every former slug (``aliases``), emit a permanent redirect: an itunes:new-feed-url
+    stub feed (so podcast clients migrate the subscription) and an HTML redirect page. Also
+    write ``redirects.json`` — a from->to map a CDN (Cloudflare) can turn into real 301s,
+    since GitHub Pages can't redirect on its own. Slugs should rarely move; this is the safety
+    net so subscribers never have to manually re-subscribe when they do."""
+    site = base_url.rstrip("/")
+    redirects: list[dict] = []
+    for city in cities:
+        if not city.aliases:
+            continue
+        info = feed_info.get(city.slug, {})
+        new_page = f"{site}/{city.slug}/"
+        kinds = ["audio"] + (["video"] if info.get("has_video") else [])
+        for alias in city.aliases:
+            adir = output_dir / alias
+            adir.mkdir(parents=True, exist_ok=True)
+            (adir / "index.html").write_text(render_redirect_page(new_page))
+            redirects.append({"from": f"/{alias}/", "to": new_page})
+            for kind in kinds:
+                new_feed = f"{new_page}{kind}_feed.xml"
+                (adir / f"{kind}_feed.xml").write_text(
+                    render_redirect_feed(city.podcast_title, new_feed, new_page)
+                )
+                redirects.append({"from": f"/{alias}/{kind}_feed.xml", "to": new_feed})
+    (output_dir / "redirects.json").write_text(
+        json.dumps(sorted(redirects, key=lambda r: r["from"]), indent=2) + "\n"
+    )
 
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:

@@ -22,3 +22,39 @@ provider guid, marking them `spec_hash: "legacy"` (reused as-is until a real aud
 
 **State layout:** per-slug `audio_manifest.json` is superseded by a per-source record store at
 `<state_dir>/sources/<source_key>/episodes.json` (restored across CI runs via `actions/cache`).
+
+## Moving a feed (stable URLs)
+
+Slugs are permanent. If a feed must move, **keep the old slug in the new YAML's `aliases:`
+list** rather than just renaming:
+
+```yaml
+slug: denton-tx-city-council
+aliases: [denton-tx]          # every former slug
+```
+
+Each alias then gets, on build:
+
+- `docs/<alias>/audio_feed.xml` (and `video_feed.xml` if applicable) — a stub carrying
+  `<itunes:new-feed-url>`, the **podcast-standard** permanent-move signal that Apple Podcasts
+  and most clients honor automatically (subscribers migrate with no action).
+- `docs/<alias>/index.html` — an HTML redirect (canonical + meta-refresh) for the human page.
+- an entry in `docs/redirects.json` (`{from, to}` pairs).
+
+**Real 301s (optional, for non-podcast clients):** GitHub Pages can't issue redirects, but the
+site is fronted by Cloudflare. Turn `docs/redirects.json` into a **Cloudflare Bulk Redirect
+list** (or a Redirect Rule) to serve true `301`s. The `itunes:new-feed-url` stubs already
+cover podcast apps, so this is belt-and-suspenders.
+
+## Orphaned audio cleanup
+
+Because audio is content-addressed, regenerating a file (e.g. adding chapters) leaves the old
+object unreferenced. Reap orphans with:
+
+```
+PYTHONPATH=. python scripts/gc_audio.py            # dry-run: list orphans
+PYTHONPATH=. python scripts/gc_audio.py --apply    # delete (skips objects < 7 days old)
+```
+
+It deletes only objects not referenced by any record store and older than `--min-age-days`
+(default 7), so an object written by an in-flight build is never reaped prematurely.

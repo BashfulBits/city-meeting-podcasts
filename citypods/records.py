@@ -134,6 +134,22 @@ def save_records(state_dir: Path, src_key: str, records: dict) -> None:
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
 
 
+def referenced_audio_keys(state_dir: Path) -> set[str]:
+    """Every audio object key currently referenced by any source's records — the live set an
+    orphan GC keeps; anything in storage outside this set is a candidate for deletion."""
+    keys: set[str] = set()
+    for path in Path(state_dir).glob("sources/*/episodes.json"):
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        for rec in (data.get("episodes") or {}).values():
+            key = (rec.get("audio") or {}).get("key")
+            if key:
+                keys.add(key)
+    return keys
+
+
 def episode_to_record(ep: Episode) -> dict:
     return {
         "uid": ep.uid,
