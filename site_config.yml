@@ -19,6 +19,14 @@ defaults:
   audio_storage_backend: "b2"            # "local" | "b2" | "r2"  (override: AUDIO_STORAGE_BACKEND=local)
   materialize_budget_per_city: 5         # max NEW episodes re-hosted per run, per city/feed
   materialize_budget_per_run: 25         # global cap on NEW episodes re-hosted per run (all feeds)
+  # Opt-in: when > 0, per-run audio/chapters budgets are derived from a wall-clock target
+  # (minutes × budget_safety / seconds_per_episode) instead of the flat caps above, so a run
+  # fills the 6h Actions window and a backfill drains in days not months (see review/03 +
+  # citypods/projection.py). seconds_per_episode is measured from run history when available.
+  run_time_budget_minutes: 0             # 0 = use the flat caps above (default; behavior unchanged)
+  budget_safety: 0.8                     # fraction of the time budget to actually fill
+  seconds_per_episode: 90                # estimate until run history calibrates it
+  seconds_per_chapter_fetch: 3           # per chapter-page fetch (cheap; no encode)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
   min_meetings_per_body: 3               # generator: a body needs this many recent meetings to get a feed
   # Bodies whose name contains any of these (case-insensitive) are NOT turned into feeds by
