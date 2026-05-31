@@ -19,10 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from citypods.artwork import render_cover
-from citypods.bodies import body_key, canonical_body, filter_by_body
+from citypods.bodies import filter_by_body
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss, has_items
-from citypods.media import CommandFfmpeg, FfmpegRunner, GlobalBudget, materialize_audio
+from citypods.media import CommandFfmpeg, FfmpegRunner, GlobalBudget
 from citypods.models import City, Episode
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
@@ -37,6 +37,7 @@ from citypods.records import (
     source_key,
 )
 from citypods.site import render_city_page, render_index
+from citypods.stages import StageContext, default_stages, run_stages
 from citypods.state import (
     build_fingerprint,
     load_etag_cache,
@@ -44,47 +45,21 @@ from citypods.state import (
     save_etag_cache,
 )
 from citypods.storage import make_storage
-from citypods.storage.base import StorageBackend
-
-
-def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode]:
-    """The subset worth hosting: the most-recent ``max_per_body`` per body. Every per-board
-    feed shows at most that many of its body, and the combined feed is a subset of the union,
-    so this hosts exactly what some feed can display — never the deep archive."""
-    by_body: dict[str, list[Episode]] = collections.defaultdict(list)
-    for ep in episodes:
-        by_body[body_key(canonical_body(ep.body or ""))].append(ep)
-    out: list[Episode] = []
-    for eps in by_body.values():
-        eps.sort(key=lambda e: e.published, reverse=True)
-        out.extend(eps[:max_per_body])
-    return out
 
 
 class SourcePipeline:
     """Fetch + enrich each distinct source once per build and share the result across all of
     its per-board feeds. Work is serialized per source key (so N board feeds don't re-fetch /
-    re-materialize the same source concurrently); different sources still run in parallel.
+    re-enrich the same source concurrently); different sources still run in parallel.
+
+    Enrichment runs an ordered list of stages (see citypods/stages.py); audio is the only
+    built-in stage today, but transcript/summary/chapters/links slot in without touching this.
     """
 
-    def __init__(
-        self,
-        *,
-        state_dir: Path,
-        storage: StorageBackend | None,
-        ffmpeg: FfmpegRunner,
-        max_kbps: int,
-        per_source_budget: int,
-        global_budget: GlobalBudget | None,
-        dry_run: bool,
-    ):
+    def __init__(self, *, state_dir: Path, stages, ctx: StageContext):
         self.state_dir = state_dir
-        self.storage = storage
-        self.ffmpeg = ffmpeg
-        self.max_kbps = max_kbps
-        self.per_source_budget = per_source_budget
-        self.global_budget = global_budget
-        self.dry_run = dry_run
+        self.stages = stages
+        self.ctx = ctx
         self._cache: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
@@ -103,34 +78,18 @@ class SourcePipeline:
             merge_persisted(episodes, load_records(self.state_dir, key))
             seeded = migrate_legacy_manifests(self.state_dir, episodes)
 
-            note = ""
-            if not self.dry_run and self.storage is not None:
-                stats = materialize_audio(
-                    city,
-                    _materialize_set(episodes, city.max_episodes),
-                    storage=self.storage,
-                    ffmpeg=self.ffmpeg,
-                    budget=self.per_source_budget,
-                    max_kbps=self.max_kbps,
-                    resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
-                    global_budget=self.global_budget,
-                )
-                if stats.hosted or stats.reused or stats.skipped_budget:
-                    note = f"audio {stats.hosted}+{stats.reused} hosted"
-                    if stats.skipped_budget:
-                        note += f", {stats.skipped_budget} queued"
-                if seeded:
-                    note += f", {seeded} legacy"
-                if stats.errors:
-                    note += f", {len(stats.errors)} media errors"
-            if not self.dry_run:
+            stats = run_stages(provider, city, episodes, self.stages, self.ctx)
+            notes = [s.note() for s in stats if s.note()]
+            if seeded:
+                notes.append(f"{seeded} legacy")
+            if not self.ctx.dry_run:
                 save_records(
                     self.state_dir,
                     key,
                     {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid},
                 )
             self._cache[key] = episodes
-            self._notes[key] = note
+            self._notes[key] = ", ".join(notes)
             return episodes
 
     def note(self, city: City) -> str:
@@ -292,19 +251,18 @@ def build(
     defaults = site_config.get("defaults", {})
     per_source_budget = int(defaults.get("materialize_budget_per_city", 5))
     total_budget = int(defaults.get("materialize_budget_per_run", 25))
-    global_budget = GlobalBudget(total_budget) if total_budget > 0 else None
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     storage = make_storage(site_config, base_url, output_dir)
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
-    pipeline = SourcePipeline(
-        state_dir=state_dir,
+    ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
         max_kbps=max_kbps,
         per_source_budget=per_source_budget,
-        global_budget=global_budget,
         dry_run=dry_run,
+        budgets={"audio": GlobalBudget(total_budget) if total_budget > 0 else None},
     )
+    pipeline = SourcePipeline(state_dir=state_dir, stages=default_stages(), ctx=ctx)
 
     results: list[CityResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
