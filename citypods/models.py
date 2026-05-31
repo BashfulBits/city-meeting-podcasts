@@ -92,4 +92,8 @@ class City:
     body_exclude: list[str] = field(default_factory=list)
     # 1-2 brand hex colors for cover art (e.g. ["#0B5", "#fff"]); empty -> derived from name
     colors: list[str] = field(default_factory=list)
+    # Former slugs this feed used to live at. Each gets a permanent redirect (an
+    # itunes:new-feed-url stub feed + an HTML redirect page) so subscribers don't have to
+    # re-subscribe if a feed must move. Slugs should otherwise never change.
+    aliases: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)

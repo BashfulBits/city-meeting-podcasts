@@ -57,6 +57,17 @@ class S3CompatibleStorage:
     def public_url(self, key: str) -> str:
         return f"{self.public_base_url}/{key}"
 
+    # --- orphan GC support (optional StorageBackend capability) ---
+
+    def list_objects(self, prefix: str = ""):
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                yield obj["Key"], obj.get("LastModified")
+
+    def delete(self, key: str) -> None:
+        self._client.delete_object(Bucket=self.bucket, Key=key)
+
 
 def r2_from_env() -> S3CompatibleStorage | None:
     """Cloudflare R2. Env: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID,

@@ -7,6 +7,23 @@ from citypods.models import City, Episode
 from citypods.render import get_env
 
 
+def render_redirect_feed(title: str, new_feed_url: str, new_page_url: str) -> str:
+    """A stub RSS that carries ``itunes:new-feed-url`` so clients migrate to the new feed."""
+    template = get_env().get_template("redirect_feed.xml.j2")
+    return template.render(title=title, new_feed_url=new_feed_url, new_page_url=new_page_url)
+
+
+def render_redirect_page(new_page_url: str) -> str:
+    """A minimal HTML page that redirects a moved feed's human page to its new home."""
+    return (
+        "<!doctype html><meta charset=utf-8>"
+        f'<link rel=canonical href="{new_page_url}">'
+        f'<meta http-equiv=refresh content="0; url={new_page_url}">'
+        f'<title>Moved</title><p>This page has moved to <a href="{new_page_url}">'
+        f"{new_page_url}</a>.</p>"
+    )
+
+
 def _feed_label(city: City) -> str:
     body = city.source.get("body")
     if body:

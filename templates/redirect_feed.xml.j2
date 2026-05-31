@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>{{ title }} (moved)</title>
+    <link>{{ new_page_url }}</link>
+    <description>This feed has permanently moved to {{ new_feed_url }}</description>
+    <!-- The podcast-standard permanent-move signal: Apple Podcasts and most clients
+         transparently migrate the subscription to this URL. -->
+    <itunes:new-feed-url>{{ new_feed_url }}</itunes:new-feed-url>
+  </channel>
+</rss>

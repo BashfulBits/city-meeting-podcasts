@@ -50,6 +50,7 @@ def _build_city(raw: dict, defaults: dict, source_file: Path) -> City:
             "extract_audio",
             "body_exclude",
             "colors",
+            "aliases",
         }
     )
     return City(
@@ -70,6 +71,7 @@ def _build_city(raw: dict, defaults: dict, source_file: Path) -> City:
         extract_audio=bool(raw.get("extract_audio", defaults.get("extract_audio", False))),
         body_exclude=list(raw.get("body_exclude", defaults.get("body_exclude", []))),
         colors=[str(c) for c in raw.get("colors", [])],
+        aliases=[str(a) for a in raw.get("aliases", [])],
         extra={k: v for k, v in raw.items() if k not in known},
     )
 

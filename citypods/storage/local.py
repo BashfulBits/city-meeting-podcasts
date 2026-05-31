@@ -9,6 +9,8 @@ build this lands inside ``docs/`` so the generated feeds resolve against the sam
 from __future__ import annotations
 
 import shutil
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -33,3 +35,17 @@ class LocalStorage:
 
     def public_url(self, key: str) -> str:
         return f"{self.url_prefix}/{key}"
+
+    # --- orphan GC support (optional StorageBackend capability) ---
+
+    def list_objects(self, prefix: str = "") -> Iterator[tuple[str, datetime]]:
+        if not self.root.exists():
+            return
+        for p in self.root.rglob("*"):
+            if p.is_file():
+                key = p.relative_to(self.root).as_posix()
+                if key.startswith(prefix):
+                    yield key, datetime.fromtimestamp(p.stat().st_mtime, tz=UTC)
+
+    def delete(self, key: str) -> None:
+        self._path(key).unlink(missing_ok=True)
