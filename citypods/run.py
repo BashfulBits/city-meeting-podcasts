@@ -23,14 +23,19 @@ from citypods.media import (
     materialize_audio,
     save_manifest,
 )
-from citypods.models import ChangeToken, City
+from citypods.models import City
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
 from citypods.site import render_city_page, render_index
+from citypods.state import (
+    build_fingerprint,
+    episodes_content_hash,
+    load_etag_cache,
+    resolve_state_dir,
+    save_etag_cache,
+)
 from citypods.storage import make_storage
 from citypods.storage.base import StorageBackend
-
-ETAG_CACHE_NAME = ".feed_etags.json"
 
 
 class FetchCache:
@@ -65,31 +70,17 @@ class CityResult:
     has_video: bool = False
 
 
-def _token_to_dict(token: ChangeToken | None) -> dict:
-    if token is None:
-        return {}
-    return {
-        "etag": token.etag,
-        "last_modified": token.last_modified,
-        "content_hash": token.content_hash,
-    }
-
-
-def load_etag_cache(output_dir: Path) -> dict:
-    path = output_dir / ETAG_CACHE_NAME
-    if path.exists():
-        return json.loads(path.read_text())
-    return {}
-
-
-def save_etag_cache(output_dir: Path, cache: dict) -> None:
-    path = output_dir / ETAG_CACHE_NAME
-    path.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
-
-
 def _city_outputs_exist(output_dir: Path, slug: str) -> bool:
     # audio_feed.xml is the always-present feed (video may be absent for HLS providers).
     return (output_dir / slug / "audio_feed.xml").exists()
+
+
+def _read_meta(output_dir: Path, slug: str) -> dict:
+    path = output_dir / slug / "meta.json"
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
 
 
 def _process_city(
@@ -105,6 +96,8 @@ def _process_city(
     global_budget: GlobalBudget | None,
     fetch_cache: FetchCache,
     site_config: dict,
+    state_dir: Path,
+    fingerprint: str,
 ) -> tuple[CityResult, dict | None]:
     """Returns the result and the new cache entry (or None to leave unchanged)."""
     if request_delay:
@@ -116,14 +109,30 @@ def _process_city(
     except ProviderError as exc:
         return CityResult(city.slug, "error", detail=str(exc)), None
 
-    cached = cache.get(city.slug)
+    cache_entry = cache.get(city.slug)
+    # Fast path: a provider that supplies an HTTP validator (ETag/Last-Modified) and whose
+    # token is unchanged lets us skip the fetch entirely. Granicus/Swagit have none, so they
+    # fall through to the content-hash path below (which still skips the expensive
+    # render/materialize work, just not the fetch).
     if (
         token is not None
-        and not token.is_empty()
-        and cached == _token_to_dict(token)
+        and (token.etag or token.last_modified)
+        and cache_entry is not None
+        and cache_entry.get("etag") == token.etag
+        and cache_entry.get("last_modified") == token.last_modified
         and _city_outputs_exist(output_dir, city.slug)
     ):
-        return CityResult(city.slug, "skipped"), None
+        meta = _read_meta(output_dir, city.slug)
+        return (
+            CityResult(
+                city.slug,
+                "skipped",
+                episode_count=meta.get("episodes", 0),
+                has_audio=meta.get("has_audio", True),
+                has_video=meta.get("has_video", False),
+            ),
+            cache_entry,  # keep existing entry (preserves content_hash)
+        )
 
     try:
         # Shared across all per-board feeds of this source (fetched once per build).
@@ -148,7 +157,7 @@ def _process_city(
     # Materialize hosted audio (HLS providers always; direct providers when extract_audio).
     # Skipped in dry-run (uploads are writes) and when no storage backend is available.
     if not dry_run and storage is not None:
-        manifest = load_manifest(output_dir, city.slug)
+        manifest = load_manifest(state_dir, city.slug)
         stats = materialize_audio(
             city,
             episodes,
@@ -159,7 +168,7 @@ def _process_city(
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
             global_budget=global_budget,
         )
-        save_manifest(output_dir, city.slug, manifest)
+        save_manifest(state_dir, city.slug, manifest)
         if stats.hosted or stats.reused or stats.skipped_budget:
             detail += f", audio {stats.hosted}+{stats.reused} hosted"
             if stats.skipped_budget:
@@ -169,6 +178,34 @@ def _process_city(
 
     has_audio = has_items(episodes, "audio")
     has_video = has_items(episodes, "video")
+
+    # Content-hash change detection: now that audio is materialized (so hosted URLs are
+    # final), hash the render-relevant fields + build fingerprint. If unchanged and the
+    # outputs already exist, skip the (re-)render/write entirely. This is what makes the
+    # build incremental for Granicus/Swagit, which expose no HTTP validator.
+    content_hash = episodes_content_hash(episodes, fingerprint)
+    new_entry = {
+        "etag": token.etag if token else None,
+        "last_modified": token.last_modified if token else None,
+        "content_hash": content_hash,
+    }
+    if (
+        not dry_run
+        and cache_entry is not None
+        and cache_entry.get("content_hash") == content_hash
+        and _city_outputs_exist(output_dir, city.slug)
+    ):
+        return (
+            CityResult(
+                city.slug,
+                "skipped",
+                episode_count=len(episodes),
+                detail=detail + ", unchanged",
+                has_audio=has_audio,
+                has_video=has_video,
+            ),
+            new_entry,
+        )
 
     if not dry_run:
         city_dir = output_dir / city.slug
@@ -217,7 +254,7 @@ def _process_city(
             has_audio=has_audio,
             has_video=has_video,
         ),
-        _token_to_dict(token),
+        new_entry,
     )
 
 
@@ -242,7 +279,9 @@ def build(
     output_dir.mkdir(parents=True, exist_ok=True)
     base_url = _resolve_base_url(base_url, site_config)
 
-    cache = load_etag_cache(output_dir)
+    state_dir = resolve_state_dir(site_config, output_dir)
+    cache = load_etag_cache(state_dir)
+    fingerprint = build_fingerprint(base_url)
     request_delay = float(site_config.get("request_delay_seconds", 0.1))
     max_workers = int(site_config.get("max_workers", 20))
     defaults = site_config.get("defaults", {})
@@ -270,6 +309,8 @@ def build(
                 global_budget,
                 fetch_cache,
                 site_config,
+                state_dir,
+                fingerprint,
             )
             for c in cities
         ]
@@ -280,7 +321,7 @@ def build(
                 cache[result.slug] = entry
 
     if not dry_run:
-        save_etag_cache(output_dir, cache)
+        save_etag_cache(state_dir, cache)
         all_cities = load_city_configs(cities_dir, site_config.get("defaults", {}))
         feed_info = {r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results}
         (output_dir / "index.html").write_text(

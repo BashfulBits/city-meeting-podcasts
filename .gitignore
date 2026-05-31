@@ -21,3 +21,7 @@ htmlcov/
 # Phase 4 may revisit committing docs/ for serving without CI.
 /docs/*
 !/docs/.nojekyll
+
+# Cross-run build state (audio manifest + change-detection cache). Restored by CI via
+# actions/cache, never committed.
+/.citypods-state/
