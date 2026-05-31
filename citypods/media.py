@@ -93,6 +93,10 @@ class CommandFfmpeg:
                 "-y",
                 "-loglevel",
                 "error",
+                # Restrict ffmpeg to the protocols HLS/MP4-over-HTTPS actually need, so a hostile
+                # manifest/redirect can't coax it into reading local files or other schemes.
+                "-protocol_whitelist",
+                "file,crypto,data,http,https,tcp,tls",
                 *inputs,
                 "-vn",
                 *chapter_args,

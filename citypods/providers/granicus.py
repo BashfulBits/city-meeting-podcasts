@@ -15,6 +15,7 @@ from html import unescape
 from urllib.parse import parse_qs, urlsplit
 from xml.etree import ElementTree as ET
 
+import defusedxml.ElementTree as DET
 import requests
 
 from citypods.bodies import granicus_body
@@ -134,7 +135,7 @@ def parse_feed(content: bytes) -> list[Episode]:
     Pure function (no network) so it is trivially unit-testable from fixtures.
     """
     try:
-        root = ET.fromstring(content)
+        root = DET.fromstring(content)
     except ET.ParseError as exc:
         raise ProviderError(f"invalid RSS XML: {exc}") from exc
 

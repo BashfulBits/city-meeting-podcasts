@@ -80,6 +80,7 @@ def load_city_configs(cities_dir: str | Path, defaults: dict) -> list[City]:
     cities_dir = Path(cities_dir)
     cities: list[City] = []
     seen_slugs: set[str] = set()
+    files: dict[str, str] = {}  # slug -> source filename, for clearer collision errors
     for path in sorted(cities_dir.glob("*.yml")):
         if path.name.startswith("_"):
             continue  # _template.yml and friends
@@ -88,5 +89,23 @@ def load_city_configs(cities_dir: str | Path, defaults: dict) -> list[City]:
         if city.slug in seen_slugs:
             raise ValueError(f"{path.name}: duplicate slug {city.slug!r}")
         seen_slugs.add(city.slug)
+        files[city.slug] = path.name
         cities.append(city)
+
+    # Aliases become redirect dirs written *after* the real feeds, so an alias that collides
+    # with a real slug (or another alias) would silently overwrite a live feed with a redirect
+    # stub. Reject collisions up front.
+    seen_aliases: dict[str, str] = {}
+    for city in cities:
+        for alias in city.aliases:
+            if alias in seen_slugs:
+                raise ValueError(
+                    f"{files[city.slug]}: alias {alias!r} collides with the slug of an "
+                    f"existing feed (it would overwrite that feed with a redirect)"
+                )
+            if alias in seen_aliases:
+                raise ValueError(
+                    f"{files[city.slug]}: alias {alias!r} already used by {seen_aliases[alias]!r}"
+                )
+            seen_aliases[alias] = city.slug
     return cities
