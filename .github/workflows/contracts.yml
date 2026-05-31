@@ -1,0 +1,43 @@
+name: Endpoint contracts
+
+# Weekly probe of live provider endpoints (Granicus/Swagit/CivicPlus/CivicClerk). Distinct from
+# the feed-health audit: this checks the *upstream input* contracts (does each list/media/chapters
+# endpoint still return the shape we parse?), so a platform HTML/JSON change is caught at the
+# source and filed as a named GitHub issue. Network-touching, so it's its own scheduled job — not
+# part of PR CI (which stays offline and deterministic).
+
+on:
+  schedule:
+    - cron: "30 6 * * 1" # Mondays 06:30 UTC
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "Scan every city (not just one per provider)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: endpoint-contracts
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e .
+      - name: Probe endpoints + reconcile issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          PYTHONPATH=. python scripts/check_endpoints.py --issues
+          ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && '--all' || '' }}

@@ -15,6 +15,7 @@ import re
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree as ET
 
+import defusedxml.ElementTree as DET
 import requests
 
 from citypods.http import DEFAULT_TIMEOUT, make_session
@@ -33,7 +34,7 @@ def _text(item: ET.Element, tag: str) -> str:
 def parse_civicmedia_feed(content: bytes) -> list[Episode]:
     """Parse a CivicMedia RSS channel into episodes (no media URLs resolved yet)."""
     try:
-        root = ET.fromstring(content)
+        root = DET.fromstring(content)
     except ET.ParseError as exc:
         raise ProviderError(f"invalid CivicMedia RSS: {exc}") from exc
     channel = root.find("channel")

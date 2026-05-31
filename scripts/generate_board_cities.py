@@ -26,8 +26,8 @@ from pathlib import Path
 from citypods.bodies import body_key, is_excluded
 from citypods.bodies import canonical_body as canonical
 from citypods.config import load_city_configs, load_site_config
-from citypods.media import _source_key
 from citypods.providers import get_provider
+from citypods.records import source_key
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -71,13 +71,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Skip bodies an existing feed already covers (same source + body key), so curated /
     # single-body feeds are preserved and generation is idempotent.
-    covered = {(_source_key(c), body_key(c.source["body"])) for c in cities if c.source.get("body")}
+    covered = {(source_key(c), body_key(c.source["body"])) for c in cities if c.source.get("body")}
     selected_keys = sorted(
         k
         for k, n in counts.items()
         if n >= min_meetings
         and not is_excluded(k, tmpl.body_exclude)
-        and (_source_key(tmpl), k) not in covered
+        and (source_key(tmpl), k) not in covered
     )
     selected = sorted(spellings[k].most_common(1)[0][0] for k in selected_keys)
     print(

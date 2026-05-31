@@ -14,6 +14,7 @@ dependencies = [
     "PyYAML>=6.0",
     "Jinja2>=3.1",
     "Pillow>=10.0",                  # podcast cover-art generation
+    "defusedxml>=0.7",               # hardened XML parsing of provider feeds
 ]
 
 [project.optional-dependencies]
@@ -37,3 +38,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Live endpoint-contract tests hit real provider URLs and are flaky by nature, so they're
+# excluded from the default (offline, deterministic) run. Opt in with `pytest -m live`.
+addopts = "-m 'not live'"
+markers = ["live: hits live external endpoints (network); run with -m live"]

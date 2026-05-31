@@ -81,3 +81,30 @@ def test_override_default(tmp_path):
 def test_template_file_skipped(tmp_path):
     _write(tmp_path, "_template.yml", VALID)
     assert load_city_configs(tmp_path, DEFAULTS) == []
+
+
+def test_alias_colliding_with_slug_raises(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID)
+    bar = VALID.replace("slug: foo-tx", "slug: bar-tx").replace(
+        "state: TX\n", "state: TX\naliases: [foo-tx]\n"
+    )
+    _write(tmp_path, "bar-tx.yml", bar)
+    with pytest.raises(ValueError, match="collides with the slug"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_duplicate_alias_across_cities_raises(tmp_path):
+    a = VALID.replace("state: TX\n", "state: TX\naliases: [old-name]\n")
+    b = VALID.replace("slug: foo-tx", "slug: bar-tx").replace(
+        "state: TX\n", "state: TX\naliases: [old-name]\n"
+    )
+    _write(tmp_path, "foo-tx.yml", a)
+    _write(tmp_path, "bar-tx.yml", b)
+    with pytest.raises(ValueError, match="already used"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_valid_alias_accepted(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID.replace("state: TX\n", "state: TX\naliases: [foo-old]\n"))
+    cities = load_city_configs(tmp_path, DEFAULTS)
+    assert cities[0].aliases == ["foo-old"]

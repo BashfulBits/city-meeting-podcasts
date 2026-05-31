@@ -337,6 +337,28 @@ the per-job 6-hour cap is managed by `materialize_budget_per_city`.
 
 ---
 
+## Status (2026-05-31)
+
+Phases 0–4 shipped. Since then, also merged to `main`:
+
+- **Episode-record refactor (R1–R3):** stable provider-independent `uid` as RSS `<guid>`, split
+  invalidation (`audio_spec_hash` for bytes vs `feed_content_hash` for RSS), content-addressed
+  audio, per-source record store, stable feed URLs (`aliases` + `itunes:new-feed-url` + redirects),
+  orphan-audio GC.
+- **Durable build state:** the object bucket (not `actions/cache`) is the source of truth for
+  derived artifacts (`citypods/statesync.py`); stale `docs/<slug>` dirs are pruned each build.
+- **Enrichment-stage pipeline:** `default_stages() = [chapters, audio, links]`. Shipped no-cost
+  stages: resource links + `content:encoded` show notes; agenda links (Granicus AgendaViewer,
+  CivicClerk publishedFiles); chapters (Swagit `/videos` page, Granicus `JSON.php`, CivicClerk
+  `EventsMedia`) embedded in AAC *and* surfaced as Podcasting 2.0 `<podcast:chapters>` sidecars;
+  transcript links (Swagit, CivicClerk).
+
+**Next:** the paid stages (ASR transcripts → then summaries/search/votes/translation), and Phase 5
+discovery/onboarding. See **`review/`** (overnight review, 2026-05-31) for: a 50-feature brainstorm,
+required architecture changes, a parametric **resource cost/time projection** proposal, a
+bug/security audit (incl. a **broken `generate_board_cities.py` import** and an **SSRF gate required
+before Phase 5**), and an endpoint contract-test plan.
+
 ## Known limitations & future work
 
 - **CivicMedia RSS exposes only recent items** — the `ModID=92` channel feed returns just the
