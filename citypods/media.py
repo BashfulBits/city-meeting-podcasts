@@ -24,7 +24,7 @@ from typing import Protocol
 
 from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
-from citypods.records import audio_object_key, audio_spec_hash
+from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.base import StorageBackend
 
 CONTENT_TYPE = "audio/mp4"
@@ -164,6 +164,20 @@ def _should_host(episode: Episode, city: City) -> bool:
     return city.extract_audio  # direct source, opt-in extraction
 
 
+def _hosted_keys(city: City, storage: StorageBackend) -> set[str] | None:
+    """The set of audio object keys actually present in storage for this source, fetched in a
+    single ``list_objects`` call over the source prefix. ``None`` when the backend can't list
+    (callers then fall back to a per-episode ``exists()`` probe). This is what lets the reuse
+    short-circuit trust the *storage*, not just the record: a record can carry a
+    ``hosted_audio_url`` whose object was never written or has since been GC'd — most acutely for
+    Swagit, whose presigned *source* URL expires while its stable spec hash keeps matching, so a
+    record-only check concludes "already hosted" forever and never re-materializes (issue #116)."""
+    if not hasattr(storage, "list_objects"):
+        return None
+    prefix = f"{city.provider}/{source_key(city)}/"
+    return {key for key, _ in storage.list_objects(prefix)}
+
+
 def materialize_audio(
     city: City,
     episodes: list[Episode],
@@ -179,13 +193,18 @@ def materialize_audio(
 
     Mutates each episode in place (``audio_key`` / ``audio_spec_hash`` / ``hosted_audio_url``);
     the caller persists these onto the record store. An episode is re-encoded only when its
-    audio spec changed (e.g. chapters added, bitrate policy bumped) — otherwise the existing
-    object (matched by content-addressed key, or carried over as ``"legacy"``) is reused for
-    free. New hosts are gated by the per-source ``budget`` and the shared ``global_budget`` so
-    a large backfill spreads over successive runs.
+    audio spec changed (e.g. chapters added, bitrate policy bumped) *or* its referenced object
+    has gone missing from storage — otherwise the existing object (matched by content-addressed
+    key, or carried over as ``"legacy"``) is reused for free. New hosts are gated by the
+    per-source ``budget`` and the shared ``global_budget`` so a large backfill spreads over
+    successive runs.
     """
     stats = MaterializeStats()
     remaining = budget
+    hosted_keys = _hosted_keys(city, storage)
+
+    def _present(key: str) -> bool:
+        return key in hosted_keys if hosted_keys is not None else storage.exists(key)
 
     for ep in episodes:
         if not _should_host(ep, city):
@@ -193,9 +212,20 @@ def materialize_audio(
 
         spec = audio_spec_hash(ep, max_kbps=max_kbps)
         # Already hosted with a matching spec (or carried over from the legacy manifest)?
-        if ep.hosted_audio_url and ep.audio_spec_hash in (spec, "legacy"):
+        # Trust the record only when its object is actually in storage — otherwise a stale
+        # record (e.g. a Swagit episode whose presigned source expired before the object was
+        # ever written) would short-circuit forever and never re-materialize (issue #116).
+        spec_ok = bool(ep.hosted_audio_url) and ep.audio_spec_hash in (spec, "legacy")
+        present = bool(ep.audio_key) and _present(ep.audio_key)
+        if spec_ok and present:
             stats.reused += 1
             continue
+        if ep.hosted_audio_url and not present:
+            # The record points at an object that no longer exists: drop the dead pointer so
+            # the feed stops advertising missing audio, and re-materialize below (budget willing).
+            ep.hosted_audio_url = None
+            ep.audio_key = None
+            ep.audio_spec_hash = None
 
         if remaining <= 0 or (global_budget is not None and not global_budget.take()):
             stats.skipped_budget += 1
