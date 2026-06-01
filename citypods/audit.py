@@ -16,6 +16,12 @@ the audit catches the next instance automatically instead of by manual investiga
 The check functions are pure (no network) so they unit-test from fixtures; ``audit_city``
 does the one fetch and wires them together, taking injectable ``head`` / ``view_counts`` so
 the network-touching checks stay testable too.
+
+Issue #109 adds three-way triage so the audit only files actionable tickets:
+  (a) pending backlog     — episodes in-flight but not yet materialized  → suppress
+  (b) provider-dropped    — episodes left the provider window but are archived → expected
+  (c) genuine regression  — previously-live content is now genuinely gone → file
+Counts and the inferred cause appear in every filed finding's message.
 """
 
 from __future__ import annotations
@@ -43,12 +49,95 @@ class Finding:
     message: str
 
 
-def check_empty(slug: str, episodes: list[Episode], min_meetings: int) -> Finding | None:
+# ---------------------------------------------------------------------------
+# Archive-diff triage (issue #109)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ArchiveDiff:
+    """Counts from comparing what the provider returned this run with the append-only archive.
+
+    Used to classify a suspicious finding into one of three buckets:
+      (a) ``backlog``  > 0 and materialized == 0  → pipeline catching up, suppress
+      (b) ``dropped``  > 0 and materialized  > 0  → window shifted, expected
+      (c) neither                                 → genuine regression, file ticket
+    """
+
+    fetched: int       # episodes provider returned this run (after uid assignment)
+    archived: int      # total unique episodes ever seen (fetched ∪ persisted)
+    materialized: int  # archived episodes with a hosted audio URL
+    dropped: int       # in archive but absent from this fetch (left provider window)
+    backlog: int       # fetched but not yet materialized (HLS pipeline catching up)
+
+    def summary(self) -> str:
+        """Compact counts string embedded in filed finding messages."""
+        return (
+            f"fetched={self.fetched} archived={self.archived} "
+            f"materialized={self.materialized} dropped={self.dropped} backlog={self.backlog}"
+        )
+
+    def cause(self) -> str:
+        """Human-readable inferred cause for the ticket body."""
+        if self.dropped > 0 and self.materialized > 0:
+            return f"provider window shifted ({self.dropped} episode(s) archived, expected)"
+        if self.backlog > 0 and self.materialized == 0:
+            return f"pipeline catching up ({self.backlog} episode(s) not yet materialized)"
+        return "genuine regression"
+
+
+def compute_archive_diff(fetched_episodes: list[Episode], records: dict) -> ArchiveDiff:
+    """Compare freshly-fetched episodes against the append-only archive."""
+    fetched_uids = {e.uid for e in fetched_episodes if e.uid}
+    archived_uids = set(records)
+    materialized = sum(1 for r in records.values() if (r.get("audio") or {}).get("url"))
+    dropped = len(archived_uids - fetched_uids)
+    backlog = sum(
+        1 for e in fetched_episodes if e.media_kind == "hls" and not e.hosted_audio_url
+    )
+    return ArchiveDiff(
+        fetched=len(fetched_uids),
+        archived=len(archived_uids),
+        materialized=materialized,
+        dropped=dropped,
+        backlog=backlog,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pure check functions
+# ---------------------------------------------------------------------------
+
+
+def check_empty(
+    slug: str,
+    episodes: list[Episode],
+    min_meetings: int,
+    *,
+    diff: ArchiveDiff | None = None,
+) -> Finding | None:
+    """Flag a feed with zero or too-few episodes.
+
+    With archive-diff triage (issue #109):
+      - Provider window empty but archive has materialized episodes → window shift (b), suppress.
+      - Fewer than min_meetings in window but archive meets the bar → backlog/windowing, suppress.
+      - Genuinely empty with no archive either → regression (c), file.
+    """
     n = len(episodes)
     if n == 0:
-        return Finding(slug, "drift", ERROR, "feed has 0 episodes (source empty or parser broke)")
+        if diff and diff.materialized > 0:
+            return None  # (b) archived episodes exist — window is just empty
+        msg = "feed has 0 episodes (source empty or parser broke)"
+        if diff:
+            msg += f"; {diff.summary()}; inferred: {diff.cause()}"
+        return Finding(slug, "drift", ERROR, msg)
     if n < min_meetings:
-        return Finding(slug, "empty", WARN, f"only {n} episode(s) (< min_meetings {min_meetings})")
+        if diff and diff.archived >= min_meetings:
+            return None  # (a/b) archive has enough — transient window or backlog
+        msg = f"only {n} episode(s) (< min_meetings {min_meetings})"
+        if diff:
+            msg += f"; {diff.summary()}; inferred: {diff.cause()}"
+        return Finding(slug, "empty", WARN, msg)
     return None
 
 
@@ -57,6 +146,7 @@ def check_staleness(
     episodes: list[Episode],
     now: datetime,
     *,
+    archive_newest: datetime | None = None,
     factor: float = 3.0,
     min_samples: int = 4,
     floor_days: float = 30.0,
@@ -67,6 +157,11 @@ def check_staleness(
     board and a weekly council are each judged against their own rhythm. A ``floor_days``
     absolute minimum suppresses false positives on bursty feeds (e.g. a combined feed with
     several same-day meetings has a near-zero median, so a normal 10-day gap shouldn't flag).
+
+    ``archive_newest`` (issue #109): when the provider window dropped a recent episode that IS
+    in our archive, the most-recently-published date should come from the archive, not just the
+    fetched list — otherwise a window shift falsely signals staleness. Cadence is still derived
+    from the fetched episodes (stable, represents the current publishing pattern).
     """
     if len(episodes) < min_samples:
         return None  # too few meetings to establish a cadence
@@ -75,7 +170,9 @@ def check_staleness(
     median = statistics.median(gaps)
     if median <= 0:
         return None
-    age = (now - dates[0]).total_seconds()
+    # Use the most-recent date across fetched + archive to avoid false positives on window shifts.
+    newest = max(archive_newest, dates[0]) if archive_newest else dates[0]
+    age = (now - newest).total_seconds()
     if age > max(factor * median, floor_days * 86400):
         days, cadence = age / 86400, median / 86400
         return Finding(
@@ -126,25 +223,64 @@ def check_enclosures(
     head: Callable[[str], int],
     *,
     sample: int = 3,
+    resolve: Callable[[Episode], str] | None = None,
 ) -> list[Finding]:
-    """HEAD the newest few enclosures; a 4xx/5xx means the audio link is dead/expired."""
+    """HEAD the newest few enclosures; a 4xx/5xx means the audio link is dead/expired.
+
+    Self-healing re-resolve (issue #109, former #45): when ``resolve`` is provided and a URL
+    is dead, the provider's ``resolve_media_url`` is called to fetch a fresh URL before filing.
+    If the new URL is healthy the finding is suppressed (the next build will persist it).
+    If still dead, the finding is filed with a note that re-resolve was attempted.
+    The audit stays read-only — persisting the fixed URL is the build's responsibility.
+    """
     findings: list[Finding] = []
     checked = 0
     for e in episodes:
         url = enclosure_url(e, "audio")
         if not url:
             continue
+
         try:
             status = head(url)
+            is_dead = status >= 400
+            exc_msg: str | None = None
         except Exception as exc:  # noqa: BLE001 - network errors are themselves a finding
-            findings.append(Finding(slug, "dead-enclosure", ERROR, f"{e.guid}: {exc}"))
-        else:
-            if status >= 400:
-                findings.append(Finding(slug, "dead-enclosure", ERROR, f"{e.guid}: HTTP {status}"))
+            is_dead = True
+            exc_msg = str(exc)
+
+        if is_dead:
+            if resolve is not None:
+                try:
+                    new_url = resolve(e)
+                    new_status = head(new_url)
+                    if new_status < 400:
+                        # Self-healed — suppress the finding; next build persists the new URL.
+                        checked += 1
+                        if checked >= sample:
+                            break
+                        continue
+                    detail = f"re-resolved to {new_url!r}: HTTP {new_status}"
+                except Exception as re_exc:  # noqa: BLE001
+                    detail = f"re-resolve failed: {re_exc}"
+            else:
+                detail = None
+
+            if exc_msg:
+                base = f"{e.guid}: {exc_msg}"
+            else:
+                base = f"{e.guid}: HTTP {status}"
+            msg = f"{base} ({detail})" if detail else base
+            findings.append(Finding(slug, "dead-enclosure", ERROR, msg))
+
         checked += 1
         if checked >= sample:
             break
     return findings
+
+
+# ---------------------------------------------------------------------------
+# Orchestration
+# ---------------------------------------------------------------------------
 
 
 def audit_city(
@@ -156,8 +292,14 @@ def audit_city(
     records: dict | None = None,
     view_counts: list[int] | None = None,
     head: Callable[[str], int] | None = None,
+    resolve: Callable[[Episode], str] | None = None,
 ) -> list[Finding]:
-    """Fetch a city once and run every applicable check, returning all findings."""
+    """Fetch a city once and run every applicable check, returning all findings.
+
+    ``records`` is the full append-only archive (issue #109): it drives the three-way triage
+    (backlog / dropped / regression) and the archive_newest staleness correction.
+    ``resolve`` is the provider's media-URL re-resolver for dead-enclosure self-healing.
+    """
     from citypods.records import assign_uids, merge_persisted
 
     try:
@@ -171,16 +313,33 @@ def audit_city(
     if records is not None:
         merge_persisted(episodes, records)
 
+    # Compute archive diff before body filtering (diff covers the whole source, not one body).
+    diff = compute_archive_diff(episodes, records) if records is not None else None
+
+    # Oldest date in the archive (across all episodes, pre-filter) for staleness correction.
+    archive_newest: datetime | None = None
+    if records:
+        dates = []
+        for rec in records.values():
+            pub = rec.get("published")
+            if pub:
+                try:
+                    dates.append(datetime.fromisoformat(pub))
+                except ValueError:
+                    pass
+        if dates:
+            archive_newest = max(dates)
+
     episodes = filter_by_body(episodes, city.source.get("body"))
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
 
     findings: list[Finding] = []
-    empty = check_empty(city.slug, episodes, min_meetings)
+    empty = check_empty(city.slug, episodes, min_meetings, diff=diff)
     if empty:
         findings.append(empty)
     if not empty or empty.severity != ERROR:  # skip further checks on a totally empty feed
-        stale = check_staleness(city.slug, episodes, now)
+        stale = check_staleness(city.slug, episodes, now, archive_newest=archive_newest)
         if stale:
             findings.append(stale)
         if view_counts is not None:
@@ -192,7 +351,7 @@ def audit_city(
             if backlog:
                 findings.append(backlog)
         if head is not None:
-            findings.extend(check_enclosures(city.slug, episodes, head))
+            findings.extend(check_enclosures(city.slug, episodes, head, resolve=resolve))
     return findings
 
 
@@ -235,6 +394,14 @@ def audit_all(
     findings: list[Finding] = []
     for city in cities:
         provider = get_provider(city.provider)
+
+        # Build the re-resolve callable for dead-enclosure self-healing (issue #109, former #45).
+        # Only active when we're also HEAD-probing enclosures; keeps the audit read-only otherwise.
+        resolve: Callable[[Episode], str] | None = None
+        if head is not None and hasattr(provider, "resolve_media_url"):
+            src = city.source  # capture for the lambda
+            resolve = lambda ep, _p=provider, _s=src: _p.resolve_media_url(ep, _s)  # noqa: E731
+
         view_counts = None
         if hasattr(provider, "fetch_view_counts"):
             try:
@@ -251,6 +418,7 @@ def audit_all(
                 records=records,
                 view_counts=view_counts,
                 head=head,
+                resolve=resolve,
             )
         )
     return findings

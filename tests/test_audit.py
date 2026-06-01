@@ -5,21 +5,23 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from citypods.audit import (
+    ArchiveDiff,
     audit_city,
     check_empty,
     check_enclosures,
     check_rehost_backlog,
     check_staleness,
     check_view_cap,
+    compute_archive_diff,
 )
 from citypods.models import Episode
 
 NOW = datetime(2026, 5, 30, tzinfo=UTC)
 
 
-def _ep(days_ago, guid=None, kind="direct", url="https://x/a.mp4"):
+def _ep(days_ago, guid=None, kind="direct", url="https://x/a.mp4", hosted=None):
     d = NOW - timedelta(days=days_ago)
-    return Episode(
+    e = Episode(
         guid=guid or f"g{days_ago}",
         title="City Council",
         published=d,
@@ -27,12 +29,59 @@ def _ep(days_ago, guid=None, kind="direct", url="https://x/a.mp4"):
         media_kind=kind,
         body="City Council",
     )
+    e.hosted_audio_url = hosted
+    return e
 
 
-def test_check_empty():
+def _diff(fetched=5, archived=5, materialized=5, dropped=0, backlog=0):
+    return ArchiveDiff(
+        fetched=fetched,
+        archived=archived,
+        materialized=materialized,
+        dropped=dropped,
+        backlog=backlog,
+    )
+
+
+# ---------------------------------------------------------------------------
+# check_empty — three-way triage (issue #109)
+# ---------------------------------------------------------------------------
+
+
+def test_check_empty_no_diff_baseline():
     assert check_empty("s", [], 3).check == "drift"
     assert check_empty("s", [_ep(1), _ep(8)], 3).check == "empty"
     assert check_empty("s", [_ep(1), _ep(8), _ep(15)], 3) is None
+
+
+def test_check_empty_suppresses_drift_when_archive_has_materialized_episodes():
+    # (b) Provider window empty but archive has hosted audio → expected, suppress.
+    big_diff = _diff(fetched=0, archived=10, materialized=10, dropped=10)
+    assert check_empty("s", [], 3, diff=big_diff) is None
+
+
+def test_check_empty_suppresses_sparse_window_when_archive_meets_bar():
+    # (a/b) Only 1 in window but 5 in archive → transient, suppress.
+    assert check_empty("s", [_ep(1)], 3, diff=_diff(fetched=1, archived=5, materialized=5)) is None
+
+
+def test_check_empty_files_genuine_regression():
+    # (c) Both provider and archive are empty → real problem, file.
+    f = check_empty("s", [], 3, diff=_diff(fetched=0, archived=0, materialized=0))
+    assert f is not None and f.check == "drift"
+    assert "fetched=0" in f.message and "inferred:" in f.message
+
+
+def test_check_empty_message_includes_counts_and_cause():
+    f = check_empty("s", [_ep(1)], 3, diff=_diff(fetched=1, archived=2, materialized=0, backlog=1))
+    assert f is not None  # archive < min_meetings, so still files
+    assert "fetched=1" in f.message
+    assert "inferred:" in f.message
+
+
+# ---------------------------------------------------------------------------
+# check_staleness — archive_newest correction (issue #109)
+# ---------------------------------------------------------------------------
 
 
 def test_check_staleness_flags_overdue_feed_against_own_cadence():
@@ -55,6 +104,26 @@ def test_check_staleness_floor_suppresses_bursty_false_positive():
     assert check_staleness("s", bursty, NOW) is None
 
 
+def test_check_staleness_suppressed_by_archive_newest():
+    # Provider window shows old episodes (looks stale), but archive has a recent one.
+    # archive_newest = 2 days ago → not actually stale.
+    eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
+    recent = NOW - timedelta(days=2)
+    assert check_staleness("s", eps, NOW, archive_newest=recent) is None
+
+
+def test_check_staleness_still_fires_when_archive_newest_also_old():
+    eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
+    still_old = NOW - timedelta(days=55)
+    f = check_staleness("s", eps, NOW, archive_newest=still_old)
+    assert f is not None and f.check == "stale"
+
+
+# ---------------------------------------------------------------------------
+# check_view_cap / check_rehost_backlog (unchanged behaviour)
+# ---------------------------------------------------------------------------
+
+
 def test_check_view_cap():
     assert check_view_cap("s", [100]).check == "view-cap"
     assert check_view_cap("s", [42, 100, 7]).check == "view-cap"
@@ -71,11 +140,92 @@ def test_check_rehost_backlog_only_when_fully_stalled():
     assert check_rehost_backlog("s", [_ep(1)]) is None
 
 
+# ---------------------------------------------------------------------------
+# check_enclosures — dead-enclosure re-resolve (issue #109, former #45)
+# ---------------------------------------------------------------------------
+
+
 def test_check_enclosures_uses_injected_head():
     statuses = {"https://x/a.mp4": 200, "https://x/b.mp4": 403}
     eps = [_ep(1, "g1", url="https://x/a.mp4"), _ep(8, "g2", url="https://x/b.mp4")]
     findings = check_enclosures("s", eps, lambda u: statuses[u])
     assert [f.message for f in findings] == ["g2: HTTP 403"]
+
+
+def test_check_enclosures_suppresses_when_resolve_heals():
+    # First URL is dead; resolve() returns a fresh working one → suppress the finding.
+    def head(url):
+        return 200 if "new" in url else 403
+
+    def resolve(ep):
+        return "https://x/new.mp4"
+
+    eps = [_ep(1, "g1", url="https://x/old.mp4")]
+    findings = check_enclosures("s", eps, head, resolve=resolve)
+    assert findings == []  # suppressed — self-healed
+
+
+def test_check_enclosures_files_when_resolve_also_dead():
+    # Both the original and re-resolved URL are dead → still file, with re-resolve note.
+    def head(url):
+        return 403
+
+    def resolve(ep):
+        return "https://x/also-dead.mp4"
+
+    eps = [_ep(1, "g1", url="https://x/dead.mp4")]
+    findings = check_enclosures("s", eps, head, resolve=resolve)
+    assert len(findings) == 1
+    assert "re-resolved" in findings[0].message
+
+
+def test_check_enclosures_files_when_resolve_raises():
+    # resolve() itself throws (network error on re-resolve) → still file, with failure note.
+    def head(url):
+        return 403
+
+    def resolve(ep):
+        raise OSError("timeout")
+
+    eps = [_ep(1, "g1", url="https://x/dead.mp4")]
+    findings = check_enclosures("s", eps, head, resolve=resolve)
+    assert len(findings) == 1
+    assert "re-resolve failed" in findings[0].message
+
+
+def test_check_enclosures_no_resolve_files_as_before():
+    # Without resolve= the behaviour is identical to the pre-#109 code path.
+    eps = [_ep(1, "g1", url="https://x/dead.mp4")]
+    findings = check_enclosures("s", eps, lambda u: 404)
+    assert len(findings) == 1
+    assert "re-resolve" not in findings[0].message
+
+
+# ---------------------------------------------------------------------------
+# compute_archive_diff
+# ---------------------------------------------------------------------------
+
+
+def test_compute_archive_diff():
+    e1 = _ep(1, "g1")
+    e1.uid = "u1"
+    e2 = _ep(8, "g2", kind="hls")
+    e2.uid = "u2"
+    records = {
+        "u1": {"audio": {"url": "https://cdn/u1.m4a", "key": "k1", "spec_hash": "s"}},
+        "u3": {"audio": {"url": "https://cdn/u3.m4a", "key": "k3", "spec_hash": "s"}},
+    }
+    diff = compute_archive_diff([e1, e2], records)
+    assert diff.fetched == 2      # e1 and e2
+    assert diff.archived == 2     # u1 and u3
+    assert diff.materialized == 2 # both have hosted audio
+    assert diff.dropped == 1      # u3 not in fetched
+    assert diff.backlog == 1      # e2 is HLS with no hosted_audio_url
+
+
+# ---------------------------------------------------------------------------
+# audit_city integration — all three triage scenarios
+# ---------------------------------------------------------------------------
 
 
 class _FakeProvider:
@@ -84,6 +234,9 @@ class _FakeProvider:
 
     def fetch_episodes(self, source):
         return list(self._eps)
+
+    def resolve_media_url(self, episode, source):
+        return episode.video_url + "?refreshed=1"
 
 
 def _city():
@@ -110,3 +263,42 @@ def test_audit_city_aggregates_multiple_findings():
     findings = audit_city(_city(), provider=_FakeProvider(eps), now=NOW, view_counts=[100])
     checks = {f.check for f in findings}
     assert "stale" in checks and "view-cap" in checks
+
+
+def test_audit_city_triage_a_pending_backlog_suppresses_empty():
+    # (a) Provider returns 0 but archive shows materialized episodes → suppress drift.
+    records = {"u1": {"audio": {"url": "https://cdn/u1.m4a", "key": "k", "spec_hash": "s"}}}
+    findings = audit_city(_city(), provider=_FakeProvider([]), now=NOW, records=records)
+    assert not any(f.check == "drift" for f in findings)
+
+
+def test_audit_city_triage_b_dropped_but_archived_suppresses_sparse_empty():
+    # (b) Only 1 episode in the provider window but 5 in the archive → suppress empty.
+    records = {
+        f"u{i}": {"audio": {"url": f"https://cdn/u{i}.m4a", "key": f"k{i}", "spec_hash": "s"}}
+        for i in range(5)
+    }
+    city = _city()
+    city = city.__class__(
+        **{**city.__dict__, "max_episodes": 50},
+    )
+    findings = audit_city(city, provider=_FakeProvider([_ep(1)]), now=NOW,
+                          records=records, min_meetings=3)
+    assert not any(f.check in ("drift", "empty") for f in findings)
+
+
+def test_audit_city_triage_c_genuine_regression_files_ticket():
+    # (c) No episodes in provider AND no archive → genuine regression.
+    findings = audit_city(_city(), provider=_FakeProvider([]), now=NOW, records={})
+    drift = [f for f in findings if f.check == "drift"]
+    assert len(drift) == 1
+    assert "inferred:" in drift[0].message
+
+
+def test_audit_city_staleness_suppressed_by_archive_newest():
+    # Provider window looks stale, but archive has a recent episode → suppress.
+    eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
+    recent = (NOW - timedelta(days=2)).isoformat()
+    records = {"recent": {"published": recent, "audio": {}}}
+    findings = audit_city(_city(), provider=_FakeProvider(eps), now=NOW, records=records)
+    assert not any(f.check == "stale" for f in findings)
