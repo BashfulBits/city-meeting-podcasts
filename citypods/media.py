@@ -148,6 +148,14 @@ class GlobalBudget:
             self._remaining -= 1
             return True
 
+    def give_back(self) -> None:
+        """Return a slot reserved by ``take()`` when the work it was reserved for failed. The
+        global cap counts *successful* new materializations, so a failed attempt (e.g. a Swagit
+        episode whose source won't resolve) must not permanently burn a slot — otherwise a
+        handful of broken episodes in one source starve every other source's backfill."""
+        with self._lock:
+            self._remaining += 1
+
 
 @dataclass
 class MaterializeStats:
@@ -231,6 +239,10 @@ def materialize_audio(
             stats.skipped_budget += 1
             continue
 
+        # Count the attempt against the per-source budget whether it succeeds or fails, so one
+        # source can't loop indefinitely re-trying broken episodes (e.g. Swagit meetings whose
+        # /download resolves to a keyless URL) and burn the run's time window.
+        remaining -= 1
         key = audio_object_key(city, ep, spec)
         try:
             if storage.exists(key):
@@ -249,8 +261,11 @@ def materialize_audio(
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
             stats.hosted += 1
-            remaining -= 1
         except (subprocess.CalledProcessError, OSError, ProviderError) as exc:
             stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+            # The global cap counts successful hosts; hand the reserved slot back so a broken
+            # episode here doesn't starve another source's backfill this run (issue #116 follow-up).
+            if global_budget is not None:
+                global_budget.give_back()
 
     return stats
