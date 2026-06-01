@@ -24,7 +24,7 @@ defaults:
   extract_audio: false                   # opt-in audio re-hosting for direct providers
   audio_storage_backend: "b2"            # "local" | "b2" | "r2"  (override: AUDIO_STORAGE_BACKEND=local)
   materialize_budget_per_city: 5         # max NEW episodes re-hosted per run, per city/feed
-  materialize_budget_per_run: 25         # global cap on NEW episodes re-hosted per run (all feeds)
+  materialize_budget_per_run: 0          # 0 = time-bounded (see run_time_budget_minutes below)
   # Opt-in: when > 0, per-run audio/chapters budgets are derived from a wall-clock target
   # (minutes × budget_safety / seconds_per_episode) instead of the flat caps above, so a run
   # fills the 6h Actions window and a backfill drains in days not months (see review/03 +
