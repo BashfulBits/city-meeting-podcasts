@@ -92,7 +92,15 @@ class SourcePipeline:
         self._guard = threading.Lock()
         # Per-stage cost totals across all sources this run (for run history / projection).
         self.stage_totals: dict[str, dict] = collections.defaultdict(
-            lambda: {"ran": 0, "reused": 0, "backlog": 0, "seconds": 0.0, "bytes": 0, "errors": 0}
+            lambda: {
+                "ran": 0,
+                "reused": 0,
+                "backlog": 0,
+                "seconds": 0.0,
+                "bytes": 0,
+                "errors": 0,
+                "error_samples": [],
+            }
         )
 
     def enrich(self, city: City) -> list[Episode]:
@@ -120,6 +128,8 @@ class SourcePipeline:
                     t["seconds"] += s.seconds
                     t["bytes"] += s.bytes_written
                     t["errors"] += len(s.errors)
+                    if s.errors and len(t["error_samples"]) < 3:
+                        t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
             if seeded:
                 notes.append(f"{seeded} legacy")
 
@@ -385,6 +395,21 @@ def build(
             results.append(result)
             if entry is not None:
                 cache[result.slug] = entry
+
+    # Per-stage activity for the run, to stdout (build logs). Makes "did audio actually
+    # materialize?" answerable without the step-summary report: ``ran`` is newly produced this
+    # run, ``reused`` already up to date, ``queued`` deferred by budget (remaining backlog), plus
+    # error count and a few sample messages so a re-host that triggers but fails downstream is
+    # visible rather than hiding behind the feed-level "0 errors" line.
+    for name, t in sorted(pipeline.stage_totals.items()):
+        if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
+            continue
+        print(
+            f"{name}: {t['ran']} ran, {t['reused']} reused, {t['backlog']} queued, "
+            f"{t['errors']} errors ({t['seconds']:.0f}s)"
+        )
+        for msg in t["error_samples"]:
+            print(f"    ! {msg}")
 
     if not dry_run:
         save_etag_cache(state_dir, cache)
