@@ -320,3 +320,44 @@ def test_time_bounded_budget_overrides_flat_cap(tmp_path, fake_provider, monkeyp
     # GlobalBudget is opaque; re-derive expected and check it's the time-bounded value, not 25
     assert budgets["audio"]._remaining == 160
     assert budgets["chapters"]._remaining == 4800
+
+
+def _spy_per_source(tmp_path, fake_provider, monkeypatch, extra_defaults: str) -> int:
+    import citypods.run as run_mod
+
+    captured = {}
+    real_ctx = run_mod.StageContext
+
+    def spy_ctx(*a, **kw):
+        captured["per_source"] = kw.get("per_source_budget")
+        return real_ctx(*a, **kw)
+
+    monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
+    cities = _setup(tmp_path)
+    cfg = f"state_dir: {tmp_path / 'state'}\ndefaults:\n  audio_storage_backend: local\n"
+    (tmp_path / "site_config.yml").write_text(cfg + extra_defaults)
+    _build(tmp_path, cities)
+    return captured["per_source"]
+
+
+def test_per_source_budget_is_fraction_of_global(tmp_path, fake_provider, monkeypatch):
+    # time-bounded global = 300×0.8×60/90 = 160; default fraction 0.5 -> ceil(80) = 80
+    per_source = _spy_per_source(
+        tmp_path,
+        fake_provider,
+        monkeypatch,
+        "  materialize_budget_per_run: 25\n"
+        "  run_time_budget_minutes: 300\n"
+        "  seconds_per_episode: 90\n",
+    )
+    assert per_source == 80
+
+
+def test_per_source_budget_explicit_override_wins(tmp_path, fake_provider, monkeypatch):
+    per_source = _spy_per_source(
+        tmp_path,
+        fake_provider,
+        monkeypatch,
+        "  materialize_budget_per_run: 40\n  materialize_budget_per_city: 7\n",
+    )
+    assert per_source == 7

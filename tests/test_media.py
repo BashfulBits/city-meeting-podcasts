@@ -6,7 +6,7 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.media import encode_args, materialize_audio
+from citypods.media import GlobalBudget, encode_args, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.local import LocalStorage
@@ -124,6 +124,64 @@ def test_budget_defers_extra_episodes(tmp_path):
     stats = _materialize(_city(), eps, _store(tmp_path), ff, budget=1)
     assert stats.hosted == 1 and stats.skipped_budget == 2
     assert sum(e.hosted_audio_url is not None for e in eps) == 1
+
+
+class _FailUrls:
+    """ffmpeg fake that fails only for source URLs containing a marker substring."""
+
+    def __init__(self, marker="FAIL"):
+        self.marker = marker
+        self.calls: list[str] = []
+
+    def extract_audio(self, source_url, dest, chapters=None):
+        self.calls.append(source_url)
+        if self.marker in source_url:
+            raise subprocess.CalledProcessError(1, "ffmpeg")
+        dest.write_bytes(b"fake-m4a")
+
+
+def test_failed_materialization_refunds_global_budget(tmp_path):
+    """Issue #116 follow-up: a failed host must hand its global-budget slot back, so a broken
+    episode in one source can't starve a hostable one. With a global cap of 1, a failing
+    episode followed by a good one should still host the good one."""
+    bad = _ep("bad", url="https://src/FAIL.m3u8")
+    good = _ep("good", url="https://src/ok.m3u8")
+    ff = _FailUrls()
+    stats = materialize_audio(
+        _city(),
+        [bad, good],
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        budget=5,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        global_budget=GlobalBudget(1),  # only one global slot
+    )
+    assert stats.hosted == 1 and len(stats.errors) == 1
+    assert good.hosted_audio_url and bad.hosted_audio_url is None
+
+
+def test_per_source_budget_bounds_attempts_not_just_successes(tmp_path):
+    """Failed attempts count against the per-source budget, so a source can't loop forever on
+    broken episodes. budget=2 + three failing episodes → 2 attempts, the third deferred."""
+    eps = [
+        _ep("g1", url="https://src/FAIL1"),
+        _ep("g2", url="https://src/FAIL2"),
+        _ep("g3", url="https://src/FAIL3"),
+    ]
+    ff = _FailUrls()
+    stats = materialize_audio(
+        _city(),
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        budget=2,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        global_budget=GlobalBudget(25),
+    )
+    assert len(stats.errors) == 2 and stats.skipped_budget == 1
+    assert len(ff.calls) == 2  # only two attempts ran, not all three
 
 
 def _seed_object(store, key):
