@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from citypods.models import City, Episode
 from citypods.records import (
@@ -14,7 +14,10 @@ from citypods.records import (
     feed_content_hash,
     load_records,
     merge_persisted,
+    merge_records,
     migrate_legacy_manifests,
+    prune_archive,
+    record_to_episode,
     save_records,
     source_key,
 )
@@ -102,6 +105,65 @@ def test_record_store_roundtrip(tmp_path):
     # Envelope carries a schema version for future migrations.
     raw = json.loads((tmp_path / "sources" / "src" / "episodes.json").read_text())
     assert raw["schema_version"] >= 1
+
+
+def test_record_to_episode_roundtrips_with_episode_to_record():
+    ep = _ep("g1")
+    ep.uid = "u1"
+    ep.summary = "s"
+    ep.duration = 3723
+    ep.media_kind = "hls"
+    ep.hosted_audio_url = "https://cdn/u1.m4a"
+    ep.audio_key = "k"
+    ep.audio_spec_hash = "spec"
+    ep.links = {"agenda": "https://x/a"}
+    ep.chapters = [{"start": 0, "title": "x"}]
+    ep.transcript_url = "https://x/t.vtt"
+
+    back = record_to_episode(episode_to_record(ep))
+    for attr in (
+        "uid", "guid", "title", "published", "body", "media_kind", "video_url", "duration",
+        "links", "chapters", "summary", "transcript_url", "hosted_audio_url", "audio_key",
+        "audio_spec_hash",
+    ):
+        assert getattr(back, attr) == getattr(ep, attr), attr
+
+
+def test_merge_records_is_append_only_with_fresh_winning():
+    persisted = {"a": {"uid": "a", "title": "old-a"}, "b": {"uid": "b", "title": "old-b"}}
+    fresh = {"b": {"uid": "b", "title": "new-b"}, "c": {"uid": "c", "title": "new-c"}}
+    merged = merge_records(persisted, fresh)
+    assert set(merged) == {"a", "b", "c"}  # nothing dropped (a left the window but is kept)
+    assert merged["b"]["title"] == "new-b"  # fresh wins on collision
+    assert merged["a"]["title"] == "old-a"  # persisted-only carried forward
+
+
+def _rec(uid, days_old):
+    when = datetime.now(UTC) - timedelta(days=days_old)
+    return {"uid": uid, "published": when.isoformat()}
+
+
+def test_prune_archive_keeps_everything_at_default_caps():
+    records = {f"u{i}": _rec(f"u{i}", i * 30) for i in range(20)}
+    assert prune_archive(records, max_items=5000, max_age_years=1000) == records
+
+
+def test_prune_archive_keeps_newest_n_by_max_items():
+    records = {f"u{i}": _rec(f"u{i}", i) for i in range(10)}  # u0 newest, u9 oldest
+    kept = prune_archive(records, max_items=3, max_age_years=1000)
+    assert set(kept) == {"u0", "u1", "u2"}
+
+
+def test_prune_archive_drops_records_older_than_max_age():
+    records = {"recent": _rec("recent", 10), "ancient": _rec("ancient", 800)}
+    kept = prune_archive(records, max_items=5000, max_age_years=1.0)
+    assert set(kept) == {"recent"}
+
+
+def test_prune_archive_keeps_undated_records():
+    records = {"dated": _rec("dated", 5), "undated": {"uid": "undated"}}
+    kept = prune_archive(records, max_items=5000, max_age_years=1.0)
+    assert "undated" in kept  # fail-safe: never drop content we can't date
 
 
 def test_legacy_manifest_carryover(tmp_path):

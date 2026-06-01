@@ -50,7 +50,11 @@ class FeatureSpec:
 @dataclass
 class ModelInputs:
     feeds: int = 80
-    episodes_per_feed: int = 50  # E: retained + materialized per feed (== max_episodes)
+    episodes_per_feed: int = 50  # E: how many a FEED renders/materializes (== max_episodes)
+    # Append-only archive (issue #109) decouples what we STORE from what a feed renders: the
+    # archive retains far more than max_episodes. ``archive_items`` is the storage driver (retained
+    # records per feed). None -> fall back to episodes_per_feed (keeps pre-#109 numbers unchanged).
+    archive_items: int | None = None
     duration_hours: float = 2.0  # D: average meeting length
     kbps: int = 96
     host_frac: float = 1.0  # fraction of feeds whose audio we host (HLS=1; direct only if extract)
@@ -86,11 +90,39 @@ class Projection:
         return d
 
 
+def archived_per_feed(inputs: ModelInputs) -> int:
+    """Records retained per feed = the storage driver. Falls back to the render cap when the
+    archive size isn't known, so pre-#109 projections are unchanged."""
+    return inputs.archive_items if inputs.archive_items is not None else inputs.episodes_per_feed
+
+
+def _monthly_cost(storage_gb: float) -> float:
+    return max(0.0, storage_gb - B2_FREE_GB) * B2_USD_PER_GB_MONTH
+
+
+def savings_if_capped(inputs: ModelInputs, candidate_items: int) -> dict:
+    """What ratcheting the retention cap down to ``candidate_items`` per feed would free. A
+    candidate at/above the current retained count saves nothing (delta 0); below it frees the
+    storage (and B2 $/mo) of the discarded older recordings. Powers the admin "cost of keeping
+    old audio" readout (issue #109)."""
+    g = gb_per_episode(inputs.kbps, inputs.duration_hours)
+    hosted_feeds = inputs.feeds * inputs.host_frac
+    current = archived_per_feed(inputs)
+    candidate = min(candidate_items, current)
+    cur_gb = hosted_feeds * current * g
+    cand_gb = hosted_feeds * candidate * g
+    return {
+        "candidate_items": candidate,
+        "storage_gb_freed": cur_gb - cand_gb,
+        "monthly_cost_delta": _monthly_cost(cur_gb) - _monthly_cost(cand_gb),
+    }
+
+
 def project(inputs: ModelInputs, features: list[FeatureSpec] | None = None) -> Projection:
     g = gb_per_episode(inputs.kbps, inputs.duration_hours)
     hosted_feeds = inputs.feeds * inputs.host_frac
-    storage_gb = hosted_feeds * inputs.episodes_per_feed * g
-    monthly = max(0.0, storage_gb - B2_FREE_GB) * B2_USD_PER_GB_MONTH
+    storage_gb = hosted_feeds * archived_per_feed(inputs) * g
+    monthly = _monthly_cost(storage_gb)
 
     time_bound = max(1, int(inputs.time_budget_hours * 3600 * inputs.safety / inputs.sec_per_ep))
     throughput = min(time_bound, inputs.per_run_cap) if inputs.per_run_cap else time_bound
@@ -156,6 +188,7 @@ def measured_inputs(
     durations: list[int] | None = None,
     run_history: list[dict] | None = None,
     hosted_feeds: int | None = None,
+    archive_items: int | None = None,
     base: ModelInputs | None = None,
 ) -> ModelInputs:
     """Replace defaults with observed values where available.
@@ -179,4 +212,6 @@ def measured_inputs(
         eps = sum(r.get("materialized", 0) for r in run_history)
         if eps > 0 and secs > 0:
             inp.sec_per_ep = round(secs / eps, 1)
+    if archive_items is not None:
+        inp.archive_items = archive_items
     return inp

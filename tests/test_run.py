@@ -144,6 +144,47 @@ def test_missing_outputs_force_rebuild_even_if_hash_matches(tmp_path, fake_provi
     assert [r.status for r in result] == ["built"]
 
 
+def test_window_shift_keeps_dropped_episode_in_archive_and_feed(tmp_path, fake_provider):
+    """Issue #109: a meeting that leaves the provider's window must stay in our records + feed,
+    and its audio must remain referenced (so orphan-GC won't reap it)."""
+    import json
+
+    from citypods.records import referenced_audio_keys
+
+    # Distinct publish dates so each meeting gets a stable uid across runs (same date+body would
+    # make assign_uids' sequence numbering depend on which episodes the window currently shows).
+    def ep(guid, day, **kw):
+        e = _ep(guid, **kw)
+        e.published = datetime(2026, 5, day, tzinfo=UTC)
+        return e
+
+    # g1 has hosted audio (a content-addressed key); the build will persist it.
+    g1 = ep("g1", 1, hosted="https://cdn/g1.m4a")
+    g1.audio_key = "faketest/src/uid-g1-spec.m4a"
+    fake_provider.episodes = [g1, ep("g2", 8)]
+    cities = _setup(tmp_path)
+    _build(tmp_path, cities)
+
+    # The provider window shifts: g1 drops off, g3 appears.
+    fake_provider.episodes = [ep("g2", 8), ep("g3", 15, title="Planning Commission")]
+    _build(tmp_path, cities)
+
+    # (assign_uids derives the real uid from author+body+date, so match on the stable audio key.)
+    state = tmp_path / "state"
+    (records_file,) = state.glob("sources/*/episodes.json")
+    episodes = json.loads(records_file.read_text())["episodes"]
+    audio_keys = {rec["audio"]["key"] for rec in episodes.values()}
+    # g1 survived the window shift with its audio intact (3 meetings now archived: g1, g2, g3)...
+    assert g1.audio_key in audio_keys
+    assert len(episodes) == 3
+    # ...so the orphan GC still sees its audio as referenced.
+    assert g1.audio_key in referenced_audio_keys(state)
+    # ...and the rendered feed still serves the dropped episode's enclosure.
+    feed = (tmp_path / "docs" / "fake-city" / "audio_feed.xml").read_text()
+    assert "https://cdn/g1.m4a" in feed
+    assert feed.count("<item>") == 3
+
+
 def test_write_chapter_sidecars_writes_and_prunes(tmp_path):
     import json
     from datetime import UTC, datetime

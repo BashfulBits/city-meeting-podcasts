@@ -10,7 +10,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from citypods.projection import ModelInputs, at_scale, measured_inputs, project
+from citypods.projection import (
+    ModelInputs,
+    archived_per_feed,
+    at_scale,
+    measured_inputs,
+    project,
+    savings_if_capped,
+)
 
 # Providers whose audio we always host (ephemeral/HLS) vs. direct providers (hosted only when a
 # city sets extract_audio). Mirrors media._should_host.
@@ -26,6 +33,24 @@ def _hosted_fraction(cities: list) -> float:
         1 for c in cities if c.provider in _HLS_PROVIDERS or getattr(c, "extract_audio", False)
     )
     return hosted / len(cities)
+
+
+def _measured_archive_items(state_dir: Path | None) -> int | None:
+    """Average records retained per source in the append-only archive (issue #109) — the real
+    storage driver, which decouples from the feed's render cap (``max_episodes``). None when no
+    records exist yet, so the projection falls back to the render cap."""
+    if not state_dir:
+        return None
+    counts = []
+    for path in Path(state_dir).glob("sources/*/episodes.json"):
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        counts.append(len(data.get("episodes") or {}))
+    if not counts:
+        return None
+    return round(sum(counts) / len(counts))
 
 
 def _load_run_history(state_dir: Path) -> list[dict]:
@@ -55,10 +80,21 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
         cities,
         run_history=history,
         hosted_feeds=round(_hosted_fraction(cities) * len(cities)) if cities else None,
+        archive_items=_measured_archive_items(state_dir),
         base=base,
     )
     current = project(inputs)
     scenarios = {str(f): at_scale(inputs, f).as_dict() for f in SCALE_SCENARIOS}
+
+    # Retention what-if (issue #109): how much B2 $/mo ratcheting the archive cap down would free.
+    retained = archived_per_feed(inputs)
+    candidates = [c for c in (50, 100, 250, 500, 1000, 2000) if c < retained]
+    retention = {
+        "max_archive_items": int(defaults.get("max_archive_items", 5000)),
+        "max_archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
+        "retained_per_feed": retained,
+        "savings": [savings_if_capped(inputs, c) for c in candidates],
+    }
 
     # "host all audio" = host_frac 1.0 regardless of provider
     host_all_inputs = ModelInputs(**{**inputs.__dict__, "host_frac": 1.0})
@@ -73,6 +109,7 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
         "host_all_audio": host_all.as_dict(),
         "time_bounded": time_bound.as_dict(),
         "scale_scenarios": scenarios,
+        "retention": retention,
         "notes": {
             "b2_free_gb": 10,
             "b2_usd_per_gb_month": 0.006,
@@ -105,6 +142,21 @@ def to_markdown(report: dict) -> str:
             f"**{tb['full_backfill_days']:.0f} days** instead of {c['full_backfill_days']:.0f}. "
             f"Consider `materialize_budget_per_run = {c['recommended_per_run']}` (or time-bounded)."
         )
+    ret = report.get("retention")
+    if ret:
+        line = (
+            f"- **Archive retention:** {ret['retained_per_feed']} recordings/feed retained "
+            f"(cap {ret['max_archive_items']}, ≤{ret['max_archive_age_years']}y)"
+        )
+        if ret["savings"]:
+            best = max(ret["savings"], key=lambda s: s["monthly_cost_delta"])
+            line += (
+                f" — capping at {best['candidate_items']}/feed would free "
+                f"{best['storage_gb_freed']:.0f} GB (**${best['monthly_cost_delta']:.2f}/mo**)"
+            )
+        else:
+            line += " — nothing to reclaim at current volume"
+        lines.append(line)
     lines += ["", "### At scale (storage / month)", "", "| Feeds | TB | $/mo |", "|--:|--:|--:|"]
     for f in ("200", "500", "1000", "5000"):
         s = report["scale_scenarios"][f]
