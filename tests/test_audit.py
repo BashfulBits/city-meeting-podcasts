@@ -216,11 +216,11 @@ def test_compute_archive_diff():
         "u3": {"audio": {"url": "https://cdn/u3.m4a", "key": "k3", "spec_hash": "s"}},
     }
     diff = compute_archive_diff([e1, e2], records)
-    assert diff.fetched == 2      # e1 and e2
-    assert diff.archived == 2     # u1 and u3
-    assert diff.materialized == 2 # both have hosted audio
-    assert diff.dropped == 1      # u3 not in fetched
-    assert diff.backlog == 1      # e2 is HLS with no hosted_audio_url
+    assert diff.fetched == 2  # e1 and e2
+    assert diff.archived == 2  # u1 and u3
+    assert diff.materialized == 2  # both have hosted audio
+    assert diff.dropped == 1  # u3 not in fetched
+    assert diff.backlog == 1  # e2 is HLS with no hosted_audio_url
 
 
 # ---------------------------------------------------------------------------
@@ -282,8 +282,9 @@ def test_audit_city_triage_b_dropped_but_archived_suppresses_sparse_empty():
     city = city.__class__(
         **{**city.__dict__, "max_episodes": 50},
     )
-    findings = audit_city(city, provider=_FakeProvider([_ep(1)]), now=NOW,
-                          records=records, min_meetings=3)
+    findings = audit_city(
+        city, provider=_FakeProvider([_ep(1)]), now=NOW, records=records, min_meetings=3
+    )
     assert not any(f.check in ("drift", "empty") for f in findings)
 
 

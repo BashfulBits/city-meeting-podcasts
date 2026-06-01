@@ -64,11 +64,11 @@ class ArchiveDiff:
       (c) neither                                 → genuine regression, file ticket
     """
 
-    fetched: int       # episodes provider returned this run (after uid assignment)
-    archived: int      # total unique episodes ever seen (fetched ∪ persisted)
+    fetched: int  # episodes provider returned this run (after uid assignment)
+    archived: int  # total unique episodes ever seen (fetched ∪ persisted)
     materialized: int  # archived episodes with a hosted audio URL
-    dropped: int       # in archive but absent from this fetch (left provider window)
-    backlog: int       # fetched but not yet materialized (HLS pipeline catching up)
+    dropped: int  # in archive but absent from this fetch (left provider window)
+    backlog: int  # fetched but not yet materialized (HLS pipeline catching up)
 
     def summary(self) -> str:
         """Compact counts string embedded in filed finding messages."""
@@ -92,9 +92,7 @@ def compute_archive_diff(fetched_episodes: list[Episode], records: dict) -> Arch
     archived_uids = set(records)
     materialized = sum(1 for r in records.values() if (r.get("audio") or {}).get("url"))
     dropped = len(archived_uids - fetched_uids)
-    backlog = sum(
-        1 for e in fetched_episodes if e.media_kind == "hls" and not e.hosted_audio_url
-    )
+    backlog = sum(1 for e in fetched_episodes if e.media_kind == "hls" and not e.hosted_audio_url)
     return ArchiveDiff(
         fetched=len(fetched_uids),
         archived=len(archived_uids),
