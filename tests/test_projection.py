@@ -11,6 +11,7 @@ from citypods.projection import (
     gb_per_episode,
     measured_inputs,
     project,
+    savings_if_capped,
 )
 
 
@@ -78,6 +79,31 @@ def test_measured_inputs_uses_observations():
     assert inp.duration_hours == 2.0
     assert inp.sec_per_ep == 90.0
     assert inp.host_frac == 0.5
+
+
+def test_archive_items_drives_storage_independently_of_render_cap():
+    # With archive_items unset, storage uses the render cap (pre-#109 behavior, golden unchanged).
+    assert round(project(ModelInputs()).storage_gb, 1) == 345.6
+    # Retaining more than we render (append-only archive) scales storage by archive_items, not E.
+    bigger = project(ModelInputs(archive_items=500))  # 10× the 50 rendered
+    assert round(bigger.storage_gb, 1) == 3456.0
+
+
+def test_savings_if_capped():
+    inp = ModelInputs(archive_items=500)
+    # A candidate at/above the retained count frees nothing.
+    assert savings_if_capped(inp, 500)["monthly_cost_delta"] == 0
+    assert savings_if_capped(inp, 1000)["monthly_cost_delta"] == 0
+    # Below it, capping frees storage + B2 cost.
+    s = savings_if_capped(inp, 50)
+    assert s["candidate_items"] == 50
+    assert s["storage_gb_freed"] > 0
+    assert s["monthly_cost_delta"] > 0
+
+
+def test_measured_inputs_seeds_archive_items():
+    inp = measured_inputs([object()] * 10, archive_items=320)
+    assert inp.archive_items == 320
 
 
 def test_measured_inputs_graceful_without_data():

@@ -14,7 +14,13 @@ max_workers: 20
 defaults:
   podcast_language: "en-us"
   podcast_category: "Government"
-  max_episodes: 50
+  max_episodes: 50                       # how many episodes a FEED renders (display cap)
+  # Append-only archive retention (issue #109). The archive keeps every meeting we've ever seen
+  # — even after it drops off the provider's window — so content + audio are never silently lost.
+  # These caps bound that growth; set arbitrarily high so nothing is pruned today. Ratchet them
+  # DOWN to reclaim storage (the admin/usage report shows the $/mo cost of keeping old audio).
+  max_archive_items: 5000                # max records RETAINED per source (newest kept)
+  max_archive_age_years: 1000            # drop records older than this many years
   extract_audio: false                   # opt-in audio re-hosting for direct providers
   audio_storage_backend: "b2"            # "local" | "b2" | "r2"  (override: AUDIO_STORAGE_BACKEND=local)
   materialize_budget_per_city: 5         # max NEW episodes re-hosted per run, per city/feed

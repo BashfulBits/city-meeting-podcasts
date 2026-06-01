@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.bodies import body_key, canonical_body
@@ -170,6 +171,70 @@ def episode_to_record(ep: Episode) -> dict:
             "spec_hash": ep.audio_spec_hash,
         },
     }
+
+
+def record_to_episode(rec: dict) -> Episode:
+    """Rebuild an :class:`Episode` from a stored record — the inverse of
+    :func:`episode_to_record`. Used to render feeds from the *full* append-only archive,
+    including episodes that have dropped out of the provider's current window (Granicus
+    100-item cap, Swagit windowing) and so are no longer in a fresh fetch."""
+    published = rec.get("published")
+    when = datetime.fromisoformat(published) if published else datetime.now(UTC)
+    audio = rec.get("audio") or {}
+    return Episode(
+        guid=rec.get("provider_guid") or "",
+        title=rec.get("title") or "",
+        published=when,
+        video_url=rec.get("video_url") or "",
+        duration=rec.get("duration"),
+        media_kind=rec.get("media_kind") or "direct",
+        body=rec.get("body"),
+        uid=rec.get("uid"),
+        hosted_audio_url=audio.get("url"),
+        audio_key=audio.get("key"),
+        audio_spec_hash=audio.get("spec_hash"),
+        links=rec.get("links") or {},
+        chapters=rec.get("chapters") or [],
+        summary=rec.get("summary") or "",
+        transcript_url=rec.get("transcript_url"),
+    )
+
+
+def merge_records(persisted: dict, fresh: dict) -> dict:
+    """Append-only merge of the record store: keep every previously-known episode and let a
+    freshly-fetched record win on a uid collision (fresh provider fields + re-enriched
+    artifacts are authoritative). This is what stops content that left the provider window
+    from being silently dropped — the core of issue #109."""
+    return {**persisted, **fresh}
+
+
+def prune_archive(records: dict, *, max_items: int, max_age_years: float, now=None) -> dict:
+    """Bound the otherwise append-only archive: keep the newest ``max_items`` records and drop
+    any older than ``max_age_years``. Defaults are set arbitrarily high (see build()), so this
+    is a no-op in normal operation — but the lever exists so retention can be ratcheted down
+    later (a pruned record's audio key falls out of ``referenced_audio_keys`` and the orphan GC
+    reclaims its audio on the usual cycle). Records with an unparseable ``published`` are kept
+    (fail safe — never drop content we can't date)."""
+    now = now or datetime.now(UTC)
+    cutoff = now.timestamp() - max_age_years * 365.25 * 86400
+
+    def _ts(rec: dict) -> float | None:
+        published = rec.get("published")
+        if not published:
+            return None
+        try:
+            return datetime.fromisoformat(published).timestamp()
+        except ValueError:
+            return None
+
+    kept = {uid: rec for uid, rec in records.items() if (_ts(rec) is None or _ts(rec) >= cutoff)}
+    if len(kept) <= max_items:
+        return kept
+    # Keep the newest max_items; undated records sort last (kept only if room remains).
+    ordered = sorted(
+        kept.items(), key=lambda kv: (_ts(kv[1]) is not None, _ts(kv[1]) or 0.0), reverse=True
+    )
+    return dict(ordered[:max_items])
 
 
 def merge_persisted(episodes: list[Episode], records: dict) -> None:

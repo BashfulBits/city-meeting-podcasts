@@ -32,7 +32,10 @@ from citypods.records import (
     feed_content_hash,
     load_records,
     merge_persisted,
+    merge_records,
     migrate_legacy_manifests,
+    prune_archive,
+    record_to_episode,
     save_records,
     source_key,
 )
@@ -53,6 +56,12 @@ from citypods.state import (
 from citypods.statesync import pull_state, push_state, reconcile_state
 from citypods.storage import make_storage
 
+# Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
+# nothing is pruned in normal operation, but the lever exists so retention can be ratcheted down
+# later (the admin/usage report shows the storage cost of keeping old recordings around).
+DEFAULT_MAX_ARCHIVE_ITEMS = 5000
+DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
+
 
 class SourcePipeline:
     """Fetch + enrich each distinct source once per build and share the result across all of
@@ -63,10 +72,20 @@ class SourcePipeline:
     built-in stage today, but transcript/summary/chapters/links slot in without touching this.
     """
 
-    def __init__(self, *, state_dir: Path, stages, ctx: StageContext):
+    def __init__(
+        self,
+        *,
+        state_dir: Path,
+        stages,
+        ctx: StageContext,
+        max_archive_items: int = DEFAULT_MAX_ARCHIVE_ITEMS,
+        max_archive_age_years: float = DEFAULT_MAX_ARCHIVE_AGE_YEARS,
+    ):
         self.state_dir = state_dir
         self.stages = stages
         self.ctx = ctx
+        self.max_archive_items = max_archive_items
+        self.max_archive_age_years = max_archive_age_years
         self._cache: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
@@ -86,7 +105,8 @@ class SourcePipeline:
             provider = get_provider(city.provider)
             episodes = provider.fetch_episodes(city.source)  # ProviderError propagates
             assign_uids(city, episodes)
-            merge_persisted(episodes, load_records(self.state_dir, key))
+            persisted = load_records(self.state_dir, key)
+            merge_persisted(episodes, persisted)
             seeded = migrate_legacy_manifests(self.state_dir, episodes)
 
             stats = run_stages(provider, city, episodes, self.stages, self.ctx)
@@ -102,15 +122,32 @@ class SourcePipeline:
                     t["errors"] += len(s.errors)
             if seeded:
                 notes.append(f"{seeded} legacy")
+
+            # Append-only archive (issue #109): merge this run's freshly-enriched records over
+            # the persisted store (fresh wins on uid) instead of replacing it, so a meeting that
+            # left the provider window keeps its record + audio. Bounded by the (high) retention
+            # caps so it never grows truly unbounded.
+            fresh = {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid}
+            combined = prune_archive(
+                merge_records(persisted, fresh),
+                max_items=self.max_archive_items,
+                max_age_years=self.max_archive_age_years,
+            )
+            archived = len(combined) - len(fresh)
+            if archived > 0:
+                notes.append(f"{archived} archived")
             if not self.ctx.dry_run:
-                save_records(
-                    self.state_dir,
-                    key,
-                    {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid},
-                )
-            self._cache[key] = episodes
+                save_records(self.state_dir, key, combined)
+
+            # Render from the full archive: prefer this run's in-memory enriched Episode for a
+            # uid, else rehydrate a persisted-only one (dropped from the provider window).
+            fetched_by_uid = {ep.uid: ep for ep in episodes if ep.uid}
+            archive = [
+                fetched_by_uid.get(uid) or record_to_episode(rec) for uid, rec in combined.items()
+            ]
+            self._cache[key] = archive
             self._notes[key] = ", ".join(notes)
-            return episodes
+            return archive
 
     def note(self, city: City) -> str:
         return self._notes.get(source_key(city), "")
@@ -153,14 +190,14 @@ def _process_city(
         # treat as a per-city error so one bad submission can't fail the whole build.
         return CityResult(city.slug, "error", detail=str(exc)), None
 
-    # Filter the shared source episodes to this feed's body, then cap to the most-recent
-    # max_episodes (a feed never shows more).
-    fetched = len(episodes)
+    # Filter the shared source archive to this feed's body, then cap to the most-recent
+    # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
+    archived = len(episodes)
     feed_eps = filter_by_body(episodes, city.source.get("body"))
     feed_eps.sort(key=lambda e: e.published, reverse=True)
     feed_eps = feed_eps[: city.max_episodes]
-    detail = f"{fetched} fetched"
-    if fetched > len(feed_eps):
+    detail = f"{archived} archived"
+    if archived > len(feed_eps):
         detail += f", {len(feed_eps)} after filter/cap"
     note = pipeline.note(city)
     if note:
@@ -316,7 +353,15 @@ def build(
             "chapters": GlobalBudget(chapters_budget) if chapters_budget > 0 else None,
         },
     )
-    pipeline = SourcePipeline(state_dir=state_dir, stages=default_stages(), ctx=ctx)
+    pipeline = SourcePipeline(
+        state_dir=state_dir,
+        stages=default_stages(),
+        ctx=ctx,
+        max_archive_items=int(defaults.get("max_archive_items", DEFAULT_MAX_ARCHIVE_ITEMS)),
+        max_archive_age_years=float(
+            defaults.get("max_archive_age_years", DEFAULT_MAX_ARCHIVE_AGE_YEARS)
+        ),
+    )
 
     results: list[CityResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:

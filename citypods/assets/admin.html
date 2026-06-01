@@ -42,7 +42,8 @@ const SEED = __SEED_JSON__;
 const B2_GB_MO = 0.006, FREE = 10;
 const FIELDS = [
   ["feeds","Feeds",1,5000,1],
-  ["episodes_per_feed","Episodes/feed (E)",1,200,1],
+  ["episodes_per_feed","Episodes/feed shown (E)",1,200,1],
+  ["archive_items","Recordings retained/feed",1,5000,1],
   ["duration_hours","Avg duration (h)",0.25,8,0.25],
   ["kbps","Bitrate (kbps)",32,256,1],
   ["host_frac","Host fraction (0–1)",0,1,0.05],
@@ -56,7 +57,10 @@ const FIELDS = [
 function project(i){
   const g = i.kbps*1000/8*3600*i.duration_hours/1e9;
   const hosted = i.feeds*i.host_frac;
-  const storage = hosted*i.episodes_per_feed*g;
+  // Append-only archive (issue #109): STORAGE is driven by retained records/feed (archive_items),
+  // which decouples from the feed render cap (episodes_per_feed). Null/undefined -> render cap.
+  const arch = (i.archive_items==null) ? i.episodes_per_feed : i.archive_items;
+  const storage = hosted*arch*g;
   const monthly = Math.max(0,storage-FREE)*B2_GB_MO;
   const timeBound = Math.max(1, Math.floor(i.time_budget_hours*3600*i.safety/i.sec_per_ep));
   const cap = i.per_run_cap>0 ? i.per_run_cap : null;
@@ -70,6 +74,8 @@ function project(i){
 }
 const state = Object.assign({}, SEED);
 if(state.per_run_cap===null||state.per_run_cap===undefined) state.per_run_cap=0;
+// archive_items defaults to the render cap when the archive size isn't yet known.
+if(state.archive_items===null||state.archive_items===undefined) state.archive_items=state.episodes_per_feed;
 const inputsEl=document.getElementById("inputs"), outEl=document.getElementById("out");
 document.getElementById("cal").textContent =
   JSON.parse(document.getElementById("report").textContent).notes.calibrated
@@ -97,6 +103,17 @@ Object.keys(PRESETS).forEach(name=>{const b=document.createElement("button");b.t
     [...inputsEl.querySelectorAll("input")].forEach((inp,idx)=>inp.value=state[FIELDS[idx][0]]);render();};
   pe.appendChild(b);});
 function card(t,v,cls){return `<div class="card"><div class="muted">${t}</div><div class="big ${cls||''}">${v}</div></div>`;}
+function retentionCard(){
+  // Issue #109: show the $/mo you'd save by ratcheting the retention cap (archive_items) down.
+  const base=project(state);
+  const caps=[50,100,250,500,1000,2000].filter(c=>c<state.archive_items);
+  if(!caps.length) return `<div class="card" style="grid-column:1/3"><div class="muted">Archive retention</div>`+
+    `Keeping all ${state.archive_items} recordings/feed. Nothing to reclaim by capping lower at this volume.</div>`;
+  const rows=caps.map(c=>{const p=project({...state,archive_items:c});
+    const saved=base.monthly-p.monthly, gb=(base.storage-p.storage);
+    return `<tr><td>${c}/feed</td><td style="text-align:right">${gb.toFixed(0)} GB</td><td style="text-align:right">$${saved.toFixed(2)}/mo</td></tr>`;}).join("");
+  return `<div class="card" style="grid-column:1/3"><div class="muted">Cost of keeping old recordings — savings if you cap retention lower</div>`+
+    `<table style="width:100%;margin-top:6px"><tr class="muted"><th style="text-align:left">Cap</th><th style="text-align:right">Freed</th><th style="text-align:right">Saved</th></tr>${rows}</table></div>`;}
 function render(){
   const r=project(state);
   outEl.innerHTML =
@@ -106,7 +123,8 @@ function render(){
     card("Capacity / day", r.perDay+" eps")+
     card("Backfill drain", isFinite(r.backfillDays)?r.backfillDays.toFixed(0)+" days":"∞")+
     card("Steady state", r.keepsUp?"keeps up":"falling behind", r.keepsUp?"ok":"warn")+
-    (r.capBottleneck? `<div class="card" style="grid-column:1/3"><span class="warn">⚠ The per-run cap (${state.per_run_cap}) is the bottleneck.</span> Time-bounded would do ${r.timeBound}/run; set the cap to 0 (time-bound) or raise it to ~${r.recommend}.</div>`:"");
+    (r.capBottleneck? `<div class="card" style="grid-column:1/3"><span class="warn">⚠ The per-run cap (${state.per_run_cap}) is the bottleneck.</span> Time-bounded would do ${r.timeBound}/run; set the cap to 0 (time-bound) or raise it to ~${r.recommend}.</div>`:"")+
+    retentionCard();
   const rows=[80,200,500,1000,2000,5000].map(f=>{const p=project({...state,feeds:f,host_frac:1});
     return `<tr><td>${f}</td><td style="text-align:right">${(p.storage/1000).toFixed(2)} TB</td><td style="text-align:right">$${p.monthly.toFixed(2)}</td></tr>`;}).join("");
   document.getElementById("chart").innerHTML=`<table style="width:100%"><tr class="muted"><th style="text-align:left">Feeds</th><th style="text-align:right">Stored</th><th style="text-align:right">$/mo</th></tr>${rows}</table>`;
