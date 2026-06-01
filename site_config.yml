@@ -23,7 +23,10 @@ defaults:
   max_archive_age_years: 1000            # drop records older than this many years
   extract_audio: false                   # opt-in audio re-hosting for direct providers
   audio_storage_backend: "b2"            # "local" | "b2" | "r2"  (override: AUDIO_STORAGE_BACKEND=local)
-  materialize_budget_per_city: 5         # max NEW episodes re-hosted per run, per city/feed
+  # Per-source cap = ceil(global budget × this fraction), so no single source monopolizes a run
+  # while a concentrated backlog can still use most of the run's capacity. Self-scales with the
+  # global budget below. (Set materialize_budget_per_city to pin an explicit per-source constant.)
+  materialize_source_fraction: 0.5       # any one source may host up to half the run's budget
   materialize_budget_per_run: 0          # 0 = time-bounded (see run_time_budget_minutes below)
   # Opt-in: when > 0, per-run audio/chapters budgets are derived from a wall-clock target
   # (minutes × budget_safety / seconds_per_episode) instead of the flat caps above, so a run

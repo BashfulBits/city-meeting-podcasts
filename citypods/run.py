@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import collections
 import json
+import math
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -318,7 +319,6 @@ def build(
     request_delay = float(site_config.get("request_delay_seconds", 0.1))
     max_workers = int(site_config.get("max_workers", 20))
     defaults = site_config.get("defaults", {})
-    per_source_budget = int(defaults.get("materialize_budget_per_city", 5))
     total_budget = int(defaults.get("materialize_budget_per_run", 25))
     # Chapter scrapes are one cheap page fetch each (no encode), so they can run ahead of the
     # audio re-encode budget; defaults to the same cap.
@@ -351,6 +351,18 @@ def build(
             f"budget: time-bounded ({time_budget_min:.0f}m × {safety}) → "
             f"audio {total_budget}/run @ {sec_ep:.0f}s/ep, chapters {chapters_budget}/run"
         )
+
+    # Per-source cap as a fraction of the finalized global budget, not a magic constant: it only
+    # exists to stop one source monopolizing a single run (e.g. Dallas's huge Swagit backlog
+    # crowding out Denton), so it must self-scale with the global budget. A flat constant either
+    # throttles a concentrated backlog far below the run's capacity (5/run when 24 are available)
+    # or — if you divide the global budget evenly by source count — reserves capacity for sources
+    # that have nothing to do. An explicit ``materialize_budget_per_city`` still overrides.
+    source_fraction = float(defaults.get("materialize_source_fraction", 0.5))
+    per_source_budget = int(
+        defaults.get("materialize_budget_per_city")
+        or max(1, math.ceil(total_budget * source_fraction))
+    )
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
     ctx = StageContext(
         storage=storage,
