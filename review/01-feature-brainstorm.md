@@ -103,14 +103,100 @@ Cost: 🆓 none · 💲 small API/compute · 💲💲 material.
     🆓. **Doc 03 admin page.**
 50. **Accessibility pass on the site (WCAG)** — Value: med · Effort: S · 🆓.
 
-## Recommended sequencing
+## Maintainer prioritization (decided 2026-05-31)
 
-1. **Now (cheap, high-leverage, no new deps):** #29 (security gate, before any Phase-5 work), #35/#36/#37
-   (ops visibility), #38, #41, #43, #11, #46.
-2. **Next paid stages (need a key + budget):** #1 transcripts → unlocks #2, #3, #5, #6, #8, #9, #11.
-   Transcripts are the keystone — most A-group features derive from them.
-3. **Coverage:** #31 Legistar + #27/#28 discovery, once #29 is in.
-4. **Polish:** the rest as bandwidth allows.
+Walked the full list with the maintainer and assigned priorities (**0 = highest**; lower = sooner).
+This section is authoritative and supersedes the original "recommended sequencing" guess.
 
-The keystone insight: **transcripts unlock ~10 downstream features**, so the transcript stage's
-storage/cost model (doc 03) is worth modeling carefully before committing.
+### New items added during the walkthrough
+- **#51 — Official city meetings-page link** (P1). Add each city's canonical meetings/agenda-portal
+  URL to every episode's notes + page (new optional `meetings_url`, fallback `city_website`); a
+  one-line extension of `LinksStage`. $0.
+- **#52 — Content permanence + feed-health triage** (**P0.5 — do first**; absorbs #45). **Correctness gap:** the
+  record store is currently *replaced* each run with only freshly-fetched episodes, so content that
+  drops off a provider feed (Granicus 100-item cap, Swagit windowing) is *lost*. Make the archive
+  **append-only** (accumulate records; render feeds from the full store), which also stops orphan-GC
+  from reaping archived audio. Then rework feed-health detection to separate **(a) pending backlog**
+  (suppress), **(b) provider-dropped-but-archived** (expected), **(c) genuine regression** (file an
+  actionable ticket), and add self-healing dead-enclosure re-resolve (former #45). The append-only
+  archive sub-part is a silent-content-loss risk, hence P0.5.
+- **#53 — Feed validation as a publish gate** (P2, sequenced at the *tail* of the P0.5–2 band — see
+  Adjustments). `citypods/validate.py` already does structural validation in CI; promote it to a
+  `deploy.yml` gate (malformed feed never publishes) + richer iTunes/Podcasting-2.0 checks.
+- **#55 — Front-end design cycle** (P2.5; absorbs #20 + #54). Iterative mockup-driven redesign of the
+  index (accordion that *looks* foldable; explain/justify any pre-expanded cities), subscribe-button
+  **app iconography**, and clear **audio-vs-video** labeling. Coordinate in time with **#46**.
+- **#56 — User-facing "report a problem with this feed/city" issue template + triage** (P3). New-city
+  requests are already covered by #28; this adds the feed/city *problem-report* path. Pairs with #52.
+- **#57 — Contributor scaffolding** (P4; do at 1.0). Stand up the open-source contribution process
+  once the project opens to outside contributors: a label taxonomy (`enhancement`, `good first
+  issue`, `help wanted`, `area:*`, `priority:*`), a `1.0` milestone, issue templates (enhancement +
+  bug, alongside the #56 user-report template), a GitHub **Projects** board (Roadmap view seeded from
+  issues, Priority field mirroring the 0–5 scale), and a fuller `CONTRIBUTING.md`. Then bulk-convert
+  the settled backlog into labeled issues and tag the well-scoped $0 items (e.g. #51/#16/#17/#13/#50,
+  front-end fixes) as **good first issue**. *Until then the roadmap (this doc + ROADMAP.md) is the
+  tracker and issues are filed just-in-time for the current working set.*
+
+### Deletes / defers / merges / rescopes
+- **Deleted:** #5 (entities/NER) — the city's own document search is better ground truth at that detail.
+- **Deferred (backlog, unlikely-soon):** #7 (speaker diarization — high complexity, low value),
+  #9 (translation), #24 (bitrate ladders), #26 (chapter images), #47 (map browser), #48 ("new since
+  last visit" — podcast clients do this; avoid storing user data beyond donations).
+- **Merged:** #12+#13 → **custom query feed builder** (pick region/state/location/topic → personalized
+  RSS; needs pre-gen combos or a Cloudflare Worker since Pages is static). #20+#54+#55 → front-end
+  design cycle. #45 → #52.
+- **Rescopes:**
+  - **#1** — reuse provider-supplied transcripts (Swagit `/videos/{id}/transcript`, CivicClerk
+    `transcriptionUrl`/`.srt`) *before* running ASR → ~57% of current feeds get free transcripts;
+    self-host ASR (faster-whisper on Actions) for the rest.
+  - **#8 (votes)** — harvest **platform metadata** (CivicClerk per-member tallies) + scrape the
+    **released minutes** documents; **never infer from audio** (electronic voting leaves nothing in
+    the recording). Coverage: full CivicClerk, partial Granicus, none Swagit/CivicPlus.
+  - **#14** — attendees/people come from the **minutes documents** (shared "minutes ingestion"
+    component with #8), not audio diarization.
+  - **#22** — silence-strip and provider transcripts are **not** exclusive: define one per-episode
+    **timeline transform** (silence cut-map) and remap chapters + transcript onto the served audio;
+    generate ASR post-trim only when no transcript exists. Develop jointly with #1.
+  - **#18** — RSS-delivered digest first (a donor perk); email delivery split out (P5).
+
+### Already shipped (this review)
+#29 SSRF gate (#108), #35 monitor/projection (#107), #36 run-history (#107), #37 endpoint contract
+tests (#105), #38 retry/backoff (#105), #43 alias validation (#105). Partial: #41 (time-bounded
+budgets shipped, auto-rebalance remaining), #49 (projection page shipped, dashboard extension open).
+
+### Priority-sorted roadmap
+| Pri | Items |
+|----:|-------|
+| **0.5** | #52 content permanence + feed-health (don't silently lose old content — append-only archive) |
+| **1**   | #1 transcripts (reuse-first) · #22 silence-trim/timeline-transform · #51 meetings link |
+| **1.5** | #11 `<podcast:transcript>` (starts only after #1) · #21 loudness norm · #23 host-all-audio |
+| **2**   | #2 summaries · #3 per-item summaries · #16 funding link · #28 onboarding issues+/approve · #30 auto-detect provider · #46 per-meeting pages · #53 feed-validation gate (lands at the *tail* of this band, once the feed shape settles) |
+| **2.5** | #15 soundbites · #55 front-end design cycle (incl. #20/#54) |
+| **3**   | #4 tags · #6 full-text search · #18 newsletter (RSS-first) · #25 intro/outro stinger · #31 **Legistar** · #41 catch-up auto-rebalance · #50 accessibility · #56 user feed-problem reports |
+| **3.5** | #19 upcoming .ics · #49 admin dashboard |
+| **4**   | #8 votes (metadata+minutes) · #12+#13 custom feed builder · #14 attendees (minutes) · #17 OPML · #27 population-ranked discovery · #32 scheduled board-gen · #33 dead-city archival · #39 per-provider rate limiting · #40 B2 actual-cost dashboard · #42 index sharding · #57 contributor scaffolding (do at 1.0) |
+| **5**   | #18-email expansion · #31 YouTube + other providers · #34 config via issue comments · #44 structured logging · #47 map browser |
+| **defer** | #7 diarization · #9 translation · #24 bitrate ladders · #26 chapter images · #48 new-since-visit |
+| **deleted** | #5 entities/NER |
+| **done** | #29 · #35 · #36 · #37 · #38 · #43 (partial: #41, #49) |
+
+### Adjustments (round 2, 2026-05-31)
+- **#52 → 0.5** (do first): the append-only archive is a silent-content-loss fix; everything else
+  assumes we never drop old meetings.
+- **#11 → 1.5**: strictly depends on #1, so it can't *start* until transcripts are finished.
+- **#53 → 2, placed at the *tail* of the P0.5–2 band**: the band changes the feed's shape
+  (transcripts, restructured items, append-only), so a publish-gate built *earlier* would be a
+  moving target — and CI snapshot/structural validation already guards the feature work pre-merge.
+  #53's distinct value is a `deploy.yml` gate catching production-only/real-data regressions, which
+  only pays off once the shape **stabilizes** (and before scaling to hundreds of feeds). So: P2 by
+  importance, but *sequenced after* #1/#52/#46 land.
+- **#16 → 2** (trivial; donations fund the rest). **#25 → 3** (polish + annoyance risk).
+  **#42 → 4** (#46 makes meetings independently crawlable, dropping sharding urgency at ~80 feeds).
+- **#8 left at 4** (maintainer call) despite being a cheap, transcript-free civic win.
+
+### Keystone
+**Transcripts (#1) unlock ~8 downstream features** (#2/#3/#6/#11/#15, plus better #8/#14 via minutes),
+so model their storage/throughput first (doc 03) — but the reuse-first rescope means only ~34 feeds
+(mostly Granicus) need ASR, roughly halving the backlog. The cheapest high-value win that needs no
+transcripts and ~$0 is **#51 (meetings link)**; #16 (funding) and the foundation of #41 (just enable
+`run_time_budget_minutes`) are similar near-free do-now actions.

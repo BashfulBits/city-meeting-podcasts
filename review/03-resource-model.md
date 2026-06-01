@@ -214,3 +214,60 @@ constants match). Prevents the calculator drifting from the source of truth.
    split the window.
 4. Keep a *storage* guardrail only if you later want one (you chose no hard cap); the model still
    prints projected $/mo so a surprise is impossible.
+
+---
+
+## 7. Per-feature recurring cost & ASR throughput (captured 2026-05-31)
+
+Cost assumptions: avg meeting **2 h = 120 min**, **~50 meetings/feed/yr** materialized, **avg city
+≈ 12 feeds** (range: small town 1–3, Fort Worth ~17, Dallas ~35). ASR anchors: Deepgram
+**$0.0043/min**, OpenAI Whisper **$0.006/min**, **self-hosted faster-whisper on Actions = $0 cash**.
+LLM anchors: GPT-4o-mini (~sub-cent/meeting), Claude Haiku (~1–3¢/meeting). Transcript/summary text
+storage is negligible (~100–150 KB/meeting).
+
+### Recurring cost is dominated by ASR (#1); everything downstream is pennies
+| Feature | Per meeting | Per city/yr (~12 feeds) | Notes |
+|---|---|---|---|
+| #1 transcripts (API) | $0.52–0.72 | **$310–430** *(or $0 self-host)* | the only material cost |
+| #2 summaries | $0.004–0.03 | $2–18 | needs a transcript |
+| #3 per-item summaries | $0.01–0.05 | $6–30 | |
+| #4 tags | $0.002–0.01 | $1–6 | or $0 rule-based on agenda titles |
+| #6 search | $0 | $0 | static index; value gated on #1 |
+| #8 votes | ~$0 (CivicClerk/Granicus metadata) | ~$0 | parser, no ASR/LLM |
+| #9 translation (summaries only) | $0.003–0.05 | $2–15 | full-transcript MT ≈ $2.75/mtg → avoid |
+| #15 soundbites | ~$0.01 | ~$6 | needs #1 |
+
+### #1 reuse-first → only ~34 feeds actually need ASR
+Provider-supplied transcripts cover most of the catalog:
+| Provider | Feeds | Transcript source |
+|---|---:|---|
+| Swagit | 44 | provider `/videos/{id}/transcript` — **free** |
+| CivicClerk | 1 | `transcriptionUrl` / `.srt` — **free** |
+| Granicus | 33 | **needs ASR** |
+| CivicPlus | 1 | **needs ASR** |
+
+→ ~57% of feeds get free transcripts; the ASR backlog/cost is roughly **halved**.
+
+### Self-hosted ASR throughput (free GitHub Actions, once backlog is drained)
+faster-whisper "base" int8 on `ubuntu-latest` (4 vCPU) ≈ **4–6× realtime** → a 2 h meeting ≈
+**20–30 min** compute. Usable window ≈ 4 effective compute-hours/run.
+
+| Setup | Per run | Per week |
+|---|---:|---:|
+| 1 job, 6 h cron (4 runs/day) | ~9–10 | **~250–270** |
+| 1 job, 4 h cron (6 runs/day) | ~9–10 | **~380–400** |
+| matrix of 4 jobs (4 h cron) | — | ~1,500 |
+| matrix of 8 jobs | — | ~3,000 |
+
+Context: current ~80 feeds generate **~55 new meetings/week** → a single free job covers today's
+inflow ~6×. 1,000 feeds (~700 new/week) needs ~2–3 parallel jobs. Caveats: GitHub fair-use (keep to
+≤4–8 jobs, not 24/7 on 16 runners); "base" quality is fine for search/summaries, "small"/"medium"
+halve/quarter throughput; run ASR in its **own scheduled workflow** so it doesn't contend with deploy.
+**The free tier is not the constraint on new inflow — only the initial backlog takes calendar time
+(the projection's drain-days number).**
+
+### Conclusion
+The strategic cost decision is **how to do #1**: ~$310–430/city/yr via API **or ~$0 self-hosted**
+(trading throughput). Reuse-first halves it. Once #1 exists, the rest of Group A is pennies-per-meeting.
+The two high-value $0 items needing **no** transcripts: **#51 (meetings link)** and **#8 (CivicClerk
+votes)**.
