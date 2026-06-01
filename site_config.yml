@@ -14,7 +14,7 @@ max_workers: 20
 defaults:
   podcast_language: "en-us"
   podcast_category: "Government"
-  max_episodes: 50                       # how many episodes a FEED renders (display cap)
+  max_episodes: 500                      # how many episodes a FEED renders (display cap)
   # Append-only archive retention (issue #109). The archive keeps every meeting we've ever seen
   # — even after it drops off the provider's window — so content + audio are never silently lost.
   # These caps bound that growth; set arbitrarily high so nothing is pruned today. Ratchet them

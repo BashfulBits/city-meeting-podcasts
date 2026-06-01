@@ -72,13 +72,14 @@ function project(i){
     keepsUp:perDay>=inflow, backfill, backfillDays: perDay? backfill/perDay: Infinity,
     capBottleneck: cap!==null && cap<timeBound, recommend:timeBound};
 }
+const REPORT = JSON.parse(document.getElementById("report").textContent);
 const state = Object.assign({}, SEED);
 if(state.per_run_cap===null||state.per_run_cap===undefined) state.per_run_cap=0;
 // archive_items defaults to the render cap when the archive size isn't yet known.
 if(state.archive_items===null||state.archive_items===undefined) state.archive_items=state.episodes_per_feed;
 const inputsEl=document.getElementById("inputs"), outEl=document.getElementById("out");
 document.getElementById("cal").textContent =
-  JSON.parse(document.getElementById("report").textContent).notes.calibrated
+  REPORT.notes.calibrated
    ? "(seconds/episode calibrated from run history)" : "(seconds/episode is an estimate until run history accrues)";
 FIELDS.forEach(([k,label,min,max,step])=>{
   const l=document.createElement("label"); l.textContent=label;
@@ -114,6 +115,19 @@ function retentionCard(){
     return `<tr><td>${c}/feed</td><td style="text-align:right">${gb.toFixed(0)} GB</td><td style="text-align:right">$${saved.toFixed(2)}/mo</td></tr>`;}).join("");
   return `<div class="card" style="grid-column:1/3"><div class="muted">Cost of keeping old recordings — savings if you cap retention lower</div>`+
     `<table style="width:100%;margin-top:6px"><tr class="muted"><th style="text-align:left">Cap</th><th style="text-align:right">Freed</th><th style="text-align:right">Saved</th></tr>${rows}</table></div>`;}
+function truncationCard(){
+  // Live-data observation (not a what-if slider): how many sources are truncated by max_episodes.
+  const t = REPORT.truncation;
+  if(!t || t.checked===0) return "";
+  if(t.truncated===0){
+    return `<div class="card" style="grid-column:1/3"><div class="muted">Feed cap (max_episodes)</div>`+
+      `<span class="ok">✓</span> No feeds truncated — all ${t.checked} sources fit within the cap.</div>`;
+  }
+  const ex = t.examples && t.examples.length ? `<div class="muted" style="margin-top:6px">e.g. ${t.examples.join(", ")}</div>` : "";
+  return `<div class="card" style="grid-column:1/3"><div class="muted">Feed cap (max_episodes) — live data</div>`+
+    `<span class="warn">⚠</span> <strong>${t.truncated}</strong> of <strong>${t.checked}</strong> sources have more archived episodes than the feed shows (up to <strong>${t.max_gap}</strong> hidden).`+
+    ex+`<div class="muted" style="margin-top:6px">Raise <code>max_episodes</code> in site_config.yml to expose more history.</div></div>`;
+}
 function render(){
   const r=project(state);
   outEl.innerHTML =
@@ -124,6 +138,7 @@ function render(){
     card("Backfill drain", isFinite(r.backfillDays)?r.backfillDays.toFixed(0)+" days":"∞")+
     card("Steady state", r.keepsUp?"keeps up":"falling behind", r.keepsUp?"ok":"warn")+
     (r.capBottleneck? `<div class="card" style="grid-column:1/3"><span class="warn">⚠ The per-run cap (${state.per_run_cap}) is the bottleneck.</span> Time-bounded would do ${r.timeBound}/run; set the cap to 0 (time-bound) or raise it to ~${r.recommend}.</div>`:"")+
+    truncationCard()+
     retentionCard();
   const rows=[80,200,500,1000,2000,5000].map(f=>{const p=project({...state,feeds:f,host_frac:1});
     return `<tr><td>${f}</td><td style="text-align:right">${(p.storage/1000).toFixed(2)} TB</td><td style="text-align:right">$${p.monthly.toFixed(2)}</td></tr>`;}).join("");
