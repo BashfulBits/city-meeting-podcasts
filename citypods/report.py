@@ -35,6 +35,47 @@ def _hosted_fraction(cities: list) -> float:
     return hosted / len(cities)
 
 
+def _truncation_stats(cities: list, state_dir: Path | None) -> dict:
+    """How many feeds are showing fewer episodes than they have archived.
+
+    A feed is "truncated" when its archive holds more episodes than ``max_episodes`` allows the
+    RSS feed to render. With the append-only archive this is expected and healthy — it just means
+    the feed cap is the binding limit, not the amount of content we have.
+    """
+    if not state_dir or not cities:
+        return {"checked": 0, "truncated": 0, "max_gap": 0, "examples": []}
+
+    from citypods.records import load_records, source_key
+
+    seen: dict[str, int] = {}  # source_key -> max_episodes for that source
+    for city in cities:
+        key = source_key(city)
+        seen[key] = max(seen.get(key, 0), city.max_episodes)
+
+    truncated = 0
+    max_gap = 0
+    examples: list[str] = []
+    checked = 0
+    for city in cities:
+        key = source_key(city)
+        if key not in seen:
+            continue
+        records = load_records(Path(state_dir), key)
+        archived = len(records)
+        if archived == 0:
+            continue
+        checked += 1
+        cap = seen.pop(key)  # process each source once
+        gap = archived - cap
+        if gap > 0:
+            truncated += 1
+            max_gap = max(max_gap, gap)
+            if len(examples) < 3:
+                examples.append(f"{city.slug} ({archived} archived, {cap} shown)")
+
+    return {"checked": checked, "truncated": truncated, "max_gap": max_gap, "examples": examples}
+
+
 def _measured_archive_items(state_dir: Path | None) -> int | None:
     """Average records retained per source in the append-only archive (issue #109) — the real
     storage driver, which decouples from the feed's render cap (``max_episodes``). None when no
@@ -96,6 +137,9 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
         "savings": [savings_if_capped(inputs, c) for c in candidates],
     }
 
+    # Feed truncation: how many sources have more archived episodes than max_episodes renders.
+    truncation = _truncation_stats(cities, state_dir)
+
     # "host all audio" = host_frac 1.0 regardless of provider
     host_all_inputs = ModelInputs(**{**inputs.__dict__, "host_frac": 1.0})
     host_all = project(host_all_inputs)
@@ -110,6 +154,7 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
         "time_bounded": time_bound.as_dict(),
         "scale_scenarios": scenarios,
         "retention": retention,
+        "truncation": truncation,
         "notes": {
             "b2_free_gb": 10,
             "b2_usd_per_gb_month": 0.006,
@@ -157,6 +202,19 @@ def to_markdown(report: dict) -> str:
         else:
             line += " — nothing to reclaim at current volume"
         lines.append(line)
+    trunc = report.get("truncation")
+    if trunc and trunc.get("checked", 0) > 0:
+        if trunc["truncated"] == 0:
+            lines.append(
+                f"- **Feed cap (`max_episodes`):** no feeds truncated "
+                f"({trunc['checked']} sources checked, all within cap)"
+            )
+        else:
+            ex = f" e.g. {trunc['examples'][0]}" if trunc.get("examples") else ""
+            lines.append(
+                f"- ⚠️ **Feed cap (`max_episodes`):** {trunc['truncated']} of {trunc['checked']} "
+                f"sources truncated (up to {trunc['max_gap']} episodes hidden){ex}"
+            )
     lines += ["", "### At scale (storage / month)", "", "| Feeds | TB | $/mo |", "|--:|--:|--:|"]
     for f in ("200", "500", "1000", "5000"):
         s = report["scale_scenarios"][f]

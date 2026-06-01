@@ -122,8 +122,20 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
 
     back = record_to_episode(episode_to_record(ep))
     for attr in (
-        "uid", "guid", "title", "published", "body", "media_kind", "video_url", "duration",
-        "links", "chapters", "summary", "transcript_url", "hosted_audio_url", "audio_key",
+        "uid",
+        "guid",
+        "title",
+        "published",
+        "body",
+        "media_kind",
+        "video_url",
+        "duration",
+        "links",
+        "chapters",
+        "summary",
+        "transcript_url",
+        "hosted_audio_url",
+        "audio_key",
         "audio_spec_hash",
     ):
         assert getattr(back, attr) == getattr(ep, attr), attr

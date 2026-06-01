@@ -14,7 +14,7 @@ max_workers: 20
 defaults:
   podcast_language: "en-us"
   podcast_category: "Government"
-  max_episodes: 50                       # how many episodes a FEED renders (display cap)
+  max_episodes: 500                      # how many episodes a FEED renders (display cap)
   # Append-only archive retention (issue #109). The archive keeps every meeting we've ever seen
   # — even after it drops off the provider's window — so content + audio are never silently lost.
   # These caps bound that growth; set arbitrarily high so nothing is pruned today. Ratchet them
@@ -29,9 +29,9 @@ defaults:
   # (minutes × budget_safety / seconds_per_episode) instead of the flat caps above, so a run
   # fills the 6h Actions window and a backfill drains in days not months (see review/03 +
   # citypods/projection.py). seconds_per_episode is measured from run history when available.
-  run_time_budget_minutes: 0             # 0 = use the flat caps above (default; behavior unchanged)
-  budget_safety: 0.8                     # fraction of the time budget to actually fill
-  seconds_per_episode: 90                # estimate until run history calibrates it
+  run_time_budget_minutes: 300           # 300 min × 0.8 / 600 s/ep ≈ 24 eps/run to start;
+  budget_safety: 0.8                     # self-calibrates upward as run history accrues
+  seconds_per_episode: 600              # conservative estimate (10 min/ep); replaced by measured value after first runs
   seconds_per_chapter_fetch: 3           # per chapter-page fetch (cheap; no encode)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
   min_meetings_per_body: 3               # generator: a body needs this many recent meetings to get a feed
