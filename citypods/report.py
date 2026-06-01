@@ -76,22 +76,38 @@ def _truncation_stats(cities: list, state_dir: Path | None) -> dict:
     return {"checked": checked, "truncated": truncated, "max_gap": max_gap, "examples": examples}
 
 
-def _measured_archive_items(state_dir: Path | None) -> int | None:
-    """Average records retained per source in the append-only archive (issue #109) — the real
-    storage driver, which decouples from the feed's render cap (``max_episodes``). None when no
-    records exist yet, so the projection falls back to the render cap."""
-    if not state_dir:
+def _measured_archive_items(cities: list, state_dir: Path | None) -> int | None:
+    """Average records retained **per feed** from the append-only archive — the correct input
+    for the projection model, which multiplies by number of feeds to estimate total storage.
+
+    Multiple city configs (feeds) can share a single source key (e.g. all per-board feeds of a
+    city share one ``episodes.json``). Averaging raw per-source counts and then multiplying by
+    feed count would overstate storage. Instead we sum records across all unique source keys
+    (= total unique audio files we store) and divide by the number of feeds, so the model's
+    ``storage_gb = hosted_feeds × archive_items × gb_per_ep`` gives the correct total.
+
+    Returns None when no state exists, so the projection falls back to the render cap.
+    """
+    if not state_dir or not cities:
         return None
-    counts = []
-    for path in Path(state_dir).glob("sources/*/episodes.json"):
-        try:
-            data = json.loads(path.read_text())
-        except (OSError, ValueError):
+
+    from citypods.records import load_records, source_key
+
+    # Sum records across each unique source key exactly once.
+    seen: set[str] = set()
+    total_records = 0
+    for city in cities:
+        key = source_key(city)
+        if key in seen:
             continue
-        counts.append(len(data.get("episodes") or {}))
-    if not counts:
+        seen.add(key)
+        records = load_records(Path(state_dir), key)
+        total_records += len(records)
+
+    if not seen:
         return None
-    return round(sum(counts) / len(counts))
+    # Divide by number of feeds (not sources) — the projection multiplies by feeds.
+    return round(total_records / len(cities))
 
 
 def _load_run_history(state_dir: Path) -> list[dict]:
@@ -121,7 +137,7 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
         cities,
         run_history=history,
         hosted_feeds=round(_hosted_fraction(cities) * len(cities)) if cities else None,
-        archive_items=_measured_archive_items(state_dir),
+        archive_items=_measured_archive_items(cities, state_dir),
         base=base,
     )
     current = project(inputs)
@@ -190,8 +206,8 @@ def to_markdown(report: dict) -> str:
     ret = report.get("retention")
     if ret:
         line = (
-            f"- **Archive retention:** {ret['retained_per_feed']} recordings/feed retained "
-            f"(cap {ret['max_archive_items']}, ≤{ret['max_archive_age_years']}y)"
+            f"- **Archive retention:** ~{ret['retained_per_feed']} recordings/feed "
+            f"(total÷feeds; cap {ret['max_archive_items']}, ≤{ret['max_archive_age_years']}y)"
         )
         if ret["savings"]:
             best = max(ret["savings"], key=lambda s: s["monthly_cost_delta"])
