@@ -245,6 +245,54 @@ def test_build_writes_run_history_and_summary(tmp_path, fake_provider):
     assert all(_json.loads(line)["schema_version"] for line in hist2)
 
 
+def test_build_logs_audio_stage_activity_and_errors(tmp_path, fake_provider, capsys):
+    """The per-stage run summary must surface audio activity (and sample errors) to stdout, so a
+    re-host that triggers but fails downstream is visible rather than hiding behind the
+    feed-level "0 errors" line (issue #116 follow-up)."""
+    import subprocess
+
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"  # forces re-hosting via materialize_audio
+
+    class _FailingFfmpeg:
+        def extract_audio(self, source_url, dest, chapters=None):
+            raise subprocess.CalledProcessError(1, "ffmpeg")
+
+    cities = _setup(tmp_path)
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        cities_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        ffmpeg=_FailingFfmpeg(),
+    )
+    out = capsys.readouterr().out
+    assert "audio:" in out and "errors" in out
+    assert "! " in out  # a sample error message was surfaced
+
+
+def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
+    """A successful re-host reports a non-zero ``ran`` count in the stage summary."""
+
+    class _OkFfmpeg:
+        def extract_audio(self, source_url, dest, chapters=None):
+            dest.write_bytes(b"fake-m4a")
+
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        cities_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        ffmpeg=_OkFfmpeg(),
+    )
+    out = capsys.readouterr().out
+    # two HLS episodes, both newly hosted, none reused, no errors
+    assert "audio: 2 ran, 0 reused" in out and "0 errors" in out
+
+
 def test_time_bounded_budget_overrides_flat_cap(tmp_path, fake_provider, monkeypatch):
     import citypods.run as run_mod
 
