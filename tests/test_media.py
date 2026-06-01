@@ -8,7 +8,7 @@ from pathlib import Path
 
 from citypods.media import encode_args, materialize_audio
 from citypods.models import City, Episode
-from citypods.records import audio_object_key, audio_spec_hash
+from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.local import LocalStorage
 
 MAX_KBPS = 96
@@ -126,23 +126,76 @@ def test_budget_defers_extra_episodes(tmp_path):
     assert sum(e.hosted_audio_url is not None for e in eps) == 1
 
 
+def _seed_object(store, key):
+    """Write a placeholder object at ``key`` so a reused record has something to point at."""
+    src = Path(store.root).parent / "seed.m4a"
+    src.write_bytes(b"seed")
+    store.put_file(key, src, "audio/mp4")
+
+
 def test_matching_spec_reuses_without_ffmpeg(tmp_path):
     ep = _ep("g1")
-    ep.hosted_audio_url = "https://cdn/audio/existing.m4a"
-    ep.audio_spec_hash = audio_spec_hash(ep, max_kbps=MAX_KBPS)  # already current
+    city = _city()
+    store = _store(tmp_path)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)  # already current
+    key = audio_object_key(city, ep, spec)
+    _seed_object(store, key)  # object really exists in storage
+    ep.audio_key = key
+    ep.hosted_audio_url = store.public_url(key)
+    ep.audio_spec_hash = spec
     ff = FakeFfmpeg()
-    stats = _materialize(_city(), [ep], _store(tmp_path), ff)
+    stats = _materialize(city, [ep], store, ff)
     assert stats.reused == 1 and ff.calls == []
-    assert ep.hosted_audio_url == "https://cdn/audio/existing.m4a"
+    assert ep.hosted_audio_url == store.public_url(key)
 
 
 def test_legacy_spec_is_reused(tmp_path):
     ep = _ep("g1")
-    ep.hosted_audio_url = "https://cdn/audio/legacy.m4a"
+    city = _city()
+    store = _store(tmp_path)
+    key = f"{city.provider}/{source_key(city)}/legacy.m4a"
+    _seed_object(store, key)
+    ep.audio_key = key
+    ep.hosted_audio_url = store.public_url(key)
     ep.audio_spec_hash = "legacy"  # carried over from the old manifest
     ff = FakeFfmpeg()
-    stats = _materialize(_city(), [ep], _store(tmp_path), ff)
+    stats = _materialize(city, [ep], store, ff)
     assert stats.reused == 1 and ff.calls == []
+
+
+def test_stale_record_for_missing_object_re_materializes(tmp_path):
+    """Issue #116: a record claims hosted audio (matching spec) but the object isn't in storage
+    — e.g. a Swagit episode whose presigned source expired. The pipeline must re-materialize,
+    not trust the dead record."""
+    ep = _ep("g1")
+    city = _city()
+    store = _store(tmp_path)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, spec)
+    ep.audio_key = key
+    ep.hosted_audio_url = store.public_url(key)  # points at an object that was never written
+    ep.audio_spec_hash = spec
+    ff = FakeFfmpeg()
+    stats = _materialize(city, [ep], store, ff)
+    assert stats.reused == 0 and stats.hosted == 1
+    assert ff.calls == ["https://src/manifest.m3u8"]
+    assert (Path(store.root) / key).exists()
+
+
+def test_stale_record_cleared_when_budget_exhausted(tmp_path):
+    """A dead record under no budget must drop its pointer rather than keep advertising audio
+    that isn't in storage."""
+    ep = _ep("g1")
+    city = _city()
+    store = _store(tmp_path)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, spec)
+    ep.audio_key = key
+    ep.hosted_audio_url = store.public_url(key)
+    ep.audio_spec_hash = spec
+    stats = _materialize(city, [ep], store, FakeFfmpeg(), budget=0)
+    assert stats.skipped_budget == 1 and stats.reused == 0
+    assert ep.hosted_audio_url is None and ep.audio_key is None
 
 
 def test_spec_change_re_encodes(tmp_path):
