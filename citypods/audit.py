@@ -14,6 +14,8 @@ the audit catches the next instance automatically instead of by manual investiga
   * ``dead-enclosure`` — expiring Swagit presigned URLs / dead Granicus DownloadFile links.
   * ``dead-audio``     — one project-wide alert when too many episodes can't be materialized at
                          all (keyless Swagit source with no usable page media, issue #120).
+  * ``deferred-audio`` — one project-wide tracker of episodes parked awaiting a pending feature
+                         (multi-segment Swagit concat, #122), so its prevalence stays visible.
 
 The check functions are pure (no network) so they unit-test from fixtures; ``audit_city``
 does the one fetch and wires them together, taking injectable ``head`` / ``view_counts`` so
@@ -239,6 +241,27 @@ def check_dead_audio_aggregate(
     return Finding("(all)", "dead-audio", ERROR, msg)
 
 
+def check_deferred_audio_aggregate(
+    deferred_total: int, *, examples: list[tuple[str, int]] | None = None, issue: int = 122
+) -> Finding | None:
+    """Project-wide prevalence tracker for deferred (recoverable) audio (issue #120).
+
+    Fires whenever any episode is parked awaiting a pending feature (multi-segment Swagit concat),
+    so the count of meetings that feature would unblock stays visible for prioritization. Filed as
+    ``severity:warn`` against pseudo-slug ``(all)``; the feed-health reconciler keeps it a single
+    deduplicated issue that auto-closes once ``#issue`` ships and the count returns to 0."""
+    if deferred_total <= 0:
+        return None
+    msg = (
+        f"{deferred_total} episode(s) across all feeds await multi-segment audio concat "
+        f"(deferred via backoff). Implementing #{issue} would unblock them."
+    )
+    if examples:
+        top = sorted(examples, key=lambda kv: kv[1], reverse=True)[:3]
+        msg += " Most affected sources: " + ", ".join(f"{s} ({n})" for s, n in top) + "."
+    return Finding("(all)", "deferred-audio", WARN, msg)
+
+
 def check_rehost_backlog(slug: str, episodes: list[Episode]) -> Finding | None:
     """Flag only a *wholly* stalled audio pipeline: there are HLS episodes that need
     re-hosting but none have been hosted at all (transient per-run backlog is normal and
@@ -436,8 +459,10 @@ def audit_all(
 
     findings: list[Finding] = []
     # Audio-failure tally is per *source* (per-body feeds share one record store), so accumulate
-    # over unique source keys to avoid double-counting (issue #120).
+    # over unique source keys to avoid double-counting (issue #120). A representative slug per
+    # source labels the prevalence examples.
     failures_by_source: dict[str, tuple[int, int]] = {}
+    slug_by_source: dict[str, str] = {}
     for city in cities:
         provider = get_provider(city.provider)
 
@@ -457,6 +482,7 @@ def audit_all(
         src_key = source_key(city)
         records = load_records(state_dir, src_key)
         failures_by_source.setdefault(src_key, count_audio_failures(records))
+        slug_by_source.setdefault(src_key, city.slug)
         findings.extend(
             audit_city(
                 city,
@@ -472,7 +498,13 @@ def audit_all(
 
     deferred_total = sum(d for d, _ in failures_by_source.values())
     dead_total = sum(d for _, d in failures_by_source.values())
-    aggregate = check_dead_audio_aggregate(deferred_total, dead_total, threshold=dead_threshold)
-    if aggregate:
-        findings.append(aggregate)
+    dead = check_dead_audio_aggregate(deferred_total, dead_total, threshold=dead_threshold)
+    if dead:
+        findings.append(dead)
+    deferred_examples = [
+        (slug_by_source[k], d) for k, (d, _) in failures_by_source.items() if d > 0
+    ]
+    deferred = check_deferred_audio_aggregate(deferred_total, examples=deferred_examples)
+    if deferred:
+        findings.append(deferred)
     return findings
