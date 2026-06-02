@@ -346,6 +346,40 @@ def test_audit_city_triage_c_genuine_regression_files_ticket():
     assert "inferred:" in drift[0].message
 
 
+def test_compute_archive_diff_scoped_to_body():
+    # A shared-view source: records hold two bodies, but the diff scopes to "Planning".
+    e1 = _ep(1, "g1")
+    e1.uid = "u1"
+    e1.body = "Planning and Zoning Commission"
+    records = {
+        "u1": {"body": "Planning and Zoning Commission", "audio": {"url": "https://cdn/u1.m4a"}},
+        "u2": {"body": "City Council", "audio": {"url": "https://cdn/u2.m4a"}},
+    }
+    diff = compute_archive_diff([e1], records, body="Planning")
+    assert diff.archived == 1  # only the Planning record
+    assert diff.materialized == 1  # the City Council record is excluded
+
+
+def test_audit_city_shared_view_broken_body_not_suppressed():
+    # Shared Swagit view: City Council is materialized, but the Planning feed's body filter
+    # stopped matching so it has 0 episodes. The materialized council episodes live in the same
+    # shared store — but must NOT suppress the Planning regression (per-body scoping).
+    council = _ep(1, "g1", hosted="https://cdn/u1.m4a")
+    council.uid = "u1"
+    council.body = "City Council"
+    records = {
+        "u1": {"body": "City Council", "audio": {"url": "https://cdn/u1.m4a"}},
+        "u2": {"body": "City Council", "audio": {"url": "https://cdn/u2.m4a"}},
+    }
+    city = _city()
+    city = city.__class__(**{**city.__dict__, "source": {"feed_url": "u", "body": "Planning"}})
+    findings = audit_city(city, provider=_FakeProvider([council]), now=NOW, records=records)
+    # Planning resolves to 0 episodes; the diff is scoped to Planning (empty), so don't suppress.
+    drift = [f for f in findings if f.check == "drift"]
+    assert len(drift) == 1
+    assert "inferred:" in drift[0].message
+
+
 def test_audit_city_staleness_suppressed_by_archive_newest():
     # Provider window looks stale, but archive has a recent episode → suppress.
     eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
