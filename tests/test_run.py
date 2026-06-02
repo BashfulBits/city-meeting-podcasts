@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import UTC, datetime
 
@@ -317,6 +318,106 @@ def test_stop_signal_latches_superseded_and_throttles_polling():
     assert s() is False  # 1st poll: not yet
     assert s() is True  # 2nd poll: superseded
     assert s() is True and calls["n"] == 2  # latched -> no further polling
+
+
+def _set_actions_env(monkeypatch, run_number="63"):
+    """The standard GITHUB_* vars _newer_run_queued reads, with a realistic GITHUB_WORKFLOW_REF
+    (the ``@refs/heads/main`` suffix is the part the old parse tripped on)."""
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_TOKEN", "tok")
+    monkeypatch.setenv("GITHUB_RUN_ID", "100")
+    monkeypatch.setenv("GITHUB_RUN_NUMBER", run_number)
+    monkeypatch.setenv(
+        "GITHUB_WORKFLOW_REF", "owner/repo/.github/workflows/deploy.yml@refs/heads/main"
+    )
+
+
+def _fake_actions_api(monkeypatch, payload, captured=None):
+    """Patch urllib.request.urlopen to serve ``payload`` as the Actions API response, recording the
+    requested URL into ``captured`` (a dict) when given."""
+    import urllib.request
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode()
+
+    def _urlopen(req, timeout=0):
+        if captured is not None:
+            captured["url"] = req.full_url
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+
+
+def test_newer_run_queued_uses_workflow_filename_not_branch(monkeypatch):
+    # Regression guard for issue #63: GITHUB_WORKFLOW_REF's "@refs/heads/main" suffix must not be
+    # mistaken for the workflow filename — querying /workflows/main/runs 404s and graceful yield
+    # silently never fires (the run rides to its wall-clock deadline with newer builds queued).
+    _set_actions_env(monkeypatch)
+    captured: dict = {}
+    _fake_actions_api(
+        monkeypatch,
+        {
+            "workflow_runs": [
+                {"id": 999, "run_number": 64, "status": "queued"},
+                {"id": 100, "run_number": 63, "status": "in_progress"},  # this run
+            ]
+        },
+        captured,
+    )
+    assert run._newer_run_queued() is True
+    assert "/actions/workflows/deploy.yml/runs" in captured["url"]
+    assert "/workflows/main/runs" not in captured["url"]
+
+
+def test_newer_run_queued_false_for_older_or_completed(monkeypatch):
+    _set_actions_env(monkeypatch)
+    _fake_actions_api(
+        monkeypatch,
+        {
+            "workflow_runs": [
+                {"id": 999, "run_number": 64, "status": "completed"},  # newer but finished
+                {"id": 998, "run_number": 62, "status": "queued"},  # queued but older
+                {"id": 100, "run_number": 63, "status": "in_progress"},  # this run
+            ]
+        },
+    )
+    assert run._newer_run_queued() is False
+
+
+def test_newer_run_queued_logs_once_on_error(monkeypatch, capsys):
+    # Silent fail-open is what hid the 404 for three fix attempts; assert it now says so — once.
+    import urllib.error
+    import urllib.request
+
+    _set_actions_env(monkeypatch)
+
+    def _boom(req, timeout=0):
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    run._newer_run_queued._warned = False  # reset the module-level once-guard
+    assert run._newer_run_queued() is False
+    assert run._newer_run_queued() is False  # second failure stays silent
+    assert capsys.readouterr().out.count("graceful-yield check failed") == 1
+
+
+def test_stop_signal_records_fired_reason():
+    s = run.StopSignal(deadline=time.monotonic() - 1)
+    assert s() is True
+    assert s.fired_reason == "wall-clock window spent"
+
+    s2 = run.StopSignal(superseded=lambda: True, poll_interval=0)
+    assert s2() is True
+    assert s2.fired_reason == "newer build queued behind this run"
+
+    assert run.StopSignal().fired_reason is None  # never fired
 
 
 def test_build_wires_a_stop_signal_when_time_bounded(tmp_path, fake_provider, monkeypatch):

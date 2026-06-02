@@ -355,7 +355,14 @@ def build(
     if os.environ.get("GITHUB_ACTIONS") and not os.environ.get("GITHUB_TOKEN"):
         print("warning: GITHUB_TOKEN unset — graceful yield disabled; run bounded only by window")
 
-    ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
+    # Hard per-encode wall-clock cap: ffmpeg/ffprobe read the (remote) source directly, so a source
+    # that stalls would otherwise hang a worker indefinitely — and ``stop()`` can't preempt a thread
+    # parked in subprocess.run, so it would pin the whole build until GitHub's 6h cap. 0 = no cap.
+    encode_timeout_min = float(defaults.get("audio_encode_timeout_minutes", 45))
+    ffmpeg = ffmpeg or CommandFfmpeg(
+        max_kbps=max_kbps,
+        timeout_seconds=(encode_timeout_min * 60) if encode_timeout_min > 0 else None,
+    )
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -419,6 +426,11 @@ def build(
         )
         for msg in t["error_samples"]:
             print(f"    ! {msg}")
+
+    # Why the run ended. "completed within the window" means all due work finished; otherwise this
+    # names the trigger that wrapped it up (wall-clock vs a queued build), so a regressed graceful
+    # yield is visible at a glance instead of silently riding to the deadline (issue #63).
+    print(f"run end: {stop.fired_reason or 'completed within the window (no stop triggered)'}")
 
     if not dry_run:
         save_etag_cache(state_dir, cache)
@@ -604,23 +616,38 @@ class StopSignal:
         self._last_poll = 0.0
         self._latched = False
         self._lock = threading.Lock()
+        # Which trigger first fired (None until then). Drives the once-only announce below and the
+        # end-of-run summary in build(), so a log reader can tell "ran the full window" from
+        # "yielded to a queued build" — the visibility this feature lacked (issue #63).
+        self.fired_reason: str | None = None
 
     def __call__(self) -> bool:
         if self._deadline is not None and time.monotonic() >= self._deadline:
+            self._announce("wall-clock window spent")
             return True
         if self._superseded is None:
             return False
         with self._lock:
-            if self._latched:
-                return True
-            now = time.monotonic()
-            if now - self._last_poll >= self._poll_interval:
-                self._last_poll = now
-                try:
-                    self._latched = bool(self._superseded())
-                except Exception:
-                    self._latched = False  # never let a flaky API check stop a run
-            return self._latched
+            if not self._latched:
+                now = time.monotonic()
+                if now - self._last_poll >= self._poll_interval:
+                    self._last_poll = now
+                    try:
+                        self._latched = bool(self._superseded())
+                    except Exception:
+                        self._latched = False  # never let a flaky API check stop a run
+            latched = self._latched
+        if latched:
+            self._announce("newer build queued behind this run")
+        return latched
+
+    def _announce(self, reason: str) -> None:
+        """Record + print the stop trigger exactly once (first thread to fire wins)."""
+        with self._lock:
+            if self.fired_reason is not None:
+                return
+            self.fired_reason = reason
+        print(f"stop: {reason} — finishing in-flight work, then deploying", flush=True)
 
 
 def _newer_run_queued() -> bool:
@@ -639,7 +666,11 @@ def _newer_run_queued() -> bool:
     workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")  # .../.github/workflows/deploy.yml@ref
     if not (repo and token and run_id and run_number):
         return False
-    workflow_file = workflow_ref.split("/")[-1].split("@")[0] or "deploy.yml"
+    # GITHUB_WORKFLOW_REF is ``owner/repo/.github/workflows/deploy.yml@refs/heads/main``. The
+    # ``@ref`` suffix contains slashes, so the filename is the basename *after dropping the ref* —
+    # split on ``@`` BEFORE ``/`` (the reverse silently yields the branch name, "main", which the
+    # API rejects with a 404 → graceful yield never fires; this was issue #63's actual cause).
+    workflow_file = workflow_ref.split("@")[0].split("/")[-1] or "deploy.yml"
     # Don't filter by ``status=queued`` in the query: a run held by the ``pages`` concurrency group
     # surfaces as queued/pending/waiting depending on timing, so fetch the recent runs and treat
     # any newer, not-yet-completed run as "a build is waiting behind me".
@@ -651,7 +682,17 @@ def _newer_run_queued() -> bool:
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
-    except Exception:
+    except Exception as exc:
+        # Fail open (never block a run on a flaky API check) — but say so ONCE. Silent fail-open is
+        # exactly what hid the 404 above through three "fix the yield" attempts; a single visible
+        # line turns the next regression into a grep instead of a multi-hour mystery.
+        if not getattr(_newer_run_queued, "_warned", False):
+            _newer_run_queued._warned = True  # type: ignore[attr-defined]
+            print(
+                f"warning: graceful-yield check failed ({exc!r}); "
+                "run bounded by the wall-clock window only",
+                flush=True,
+            )
         return False
     me = int(run_number)
     for run in data.get("workflow_runs", []):
@@ -660,6 +701,11 @@ def _newer_run_queued() -> bool:
             and run.get("status") != "completed"
             and int(run.get("run_number", 0)) > me
         ):
+            print(
+                f"yield: run #{run.get('run_number')} is queued behind this run (#{me}) — "
+                "will wrap up and deploy",
+                flush=True,
+            )
             return True
     return False
 
