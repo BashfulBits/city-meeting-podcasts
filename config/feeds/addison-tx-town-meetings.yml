@@ -1,0 +1,11 @@
+slug: addison-tx-town-meetings
+city: addison-tx
+provider: swagit
+source:
+  list_url: https://addisontx.new.swagit.com/views/128
+  body: "Town Meetings"
+podcast_title: "Addison: Town Meetings"
+podcast_author: "City of Addison, TX"
+podcast_email: ""
+podcast_description: "Town meetings for Addison."
+max_episodes: 2
