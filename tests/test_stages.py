@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.media import GlobalBudget
 from citypods.models import City, Episode
 from citypods.stages import AudioStage, LinksStage, StageContext, default_stages, run_stages
 from citypods.storage.local import LocalStorage
@@ -49,15 +48,26 @@ def _ep(guid):
     )
 
 
-def _ctx(tmp_path, *, dry_run=False, audio_budget=10, per_source=10, storage=True):
+def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):
     return StageContext(
         storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn") if storage else None,
         ffmpeg=FakeFfmpeg(),
         max_kbps=96,
-        per_source_budget=per_source,
         dry_run=dry_run,
-        budgets={"audio": GlobalBudget(audio_budget)},
+        stop=stop,
+        chapters_per_source=chapters_per_source,
     )
+
+
+def _stop_after(n):
+    """A stop predicate that returns False for the first ``n`` calls, then True."""
+    calls = {"n": 0}
+
+    def stop():
+        calls["n"] += 1
+        return calls["n"] > n
+
+    return stop
 
 
 def test_default_stage_order_audio_affecting_before_audio():
@@ -66,9 +76,9 @@ def test_default_stage_order_audio_affecting_before_audio():
     assert names.index("chapters") < names.index("audio") < names.index("links")
 
 
-def test_audio_stage_hosts_within_budget(tmp_path):
+def test_audio_stage_stops_when_signalled(tmp_path):
     eps = [_ep("g1"), _ep("g2"), _ep("g3")]
-    ctx = _ctx(tmp_path, audio_budget=2)  # global cap of 2 this run
+    ctx = _ctx(tmp_path, stop=_stop_after(2))  # encode two, then the run is superseded/over-window
     stats = AudioStage().process(FakeProvider(), _city(), eps, ctx)
     assert stats.ran == 2 and stats.skipped == 1
     assert sum(e.hosted_audio_url is not None for e in eps) == 2
@@ -146,16 +156,26 @@ def test_chapters_stage_sets_chapters_and_transcript_link(tmp_path):
     assert stats2.reused == 1 and p.calls == 1
 
 
-def test_chapters_stage_budget_defers(tmp_path):
-    from citypods.media import GlobalBudget
+def test_chapters_stage_stops_when_signalled(tmp_path):
     from citypods.stages import ChaptersStage
 
     eps = [_ep("a"), _ep("b")]
-    ctx = _ctx(tmp_path, per_source=1)
-    ctx.budgets["chapters"] = GlobalBudget(1)
+    ctx = _ctx(tmp_path, stop=_stop_after(1))  # fetch one, then yield
     p = ChapterProvider([{"start": 0, "end": 1, "title": "x"}])
     stats = ChaptersStage().process(p, _city(), eps, ctx)
     assert stats.ran == 1 and stats.skipped == 1  # second episode deferred to a later run
+
+
+def test_chapters_stage_caps_per_source(tmp_path):
+    """Chapters are cheap+numerous, so a per-source count bounds them (unlike audio's wall-clock):
+    only chapters_per_source pages are scraped per run; the rest defer."""
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("a"), _ep("b"), _ep("c")]
+    ctx = _ctx(tmp_path, chapters_per_source=2)
+    p = ChapterProvider([{"start": 0, "end": 1, "title": "x"}])
+    stats = ChaptersStage().process(p, _city(), eps, ctx)
+    assert stats.ran == 2 and stats.skipped == 1 and p.calls == 2
 
 
 def test_chapters_stage_noop_without_provider_support(tmp_path):

@@ -11,24 +11,69 @@ Two invariants make this safe and incremental (see records.py):
     ``audio_spec_hash`` which includes chapters. A stage that only affects the feed (e.g.
     ``summary``) can run after. ``default_stages()`` encodes the order.
 
-  * **Own budget per stage.** ASR/LLM/audio work is expensive and rate-limited, so each
-    stage draws from its own per-run ``GlobalBudget`` (via ``StageContext.budgets``) and a
-    per-source cap. Anything not done this run is picked up on the next — the same gradual
-    backfill the audio pipeline already uses, now for every feature.
+  * **Shared stop signal.** ASR/LLM/audio work is expensive, so each expensive stage checks the
+    shared ``StageContext.stop`` predicate before starting new work — True once the run's
+    wall-clock window is spent or a newer build is queued behind it. Anything not done this run is
+    picked up on the next — a gradual backfill bounded by wall-clock time, not a count estimate.
 
 A stage mutates episodes in place; downstream the split hashes pick up the change
 automatically (``audio_spec_hash`` -> re-encode, ``feed_content_hash`` -> re-render).
+
+--------------------------------------------------------------------------------------------
+The ``stop`` convention (read this before adding an expensive stage)
+--------------------------------------------------------------------------------------------
+``ctx.stop()`` is the run's "wrap up and deploy now" signal. It is True once the wall-clock
+window is spent OR a newer Build & Deploy run is queued behind this one (graceful yield, so a
+push or the next cron takes over without hard-cancelling the in-flight Pages deploy). The
+canonical shape for a stage that does expensive per-item work (encode, transcription,
+translation, summarization, any multi-second ASR/LLM/network/CPU job) is::
+
+    for ep in _materialize_set(episodes, city.max_episodes):
+        if <already done for ep>:                 # cheap, idempotent — NOT gated by stop
+            stats.reused += 1
+            continue
+        if ctx.stop is not None and ctx.stop():    # check immediately before the costly work
+            stats.skipped += 1                     # deferred to a later run — not an error
+            continue
+        <do the expensive, restartable work for ep, persisting enough to resume next run>
+
+Rules:
+  1. **Gate only expensive, deferrable work.** Check ``stop()`` right before the costly operation
+     for one item. Never gate cheap/idempotent bookkeeping (reuse checks, attaching an
+     already-known URL, setting a default link, the audio *credit* path) — that must always finish
+     so the run leaves consistent, deployable state.
+  2. **Per item, not per stage.** Call it inside the loop so a run can complete N items and defer
+     the rest mid-scan. It is cheap to call (throttled + latched), so per-item is fine.
+  3. **Restartable or don't gate it.** Anything skipped on ``stop()`` must be safe to retry next
+     run, and any item you *did* finish must be persisted (upload the artifact, record its
+     key/URL) before moving on — so yielding never loses or half-writes progress. If a unit of
+     work can't be made resumable, it doesn't belong behind ``stop()``.
+  4. **Deferred is not failed.** Count a stopped item as skipped/deferred; reserve ``errors`` for
+     real failures (which get the #120 backoff instead).
+  5. **Don't sense supersession yourself.** ``stop()`` already encapsulates the wall-clock
+     deadline and the throttled "newer run queued" check; just call it.
+  6. **Cheap+uniform+numerous work also needs a count.** ``stop()`` (wall-clock) only self-limits
+     work whose per-item cost is large — an encode or transcription fills the window after a sane
+     number of items. A *cheap* uniform op (a page scrape) does not: thousands fit in the window,
+     so it would drain its whole backlog in one run and starve slower stages after it. Bound those
+     with a small per-run count *as well as* ``stop()`` — see ``ChaptersStage`` /
+     ``StageContext.chapters_per_source``.
+
+Ordering caveat: a long stage that runs *before* others (e.g. transcription feeding chapters)
+spends the same shared window, so everything downstream of it also defers when it yields. Place
+the most valuable expensive stages earliest.
 """
 
 from __future__ import annotations
 
 import collections
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from citypods.bodies import body_key, canonical_body
-from citypods.media import GlobalBudget, MaterializeStats, materialize_audio
+from citypods.media import MaterializeStats, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
 
@@ -49,14 +94,26 @@ def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode
 
 @dataclass
 class StageContext:
-    """Shared resources + budgets passed to every stage for one build."""
+    """Shared resources passed to every stage for one build.
+
+    ``stop`` is a shared predicate (or None) that goes True once the run's wall-clock window is
+    spent or a newer Build & Deploy run is queued behind this one; expensive stages check it
+    before starting new work so the run wraps up and deploys instead of running indefinitely. See
+    the module docstring's "stop convention" for exactly when (and when not) to gate work on it.
+
+    ``chapters_per_source`` caps how many chapter pages one source scrapes per run. Wall-clock is
+    the wrong bound for chapters specifically: each fetch is cheap and uniform (~0.3s, no encode),
+    so *thousands* fit in the window — they'd drain the whole backlog in one run, dominate the
+    time that should go to audio (which runs after), and make every run (and the PR preview, which
+    starts with no cached chapters) minutes long. A small count is the right tool here; audio, with
+    its slow/variable per-item cost, stays on the wall-clock ``stop`` alone."""
 
     storage: object | None
     ffmpeg: object
     max_kbps: int
-    per_source_budget: int
     dry_run: bool
-    budgets: dict[str, GlobalBudget | None] = field(default_factory=dict)
+    stop: Callable[[], bool] | None = None
+    chapters_per_source: int = 10_000  # effectively unbounded unless the build sets it
 
 
 @dataclass
@@ -112,10 +169,9 @@ class AudioStage:
             _materialize_set(episodes, city.max_episodes),
             storage=ctx.storage,
             ffmpeg=ctx.ffmpeg,
-            budget=ctx.per_source_budget,
             max_kbps=ctx.max_kbps,
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
-            global_budget=ctx.budgets.get(self.name),
+            stop=ctx.stop,
         )
         return StageStats(
             self.name,
@@ -135,9 +191,9 @@ class ChaptersStage:
     ``audio_spec_hash``, so adding them changes the spec and the next audio pass re-encodes the
     file with embedded markers — spread over runs by the audio budget, exactly like backfill.
 
-    Each chapter fetch is one network call, so the stage draws from its own ``"chapters"``
-    budget (global + per-source) and defers the rest to later runs. No-op for providers without
-    a ``fetch_chapters`` method.
+    Each chapter fetch is one cheap network call, bounded per run by ``ctx.chapters_per_source``
+    (a count — see StageContext) and the shared ``ctx.stop`` predicate (wall-clock/superseded);
+    the rest defer to later runs. No-op for providers without a ``fetch_chapters`` method.
     """
 
     name = "chapters"
@@ -150,13 +206,12 @@ class ChaptersStage:
         fetch = getattr(provider, "fetch_chapters", None)
         if ctx.dry_run or fetch is None:
             return stats
-        budget = ctx.budgets.get(self.name)
-        remaining = ctx.per_source_budget
+        remaining = ctx.chapters_per_source
         for ep in _materialize_set(episodes, city.max_episodes):
             if ep.chapters:  # already captured; chapters don't change once set
                 stats.reused += 1
                 continue
-            if remaining <= 0 or (budget is not None and not budget.take()):
+            if remaining <= 0 or (ctx.stop is not None and ctx.stop()):
                 stats.skipped += 1
                 continue
             remaining -= 1

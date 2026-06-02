@@ -39,9 +39,10 @@ one feed. Add an optional `source.body` filter (case-insensitive substring) to p
 citypods bodies <slug>      # meeting count + latest date per body
 ```
 
-Audio that gets re-hosted (Swagit/CivicPlus, or `extract_audio`) is bounded per run by
-`materialize_budget_per_city` and the global `materialize_budget_per_run`, so splitting into
-many board feeds backfills safely over successive runs.
+Audio that gets re-hosted (Swagit/CivicPlus, or `extract_audio`) is bounded per run by a
+wall-clock window (`run_time_budget_minutes` × `budget_safety`) — and a run yields early if a
+newer build is queued behind it — so splitting into many board feeds backfills safely over
+successive runs.
 
 **Providers**
 - **granicus** — `source.feed_url` is a `ViewPublisherRSS.php` URL. Media is a direct MP4,
