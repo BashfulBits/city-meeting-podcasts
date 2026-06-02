@@ -634,10 +634,10 @@ def _newer_run_queued() -> bool:
     if not (repo and token and run_id and run_number):
         return False
     workflow_file = workflow_ref.split("/")[-1].split("@")[0] or "deploy.yml"
-    url = (
-        f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs"
-        "?per_page=30&status=queued"
-    )
+    # Don't filter by ``status=queued`` in the query: a run held by the ``pages`` concurrency group
+    # surfaces as queued/pending/waiting depending on timing, so fetch the recent runs and treat
+    # any newer, not-yet-completed run as "a build is waiting behind me".
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs?per_page=30"
     req = urllib.request.Request(
         url,
         headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
@@ -649,7 +649,11 @@ def _newer_run_queued() -> bool:
         return False
     me = int(run_number)
     for run in data.get("workflow_runs", []):
-        if str(run.get("id")) != run_id and int(run.get("run_number", 0)) > me:
+        if (
+            str(run.get("id")) != run_id
+            and run.get("status") != "completed"
+            and int(run.get("run_number", 0)) > me
+        ):
             return True
     return False
 
