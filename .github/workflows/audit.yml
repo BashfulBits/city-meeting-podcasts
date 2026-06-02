@@ -51,6 +51,9 @@ jobs:
       - name: Run audit
         env:
           GH_TOKEN: ${{ github.token }}
+        # --meetings-urls runs every time: it's one HEAD per unique meetings_url (a handful),
+        # so it's cheap enough for the daily cron (unlike --enclosures, which probes per-episode).
         run: >-
           PYTHONPATH=. python scripts/audit_feeds.py
+          --meetings-urls
           ${{ (github.event_name == 'workflow_dispatch' && inputs.enclosures) && '--enclosures' || '' }}
