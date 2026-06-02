@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 
 import pytest
@@ -245,28 +246,6 @@ def test_build_writes_run_history_and_summary(tmp_path, fake_provider):
     assert all(_json.loads(line)["schema_version"] for line in hist2)
 
 
-def test_measured_sec_per_ep_uses_encodes_not_total_hosts(tmp_path):
-    """sec/ep must be computed from the expensive *encoded* count, not total hosts — else a
-    catch-up run dominated by near-free storage credits drives the estimate far too low and
-    over-sizes the next budget."""
-    import json as _json
-
-    from citypods.run import _measured_sec_per_ep
-
-    state = tmp_path / "state"
-    state.mkdir()
-    # 200 hosted but only 20 encodes in 1800s → real cost 90s/encode, not 9s/host.
-    (state / "run_summary.json").write_text(
-        _json.dumps({"materialized": 200, "materialize_encoded": 20, "materialize_seconds": 1800.0})
-    )
-    assert _measured_sec_per_ep(state) == 90.0
-    # No encodes (pure credit run) → fall back to a config estimate, not divide-by-zero.
-    (state / "run_summary.json").write_text(
-        _json.dumps({"materialized": 50, "materialize_encoded": 0, "materialize_seconds": 30.0})
-    )
-    assert _measured_sec_per_ep(state) is None
-
-
 def test_build_logs_audio_stage_activity_and_errors(tmp_path, fake_provider, capsys):
     """The per-stage run summary must surface audio activity (and sample errors) to stdout, so a
     re-host that triggers but fails downstream is visible rather than hiding behind the
@@ -315,71 +294,48 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
     assert "audio: 2 ran (2 encoded, 0 credited), 0 reused" in out and "0 errors" in out
 
 
-def test_time_bounded_budget_overrides_flat_cap(tmp_path, fake_provider, monkeypatch):
+def test_stop_signal_fires_on_deadline():
+    from citypods.run import StopSignal
+
+    # deadline already in the past -> stop immediately, regardless of supersession.
+    assert StopSignal(deadline=time.monotonic() - 1)() is True
+    # no deadline, no superseded check -> never stops.
+    assert StopSignal()() is False
+
+
+def test_stop_signal_latches_superseded_and_throttles_polling():
+    from citypods.run import StopSignal
+
+    calls = {"n": 0}
+
+    def superseded():
+        calls["n"] += 1
+        return calls["n"] >= 2  # becomes True on the 2nd poll
+
+    s = StopSignal(superseded=superseded, poll_interval=0)  # poll every call
+    assert s() is False  # 1st poll: not yet
+    assert s() is True  # 2nd poll: superseded
+    assert s() is True and calls["n"] == 2  # latched -> no further polling
+
+
+def test_build_wires_a_stop_signal_when_time_bounded(tmp_path, fake_provider, monkeypatch):
     import citypods.run as run_mod
 
     captured = {}
     real_ctx = run_mod.StageContext
 
     def spy_ctx(*a, **kw):
-        captured["budgets"] = kw.get("budgets")
+        captured["stop"] = kw.get("stop")
         return real_ctx(*a, **kw)
 
     monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
     cities = _setup(tmp_path)
-    # 300 min × 0.8 / 90 s = 160 audio; 300×0.8×60 / 3 = 4800 chapters
     (tmp_path / "site_config.yml").write_text(
         f"state_dir: {tmp_path / 'state'}\n"
         "defaults:\n"
         "  audio_storage_backend: local\n"
-        "  materialize_budget_per_run: 25\n"
         "  run_time_budget_minutes: 300\n"
-        "  seconds_per_episode: 90\n"
     )
     _build(tmp_path, cities)
-    budgets = captured["budgets"]
-    assert budgets["audio"] is not None
-    # GlobalBudget is opaque; re-derive expected and check it's the time-bounded value, not 25
-    assert budgets["audio"]._remaining == 160
-    assert budgets["chapters"]._remaining == 4800
-
-
-def _spy_per_source(tmp_path, fake_provider, monkeypatch, extra_defaults: str) -> int:
-    import citypods.run as run_mod
-
-    captured = {}
-    real_ctx = run_mod.StageContext
-
-    def spy_ctx(*a, **kw):
-        captured["per_source"] = kw.get("per_source_budget")
-        return real_ctx(*a, **kw)
-
-    monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
-    cities = _setup(tmp_path)
-    cfg = f"state_dir: {tmp_path / 'state'}\ndefaults:\n  audio_storage_backend: local\n"
-    (tmp_path / "site_config.yml").write_text(cfg + extra_defaults)
-    _build(tmp_path, cities)
-    return captured["per_source"]
-
-
-def test_per_source_budget_is_fraction_of_global(tmp_path, fake_provider, monkeypatch):
-    # time-bounded global = 300×0.8×60/90 = 160; default fraction 0.5 -> ceil(80) = 80
-    per_source = _spy_per_source(
-        tmp_path,
-        fake_provider,
-        monkeypatch,
-        "  materialize_budget_per_run: 25\n"
-        "  run_time_budget_minutes: 300\n"
-        "  seconds_per_episode: 90\n",
-    )
-    assert per_source == 80
-
-
-def test_per_source_budget_explicit_override_wins(tmp_path, fake_provider, monkeypatch):
-    per_source = _spy_per_source(
-        tmp_path,
-        fake_provider,
-        monkeypatch,
-        "  materialize_budget_per_run: 40\n  materialize_budget_per_city: 7\n",
-    )
-    assert per_source == 7
+    assert isinstance(captured["stop"], run_mod.StopSignal)
+    assert captured["stop"]() is False  # window not yet spent, not superseded

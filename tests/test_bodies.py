@@ -1,11 +1,10 @@
-"""Tests for generic per-body extraction/filtering and the global budget."""
+"""Tests for generic per-body extraction/filtering."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
 from citypods.bodies import body_key, canonical_body, filter_by_body, granicus_body, matches
-from citypods.media import GlobalBudget
 from citypods.models import Episode
 
 
@@ -94,10 +93,3 @@ def test_filter_by_body():
         "City Council Briefing",
     ]
     assert filter_by_body(eps, None) == eps  # no filter -> unchanged
-
-
-def test_global_budget_caps_total():
-    b = GlobalBudget(2)
-    assert b.take() and b.take()
-    assert not b.take()
-    assert GlobalBudget(0).take() is False

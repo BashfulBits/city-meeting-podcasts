@@ -11,10 +11,10 @@ Two invariants make this safe and incremental (see records.py):
     ``audio_spec_hash`` which includes chapters. A stage that only affects the feed (e.g.
     ``summary``) can run after. ``default_stages()`` encodes the order.
 
-  * **Own budget per stage.** ASR/LLM/audio work is expensive and rate-limited, so each
-    stage draws from its own per-run ``GlobalBudget`` (via ``StageContext.budgets``) and a
-    per-source cap. Anything not done this run is picked up on the next — the same gradual
-    backfill the audio pipeline already uses, now for every feature.
+  * **Shared stop signal.** ASR/LLM/audio work is expensive, so each expensive stage checks the
+    shared ``StageContext.stop`` predicate before starting new work — True once the run's
+    wall-clock window is spent or a newer build is queued behind it. Anything not done this run is
+    picked up on the next — a gradual backfill bounded by wall-clock time, not a count estimate.
 
 A stage mutates episodes in place; downstream the split hashes pick up the change
 automatically (``audio_spec_hash`` -> re-encode, ``feed_content_hash`` -> re-render).
@@ -24,11 +24,12 @@ from __future__ import annotations
 
 import collections
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from citypods.bodies import body_key, canonical_body
-from citypods.media import GlobalBudget, MaterializeStats, materialize_audio
+from citypods.media import MaterializeStats, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
 
@@ -49,14 +50,17 @@ def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode
 
 @dataclass
 class StageContext:
-    """Shared resources + budgets passed to every stage for one build."""
+    """Shared resources passed to every stage for one build.
+
+    ``stop`` is a shared predicate (or None) that goes True once the run's wall-clock window is
+    spent or a newer Build & Deploy run is queued behind this one; expensive stages check it
+    before starting new work so the run wraps up and deploys instead of running indefinitely."""
 
     storage: object | None
     ffmpeg: object
     max_kbps: int
-    per_source_budget: int
     dry_run: bool
-    budgets: dict[str, GlobalBudget | None] = field(default_factory=dict)
+    stop: Callable[[], bool] | None = None
 
 
 @dataclass
@@ -112,10 +116,9 @@ class AudioStage:
             _materialize_set(episodes, city.max_episodes),
             storage=ctx.storage,
             ffmpeg=ctx.ffmpeg,
-            budget=ctx.per_source_budget,
             max_kbps=ctx.max_kbps,
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
-            global_budget=ctx.budgets.get(self.name),
+            stop=ctx.stop,
         )
         return StageStats(
             self.name,
@@ -135,9 +138,9 @@ class ChaptersStage:
     ``audio_spec_hash``, so adding them changes the spec and the next audio pass re-encodes the
     file with embedded markers — spread over runs by the audio budget, exactly like backfill.
 
-    Each chapter fetch is one network call, so the stage draws from its own ``"chapters"``
-    budget (global + per-source) and defers the rest to later runs. No-op for providers without
-    a ``fetch_chapters`` method.
+    Each chapter fetch is one network call, gated by the shared ``ctx.stop`` predicate (wall-clock
+    spent or superseded); the rest defer to later runs. No-op for providers without a
+    ``fetch_chapters`` method.
     """
 
     name = "chapters"
@@ -150,16 +153,13 @@ class ChaptersStage:
         fetch = getattr(provider, "fetch_chapters", None)
         if ctx.dry_run or fetch is None:
             return stats
-        budget = ctx.budgets.get(self.name)
-        remaining = ctx.per_source_budget
         for ep in _materialize_set(episodes, city.max_episodes):
             if ep.chapters:  # already captured; chapters don't change once set
                 stats.reused += 1
                 continue
-            if remaining <= 0 or (budget is not None and not budget.take()):
+            if ctx.stop is not None and ctx.stop():
                 stats.skipped += 1
                 continue
-            remaining -= 1
             try:
                 chapters, transcript = fetch(ep, city.source)
             except Exception as exc:  # one bad page must not fail the whole source

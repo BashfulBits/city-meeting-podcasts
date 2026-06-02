@@ -16,8 +16,6 @@ from __future__ import annotations
 import re
 import subprocess
 import tempfile
-import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -155,36 +153,6 @@ def _probe_audio_bitrate(url: str, ffmpeg_binary: str = "ffmpeg") -> int | None:
         return None
 
 
-class GlobalBudget:
-    """Thread-safe cap on total new encodes per build run (across all cities), with an optional
-    wall-clock deadline. The count is a *proxy* for time derived from an estimated seconds/episode;
-    the ``deadline`` (a ``time.monotonic()`` value) is the hard backstop that stops starting new
-    encodes once the run's time window is spent — so a wrong estimate (or a few unusually long
-    meetings) can't blow past the Actions job limit."""
-
-    def __init__(self, total: int, deadline: float | None = None):
-        self._remaining = total
-        self._deadline = deadline
-        self._lock = threading.Lock()
-
-    def take(self) -> bool:
-        with self._lock:
-            if self._deadline is not None and time.monotonic() >= self._deadline:
-                return False
-            if self._remaining <= 0:
-                return False
-            self._remaining -= 1
-            return True
-
-    def give_back(self) -> None:
-        """Return a slot reserved by ``take()`` when the work it was reserved for failed. The
-        global cap counts *successful* new materializations, so a failed attempt (e.g. a Swagit
-        episode whose source won't resolve) must not permanently burn a slot — otherwise a
-        handful of broken episodes in one source starve every other source's backfill."""
-        with self._lock:
-            self._remaining += 1
-
-
 @dataclass
 class MaterializeStats:
     hosted: int = 0  # newly hosted this run (encoded + credited)
@@ -223,10 +191,9 @@ def materialize_audio(
     *,
     storage: StorageBackend,
     ffmpeg: FfmpegRunner,
-    budget: int,
     max_kbps: int,
     resolve_media_url: Callable[[Episode], str],
-    global_budget: GlobalBudget | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -234,12 +201,15 @@ def materialize_audio(
     the caller persists these onto the record store. An episode is re-encoded only when its
     audio spec changed (e.g. chapters added, bitrate policy bumped) *or* its referenced object
     has gone missing from storage — otherwise the existing object (matched by content-addressed
-    key, or carried over as ``"legacy"``) is reused for free. New hosts are gated by the
-    per-source ``budget`` and the shared ``global_budget`` so a large backfill spreads over
-    successive runs.
+    key, or carried over as ``"legacy"``) is reused for free.
+
+    A large backfill is spread over successive runs by ``stop()``: a shared predicate that goes
+    True once the run's wall-clock window is spent *or* a newer Build & Deploy run is queued behind
+    this one. Only the expensive encode path consults it — cheap reuse/credit/backoff bookkeeping
+    always runs — so a superseded run still finishes its in-flight encode, persists, and deploys
+    (graceful yield) rather than being hard-cancelled mid-deploy.
     """
     stats = MaterializeStats()
-    remaining = budget
     hosted_keys = _hosted_keys(city, storage)
     now = datetime.now(UTC)
 
@@ -291,13 +261,11 @@ def materialize_audio(
             continue
 
         # Encode path: download + ffmpeg + upload — the work that actually consumes the time
-        # window. Gated by the per-source budget and the shared global budget (which also enforces
-        # the run's wall-clock deadline). Count the attempt against the per-source budget whether it
-        # succeeds or fails, so one source can't loop indefinitely re-trying broken episodes.
-        if remaining <= 0 or (global_budget is not None and not global_budget.take()):
+        # window, so it's the only thing gated by ``stop()`` (wall-clock spent or superseded). The
+        # rest of the scan keeps running, so cheap credits/reuse still reconcile records this run.
+        if stop is not None and stop():
             stats.skipped_budget += 1
             continue
-        remaining -= 1
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
@@ -324,9 +292,5 @@ def materialize_audio(
             ep.materialize_attempts += 1
             ep.materialize_last_attempt = now.isoformat()
             ep.materialize_error = getattr(exc, "code", None) or "error"
-            # The global cap counts successful hosts; hand the reserved slot back so a broken
-            # episode here doesn't starve another source's backfill this run (issue #116 follow-up).
-            if global_budget is not None:
-                global_budget.give_back()
 
     return stats

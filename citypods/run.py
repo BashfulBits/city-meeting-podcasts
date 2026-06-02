@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import collections
 import json
-import math
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,7 +23,7 @@ from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
-from citypods.media import CommandFfmpeg, FfmpegRunner, GlobalBudget
+from citypods.media import CommandFfmpeg, FfmpegRunner
 from citypods.models import City, Episode
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
@@ -323,10 +323,6 @@ def build(
     request_delay = float(site_config.get("request_delay_seconds", 0.1))
     max_workers = int(site_config.get("max_workers", 20))
     defaults = site_config.get("defaults", {})
-    total_budget = int(defaults.get("materialize_budget_per_run", 25))
-    # Chapter scrapes are one cheap page fetch each (no encode), so they can run ahead of the
-    # audio re-encode budget; defaults to the same cap.
-    chapters_budget = int(defaults.get("chapters_budget_per_run", total_budget))
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     storage = make_storage(site_config, base_url, output_dir)
 
@@ -338,53 +334,27 @@ def build(
             print(f"state: restored {restored} file(s) from durable storage")
     cache = load_etag_cache(state_dir)
 
-    # Opt-in: derive per-run budgets from a wall-clock target so a run fills (most of) the 6h
-    # GitHub Actions window instead of stopping at a flat count — this is what drains a large
-    # backfill in days instead of months (see review/03). Disabled by default
-    # (run_time_budget_minutes = 0) so behavior is unchanged unless turned on. Reads the measured
-    # seconds/episode from restored run history when available, else a config estimate.
-    audio_deadline: float | None = None
-    time_budget_min = float(defaults.get("run_time_budget_minutes", 0))
-    if time_budget_min > 0:
-        safety = float(defaults.get("budget_safety", 0.8))
-        window_s = time_budget_min * 60 * safety
-        sec_ep = _measured_sec_per_ep(state_dir) or float(defaults.get("seconds_per_episode", 90))
-        sec_chapter = float(defaults.get("seconds_per_chapter_fetch", 3))
-        total_budget = max(1, int(window_s / max(sec_ep, 1e-9)))
-        chapters_budget = max(1, int(window_s / max(sec_chapter, 1e-9)))
-        # Hard wall-clock backstop: the count budget is only a proxy (window ÷ estimated sec/ep),
-        # so a wrong estimate could otherwise overshoot. Stop starting new encodes once the window
-        # is spent, regardless of count.
-        audio_deadline = time.monotonic() + window_s
-        print(
-            f"budget: time-bounded ({time_budget_min:.0f}m × {safety}) → "
-            f"audio {total_budget}/run @ {sec_ep:.0f}s/ep, chapters {chapters_budget}/run"
-        )
-
-    # Per-source cap as a fraction of the finalized global budget, not a magic constant: it only
-    # exists to stop one source monopolizing a single run (e.g. Dallas's huge Swagit backlog
-    # crowding out Denton), so it must self-scale with the global budget. A flat constant either
-    # throttles a concentrated backlog far below the run's capacity (5/run when 24 are available)
-    # or — if you divide the global budget evenly by source count — reserves capacity for sources
-    # that have nothing to do. An explicit ``materialize_budget_per_city`` still overrides.
-    source_fraction = float(defaults.get("materialize_source_fraction", 0.5))
-    per_source_budget = int(
-        defaults.get("materialize_budget_per_city")
-        or max(1, math.ceil(total_budget * source_fraction))
+    # The run processes recordings (encode, chapter scrape) until a shared ``stop`` predicate goes
+    # True: the wall-clock window is spent, or a newer Build & Deploy run is queued behind this one
+    # (graceful yield — let a push or the next cron take over without hard-cancelling the in-flight
+    # Pages deploy). No count budget / sec-per-ep estimate: with variable per-recording cost
+    # (encode, and later transcription/silence-removal), wall-clock time is the honest bound.
+    safety = float(defaults.get("budget_safety", 0.8))
+    window_min = float(defaults.get("run_time_budget_minutes", 0))
+    stop = StopSignal(
+        deadline=(time.monotonic() + window_min * 60 * safety) if window_min > 0 else None,
+        superseded=_newer_run_queued,
     )
+    if window_min > 0:
+        print(f"budget: wall-clock window {window_min:.0f}m × {safety} (+ yield if superseded)")
+
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
         max_kbps=max_kbps,
-        per_source_budget=per_source_budget,
         dry_run=dry_run,
-        budgets={
-            "audio": GlobalBudget(total_budget, deadline=audio_deadline)
-            if total_budget > 0
-            else None,
-            "chapters": GlobalBudget(chapters_budget) if chapters_budget > 0 else None,
-        },
+        stop=stop,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
@@ -596,27 +566,87 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
     path.write_text("\n".join(lines[-_RUN_HISTORY_KEEP:]) + "\n")
 
 
-def _measured_sec_per_ep(state_dir: Path) -> float | None:
-    """Observed seconds per *encoded* episode from the last run summary, if present and meaningful.
-    Used to size the time-bounded budget; None falls back to a config estimate.
+class StopSignal:
+    """Shared, thread-safe predicate telling expensive stages when to stop starting new work.
 
-    Divides the audio-stage seconds by ``materialize_encoded`` (the expensive download+ffmpeg+upload
-    count), NOT total hosts — a hosted count blends in near-free storage re-credits, which on a
-    catch-up run drives the estimate far below the true encode cost and over-sizes the next budget.
-    Older summaries without ``materialize_encoded`` (or a run with 0 encodes) → None → config
-    estimate."""
-    path = Path(state_dir) / "run_summary.json"
-    if not path.exists():
-        return None
+    Two triggers, both meaning "wrap up this run and deploy":
+      * **wall-clock** — ``deadline`` (a ``time.monotonic()`` value) has passed; the run has used
+        its time window.
+      * **superseded** — a newer Build & Deploy run is queued behind this one (your push, or the
+        next cron). We yield gracefully so it can take over, rather than relying on a hard
+        ``cancel-in-progress`` that could abort the in-flight Pages deploy.
+
+    Callable so stages just do ``if ctx.stop and ctx.stop(): ...``. The (network) superseded check
+    is polled at most every ``poll_interval`` seconds and latches once true, so calling it per
+    episode across parallel sources stays cheap."""
+
+    def __init__(
+        self,
+        *,
+        deadline: float | None = None,
+        superseded: Callable[[], bool] | None = None,
+        poll_interval: float = 60.0,
+    ):
+        self._deadline = deadline
+        self._superseded = superseded
+        self._poll_interval = poll_interval
+        self._last_poll = 0.0
+        self._latched = False
+        self._lock = threading.Lock()
+
+    def __call__(self) -> bool:
+        if self._deadline is not None and time.monotonic() >= self._deadline:
+            return True
+        if self._superseded is None:
+            return False
+        with self._lock:
+            if self._latched:
+                return True
+            now = time.monotonic()
+            if now - self._last_poll >= self._poll_interval:
+                self._last_poll = now
+                try:
+                    self._latched = bool(self._superseded())
+                except Exception:
+                    self._latched = False  # never let a flaky API check stop a run
+            return self._latched
+
+
+def _newer_run_queued() -> bool:
+    """True if a newer run of this workflow is queued behind the current one (GitHub Actions).
+
+    Reads the standard ``GITHUB_*`` env + ``GITHUB_TOKEN``; a run waiting on the ``pages``
+    concurrency group shows up with status ``queued``/``waiting``/``pending``. Returns False
+    outside CI or on any error (fail-open — never block a run on this)."""
+    import os
+    import urllib.request
+
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    token = os.environ.get("GITHUB_TOKEN")
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    run_number = os.environ.get("GITHUB_RUN_NUMBER")
+    workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")  # .../.github/workflows/deploy.yml@ref
+    if not (repo and token and run_id and run_number):
+        return False
+    workflow_file = workflow_ref.split("/")[-1].split("@")[0] or "deploy.yml"
+    url = (
+        f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs"
+        "?per_page=30&status=queued"
+    )
+    req = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+    )
     try:
-        data = json.loads(path.read_text())
-        encoded = data.get("materialize_encoded", 0)
-        secs = data.get("materialize_seconds", 0.0)
-        if encoded and secs:
-            return secs / encoded
-    except (OSError, ValueError):
-        pass
-    return None
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except Exception:
+        return False
+    me = int(run_number)
+    for run in data.get("workflow_runs", []):
+        if str(run.get("id")) != run_id and int(run.get("run_number", 0)) > me:
+            return True
+    return False
 
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:

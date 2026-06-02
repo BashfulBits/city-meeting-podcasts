@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from citypods.media import GlobalBudget, encode_args, materialize_audio
+from citypods.media import encode_args, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.local import LocalStorage
@@ -57,15 +56,15 @@ def _store(tmp_path):
     return LocalStorage(root=tmp_path / "audio", url_prefix="https://cdn/audio")
 
 
-def _materialize(city, eps, store, ff, budget=5):
+def _materialize(city, eps, store, ff, stop=None):
     return materialize_audio(
         city,
         eps,
         storage=store,
         ffmpeg=ff,
-        budget=budget,
         max_kbps=MAX_KBPS,
         resolve_media_url=lambda e: e.video_url,
+        stop=stop,
     )
 
 
@@ -119,12 +118,29 @@ def test_direct_hosted_when_extract_audio(tmp_path):
     assert stats.hosted == 1 and eps[0].hosted_audio_url
 
 
-def test_budget_defers_extra_episodes(tmp_path):
+def test_stop_signal_defers_encodes(tmp_path):
+    """When the shared stop predicate is True (wall-clock spent or superseded), no new encode
+    starts — every needs-encoding episode is deferred to a later run."""
     eps = [_ep("g1"), _ep("g2"), _ep("g3")]
     ff = FakeFfmpeg()
-    stats = _materialize(_city(), eps, _store(tmp_path), ff, budget=1)
-    assert stats.hosted == 1 and stats.skipped_budget == 2
-    assert sum(e.hosted_audio_url is not None for e in eps) == 1
+    stats = _materialize(_city(), eps, _store(tmp_path), ff, stop=lambda: True)
+    assert stats.encoded == 0 and stats.skipped_budget == 3 and ff.calls == []
+    assert all(e.hosted_audio_url is None for e in eps)
+
+
+def test_stop_signal_checked_per_episode(tmp_path):
+    """The stop predicate is consulted per episode, so a run can encode a few then stop mid-scan
+    (e.g. the deadline passes) and defer the rest."""
+    eps = [_ep("g1"), _ep("g2"), _ep("g3")]
+    ff = FakeFfmpeg()
+    calls = {"n": 0}
+
+    def stop():  # allow the first two encodes, then stop
+        calls["n"] += 1
+        return calls["n"] > 2
+
+    stats = _materialize(_city(), eps, _store(tmp_path), ff, stop=stop)
+    assert stats.encoded == 2 and stats.skipped_budget == 1
 
 
 def test_stats_split_encoded_vs_credited(tmp_path):
@@ -145,9 +161,9 @@ def test_stats_split_encoded_vs_credited(tmp_path):
     assert ff.calls == ["https://src/manifest.m3u8"]  # only the un-stored one was encoded
 
 
-def test_credits_do_not_consume_budget(tmp_path):
-    """Near-free storage re-credits must not draw from the budget — only encodes do — so a
-    catch-up run can reconcile drifted records without deferring real encode work."""
+def test_credits_run_even_when_stopped(tmp_path):
+    """Near-free storage re-credits are not gated by the stop predicate — only encodes are — so a
+    superseded/over-window run still reconciles drifted records before it wraps up."""
     city = _city()
     store = _store(tmp_path)
     # Three episodes whose objects already exist in storage (all credits) + one that needs encoding.
@@ -156,87 +172,10 @@ def test_credits_do_not_consume_budget(tmp_path):
         _seed_object(store, audio_object_key(city, ep, audio_spec_hash(ep, max_kbps=MAX_KBPS)))
     fresh = _ep("enc")
     ff = FakeFfmpeg()
-    # budget of 1 encode: the 3 credits still all go through; the single encode fits.
-    stats = _materialize(city, [*credited_eps, fresh], store, ff, budget=1)
-    assert stats.credited == 3 and stats.encoded == 1
-    assert stats.skipped_budget == 0  # nothing deferred — credits didn't eat the budget
-
-
-def test_wall_clock_deadline_stops_new_encodes(tmp_path):
-    """The global budget's wall-clock deadline is a hard backstop: once the window is spent, no new
-    encode starts even though count budget remains."""
-    eps = [_ep("g1"), _ep("g2")]
-    ff = FakeFfmpeg()
-    past = GlobalBudget(100, deadline=time.monotonic() - 1)  # already past the deadline
-    stats = materialize_audio(
-        _city(),
-        eps,
-        storage=_store(tmp_path),
-        ffmpeg=ff,
-        budget=100,
-        max_kbps=MAX_KBPS,
-        resolve_media_url=lambda e: e.video_url,
-        global_budget=past,
-    )
-    assert stats.encoded == 0 and stats.skipped_budget == 2 and ff.calls == []
-
-
-class _FailUrls:
-    """ffmpeg fake that fails only for source URLs containing a marker substring."""
-
-    def __init__(self, marker="FAIL"):
-        self.marker = marker
-        self.calls: list[str] = []
-
-    def extract_audio(self, source_url, dest, chapters=None):
-        self.calls.append(source_url)
-        if self.marker in source_url:
-            raise subprocess.CalledProcessError(1, "ffmpeg")
-        dest.write_bytes(b"fake-m4a")
-
-
-def test_failed_materialization_refunds_global_budget(tmp_path):
-    """Issue #116 follow-up: a failed host must hand its global-budget slot back, so a broken
-    episode in one source can't starve a hostable one. With a global cap of 1, a failing
-    episode followed by a good one should still host the good one."""
-    bad = _ep("bad", url="https://src/FAIL.m3u8")
-    good = _ep("good", url="https://src/ok.m3u8")
-    ff = _FailUrls()
-    stats = materialize_audio(
-        _city(),
-        [bad, good],
-        storage=_store(tmp_path),
-        ffmpeg=ff,
-        budget=5,
-        max_kbps=MAX_KBPS,
-        resolve_media_url=lambda e: e.video_url,
-        global_budget=GlobalBudget(1),  # only one global slot
-    )
-    assert stats.hosted == 1 and len(stats.errors) == 1
-    assert good.hosted_audio_url and bad.hosted_audio_url is None
-
-
-def test_per_source_budget_bounds_attempts_not_just_successes(tmp_path):
-    """Failed attempts count against the per-source budget, so a source can't loop forever on
-    broken episodes. budget=2 + three failing episodes → 2 attempts, the third deferred."""
-    eps = [
-        _ep("g1", url="https://src/FAIL1"),
-        _ep("g2", url="https://src/FAIL2"),
-        _ep("g3", url="https://src/FAIL3"),
-    ]
-    ff = _FailUrls()
-    stats = materialize_audio(
-        _city(),
-        eps,
-        storage=_store(tmp_path),
-        ffmpeg=ff,
-        budget=2,
-        max_kbps=MAX_KBPS,
-        resolve_media_url=lambda e: e.video_url,
-        global_budget=GlobalBudget(25),
-    )
-    assert len(stats.errors) == 2 and stats.skipped_budget == 1
-    assert len(ff.calls) == 2  # only two attempts ran, not all three
+    # Stopped: the 3 credits still all go through; only the encode is deferred.
+    stats = _materialize(city, [*credited_eps, fresh], store, ff, stop=lambda: True)
+    assert stats.credited == 3 and stats.encoded == 0
+    assert stats.skipped_budget == 1 and ff.calls == []  # only the encode deferred
 
 
 def _seed_object(store, key):
@@ -295,9 +234,23 @@ def test_stale_record_for_missing_object_re_materializes(tmp_path):
     assert (Path(store.root) / key).exists()
 
 
-def test_stale_record_cleared_when_budget_exhausted(tmp_path):
-    """A dead record under no budget must drop its pointer rather than keep advertising audio
-    that isn't in storage."""
+class _FailUrls:
+    """ffmpeg fake that fails only for source URLs containing a marker substring."""
+
+    def __init__(self, marker="FAIL"):
+        self.marker = marker
+        self.calls: list[str] = []
+
+    def extract_audio(self, source_url, dest, chapters=None):
+        self.calls.append(source_url)
+        if self.marker in source_url:
+            raise subprocess.CalledProcessError(1, "ffmpeg")
+        dest.write_bytes(b"fake-m4a")
+
+
+def test_stale_record_cleared_when_stopped(tmp_path):
+    """A dead record (object missing) must drop its pointer rather than keep advertising audio
+    that isn't in storage — even when the run is stopped and can't re-encode it this run."""
     ep = _ep("g1")
     city = _city()
     store = _store(tmp_path)
@@ -306,7 +259,7 @@ def test_stale_record_cleared_when_budget_exhausted(tmp_path):
     ep.audio_key = key
     ep.hosted_audio_url = store.public_url(key)
     ep.audio_spec_hash = spec
-    stats = _materialize(city, [ep], store, FakeFfmpeg(), budget=0)
+    stats = _materialize(city, [ep], store, FakeFfmpeg(), stop=lambda: True)
     assert stats.skipped_budget == 1 and stats.reused == 0
     assert ep.hosted_audio_url is None and ep.audio_key is None
 
@@ -353,7 +306,6 @@ def test_chapters_passed_through_to_ffmpeg(tmp_path):
         [ep],
         storage=storage,
         ffmpeg=ffmpeg,
-        budget=5,
         max_kbps=96,
         resolve_media_url=lambda e: e.video_url,
     )
@@ -365,7 +317,7 @@ def test_chapters_passed_through_to_ffmpeg(tmp_path):
 
 def test_failed_attempt_records_backoff_state(tmp_path):
     ep = _ep("bad", url="https://src/FAIL.m3u8")
-    stats = _materialize(_city(), [ep], _store(tmp_path), _FailUrls(), budget=5)
+    stats = _materialize(_city(), [ep], _store(tmp_path), _FailUrls())
     assert stats.hosted == 0 and len(stats.errors) == 1
     assert ep.materialize_attempts == 1 and ep.materialize_last_attempt is not None
 
@@ -377,7 +329,7 @@ def test_episode_in_backoff_is_skipped_without_consuming_budget(tmp_path):
     ep.materialize_attempts = 1
     ep.materialize_last_attempt = datetime.now(UTC).isoformat()
     ff = _FailUrls()
-    stats = _materialize(_city(), [ep], _store(tmp_path), ff, budget=5)
+    stats = _materialize(_city(), [ep], _store(tmp_path), ff)
     assert stats.skipped_backoff == 1 and stats.errors == []
     assert ff.calls == []  # never attempted
 
@@ -387,7 +339,7 @@ def test_backoff_window_elapsed_re_attempts(tmp_path):
     ep.materialize_attempts = 1
     ep.materialize_last_attempt = (datetime.now(UTC) - timedelta(days=2)).isoformat()
     ff = _FailUrls()
-    stats = _materialize(_city(), [ep], _store(tmp_path), ff, budget=5)
+    stats = _materialize(_city(), [ep], _store(tmp_path), ff)
     # base backoff is 1 day; 2 days elapsed -> re-attempt (which fails again, bumping the counter)
     assert stats.skipped_backoff == 0 and len(stats.errors) == 1
     assert ff.calls and ep.materialize_attempts == 2
@@ -398,7 +350,7 @@ def test_success_resets_backoff_state(tmp_path):
     ep.materialize_attempts = 3
     ep.materialize_last_attempt = (datetime.now(UTC) - timedelta(days=40)).isoformat()
     ep.materialize_error = "dead"
-    stats = _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg(), budget=5)
+    stats = _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg())
     assert stats.hosted == 1
     assert ep.materialize_attempts == 0 and ep.materialize_last_attempt is None
     assert ep.materialize_error is None
@@ -418,7 +370,6 @@ def test_categorized_failure_records_its_code(tmp_path):
         [ep],
         storage=_store(tmp_path),
         ffmpeg=FakeFfmpeg(),
-        budget=5,
         max_kbps=MAX_KBPS,
         resolve_media_url=_resolve,
     )
@@ -427,5 +378,5 @@ def test_categorized_failure_records_its_code(tmp_path):
 
 def test_uncategorized_failure_records_generic_error(tmp_path):
     ep = _ep("bad", url="https://src/FAIL.m3u8")
-    _materialize(_city(), [ep], _store(tmp_path), _FailUrls(), budget=5)
+    _materialize(_city(), [ep], _store(tmp_path), _FailUrls())
     assert ep.materialize_error == "error"
