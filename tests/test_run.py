@@ -245,6 +245,28 @@ def test_build_writes_run_history_and_summary(tmp_path, fake_provider):
     assert all(_json.loads(line)["schema_version"] for line in hist2)
 
 
+def test_measured_sec_per_ep_uses_encodes_not_total_hosts(tmp_path):
+    """sec/ep must be computed from the expensive *encoded* count, not total hosts — else a
+    catch-up run dominated by near-free storage credits drives the estimate far too low and
+    over-sizes the next budget."""
+    import json as _json
+
+    from citypods.run import _measured_sec_per_ep
+
+    state = tmp_path / "state"
+    state.mkdir()
+    # 200 hosted but only 20 encodes in 1800s → real cost 90s/encode, not 9s/host.
+    (state / "run_summary.json").write_text(
+        _json.dumps({"materialized": 200, "materialize_encoded": 20, "materialize_seconds": 1800.0})
+    )
+    assert _measured_sec_per_ep(state) == 90.0
+    # No encodes (pure credit run) → fall back to a config estimate, not divide-by-zero.
+    (state / "run_summary.json").write_text(
+        _json.dumps({"materialized": 50, "materialize_encoded": 0, "materialize_seconds": 30.0})
+    )
+    assert _measured_sec_per_ep(state) is None
+
+
 def test_build_logs_audio_stage_activity_and_errors(tmp_path, fake_provider, capsys):
     """The per-stage run summary must surface audio activity (and sample errors) to stdout, so a
     re-host that triggers but fails downstream is visible rather than hiding behind the
