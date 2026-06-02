@@ -11,6 +11,25 @@ class ProviderError(Exception):
     """Raised when a provider cannot fetch or parse a city's source."""
 
 
+# Stable categories for a materialization failure, recorded on the episode for monitoring
+# (feed-health audit + resource report). ``DEFERRED`` = recoverable once a pending feature ships
+# (e.g. multi-segment Swagit concat, issue #122); ``DEAD`` = no usable media exists at all.
+MEDIA_DEFERRED = "deferred"
+MEDIA_DEAD = "dead"
+
+
+class MediaUnavailable(ProviderError):
+    """``resolve_media_url`` cannot produce a usable audio source for this episode.
+
+    ``code`` categorizes why (``MEDIA_DEFERRED`` / ``MEDIA_DEAD``) so the pipeline can persist it
+    and the audit/report can distinguish "recoverable later" from "permanently dead". Other
+    ``ProviderError``s (network/HTTP) are treated as transient (uncategorized)."""
+
+    def __init__(self, message: str, *, code: str):
+        super().__init__(message)
+        self.code = code
+
+
 @runtime_checkable
 class MeetingProvider(Protocol):
     """Adapter for one platform (Granicus, CivicPlus, ...).

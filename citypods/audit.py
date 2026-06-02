@@ -12,6 +12,8 @@ the audit catches the next instance automatically instead of by manual investiga
   * ``rehost-backlog`` — the audio pipeline is wholly stalled (bad storage creds / ffmpeg),
                          so an HLS-only feed never gets a playable enclosure.
   * ``dead-enclosure`` — expiring Swagit presigned URLs / dead Granicus DownloadFile links.
+  * ``dead-audio``     — one project-wide alert when too many episodes can't be materialized at
+                         all (keyless Swagit source with no usable page media, issue #120).
 
 The check functions are pure (no network) so they unit-test from fixtures; ``audit_city``
 does the one fetch and wires them together, taking injectable ``head`` / ``view_counts`` so
@@ -35,10 +37,16 @@ from pathlib import Path
 from citypods.bodies import filter_by_body
 from citypods.feeds import enclosure_url
 from citypods.models import City, Episode
-from citypods.providers.base import ProviderError
+from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, ProviderError
 
 ERROR = "error"
 WARN = "warn"
+
+# Project-wide audio-failure alert (issue #120): file a single aggregate finding when the number
+# of episodes that can't be materialized crosses this many across all feeds, so a creeping rise in
+# dead audio surfaces as one auto-closing ticket rather than per-feed noise (deferred meetings are
+# tracked by their feature issue #122, not here). Override via defaults.dead_audio_alert_threshold.
+DEAD_AUDIO_ALERT_THRESHOLD = 10
 
 
 @dataclass(frozen=True)
@@ -194,6 +202,41 @@ def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Find
             f"{len(saturated)} view(s) at the {cap}-item cap; bodies may be missing",
         )
     return None
+
+
+def count_audio_failures(records: dict) -> tuple[int, int]:
+    """Count records currently failing materialization, as ``(deferred, dead)`` (issue #120).
+
+    ``deferred`` = recoverable once a pending feature ships (multi-segment Swagit concat, #122);
+    ``dead`` = no usable media exists. Reads the persisted record store, so it reflects every
+    parked episode regardless of whether it's in this run's fetch window."""
+    deferred = dead = 0
+    for rec in records.values():
+        code = (rec.get("audio") or {}).get("error")
+        if code == MEDIA_DEFERRED:
+            deferred += 1
+        elif code == MEDIA_DEAD:
+            dead += 1
+    return deferred, dead
+
+
+def check_dead_audio_aggregate(
+    deferred_total: int, dead_total: int, *, threshold: int = DEAD_AUDIO_ALERT_THRESHOLD
+) -> Finding | None:
+    """Project-wide alert: one finding when ``dead_total`` crosses ``threshold`` (issue #120).
+
+    Filed against the pseudo-slug ``(all)`` so the feed-health reconciler keeps it as a single
+    deduplicated, auto-closing issue. Deferred episodes are reported for context but don't trip
+    the alert — they're tracked by their feature issue (#122) and clear when it ships."""
+    if dead_total < threshold:
+        return None
+    msg = (
+        f"{dead_total} episode(s) across all feeds have no materializable audio "
+        f"(keyless source with no usable page media — issue #120)."
+    )
+    if deferred_total:
+        msg += f" Separately, {deferred_total} await multi-segment audio concat (#122)."
+    return Finding("(all)", "dead-audio", ERROR, msg)
 
 
 def check_rehost_backlog(slug: str, episodes: list[Episode]) -> Finding | None:
@@ -386,10 +429,15 @@ def audit_all(
 
     now = now or datetime.now(UTC)
     state_dir = resolve_state_dir(site_config, Path(output_dir))
-    min_meetings = int(site_config.get("defaults", {}).get("min_meetings_per_body", 3))
+    defaults = site_config.get("defaults", {})
+    min_meetings = int(defaults.get("min_meetings_per_body", 3))
+    dead_threshold = int(defaults.get("dead_audio_alert_threshold", DEAD_AUDIO_ALERT_THRESHOLD))
     head = _net_head() if check_enclosures_net else None
 
     findings: list[Finding] = []
+    # Audio-failure tally is per *source* (per-body feeds share one record store), so accumulate
+    # over unique source keys to avoid double-counting (issue #120).
+    failures_by_source: dict[str, tuple[int, int]] = {}
     for city in cities:
         provider = get_provider(city.provider)
 
@@ -406,7 +454,9 @@ def audit_all(
                 view_counts = provider.fetch_view_counts(city.source)
             except ProviderError:
                 view_counts = None  # an unreachable source is caught by audit_city's fetch
-        records = load_records(state_dir, source_key(city))
+        src_key = source_key(city)
+        records = load_records(state_dir, src_key)
+        failures_by_source.setdefault(src_key, count_audio_failures(records))
         findings.extend(
             audit_city(
                 city,
@@ -419,4 +469,10 @@ def audit_all(
                 resolve=resolve,
             )
         )
+
+    deferred_total = sum(d for d, _ in failures_by_source.values())
+    dead_total = sum(d for _, d in failures_by_source.values())
+    aggregate = check_dead_audio_aggregate(deferred_total, dead_total, threshold=dead_threshold)
+    if aggregate:
+        findings.append(aggregate)
     return findings

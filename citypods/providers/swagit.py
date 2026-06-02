@@ -26,7 +26,7 @@ import requests
 
 from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import ChangeToken, Episode
-from citypods.providers.base import ProviderError
+from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, MediaUnavailable, ProviderError
 
 # <a ... href="/videos/123">Body Name</a> </td> <td nowrap> May 26, 2026 </td>
 ROW_RE = re.compile(
@@ -217,12 +217,14 @@ class SwagitProvider:
         if len(segments) == 1:
             return segments[0]
         if len(segments) > 1:
-            raise ProviderError(
+            raise MediaUnavailable(
                 f"{episode.guid}: legacy multi-segment meeting ({len(segments)} parts) is not yet "
-                "materializable (audio concat pending — issue #122)"
+                "materializable (audio concat pending — issue #122)",
+                code=MEDIA_DEFERRED,
             )
-        raise ProviderError(
-            f"{episode.guid}: /download is keyless and the video page exposes no usable media"
+        raise MediaUnavailable(
+            f"{episode.guid}: /download is keyless and the video page exposes no usable media",
+            code=MEDIA_DEAD,
         )
 
     def _page_segments(self, episode: Episode, source: dict, session) -> list[str]:

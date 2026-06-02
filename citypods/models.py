@@ -69,6 +69,11 @@ class Episode:
     # ``(0, None)`` on a successful host.
     materialize_attempts: int = 0
     materialize_last_attempt: str | None = None
+    # Why the last attempt failed, for monitoring (feed-health audit + resource report): a
+    # ``citypods.providers.base`` media category (``"deferred"`` = recoverable once a pending
+    # feature ships, e.g. multi-segment Swagit concat #122; ``"dead"`` = no usable media) or
+    # ``"error"`` for a transient/uncategorized failure. ``None`` once hosted successfully.
+    materialize_error: str | None = None
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url

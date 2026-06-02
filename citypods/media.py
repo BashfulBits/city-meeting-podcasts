@@ -290,13 +290,16 @@ def materialize_audio(
             ep.hosted_audio_url = url
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
+            ep.materialize_error = None
             stats.hosted += 1
         except (subprocess.CalledProcessError, OSError, ProviderError) as exc:
             stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
             # Record the failed attempt so this episode backs off (exponentially) instead of being
             # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
+            # The category (deferred/dead/error) is surfaced by the feed-health audit + report.
             ep.materialize_attempts += 1
             ep.materialize_last_attempt = now.isoformat()
+            ep.materialize_error = getattr(exc, "code", None) or "error"
             # The global cap counts successful hosts; hand the reserved slot back so a broken
             # episode here doesn't starve another source's backfill this run (issue #116 follow-up).
             if global_budget is not None:

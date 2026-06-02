@@ -55,6 +55,26 @@ def test_markdown_summary_has_cost_and_bottleneck():
     assert "| Feeds |" in md
 
 
+def test_audio_failures_surface_in_report_and_markdown(tmp_path):
+    from citypods.records import save_records, source_key
+
+    city = _city("a", "swagit")
+    save_records(
+        tmp_path,
+        source_key(city),
+        {
+            "u1": {"audio": {"error": "dead"}},
+            "u2": {"audio": {"error": "dead"}},
+            "u3": {"audio": {"error": "deferred"}},
+            "u4": {"audio": {"error": None}},
+        },
+    )
+    rep = build_report([city], site_config=SITE, state_dir=tmp_path)
+    assert rep["audio_failures"] == {"deferred": 1, "dead": 2, "examples": ["a (2 dead)"]}
+    md = to_markdown(rep)
+    assert "Un-materializable audio" in md and "2 dead" in md and "#122" in md
+
+
 def test_admin_html_substitutes_and_embeds_valid_json():
     html = to_admin_html(build_report(_cities(), site_config=SITE))
     assert "__REPORT_JSON__" not in html and "__SEED_JSON__" not in html

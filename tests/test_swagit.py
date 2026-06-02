@@ -143,20 +143,26 @@ def test_resolve_keyless_falls_back_to_single_segment(monkeypatch):
 
 
 def test_resolve_keyless_multi_segment_defers(monkeypatch):
+    from citypods.providers.base import MEDIA_DEFERRED, MediaUnavailable
+
     page = b"<body>" + _segment(2, "616").encode() + _segment(3, "617").encode() + b"</body>"
     monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
     eps = parse_list(SAMPLE, ORIGIN)
-    with pytest.raises(ProviderError, match="multi-segment"):
+    with pytest.raises(MediaUnavailable, match="multi-segment") as exc:
         SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
+    assert exc.value.code == MEDIA_DEFERRED
 
 
 def test_resolve_keyless_no_media_raises(monkeypatch):
+    from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
+
     monkeypatch.setattr(
         "citypods.providers.swagit.make_session", lambda: _RouteSession(b"<body>no media</body>")
     )
     eps = parse_list(SAMPLE, ORIGIN)
-    with pytest.raises(ProviderError, match="no usable media"):
+    with pytest.raises(MediaUnavailable, match="no usable media") as exc:
         SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
+    assert exc.value.code == MEDIA_DEAD
 
 
 def test_recorded_fixture_parses():

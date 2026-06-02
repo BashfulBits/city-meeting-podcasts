@@ -342,6 +342,35 @@ def test_success_resets_backoff_state(tmp_path):
     ep = _ep("g1")
     ep.materialize_attempts = 3
     ep.materialize_last_attempt = (datetime.now(UTC) - timedelta(days=40)).isoformat()
+    ep.materialize_error = "dead"
     stats = _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg(), budget=5)
     assert stats.hosted == 1
     assert ep.materialize_attempts == 0 and ep.materialize_last_attempt is None
+    assert ep.materialize_error is None
+
+
+def test_categorized_failure_records_its_code(tmp_path):
+    from citypods.media import materialize_audio
+    from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
+
+    ep = _ep("g1")
+
+    def _resolve(_e):
+        raise MediaUnavailable("no media", code=MEDIA_DEAD)
+
+    materialize_audio(
+        _city(),
+        [ep],
+        storage=_store(tmp_path),
+        ffmpeg=FakeFfmpeg(),
+        budget=5,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=_resolve,
+    )
+    assert ep.materialize_error == MEDIA_DEAD and ep.materialize_attempts == 1
+
+
+def test_uncategorized_failure_records_generic_error(tmp_path):
+    ep = _ep("bad", url="https://src/FAIL.m3u8")
+    _materialize(_city(), [ep], _store(tmp_path), _FailUrls(), budget=5)
+    assert ep.materialize_error == "error"
