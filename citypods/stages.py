@@ -278,8 +278,28 @@ class LinksStage:
 
 def default_stages() -> list[EnrichmentStage]:
     """Ordered: audio-affecting stages (``chapters``) must precede ``audio`` so a chapter
-    change re-encodes; feed-only stages (``summary``, ``links``) follow it."""
+    change re-encodes; feed-only stages (``summary``, ``links``) follow it. This is the full
+    list — used by a one-shot ``citypods build`` (local dev / PR preview / tests). Production
+    splits it across two phases via :func:`render_stages` + :func:`enrich_stages` (see build)."""
     return [ChaptersStage(), AudioStage(), LinksStage()]
+
+
+def render_stages() -> list[EnrichmentStage]:
+    """The *cheap* stages that run in the fast render+deploy phase: no per-item network or encode,
+    so the feeds/pages publish in ~minutes. ``links`` only normalizes data already in hand from the
+    provider fetch (see LinksStage). Audio/chapters already produced by a prior run's enrich are
+    carried onto the feed via the record store (merge_persisted), so the render still shows them —
+    only *this* run's new encodes/chapters defer to the next deploy (graceful, like missing
+    audio)."""
+    return [LinksStage()]
+
+
+def enrich_stages() -> list[EnrichmentStage]:
+    """The *expensive*, deferrable stages that run in the heavy phase after the deploy: chapter
+    scraping (per-item network) and audio encoding (download+ffmpeg), bounded by the wall-clock
+    ``stop`` window. ``chapters`` precedes ``audio`` (it feeds ``audio_spec_hash``). Future ASR/LLM
+    stages (transcripts, summaries) belong here too. Their output lands in the next render."""
+    return [ChaptersStage(), AudioStage()]
 
 
 def run_stages(

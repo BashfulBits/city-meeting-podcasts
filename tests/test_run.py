@@ -468,3 +468,77 @@ def test_chapters_cap_defaults_unbounded_and_is_overridable(tmp_path, fake_provi
         chapters_cap=40,
     )
     assert captured["chapters_per_source"] == 40
+
+
+# --- render/enrich phase split --------------------------------------------------------
+
+
+class _CountingFfmpeg:
+    def __init__(self):
+        self.calls = 0
+
+    def extract_audio(self, source_url, dest, chapters=None):
+        self.calls += 1
+        dest.write_bytes(b"fake-m4a")
+
+
+def _build_phase(tmp_path, cities, phase, ffmpeg):
+    return run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        ffmpeg=ffmpeg,
+        phase=phase,
+    )
+
+
+def test_render_phase_renders_without_encoding(tmp_path, fake_provider):
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"  # would be re-hosted if the audio stage ran
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    _build_phase(tmp_path, cities, "render", ff)
+    assert ff.calls == 0  # the cheap render phase never encodes
+    assert (tmp_path / "docs" / "index.html").exists()  # but the site IS rendered
+    assert (tmp_path / "docs" / "fake-city" / "index.html").exists()
+
+
+def test_enrich_phase_encodes_without_rendering(tmp_path, fake_provider):
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    _build_phase(tmp_path, cities, "enrich", ff)
+    assert ff.calls == 2  # both HLS episodes encoded
+    # No site render: the heavy phase only backfills + persists.
+    assert not (tmp_path / "docs" / "index.html").exists()
+    assert not (tmp_path / "docs" / "fake-city").exists()
+    # It DOES record run history (the cost-bearing phase calibrates the projection).
+    assert (tmp_path / "state" / "run_history.jsonl").exists()
+
+
+def test_enrich_output_surfaces_in_next_render_via_records(tmp_path, fake_provider):
+    """The phases hand off through the record store: audio encoded by enrich must appear in a later
+    render even though render never encodes. Clearing the in-memory episodes first forces the audio
+    to come back via merge_persisted (the fake provider otherwise reuses the same objects)."""
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+
+    # 1) First render: no audio hosted yet -> HLS episodes omit their enclosure (no audio feed).
+    _build_phase(tmp_path, cities, "render", ff)
+    assert not (tmp_path / "docs" / "fake-city" / "audio_feed.xml").exists()
+
+    # 2) Enrich: encode + persist hosted audio onto the records.
+    _build_phase(tmp_path, cities, "enrich", ff)
+    assert ff.calls == 2
+
+    # 3) Wipe the in-memory audio so the next render can only succeed via the persisted records.
+    for ep in fake_provider.episodes:
+        ep.hosted_audio_url = ep.audio_key = ep.audio_spec_hash = None
+    _build_phase(tmp_path, cities, "render", ff)
+    assert ff.calls == 2  # render still didn't encode
+    feed = (tmp_path / "docs" / "fake-city" / "audio_feed.xml").read_text()
+    assert "<enclosure" in feed  # audio is back, carried by the record store

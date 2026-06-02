@@ -23,15 +23,16 @@ defaults:
   max_archive_age_years: 1000            # drop records older than this many years
   extract_audio: false                   # opt-in audio re-hosting for direct providers
   audio_storage_backend: "b2"            # "local" | "b2" | "r2"  (override: AUDIO_STORAGE_BACKEND=local)
-  # A run processes recordings (encode, chapter scrape) until its wall-clock window is spent OR a
-  # newer Build & Deploy run is queued behind it (graceful yield — a push or the next cron takes
-  # over). No count budget / per-episode time estimate: with variable per-recording cost (encode,
-  # later transcription/silence-removal), wall-clock time is the honest bound.
+  # This bounds the HEAVY `citypods enrich` phase only (chapters + audio + later transcripts). The
+  # fast `citypods build --phase render` runs first and the Pages deploy happens BEFORE enrich, so
+  # the site is already live regardless of how long enrich runs — this window just caps how much
+  # backfill one run attempts. Enrich processes recordings until its wall-clock window is spent OR a
+  # newer run is queued behind it (graceful yield). No count budget / per-episode estimate: with
+  # variable per-recording cost (encode, later transcription), wall-clock time is the honest bound.
   #
-  # Size the window so a scheduled run COMPLETES (incl. its tail: finishing the in-flight
-  # recording + rendering feeds + pushing state + the Pages deploy) inside ONE schedule_cron
-  # interval — otherwise it overruns and the next cron preempts it (it still yields gracefully and
-  # deploys, just less cleanly). Window = run_time_budget_minutes × budget_safety; keep
+  # Size the window so enrich COMPLETES (incl. its tail: finishing the in-flight recording + pushing
+  # state) inside ONE schedule_cron interval — otherwise it overruns and the next run preempts it
+  # (it still yields gracefully). Window = run_time_budget_minutes × budget_safety; keep
   # run_time_budget_minutes == the cron interval and let budget_safety reserve the tail.
   run_time_budget_minutes: 240           # == schedule_cron interval (4h); 0 = no time cap (yield only)
   budget_safety: 0.85                    # window = 204m; leaves ~36m of the 240m cron tick for the tail
