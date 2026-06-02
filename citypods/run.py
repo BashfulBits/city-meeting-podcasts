@@ -48,7 +48,13 @@ from citypods.site import (
     render_redirect_feed,
     render_redirect_page,
 )
-from citypods.stages import StageContext, default_stages, run_stages
+from citypods.stages import (
+    StageContext,
+    default_stages,
+    enrich_stages,
+    render_stages,
+    run_stages,
+)
 from citypods.state import (
     build_fingerprint,
     load_etag_cache,
@@ -194,8 +200,12 @@ def _process_city(
     pipeline: SourcePipeline,
     site_config: dict,
     fingerprint: str,
+    render: bool = True,
 ) -> tuple[CityResult, dict | None]:
-    """Returns the result and the new cache entry (or None to leave unchanged)."""
+    """Enrich the city (runs the pipeline's stages) and, when ``render`` is set, write its feeds/
+    pages. In the enrich phase ``render`` is False: the expensive stages still run and persist via
+    ``pipeline.enrich``, but ``docs/`` is left untouched. Returns the result and the new
+    render-cache entry (or None to leave it unchanged)."""
     if request_delay:
         time.sleep(request_delay)
 
@@ -221,6 +231,21 @@ def _process_city(
 
     has_audio = has_items(feed_eps, "audio")
     has_video = has_items(feed_eps, "video")
+
+    # Enrich phase: the expensive stages already ran and persisted inside ``pipeline.enrich`` above;
+    # we don't render or touch the render-cache. Return a result for logging / run history.
+    if not render:
+        return (
+            CityResult(
+                city.slug,
+                "built",
+                episode_count=len(feed_eps),
+                detail=detail,
+                has_audio=has_audio,
+                has_video=has_video,
+            ),
+            None,
+        )
 
     # feed_content_hash drives the re-render skip: hash the render-relevant fields + build
     # fingerprint. Unchanged + outputs present -> skip the (re-)render entirely. (Audio is a
@@ -308,7 +333,23 @@ def build(
     dry_run: bool = False,
     ffmpeg: FfmpegRunner | None = None,
     chapters_cap: int | None = None,
+    phase: str = "all",
 ) -> list[CityResult]:
+    """Build the site and/or backfill heavy enrichment, in one of three phases:
+
+    * ``"all"`` (default) — run every stage and render: a one-shot build for local dev / the PR
+      preview / tests. Time-bounded (graceful yield), as before.
+    * ``"render"`` — the fast phase: cheap stages (links) + render ``docs/``, using audio/chapters
+      already in the record store. NOT time-bounded (it always finishes in minutes); production
+      deploys its output, then runs ``"enrich"``.
+    * ``"enrich"`` — the heavy phase: expensive stages (chapters → audio, later transcripts) bounded
+      by the wall-clock ``stop`` window. Does NOT render or touch ``docs/``; its output is picked up
+      by the next run's ``"render"`` (graceful, like a not-yet-hosted episode).
+
+    Splitting render from enrich is what lets a merge publish feeds/pages in ~minutes instead of
+    waiting out the whole audio window (issue #63 follow-up)."""
+    if phase not in ("all", "render", "enrich"):
+        raise ValueError(f"unknown build phase {phase!r}")
     site_config = load_site_config(site_config_path)
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
     if only_slug:
@@ -336,24 +377,34 @@ def build(
             print(f"state: restored {restored} file(s) from durable storage")
     cache = load_etag_cache(state_dir)
 
-    # The run processes recordings (encode, chapter scrape) until a shared ``stop`` predicate goes
-    # True: the wall-clock window is spent, or a newer Build & Deploy run is queued behind this one
-    # (graceful yield — let a push or the next cron take over without hard-cancelling the in-flight
-    # Pages deploy). No count budget / sec-per-ep estimate: with variable per-recording cost
-    # (encode, and later transcription/silence-removal), wall-clock time is the honest bound.
-    safety = float(defaults.get("budget_safety", 0.8))
-    window_min = float(defaults.get("run_time_budget_minutes", 0))
-    stop = StopSignal(
-        deadline=(time.monotonic() + window_min * 60 * safety) if window_min > 0 else None,
-        superseded=_newer_run_queued,
-    )
-    if window_min > 0:
-        print(f"budget: wall-clock window {window_min:.0f}m × {safety} (+ yield if superseded)")
-    # Loud, once-per-run signal if graceful yield can't work (token dropped, e.g. via repo settings
-    # rather than the workflow YAML that the contract test guards). Without it the run is bounded
-    # only by the wall-clock window — easy to miss, since the yield check fails open silently.
-    if os.environ.get("GITHUB_ACTIONS") and not os.environ.get("GITHUB_TOKEN"):
-        print("warning: GITHUB_TOKEN unset — graceful yield disabled; run bounded only by window")
+    # Phase wiring: which stages run, whether we render docs/, and whether the run is time-bounded.
+    # Only the heavy phases ("enrich"/"all", which encode) carry the wall-clock budget + graceful
+    # yield; "render" is cheap and must always finish so the deploy isn't gated on a budget.
+    do_render = phase in ("all", "render")
+    time_bounded = phase in ("all", "enrich")
+    stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
+
+    # A time-bounded phase processes recordings (encode, chapter scrape) until a shared ``stop``
+    # predicate goes True: the wall-clock window is spent, or a newer Build & Deploy run is queued
+    # behind this one (graceful yield — let the next run take over without hard-cancelling the
+    # in-flight deploy). No count budget: with variable per-recording cost, wall-clock is the bound.
+    stop: StopSignal | None = None
+    if time_bounded:
+        safety = float(defaults.get("budget_safety", 0.8))
+        window_min = float(defaults.get("run_time_budget_minutes", 0))
+        stop = StopSignal(
+            deadline=(time.monotonic() + window_min * 60 * safety) if window_min > 0 else None,
+            superseded=_newer_run_queued,
+        )
+        if window_min > 0:
+            print(f"budget: wall-clock window {window_min:.0f}m × {safety} (+ yield if superseded)")
+        # Loud, once-per-run signal if graceful yield can't work (token dropped, e.g. via repo
+        # settings rather than the workflow YAML the contract test guards). Without it the run is
+        # bounded only by the wall-clock window — easy to miss, since the check fails open silently.
+        if os.environ.get("GITHUB_ACTIONS") and not os.environ.get("GITHUB_TOKEN"):
+            print(
+                "warning: GITHUB_TOKEN unset — graceful yield disabled; run bounded only by window"
+            )
 
     # Hard per-encode wall-clock cap: ffmpeg/ffprobe read the (remote) source directly, so a source
     # that stalls would otherwise hang a worker indefinitely — and ``stop()`` can't preempt a thread
@@ -376,7 +427,7 @@ def build(
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
-        stages=default_stages(),
+        stages=stages,
         ctx=ctx,
         max_archive_items=int(defaults.get("max_archive_items", DEFAULT_MAX_ARCHIVE_ITEMS)),
         max_archive_age_years=float(
@@ -398,6 +449,7 @@ def build(
                 pipeline,
                 site_config,
                 fingerprint,
+                do_render,
             )
             for c in cities
         ]
@@ -427,29 +479,38 @@ def build(
         for msg in t["error_samples"]:
             print(f"    ! {msg}")
 
-    # Why the run ended. "completed within the window" means all due work finished; otherwise this
-    # names the trigger that wrapped it up (wall-clock vs a queued build), so a regressed graceful
-    # yield is visible at a glance instead of silently riding to the deadline (issue #63).
-    print(f"run end: {stop.fired_reason or 'completed within the window (no stop triggered)'}")
+    # Why the run ended (time-bounded phases only). "completed within the window" means all due
+    # work finished; otherwise this names the trigger that wrapped it up (wall-clock vs a queued
+    # build), so a regressed graceful yield is visible at a glance rather than silent (issue #63).
+    if stop is not None:
+        print(f"run end: {stop.fired_reason or 'completed within the window (no stop triggered)'}")
 
     if not dry_run:
         save_etag_cache(state_dir, cache)
-        all_cities = load_city_configs(config_dir, site_config.get("defaults", {}))
-        feed_info = {r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results}
-        (output_dir / "index.html").write_text(
-            render_index(all_cities, site_config, base_url, feed_info)
-        )
-        _write_aliases(output_dir, base_url, all_cities, feed_info)
-        _write_cname(output_dir, site_config)
-        _prune_stale_dirs(output_dir, all_cities)
-        (output_dir / "meta.json").write_text(
-            json.dumps(
-                {"cities": len(all_cities), "built": sum(r.status == "built" for r in results)},
-                indent=2,
+        # Render-phase outputs (feeds/pages already written per-city above; here the site-wide
+        # index/aliases/meta). The enrich phase skips all of this — it only backfills + persists.
+        if do_render:
+            all_cities = load_city_configs(config_dir, site_config.get("defaults", {}))
+            feed_info = {
+                r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results
+            }
+            (output_dir / "index.html").write_text(
+                render_index(all_cities, site_config, base_url, feed_info)
             )
-            + "\n"
-        )
-        _record_run_history(state_dir, results, pipeline.stage_totals)
+            _write_aliases(output_dir, base_url, all_cities, feed_info)
+            _write_cname(output_dir, site_config)
+            _prune_stale_dirs(output_dir, all_cities)
+            (output_dir / "meta.json").write_text(
+                json.dumps(
+                    {"cities": len(all_cities), "built": sum(r.status == "built" for r in results)},
+                    indent=2,
+                )
+                + "\n"
+            )
+        # Run history calibrates the cost projection from real encode time, so record it only for
+        # the phase that does that work (enrich/all) — a near-zero-cost render run would dilute it.
+        if time_bounded:
+            _record_run_history(state_dir, results, pipeline.stage_totals)
         # Persist the updated record store + cache back to durable storage. The bucket — not
         # actions/cache — is the source of truth for derived artifacts.
         pushed = push_state(storage, state_dir)

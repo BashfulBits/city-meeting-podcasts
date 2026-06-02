@@ -25,11 +25,37 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--output-dir", default="docs")
     b.add_argument("--base-url", help="override Pages base URL")
     b.add_argument(
+        "--phase",
+        choices=["all", "render"],
+        default="all",
+        help="'all' (default) runs every stage and renders — a one-shot build for local/preview. "
+        "'render' is the fast production phase: cheap stages + render docs/ (deploy this, then "
+        "run `citypods enrich`). Heavy audio/chapters already in the store still render.",
+    )
+    b.add_argument(
         "--chapters-cap",
         type=int,
         default=None,
         help="max chapter pages scraped per source this run (for the PR preview; "
         "unset = bounded only by the wall-clock window, as in production)",
+    )
+
+    e = sub.add_parser(
+        "enrich",
+        help="heavy backfill (chapters + audio) into object storage; no render/deploy. "
+        "Run AFTER deploying `build --phase render`; output appears in the next render.",
+    )
+    e.add_argument("--city", help="enrich only this city slug")
+    e.add_argument("--site-config", default="config/site_config.yml")
+    e.add_argument("--config-dir", default="config")
+    e.add_argument("--output-dir", default="docs")
+    e.add_argument("--base-url", help="override Pages base URL")
+    e.add_argument(
+        "--chapters-cap",
+        type=int,
+        default=None,
+        help="max chapter pages scraped per source this run (unset = bounded only by the "
+        "wall-clock window, as in production)",
     )
 
     d = sub.add_parser("bodies", help="list the meeting bodies in a city's source")
@@ -61,29 +87,37 @@ def main(argv: list[str] | None = None) -> int:
         return _report(args)
 
     if args.command == "build":
-        results = build(
-            site_config_path=args.site_config,
-            config_dir=args.config_dir,
-            output_dir=args.output_dir,
-            base_url=args.base_url,
-            only_slug=args.city,
-            dry_run=args.dry_run,
-            chapters_cap=args.chapters_cap,
-        )
-        built = sum(r.status == "built" for r in results)
-        skipped = sum(r.status == "skipped" for r in results)
-        errors = [r for r in results if r.status == "error"]
-        for r in results:
-            mark = {"built": "✓", "skipped": "·", "error": "✗"}[r.status]
-            extra = f" ({r.episode_count} eps)" if r.status == "built" else ""
-            if r.status == "error":
-                extra = f" — {r.detail}"
-            print(f"  {mark} {r.slug}{extra}")
-        suffix = " (dry run)" if args.dry_run else ""
-        print(f"\n{built} built, {skipped} skipped, {len(errors)} errors{suffix}")
-        return 1 if errors else 0
+        return _run_build(args, phase=args.phase, dry_run=args.dry_run)
+
+    if args.command == "enrich":
+        return _run_build(args, phase="enrich", dry_run=False)
 
     return 0
+
+
+def _run_build(args, *, phase: str, dry_run: bool) -> int:
+    results = build(
+        site_config_path=args.site_config,
+        config_dir=args.config_dir,
+        output_dir=args.output_dir,
+        base_url=args.base_url,
+        only_slug=args.city,
+        dry_run=dry_run,
+        chapters_cap=args.chapters_cap,
+        phase=phase,
+    )
+    built = sum(r.status == "built" for r in results)
+    skipped = sum(r.status == "skipped" for r in results)
+    errors = [r for r in results if r.status == "error"]
+    for r in results:
+        mark = {"built": "✓", "skipped": "·", "error": "✗"}[r.status]
+        extra = f" ({r.episode_count} eps)" if r.status == "built" else ""
+        if r.status == "error":
+            extra = f" — {r.detail}"
+        print(f"  {mark} {r.slug}{extra}")
+    suffix = " (dry run)" if dry_run else ""
+    print(f"\n{built} built, {skipped} skipped, {len(errors)} errors{suffix}")
+    return 1 if errors else 0
 
 
 def _report(args) -> int:
