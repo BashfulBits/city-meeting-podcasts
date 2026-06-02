@@ -380,3 +380,43 @@ def test_uncategorized_failure_records_generic_error(tmp_path):
     ep = _ep("bad", url="https://src/FAIL.m3u8")
     _materialize(_city(), [ep], _store(tmp_path), _FailUrls())
     assert ep.materialize_error == "error"
+
+
+def test_encode_timeout_is_caught_and_tagged_timeout(tmp_path):
+    # A stalled source trips the per-encode timeout (subprocess.TimeoutExpired). It must be caught
+    # (not crash the build / hang the worker) and recorded as a backoff-eligible failure tagged
+    # "timeout" so it isn't retried every run — the in-flight-hang gap behind issue #63.
+    class _TimeoutFfmpeg:
+        def extract_audio(self, source_url, dest, chapters=None):
+            raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=2700)
+
+    ep = _ep("slow")
+    stats = _materialize(_city(), [ep], _store(tmp_path), _TimeoutFfmpeg())
+    assert stats.hosted == 0 and len(stats.errors) == 1
+    assert ep.materialize_error == "timeout" and ep.materialize_attempts == 1
+    assert ep.materialize_last_attempt is not None
+
+
+def test_command_ffmpeg_wires_timeouts(monkeypatch, tmp_path):
+    # Wiring guard: a normal run never reveals whether the timeouts are passed, but dropping them
+    # reopens the hang. Assert ffprobe gets a (capped) timeout and the encode gets both -rw_timeout
+    # and the hard subprocess timeout.
+    import citypods.media as media
+
+    calls: list[tuple[list, dict]] = []
+
+    def _fake_run(cmd, **kw):
+        calls.append((cmd, kw))
+
+        class _R:
+            stdout = "128000"  # ffprobe bitrate
+
+        return _R()
+
+    monkeypatch.setattr(media.subprocess, "run", _fake_run)
+    media.CommandFfmpeg(max_kbps=96, timeout_seconds=2700).extract_audio(
+        "https://src/manifest.m3u8", tmp_path / "out.m4a"
+    )
+    (_probe_cmd, probe_kw), (enc_cmd, enc_kw) = calls[0], calls[1]
+    assert probe_kw["timeout"] == 120.0  # capped to _PROBE_TIMEOUT_S
+    assert "-rw_timeout" in enc_cmd and enc_kw["timeout"] == 2700
