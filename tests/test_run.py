@@ -289,8 +289,8 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
         ffmpeg=_OkFfmpeg(),
     )
     out = capsys.readouterr().out
-    # two HLS episodes, both newly hosted, none reused, no errors
-    assert "audio: 2 ran, 0 reused" in out and "0 errors" in out
+    # two HLS episodes, both newly encoded (not credited from storage), none reused, no errors
+    assert "audio: 2 ran (2 encoded, 0 credited), 0 reused" in out and "0 errors" in out
 
 
 def test_time_bounded_budget_overrides_flat_cap(tmp_path, fake_provider, monkeypatch):

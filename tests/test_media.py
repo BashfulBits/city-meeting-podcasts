@@ -126,6 +126,24 @@ def test_budget_defers_extra_episodes(tmp_path):
     assert sum(e.hosted_audio_url is not None for e in eps) == 1
 
 
+def test_stats_split_encoded_vs_credited(tmp_path):
+    """``hosted`` splits into expensive encodes and near-free storage re-credits, so the budget's
+    per-episode time estimate isn't blended across two ~10-100x-different operations."""
+    city = _city()
+    store = _store(tmp_path)
+    # g1's object is already in storage (record drifted) -> credited, no ffmpeg.
+    pre = _ep("g1")
+    pre_key = audio_object_key(city, pre, audio_spec_hash(pre, max_kbps=MAX_KBPS))
+    _seed_object(store, pre_key)
+    # g2 has no object yet -> encoded.
+    fresh = _ep("g2")
+    ff = FakeFfmpeg()
+    stats = _materialize(city, [pre, fresh], store, ff)
+    assert stats.hosted == 2
+    assert stats.encoded == 1 and stats.credited == 1
+    assert ff.calls == ["https://src/manifest.m3u8"]  # only the un-stored one was encoded
+
+
 class _FailUrls:
     """ffmpeg fake that fails only for source URLs containing a marker substring."""
 
