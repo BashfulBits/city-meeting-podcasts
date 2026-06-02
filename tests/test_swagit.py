@@ -86,6 +86,79 @@ def test_resolve_errors_on_failure(monkeypatch):
         SwagitProvider().resolve_media_url(eps[0], {})
 
 
+# --- keyless-/download fallback to page-scraped media (issue #120) -------------------------
+
+KEYLESS = "https://granicus-aasmp-swagit-video.s3.amazonaws.com/dallastx/?X-Amz-Signature=abc"
+
+
+def _segment(seq, name):
+    return (
+        f'{{"id":{seq},"seq":{seq},"title":"Item","dfile":'
+        f'"https://swagit-video.granicus.com/archive/2014/01/21/{name}.h264.mp4",'
+        f'"file":"https://archive-stream.granicus.com/x/playlist.m3u8"}}'
+    )
+
+
+class _PageResp:
+    def __init__(self, content):
+        self.status_code = 200
+        self.content = content
+        self.text = content.decode()
+
+
+class _RouteSession:
+    """Routes /download to a keyless redirect and the video page to ``page``."""
+
+    def __init__(self, page):
+        self._page = page
+
+    def get(self, url, timeout=None, allow_redirects=True):
+        if url.endswith("/download"):
+            return _Resp(302, KEYLESS)
+        return _PageResp(self._page)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_parse_media_segments_ordered_by_seq():
+    from citypods.providers.swagit import parse_media_segments
+
+    page = b"<body>" + _segment(3, "617").encode() + _segment(2, "616").encode() + b"</body>"
+    assert parse_media_segments(page) == [
+        "https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4",
+        "https://swagit-video.granicus.com/archive/2014/01/21/617.h264.mp4",
+    ]
+
+
+def test_resolve_keyless_falls_back_to_single_segment(monkeypatch):
+    page = b"<body>" + _segment(2, "616").encode() + b"</body>"
+    monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    eps = parse_list(SAMPLE, ORIGIN)
+    url = SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
+    assert url == "https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4"
+
+
+def test_resolve_keyless_multi_segment_defers(monkeypatch):
+    page = b"<body>" + _segment(2, "616").encode() + _segment(3, "617").encode() + b"</body>"
+    monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    eps = parse_list(SAMPLE, ORIGIN)
+    with pytest.raises(ProviderError, match="multi-segment"):
+        SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
+
+
+def test_resolve_keyless_no_media_raises(monkeypatch):
+    monkeypatch.setattr(
+        "citypods.providers.swagit.make_session", lambda: _RouteSession(b"<body>no media</body>")
+    )
+    eps = parse_list(SAMPLE, ORIGIN)
+    with pytest.raises(ProviderError, match="no usable media"):
+        SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
+
+
 def test_recorded_fixture_parses():
     eps = parse_list(fixture_bytes("swagit", "dallas-tx-city-council"), ORIGIN)
     assert eps

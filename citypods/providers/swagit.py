@@ -8,6 +8,11 @@ e.g. "City Council Agenda Meetings". Use ``scripts/discover_swagit.py`` to list 
 Media is a progressive MP4 behind an expiring (~1h) presigned S3 URL via
 ``/videos/{id}/download``, so episodes are ``media_kind="hls"`` (resolved lazily and
 re-hosted as audio by the materialization pipeline, like CivicPlus).
+
+Older meetings 302 to a *keyless* presigned URL (signs only the bucket prefix, no object), so
+``/download`` is unusable; for those we fall back to the direct ``dfile`` MP4(s) embedded in the
+``/videos/{id}`` page (issue #120). Single-segment meetings resolve directly; multi-segment ones
+are deferred (audio concat is a roadmap item) and the pipeline backs off re-trying them.
 """
 
 from __future__ import annotations
@@ -32,6 +37,13 @@ ROW_RE = re.compile(
 # Agenda-item links on a video page double as chapter markers:
 #   <a class="playerControl" data-ts="51" data-end-ts="491" data-title="..." href="/play/ID/51">
 CHAPTER_ANCHOR_RE = re.compile(r'<a\b[^>]*class="[^"]*playerControl[^"]*"[^>]*>', re.IGNORECASE)
+
+# Legacy (older-meeting) video pages embed each agenda segment's media as inline JSON, e.g.
+#   {"id":...,"seq":2,"title":"Call to Order","dfile":"https://.../01212014-616.h264.mp4",...}
+# ``dfile`` is a direct, reachable MP4 — the fallback when ``/download`` is keyless (issue #120).
+_SEGMENT_OBJ_RE = re.compile(r'\{[^{}]*"dfile"[^{}]*\}')
+_DFILE_RE = re.compile(r'"dfile":"([^"]+)"')
+_SEQ_RE = re.compile(r'"seq":(\d+)')
 
 
 def _attr(tag: str, name: str) -> str | None:
@@ -65,6 +77,31 @@ def parse_chapters(content: bytes) -> list[dict]:
 def _origin(url: str) -> str:
     parts = urlsplit(url)
     return f"{parts.scheme}://{parts.netloc}"
+
+
+def _s3_object_key(url: str) -> str:
+    """The object key of a presigned S3 URL — the last path segment, ignoring the query. Empty
+    string when the URL signs only the bucket *prefix* (``.../dallastx/?X-Amz-...``), which is the
+    keyless-redirect signature for older Swagit meetings whose ``/download`` is broken (#120)."""
+    return urlsplit(url).path.rsplit("/", 1)[-1]
+
+
+def parse_media_segments(content: bytes) -> list[str]:
+    """Parse a Swagit video page's inline ``dfile`` media segments, ordered by ``seq``.
+
+    Older meetings render each agenda segment as a JSON object carrying a direct, reachable MP4
+    (``dfile``); newer meetings have none (they use ``/download``). Returns the segment MP4 URLs
+    in playback order. Pure (no network)."""
+    text = content.decode("utf-8", errors="replace")
+    found: list[tuple[int, str]] = []
+    for obj in _SEGMENT_OBJ_RE.findall(text):
+        df = _DFILE_RE.search(obj)
+        if not df:
+            continue
+        seq = _SEQ_RE.search(obj)
+        found.append((int(seq.group(1)) if seq else 0, df.group(1)))
+    found.sort(key=lambda s: s[0])
+    return [url for _, url in found]
 
 
 def parse_list(content: bytes, origin: str) -> list[Episode]:
@@ -150,12 +187,52 @@ class SwagitProvider:
         return chapters, transcript
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
-        """Follow /videos/{id}/download to its presigned MP4 URL."""
+        """Resolve an episode's audio source URL.
+
+        Newer meetings: follow ``/videos/{id}/download`` to its presigned, keyed MP4. For older
+        meetings that redirect 302s to a *keyless* presigned URL (signs only the bucket prefix,
+        so ffmpeg fails — issue #120), fall back to the direct ``dfile`` MP4(s) scraped from the
+        ``/videos/{id}`` page:
+
+          * one segment  -> return it directly;
+          * many segments -> not yet materializable (TODO: concat — see ROADMAP "audio concat for
+            multi-segment legacy Swagit meetings", pri 5). Raised as a ``ProviderError`` so the
+            media pipeline records the attempt and backs off rather than churning the budget;
+          * no segments  -> truly un-materializable; same backoff path.
+        """
         with make_session() as session:
             resp = session.get(episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
-        loc = resp.headers.get("Location")
-        if resp.status_code in (301, 302, 303, 307, 308) and loc:
-            return loc
-        if resp.status_code < 400:
-            return episode.video_url  # already the file
-        raise ProviderError(f"download resolve for {episode.guid} returned {resp.status_code}")
+            loc = resp.headers.get("Location")
+            is_redirect = resp.status_code in (301, 302, 303, 307, 308) and bool(loc)
+            if is_redirect and _s3_object_key(loc):
+                return loc  # modern meeting: keyed presigned MP4, usable as-is
+            if not is_redirect and resp.status_code < 400:
+                return episode.video_url  # already the file
+            if not is_redirect:
+                raise ProviderError(
+                    f"download resolve for {episode.guid} returned {resp.status_code}"
+                )
+            # Keyless redirect: fall back to the page-scraped direct media (issue #120).
+            segments = self._page_segments(episode, source, session)
+        if len(segments) == 1:
+            return segments[0]
+        if len(segments) > 1:
+            raise ProviderError(
+                f"{episode.guid}: legacy multi-segment meeting ({len(segments)} parts) is not yet "
+                "materializable (audio concat pending — see ROADMAP pri 5)"
+            )
+        raise ProviderError(
+            f"{episode.guid}: /download is keyless and the video page exposes no usable media"
+        )
+
+    def _page_segments(self, episode: Episode, source: dict, session) -> list[str]:
+        """Fetch the ``/videos/{id}`` page and return its inline ``dfile`` segment URLs."""
+        origin = _origin(source["list_url"])
+        url = f"{origin}/videos/{episode.guid}"
+        try:
+            resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+        except requests.RequestException as exc:
+            raise ProviderError(f"GET {url} failed: {exc}") from exc
+        if resp.status_code >= 400:
+            raise ProviderError(f"GET {url} returned {resp.status_code}")
+        return parse_media_segments(resp.content)

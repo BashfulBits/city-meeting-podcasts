@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.media import GlobalBudget, encode_args, materialize_audio
@@ -303,3 +303,45 @@ def test_chapters_passed_through_to_ffmpeg(tmp_path):
         resolve_media_url=lambda e: e.video_url,
     )
     assert ffmpeg.chapters == [[{"start": 0, "end": 10, "title": "Intro"}]]
+
+
+# --- materialization backoff for repeatedly-failing episodes (issue #120) ------------------
+
+
+def test_failed_attempt_records_backoff_state(tmp_path):
+    ep = _ep("bad", url="https://src/FAIL.m3u8")
+    stats = _materialize(_city(), [ep], _store(tmp_path), _FailUrls(), budget=5)
+    assert stats.hosted == 0 and len(stats.errors) == 1
+    assert ep.materialize_attempts == 1 and ep.materialize_last_attempt is not None
+
+
+def test_episode_in_backoff_is_skipped_without_consuming_budget(tmp_path):
+    """A recently-failed episode must not be re-tried (no ffmpeg call, no budget spent) until its
+    backoff window elapses — otherwise a broken meeting churns budget/time every run."""
+    ep = _ep("bad", url="https://src/FAIL.m3u8")
+    ep.materialize_attempts = 1
+    ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+    ff = _FailUrls()
+    stats = _materialize(_city(), [ep], _store(tmp_path), ff, budget=5)
+    assert stats.skipped_backoff == 1 and stats.errors == []
+    assert ff.calls == []  # never attempted
+
+
+def test_backoff_window_elapsed_re_attempts(tmp_path):
+    ep = _ep("bad", url="https://src/FAIL.m3u8")
+    ep.materialize_attempts = 1
+    ep.materialize_last_attempt = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    ff = _FailUrls()
+    stats = _materialize(_city(), [ep], _store(tmp_path), ff, budget=5)
+    # base backoff is 1 day; 2 days elapsed -> re-attempt (which fails again, bumping the counter)
+    assert stats.skipped_backoff == 0 and len(stats.errors) == 1
+    assert ff.calls and ep.materialize_attempts == 2
+
+
+def test_success_resets_backoff_state(tmp_path):
+    ep = _ep("g1")
+    ep.materialize_attempts = 3
+    ep.materialize_last_attempt = (datetime.now(UTC) - timedelta(days=40)).isoformat()
+    stats = _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg(), budget=5)
+    assert stats.hosted == 1
+    assert ep.materialize_attempts == 0 and ep.materialize_last_attempt is None

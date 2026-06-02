@@ -117,7 +117,7 @@ class AudioStage:
             self.name,
             ms.hosted,
             ms.reused,
-            ms.skipped_budget,
+            ms.skipped_budget + ms.skipped_backoff,
             ms.errors,
             bytes_written=ms.bytes_written,
         )
