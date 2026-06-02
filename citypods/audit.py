@@ -96,8 +96,22 @@ class ArchiveDiff:
         return "genuine regression"
 
 
-def compute_archive_diff(fetched_episodes: list[Episode], records: dict) -> ArchiveDiff:
-    """Compare freshly-fetched episodes against the append-only archive."""
+def compute_archive_diff(
+    fetched_episodes: list[Episode], records: dict, *, body: str | None = None
+) -> ArchiveDiff:
+    """Compare freshly-fetched episodes against the append-only archive.
+
+    The record store is shared across every body on the same source (``source_key`` strips the
+    per-board ``body`` filter), so it holds *all* bodies' episodes. When ``body`` is given, scope
+    both sides of the diff to that body's slice — otherwise one body's materialized episodes would
+    make the diff suppress a genuine empty/too-few finding for a *different* body whose ``body:``
+    filter has stopped matching (HTML/name change, typo) on the same shared view.
+    """
+    if body:
+        from citypods.bodies import matches
+
+        fetched_episodes = filter_by_body(fetched_episodes, body)
+        records = {uid: r for uid, r in records.items() if matches(r.get("body"), body)}
     fetched_uids = {e.uid for e in fetched_episodes if e.uid}
     archived_uids = set(records)
     materialized = sum(1 for r in records.values() if (r.get("audio") or {}).get("url"))
@@ -377,8 +391,11 @@ def audit_city(
     if records is not None:
         merge_persisted(episodes, records)
 
-    # Compute archive diff before body filtering (diff covers the whole source, not one body).
-    diff = compute_archive_diff(episodes, records) if records is not None else None
+    # Scope the archive diff to this feed's own body: the record store is shared across every body
+    # on the same source, so an unscoped diff would let other bodies' materialized episodes suppress
+    # a genuine per-body regression (its ``body:`` filter stopped matching, dropping it to 0).
+    body = city.source.get("body")
+    diff = compute_archive_diff(episodes, records, body=body) if records is not None else None
 
     # Oldest date in the archive (across all episodes, pre-filter) for staleness correction.
     archive_newest: datetime | None = None
@@ -394,7 +411,7 @@ def audit_city(
         if dates:
             archive_newest = max(dates)
 
-    episodes = filter_by_body(episodes, city.source.get("body"))
+    episodes = filter_by_body(episodes, body)
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
 
