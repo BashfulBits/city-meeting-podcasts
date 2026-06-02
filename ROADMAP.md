@@ -24,6 +24,13 @@ front-end design cycle, **#50** accessibility.
 | **1**   | #1 ASR transcripts (reuse provider transcripts first, self-host the rest) · #22 silence-trim / timeline-transform · #51 official meetings-page link |
 | **1.5** | #11 `<podcast:transcript>` · #21 loudness normalization · #23 host-all-audio |
 | **2**   | #2 auto-summaries · #3 per-agenda-item summaries · #16 funding link · #28 city onboarding (`/approve`) · #30 auto-detect provider · #46 per-meeting permalink pages · #53 feed-validation publish gate |
+
+<!-- #28 note: city onboarding flow must populate `meetings_url` in the generated YAML. The value
+     should be the city's own meetings/agenda-portal page (not the provider URL). At onboard time
+     this can be sourced from: (a) the submitter's issue, (b) a web search for
+     "<city name> agendas minutes site:<city_website domain>", or (c) a provider-specific heuristic
+     as a last resort. The field is optional — fall back to city_website on render — but should be
+     populated whenever discoverable so every episode carries a ground-truth link. -->
 | **2.5** | #15 soundbite highlights · #55 front-end design cycle (subscribe-button iconography, index redesign) |
 | **3**   | #4 topic tags · #6 full-text search · #18 newsletter (RSS-first) · #25 intro/outro stinger · #31 Legistar provider · #41 backlog catch-up auto-rebalance · #50 accessibility · #56 user "report a feed problem" template |
 | **3.5** | #19 upcoming-meetings calendar (.ics) · #49 admin dashboard |

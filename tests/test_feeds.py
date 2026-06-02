@@ -127,3 +127,40 @@ def test_chapters_json_and_podcast_chapters_tag(tmp_path):
         '<podcast:chapters url="https://e.test/x-tx/chapters/abc123.json" '
         'type="application/json+chapters"/>' in xml
     )
+
+
+def test_meetings_link_renders_into_feed_end_to_end(tmp_path):
+    """Issue #112: a city's meetings_url, injected by LinksStage, renders as a per-episode
+    resource link in the feed notes. Guards the full path (stage -> ordered_links -> RSS) that
+    the snapshot test doesn't exercise (it bypasses the enrichment stages)."""
+    from datetime import UTC, datetime
+
+    from citypods.feeds import build_rss
+    from citypods.models import City, Episode
+    from citypods.stages import LinksStage, StageContext
+    from tests.test_stages import FakeFfmpeg
+
+    city = City(
+        slug="x-tx",
+        provider="granicus",
+        source={"feed_url": "u"},
+        podcast_title="X",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="d",
+        meetings_url="https://x.gov/meetings",
+    )
+    ep = Episode(
+        guid="g",
+        uid="abc123",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        media_kind="direct",
+    )
+    ctx = StageContext(storage=None, ffmpeg=FakeFfmpeg(), max_kbps=96, dry_run=False, stop=None)
+    LinksStage().process(None, city, [ep], ctx)
+
+    xml = build_rss(city, [ep], "audio", "https://e.test")
+    assert "Official meetings page" in xml
+    assert "https://x.gov/meetings" in xml

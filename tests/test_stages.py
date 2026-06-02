@@ -132,6 +132,28 @@ def test_links_stage_merges_provider_supplied_links(tmp_path):
     }
 
 
+def test_links_stage_adds_meetings_url_on_every_episode(tmp_path):
+    city = _city()
+    city.meetings_url = "https://x.tx.gov/agendas"
+    eps = [_ep("g1"), _ep("g2")]
+    LinksStage().process(FakeProvider(), city, eps, _ctx(tmp_path))
+    assert all(e.links.get("meetings") == "https://x.tx.gov/agendas" for e in eps)
+
+
+def test_links_stage_meetings_falls_back_to_city_website(tmp_path):
+    city = _city()
+    city.city_website = "https://x.tx.gov"
+    eps = [_ep("g1")]
+    LinksStage().process(FakeProvider(), city, eps, _ctx(tmp_path))
+    assert eps[0].links.get("meetings") == "https://x.tx.gov"
+
+
+def test_links_stage_no_meetings_link_when_neither_configured(tmp_path):
+    eps = [_ep("g1")]
+    LinksStage().process(FakeProvider(), _city(), eps, _ctx(tmp_path))
+    assert "meetings" not in eps[0].links
+
+
 class ChapterProvider(FakeProvider):
     def __init__(self, chapters, transcript=None):
         self._chapters = chapters

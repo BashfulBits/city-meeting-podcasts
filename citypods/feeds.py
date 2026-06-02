@@ -26,6 +26,7 @@ LINK_LABELS: dict[str, str] = {
     "transcript": "Transcript",
     "documents": "Meeting documents",
     "canonical_video": "Watch the video",
+    "meetings": "Official meetings page",
 }
 
 

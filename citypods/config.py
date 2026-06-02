@@ -48,6 +48,7 @@ def _build_city(raw: dict, defaults: dict, source_file: Path) -> City:
         | {
             "state",
             "city_website",
+            "meetings_url",
             "podcast_language",
             "podcast_category",
             "max_episodes",
@@ -67,6 +68,7 @@ def _build_city(raw: dict, defaults: dict, source_file: Path) -> City:
         podcast_description=raw["podcast_description"],
         state=raw.get("state"),
         city_website=raw.get("city_website"),
+        meetings_url=raw.get("meetings_url"),
         podcast_language=raw.get("podcast_language", defaults.get("podcast_language", "en-us")),
         podcast_category=raw.get(
             "podcast_category", defaults.get("podcast_category", "Government")

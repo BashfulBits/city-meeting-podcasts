@@ -96,6 +96,9 @@ class City:
     podcast_description: str
     state: str | None = None
     city_website: str | None = None
+    # Canonical meetings/agenda-portal URL, shown on every episode so listeners can reach the
+    # city's own ground-truth site. Falls back to ``city_website`` when unset.
+    meetings_url: str | None = None
     podcast_language: str = "en-us"
     podcast_category: str = "Government"
     max_episodes: int = 50
