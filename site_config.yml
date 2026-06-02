@@ -27,8 +27,14 @@ defaults:
   # newer Build & Deploy run is queued behind it (graceful yield — a push or the next cron takes
   # over). No count budget / per-episode time estimate: with variable per-recording cost (encode,
   # later transcription/silence-removal), wall-clock time is the honest bound.
-  run_time_budget_minutes: 300           # window per run; 0 = no time cap (rely on yield + Actions limit)
-  budget_safety: 0.8                     # use this fraction of the window (head-room for render+deploy)
+  #
+  # Size the window so a scheduled run COMPLETES (incl. its tail: finishing the in-flight
+  # recording + rendering feeds + pushing state + the Pages deploy) inside ONE schedule_cron
+  # interval — otherwise it overruns and the next cron preempts it (it still yields gracefully and
+  # deploys, just less cleanly). Window = run_time_budget_minutes × budget_safety; keep
+  # run_time_budget_minutes == the cron interval and let budget_safety reserve the tail.
+  run_time_budget_minutes: 240           # == schedule_cron interval (4h); 0 = no time cap (yield only)
+  budget_safety: 0.85                    # window = 204m; leaves ~36m of the 240m cron tick for the tail
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
   min_meetings_per_body: 3               # generator: a body needs this many recent meetings to get a feed
   # Bodies whose name contains any of these (case-insensitive) are NOT turned into feeds by

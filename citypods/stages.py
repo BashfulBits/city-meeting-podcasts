@@ -18,6 +18,44 @@ Two invariants make this safe and incremental (see records.py):
 
 A stage mutates episodes in place; downstream the split hashes pick up the change
 automatically (``audio_spec_hash`` -> re-encode, ``feed_content_hash`` -> re-render).
+
+--------------------------------------------------------------------------------------------
+The ``stop`` convention (read this before adding an expensive stage)
+--------------------------------------------------------------------------------------------
+``ctx.stop()`` is the run's "wrap up and deploy now" signal. It is True once the wall-clock
+window is spent OR a newer Build & Deploy run is queued behind this one (graceful yield, so a
+push or the next cron takes over without hard-cancelling the in-flight Pages deploy). The
+canonical shape for a stage that does expensive per-item work (encode, transcription,
+translation, summarization, any multi-second ASR/LLM/network/CPU job) is::
+
+    for ep in _materialize_set(episodes, city.max_episodes):
+        if <already done for ep>:                 # cheap, idempotent — NOT gated by stop
+            stats.reused += 1
+            continue
+        if ctx.stop is not None and ctx.stop():    # check immediately before the costly work
+            stats.skipped += 1                     # deferred to a later run — not an error
+            continue
+        <do the expensive, restartable work for ep, persisting enough to resume next run>
+
+Rules:
+  1. **Gate only expensive, deferrable work.** Check ``stop()`` right before the costly operation
+     for one item. Never gate cheap/idempotent bookkeeping (reuse checks, attaching an
+     already-known URL, setting a default link, the audio *credit* path) — that must always finish
+     so the run leaves consistent, deployable state.
+  2. **Per item, not per stage.** Call it inside the loop so a run can complete N items and defer
+     the rest mid-scan. It is cheap to call (throttled + latched), so per-item is fine.
+  3. **Restartable or don't gate it.** Anything skipped on ``stop()`` must be safe to retry next
+     run, and any item you *did* finish must be persisted (upload the artifact, record its
+     key/URL) before moving on — so yielding never loses or half-writes progress. If a unit of
+     work can't be made resumable, it doesn't belong behind ``stop()``.
+  4. **Deferred is not failed.** Count a stopped item as skipped/deferred; reserve ``errors`` for
+     real failures (which get the #120 backoff instead).
+  5. **Don't sense supersession yourself.** ``stop()`` already encapsulates the wall-clock
+     deadline and the throttled "newer run queued" check; just call it.
+
+Ordering caveat: a long stage that runs *before* others (e.g. transcription feeding chapters)
+spends the same shared window, so everything downstream of it also defers when it yields. Place
+the most valuable expensive stages earliest.
 """
 
 from __future__ import annotations
@@ -54,7 +92,8 @@ class StageContext:
 
     ``stop`` is a shared predicate (or None) that goes True once the run's wall-clock window is
     spent or a newer Build & Deploy run is queued behind this one; expensive stages check it
-    before starting new work so the run wraps up and deploys instead of running indefinitely."""
+    before starting new work so the run wraps up and deploys instead of running indefinitely. See
+    the module docstring's "stop convention" for exactly when (and when not) to gate work on it."""
 
     storage: object | None
     ffmpeg: object
