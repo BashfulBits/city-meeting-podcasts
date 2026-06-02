@@ -48,13 +48,14 @@ def _ep(guid):
     )
 
 
-def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None):
+def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):
     return StageContext(
         storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn") if storage else None,
         ffmpeg=FakeFfmpeg(),
         max_kbps=96,
         dry_run=dry_run,
         stop=stop,
+        chapters_per_source=chapters_per_source,
     )
 
 
@@ -163,6 +164,18 @@ def test_chapters_stage_stops_when_signalled(tmp_path):
     p = ChapterProvider([{"start": 0, "end": 1, "title": "x"}])
     stats = ChaptersStage().process(p, _city(), eps, ctx)
     assert stats.ran == 1 and stats.skipped == 1  # second episode deferred to a later run
+
+
+def test_chapters_stage_caps_per_source(tmp_path):
+    """Chapters are cheap+numerous, so a per-source count bounds them (unlike audio's wall-clock):
+    only chapters_per_source pages are scraped per run; the rest defer."""
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("a"), _ep("b"), _ep("c")]
+    ctx = _ctx(tmp_path, chapters_per_source=2)
+    p = ChapterProvider([{"start": 0, "end": 1, "title": "x"}])
+    stats = ChaptersStage().process(p, _city(), eps, ctx)
+    assert stats.ran == 2 and stats.skipped == 1 and p.calls == 2
 
 
 def test_chapters_stage_noop_without_provider_support(tmp_path):

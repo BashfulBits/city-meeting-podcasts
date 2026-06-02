@@ -355,6 +355,9 @@ def build(
         max_kbps=max_kbps,
         dry_run=dry_run,
         stop=stop,
+        # Chapters are cheap+uniform+numerous, so they need a count bound (wall-clock would let
+        # thousands run and starve audio); audio stays on the wall-clock stop alone.
+        chapters_per_source=int(defaults.get("chapters_per_source_per_run", 40)),
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,

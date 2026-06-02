@@ -52,6 +52,12 @@ Rules:
      real failures (which get the #120 backoff instead).
   5. **Don't sense supersession yourself.** ``stop()`` already encapsulates the wall-clock
      deadline and the throttled "newer run queued" check; just call it.
+  6. **Cheap+uniform+numerous work also needs a count.** ``stop()`` (wall-clock) only self-limits
+     work whose per-item cost is large — an encode or transcription fills the window after a sane
+     number of items. A *cheap* uniform op (a page scrape) does not: thousands fit in the window,
+     so it would drain its whole backlog in one run and starve slower stages after it. Bound those
+     with a small per-run count *as well as* ``stop()`` — see ``ChaptersStage`` /
+     ``StageContext.chapters_per_source``.
 
 Ordering caveat: a long stage that runs *before* others (e.g. transcription feeding chapters)
 spends the same shared window, so everything downstream of it also defers when it yields. Place
@@ -93,13 +99,21 @@ class StageContext:
     ``stop`` is a shared predicate (or None) that goes True once the run's wall-clock window is
     spent or a newer Build & Deploy run is queued behind this one; expensive stages check it
     before starting new work so the run wraps up and deploys instead of running indefinitely. See
-    the module docstring's "stop convention" for exactly when (and when not) to gate work on it."""
+    the module docstring's "stop convention" for exactly when (and when not) to gate work on it.
+
+    ``chapters_per_source`` caps how many chapter pages one source scrapes per run. Wall-clock is
+    the wrong bound for chapters specifically: each fetch is cheap and uniform (~0.3s, no encode),
+    so *thousands* fit in the window — they'd drain the whole backlog in one run, dominate the
+    time that should go to audio (which runs after), and make every run (and the PR preview, which
+    starts with no cached chapters) minutes long. A small count is the right tool here; audio, with
+    its slow/variable per-item cost, stays on the wall-clock ``stop`` alone."""
 
     storage: object | None
     ffmpeg: object
     max_kbps: int
     dry_run: bool
     stop: Callable[[], bool] | None = None
+    chapters_per_source: int = 10_000  # effectively unbounded unless the build sets it
 
 
 @dataclass
@@ -177,9 +191,9 @@ class ChaptersStage:
     ``audio_spec_hash``, so adding them changes the spec and the next audio pass re-encodes the
     file with embedded markers — spread over runs by the audio budget, exactly like backfill.
 
-    Each chapter fetch is one network call, gated by the shared ``ctx.stop`` predicate (wall-clock
-    spent or superseded); the rest defer to later runs. No-op for providers without a
-    ``fetch_chapters`` method.
+    Each chapter fetch is one cheap network call, bounded per run by ``ctx.chapters_per_source``
+    (a count — see StageContext) and the shared ``ctx.stop`` predicate (wall-clock/superseded);
+    the rest defer to later runs. No-op for providers without a ``fetch_chapters`` method.
     """
 
     name = "chapters"
@@ -192,13 +206,15 @@ class ChaptersStage:
         fetch = getattr(provider, "fetch_chapters", None)
         if ctx.dry_run or fetch is None:
             return stats
+        remaining = ctx.chapters_per_source
         for ep in _materialize_set(episodes, city.max_episodes):
             if ep.chapters:  # already captured; chapters don't change once set
                 stats.reused += 1
                 continue
-            if ctx.stop is not None and ctx.stop():
+            if remaining <= 0 or (ctx.stop is not None and ctx.stop()):
                 stats.skipped += 1
                 continue
+            remaining -= 1
             try:
                 chapters, transcript = fetch(ep, city.source)
             except Exception as exc:  # one bad page must not fail the whole source
