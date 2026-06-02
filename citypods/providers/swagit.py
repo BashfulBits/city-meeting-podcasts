@@ -195,9 +195,9 @@ class SwagitProvider:
         ``/videos/{id}`` page:
 
           * one segment  -> return it directly;
-          * many segments -> not yet materializable (TODO: concat — see ROADMAP "audio concat for
-            multi-segment legacy Swagit meetings", pri 5). Raised as a ``ProviderError`` so the
-            media pipeline records the attempt and backs off rather than churning the budget;
+          * many segments -> not yet materializable (TODO: concat — issue #122, ROADMAP pri 5).
+            Raised as a ``ProviderError`` so the media pipeline records the attempt and backs off
+            rather than churning the budget;
           * no segments  -> truly un-materializable; same backoff path.
         """
         with make_session() as session:
@@ -219,7 +219,7 @@ class SwagitProvider:
         if len(segments) > 1:
             raise ProviderError(
                 f"{episode.guid}: legacy multi-segment meeting ({len(segments)} parts) is not yet "
-                "materializable (audio concat pending — see ROADMAP pri 5)"
+                "materializable (audio concat pending — issue #122)"
             )
         raise ProviderError(
             f"{episode.guid}: /download is keyless and the video page exposes no usable media"
