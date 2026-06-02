@@ -1,8 +1,12 @@
 # Maintainer guide: handling an "Add a city" issue
 
 When an [add-city issue](ISSUE_TEMPLATE/add-city.yml) comes in, the goal is to land one or
-more `cities/*.yml` feeds — **one feed per meeting body** (City Council, Planning & Zoning,
-Board of Adjustment, …) — and verify the right bodies are approved vs. denied.
+more `config/feeds/*.yml` feeds — **one feed per meeting body** (City Council, Planning &
+Zoning, Board of Adjustment, …) — and verify the right bodies are approved vs. denied.
+
+Config lives under `config/`: per-board feeds in `config/feeds/`, shared per-city fields
+(`city_website`, `meetings_url`, `state`, `colors`) in a `config/cities/<entity-slug>.yml`
+entity file that each feed references via `city: <entity-slug>`.
 
 ## 1. Identify the provider and source
 From the city/platform in the issue, find the source URL:
@@ -16,10 +20,14 @@ From the city/platform in the issue, find the source URL:
 
 `DownloadFile.php` (Granicus) 302-redirects to a real MP4 even if the RSS says WMV — that's fine.
 
-## 2. Add a base ("all meetings") city YAML
-Copy [`cities/_template.yml`](../cities/_template.yml) to `cities/<slug>.yml`, set
-`provider` + `source` + metadata. This is the combined feed (no `body:` filter). Title it
-`"<City> — All Meetings"`.
+## 2. Add the entity record + a base ("all meetings") feed YAML
+First, if the city isn't onboarded yet, copy
+[`config/cities/_template.yml`](../config/cities/_template.yml) to
+`config/cities/<entity-slug>.yml` and fill in `city_website`, `meetings_url`, `state`, `colors`.
+
+Then copy [`config/feeds/_template.yml`](../config/feeds/_template.yml) to
+`config/feeds/<slug>.yml`, set `city: <entity-slug>` + `provider` + `source` + metadata. This is
+the combined feed (no `body:` filter). Title it `"<City> — All Meetings"`.
 
 ## 3. Review the bodies — approved (✓) vs denied (✗)
 ```bash
@@ -38,7 +46,7 @@ feed) or ✗ (matched the `body_exclude` denylist — procurement, public-info p
 PYTHONPATH=. python scripts/generate_board_cities.py <slug> \
     --base-slug <slug> --title-prefix "<City>" --write
 ```
-This writes one `cities/<slug>-<body>.yml` per body with ≥ `min_meetings_per_body` meetings in
+This writes one `config/feeds/<slug>-<body>.yml` per body with ≥ `min_meetings_per_body` meetings in
 the last 12 months (configurable), skipping denylisted bodies and merging `" - subtype"` /
 `": panel"` variants. Review the generated files: fix titles, merge obvious variants (broaden a
 `body:` substring and delete siblings), delete any you don't want.

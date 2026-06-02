@@ -1,0 +1,9 @@
+slug: arlington-tx
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+podcast_title: "Arlington — All Meetings"
+podcast_author: "City of Arlington, TX"
+podcast_email: ""
+podcast_description: "Video recordings of Arlington City Council and Planning & Zoning meetings."

@@ -1,0 +1,11 @@
+slug: denton-tx-public-utilities-board
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: "Public Utilities Board"
+podcast_title: "Denton: Public Utilities Board"
+podcast_author: "City of Denton, TX"
+podcast_email: ""
+podcast_description: "Public Utilities Board meetings for Denton."
+max_episodes: 25

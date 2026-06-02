@@ -1,0 +1,9 @@
+slug: denton-county-tx
+city: denton-county-tx
+provider: granicus
+source:
+  feed_url: https://dentoncounty.granicus.com/ViewPublisherRSS.php?view_id=26&mode=vpodcast
+podcast_title: "Denton County Commissioners Court"
+podcast_author: "Denton County, TX"
+podcast_email: ""
+podcast_description: "Video recordings of the Denton County Commissioners Court."

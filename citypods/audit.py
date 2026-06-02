@@ -255,6 +255,55 @@ def check_dead_audio_aggregate(
     return Finding("(all)", "dead-audio", ERROR, msg)
 
 
+def check_meetings_url(
+    slug: str,
+    url: str,
+    probe: Callable[[str], tuple[int, str]],
+) -> Finding | None:
+    """HEAD the city's configured ``meetings_url`` and flag if it's dead or quietly moved.
+
+    ``probe(url)`` returns ``(status_code, final_url)`` — the final URL after any redirects.
+
+    Two failure modes:
+      * ``meetings-url-dead``    (ERROR) — 4xx/5xx; the page is gone.
+      * ``meetings-url-changed`` (WARN)  — the server redirected to a dramatically different
+        path (e.g. the configured deep link now bounces to the site root), which is a strong
+        signal the city reorganised its meeting pages and the YAML needs a human update.
+
+    "Dramatically different" is judged by path depth: if the configured URL has ≥ 3 path
+    segments and the final URL has ≤ 1, it has almost certainly been redirected to the
+    homepage and the original meeting page no longer exists at that URL.
+    """
+    from urllib.parse import urlsplit
+
+    try:
+        status, final_url = probe(url)
+    except Exception as exc:
+        return Finding(slug, "meetings-url-dead", ERROR, f"meetings_url probe failed: {exc}")
+
+    if status >= 400:
+        return Finding(
+            slug,
+            "meetings-url-dead",
+            ERROR,
+            f"meetings_url returned HTTP {status}: {url}",
+        )
+
+    orig_depth = len([s for s in urlsplit(url).path.split("/") if s])
+    final_depth = len([s for s in urlsplit(final_url).path.split("/") if s])
+    if orig_depth >= 3 and final_depth <= 1 and final_url.rstrip("/") != url.rstrip("/"):
+        return Finding(
+            slug,
+            "meetings-url-changed",
+            WARN,
+            f"meetings_url redirected to a much shorter path — city may have reorganised "
+            f"its meeting pages (configured: {url!r} → final: {final_url!r}). "
+            "Verify and update meetings_url in the city YAML.",
+        )
+
+    return None
+
+
 def check_deferred_audio_aggregate(
     deferred_total: int, *, examples: list[tuple[str, int]] | None = None, issue: int = 122
 ) -> Finding | None:
@@ -436,6 +485,22 @@ def audit_city(
     return findings
 
 
+def _net_probe() -> Callable[[str], tuple[int, str]]:
+    """HEAD probe that returns ``(status_code, final_url)`` after following redirects."""
+    from citypods.http import DEFAULT_TIMEOUT, make_session
+
+    session = make_session()
+
+    def probe(url: str) -> tuple[int, str]:
+        resp = session.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
+        if resp.status_code in (403, 405, 501):
+            resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True, stream=True)
+            resp.close()
+        return resp.status_code, resp.url
+
+    return probe
+
+
 def _net_head() -> Callable[[str], int]:
     """A HEAD probe that follows redirects (Granicus DownloadFile 302) and falls back to a
     ranged GET for CDNs that reject HEAD."""
@@ -459,6 +524,7 @@ def audit_all(
     site_config: dict,
     output_dir: str | Path = "docs",
     check_enclosures_net: bool = False,
+    check_meetings_urls_net: bool = False,
     now: datetime | None = None,
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
@@ -524,4 +590,22 @@ def audit_all(
     deferred = check_deferred_audio_aggregate(deferred_total, examples=deferred_examples)
     if deferred:
         findings.append(deferred)
+
+    # meetings_url health — one probe per unique URL, attributed to the shortest slug so
+    # cities with many boards (e.g. Dallas's 38 feeds) don't produce 38 identical issues.
+    if check_meetings_urls_net:
+        probe = _net_probe()
+        seen_urls: dict[str, str] = {}  # url → representative slug (shortest)
+        for city in cities:
+            url = city.meetings_url or city.city_website
+            if not url:
+                continue
+            existing = seen_urls.get(url)
+            if existing is None or len(city.slug) < len(existing):
+                seen_urls[url] = city.slug
+        for url, slug in seen_urls.items():
+            finding = check_meetings_url(slug, url, probe)
+            if finding:
+                findings.append(finding)
+
     return findings

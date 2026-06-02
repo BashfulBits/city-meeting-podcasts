@@ -1,0 +1,10 @@
+slug: pflugerville-tx-city-council
+city: pflugerville-tx
+provider: granicus
+source:
+  feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
+  body: "City Council"
+podcast_title: "Pflugerville: City Council"
+podcast_author: "City of Pflugerville, TX"
+podcast_email: ""
+podcast_description: "City Council meetings for Pflugerville."

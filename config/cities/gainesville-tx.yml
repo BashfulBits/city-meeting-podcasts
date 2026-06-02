@@ -1,0 +1,7 @@
+# Entity record for City of Gainesville, TX
+city_website: https://www.gainesville.tx.us
+colors:
+- '#92271f'
+- '#d5c1b8'
+meetings_url: https://gainesville.tx.us/civicmedia
+state: TX

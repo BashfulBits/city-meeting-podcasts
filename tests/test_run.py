@@ -87,9 +87,10 @@ def fake_provider():
 
 
 def _setup(tmp_path):
-    cities = tmp_path / "cities"
-    cities.mkdir()
-    (cities / "fake-city.yml").write_text(
+    config_dir = tmp_path / "config"
+    feeds = config_dir / "feeds"
+    feeds.mkdir(parents=True)
+    (feeds / "fake-city.yml").write_text(
         "slug: fake-city\n"
         "provider: faketest\n"
         "source: {feed_url: 'https://x'}\n"
@@ -99,13 +100,13 @@ def _setup(tmp_path):
         'podcast_description: "desc"\n'
     )
     (tmp_path / "site_config.yml").write_text(f"state_dir: {tmp_path / 'state'}\n")
-    return cities
+    return config_dir
 
 
 def _build(tmp_path, cities):
     return run.build(
         site_config_path=tmp_path / "site_config.yml",
-        cities_dir=cities,
+        config_dir=cities,
         output_dir=tmp_path / "docs",
         base_url="https://example.test",
     )
@@ -262,7 +263,7 @@ def test_build_logs_audio_stage_activity_and_errors(tmp_path, fake_provider, cap
     cities = _setup(tmp_path)
     run.build(
         site_config_path=tmp_path / "site_config.yml",
-        cities_dir=cities,
+        config_dir=cities,
         output_dir=tmp_path / "docs",
         base_url="https://example.test",
         ffmpeg=_FailingFfmpeg(),
@@ -284,7 +285,7 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
     cities = _setup(tmp_path)
     run.build(
         site_config_path=tmp_path / "site_config.yml",
-        cities_dir=cities,
+        config_dir=cities,
         output_dir=tmp_path / "docs",
         base_url="https://example.test",
         ffmpeg=_OkFfmpeg(),
@@ -360,7 +361,7 @@ def test_chapters_cap_defaults_unbounded_and_is_overridable(tmp_path, fake_provi
 
     run.build(  # --chapters-cap (preview) flows through
         site_config_path=tmp_path / "site_config.yml",
-        cities_dir=cities,
+        config_dir=cities,
         output_dir=tmp_path / "docs",
         base_url="https://example.test",
         chapters_cap=40,

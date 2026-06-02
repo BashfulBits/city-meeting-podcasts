@@ -90,12 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--all", action="store_true", help="scan every city (default: 1 per provider)")
     ap.add_argument("--issues", action="store_true", help="reconcile findings to GitHub issues")
-    ap.add_argument("--site-config", default="site_config.yml")
-    ap.add_argument("--cities-dir", default="cities")
+    ap.add_argument("--site-config", default="config/site_config.yml")
+    ap.add_argument("--config-dir", default="config")
     args = ap.parse_args(argv)
 
     sc = load_site_config(args.site_config)
-    cities = load_city_configs(args.cities_dir, sc.get("defaults", {}))
+    cities = load_city_configs(args.config_dir, sc.get("defaults", {}))
     targets = cities if args.all else representative_cities(cities)
 
     results = []

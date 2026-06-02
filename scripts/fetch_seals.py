@@ -5,7 +5,7 @@ For each distinct city (grouped by ``podcast_author``):
   1. find a seal image (the city's Wikipedia article images, else a Commons "Seal of …"),
   2. download a PNG render to ``citypods/assets/seals/<author-key>.png`` (committed),
   3. extract two brand colors (from the seal, else the city website favicon),
-  4. write ``colors: [...]`` into each of that city's ``cities/*.yml``.
+  4. write ``colors: [...]`` into that city's entity file ``config/cities/<entity>.yml``.
 
 The deploy build then composites the committed seal + uses the committed colors — no
 Wikipedia calls or extra system deps at build time. Pure requests + Pillow.
@@ -163,11 +163,16 @@ def _favicon_colors(session, website) -> list[str]:
         return []
 
 
-def _write_colors(slug: str, colors: list[str]) -> None:
-    path = ROOT / "cities" / f"{slug}.yml"
+def _write_entity_colors(entity_slug: str, colors: list[str]) -> None:
+    """Write ``colors:`` into the entity YAML (config/cities/<entity_slug>.yml), where the
+    field now lives — shared across every feed for that city."""
+    path = ROOT / "config" / "cities" / f"{entity_slug}.yml"
     text = path.read_text()
     line = f"colors: [{', '.join(repr(c) for c in colors)}]".replace("'", '"')
-    if re.search(r"^colors:.*$", text, re.MULTILINE):
+    # Replace an existing inline or block-list ``colors:`` (handles `colors:\n- "#abc"`).
+    if re.search(r"^colors:\n(- .*\n)+", text, re.MULTILINE):
+        text = re.sub(r"^colors:\n(- .*\n)+", line + "\n", text, flags=re.MULTILINE)
+    elif re.search(r"^colors:.*$", text, re.MULTILINE):
         text = re.sub(r"^colors:.*$", line, text, flags=re.MULTILINE)
     else:
         text = text.rstrip("\n") + "\n" + line + "\n"
@@ -179,8 +184,8 @@ def main(argv=None) -> int:
     ap.add_argument("--force", action="store_true", help="refetch even if seal/colors exist")
     args = ap.parse_args(argv)
 
-    sc = load_site_config(ROOT / "site_config.yml")
-    cities = load_city_configs(ROOT / "cities", sc.get("defaults", {}))
+    sc = load_site_config(ROOT / "config" / "site_config.yml")
+    cities = load_city_configs(ROOT / "config", sc.get("defaults", {}))
     by_author: dict[str, list] = {}
     for c in cities:
         by_author.setdefault(c.podcast_author or c.slug, []).append(c)
@@ -208,8 +213,12 @@ def main(argv=None) -> int:
                 print(f"  (no seal/colors for {author})")
                 continue
             print(f"  colors: {author} -> {colors}")
-            for c in group:
-                _write_colors(c.slug, colors)
+            # Colors live on the entity now, so write once per city rather than per feed.
+            entity_slug = group[0].city_entity
+            if entity_slug:
+                _write_entity_colors(entity_slug, colors)
+            else:
+                print(f"  (no city: entity for {author}; skipping colors write)")
     return 0
 
 

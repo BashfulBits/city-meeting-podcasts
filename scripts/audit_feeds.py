@@ -29,6 +29,7 @@ LABELS = {
     "feed-health": ("0E8A16", "Automated feed-health finding"),
     "severity:error": ("B60205", "A feed is broken (no/dead episodes)"),
     "severity:warn": ("FBCA04", "A feed may be degraded or incomplete"),
+    "needs-human-verification": ("C5DEF5", "Requires manual investigation before auto-closing"),
 }
 TITLE_PREFIX = "[feed-health]"
 MARKER = "<!-- citypods:feed-health -->"
@@ -38,14 +39,19 @@ def _title(slug: str, check: str) -> str:
     return f"{TITLE_PREFIX} {slug}: {check}"
 
 
-def _body(message: str, severity: str) -> str:
-    return (
-        f"{MARKER}\n\n"
-        f"**Severity:** {severity}\n\n"
-        f"{message}\n\n"
-        "_Filed automatically by the feed-health audit. It auto-closes when the check "
+_MEETINGS_URL_CHECKS = frozenset({"meetings-url-dead", "meetings-url-changed"})
+
+
+def _body(message: str, severity: str, check: str = "") -> str:
+    footer = (
+        "**Action required:** verify the city's current meeting archive page and update "
+        "`meetings_url` in the city YAML. This issue will NOT auto-close — remove the "
+        "`needs-human-verification` label once the YAML has been updated and verified."
+        if check in _MEETINGS_URL_CHECKS
+        else "_Filed automatically by the feed-health audit. It auto-closes when the check "
         "passes again. See `citypods doctor` to reproduce locally._"
     )
+    return f"{MARKER}\n\n**Severity:** {severity}\n\n{message}\n\n{footer}"
 
 
 def _gh(*args: str, check: bool = True) -> str:
@@ -82,7 +88,7 @@ def _open_issues() -> dict[str, dict]:
 def reconcile(findings, *, dry_run: bool) -> int:
     # One issue per (slug, check); if a city somehow yields two findings for the same check,
     # the later one wins — still a single issue for that pair.
-    wanted = {_title(f.slug, f.check): (f, _body(f.message, f.severity)) for f in findings}
+    wanted = {_title(f.slug, f.check): (f, _body(f.message, f.severity, f.check)) for f in findings}
     existing = {} if dry_run else _open_issues()
 
     created = updated = closed = 0
@@ -96,25 +102,29 @@ def reconcile(findings, *, dry_run: bool) -> int:
                     _gh("issue", "edit", str(existing[title]["number"]), "--body", body)
                 updated += 1
         else:
+            needs_human = finding.check in _MEETINGS_URL_CHECKS
+            extra_labels = ["needs-human-verification"] if needs_human else []
             if dry_run:
-                print(f"CREATE  {title}  [{sev_label}]")
+                suffix = " [needs-human-verification]" if needs_human else ""
+                print(f"CREATE  {title}  [{sev_label}]{suffix}")
             else:
-                _gh(
-                    "issue",
-                    "create",
-                    "--title",
-                    title,
-                    "--body",
-                    body,
-                    "--label",
-                    "feed-health",
-                    "--label",
-                    sev_label,
-                )
+                label_args = ["--label", "feed-health", "--label", sev_label]
+                for lbl in extra_labels:
+                    label_args += ["--label", lbl]
+                _gh("issue", "create", "--title", title, "--body", body, *label_args)
             created += 1
 
     for title, issue in existing.items():
         if title not in wanted:
+            # meetings-url issues require human verification — don't auto-close even when the
+            # probe passes again (the URL may have come back up without the right content).
+            # A human removes the needs-human-verification label when they've verified the YAML.
+            suffix = title.removeprefix(TITLE_PREFIX)
+            check_name = suffix.split(":", 1)[-1].strip() if ":" in suffix else ""
+            if check_name in _MEETINGS_URL_CHECKS:
+                if dry_run:
+                    print(f"SKIP-CLOSE (needs-human-verification)  {title}")
+                continue
             if dry_run:
                 print(f"CLOSE   {title}")
             else:
@@ -137,17 +147,27 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true", help="print actions; touch nothing")
     ap.add_argument("--enclosures", action="store_true", help="also HEAD-probe enclosures")
+    ap.add_argument(
+        "--meetings-urls",
+        action="store_true",
+        help="HEAD-probe each city's meetings_url (one probe per unique URL)",
+    )
     ap.add_argument("--city", help="audit only this slug")
-    ap.add_argument("--site-config", default="site_config.yml")
-    ap.add_argument("--cities-dir", default="cities")
+    ap.add_argument("--site-config", default="config/site_config.yml")
+    ap.add_argument("--config-dir", default="config")
     args = ap.parse_args(argv)
 
     site_config = load_site_config(args.site_config)
-    cities = load_city_configs(args.cities_dir, site_config.get("defaults", {}))
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
     if args.city:
         cities = [c for c in cities if c.slug == args.city]
 
-    findings = audit_all(cities, site_config=site_config, check_enclosures_net=args.enclosures)
+    findings = audit_all(
+        cities,
+        site_config=site_config,
+        check_enclosures_net=args.enclosures,
+        check_meetings_urls_net=args.meetings_urls,
+    )
     for f in findings:
         print(f"  {f.severity:5} {f.slug} [{f.check}] {f.message}")
 

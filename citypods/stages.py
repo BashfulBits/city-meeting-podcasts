@@ -262,6 +262,11 @@ class LinksStage:
             # A canonical video reference is always available: the provider's watch-page URL,
             # or the direct media URL when that's all there is.
             links.setdefault("canonical_video", ep.video_url)
+            # Feed-level link rendered on every episode: the city's canonical meetings/agenda
+            # portal (or its general website), so listeners can reach the ground-truth source.
+            meetings_url = city.meetings_url or city.city_website
+            if meetings_url:
+                links.setdefault("meetings", meetings_url)
             links = {k: v for k, v in links.items() if v}
             if links != (ep.links or {}):
                 ep.links = links

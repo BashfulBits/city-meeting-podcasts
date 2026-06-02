@@ -1,0 +1,24 @@
+# Copy this file to cities/<slug>.yml and fill it in.
+# If the city already has an _entities/<entity-slug>.yml, add `city: <entity-slug>` and
+# skip city_website / meetings_url / state / colors — they're inherited from the entity.
+# For a new city, also create cities/_entities/<entity-slug>.yml (see _entities/_template.yml).
+slug: example-tx                 # URL path segment
+city: example-tx                 # must match an _entities/<slug>.yml
+provider: granicus               # see `citypods` registered providers
+source:
+  # Granicus: full ViewPublisherRSS.php URL (find the right view_id per city)
+  feed_url: https://example.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  # Optional: filter a mixed feed to one board/commission (see `citypods bodies <slug>`).
+  # body: "City Council"
+podcast_title: "Example City Council Meetings"
+podcast_author: "City of Example, TX"
+podcast_email: clerk@example.gov
+podcast_description: "Recordings of Example City Council meetings."
+# Optional overrides of site_config.yml defaults (entity values are the other override layer):
+# podcast_language: en-us
+# podcast_category: Government
+# max_episodes: 50
+# extract_audio: false
+# Bodies to skip when generating per-board feeds (inherits site_config defaults if omitted).
+# Override per city as needed, e.g. to keep a procurement feed or drop an extra body.
+# body_exclude: ["bid", "purchasing", "public education", "psa"]
