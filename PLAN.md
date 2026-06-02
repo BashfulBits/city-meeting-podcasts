@@ -333,7 +333,9 @@ Storage is S3-compatible; set the secrets for the `audio_storage_backend` in use
 
 Secrets live in repo Settings → Secrets and variables → Actions (encrypted, masked in logs,
 never in the repo, not exposed to fork PRs). The public repo means Actions minutes are free;
-the per-job 6-hour cap is managed by `materialize_budget_per_city`.
+the per-job 6-hour cap is respected with a wall-clock window (`run_time_budget_minutes` ×
+`budget_safety`, sized to fit inside one `schedule_cron` interval), and a run yields gracefully
+when a newer build is queued behind it instead of running to the limit.
 
 ---
 
