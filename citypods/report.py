@@ -45,27 +45,28 @@ def _truncation_stats(cities: list, state_dir: Path | None) -> dict:
     if not state_dir or not cities:
         return {"checked": 0, "truncated": 0, "max_gap": 0, "examples": []}
 
+    from citypods.bodies import matches
     from citypods.records import load_records, source_key
-
-    seen: dict[str, int] = {}  # source_key -> max_episodes for that source
-    for city in cities:
-        key = source_key(city)
-        seen[key] = max(seen.get(key, 0), city.max_episodes)
 
     truncated = 0
     max_gap = 0
     examples: list[str] = []
     checked = 0
+    # The record store is shared across every body on the same source (``source_key`` ignores the
+    # per-board ``body`` filter), so it holds *all* bodies' episodes. Each feed truncates to its own
+    # body, so count per feed against that body's slice — not the whole shared archive (issue: the
+    # admin panel reported every Denton/Dallas board as having thousands of "hidden" episodes).
+    cache: dict[str, dict] = {}
     for city in cities:
         key = source_key(city)
-        if key not in seen:
-            continue
-        records = load_records(Path(state_dir), key)
-        archived = len(records)
+        if key not in cache:
+            cache[key] = load_records(Path(state_dir), key)
+        body = city.source.get("body")
+        archived = sum(1 for r in cache[key].values() if not body or matches(r.get("body"), body))
         if archived == 0:
             continue
         checked += 1
-        cap = seen.pop(key)  # process each source once
+        cap = city.max_episodes
         gap = archived - cap
         if gap > 0:
             truncated += 1

@@ -75,6 +75,32 @@ def test_audio_failures_surface_in_report_and_markdown(tmp_path):
     assert "Un-materializable audio" in md and "2 dead" in md and "#122" in md
 
 
+def test_truncation_counts_per_body_not_whole_shared_archive(tmp_path):
+    """Boards sharing one Swagit view share a record store holding all bodies' episodes.
+    Truncation must count only each feed's own body, not the whole shared archive."""
+    from citypods.records import save_records, source_key
+
+    def board(slug, body):
+        c = _city(slug, "swagit")
+        c.source = {"list_url": "shared", "body": body}
+        c.max_episodes = 25
+        return c
+
+    ethics = board("ethics", "Board of Ethics")
+    council = board("council", "City Council")
+    # Shared archive: 5 ethics meetings + 100 council meetings (same source_key).
+    records = {f"e{i}": {"body": "Board of Ethics"} for i in range(5)}
+    records.update({f"c{i}": {"body": "City Council"} for i in range(100)})
+    save_records(tmp_path, source_key(ethics), records)
+
+    rep = build_report([ethics, council], site_config=SITE, state_dir=tmp_path)
+    trunc = rep["truncation"]
+    # Only council (100 > 25) is truncated; ethics (5 < 25) is not flagged with a bogus 105.
+    assert trunc["truncated"] == 1
+    assert trunc["max_gap"] == 75
+    assert trunc["examples"] == ["council (100 archived, 25 shown)"]
+
+
 def test_admin_html_substitutes_and_embeds_valid_json():
     html = to_admin_html(build_report(_cities(), site_config=SITE))
     assert "__REPORT_JSON__" not in html and "__SEED_JSON__" not in html
