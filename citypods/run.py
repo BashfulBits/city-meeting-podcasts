@@ -95,6 +95,8 @@ class SourcePipeline:
         self.stage_totals: dict[str, dict] = collections.defaultdict(
             lambda: {
                 "ran": 0,
+                "encoded": 0,
+                "credited": 0,
                 "reused": 0,
                 "backlog": 0,
                 "seconds": 0.0,
@@ -124,6 +126,8 @@ class SourcePipeline:
                 for s in stats:
                     t = self.stage_totals[s.name]
                     t["ran"] += s.ran
+                    t["encoded"] += s.encoded
+                    t["credited"] += s.credited
                     t["reused"] += s.reused
                     t["backlog"] += s.skipped
                     t["seconds"] += s.seconds
@@ -416,8 +420,13 @@ def build(
     for name, t in sorted(pipeline.stage_totals.items()):
         if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
             continue
+        # Break ``ran`` into expensive encodes vs near-free storage re-credits when the stage
+        # reports it (audio), so the per-episode time estimate's blend is visible at a glance.
+        ran = f"{t['ran']} ran"
+        if t["encoded"] or t["credited"]:
+            ran += f" ({t['encoded']} encoded, {t['credited']} credited)"
         print(
-            f"{name}: {t['ran']} ran, {t['reused']} reused, {t['backlog']} queued, "
+            f"{name}: {ran}, {t['reused']} reused, {t['backlog']} queued, "
             f"{t['errors']} errors ({t['seconds']:.0f}s)"
         )
         for msg in t["error_samples"]:
@@ -545,6 +554,8 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
     stages = {
         name: {
             "ran": t["ran"],
+            "encoded": t["encoded"],
+            "credited": t["credited"],
             "reused": t["reused"],
             "backlog": t["backlog"],
             "seconds": round(t["seconds"], 1),
@@ -561,8 +572,11 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
         "built": sum(r.status == "built" for r in results),
         "skipped": sum(r.status == "skipped" for r in results),
         "errors": sum(r.status == "error" for r in results),
-        # convenience keys the projection's measured_inputs() reads to calibrate sec/ep
+        # convenience keys the projection's measured_inputs() reads to calibrate sec/ep. Note
+        # ``materialized`` still counts all hosts (encoded + credited); ``materialize_encoded`` is
+        # the expensive-only count, exposed so sec/ep can later be based on encodes alone.
         "materialized": audio.get("ran", 0),
+        "materialize_encoded": audio.get("encoded", 0),
         "materialize_seconds": audio.get("seconds", 0.0),
         "stages": stages,
     }

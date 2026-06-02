@@ -179,7 +179,9 @@ class GlobalBudget:
 
 @dataclass
 class MaterializeStats:
-    hosted: int = 0  # newly uploaded this run
+    hosted: int = 0  # newly hosted this run (encoded + credited)
+    encoded: int = 0  # downloaded + ffmpeg + uploaded — the expensive path; drives the time budget
+    credited: int = 0  # object already in storage, only its URL (re)attached — near-free
     reused: int = 0  # already in manifest / storage
     skipped_budget: int = 0  # deferred to a later run
     skipped_backoff: int = 0  # deferred: still inside a post-failure backoff window (#120)
@@ -273,7 +275,10 @@ def materialize_audio(
         remaining -= 1
         key = audio_object_key(city, ep, spec)
         try:
-            if storage.exists(key):
+            existed = storage.exists(key)
+            if existed:
+                # Object already in storage (e.g. a prior run uploaded it but the record drifted):
+                # only its URL is (re)attached — a near-free metadata op, not a download/encode.
                 url = storage.public_url(key)
             else:
                 with tempfile.TemporaryDirectory() as tmp:
@@ -292,6 +297,13 @@ def materialize_audio(
             ep.materialize_last_attempt = None
             ep.materialize_error = None
             stats.hosted += 1
+            # Split the count by cost so the per-episode time estimate isn't blended across the
+            # cheap credit path and the expensive encode path (the two have ~10-100x different
+            # cost). This keeps the budget's sec/ep honest and the split observable in build logs.
+            if existed:
+                stats.credited += 1
+            else:
+                stats.encoded += 1
         except (subprocess.CalledProcessError, OSError, ProviderError) as exc:
             stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
             # Record the failed attempt so this episode backs off (exponentially) instead of being

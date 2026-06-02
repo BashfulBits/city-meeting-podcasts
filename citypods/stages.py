@@ -69,6 +69,10 @@ class StageStats:
     # Cost accounting (for the resource projection / run history). Additive; default 0.
     seconds: float = 0.0  # wall time spent in this stage this run (set by run_stages)
     bytes_written: int = 0  # object bytes uploaded by this stage this run
+    # Audio-only breakdown of ``ran``: expensive encodes vs near-free storage re-credits. Lets the
+    # build log show how much of ``ran`` actually consumed encode time (the rest is metadata-only).
+    encoded: int = 0
+    credited: int = 0
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -120,6 +124,8 @@ class AudioStage:
             ms.skipped_budget + ms.skipped_backoff,
             ms.errors,
             bytes_written=ms.bytes_written,
+            encoded=ms.encoded,
+            credited=ms.credited,
         )
 
 
