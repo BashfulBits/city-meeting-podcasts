@@ -24,6 +24,13 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--cities-dir", default="cities")
     b.add_argument("--output-dir", default="docs")
     b.add_argument("--base-url", help="override Pages base URL")
+    b.add_argument(
+        "--chapters-cap",
+        type=int,
+        default=None,
+        help="max chapter pages scraped per source this run (for the PR preview; "
+        "unset = bounded only by the wall-clock window, as in production)",
+    )
 
     d = sub.add_parser("bodies", help="list the meeting bodies in a city's source")
     d.add_argument("slug", help="city slug to inspect")
@@ -61,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
             base_url=args.base_url,
             only_slug=args.city,
             dry_run=args.dry_run,
+            chapters_cap=args.chapters_cap,
         )
         built = sum(r.status == "built" for r in results)
         skipped = sum(r.status == "skipped" for r in results)

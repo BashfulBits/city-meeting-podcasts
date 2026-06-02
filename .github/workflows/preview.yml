@@ -34,7 +34,10 @@ jobs:
       - name: Build feeds
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url || 'https://preview.example' }}
-        run: citypods build
+        # --chapters-cap keeps this PR sanity-check fast: the preview has no cached chapters, so an
+        # uncapped scrape would walk the whole backlog (minutes). Production (deploy.yml) omits it
+        # and lets chapters backfill fully, bounded only by the wall-clock window.
+        run: citypods build --chapters-cap 40
 
       - name: Upload preview artifact
         id: upload

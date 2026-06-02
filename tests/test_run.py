@@ -339,3 +339,30 @@ def test_build_wires_a_stop_signal_when_time_bounded(tmp_path, fake_provider, mo
     _build(tmp_path, cities)
     assert isinstance(captured["stop"], run_mod.StopSignal)
     assert captured["stop"]() is False  # window not yet spent, not superseded
+
+
+def test_chapters_cap_defaults_unbounded_and_is_overridable(tmp_path, fake_provider, monkeypatch):
+    import citypods.run as run_mod
+
+    captured = {}
+    real_ctx = run_mod.StageContext
+
+    def spy_ctx(*a, **kw):
+        captured["chapters_per_source"] = kw.get("chapters_per_source")
+        return real_ctx(*a, **kw)
+
+    monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(f"state_dir: {tmp_path / 'state'}\n")
+
+    _build(tmp_path, cities)  # no cap -> production: effectively unbounded
+    assert captured["chapters_per_source"] >= 10_000
+
+    run.build(  # --chapters-cap (preview) flows through
+        site_config_path=tmp_path / "site_config.yml",
+        cities_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        chapters_cap=40,
+    )
+    assert captured["chapters_per_source"] == 40

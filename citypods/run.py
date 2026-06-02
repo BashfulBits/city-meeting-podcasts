@@ -306,6 +306,7 @@ def build(
     only_slug: str | None = None,
     dry_run: bool = False,
     ffmpeg: FfmpegRunner | None = None,
+    chapters_cap: int | None = None,
 ) -> list[CityResult]:
     site_config = load_site_config(site_config_path)
     cities = load_city_configs(cities_dir, site_config.get("defaults", {}))
@@ -355,9 +356,10 @@ def build(
         max_kbps=max_kbps,
         dry_run=dry_run,
         stop=stop,
-        # Chapters are cheap+uniform+numerous, so they need a count bound (wall-clock would let
-        # thousands run and starve audio); audio stays on the wall-clock stop alone.
-        chapters_per_source=int(defaults.get("chapters_per_source_per_run", 40)),
+        # Production leaves chapters bounded only by the wall-clock window (let the backlog
+        # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
+        # preview, whose sanity-check should finish in seconds and starts with no cached chapters.
+        chapters_per_source=chapters_cap if chapters_cap is not None else 10_000,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
