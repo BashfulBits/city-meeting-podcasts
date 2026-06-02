@@ -17,6 +17,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -155,14 +156,21 @@ def _probe_audio_bitrate(url: str, ffmpeg_binary: str = "ffmpeg") -> int | None:
 
 
 class GlobalBudget:
-    """Thread-safe cap on total new materializations per build run (across all cities)."""
+    """Thread-safe cap on total new encodes per build run (across all cities), with an optional
+    wall-clock deadline. The count is a *proxy* for time derived from an estimated seconds/episode;
+    the ``deadline`` (a ``time.monotonic()`` value) is the hard backstop that stops starting new
+    encodes once the run's time window is spent — so a wrong estimate (or a few unusually long
+    meetings) can't blow past the Actions job limit."""
 
-    def __init__(self, total: int):
+    def __init__(self, total: int, deadline: float | None = None):
         self._remaining = total
+        self._deadline = deadline
         self._lock = threading.Lock()
 
     def take(self) -> bool:
         with self._lock:
+            if self._deadline is not None and time.monotonic() >= self._deadline:
+                return False
             if self._remaining <= 0:
                 return False
             self._remaining -= 1
@@ -265,31 +273,41 @@ def materialize_audio(
             stats.skipped_backoff += 1
             continue
 
+        key = audio_object_key(city, ep, spec)
+        # Credit path: the object is already in storage (e.g. a prior run uploaded it but the
+        # record drifted). (Re)attaching its URL is a near-free metadata op — ~10-100x cheaper than
+        # an encode — so it does NOT draw from the budget. The budget meters the expensive encode
+        # path only, which keeps its per-episode time estimate honest and lets a credit-heavy
+        # catch-up run reconcile freely without deferring real encodes.
+        if _present(key):
+            ep.audio_key = key
+            ep.audio_spec_hash = spec
+            ep.hosted_audio_url = storage.public_url(key)
+            ep.materialize_attempts = 0
+            ep.materialize_last_attempt = None
+            ep.materialize_error = None
+            stats.hosted += 1
+            stats.credited += 1
+            continue
+
+        # Encode path: download + ffmpeg + upload — the work that actually consumes the time
+        # window. Gated by the per-source budget and the shared global budget (which also enforces
+        # the run's wall-clock deadline). Count the attempt against the per-source budget whether it
+        # succeeds or fails, so one source can't loop indefinitely re-trying broken episodes.
         if remaining <= 0 or (global_budget is not None and not global_budget.take()):
             stats.skipped_budget += 1
             continue
-
-        # Count the attempt against the per-source budget whether it succeeds or fails, so one
-        # source can't loop indefinitely re-trying broken episodes (e.g. Swagit meetings whose
-        # /download resolves to a keyless URL) and burn the run's time window.
         remaining -= 1
-        key = audio_object_key(city, ep, spec)
         try:
-            existed = storage.exists(key)
-            if existed:
-                # Object already in storage (e.g. a prior run uploaded it but the record drifted):
-                # only its URL is (re)attached — a near-free metadata op, not a download/encode.
-                url = storage.public_url(key)
-            else:
-                with tempfile.TemporaryDirectory() as tmp:
-                    dest = Path(tmp) / "audio.m4a"
-                    source_url = resolve_media_url(ep)
-                    ffmpeg.extract_audio(source_url, dest, ep.chapters or None)
-                    url = storage.put_file(key, dest, CONTENT_TYPE)
-                    try:
-                        stats.bytes_written += dest.stat().st_size
-                    except OSError:
-                        pass
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = Path(tmp) / "audio.m4a"
+                source_url = resolve_media_url(ep)
+                ffmpeg.extract_audio(source_url, dest, ep.chapters or None)
+                url = storage.put_file(key, dest, CONTENT_TYPE)
+                try:
+                    stats.bytes_written += dest.stat().st_size
+                except OSError:
+                    pass
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
@@ -297,13 +315,7 @@ def materialize_audio(
             ep.materialize_last_attempt = None
             ep.materialize_error = None
             stats.hosted += 1
-            # Split the count by cost so the per-episode time estimate isn't blended across the
-            # cheap credit path and the expensive encode path (the two have ~10-100x different
-            # cost). This keeps the budget's sec/ep honest and the split observable in build logs.
-            if existed:
-                stats.credited += 1
-            else:
-                stats.encoded += 1
+            stats.encoded += 1
         except (subprocess.CalledProcessError, OSError, ProviderError) as exc:
             stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
             # Record the failed attempt so this episode backs off (exponentially) instead of being

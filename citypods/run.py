@@ -343,6 +343,7 @@ def build(
     # backfill in days instead of months (see review/03). Disabled by default
     # (run_time_budget_minutes = 0) so behavior is unchanged unless turned on. Reads the measured
     # seconds/episode from restored run history when available, else a config estimate.
+    audio_deadline: float | None = None
     time_budget_min = float(defaults.get("run_time_budget_minutes", 0))
     if time_budget_min > 0:
         safety = float(defaults.get("budget_safety", 0.8))
@@ -351,6 +352,10 @@ def build(
         sec_chapter = float(defaults.get("seconds_per_chapter_fetch", 3))
         total_budget = max(1, int(window_s / max(sec_ep, 1e-9)))
         chapters_budget = max(1, int(window_s / max(sec_chapter, 1e-9)))
+        # Hard wall-clock backstop: the count budget is only a proxy (window ÷ estimated sec/ep),
+        # so a wrong estimate could otherwise overshoot. Stop starting new encodes once the window
+        # is spent, regardless of count.
+        audio_deadline = time.monotonic() + window_s
         print(
             f"budget: time-bounded ({time_budget_min:.0f}m × {safety}) → "
             f"audio {total_budget}/run @ {sec_ep:.0f}s/ep, chapters {chapters_budget}/run"
@@ -375,7 +380,9 @@ def build(
         per_source_budget=per_source_budget,
         dry_run=dry_run,
         budgets={
-            "audio": GlobalBudget(total_budget) if total_budget > 0 else None,
+            "audio": GlobalBudget(total_budget, deadline=audio_deadline)
+            if total_budget > 0
+            else None,
             "chapters": GlobalBudget(chapters_budget) if chapters_budget > 0 else None,
         },
     )
@@ -590,18 +597,23 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
 
 
 def _measured_sec_per_ep(state_dir: Path) -> float | None:
-    """Observed seconds per materialized episode from the last run summary, if present and
-    meaningful. Used to size the time-bounded budget; None falls back to a config estimate.
-    (``run_summary.json`` is written by a future run-history change; absent today → None.)"""
+    """Observed seconds per *encoded* episode from the last run summary, if present and meaningful.
+    Used to size the time-bounded budget; None falls back to a config estimate.
+
+    Divides the audio-stage seconds by ``materialize_encoded`` (the expensive download+ffmpeg+upload
+    count), NOT total hosts — a hosted count blends in near-free storage re-credits, which on a
+    catch-up run drives the estimate far below the true encode cost and over-sizes the next budget.
+    Older summaries without ``materialize_encoded`` (or a run with 0 encodes) → None → config
+    estimate."""
     path = Path(state_dir) / "run_summary.json"
     if not path.exists():
         return None
     try:
         data = json.loads(path.read_text())
-        eps = data.get("materialized", 0)
+        encoded = data.get("materialize_encoded", 0)
         secs = data.get("materialize_seconds", 0.0)
-        if eps and secs:
-            return secs / eps
+        if encoded and secs:
+            return secs / encoded
     except (OSError, ValueError):
         pass
     return None

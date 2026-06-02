@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -142,6 +143,42 @@ def test_stats_split_encoded_vs_credited(tmp_path):
     assert stats.hosted == 2
     assert stats.encoded == 1 and stats.credited == 1
     assert ff.calls == ["https://src/manifest.m3u8"]  # only the un-stored one was encoded
+
+
+def test_credits_do_not_consume_budget(tmp_path):
+    """Near-free storage re-credits must not draw from the budget — only encodes do — so a
+    catch-up run can reconcile drifted records without deferring real encode work."""
+    city = _city()
+    store = _store(tmp_path)
+    # Three episodes whose objects already exist in storage (all credits) + one that needs encoding.
+    credited_eps = [_ep(f"c{i}") for i in range(3)]
+    for ep in credited_eps:
+        _seed_object(store, audio_object_key(city, ep, audio_spec_hash(ep, max_kbps=MAX_KBPS)))
+    fresh = _ep("enc")
+    ff = FakeFfmpeg()
+    # budget of 1 encode: the 3 credits still all go through; the single encode fits.
+    stats = _materialize(city, [*credited_eps, fresh], store, ff, budget=1)
+    assert stats.credited == 3 and stats.encoded == 1
+    assert stats.skipped_budget == 0  # nothing deferred — credits didn't eat the budget
+
+
+def test_wall_clock_deadline_stops_new_encodes(tmp_path):
+    """The global budget's wall-clock deadline is a hard backstop: once the window is spent, no new
+    encode starts even though count budget remains."""
+    eps = [_ep("g1"), _ep("g2")]
+    ff = FakeFfmpeg()
+    past = GlobalBudget(100, deadline=time.monotonic() - 1)  # already past the deadline
+    stats = materialize_audio(
+        _city(),
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        budget=100,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        global_budget=past,
+    )
+    assert stats.encoded == 0 and stats.skipped_budget == 2 and ff.calls == []
 
 
 class _FailUrls:
