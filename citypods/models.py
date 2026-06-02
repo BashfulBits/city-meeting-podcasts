@@ -94,6 +94,9 @@ class City:
     podcast_author: str
     podcast_email: str
     podcast_description: str
+    # Slug of the config/cities/<slug>.yml entity that supplied
+    # city_website / meetings_url / state / colors.
+    city_entity: str | None = None
     state: str | None = None
     city_website: str | None = None
     # Canonical meetings/agenda-portal URL, shown on every episode so listeners can reach the

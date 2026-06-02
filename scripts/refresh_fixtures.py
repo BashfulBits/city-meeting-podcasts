@@ -21,8 +21,8 @@ FIXTURE_DIR = ROOT / "tests" / "fixtures"
 
 
 def main() -> None:
-    site_config = load_site_config(ROOT / "site_config.yml")
-    cities = load_city_configs(ROOT / "cities", site_config.get("defaults", {}))
+    site_config = load_site_config(ROOT / "config" / "site_config.yml")
+    cities = load_city_configs(ROOT / "config", site_config.get("defaults", {}))
 
     with make_session() as session:
         for city in cities:

@@ -1,0 +1,8 @@
+# Copy to cities/_entities/<slug>.yml for a new city/county entity.
+# The slug must match the `city:` value in all feed YAMLs for this entity.
+# Fields here are inherited by every feed that references this entity; a feed
+# can override any field by setting it explicitly in its own YAML.
+city_website: https://www.example.gov
+meetings_url: https://www.example.gov/meetings   # city's own meetings/agenda portal
+state: TX
+colors: ["#123456", "#abcdef"]                   # 1-2 brand hex colors for cover art

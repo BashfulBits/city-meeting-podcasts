@@ -1,0 +1,12 @@
+slug: dallas-tx-city-council
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/default/city-council
+  body: "City Council Agenda Meetings"   # see scripts/discover_swagit.py for other bodies
+podcast_title: "Dallas City Council Meetings"
+podcast_author: "City of Dallas, TX"
+podcast_email: ""
+podcast_description: "Audio of Dallas City Council meetings (re-hosted from the city's Swagit archive)."
+# Swagit media is an expiring presigned MP4, so audio is always materialized + re-hosted.
+max_episodes: 25

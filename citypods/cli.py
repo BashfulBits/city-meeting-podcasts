@@ -20,8 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("build", help="build feeds and pages into docs/")
     b.add_argument("--city", help="build only this city slug")
     b.add_argument("--dry-run", action="store_true", help="fetch but write nothing")
-    b.add_argument("--site-config", default="site_config.yml")
-    b.add_argument("--cities-dir", default="cities")
+    b.add_argument("--site-config", default="config/site_config.yml")
+    b.add_argument("--config-dir", default="config")
     b.add_argument("--output-dir", default="docs")
     b.add_argument("--base-url", help="override Pages base URL")
     b.add_argument(
@@ -34,19 +34,19 @@ def main(argv: list[str] | None = None) -> int:
 
     d = sub.add_parser("bodies", help="list the meeting bodies in a city's source")
     d.add_argument("slug", help="city slug to inspect")
-    d.add_argument("--site-config", default="site_config.yml")
-    d.add_argument("--cities-dir", default="cities")
+    d.add_argument("--site-config", default="config/site_config.yml")
+    d.add_argument("--config-dir", default="config")
 
     h = sub.add_parser("doctor", help="run feed-health checks (no GitHub side effects)")
     h.add_argument("--city", help="check only this city slug")
     h.add_argument("--enclosures", action="store_true", help="also HEAD-probe enclosures (slow)")
-    h.add_argument("--site-config", default="site_config.yml")
-    h.add_argument("--cities-dir", default="cities")
+    h.add_argument("--site-config", default="config/site_config.yml")
+    h.add_argument("--config-dir", default="config")
 
     r = sub.add_parser("report", help="resource cost/time projection report + admin page")
     r.add_argument("--markdown", action="store_true", help="print a Markdown summary to stdout")
-    r.add_argument("--site-config", default="site_config.yml")
-    r.add_argument("--cities-dir", default="cities")
+    r.add_argument("--site-config", default="config/site_config.yml")
+    r.add_argument("--config-dir", default="config")
     r.add_argument("--output-dir", default="docs")
 
     args = parser.parse_args(argv)
@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "build":
         results = build(
             site_config_path=args.site_config,
-            cities_dir=args.cities_dir,
+            config_dir=args.config_dir,
             output_dir=args.output_dir,
             base_url=args.base_url,
             only_slug=args.city,
@@ -93,7 +93,7 @@ def _report(args) -> int:
     from citypods.state import resolve_state_dir
 
     site_config = load_site_config(args.site_config)
-    cities = load_city_configs(args.cities_dir, site_config.get("defaults", {}))
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
     output_dir = Path(args.output_dir)
     state_dir = resolve_state_dir(site_config, output_dir)
 
@@ -119,7 +119,7 @@ def _report(args) -> int:
 
 def _bodies(args) -> int:
     site_config = load_site_config(args.site_config)
-    cities = load_city_configs(args.cities_dir, site_config.get("defaults", {}))
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
     city = next((c for c in cities if c.slug == args.slug), None)
     if city is None:
         print(f"no city with slug {args.slug!r}")
@@ -146,7 +146,7 @@ def _doctor(args) -> int:
     from citypods.audit import audit_all
 
     site_config = load_site_config(args.site_config)
-    cities = load_city_configs(args.cities_dir, site_config.get("defaults", {}))
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
     if args.city:
         cities = [c for c in cities if c.slug == args.city]
         if not cities:

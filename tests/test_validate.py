@@ -16,8 +16,8 @@ def test_validator_flags_broken_feed():
 
 
 def _cities():
-    site_config = load_site_config(ROOT / "site_config.yml")
-    return {c.slug: c for c in load_city_configs(ROOT / "cities", site_config.get("defaults", {}))}
+    site_config = load_site_config(ROOT / "config" / "site_config.yml")
+    return {c.slug: c for c in load_city_configs(ROOT / "config", site_config.get("defaults", {}))}
 
 
 @pytest.mark.parametrize("provider,slug,kind", all_fixture_cases())

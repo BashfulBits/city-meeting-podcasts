@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apply", action="store_true", help="actually delete (default: dry-run)")
     ap.add_argument("--min-age-days", type=float, default=7.0, help="skip objects newer than this")
     ap.add_argument("--prefix", default="", help="limit to keys under this storage prefix")
-    ap.add_argument("--site-config", default="site_config.yml")
+    ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--output-dir", default="docs")
     args = ap.parse_args(argv)
 

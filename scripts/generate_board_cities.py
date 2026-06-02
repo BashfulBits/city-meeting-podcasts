@@ -2,7 +2,7 @@
 """Generate one per-board city YAML per meeting body of an existing "base" city.
 
 Reads a template city (for provider/source/metadata), discovers its bodies, and writes a
-``cities/<base-slug>-<body>.yml`` for each body that:
+``config/feeds/<base-slug>-<body>.yml`` for each body that:
   - has >= site_config.defaults.min_meetings_per_body meetings in the recency window, and
   - met within --recency-months (default 12), and
   - is NOT matched by the city's body_exclude denylist.
@@ -42,15 +42,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base-slug", required=True, help="slug prefix for generated feeds")
     ap.add_argument("--title-prefix", required=True, help="podcast title prefix, e.g. 'Denton'")
     ap.add_argument("--recency-months", type=int, default=12)
-    ap.add_argument("--site-config", default=str(ROOT / "site_config.yml"))
-    ap.add_argument("--cities-dir", default=str(ROOT / "cities"))
+    ap.add_argument("--site-config", default=str(ROOT / "config" / "site_config.yml"))
+    ap.add_argument("--config-dir", default=str(ROOT / "config"))
     ap.add_argument("--write", action="store_true", help="write files (default: dry run)")
     args = ap.parse_args(argv)
 
     site_config = load_site_config(args.site_config)
     defaults = site_config.get("defaults", {})
     min_meetings = int(defaults.get("min_meetings_per_body", 3))
-    cities = load_city_configs(args.cities_dir, defaults)
+    cities = load_city_configs(args.config_dir, defaults)
     tmpl = next((c for c in cities if c.slug == args.template_city), None)
     if tmpl is None:
         print(f"no city with slug {args.template_city!r}")
@@ -84,10 +84,10 @@ def main(argv: list[str] | None = None) -> int:
         f"{args.template_city}: {len(selected)} feeds (>= {min_meetings} meetings, "
         f"last {args.recency_months}mo, denylist {tmpl.body_exclude or '(none)'}):"
     )
-    cities_dir = Path(args.cities_dir)
+    feeds_dir = Path(args.config_dir) / "feeds"
     for body in selected:
         slug = f"{args.base_slug}-{slugify(body)}"
-        path = cities_dir / f"{slug}.yml"
+        path = feeds_dir / f"{slug}.yml"
         if path.exists():
             print(f"  skip (exists): {path.name}  (body={body!r})")
             continue
@@ -103,15 +103,14 @@ def _render(tmpl, slug: str, body: str, title_prefix: str) -> str:
     src_lines = "\n".join(f"  {k}: {v}" for k, v in src.items())
     return (
         f"slug: {slug}\n"
-        f"provider: {tmpl.provider}\n"
+        + (f"city: {tmpl.city_entity}\n" if tmpl.city_entity else "")
+        + f"provider: {tmpl.provider}\n"
         f"source:\n{src_lines}\n"
         f'  body: "{body}"\n'
         f'podcast_title: "{title_prefix}: {body}"\n'
         f'podcast_author: "{tmpl.podcast_author}"\n'
         f'podcast_email: "{tmpl.podcast_email}"\n'
         f'podcast_description: "{body} meetings for {title_prefix}."\n'
-        f"state: {tmpl.state}\n"
-        + (f"city_website: {tmpl.city_website}\n" if tmpl.city_website else "")
         + (f"max_episodes: {tmpl.max_episodes}\n" if tmpl.max_episodes != 50 else "")
         + (f"extract_audio: {str(tmpl.extract_audio).lower()}\n" if tmpl.extract_audio else "")
     )

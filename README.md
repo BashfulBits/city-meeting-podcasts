@@ -26,8 +26,12 @@ cd docs && python -m http.server 8000   # open http://localhost:8000
 
 ## Adding a city
 
-Copy [`cities/_template.yml`](cities/_template.yml) to `cities/<slug>.yml`, set the
-`provider` and provider-specific `source` block, and fill in the podcast metadata.
+Copy [`config/feeds/_template.yml`](config/feeds/_template.yml) to `config/feeds/<slug>.yml`,
+set the `provider` and provider-specific `source` block, and fill in the podcast metadata. Add
+a `city: <entity-slug>` reference so the feed inherits the city's shared fields (`city_website`,
+`meetings_url`, `state`, `colors`) from [`config/cities/<entity-slug>.yml`](config/cities) —
+create that entity file (see [`config/cities/_template.yml`](config/cities/_template.yml)) if the
+city isn't already onboarded.
 
 ### One feed per board/commission
 

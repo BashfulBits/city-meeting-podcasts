@@ -1,0 +1,7 @@
+# Entity record for City of Dallas, TX
+city_website: https://dallascityhall.com
+colors:
+- '#0000ee'
+- '#c39c34'
+meetings_url: https://dallascityhall.com/government/Pages/Live.aspx
+state: TX

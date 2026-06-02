@@ -300,8 +300,8 @@ def _process_city(
 
 def build(
     *,
-    site_config_path: str | Path = "site_config.yml",
-    cities_dir: str | Path = "cities",
+    site_config_path: str | Path = "config/site_config.yml",
+    config_dir: str | Path = "config",
     output_dir: str | Path = "docs",
     base_url: str | None = None,
     only_slug: str | None = None,
@@ -310,7 +310,7 @@ def build(
     chapters_cap: int | None = None,
 ) -> list[CityResult]:
     site_config = load_site_config(site_config_path)
-    cities = load_city_configs(cities_dir, site_config.get("defaults", {}))
+    cities = load_city_configs(config_dir, site_config.get("defaults", {}))
     if only_slug:
         cities = [c for c in cities if c.slug == only_slug]
         if not cities:
@@ -422,7 +422,7 @@ def build(
 
     if not dry_run:
         save_etag_cache(state_dir, cache)
-        all_cities = load_city_configs(cities_dir, site_config.get("defaults", {}))
+        all_cities = load_city_configs(config_dir, site_config.get("defaults", {}))
         feed_info = {r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results}
         (output_dir / "index.html").write_text(
             render_index(all_cities, site_config, base_url, feed_info)

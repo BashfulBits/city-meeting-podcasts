@@ -12,7 +12,8 @@ Everything downstream — RSS generation, city pages, artwork, audio extraction 
 on a normalized episode model and never touches provider specifics.
 
 **Live architecture:**
-- `cities/*.yml` — one file per city, declaring a `provider` and a provider-specific `source` block
+- `config/feeds/*.yml` — one file per per-board feed (`provider` + `source` + a `city:` entity ref);
+  shared per-city fields live in `config/cities/<entity>.yml`
 - `citypods/` — Python package: provider adapters, feed builders, artwork, site generation, CLI
 - `docs/` — served by GitHub Pages (Jekyll disabled via `.nojekyll`); contains the index,
   per-city pages, RSS feeds, and artwork
@@ -60,10 +61,13 @@ Providers are looked up via a registry keyed by `provider:` in the city YAML. Ch
 detection is provider-defined: feed-based providers use HEAD + ETag (as today), scrapers
 may hash a page or a JSON payload.
 
-### City config (new shape)
+### Config shape
+
+A feed (`config/feeds/denton-tx.yml`) references a shared entity by slug:
 
 ```yaml
 slug: denton-tx
+city: denton-tx        # -> config/cities/denton-tx.yml supplies city_website, meetings_url, state, colors
 provider: granicus
 source:
   feed_url: https://denton.granicus.com/ViewPublisherRSS.php?view_id=2
@@ -71,8 +75,16 @@ podcast_title: "Denton City Council Meetings"
 podcast_author: "City of Denton, TX"
 podcast_email: clerk@cityofdenton.com
 podcast_description: "..."
-state: TX
 # optional overrides: podcast_language, podcast_category, max_episodes, extract_audio
+```
+
+The entity (`config/cities/denton-tx.yml`), shared across all of Denton's per-board feeds:
+
+```yaml
+city_website: https://www.cityofdenton.com
+meetings_url: https://www.cityofdenton.com/242/Public-Meetings
+state: TX
+colors: ["#322357"]
 ```
 
 ### Provider notes
@@ -162,7 +174,6 @@ still needs identification.)
 ```
 city-meeting-podcasts/
 ├── pyproject.toml                  # package metadata, deps, ruff config
-├── site_config.yml                 # Global: domain, title, schedule, rate limiting, defaults
 ├── PLAN.md
 ├── README.md
 ├── .gitignore
@@ -183,9 +194,14 @@ city-meeting-podcasts/
 ├── templates/
 │   ├── index.html.j2
 │   └── city.html.j2
-├── cities/
-│   ├── _template.yml
-│   └── *.yml                       # DFW set seeded in Phase 0/1
+├── config/                         # All YAML config under one root
+│   ├── site_config.yml             # Global: domain, title, schedule, rate limiting, defaults
+│   ├── feeds/                      # one file per per-board feed (references city: <entity>)
+│   │   ├── _template.yml
+│   │   └── *.yml                   # DFW set seeded in Phase 0/1
+│   └── cities/                     # one file per city/county entity (shared fields)
+│       ├── _template.yml
+│       └── *.yml                   # city_website, meetings_url, state, colors
 ├── tests/
 │   ├── fixtures/                   # recorded provider responses + golden RSS
 │   └── test_*.py
@@ -222,7 +238,7 @@ Thin foundation so later phases have real code to test. No new product features.
   enclosure styles).
 - `feeds.py` (audio + video RSS) and a minimal `site.py` rendering Jinja2 templates.
 - CLI: `citypods build [--city SLUG] [--dry-run]`.
-- Seed `cities/` with confirmed DFW Granicus cities (grow toward ~18).
+- Seed `config/feeds/` with confirmed DFW Granicus cities (grow toward ~18).
 
 > **Finding (Phase 0):** Granicus HEAD responses carry no ETag/Last-Modified, so HEAD-based
 > change detection never skips — every run fetches. This is harmless at ~18 cities and is a
@@ -297,7 +313,7 @@ dependency rather than deferred.
 
 ## Configuration reference
 
-### site_config.yml
+### config/site_config.yml
 | Key | Default | Description |
 |-----|---------|-------------|
 | `custom_domain` | `""` | Custom domain; blank = github.io URL |
@@ -313,16 +329,26 @@ dependency rather than deferred.
 | `defaults.extract_audio` | `false` | Enable M4A extraction (Phase 4) |
 | `defaults.audio_storage_backend` | `"r2"` | `"r2"`, `"b2"`, or `"s3"` |
 
-### City config (cities/*.yml)
+### Feed config (config/feeds/*.yml)
 | Key | Required | Description |
 |-----|----------|-------------|
 | `slug` | ✅ | URL path segment, e.g. `denton-tx` |
+| `city` | recommended | Entity slug; inherits shared fields from `config/cities/<slug>.yml` |
 | `provider` | ✅ | Adapter name: `granicus`, `civicplus`, ... |
 | `source` | ✅ | Provider-specific block, validated by the adapter |
 | `podcast_title` / `podcast_author` / `podcast_email` / `podcast_description` | ✅ | Feed metadata |
-| `state` | recommended | Two-letter abbreviation for state filters |
-| `city_website` | optional | Artwork hint (favicon fallback) |
 | `podcast_language` / `podcast_category` / `max_episodes` / `extract_audio` | optional | Override site defaults |
+
+Any entity field below may also be set directly on a feed to override the entity value.
+
+### Entity config (config/cities/*.yml)
+Shared per-city fields, referenced by feeds via `city: <slug>`. The filename stem is the entity slug.
+| Key | Required | Description |
+|-----|----------|-------------|
+| `state` | recommended | Two-letter abbreviation for state filters |
+| `city_website` | optional | City homepage (also an artwork favicon fallback) |
+| `meetings_url` | optional | City's own meetings/agenda portal, shown on every episode (falls back to `city_website`) |
+| `colors` | optional | 1–2 brand hex colors for cover art |
 
 ### GitHub Actions secrets (audio hosting — CivicPlus always, Granicus when `extract_audio`)
 Storage is S3-compatible; set the secrets for the `audio_storage_backend` in use:

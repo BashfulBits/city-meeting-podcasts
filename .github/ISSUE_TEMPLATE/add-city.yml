@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for helping grow the directory! Fill this in and a maintainer will
-        add a `cities/<slug>.yml`. If you know the platform details, great — if not,
+        add a `config/feeds/<slug>.yml`. If you know the platform details, great — if not,
         leave them blank and we'll investigate.
   - type: input
     id: city_state

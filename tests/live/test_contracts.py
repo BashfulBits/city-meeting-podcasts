@@ -17,8 +17,8 @@ pytestmark = pytest.mark.live
 
 
 def _representatives():
-    sc = load_site_config("site_config.yml")
-    cities = load_city_configs("cities", sc.get("defaults", {}))
+    sc = load_site_config("config/site_config.yml")
+    cities = load_city_configs("config", sc.get("defaults", {}))
     return representative_cities(cities)
 
 

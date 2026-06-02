@@ -1,0 +1,11 @@
+slug: denton-tx-city-council
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: "City Council"
+podcast_title: "Denton: City Council"
+podcast_author: "City of Denton, TX"
+podcast_email: ""
+podcast_description: "City Council meetings for Denton."
+max_episodes: 25

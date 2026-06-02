@@ -24,7 +24,17 @@ state: TX
 
 
 def _write(dir_, name, body):
-    (dir_ / name).write_text(textwrap.dedent(body))
+    """Write a feed YAML into the config dir's feeds/ subdir."""
+    feeds = dir_ / "feeds"
+    feeds.mkdir(exist_ok=True)
+    (feeds / name).write_text(textwrap.dedent(body))
+
+
+def _write_entity(dir_, name, body):
+    """Write an entity YAML into the config dir's cities/ subdir."""
+    entities = dir_ / "cities"
+    entities.mkdir(exist_ok=True)
+    (entities / name).write_text(textwrap.dedent(body))
 
 
 def test_loads_valid_city(tmp_path):
@@ -108,3 +118,57 @@ def test_valid_alias_accepted(tmp_path):
     _write(tmp_path, "foo-tx.yml", VALID.replace("state: TX\n", "state: TX\naliases: [foo-old]\n"))
     cities = load_city_configs(tmp_path, DEFAULTS)
     assert cities[0].aliases == ["foo-old"]
+
+
+# --- entity (config/cities/*.yml) merge ------------------------------------------------
+
+ENTITY = """\
+city_website: https://www.foo.gov
+meetings_url: https://www.foo.gov/meetings
+state: TX
+colors: ["#123456", "#abcdef"]
+"""
+
+FEED_WITH_ENTITY = """\
+slug: foo-tx
+city: foo
+provider: granicus
+source:
+  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2
+podcast_title: Foo Council
+podcast_author: City of Foo
+podcast_email: ""
+podcast_description: Meetings.
+"""
+
+
+def test_entity_fields_merged_into_feed(tmp_path):
+    _write_entity(tmp_path, "foo.yml", ENTITY)
+    _write(tmp_path, "foo-tx.yml", FEED_WITH_ENTITY)
+    c = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert c.city_entity == "foo"
+    assert c.city_website == "https://www.foo.gov"
+    assert c.meetings_url == "https://www.foo.gov/meetings"
+    assert c.state == "TX"
+    assert c.colors == ["#123456", "#abcdef"]
+
+
+def test_feed_level_value_overrides_entity(tmp_path):
+    _write_entity(tmp_path, "foo.yml", ENTITY)
+    _write(tmp_path, "foo-tx.yml", FEED_WITH_ENTITY + "meetings_url: https://override.gov\n")
+    c = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert c.meetings_url == "https://override.gov"  # feed wins
+    assert c.city_website == "https://www.foo.gov"  # entity still supplies the rest
+
+
+def test_unknown_entity_reference_raises(tmp_path):
+    _write(tmp_path, "foo-tx.yml", FEED_WITH_ENTITY)  # references city: foo, but none exists
+    with pytest.raises(ValueError, match="unknown entity"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_entity_template_file_skipped(tmp_path):
+    _write_entity(tmp_path, "_template.yml", ENTITY)
+    _write(tmp_path, "foo-tx.yml", VALID)  # no city: ref, loads fine; entity _template ignored
+    cities = load_city_configs(tmp_path, DEFAULTS)
+    assert len(cities) == 1 and cities[0].city_entity is None
