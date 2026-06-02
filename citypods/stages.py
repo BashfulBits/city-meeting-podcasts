@@ -52,12 +52,13 @@ Rules:
      real failures (which get the #120 backoff instead).
   5. **Don't sense supersession yourself.** ``stop()`` already encapsulates the wall-clock
      deadline and the throttled "newer run queued" check; just call it.
-  6. **Cheap+uniform+numerous work also needs a count.** ``stop()`` (wall-clock) only self-limits
-     work whose per-item cost is large — an encode or transcription fills the window after a sane
-     number of items. A *cheap* uniform op (a page scrape) does not: thousands fit in the window,
-     so it would drain its whole backlog in one run and starve slower stages after it. Bound those
-     with a small per-run count *as well as* ``stop()`` — see ``ChaptersStage`` /
-     ``StageContext.chapters_per_source``.
+  6. **Cheap+uniform+numerous work fills the window by count, not cost.** ``stop()`` self-limits
+     work whose per-item cost is large (an encode/transcription fills the window after a sane
+     number of items). A *cheap* uniform op (a page scrape) does not — thousands fit — so a single
+     run drains its whole backlog. That's fine in production (it backfills over a run or two), but
+     too slow for short-lived contexts like the PR preview, so expose an *optional* per-run count
+     cap they can set while leaving production bounded only by ``stop()`` — see ``ChaptersStage`` /
+     ``StageContext.chapters_per_source`` (wired to ``citypods build --chapters-cap``).
 
 Ordering caveat: a long stage that runs *before* others (e.g. transcription feeding chapters)
 spends the same shared window, so everything downstream of it also defers when it yields. Place
@@ -101,19 +102,19 @@ class StageContext:
     before starting new work so the run wraps up and deploys instead of running indefinitely. See
     the module docstring's "stop convention" for exactly when (and when not) to gate work on it.
 
-    ``chapters_per_source`` caps how many chapter pages one source scrapes per run. Wall-clock is
-    the wrong bound for chapters specifically: each fetch is cheap and uniform (~0.3s, no encode),
-    so *thousands* fit in the window — they'd drain the whole backlog in one run, dominate the
-    time that should go to audio (which runs after), and make every run (and the PR preview, which
-    starts with no cached chapters) minutes long. A small count is the right tool here; audio, with
-    its slow/variable per-item cost, stays on the wall-clock ``stop`` alone."""
+    ``chapters_per_source`` is an *optional* per-run count cap on chapter scraping for one source.
+    Default is effectively unbounded: production lets chapters backfill fully, bounded only by the
+    wall-clock ``stop``. It exists because chapter fetches are cheap+uniform+numerous (~0.3s, no
+    encode), so the wall-clock alone lets *thousands* run — fine when draining a real backlog over
+    runs, but too slow for the PR preview (no cached chapters → every episode un-scraped), which
+    sets a small cap via ``citypods build --chapters-cap N`` to stay a fast sanity-check."""
 
     storage: object | None
     ffmpeg: object
     max_kbps: int
     dry_run: bool
     stop: Callable[[], bool] | None = None
-    chapters_per_source: int = 10_000  # effectively unbounded unless the build sets it
+    chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
 
 
 @dataclass
@@ -189,7 +190,7 @@ class ChaptersStage:
     """Fetch agenda-item chapter markers (and a transcript link) for providers that expose
     them. Audio-affecting, so it runs *before* ``audio``: chapters are part of
     ``audio_spec_hash``, so adding them changes the spec and the next audio pass re-encodes the
-    file with embedded markers — spread over runs by the audio budget, exactly like backfill.
+    file with embedded markers — spread over runs like the rest of the backfill.
 
     Each chapter fetch is one cheap network call, bounded per run by ``ctx.chapters_per_source``
     (a count — see StageContext) and the shared ``ctx.stop`` predicate (wall-clock/superseded);

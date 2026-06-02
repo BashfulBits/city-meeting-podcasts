@@ -35,10 +35,8 @@ defaults:
   # run_time_budget_minutes == the cron interval and let budget_safety reserve the tail.
   run_time_budget_minutes: 240           # == schedule_cron interval (4h); 0 = no time cap (yield only)
   budget_safety: 0.85                    # window = 204m; leaves ~36m of the 240m cron tick for the tail
-  # Chapters are cheap, uniform page fetches — wall-clock is the wrong bound (thousands fit and
-  # would starve audio, which runs after). Cap how many one source scrapes per run; the rest
-  # backfill over later runs. (Audio, slow+variable, is bounded by the wall-clock window only.)
-  chapters_per_source_per_run: 40
+  # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
+  # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
   min_meetings_per_body: 3               # generator: a body needs this many recent meetings to get a feed
   # Bodies whose name contains any of these (case-insensitive) are NOT turned into feeds by
