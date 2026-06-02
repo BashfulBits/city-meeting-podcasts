@@ -19,6 +19,7 @@ import tempfile
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -28,6 +29,25 @@ from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.base import StorageBackend
 
 CONTENT_TYPE = "audio/mp4"
+
+# Exponential backoff for repeatedly-failing materializations (issue #120): a source whose audio
+# won't resolve (e.g. a Swagit meeting with no usable media) must stop being re-tried every run,
+# or it churns the run's time + budget forever. Wait ``BACKOFF_BASE * 2**(attempts-1)``, capped at
+# ``BACKOFF_MAX``, before re-attempting. A successful host resets the counter.
+BACKOFF_BASE = timedelta(days=1)
+BACKOFF_MAX = timedelta(days=30)
+
+
+def _in_backoff(ep: Episode, now: datetime) -> bool:
+    """True if ``ep`` failed recently enough to still be inside its materialization backoff."""
+    if ep.materialize_attempts <= 0 or not ep.materialize_last_attempt:
+        return False
+    try:
+        last = datetime.fromisoformat(ep.materialize_last_attempt)
+    except ValueError:
+        return False
+    delay = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (ep.materialize_attempts - 1))
+    return now < last + delay
 
 
 class FfmpegRunner(Protocol):
@@ -162,6 +182,7 @@ class MaterializeStats:
     hosted: int = 0  # newly uploaded this run
     reused: int = 0  # already in manifest / storage
     skipped_budget: int = 0  # deferred to a later run
+    skipped_backoff: int = 0  # deferred: still inside a post-failure backoff window (#120)
     errors: list[str] = field(default_factory=list)
     bytes_written: int = 0  # total bytes of objects uploaded this run (for cost accounting)
 
@@ -210,6 +231,7 @@ def materialize_audio(
     stats = MaterializeStats()
     remaining = budget
     hosted_keys = _hosted_keys(city, storage)
+    now = datetime.now(UTC)
 
     def _present(key: str) -> bool:
         return key in hosted_keys if hosted_keys is not None else storage.exists(key)
@@ -234,6 +256,12 @@ def materialize_audio(
             ep.hosted_audio_url = None
             ep.audio_key = None
             ep.audio_spec_hash = None
+
+        # Recently-failed episodes back off (exponential) so a permanently-broken source (e.g. a
+        # Swagit meeting with no usable media — #120) stops re-trying and churning budget/time.
+        if _in_backoff(ep, now):
+            stats.skipped_backoff += 1
+            continue
 
         if remaining <= 0 or (global_budget is not None and not global_budget.take()):
             stats.skipped_budget += 1
@@ -260,9 +288,18 @@ def materialize_audio(
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
+            ep.materialize_attempts = 0  # success clears the backoff state (#120)
+            ep.materialize_last_attempt = None
+            ep.materialize_error = None
             stats.hosted += 1
         except (subprocess.CalledProcessError, OSError, ProviderError) as exc:
             stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+            # Record the failed attempt so this episode backs off (exponentially) instead of being
+            # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
+            # The category (deferred/dead/error) is surfaced by the feed-health audit + report.
+            ep.materialize_attempts += 1
+            ep.materialize_last_attempt = now.isoformat()
+            ep.materialize_error = getattr(exc, "code", None) or "error"
             # The global cap counts successful hosts; hand the reserved slot back so a broken
             # episode here doesn't starve another source's backfill this run (issue #116 follow-up).
             if global_budget is not None:

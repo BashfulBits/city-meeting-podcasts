@@ -76,6 +76,35 @@ def _truncation_stats(cities: list, state_dir: Path | None) -> dict:
     return {"checked": checked, "truncated": truncated, "max_gap": max_gap, "examples": examples}
 
 
+def _audio_failure_stats(cities: list, state_dir: Path | None) -> dict:
+    """Project-wide count of episodes that can't be materialized, split by category (issue #120).
+
+    ``deferred`` = recoverable once multi-segment Swagit concat ships (#122); ``dead`` = no usable
+    media exists. Counted once per source (per-body feeds share a record store)."""
+    empty = {"deferred": 0, "dead": 0, "examples": []}
+    if not state_dir or not cities:
+        return empty
+
+    from citypods.audit import count_audio_failures
+    from citypods.records import load_records, source_key
+
+    deferred = dead = 0
+    examples: list[str] = []
+    seen: set[str] = set()
+    for city in cities:
+        key = source_key(city)
+        if key in seen:
+            continue
+        seen.add(key)
+        records = load_records(Path(state_dir), key)
+        d, x = count_audio_failures(records)
+        deferred += d
+        dead += x
+        if x and len(examples) < 3:
+            examples.append(f"{city.slug} ({x} dead)")
+    return {"deferred": deferred, "dead": dead, "examples": examples}
+
+
 def _measured_archive_items(cities: list, state_dir: Path | None) -> int | None:
     """Average records retained **per feed** from the append-only archive — the correct input
     for the projection model, which multiplies by number of feeds to estimate total storage.
@@ -156,6 +185,9 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     # Feed truncation: how many sources have more archived episodes than max_episodes renders.
     truncation = _truncation_stats(cities, state_dir)
 
+    # Un-materializable audio tally (issue #120): deferred (pending concat #122) vs dead (no media).
+    audio_failures = _audio_failure_stats(cities, state_dir)
+
     # "host all audio" = host_frac 1.0 regardless of provider
     host_all_inputs = ModelInputs(**{**inputs.__dict__, "host_frac": 1.0})
     host_all = project(host_all_inputs)
@@ -171,6 +203,7 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
         "scale_scenarios": scenarios,
         "retention": retention,
         "truncation": truncation,
+        "audio_failures": audio_failures,
         "notes": {
             "b2_free_gb": 10,
             "b2_usd_per_gb_month": 0.006,
@@ -231,6 +264,15 @@ def to_markdown(report: dict) -> str:
                 f"- ⚠️ **Feed cap (`max_episodes`):** {trunc['truncated']} of {trunc['checked']} "
                 f"sources truncated (up to {trunc['max_gap']} episodes hidden){ex}"
             )
+    af = report.get("audio_failures")
+    if af and (af["deferred"] or af["dead"]):
+        ex = f" e.g. {af['examples'][0]}" if af.get("examples") else ""
+        icon = "⚠️ " if af["dead"] else ""
+        lines.append(
+            f"- {icon}**Un-materializable audio:** {af['dead']} dead (no usable media){ex}, "
+            f"{af['deferred']} deferred (await multi-segment concat, #122)"
+        )
+
     lines += ["", "### At scale (storage / month)", "", "| Feeds | TB | $/mo |", "|--:|--:|--:|"]
     for f in ("200", "500", "1000", "5000"):
         s = report["scale_scenarios"][f]

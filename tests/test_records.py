@@ -119,6 +119,8 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
     ep.links = {"agenda": "https://x/a"}
     ep.chapters = [{"start": 0, "title": "x"}]
     ep.transcript_url = "https://x/t.vtt"
+    ep.materialize_attempts = 2
+    ep.materialize_last_attempt = "2026-06-01T00:00:00+00:00"
 
     back = record_to_episode(episode_to_record(ep))
     for attr in (
@@ -137,6 +139,8 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "hosted_audio_url",
         "audio_key",
         "audio_spec_hash",
+        "materialize_attempts",
+        "materialize_last_attempt",
     ):
         assert getattr(back, attr) == getattr(ep, attr), attr
 

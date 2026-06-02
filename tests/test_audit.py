@@ -7,12 +7,15 @@ from datetime import UTC, datetime, timedelta
 from citypods.audit import (
     ArchiveDiff,
     audit_city,
+    check_dead_audio_aggregate,
+    check_deferred_audio_aggregate,
     check_empty,
     check_enclosures,
     check_rehost_backlog,
     check_staleness,
     check_view_cap,
     compute_archive_diff,
+    count_audio_failures,
 )
 from citypods.models import Episode
 
@@ -138,6 +141,53 @@ def test_check_rehost_backlog_only_when_fully_stalled():
     assert check_rehost_backlog("s", hls) is None
     # No HLS episodes -> never flagged.
     assert check_rehost_backlog("s", [_ep(1)]) is None
+
+
+# ---------------------------------------------------------------------------
+# audio-failure tally + aggregate alert (issue #120)
+# ---------------------------------------------------------------------------
+
+
+def _rec(error=None):
+    return {"audio": {"error": error}}
+
+
+def test_count_audio_failures_splits_by_category():
+    records = {
+        "a": _rec("deferred"),
+        "b": _rec("dead"),
+        "c": _rec("dead"),
+        "d": _rec(None),  # healthy
+        "e": _rec("error"),  # transient, counts as neither
+    }
+    assert count_audio_failures(records) == (1, 2)
+
+
+def test_dead_audio_aggregate_fires_above_threshold():
+    f = check_dead_audio_aggregate(deferred_total=4, dead_total=12, threshold=10)
+    assert f is not None
+    assert f.slug == "(all)" and f.check == "dead-audio" and f.severity == "error"
+    assert "12 episode(s)" in f.message and "4 await" in f.message
+
+
+def test_dead_audio_aggregate_silent_below_threshold():
+    assert check_dead_audio_aggregate(deferred_total=99, dead_total=9, threshold=10) is None
+
+
+def test_deferred_audio_aggregate_tracks_prevalence():
+    f = check_deferred_audio_aggregate(
+        7, examples=[("dallas-tx-city-council", 5), ("denton-tx-council", 2)]
+    )
+    assert f is not None
+    assert f.slug == "(all)" and f.check == "deferred-audio" and f.severity == "warn"
+    assert "7 episode(s)" in f.message and "#122" in f.message
+    # examples sorted by count desc, most-affected first
+    assert "dallas-tx-city-council (5)" in f.message
+    assert f.message.index("dallas-tx-city-council") < f.message.index("denton-tx-council")
+
+
+def test_deferred_audio_aggregate_silent_when_none():
+    assert check_deferred_audio_aggregate(0) is None
 
 
 # ---------------------------------------------------------------------------

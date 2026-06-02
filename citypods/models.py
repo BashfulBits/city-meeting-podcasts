@@ -62,6 +62,18 @@ class Episode:
     chapters: list = field(default_factory=list)  # [{"start": secs, "title": str}, ...]
     summary: str = ""
     transcript_url: str | None = None
+    # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
+    # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
+    # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs
+    # off exponentially instead of re-trying — and burning the run budget — every run. Reset to
+    # ``(0, None)`` on a successful host.
+    materialize_attempts: int = 0
+    materialize_last_attempt: str | None = None
+    # Why the last attempt failed, for monitoring (feed-health audit + resource report): a
+    # ``citypods.providers.base`` media category (``"deferred"`` = recoverable once a pending
+    # feature ships, e.g. multi-segment Swagit concat #122; ``"dead"`` = no usable media) or
+    # ``"error"`` for a transient/uncategorized failure. ``None`` once hosted successfully.
+    materialize_error: str | None = None
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url
