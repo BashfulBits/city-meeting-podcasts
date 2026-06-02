@@ -11,6 +11,7 @@ from citypods.audit import (
     check_deferred_audio_aggregate,
     check_empty,
     check_enclosures,
+    check_meetings_url,
     check_rehost_backlog,
     check_staleness,
     check_view_cap,
@@ -387,3 +388,48 @@ def test_audit_city_staleness_suppressed_by_archive_newest():
     records = {"recent": {"published": recent, "audio": {}}}
     findings = audit_city(_city(), provider=_FakeProvider(eps), now=NOW, records=records)
     assert not any(f.check == "stale" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# check_meetings_url
+# ---------------------------------------------------------------------------
+
+
+def test_check_meetings_url_clean():
+    probe = lambda url: (200, url)  # noqa: E731
+    assert check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe) is None
+
+
+def test_check_meetings_url_dead():
+    probe = lambda url: (404, url)  # noqa: E731
+    f = check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe)
+    assert f is not None and f.check == "meetings-url-dead" and f.severity == "error"
+    assert "404" in f.message
+
+
+def test_check_meetings_url_server_error():
+    probe = lambda url: (503, url)  # noqa: E731
+    f = check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe)
+    assert f is not None and f.check == "meetings-url-dead"
+
+
+def test_check_meetings_url_redirected_to_homepage():
+    # Deep link with ≥3 path segments bounces to root → meetings-url-changed warning.
+    probe = lambda url: (200, "https://x.gov/")  # noqa: E731
+    f = check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe)
+    assert f is not None and f.check == "meetings-url-changed" and f.severity == "warn"
+    assert "reorganised" in f.message
+
+
+def test_check_meetings_url_shallow_redirect_not_flagged():
+    # A 2-segment configured URL redirecting somewhere is not "dramatically different".
+    probe = lambda url: (200, "https://x.gov/other")  # noqa: E731
+    assert check_meetings_url("x-tx", "https://x.gov/meetings", probe) is None
+
+
+def test_check_meetings_url_probe_exception():
+    def probe(url):
+        raise ConnectionError("timeout")
+
+    f = check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe)
+    assert f is not None and f.check == "meetings-url-dead" and "timeout" in f.message
