@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import collections
 import json
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -348,6 +349,11 @@ def build(
     )
     if window_min > 0:
         print(f"budget: wall-clock window {window_min:.0f}m × {safety} (+ yield if superseded)")
+    # Loud, once-per-run signal if graceful yield can't work (token dropped, e.g. via repo settings
+    # rather than the workflow YAML that the contract test guards). Without it the run is bounded
+    # only by the wall-clock window — easy to miss, since the yield check fails open silently.
+    if os.environ.get("GITHUB_ACTIONS") and not os.environ.get("GITHUB_TOKEN"):
+        print("warning: GITHUB_TOKEN unset — graceful yield disabled; run bounded only by window")
 
     ffmpeg = ffmpeg or CommandFfmpeg(max_kbps=max_kbps)
     ctx = StageContext(
@@ -634,10 +640,10 @@ def _newer_run_queued() -> bool:
     if not (repo and token and run_id and run_number):
         return False
     workflow_file = workflow_ref.split("/")[-1].split("@")[0] or "deploy.yml"
-    url = (
-        f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs"
-        "?per_page=30&status=queued"
-    )
+    # Don't filter by ``status=queued`` in the query: a run held by the ``pages`` concurrency group
+    # surfaces as queued/pending/waiting depending on timing, so fetch the recent runs and treat
+    # any newer, not-yet-completed run as "a build is waiting behind me".
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs?per_page=30"
     req = urllib.request.Request(
         url,
         headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
@@ -649,7 +655,11 @@ def _newer_run_queued() -> bool:
         return False
     me = int(run_number)
     for run in data.get("workflow_runs", []):
-        if str(run.get("id")) != run_id and int(run.get("run_number", 0)) > me:
+        if (
+            str(run.get("id")) != run_id
+            and run.get("status") != "completed"
+            and int(run.get("run_number", 0)) > me
+        ):
             return True
     return False
 

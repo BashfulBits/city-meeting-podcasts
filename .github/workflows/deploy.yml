@@ -17,6 +17,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read   # citypods build polls the Actions API to detect a newer queued run (graceful yield)
 
 jobs:
   build-deploy:
@@ -60,6 +61,9 @@ jobs:
       - name: Build feeds
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+          # Lets the build poll the Actions API and yield gracefully when a newer run (a push or
+          # the next cron) is queued behind it. Not auto-exported by Actions, so pass it explicitly.
+          GITHUB_TOKEN: ${{ github.token }}
           # Audio hosting (CivicPlus + extract_audio). Set the secrets for whichever backend
           # site_config.defaults.audio_storage_backend selects; if unset, HLS feeds stay empty.
           # Backblaze B2 (+ Cloudflare CDN for free egress):
