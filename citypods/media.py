@@ -36,6 +36,15 @@ CONTENT_TYPE = "audio/mp4"
 BACKOFF_BASE = timedelta(days=1)
 BACKOFF_MAX = timedelta(days=30)
 
+# ffmpeg/ffprobe read the (remote) source directly, so a server that accepts the connection then
+# stalls would block a worker forever — and the shared ``stop()`` can't preempt a thread parked in
+# ``subprocess.run``, so one stalled source pins the whole build until GitHub's 6h job cap. Bound it
+# two ways: ``-rw_timeout`` lets ffmpeg abort a stalled read itself (clean non-zero exit), and the
+# subprocess ``timeout=`` is the hard backstop that guarantees the worker returns. Both surface as a
+# materialization failure → the #120 backoff, so a chronically-stalling source stops being retried.
+_STALL_TIMEOUT_US = 120_000_000  # ffmpeg aborts after 120s with zero I/O progress (microseconds)
+_PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
+
 
 def _in_backoff(ep: Episode, now: datetime) -> bool:
     """True if ``ep`` failed recently enough to still be inside its materialization backoff."""
@@ -90,16 +99,28 @@ def encode_args(source_bitrate: int | None, max_kbps: int) -> list[str]:
 class CommandFfmpeg:
     """Runs the real ffmpeg binary, re-encoding only when the source exceeds the cap."""
 
-    def __init__(self, binary: str = "ffmpeg", max_kbps: int = 96):
+    def __init__(
+        self, binary: str = "ffmpeg", max_kbps: int = 96, timeout_seconds: float | None = None
+    ):
         self.binary = binary
         self.max_kbps = max_kbps
+        # Hard wall-clock cap for one probe+encode (None = uncapped, e.g. tests). See module
+        # constants above for why an in-flight encode must be bounded.
+        self.timeout_seconds = timeout_seconds
 
     def extract_audio(
         self, source_url: str, dest: Path, chapters: list[dict] | None = None
     ) -> None:
-        args = encode_args(_probe_audio_bitrate(source_url, self.binary), self.max_kbps)
+        probe_timeout = (
+            None if self.timeout_seconds is None else min(self.timeout_seconds, _PROBE_TIMEOUT_S)
+        )
+        args = encode_args(
+            _probe_audio_bitrate(source_url, self.binary, timeout=probe_timeout), self.max_kbps
+        )
         with tempfile.TemporaryDirectory() as tmp:
-            inputs = ["-i", source_url]
+            # ``-rw_timeout`` (microseconds) is an *input* option, so it must precede the source
+            # ``-i`` it guards; it makes ffmpeg give up on a stalled read rather than hang.
+            inputs = ["-rw_timeout", str(_STALL_TIMEOUT_US), "-i", source_url]
             chapter_args: list[str] = []
             if chapters:
                 meta = Path(tmp) / "chapters.ffmeta"
@@ -124,11 +145,18 @@ class CommandFfmpeg:
                 "+faststart",
                 str(dest),
             ]
-            subprocess.run(cmd, check=True, capture_output=True)
+            # ``timeout`` is the hard backstop if ``-rw_timeout`` doesn't trip: it kills ffmpeg and
+            # raises subprocess.TimeoutExpired, which materialize_audio records as a failed attempt.
+            subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
 
 
-def _probe_audio_bitrate(url: str, ffmpeg_binary: str = "ffmpeg") -> int | None:
-    """Return the source's audio bitrate in bits/sec via ffprobe, or None if unknown."""
+def _probe_audio_bitrate(
+    url: str, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
+) -> int | None:
+    """Return the source's audio bitrate in bits/sec via ffprobe, or None if unknown.
+
+    ``timeout`` (seconds) bounds the probe so a stalled source can't hang it; on timeout (or any
+    other probe failure) we return None, which encode_args treats as "unknown" → safe re-encode."""
     ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
     try:
         out = subprocess.run(
@@ -147,9 +175,10 @@ def _probe_audio_bitrate(url: str, ffmpeg_binary: str = "ffmpeg") -> int | None:
             check=True,
             capture_output=True,
             text=True,
+            timeout=timeout,
         ).stdout.strip()
         return int(out) if out.isdigit() else None
-    except (subprocess.CalledProcessError, OSError, ValueError):
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
         return None
 
 
@@ -284,13 +313,24 @@ def materialize_audio(
             ep.materialize_error = None
             stats.hosted += 1
             stats.encoded += 1
-        except (subprocess.CalledProcessError, OSError, ProviderError) as exc:
+        except (
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+            OSError,
+            ProviderError,
+        ) as exc:
             stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
             # Record the failed attempt so this episode backs off (exponentially) instead of being
             # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
-            # The category (deferred/dead/error) is surfaced by the feed-health audit + report.
+            # A timeout is transient (the source may recover), so like a generic ``error`` it backs
+            # off + retries rather than counting as ``dead``; it gets its own code only so a stalled
+            # source is distinguishable from other failures on the record.
             ep.materialize_attempts += 1
             ep.materialize_last_attempt = now.isoformat()
-            ep.materialize_error = getattr(exc, "code", None) or "error"
+            ep.materialize_error = (
+                "timeout"
+                if isinstance(exc, subprocess.TimeoutExpired)
+                else getattr(exc, "code", None) or "error"
+            )
 
     return stats
