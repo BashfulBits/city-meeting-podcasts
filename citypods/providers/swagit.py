@@ -144,6 +144,26 @@ def _parse_date(raw: str) -> datetime | None:
 
 class SwagitProvider:
     name = "swagit"
+    # Swagit's player uses /play/{video_id}/{seconds} for time-anchored navigation.
+    # Verified from live page chapter anchors: href="/play/389304/51" etc.
+    capabilities: frozenset[str] = frozenset({"deeplink"})
+
+    def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
+        """Build ``{origin}/play/{video_id}/{t}`` from a Swagit video watch-page URL.
+
+        ``ref`` must be a ``/videos/{id}`` canonical URL set by :func:`parse_list`.
+        Returns ``None`` when ``ref`` cannot be parsed (safety guard).
+
+        Verified format: ``https://<tenant>.swagit.com/play/<video_id>/<t_seconds>``
+        (chapter anchors on live Swagit pages use this exact pattern).
+        """
+        parts = urlsplit(ref)
+        path_parts = parts.path.rstrip("/").rsplit("/", 1)
+        if len(path_parts) < 2 or not path_parts[1].isdigit():
+            return None
+        video_id = path_parts[1]
+        origin = f"{parts.scheme}://{parts.netloc}"
+        return f"{origin}/play/{video_id}/{int(t_seconds)}"
 
     def validate(self, source: dict) -> None:
         if not source.get("list_url"):

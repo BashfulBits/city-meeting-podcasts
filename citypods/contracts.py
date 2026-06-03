@@ -75,6 +75,29 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
         except Exception as exc:  # noqa: BLE001
             out.append(_r(provider_name, slug, "view_counts", False, repr(exc)))
 
+    # 5. Video deep-link — sampled liveness check for providers that declare "deeplink".
+    capabilities = getattr(provider, "capabilities", frozenset())
+    if "deeplink" in capabilities and episodes:
+        newest = max(episodes, key=lambda e: e.published)
+        ref = (newest.links or {}).get("canonical_video") or newest.video_url
+        video_deeplink = getattr(provider, "video_deeplink", None)
+        if video_deeplink is not None:
+            try:
+                url = video_deeplink(ref, 30.0)  # sample: 30 seconds in
+                if url:
+                    import requests as _req
+                    from citypods.http import make_session
+                    with make_session() as sess:
+                        resp = sess.head(url, timeout=10, allow_redirects=True)
+                    ok = resp.status_code < 400
+                    out.append(_r(provider_name, slug, "deeplink", ok,
+                                  f"{resp.status_code} {url[:60]}"))
+                else:
+                    out.append(_r(provider_name, slug, "deeplink", False,
+                                  "video_deeplink returned None for a valid ref"))
+            except Exception as exc:  # noqa: BLE001
+                out.append(_r(provider_name, slug, "deeplink", False, repr(exc)))
+
     return out
 
 
