@@ -18,13 +18,21 @@ class FakeFfmpeg:
     """Minimal fake for materialize_audio tests — records calls, writes stub bytes."""
 
     def __init__(self, fail: bool = False):
-        self.calls: list[str] = []            # first resolved URL per call
+        self.calls: list[str] = []  # first resolved URL per call
         self.chapters: list[list[dict] | None] = []
         self.timelines: list = []
         self.fail = fail
 
-    def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *,
-                      loudness_profile=None, asset_resolver=None) -> None:
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ) -> None:
         # Expose the first source URL for backward-compat assertions
         first_url = next(iter(sources_by_id.values())) if sources_by_id else ""
         self.calls.append(first_url)
@@ -248,8 +256,16 @@ class _FailUrls:
         self.marker = marker
         self.calls: list[str] = []
 
-    def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *,
-                      loudness_profile=None, asset_resolver=None):
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ):
         first_url = next(iter(sources_by_id.values())) if sources_by_id else ""
         self.calls.append(first_url)
         if self.marker in first_url:
@@ -396,8 +412,16 @@ def test_encode_timeout_is_caught_and_tagged_timeout(tmp_path):
     # (not crash the build / hang the worker) and recorded as a backoff-eligible failure tagged
     # "timeout" so it isn't retried every run — the in-flight-hang gap behind issue #63.
     class _TimeoutFfmpeg:
-        def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *,
-                          loudness_profile=None, asset_resolver=None):
+        def extract_audio(
+            self,
+            timeline,
+            sources_by_id,
+            dest,
+            chapters=None,
+            *,
+            loudness_profile=None,
+            asset_resolver=None,
+        ):
             raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=2700)
 
     ep = _ep("slow")
