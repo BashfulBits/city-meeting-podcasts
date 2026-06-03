@@ -13,38 +13,41 @@ from pathlib import Path
 
 from citypods.models import City, Episode
 from citypods.stages import (
-    AudioStage,
-    ChaptersStage,
     StageContext,
-    TimelinePlanner,
     TimelineStage,
     default_stages,
     enrich_stages,
-    run_stages,
 )
 from citypods.storage.local import LocalStorage
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _city() -> City:
     return City(
-        slug="t-tx", provider="civicplus",
-        source={"feed_url": "x"}, podcast_title="T",
-        podcast_author="City of T", podcast_email="", podcast_description="d",
+        slug="t-tx",
+        provider="civicplus",
+        source={"feed_url": "x"},
+        podcast_title="T",
+        podcast_author="City of T",
+        podcast_email="",
+        podcast_description="d",
         extract_audio=True,
     )
 
 
 def _ep(guid="g1") -> Episode:
     return Episode(
-        guid=guid, uid=f"uid-{guid}", title="Meeting",
+        guid=guid,
+        uid=f"uid-{guid}",
+        title="Meeting",
         published=datetime(2026, 5, 20, tzinfo=UTC),
         video_url="https://src/vid.mp4",
-        media_kind="direct", duration=3600,
+        media_kind="direct",
+        duration=3600,
     )
 
 
@@ -58,8 +61,16 @@ def _ctx(tmp_path: Path) -> StageContext:
 
 
 class _FakeFfmpeg:
-    def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *,
-                      loudness_profile=None, asset_resolver=None):
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ):
         dest.write_bytes(b"fake")
 
 
@@ -72,32 +83,53 @@ class FakeProvider:
 # TimelinePlanner helpers
 # ---------------------------------------------------------------------------
 
+
 class _SilencePlanner:
     """Fake planner: cuts source 300–600 (returns trimmed two-segment Timeline)."""
+
     name = "silence-fake"
 
     def plan(self, provider, city, ep, ctx, current):
         return Timeline(
             version="silence-v1",
             segments=(
-                Segment(served_start=0, served_end=300, kind="source",
-                        source_id="s0", source_start=0, source_end=300),
-                Segment(served_start=300, served_end=3300, kind="source",
-                        source_id="s0", source_start=600, source_end=3600),
+                Segment(
+                    served_start=0,
+                    served_end=300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=300,
+                ),
+                Segment(
+                    served_start=300,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3600,
+                ),
             ),
         )
 
 
 class _IntroPlannerFake:
     """Fake planner: prepends a 30s intro insert to whatever timeline it receives."""
+
     name = "intro-fake"
 
     def plan(self, provider, city, ep, ctx, current):
         # Shift existing segments by 30s and prepend an intro insert
         if current is None:
             base_segs = (
-                Segment(served_start=30, served_end=3630, kind="source",
-                        source_id="s0", source_start=0, source_end=3600),
+                Segment(
+                    served_start=30,
+                    served_end=3630,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=3600,
+                ),
             )
         else:
             base_segs = tuple(
@@ -114,13 +146,20 @@ class _IntroPlannerFake:
                 )
                 for s in current.segments
             )
-        intro = Segment(served_start=0, served_end=30, kind="insert",
-                        insert="intro", asset_id="brand", asset_version="1")
+        intro = Segment(
+            served_start=0,
+            served_end=30,
+            kind="insert",
+            insert="intro",
+            asset_id="brand",
+            asset_version="1",
+        )
         return Timeline(version="intro-v1", segments=(intro,) + base_segs)
 
 
 class _NoOpPlanner:
     """Planner that never fires."""
+
     name = "noop"
 
     def plan(self, provider, city, ep, ctx, current):
@@ -130,6 +169,7 @@ class _NoOpPlanner:
 # ---------------------------------------------------------------------------
 # TimelineStage — no planners (identity path)
 # ---------------------------------------------------------------------------
+
 
 class TestTimelineStageNoPlanner:
     def test_timeline_stays_none_when_no_planners(self, tmp_path):
@@ -146,8 +186,9 @@ class TestTimelineStageNoPlanner:
         assert stats.ran == 0
 
     def test_already_set_timeline_stays_when_no_planners(self, tmp_path):
-        src = SourceMedia(id="s0", provider="g", ref="u", media_kind="direct",
-                          duration=3600.0, watch_url=None)
+        src = SourceMedia(
+            id="s0", provider="g", ref="u", media_kind="direct", duration=3600.0, watch_url=None
+        )
         ep = _ep()
         ep.timeline = identity_timeline(src, 3600.0)
         stage = TimelineStage(planners=[])
@@ -166,6 +207,7 @@ class TestTimelineStageNoPlanner:
 # ---------------------------------------------------------------------------
 # TimelineStage — single planner
 # ---------------------------------------------------------------------------
+
 
 class TestTimelineStageSinglePlanner:
     def test_planner_result_set_on_episode(self, tmp_path):
@@ -189,6 +231,7 @@ class TestTimelineStageSinglePlanner:
 # ---------------------------------------------------------------------------
 # TimelineStage — planner composition (chained planners)
 # ---------------------------------------------------------------------------
+
 
 class TestTimelineStagePlannerComposition:
     def test_intro_planner_receives_previous_timeline(self, tmp_path):
@@ -233,6 +276,7 @@ class TestTimelineStagePlannerComposition:
 # Ordering: timeline before audio in all stage lists
 # ---------------------------------------------------------------------------
 
+
 class TestStageOrdering:
     def _names(self, stages) -> list[str]:
         return [s.name for s in stages]
@@ -273,6 +317,7 @@ class TestStageOrdering:
 # TimelinePlanner is a structural Protocol (duck-typed)
 # ---------------------------------------------------------------------------
 
+
 class TestTimelinePlannerProtocol:
     def test_fake_planner_satisfies_protocol(self):
         """Runtime check that _SilencePlanner matches TimelinePlanner structurally."""
@@ -283,8 +328,10 @@ class TestTimelinePlannerProtocol:
 
     def test_timeline_stage_accepts_any_compliant_object(self, tmp_path):
         """TimelineStage accepts any object with a .plan() method."""
+
         class _MinimalPlanner:
             name = "minimal"
+
             def plan(self, *a, **kw):
                 return None  # no-op
 
