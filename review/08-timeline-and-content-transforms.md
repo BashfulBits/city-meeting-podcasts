@@ -237,14 +237,25 @@ model already separates them; the rule is *which knob you turn*:
      policy you intend to apply to everything). The nonce is the **surgical** instrument; the version
      is the **blunt** one. The two are independent inputs to the same hash.
 
-   Selecting the affected set is a predicate, not a guess: typically "every record whose audio was
-   encoded before timestamp T" (i.e. by the buggy code), or "spec_hash == legacy", or a body/source
-   filter. That is exactly the input a small ops CLI takes:
+   Selecting the affected set is a predicate, not a guess: typically a window of encode times (the
+   buggy code ran between deploy X and the fix), or "spec_hash == legacy", or a body/source filter,
+   or an explicit uid list. The window must be a **date range**, not just a single before/after bound
+   — a bug introduced in one deploy and fixed in a later one affects only the episodes encoded
+   *between* those two points, and re-encoding files outside that window is wasted work. That is
+   exactly the input a small ops CLI takes:
 
    ```
-   citypods rebuild-audio --before 2026-06-10 --reason fix-pr-####   # stamp nonce on the matched set
-   citypods rebuild-audio --uid <uid> [--uid ...] [--drop-object]    # one-off; --drop-object = case (1)
+   # date-range select (inclusive bounds; either bound optional → open-ended on that side):
+   citypods rebuild-audio --encoded-after 2026-06-03 --encoded-before 2026-06-10 --reason fix-pr-####
+   citypods rebuild-audio --encoded-before 2026-06-10 --reason fix-pr-####   # open-ended start
+   citypods rebuild-audio --encoded-after  2026-06-03 --reason fix-pr-####   # open-ended end
+   # other selectors:
+   citypods rebuild-audio --source <key> [--body <name>] --reason fix-pr-#### # by source/body
+   citypods rebuild-audio --uid <uid> [--uid ...] [--drop-object]            # one-off; --drop-object = case (1)
    ```
+
+   (Selecting on encode time requires that each audio record carry the time it was encoded; INFRA-2
+   adds it to the `audio{}` block if not already present.)
 
    The CLI only *stamps the records* (and optionally drops objects); the normal budgeted enrich/encode
    loop does the work, so a large surgical re-encode still spreads over runs under the wall-clock
@@ -462,11 +473,15 @@ foundation out of the feature PRs for traceability.
 > **INFRA-2 — EpisodeRecord schema v2 + spec-hash generalization.** Add `sources[]` (incl. optional
 > `backup_key`), `timeline{}`, `chapters_basis`, `transcript{}`, `audio.duration_served`, and the
 > `audio_rebuild` nonce; generalize `audio_spec_hash` (§4) with the identity-equivalence guarantee;
-> bump `SCHEMA_VERSION`; lazy v1→v2 upgrade. Ship the surgical-rebuild ops CLI `citypods rebuild-audio`
-> (§4: stamp the nonce on a predicate-selected set, or `--drop-object` for one-off corruption).
+> bump `SCHEMA_VERSION`; lazy v1→v2 upgrade. Record the **encode time** on the `audio{}` block (if
+> not already present) so rebuilds can select by encode window. Ship the surgical-rebuild ops CLI
+> `citypods rebuild-audio` (§4): stamp the nonce on a predicate-selected set — a **date range**
+> (`--encoded-after`/`--encoded-before`, either bound optional), a source/body filter, or an explicit
+> `--uid` list — or `--drop-object` for one-off corruption.
 > **Accept:** identity episodes hash byte-identically to v1 (no re-encode storm); round-trip tests;
 > duration-semantics migration test; setting `audio_rebuild` re-keys *only* the stamped records;
-> dropping an object re-encodes the *same* key. *Deps: INFRA-1.*
+> a date-range select stamps only records whose encode time falls **within** the range (inclusive,
+> open-ended bounds honored); dropping an object re-encodes the *same* key. *Deps: INFRA-1.*
 
 > **INFRA-3 — Timeline-aware encoder.** Generalize `FfmpegRunner.extract_audio` / `materialize_audio`
 > to render a `Timeline` (trim via `atrim`+`concat`, multi-input `concat`, insert splice, optional
