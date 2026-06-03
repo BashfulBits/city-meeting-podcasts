@@ -28,6 +28,7 @@ jobs:
     # Shared by both the render and enrich phases (the heavy `enrich` is what actually encodes +
     # polls the Actions API to yield; render needs the storage creds for durable state pull/push).
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # Lets `citypods enrich` poll the Actions API and yield gracefully when a newer run is queued
       # behind it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
       GITHUB_TOKEN: ${{ github.token }}
