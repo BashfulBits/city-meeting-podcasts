@@ -44,10 +44,10 @@ class SourceMedia:
 
     id: str
     provider: str
-    ref: str        # stable handle: watch-page URL, clip id, or dfile — never a tokenized URL
+    ref: str  # stable handle: watch-page URL, clip id, or dfile — never a tokenized URL
     media_kind: str  # "direct" | "hls"
     duration: float | None  # source-clip seconds (None when unknown before probing)
-    watch_url: str | None   # human watch page (canonical_video)
+    watch_url: str | None  # human watch page (canonical_video)
     backup_key: str | None = None  # future: our archived copy of this source media (§7)
 
 
@@ -57,7 +57,7 @@ class Segment:
 
     served_start: float
     served_end: float
-    kind: str           # "source" | "insert"
+    kind: str  # "source" | "insert"
 
     # kind == "source" fields
     source_id: str | None = None
@@ -65,7 +65,7 @@ class Segment:
     source_end: float | None = None
 
     # kind == "insert" fields
-    insert: str | None = None        # "intro" | "outro" | "silence" | "gap"
+    insert: str | None = None  # "intro" | "outro" | "silence" | "gap"
     asset_id: str | None = None
     asset_version: str | None = None
 
@@ -89,6 +89,7 @@ class Timeline:
 # Constructors
 # ---------------------------------------------------------------------------
 
+
 def identity_timeline(source: SourceMedia, duration: float) -> Timeline:
     """The no-op EDL for an un-manipulated episode: one full-length source segment."""
     return Timeline(
@@ -109,6 +110,7 @@ def identity_timeline(source: SourceMedia, duration: float) -> Timeline:
 # ---------------------------------------------------------------------------
 # Digest
 # ---------------------------------------------------------------------------
+
 
 def _is_identity(tl: Timeline) -> bool:
     """True when the timeline is a single full-pass source segment (no offset, no trim)."""
@@ -140,6 +142,7 @@ def timeline_digest(tl: Timeline) -> str:
 # Time maps
 # ---------------------------------------------------------------------------
 
+
 def served_to_source(tl: Timeline, t: float) -> tuple[str, float] | None:
     """Map a served-time instant to ``(source_id, source_t)``.
 
@@ -153,7 +156,11 @@ def served_to_source(tl: Timeline, t: float) -> tuple[str, float] | None:
     segs = tl.segments
     for i, s in enumerate(segs):
         last = i == len(segs) - 1
-        in_span = (s.served_start <= t < s.served_end) if not last else (s.served_start <= t <= s.served_end)
+        in_span = (
+            (s.served_start <= t < s.served_end)
+            if not last
+            else (s.served_start <= t <= s.served_end)
+        )
         if in_span:
             if s.kind == "insert":
                 return None
@@ -175,7 +182,11 @@ def source_to_served(tl: Timeline, source_id: str, t: float) -> float | None:
     source_segs = [s for s in tl.segments if s.kind == "source" and s.source_id == source_id]
     for i, s in enumerate(source_segs):
         last = i == len(source_segs) - 1
-        in_span = (s.source_start <= t < s.source_end) if not last else (s.source_start <= t <= s.source_end)  # type: ignore[operator]
+        in_span = (  # type: ignore[operator]
+            (s.source_start <= t < s.source_end)
+            if not last
+            else (s.source_start <= t <= s.source_end)
+        )
         if in_span:
             offset = t - s.source_start  # type: ignore[operator]
             return s.served_start + offset

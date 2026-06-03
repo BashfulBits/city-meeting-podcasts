@@ -6,8 +6,6 @@ insert spans), identity timeline passthrough, and timeline_digest semantics.
 
 from __future__ import annotations
 
-import pytest
-
 from citypods.timeline import (
     Segment,
     SourceMedia,
@@ -19,10 +17,10 @@ from citypods.timeline import (
     timeline_digest,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
+
 
 def _src(id="s0", duration=3600.0) -> SourceMedia:
     return SourceMedia(
@@ -40,10 +38,22 @@ def _trimmed_timeline() -> Timeline:
     return Timeline(
         version="silence-v1",
         segments=(
-            Segment(served_start=0, served_end=300, kind="source",
-                    source_id="s0", source_start=0, source_end=300),
-            Segment(served_start=300, served_end=3300, kind="source",
-                    source_id="s0", source_start=600, source_end=3600),
+            Segment(
+                served_start=0,
+                served_end=300,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=300,
+            ),
+            Segment(
+                served_start=300,
+                served_end=3300,
+                kind="source",
+                source_id="s0",
+                source_start=600,
+                source_end=3600,
+            ),
         ),
     )
 
@@ -53,10 +63,22 @@ def _concat_timeline() -> Timeline:
     return Timeline(
         version="concat-v1",
         segments=(
-            Segment(served_start=0, served_end=1800, kind="source",
-                    source_id="s0", source_start=0, source_end=1800),
-            Segment(served_start=1800, served_end=3600, kind="source",
-                    source_id="s1", source_start=0, source_end=1800),
+            Segment(
+                served_start=0,
+                served_end=1800,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=1800,
+            ),
+            Segment(
+                served_start=1800,
+                served_end=3600,
+                kind="source",
+                source_id="s1",
+                source_start=0,
+                source_end=1800,
+            ),
         ),
     )
 
@@ -66,10 +88,22 @@ def _intro_timeline() -> Timeline:
     return Timeline(
         version="intro-v1",
         segments=(
-            Segment(served_start=0, served_end=60, kind="insert",
-                    insert="intro", asset_id="brand-v1", asset_version="1"),
-            Segment(served_start=60, served_end=3660, kind="source",
-                    source_id="s0", source_start=0, source_end=3600),
+            Segment(
+                served_start=0,
+                served_end=60,
+                kind="insert",
+                insert="intro",
+                asset_id="brand-v1",
+                asset_version="1",
+            ),
+            Segment(
+                served_start=60,
+                served_end=3660,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=3600,
+            ),
         ),
     )
 
@@ -77,6 +111,7 @@ def _intro_timeline() -> Timeline:
 # ---------------------------------------------------------------------------
 # identity_timeline
 # ---------------------------------------------------------------------------
+
 
 class TestIdentityTimeline:
     def test_single_segment_full_span(self):
@@ -107,8 +142,10 @@ class TestIdentityTimeline:
 
     def test_remap_items_unchanged(self):
         tl = identity_timeline(_src(), 3600.0)
-        items = [{"start": 0, "title": "Call to order"},
-                 {"start": 120, "end": 300, "title": "Agenda"}]
+        items = [
+            {"start": 0, "title": "Call to order"},
+            {"start": 120, "end": 300, "title": "Agenda"},
+        ]
         out = remap(tl, items)
         assert out[0]["start"] == 0
         assert out[1]["start"] == 120
@@ -118,6 +155,7 @@ class TestIdentityTimeline:
 # ---------------------------------------------------------------------------
 # timeline_digest
 # ---------------------------------------------------------------------------
+
 
 class TestTimelineDigest:
     def test_identity_returns_empty_string(self):
@@ -140,8 +178,14 @@ class TestTimelineDigest:
         tl = Timeline(
             version="something-else",
             segments=(
-                Segment(served_start=0.0, served_end=1000.0, kind="source",
-                        source_id="s0", source_start=0.0, source_end=1000.0),
+                Segment(
+                    served_start=0.0,
+                    served_end=1000.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0.0,
+                    source_end=1000.0,
+                ),
             ),
         )
         assert timeline_digest(tl) == ""
@@ -151,8 +195,14 @@ class TestTimelineDigest:
         tl = Timeline(
             version="v1",
             segments=(
-                Segment(served_start=0.0, served_end=1000.0, kind="source",
-                        source_id="s0", source_start=120.0, source_end=1120.0),
+                Segment(
+                    served_start=0.0,
+                    served_end=1000.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=120.0,
+                    source_end=1120.0,
+                ),
             ),
         )
         assert timeline_digest(tl) != ""
@@ -165,6 +215,7 @@ class TestTimelineDigest:
 # ---------------------------------------------------------------------------
 # served_to_source — trimmed timeline
 # ---------------------------------------------------------------------------
+
 
 class TestServedToSource:
     def test_first_span_maps_correctly(self):
@@ -194,8 +245,8 @@ class TestServedToSource:
 
     def test_insert_returns_none(self):
         tl = _intro_timeline()
-        assert served_to_source(tl, 0.0) is None    # inside intro insert
-        assert served_to_source(tl, 30.0) is None   # still in insert
+        assert served_to_source(tl, 0.0) is None  # inside intro insert
+        assert served_to_source(tl, 30.0) is None  # still in insert
         assert served_to_source(tl, 59.9) is None
 
     def test_source_after_insert_maps_correctly(self):
@@ -208,6 +259,7 @@ class TestServedToSource:
 # ---------------------------------------------------------------------------
 # source_to_served — trimmed timeline
 # ---------------------------------------------------------------------------
+
 
 class TestSourceToServed:
     def test_kept_span_maps_correctly(self):
@@ -240,6 +292,7 @@ class TestSourceToServed:
 # ---------------------------------------------------------------------------
 # served_to_source / source_to_served — concat timeline
 # ---------------------------------------------------------------------------
+
 
 class TestConcatTimeline:
     def test_s0_maps_correctly(self):
@@ -282,6 +335,7 @@ class TestConcatTimeline:
 # remap
 # ---------------------------------------------------------------------------
 
+
 class TestRemap:
     def test_identity_remap_unchanged(self):
         tl = identity_timeline(_src(), 3600.0)
@@ -295,10 +349,10 @@ class TestRemap:
         tl = _trimmed_timeline()
         # source 300–600 was cut; chapters with start in that range should be dropped
         items = [
-            {"start": 0, "title": "A"},      # kept → served 0
-            {"start": 200, "title": "B"},    # kept → served 200
-            {"start": 350, "title": "C"},    # CUT (source 350 is in 300–600 gap)
-            {"start": 600, "title": "D"},    # kept → served 300
+            {"start": 0, "title": "A"},  # kept → served 0
+            {"start": 200, "title": "B"},  # kept → served 200
+            {"start": 350, "title": "C"},  # CUT (source 350 is in 300–600 gap)
+            {"start": 600, "title": "D"},  # kept → served 300
         ]
         out = remap(tl, items)
         assert len(out) == 3
