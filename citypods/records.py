@@ -23,6 +23,7 @@ Why this exists (see project memory, "episode-record / identity refactor"):
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
@@ -31,8 +32,9 @@ from pathlib import Path
 
 from citypods.bodies import body_key, canonical_body
 from citypods.models import City, Episode
+from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 # Bump to force every audio file to be regenerated (e.g. a codec/loudness policy change that
 # isn't otherwise captured by the per-episode spec inputs below).
 AUDIO_PIPELINE_VERSION = "1"
@@ -72,14 +74,45 @@ def assign_uids(city: City, episodes: list[Episode]) -> None:
 
 
 def audio_spec_hash(ep: Episode, *, max_kbps: int) -> str:
-    """Hash of everything that determines the audio bytes. Note: the HLS *resolved* URL is
-    tokenized/expiring and is deliberately excluded — only the stable source page url is used."""
-    spec = {
-        "v": AUDIO_PIPELINE_VERSION,
-        "source": ep.video_url,
-        "max_kbps": max_kbps,
-        "chapters": ep.chapters,
-    }
+    """Hash of everything that determines the audio bytes.
+
+    **Identity path (v1-compatible):** when no timeline manipulation, rebuild nonce, or
+    loudness profile is active, and the episode has at most one source, the spec dict is
+    byte-identical to the v1 format — same JSON → same SHA1 → no re-encode storm when
+    this model first ships.  Only episodes that are *actually* manipulated (non-identity
+    timeline, nonce stamped, multi-source concat) get the new format and a new key.
+
+    **v2 format** (all other cases): adds ``timeline``, ``loudness``, ``sources``,
+    ``rebuild`` fields.  New fields are included at their defaults (``""``, ``[]``) so
+    future features that set them only re-encode the episodes they actually affect.
+
+    Note: the HLS *resolved* URL is tokenized/expiring and is deliberately excluded —
+    only the stable source ref is used.
+    """
+    tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
+    loudness = ""   # populated by future loudness stage (#21); field reserved in v2 format
+    rebuild = ep.audio_rebuild or ""
+
+    if not tl_digest and not rebuild and not loudness and len(ep.sources) <= 1:
+        # v1-compatible format: byte-identical for identity episodes.
+        spec = {
+            "v": AUDIO_PIPELINE_VERSION,
+            "source": ep.video_url,
+            "max_kbps": max_kbps,
+            "chapters": ep.chapters,
+        }
+    else:
+        source_refs = [s.ref for s in ep.sources] if ep.sources else [ep.video_url]
+        spec = {
+            "v": AUDIO_PIPELINE_VERSION,
+            "max_kbps": max_kbps,
+            "timeline": tl_digest,
+            "loudness": loudness,
+            "chapters": ep.chapters,
+            "sources": source_refs,
+            "rebuild": rebuild,
+        }
+
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
@@ -102,7 +135,9 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             e.transcript_url,
             sorted((e.links or {}).items()),
             e.chapters,
+            e.chapters_basis,
             e.duration,
+            e.audio_duration_served,
             e.hosted_audio_url,
             e.video_url,
             e.media_kind,
@@ -163,13 +198,20 @@ def episode_to_record(ep: Episode) -> dict:
         "duration": ep.duration,
         "links": ep.links,
         "chapters": ep.chapters,
+        "chapters_basis": ep.chapters_basis,
         "summary": ep.summary,
         "transcript_url": ep.transcript_url,
+        # v2: source-media registry and timeline EDL (omitted when empty/identity).
+        "sources": [dataclasses.asdict(s) for s in ep.sources] if ep.sources else [],
+        "timeline": dataclasses.asdict(ep.timeline) if ep.timeline is not None else None,
         "audio": {
             "key": ep.audio_key,
             "url": ep.hosted_audio_url,
             "spec_hash": ep.audio_spec_hash,
             "bytes": ep.audio_bytes,
+            "encode_time": ep.audio_encode_time,
+            "duration_served": ep.audio_duration_served,
+            "rebuild": ep.audio_rebuild or None,  # omit when empty to keep records clean
             # Materialization backoff state (#120): persisted so failures back off across runs.
             "attempts": ep.materialize_attempts,
             "last_attempt": ep.materialize_last_attempt,
@@ -178,14 +220,39 @@ def episode_to_record(ep: Episode) -> dict:
     }
 
 
+def _source_media_from_dict(d: dict) -> SourceMedia:
+    known = {f.name for f in dataclasses.fields(SourceMedia)}
+    return SourceMedia(**{k: v for k, v in d.items() if k in known})
+
+
+def _timeline_from_dict(d: dict) -> Timeline:
+    return Timeline(
+        version=d["version"],
+        segments=tuple(Segment(**s) for s in d.get("segments", [])),
+        basis=d.get("basis", "served"),
+    )
+
+
 def record_to_episode(rec: dict) -> Episode:
     """Rebuild an :class:`Episode` from a stored record — the inverse of
     :func:`episode_to_record`. Used to render feeds from the *full* append-only archive,
     including episodes that have dropped out of the provider's current window (Granicus
-    100-item cap, Swagit windowing) and so are no longer in a fresh fetch."""
+    100-item cap, Swagit windowing) and so are no longer in a fresh fetch.
+
+    Handles lazy v1→v2 schema upgrade: v1 records lack ``sources``, ``timeline``, and
+    ``chapters_basis``; they default to empty/identity/source:s0 which preserves existing
+    behaviour until a stage enriches the episode and re-persists it as v2.
+    """
     published = rec.get("published")
     when = datetime.fromisoformat(published) if published else datetime.now(UTC)
     audio = rec.get("audio") or {}
+
+    sources_data = rec.get("sources") or []
+    sources = [_source_media_from_dict(s) for s in sources_data]
+
+    tl_data = rec.get("timeline")
+    timeline = _timeline_from_dict(tl_data) if tl_data else None
+
     return Episode(
         guid=rec.get("provider_guid") or "",
         title=rec.get("title") or "",
@@ -206,6 +273,13 @@ def record_to_episode(rec: dict) -> Episode:
         chapters=rec.get("chapters") or [],
         summary=rec.get("summary") or "",
         transcript_url=rec.get("transcript_url"),
+        # v2 fields (default to identity/empty for v1 records — lazy upgrade)
+        sources=sources,
+        timeline=timeline,
+        chapters_basis=rec.get("chapters_basis", "source:s0"),
+        audio_rebuild=audio.get("rebuild") or "",
+        audio_encode_time=audio.get("encode_time"),
+        audio_duration_served=audio.get("duration_served"),
     )
 
 
@@ -262,12 +336,23 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.materialize_last_attempt = audio.get("last_attempt")
         ep.materialize_error = audio.get("error")
         ep.audio_bytes = audio.get("bytes")
+        ep.audio_encode_time = audio.get("encode_time")
+        ep.audio_duration_served = audio.get("duration_served")
+        ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
         ep.transcript_url = rec.get("transcript_url", ep.transcript_url)
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters
+        ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
         if rec.get("duration") and not ep.duration:
             ep.duration = rec["duration"]
+        # v2: restore sources and timeline from record (lazy upgrade: absent → defaults)
+        sources_data = rec.get("sources") or []
+        if sources_data and not ep.sources:
+            ep.sources = [_source_media_from_dict(s) for s in sources_data]
+        tl_data = rec.get("timeline")
+        if tl_data and ep.timeline is None:
+            ep.timeline = _timeline_from_dict(tl_data)
 
 
 def migrate_legacy_manifests(state_dir: Path, episodes: list[Episode]) -> int:

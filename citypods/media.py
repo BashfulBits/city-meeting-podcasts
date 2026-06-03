@@ -310,6 +310,8 @@ def materialize_audio(
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
+            ep.audio_encode_time = now.isoformat()
+            ep.audio_duration_served = float(ep.duration) if ep.duration is not None else None
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None
