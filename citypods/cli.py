@@ -123,7 +123,7 @@ def _run_build(args, *, phase: str, dry_run: bool) -> int:
 def _report(args) -> int:
     from pathlib import Path
 
-    from citypods.report import build_report, to_admin_html, to_markdown
+    from citypods.report import build_report, build_status, to_admin_html, to_markdown, to_status_html
     from citypods.state import resolve_state_dir
 
     site_config = load_site_config(args.site_config)
@@ -137,6 +137,12 @@ def _report(args) -> int:
     admin.mkdir(parents=True, exist_ok=True)
     (admin / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     (admin / "index.html").write_text(to_admin_html(report))
+
+    status = build_status(cities, site_config=site_config, state_dir=state_dir)
+    admin_status = admin / "status"
+    admin_status.mkdir(parents=True, exist_ok=True)
+    (admin_status / "index.html").write_text(to_status_html(status))
+    (admin_status / "status.json").write_text(json.dumps(status, indent=2) + "\n")
 
     md = to_markdown(report)
     if args.markdown:

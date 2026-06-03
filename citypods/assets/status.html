@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Operational status — admin</title>
+<style>
+*{box-sizing:border-box}
+body{font:14px/1.5 system-ui,sans-serif;margin:0;background:#0e1116;color:#e6edf3}
+.wrap{max-width:1100px;margin:0 auto;padding:16px 20px}
+h2{font-size:.92rem;margin:1.6rem 0 .5rem;color:#9db2c8;text-transform:uppercase;letter-spacing:.04em}
+h3{font-size:.85rem;margin:.8rem 0 .3rem;color:#9db2c8}
+a{color:#58a6ff;text-decoration:none} a:hover{text-decoration:underline}
+.muted{color:#9db2c8;font-size:.8rem}
+.ok{color:#3fb950} .warn{color:#f0b429} .err{color:#f85149}
+/* banner */
+.banner{background:#2d1e00;border:1px solid #f0b429;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;font-size:.85rem}
+.banner-icon{font-size:1.1rem;flex-shrink:0}
+.banner-right{margin-left:auto;font-size:.8rem}
+/* nav */
+.nav{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px}
+.nav a{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:4px 10px;font-size:.8rem;color:#9db2c8}
+.nav a:hover{border-color:#58a6ff;color:#e6edf3;text-decoration:none}
+.nav-sep{color:#30363d;padding:0 2px;align-self:center}
+.nav-ext{color:#58a6ff !important;border-color:#1c4a8a !important}
+/* KPI grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:4px}
+@media(max-width:520px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 12px}
+.card-label{font-size:.72rem;color:#9db2c8;text-transform:uppercase;letter-spacing:.04em}
+.card-val{font-size:1.4rem;font-weight:700;line-height:1.2;margin:2px 0}
+.card-sub{font-size:.75rem;color:#9db2c8}
+/* legend */
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;margin:.4rem 0 1rem;color:#9db2c8}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+/* section card */
+.section-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 14px;margin-bottom:12px}
+/* backlog table */
+.bl-row{display:grid;grid-template-columns:120px 56px 60px 60px 60px 80px 80px;gap:0;font-size:.82rem;border-bottom:1px solid #21262d;padding:4px 0}
+.bl-row.hdr{font-size:.72rem;color:#9db2c8;border-bottom:2px solid #30363d;padding-bottom:5px}
+.bl-row div{padding:0 4px}
+/* resource table */
+.tbl-ctrl{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.toggle-btn{background:#21262d;border:1px solid #30363d;color:#9db2c8;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:.82rem}
+.toggle-btn.active{background:#1c4a8a;border-color:#58a6ff;color:#e6edf3}
+.tbl-wrap{overflow-x:auto;font-size:.8rem}
+table{border-collapse:collapse;width:100%;min-width:700px}
+th{background:#1c2128;color:#9db2c8;font-size:.72rem;font-weight:600;text-align:left;padding:5px 7px;border-bottom:2px solid #30363d;white-space:nowrap;cursor:pointer;user-select:none}
+th:hover{color:#e6edf3}
+th .sort-arrow{margin-left:3px;font-size:.7rem;opacity:.5}
+th.sorted .sort-arrow{opacity:1;color:#58a6ff}
+td{padding:4px 7px;border-bottom:1px solid #21262d;vertical-align:middle;white-space:nowrap}
+tr:hover td{background:#1c2128}
+.badge{display:inline-block;border-radius:4px;padding:1px 6px;font-size:.72rem;font-weight:600}
+.badge-ok{background:#0d3d1a;color:#3fb950}
+.badge-warn{background:#3d2900;color:#f0b429}
+.badge-err{background:#3d0a0a;color:#f85149}
+.hist{font-size:.78rem;white-space:nowrap}
+.hist .ok{margin-right:4px} .hist .warn{margin-right:4px}
+/* storage */
+.storage-tables{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+@media(max-width:640px){.storage-tables{grid-template-columns:1fr}}
+.storage-tables table{min-width:0;width:100%}
+/* slider */
+.slider-row{display:flex;align-items:center;gap:10px;margin:.6rem 0;flex-wrap:wrap}
+.slider-row input[type=range]{flex:1;min-width:160px;accent-color:#58a6ff}
+.slider-deltas{font-size:.82rem;color:#9db2c8;margin:.3rem 0 .6rem;line-height:1.8}
+.slider-deltas .val{color:#e6edf3;font-weight:600}
+/* history table — reuse .tbl-wrap */
+.run-ok{color:#3fb950} .run-skip{color:#9db2c8} .run-err{color:#f0b429}
+</style></head>
+<body><div class="wrap">
+
+<div class="banner" id="banner">
+  <span class="banner-icon">⚠</span>
+  <span>
+    <strong>OPERATIONAL ACTUALS</strong> — must sit behind Cloudflare Access
+    (<code>/admin/*</code>). Contains real cost, storage, and error data.
+  </span>
+  <span class="banner-right" id="snapshot-ts"></span>
+</div>
+
+<nav class="nav">
+  <a href="#kpis">At-a-glance</a>
+  <a href="#backlog">Backlog</a>
+  <a href="#issues">Issues</a>
+  <a href="#table">Resource Table</a>
+  <a href="#storage">Storage &amp; Retention</a>
+  <a href="#history">Build History</a>
+  <span class="nav-sep">|</span>
+  <a href="/admin/" class="nav-ext">↗ what-if calculator</a>
+</nav>
+
+<div id="kpis"></div>
+<div id="backlog"></div>
+<div id="issues"></div>
+<div id="table"></div>
+<div id="storage"></div>
+<div id="history"></div>
+
+<p class="muted" style="margin-top:20px">
+  Snapshot per build — no live data. &nbsp;|&nbsp;
+  <a href="status.json">status.json</a> &nbsp;|&nbsp;
+  <a href="/admin/report.json">report.json</a> &nbsp;|&nbsp;
+  <a href="/admin/">what-if calculator</a>
+</p>
+
+<script id="status-data" type="application/json">__STATUS_JSON__</script>
+<script>
+'use strict';
+const S = JSON.parse(document.getElementById('status-data').textContent);
+const K = S.kpis, REPO = S.config.github_repo, SITE = S.config.site_url || '';
+const B2_PER_GB = 0.006, B2_FREE = 10;
+
+// ── Utilities ───────────────────────────────────────────────────────────────
+
+function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtGb(gb){ return gb==null?'—':gb>=1?gb.toFixed(2)+' GB':(gb*1000).toFixed(0)+' MB'; }
+function fmtHrs(h){ return h>=1?Math.round(h).toLocaleString()+' h':'<1 h'; }
+function fmtCost(usd){ return '$'+usd.toFixed(2)+'/mo'; }
+function fmtNum(n){ return n==null?'—':Number(n).toLocaleString(); }
+function fmtPct(a,b){ return b?Math.round(a/b*100)+'%':'—'; }
+function fmtDate(s){ return s?s.slice(0,10):'—'; }
+
+function ghUrl(path){ return REPO?`https://github.com/${REPO}/${path}`:null; }
+function ghIssue(n){ return ghUrl(`issues/${n}`); }
+function ghSearch(q){ return ghUrl(`issues?q=${encodeURIComponent(q)}`); }
+function actionsUrl(id){ return ghUrl(`actions/runs/${id}`); }
+function feedUrl(slug){ return SITE?`${SITE}/${slug}/`:null; }
+
+function link(url, text, cls=''){
+  if(!url) return esc(text);
+  return `<a href="${esc(url)}"${cls?' class="'+cls+'"':''}>${esc(text)}</a>`;
+}
+function issueLink(n, text){ return link(ghIssue(n), text||`#${n}`); }
+
+function healthBadge(h){
+  if(h==='ok')   return '<span class="badge badge-ok">✓ ok</span>';
+  if(h==='warn') return '<span class="badge badge-warn">⚠ warn</span>';
+  return '<span class="badge badge-err">✗ err</span>';
+}
+
+// ── Section 1: KPI Cards ────────────────────────────────────────────────────
+
+function renderKpis(){
+  const lb = K.last_build||{};
+  const lbTs  = lb.ts ? new Date(lb.ts).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short',hour12:false}) : '—';
+  const lbCls = lb.status==='errors'?'err':lb.status==='built'?'ok':'muted';
+  const lbLabel = lb.status==='errors'?'⚠ errors':lb.status==='built'?'✓ built':'— skipped';
+  const lbLink  = lb.github_run_url ? `<a href="${esc(lb.github_run_url)}">→ Actions</a>` : '';
+  const gbLabel = K.gb_exact ? fmtGb(K.gb_stored) : '~'+fmtGb(K.gb_stored);
+  const gbSub   = K.gb_exact ? 'exact (audio.bytes)' : '~estimated (some records missing bytes)';
+
+  document.getElementById('kpis').innerHTML = `
+<h2>At-a-glance</h2>
+<div class="kpi-grid">
+  ${card('FEEDS', fmtNum(K.feeds), 'configured feed slugs')}
+  ${card('MEETINGS ARCHIVED', fmtNum(K.meetings_archived), 'all states · all sources')}
+  ${card('HOSTED AUDIO', fmtNum(K.hosted_audio), 'audio we serve from B2')}
+  ${card('LINKED VIDEO', fmtNum(K.linked_video), 'direct MP4 links, not stored')}
+  ${card('HOSTED HOURS', fmtHrs(K.hours_hosted), K.hours_linked>0?`+${fmtHrs(K.hours_linked)} linked video`:'hosted audio only')}
+  ${card('STORED', gbLabel, gbSub)}
+  ${card('EST. B2/MO', fmtCost(K.monthly_cost_usd), 'first 10 GB free')}
+  <div class="card">
+    <div class="card-label">LAST BUILD</div>
+    <div class="card-val ${lbCls}">${lbLabel}</div>
+    <div class="card-sub">${lbTs}${lbLink?' · '+lbLink:''}</div>
+  </div>
+</div>
+<div class="legend">
+  <span><span class="ok">✓</span> Served/current</span>
+  <span><span class="warn">↻</span> Stale/re-encode queued</span>
+  <span>⏳ Pending (never hosted)</span>
+  <span>🔗 Linked video (not stored)</span>
+  <span>⟳ Deferred ${issueLink(122)}</span>
+  <span><span class="err">✗</span> Dead ${issueLink(120)}</span>
+  <span><span class="warn">⚠</span> Transient error</span>
+</div>`;
+
+  document.getElementById('snapshot-ts').textContent =
+    'Snapshot: ' + new Date(S.snapshot_ts).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short',hour12:false})+' UTC';
+}
+
+function card(label, val, sub=''){
+  return `<div class="card"><div class="card-label">${esc(label)}</div><div class="card-val">${esc(val)}</div>${sub?`<div class="card-sub">${esc(sub)}</div>`:''}</div>`;
+}
+
+// ── Section 2: Backlog & Pipeline Health ────────────────────────────────────
+
+function renderBacklog(){
+  const B = S.backlog;
+  const staleNote = B.stale>0
+    ? `<div class="muted" style="margin:.3rem 0 0 1em">
+        Stale episodes ARE currently serving (healthy degraded state).
+        Drain estimate: ~${B.stale_drain_runs??'?'} run(s) · ~${B.stale_drain_days??'?'} day(s) at current budget.
+        Old + new objects coexist until orphan GC.
+       </div>` : '';
+  const stages = B.stage_totals||{};
+  const stageKeys = Object.keys(stages).sort();
+  const stageRows = stageKeys.length ? stageKeys.map(name=>{
+    const t = stages[name];
+    const newVal = name==='audio' && (t.encoded||t.credited)
+      ? `${t.ran} <span class="muted">(${t.encoded}enc·${t.credited}crd)</span>`
+      : t.ran;
+    const bytes = t.bytes>0 ? fmtMb(t.bytes) : '—';
+    return `<div class="bl-row">
+      <div>${esc(name)}</div>
+      <div>${newVal}</div>
+      <div>${t.reused}</div>
+      <div>${t.backlog}</div>
+      <div>${t.errors}</div>
+      <div>${t.seconds!=null?t.seconds.toFixed(1)+'s':'—'}</div>
+      <div>${bytes}</div>
+    </div>`;
+  }).join('') : '<div class="muted" style="padding:.4rem 0;font-size:.8rem">No run history yet.</div>';
+
+  const keepIcon = B.keeps_up ? '<span class="ok">✓ keeps up</span>' : '<span class="warn">⚠ falling behind</span>';
+
+  document.getElementById('backlog').innerHTML = `
+<h2>Backlog &amp; Pipeline Health</h2>
+<div class="section-card">
+  <div style="margin-bottom:.6rem;font-size:.85rem">
+    <div>⏳ <strong>First-time pending</strong> (HLS, no enclosure, never attempted): <strong>${B.pending}</strong> ep(s)</div>
+    <div>↻ <strong>Stale / re-encode queued</strong> (served, spec changed): <strong>${B.stale}</strong> ep(s)</div>
+    ${staleNote}
+  </div>
+  <div class="bl-row hdr">
+    <div>Stage</div><div>New</div><div>Current</div><div>Queued</div><div>Errors</div><div>Seconds</div><div>Bytes</div>
+  </div>
+  ${stageRows}
+  <div class="muted" style="font-size:.75rem;margin:.4rem 0">
+    New = newly produced this run · Current = already up-to-date · Queued = deferred (budget/wall-clock).
+    Linked Video episodes (direct MP4, not hosted) excluded from all stage counts.
+  </div>
+  <div style="margin-top:.6rem;font-size:.85rem">
+    <div>Capacity vs. inflow: <strong>${B.capacity_per_day}</strong>/day capacity · <strong>${B.inflow_per_day}</strong>/day inflow — ${keepIcon}
+      <span class="muted"> &nbsp;|&nbsp; <a href="/admin/">→ /admin/ for full projection</a></span></div>
+    <div>Full backfill estimate: ${B.pending} pending ep(s) → ${B.full_backfill_days} day(s) at current budget</div>
+  </div>
+</div>`;
+}
+
+function fmtMb(b){ return b>=1e9?(b/1e9).toFixed(2)+' GB':(b/1e6).toFixed(1)+' MB'; }
+
+// ── Section 3: Episodes with Issues ─────────────────────────────────────────
+
+function renderIssues(){
+  const I = S.issues;
+  const topLinks = (arr, field)=>arr.map(([slug,n])=>{
+    const slugLink = link(feedUrl(slug)||ghSearch(slug), slug);
+    const ghLink   = ghSearch(slug);
+    return `${slugLink} (${n}) ${link(ghUrl(`issues?q=${encodeURIComponent(slug)}`), '→ GH')}`;
+  }).join(' · ') || '—';
+
+  document.getElementById('issues').innerHTML = `
+<h2>Episodes with Issues</h2>
+<div class="section-card" style="font-size:.85rem">
+  <div style="margin-bottom:.7rem">
+    <div>⟳ <strong>Deferred</strong> — awaiting multi-segment concat ${issueLink(122)}</div>
+    <div style="margin:.2rem 0 .2rem 1.2em">
+      <strong>${I.deferred}</strong> ep(s) &nbsp;
+      ${I.top_deferred.length?'Top: '+topLinks(I.top_deferred):''}
+    </div>
+  </div>
+  <div style="margin-bottom:.7rem">
+    <div><span class="err">✗</span> <strong>Dead</strong> — no usable media ${issueLink(120)} ${I.dead>0?'<span class="err">⚠</span>':''}</div>
+    <div style="margin:.2rem 0 .2rem 1.2em">
+      <strong>${I.dead}</strong> ep(s) &nbsp;
+      ${I.top_dead.length?'Top: '+topLinks(I.top_dead):''}
+    </div>
+  </div>
+  <div style="margin-bottom:.7rem">
+    <div><span class="warn">⚠</span> <strong>Transient errors</strong> (last-run failures, in exponential backoff)</div>
+    <div style="margin:.2rem 0 .2rem 1.2em">
+      <strong>${I.transient_errors}</strong> ep(s) &nbsp;
+      ${I.top_errors.length?'Top: '+topLinks(I.top_errors):''}
+    </div>
+  </div>
+  <div>
+    <div>📡 <strong>Dead enclosures / stalled feeds</strong>
+      — ${link(ghUrl('issues?q=label%3Astalled-feed'),'search: label:stalled-feed')}
+      or run <code>citypods doctor</code></div>
+  </div>
+</div>`;
+}
+
+// ── Section 4: Resource Table ────────────────────────────────────────────────
+
+let tableView = 'feed';
+let feedSort = {key:'gb_stored', dir:-1};
+let citySort = {key:'gb_stored', dir:-1};
+
+function renderTable(){
+  const ctrl = `
+<div class="tbl-ctrl">
+  <button class="toggle-btn ${tableView==='feed'?'active':''}" onclick="switchView('feed')">By Feed</button>
+  <button class="toggle-btn ${tableView==='city'?'active':''}" onclick="switchView('city')">By City</button>
+  <span class="muted" style="font-size:.78rem">Click column headers to sort</span>
+</div>`;
+  document.getElementById('table').innerHTML = `<h2>Resource Table</h2>${ctrl}<div class="tbl-wrap" id="tbl-body"></div>`;
+  renderTableBody();
+}
+
+function switchView(v){ tableView=v; renderTable(); }
+
+function renderTableBody(){
+  if(tableView==='feed') renderFeedTable();
+  else renderCityTable();
+}
+
+const FEED_COLS = [
+  {key:'slug', label:'Feed', wrap:true, fmt:r=>{
+    const name = r.body
+      ? `${esc(r.podcast_author)} — ${esc(r.body)}`
+      : esc(r.podcast_author);
+    const lnk = feedUrl(r.slug) ? `<a href="${esc(feedUrl(r.slug))}">${name}</a>` : name;
+    return `${lnk} ${link(ghUrl('issues?q='+encodeURIComponent(r.slug)), '🔍', 'muted')}`;
+  }},
+  {key:'provider',      label:'Prov',     fmt:r=>esc(r.provider)},
+  {key:'episodes',      label:'Eps',      fmt:r=>fmtNum(r.episodes)},
+  {key:'hours_hosted',  label:'Hrs',      fmt:r=>fmtHrs(r.hours_hosted)},
+  {key:'gb_stored',     label:'GB',       fmt:r=>(r.gb_exact?'':r.gb_stored>0?'~':'')+fmtGb(r.gb_stored)},
+  {key:'hosted',        label:'Hosted%',  fmt:r=>fmtPct(r.hosted, r.episodes)},
+  {key:'pending',       label:'Pend',     fmt:r=>r.pending||'—'},
+  {key:'stale',         label:'Re-enc',   fmt:r=>r.stale?`<span class="warn">${r.stale}</span>`:'—'},
+  {key:'deferred',      label:'Defer',    fmt:r=>r.deferred?`<span class="warn">${r.deferred}</span>`:'—'},
+  {key:'dead',          label:'Dead',     fmt:r=>r.dead?`<span class="err">${r.dead}</span>`:'—'},
+  {key:'last_published',label:'Latest',   fmt:r=>fmtDate(r.last_published)},
+  {key:'health',        label:'Health',   fmt:r=>healthBadge(r.health)},
+];
+
+const CITY_COLS = [
+  {key:'city',       label:'City',       wrap:true, fmt:r=>link(ghUrl('issues?q='+encodeURIComponent(r.city)), esc(r.city))},
+  {key:'feeds',      label:'Feeds',      fmt:r=>r.feeds},
+  {key:'provider',   label:'Prov',       fmt:r=>esc(r.provider||'—')},
+  {key:'episodes',   label:'Eps',        fmt:r=>fmtNum(r.episodes)},
+  {key:'hours_hosted',label:'Hrs',       fmt:r=>fmtHrs(r.hours_hosted)},
+  {key:'gb_stored',  label:'GB',         fmt:r=>(r.gb_exact?'':r.gb_stored>0?'~':'')+fmtGb(r.gb_stored)},
+  {key:'hosted',     label:'Hosted%',    fmt:r=>fmtPct(r.hosted, r.episodes)},
+  {key:'pending',    label:'Pend',       fmt:r=>r.pending||'—'},
+  {key:'stale',      label:'Re-enc',     fmt:r=>r.stale?`<span class="warn">${r.stale}</span>`:'—'},
+  {key:'deferred',   label:'Defer',      fmt:r=>r.deferred?`<span class="warn">${r.deferred}</span>`:'—'},
+  {key:'dead',       label:'Dead',       fmt:r=>r.dead?`<span class="err">${r.dead}</span>`:'—'},
+  {key:'last_published',label:'Latest',  fmt:r=>fmtDate(r.last_published)},
+  {key:'health',     label:'Health',     fmt:r=>`<span class="hist"><span class="ok">✓${r.health_ok}</span><span class="warn"> ⚠${r.health_warn}</span><span class="err"> ✗${r.health_error}</span></span>`},
+];
+
+function sortRows(rows, sort){
+  return [...rows].sort((a,b)=>{
+    const va=a[sort.key]??'', vb=b[sort.key]??'';
+    if(typeof va==='number'||typeof vb==='number') return sort.dir*(Number(va)-Number(vb));
+    return sort.dir*String(va).localeCompare(String(vb));
+  });
+}
+
+function thClick(key){
+  if(tableView==='feed'){
+    feedSort = feedSort.key===key ? {key, dir:-feedSort.dir} : {key, dir:-1};
+  } else {
+    citySort = citySort.key===key ? {key, dir:-citySort.dir} : {key, dir:-1};
+  }
+  renderTableBody();
+}
+
+function buildTable(cols, rows, sort){
+  const ths = cols.map(c=>{
+    const arrow = c.key===sort.key ? (sort.dir===-1?'▼':'▲') : '⇅';
+    const cls = c.key===sort.key ? ' class="sorted"' : '';
+    return `<th${cls} onclick="thClick('${c.key}')">${esc(c.label)} <span class="sort-arrow">${arrow}</span></th>`;
+  }).join('');
+  const trs = sortRows(rows, sort).map(r=>
+    '<tr>'+cols.map(c=>`<td${c.wrap?' style="white-space:normal;min-width:140px"':''}>${c.fmt(r)}</td>`).join('')+'</tr>'
+  ).join('');
+  return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+function renderFeedTable(){
+  document.getElementById('tbl-body').innerHTML =
+    buildTable(FEED_COLS, S.feeds_by_feed, feedSort) +
+    `<div class="muted" style="font-size:.75rem;margin:.4rem 0">
+      Feed name links → feed page on site · 🔍 → GitHub issue search for that slug.
+      GB = audio.bytes sum (exact when all records have bytes; ~ = undercount until re-hosted).
+      $/mo shown per-feed before free-tier deduction (total $/mo in KPIs accounts for 10 GB free).
+     </div>`;
+}
+
+function renderCityTable(){
+  document.getElementById('tbl-body').innerHTML =
+    buildTable(CITY_COLS, S.feeds_by_city, citySort) +
+    `<div class="muted" style="font-size:.75rem;margin:.4rem 0">
+      City links → GitHub issue search. Grouped by <code>podcast_author</code>.
+      Feed health histogram: ✓ok ⚠warn ✗err count of feeds per city.
+    </div>`;
+}
+
+// ── Section 5: Storage & Retention ──────────────────────────────────────────
+
+let capVal = S.storage.archive_cap;
+const CAP_STEPS = [50,100,250,500,1000,2000,5000];
+let ageVal = S.storage.archive_age_years;
+const AGE_STEPS = [1,2,5,10,20,50,100,250,500,1000];
+
+function calcCapDelta(cap){
+  const st = S.storage;
+  const retained = st.retained_per_feed||0;
+  const extra = Math.max(0, retained-cap) * st.hosted_feeds * st.gb_per_ep;
+  const oldCost = Math.max(0, st.gb_stored-B2_FREE)*B2_PER_GB;
+  const newGb = Math.max(0, st.gb_stored-extra);
+  const newCost = Math.max(0, newGb-B2_FREE)*B2_PER_GB;
+  return {extra, freed: extra, savedUsd: oldCost-newCost, newGb};
+}
+
+function renderStorage(){
+  const st = S.storage;
+  const orphanTxt = st.referenced_keys!=null ? fmtNum(st.referenced_keys)+' referenced keys' : '—';
+  const gbLabel = (st.gb_exact?'':st.gb_stored>0?'~':'')+fmtGb(st.gb_stored);
+
+  const topCity = (st.top_by_city||[]).map(r=>
+    `<tr><td>${link(ghUrl('issues?q='+encodeURIComponent(r.city)), esc(r.city))}</td><td style="text-align:right">${fmtGb(r.gb_stored)}</td></tr>`
+  ).join('');
+  const topFeed = (st.top_by_feed||[]).map(r=>
+    `<tr><td>${link(feedUrl(r.slug), esc(r.slug))}</td><td style="text-align:right">${fmtGb(r.gb_stored)}</td></tr>`
+  ).join('');
+
+  document.getElementById('storage').innerHTML = `
+<h2>Storage &amp; Retention</h2>
+<div class="section-card">
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr));margin-bottom:10px">
+    ${card('OBJECTS', orphanTxt, 'audio keys in records')}
+    ${card('STORED', gbLabel, st.gb_exact?'exact':'~estimated')}
+    ${card('B2/MO', fmtCost(st.monthly_cost_usd), 'first 10 GB free')}
+  </div>
+
+  <h3>Archive retention what-if</h3>
+  <div class="muted" style="font-size:.8rem;margin-bottom:.4rem">
+    Current cap: <strong>${fmtNum(st.archive_cap)}</strong> eps/feed ·
+    max age: <strong>${st.archive_age_years}</strong> yr ·
+    avg retained now: <strong>~${fmtNum(st.retained_per_feed)}</strong> eps/feed
+  </div>
+  <div class="slider-row">
+    <label class="muted" style="white-space:nowrap;font-size:.82rem;min-width:68px">Items cap:</label>
+    <input type="range" id="cap-slider" min="0" max="${CAP_STEPS.length-1}" step="1" value="${CAP_STEPS.indexOf(capVal)>=0?CAP_STEPS.indexOf(capVal):CAP_STEPS.length-1}"
+      oninput="onCapSlide(this.value)">
+    <span id="cap-display" style="min-width:110px;font-size:.85rem;font-weight:600"></span>
+  </div>
+  <div class="slider-deltas" id="cap-deltas"></div>
+  <div class="slider-row" style="margin-top:.5rem">
+    <label class="muted" style="white-space:nowrap;font-size:.82rem;min-width:68px">Max age:</label>
+    <input type="range" id="age-slider" min="0" max="${AGE_STEPS.length-1}" step="1" value="${AGE_STEPS.indexOf(ageVal)>=0?AGE_STEPS.indexOf(ageVal):AGE_STEPS.length-1}"
+      oninput="onAgeSlide(this.value)">
+    <span id="age-display" style="min-width:110px;font-size:.85rem;font-weight:600"></span>
+  </div>
+  <div class="slider-deltas" id="age-deltas"></div>
+  <div class="muted" style="font-size:.78rem">
+    Objects pruned by lowering the cap are de-referenced from records; the orphan GC then reclaims
+    storage on its next run. Orphan candidates from storage (objects not in referenced_audio_keys)
+    require a storage round-trip and are not available in this static snapshot —
+    run <code>scripts/gc_audio.py --dry-run</code> for the live count.
+    <a href="/admin/">→ /admin/ for the full interactive projection.</a>
+  </div>
+
+  <div class="storage-tables">
+    <div>
+      <h3>Top consumers — By City</h3>
+      <table><thead><tr><th>City</th><th style="text-align:right">GB</th></tr></thead>
+      <tbody>${topCity||'<tr><td colspan="2" class="muted">no data</td></tr>'}</tbody></table>
+    </div>
+    <div>
+      <h3>Top consumers — By Feed</h3>
+      <table><thead><tr><th>Feed</th><th style="text-align:right">GB</th></tr></thead>
+      <tbody>${topFeed||'<tr><td colspan="2" class="muted">no data</td></tr>'}</tbody></table>
+    </div>
+  </div>
+</div>`;
+
+  updateCapDisplay(CAP_STEPS.indexOf(capVal)>=0?CAP_STEPS.indexOf(capVal):CAP_STEPS.length-1);
+  updateAgeDisplay(AGE_STEPS.indexOf(ageVal)>=0?AGE_STEPS.indexOf(ageVal):AGE_STEPS.length-1);
+}
+
+function onCapSlide(idx){ updateCapDisplay(parseInt(idx)); }
+function onAgeSlide(idx){ updateAgeDisplay(parseInt(idx)); }
+
+function updateCapDisplay(idx){
+  const cap = CAP_STEPS[idx] || S.storage.archive_cap;
+  capVal = cap;
+  document.getElementById('cap-display').textContent = fmtNum(cap)+' eps/feed';
+  const d = calcCapDelta(cap);
+  const deltasEl = document.getElementById('cap-deltas');
+  if(!deltasEl) return;
+  if(d.freed<=0){
+    deltasEl.innerHTML = '<span class="muted">No pruning — cap is above current retained average.</span>';
+  } else {
+    deltasEl.innerHTML =
+      `→ Would additionally prune: <span class="val">~${fmtGb(d.freed)}</span> of audio<br>` +
+      `→ Cost savings: <span class="val">${fmtCost(d.savedUsd)}</span><br>` +
+      `→ New total stored: <span class="val">${fmtGb(d.newGb)}</span>`;
+  }
+}
+
+function calcAgeDelta(age_years){
+  const st = S.storage;
+  if(!st.oldest_publication_year) return {freed:0, savedUsd:0, newGb:st.gb_stored, pruned:0, unknown:true};
+  const archiveSpan = new Date().getFullYear() - st.oldest_publication_year;
+  if(archiveSpan<=0 || age_years>=archiveSpan) return {freed:0, savedUsd:0, newGb:st.gb_stored, pruned:0};
+  const frac = Math.max(0, (archiveSpan-age_years)/archiveSpan);
+  const freed = st.gb_stored*frac;
+  const newGb = Math.max(0, st.gb_stored-freed);
+  const oldCost = Math.max(0,st.gb_stored-B2_FREE)*B2_PER_GB;
+  const newCost = Math.max(0,newGb-B2_FREE)*B2_PER_GB;
+  return {freed, savedUsd:oldCost-newCost, newGb, pruned:Math.round(S.kpis.meetings_archived*frac)};
+}
+
+function updateAgeDisplay(idx){
+  const age = AGE_STEPS[idx] || S.storage.archive_age_years;
+  ageVal = age;
+  const el = document.getElementById('age-display');
+  if(el) el.textContent = fmtNum(age)+' yr';
+  const dl = document.getElementById('age-deltas');
+  if(!dl) return;
+  const d = calcAgeDelta(age);
+  if(d.unknown){
+    dl.innerHTML = '<span class="muted">No archived records — cannot estimate age-based pruning.</span>';
+  } else if(d.freed<=0){
+    dl.innerHTML = '<span class="muted">No pruning — all records fall within this age window.</span>';
+  } else {
+    dl.innerHTML =
+      `→ ~<span class="val">${fmtNum(d.pruned)}</span> records pruned · <span class="val">~${fmtGb(d.freed)}</span> freed<br>`+
+      `→ Cost savings: <span class="val">${fmtCost(d.savedUsd)}</span><br>`+
+      `<span class="muted">Approximate — assumes uniform age distribution across ${new Date().getFullYear()-S.storage.oldest_publication_year} yr of archives.</span>`;
+  }
+}
+
+// ── Section 6: Build History ─────────────────────────────────────────────────
+
+function renderHistory(){
+  const rows = (S.run_history||[]).map(r=>{
+    const ts = r.ts?new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false}):'—';
+    const audio = (r.stages||{}).audio||{};
+    const sCls = r.errors>0?'run-err':r.built>0?'run-ok':'run-skip';
+    const sLabel = r.errors>0?'⚠ errors':r.built>0?'✓ built':'— skipped';
+    const runLink = r.github_run_url
+      ? `<a href="${esc(r.github_run_url)}">→ Actions${r.github_run_id?' #'+r.github_run_id:''}</a>`
+      : '';
+    const bytes = audio.bytes>0?fmtMb(audio.bytes):'0 B';
+    return `<tr>
+      <td>${esc(ts)} ${runLink?'<span class="muted">'+runLink+'</span>':''}</td>
+      <td class="${sCls}">${sLabel}</td>
+      <td>${audio.ran??0}</td>
+      <td>${audio.reused??0}</td>
+      <td>${audio.backlog??0}</td>
+      <td>${r.materialize_seconds!=null?r.materialize_seconds.toFixed(0)+'s':'—'}</td>
+      <td>${bytes}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="muted">No run history yet.</td></tr>';
+
+  const hist = S.run_history||[];
+  const totNew   = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).ran||0, 0);
+  const totBytes = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).bytes||0, 0);
+  const totQueue = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).backlog||0, 0);
+
+  document.getElementById('history').innerHTML = `
+<h2>Build History (last ${hist.length} run${hist.length!==1?'s':''})</h2>
+<div class="tbl-wrap">
+<table>
+<thead><tr>
+  <th>Timestamp (UTC)</th><th>Status</th><th>New</th><th>Current</th><th>Queued</th><th>Seconds</th><th>Bytes added</th>
+</tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr style="font-size:.78rem;color:#9db2c8">
+  <td colspan="2"><strong>${hist.length}-run totals</strong></td>
+  <td>${totNew}</td><td>—</td><td>${totQueue}</td><td>—</td><td>${fmtMb(totBytes)}</td>
+</tr></tfoot>
+</table>
+</div>
+<div class="muted" style="font-size:.75rem;margin:.4rem 0">
+  New/Current/Queued = audio stage totals.
+  Status row colors: <span class="run-ok">built</span> ·
+  <span class="run-err">errors</span> ·
+  <span class="run-skip">skipped</span>.
+</div>`;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+renderKpis();
+renderBacklog();
+renderIssues();
+renderTable();
+renderStorage();
+renderHistory();
+</script>
+</div></body></html>

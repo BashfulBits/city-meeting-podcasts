@@ -612,6 +612,14 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
 
     import citypods.records as _records  # avoid import cycle at module load
 
+    github_run_id = os.environ.get("GITHUB_RUN_ID")
+    github_repository = os.environ.get("GITHUB_REPOSITORY")
+    github_run_url = (
+        f"https://github.com/{github_repository}/actions/runs/{github_run_id}"
+        if github_run_id and github_repository
+        else None
+    )
+
     stages = {
         name: {
             "ran": t["ran"],
@@ -640,6 +648,8 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
         "materialize_encoded": audio.get("encoded", 0),
         "materialize_seconds": audio.get("seconds", 0.0),
         "stages": stages,
+        "github_run_id": github_run_id,
+        "github_run_url": github_run_url,
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")
