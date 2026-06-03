@@ -295,7 +295,8 @@ def _classify_record(rec: dict, max_kbps: int) -> str:
       transient_error— last attempt failed for an uncategorized reason (in exponential backoff)
       pending        — HLS episode, no enclosure yet, never attempted
     """
-    from citypods.records import audio_spec_hash as _spec_hash, record_to_episode
+    from citypods.records import audio_spec_hash as _spec_hash
+    from citypods.records import record_to_episode
 
     audio = rec.get("audio") or {}
     hosted_url = audio.get("url")
@@ -565,9 +566,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
 
     github_repo = os.environ.get("GITHUB_REPOSITORY")
     site_url = (
-        f"https://{site_config['custom_domain']}"
-        if site_config.get("custom_domain")
-        else None
+        f"https://{site_config['custom_domain']}" if site_config.get("custom_domain") else None
     )
 
     return {
@@ -631,12 +630,10 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "hosted_feeds": sum(1 for r in feed_rows if r["hosted"] > 0),
             "oldest_publication_year": oldest_pub_year,
             "top_by_city": [
-                {"city": r["city"], "gb_stored": r["gb_stored"]}
-                for r in top_city_storage
+                {"city": r["city"], "gb_stored": r["gb_stored"]} for r in top_city_storage
             ],
             "top_by_feed": [
-                {"slug": r["slug"], "gb_stored": r["gb_stored"]}
-                for r in top_feed_storage
+                {"slug": r["slug"], "gb_stored": r["gb_stored"]} for r in top_feed_storage
             ],
         },
         "run_history": history_tail,

@@ -123,7 +123,13 @@ def _run_build(args, *, phase: str, dry_run: bool) -> int:
 def _report(args) -> int:
     from pathlib import Path
 
-    from citypods.report import build_report, build_status, to_admin_html, to_markdown, to_status_html
+    from citypods.report import (
+        build_report,
+        build_status,
+        to_admin_html,
+        to_markdown,
+        to_status_html,
+    )
     from citypods.state import resolve_state_dir
 
     site_config = load_site_config(args.site_config)
