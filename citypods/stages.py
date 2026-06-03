@@ -70,7 +70,7 @@ from __future__ import annotations
 import collections
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from citypods.bodies import body_key, canonical_body
@@ -202,6 +202,11 @@ class TimelinePlanner(Protocol):
     """
 
     name: str
+    # Bump to force re-planning. ``TimelineStage`` folds every registered planner's
+    # ``(name, version)`` into the signature it stamps on ``Timeline.version``, so a later run
+    # can distinguish an up-to-date EDL (skip — planning may be an expensive ffmpeg pass) from
+    # one made by an older planner set (re-plan → new digest → re-encode only what changed).
+    version: str
 
     def plan(
         self,
@@ -211,7 +216,15 @@ class TimelinePlanner(Protocol):
         ctx: StageContext,
         current: Timeline | None,
     ) -> Timeline | None:
-        """Return a new or modified Timeline, or ``None`` to leave the current one unchanged."""
+        """Return a new or modified Timeline, or ``None`` to leave the current one unchanged.
+
+        A planner whose work is expensive (e.g. silence detection runs an ffmpeg pass) and
+        that *examined* the episode but found no edit should return an **identity** Timeline
+        rather than ``None`` — that way the stage stamps it with the current signature and the
+        detection is not re-run next time. Return ``None`` only to genuinely pass through
+        (e.g. an inapplicable planner); if every planner returns ``None`` the episode stays
+        identity and is re-examined on the next run.
+        """
         ...
 
 
@@ -228,6 +241,13 @@ class TimelineStage:
     return a new/modified Timeline or ``None`` to pass through.  The first planner to
     produce a non-None result establishes the base; later planners can augment it (e.g.
     an intro planner can prepend an insert segment to a silence-trimmed Timeline).
+
+    **Plan once, persist, don't recompute** (design §4/§7). The stage stamps the produced
+    EDL's ``version`` with a signature of the registered planner set+versions and, on later
+    runs, *skips* episodes whose stored EDL already carries that signature — so an expensive
+    planner (silence detection is an ffmpeg pass) runs once, not every build. A bumped planner
+    version changes the signature → those episodes re-plan → new digest → they (and only they)
+    re-encode. Planning is gated on ``ctx.stop()`` like an encode: deferred, not failed.
     """
 
     name = "timeline"
@@ -236,27 +256,48 @@ class TimelineStage:
     def __init__(self, planners: list[TimelinePlanner] | None = None):
         self.planners: list[TimelinePlanner] = planners or []
 
+    def _signature(self) -> str:
+        """Stable signature of the registered planner set, stamped onto ``Timeline.version``.
+        Lets a later run skip episodes already planned by this exact set+versions and re-plan
+        ones produced by an older set. ``"identity"`` when no planners are registered."""
+        if not self.planners:
+            return "identity"
+        return "+".join(sorted(f"{p.name}:{getattr(p, 'version', '1')}" for p in self.planners))
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         stats = StageStats(self.name)
+        sig = self._signature()
         for ep in _materialize_set(episodes, city.max_episodes):
-            # If the timeline is already set and no planners are registered, nothing to do.
-            if ep.timeline is not None and not self.planners:
+            if not self.planners:
+                # No planners → identity path; ep.timeline stays as-is (None == identity).
                 stats.reused += 1
+                continue
+
+            # Already planned by this exact planner set+versions → don't recompute. A stale
+            # signature (older set) falls through and re-plans.
+            if ep.timeline is not None and ep.timeline.version == sig:
+                stats.reused += 1
+                continue
+
+            # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
+            # stop signal exactly like an encode — deferred to a later run, not an error.
+            if ctx.stop is not None and ctx.stop():
+                stats.skipped += 1
                 continue
 
             current: Timeline | None = ep.timeline
             changed = False
-
             for planner in self.planners:
                 result = planner.plan(provider, city, ep, ctx, current)
                 if result is not None:
                     current = result
                     changed = True
 
-            if changed:
-                ep.timeline = current
+            if changed and current is not None:
+                # Stamp the planner-set signature so a future run can detect staleness.
+                ep.timeline = replace(current, version=sig)
                 stats.ran += 1
             else:
                 # No planner fired → identity path; ep.timeline stays None (== identity).
