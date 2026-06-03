@@ -90,7 +90,7 @@ def audio_spec_hash(ep: Episode, *, max_kbps: int) -> str:
     only the stable source ref is used.
     """
     tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
-    loudness = ""   # populated by future loudness stage (#21); field reserved in v2 format
+    loudness = ""  # populated by future loudness stage (#21); field reserved in v2 format
     rebuild = ep.audio_rebuild or ""
 
     if not tl_digest and not rebuild and not loudness and len(ep.sources) <= 1:
