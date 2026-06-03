@@ -194,9 +194,10 @@ class TestRemapStageTrimmed:
 
     def test_chapters_basis_set_to_served(self, tmp_path):
         ep = _ep(chapters=[{"start": 0, "title": "A"}])
-        ep.timeline = _trimmed_timeline()
+        ep.timeline = _trimmed_timeline()  # version "silence-v1"
         RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
-        assert ep.chapters_basis == "served"
+        # basis records the EDL version it was remapped against (review item #10)
+        assert ep.chapters_basis == "served:silence-v1"
 
     def test_stats_ran_incremented(self, tmp_path):
         ep = _ep(chapters=[{"start": 0, "title": "A"}])
