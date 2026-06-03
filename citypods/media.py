@@ -105,6 +105,7 @@ class FfmpegRunner(Protocol):
 # ffmetadata (chapters)
 # ---------------------------------------------------------------------------
 
+
 def _ffmetadata(chapters: list[dict]) -> str:
     """Render chapter markers as an ffmpeg metadata file (millisecond timebase). The end of a
     chapter is its own ``end`` when known, else the next chapter's start; the last falls back to
@@ -126,6 +127,7 @@ def _ffmetadata(chapters: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 # Codec / bitrate helpers
 # ---------------------------------------------------------------------------
+
 
 def encode_args(source_bitrate: int | None, max_kbps: int) -> list[str]:
     """ffmpeg audio codec args: copy if the source is already <= the cap, else re-encode
@@ -151,6 +153,7 @@ def _parse_lufs(profile: str) -> str:
 # ---------------------------------------------------------------------------
 # Filtergraph builder (pure — no subprocess, fully testable)
 # ---------------------------------------------------------------------------
+
 
 def build_filter_complex(
     segments: tuple[Segment, ...],
@@ -211,6 +214,7 @@ def build_filter_complex(
 # CommandFfmpeg
 # ---------------------------------------------------------------------------
 
+
 class CommandFfmpeg:
     """Runs the real ffmpeg binary.
 
@@ -245,13 +249,15 @@ class CommandFfmpeg:
         loudness_profile: str | None = None,
         asset_resolver: Callable[[str, str | None], Path] | None = None,
     ) -> None:
-        use_filter = (
-            timeline is not None and timeline_digest(timeline) != ""
-        ) or bool(loudness_profile)
+        use_filter = (timeline is not None and timeline_digest(timeline) != "") or bool(
+            loudness_profile
+        )
 
         if use_filter:
             self._render_filter(
-                timeline, sources_by_id, dest,
+                timeline,
+                sources_by_id,
+                dest,
                 chapters=chapters,
                 loudness_profile=loudness_profile,
                 asset_resolver=asset_resolver,
@@ -285,13 +291,18 @@ class CommandFfmpeg:
                 inputs += ["-i", str(meta)]
                 chapter_args = ["-map_chapters", "1", "-map", "0:a:0"]
             cmd = [
-                self.binary, "-y", "-loglevel", "error",
-                "-protocol_whitelist", "file,crypto,data,http,https,tcp,tls",
+                self.binary,
+                "-y",
+                "-loglevel",
+                "error",
+                "-protocol_whitelist",
+                "file,crypto,data,http,https,tcp,tls",
                 *inputs,
                 "-vn",
                 *chapter_args,
                 *codec_args,
-                "-movflags", "+faststart",
+                "-movflags",
+                "+faststart",
                 str(dest),
             ]
             subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
@@ -340,7 +351,7 @@ class CommandFfmpeg:
             inputs: list[str] = []
             for sid in source_ids:
                 inputs += ["-rw_timeout", str(_STALL_TIMEOUT_US), "-i", sources_by_id[sid]]
-            for (asset_id, asset_version) in asset_keys:
+            for asset_id, asset_version in asset_keys:
                 asset_path = asset_resolver(asset_id, asset_version)  # type: ignore[misc]
                 inputs += ["-i", str(asset_path)]
 
@@ -357,15 +368,27 @@ class CommandFfmpeg:
                 chapter_args = ["-map_chapters", str(next_idx + len(asset_keys))]
 
             cmd = [
-                self.binary, "-y", "-loglevel", "error",
-                "-protocol_whitelist", "file,crypto,data,http,https,tcp,tls",
+                self.binary,
+                "-y",
+                "-loglevel",
+                "error",
+                "-protocol_whitelist",
+                "file,crypto,data,http,https,tcp,tls",
                 *inputs,
-                "-filter_complex", filter_str,
-                "-map", out_label,
+                "-filter_complex",
+                filter_str,
+                "-map",
+                out_label,
                 "-vn",
                 *chapter_args,
-                "-c:a", "aac", "-b:a", f"{self.max_kbps}k", "-ac", "1",
-                "-movflags", "+faststart",
+                "-c:a",
+                "aac",
+                "-b:a",
+                f"{self.max_kbps}k",
+                "-ac",
+                "1",
+                "-movflags",
+                "+faststart",
                 str(dest),
             ]
             subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
@@ -374,6 +397,7 @@ class CommandFfmpeg:
 # ---------------------------------------------------------------------------
 # ffprobe helper
 # ---------------------------------------------------------------------------
+
 
 def _probe_audio_bitrate(
     url: str, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
@@ -386,11 +410,21 @@ def _probe_audio_bitrate(
     try:
         out = subprocess.run(
             [
-                ffprobe, "-v", "error", "-select_streams", "a:0",
-                "-show_entries", "stream=bit_rate",
-                "-of", "default=nw=1:nk=1", url,
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=bit_rate",
+                "-of",
+                "default=nw=1:nk=1",
+                url,
             ],
-            check=True, capture_output=True, text=True, timeout=timeout,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         ).stdout.strip()
         return int(out) if out.isdigit() else None
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
@@ -400,6 +434,7 @@ def _probe_audio_bitrate(
 # ---------------------------------------------------------------------------
 # Materialization stats + pipeline
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class MaterializeStats:

@@ -258,7 +258,16 @@ def test_build_logs_audio_stage_activity_and_errors(tmp_path, fake_provider, cap
         ep.media_kind = "hls"  # forces re-hosting via materialize_audio
 
     class _FailingFfmpeg:
-        def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *, loudness_profile=None, asset_resolver=None):
+        def extract_audio(
+            self,
+            timeline,
+            sources_by_id,
+            dest,
+            chapters=None,
+            *,
+            loudness_profile=None,
+            asset_resolver=None,
+        ):
             raise subprocess.CalledProcessError(1, "ffmpeg")
 
     cities = _setup(tmp_path)
@@ -278,7 +287,16 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
     """A successful re-host reports a non-zero ``ran`` count in the stage summary."""
 
     class _OkFfmpeg:
-        def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *, loudness_profile=None, asset_resolver=None):
+        def extract_audio(
+            self,
+            timeline,
+            sources_by_id,
+            dest,
+            chapters=None,
+            *,
+            loudness_profile=None,
+            asset_resolver=None,
+        ):
             dest.write_bytes(b"fake-m4a")
 
     for ep in fake_provider.episodes:
@@ -477,7 +495,16 @@ class _CountingFfmpeg:
     def __init__(self):
         self.calls = 0
 
-    def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *, loudness_profile=None, asset_resolver=None):
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ):
         self.calls += 1
         dest.write_bytes(b"fake-m4a")
 

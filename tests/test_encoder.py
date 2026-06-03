@@ -10,67 +10,84 @@ correctness, and test ``CommandFfmpeg`` via subprocess mocking for arg wiring.
 
 from __future__ import annotations
 
-import subprocess
 from datetime import UTC, datetime
-from pathlib import Path
-
-import pytest
 
 from citypods.media import (
-    CommandFfmpeg,
     _parse_lufs,
     build_filter_complex,
-    encode_args,
     materialize_audio,
 )
 from citypods.models import City, Episode
-from citypods.records import audio_spec_hash
 from citypods.storage.local import LocalStorage
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _seg_src(served_start, served_end, source_start, source_end, sid="s0") -> Segment:
     return Segment(
-        served_start=served_start, served_end=served_end,
-        kind="source", source_id=sid,
-        source_start=source_start, source_end=source_end,
+        served_start=served_start,
+        served_end=served_end,
+        kind="source",
+        source_id=sid,
+        source_start=source_start,
+        source_end=source_end,
     )
 
 
 def _seg_insert(served_start, served_end, asset_id="brand", version="1") -> Segment:
     return Segment(
-        served_start=served_start, served_end=served_end,
-        kind="insert", insert="intro",
-        asset_id=asset_id, asset_version=version,
+        served_start=served_start,
+        served_end=served_end,
+        kind="insert",
+        insert="intro",
+        asset_id=asset_id,
+        asset_version=version,
     )
 
 
 def _src(id="s0") -> SourceMedia:
-    return SourceMedia(id=id, provider="granicus",
-                       ref="https://g.com/1.mp4", media_kind="direct",
-                       duration=3600.0, watch_url="https://g.com/1")
+    return SourceMedia(
+        id=id,
+        provider="granicus",
+        ref="https://g.com/1.mp4",
+        media_kind="direct",
+        duration=3600.0,
+        watch_url="https://g.com/1",
+    )
 
 
 def _city() -> City:
-    return City(slug="t-tx", provider="civicplus",
-                source={"feed_url": "x"}, podcast_title="T",
-                podcast_author="City of T", podcast_email="", podcast_description="d",
-                extract_audio=True)
+    return City(
+        slug="t-tx",
+        provider="civicplus",
+        source={"feed_url": "x"},
+        podcast_title="T",
+        podcast_author="City of T",
+        podcast_email="",
+        podcast_description="d",
+        extract_audio=True,
+    )
 
 
 def _ep(kind="hls", url="https://src/video.m3u8") -> Episode:
-    return Episode(guid="g1", uid="uid-g1", title="Meeting",
-                   published=datetime(2026, 5, 20, tzinfo=UTC),
-                   video_url=url, media_kind=kind, duration=3600)
+    return Episode(
+        guid="g1",
+        uid="uid-g1",
+        title="Meeting",
+        published=datetime(2026, 5, 20, tzinfo=UTC),
+        video_url=url,
+        media_kind=kind,
+        duration=3600,
+    )
 
 
 # ---------------------------------------------------------------------------
 # build_filter_complex — identity-equivalent (single full-span source)
 # ---------------------------------------------------------------------------
+
 
 class TestFiltergraphIdentityEquiv:
     """When the timeline is identity, CommandFfmpeg takes the identity path and never
@@ -93,6 +110,7 @@ class TestFiltergraphIdentityEquiv:
 # ---------------------------------------------------------------------------
 # build_filter_complex — trim (single source, multiple segments)
 # ---------------------------------------------------------------------------
+
 
 class TestFiltergraphTrim:
     def test_two_kept_spans_from_one_source(self):
@@ -141,6 +159,7 @@ class TestFiltergraphTrim:
 # build_filter_complex — multi-source concat
 # ---------------------------------------------------------------------------
 
+
 class TestFiltergraphConcat:
     def test_two_source_full_concat(self):
         segs = (
@@ -166,16 +185,17 @@ class TestFiltergraphConcat:
 # build_filter_complex — insert (intro/outro)
 # ---------------------------------------------------------------------------
 
+
 class TestFiltergraphInsert:
     def test_insert_uses_acopy(self):
         segs = (
-            _seg_insert(0, 60),                  # intro insert
-            _seg_src(60, 3660, 0, 3600),         # main source
+            _seg_insert(0, 60),  # intro insert
+            _seg_src(60, 3660, 0, 3600),  # main source
         )
         asset_idx = {("brand", "1"): 1}
         fc, out = build_filter_complex(segs, {"s0": 0}, asset_idx)
         assert "[1:a]acopy[a0]" in fc  # insert uses asset input (idx=1)
-        assert "[0:a]atrim" in fc       # source uses main input (idx=0)
+        assert "[0:a]atrim" in fc  # source uses main input (idx=0)
         assert "concat=n=2" in fc
         assert out == "[outa]"
 
@@ -193,6 +213,7 @@ class TestFiltergraphInsert:
 # ---------------------------------------------------------------------------
 # build_filter_complex — loudness
 # ---------------------------------------------------------------------------
+
 
 class TestFiltergraphLoudness:
     def test_loudnorm_appended_single_segment(self):
@@ -221,17 +242,21 @@ class TestFiltergraphLoudness:
 # CommandFfmpeg identity path — arg wiring (subprocess mock)
 # ---------------------------------------------------------------------------
 
+
 class TestCommandFfmpegIdentityPath:
     """The identity path must produce the same ffmpeg args as pre-INFRA-3."""
 
     def _run_identity(self, monkeypatch, tmp_path, source_url, bitrate_str="128000"):
         import citypods.media as media
+
         calls: list[tuple[list, dict]] = []
 
         def _fake_run(cmd, **kw):
             calls.append((cmd, kw))
+
             class _R:
                 stdout = bitrate_str
+
             return _R()
 
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
@@ -248,14 +273,18 @@ class TestCommandFfmpegIdentityPath:
         assert "-filter_complex" not in enc_cmd
 
     def test_copy_when_bitrate_under_cap(self, monkeypatch, tmp_path):
-        calls = self._run_identity(monkeypatch, tmp_path, "https://src/vid.mp4", bitrate_str="64000")
+        calls = self._run_identity(
+            monkeypatch, tmp_path, "https://src/vid.mp4", bitrate_str="64000"
+        )
         _, (enc_cmd, _) = calls[0], calls[1]
         assert "-c:a" in enc_cmd
         idx = enc_cmd.index("-c:a")
         assert enc_cmd[idx + 1] == "copy"
 
     def test_reencode_when_bitrate_over_cap(self, monkeypatch, tmp_path):
-        calls = self._run_identity(monkeypatch, tmp_path, "https://src/vid.mp4", bitrate_str="192000")
+        calls = self._run_identity(
+            monkeypatch, tmp_path, "https://src/vid.mp4", bitrate_str="192000"
+        )
         _, (enc_cmd, _) = calls[0], calls[1]
         assert "-c:a" in enc_cmd
         idx = enc_cmd.index("-c:a")
@@ -279,12 +308,15 @@ class TestCommandFfmpegIdentityPath:
     def test_identity_timeline_takes_identity_path(self, monkeypatch, tmp_path):
         """An explicit identity Timeline must NOT trigger the filter path."""
         import citypods.media as media
+
         calls: list = []
 
         def _fake_run(cmd, **kw):
             calls.append(cmd)
+
             class _R:
                 stdout = "64000"
+
             return _R()
 
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
@@ -303,16 +335,21 @@ class TestCommandFfmpegIdentityPath:
 # CommandFfmpeg filter path — arg wiring (subprocess mock)
 # ---------------------------------------------------------------------------
 
+
 class TestCommandFfmpegFilterPath:
-    def _run_filter(self, monkeypatch, tmp_path, timeline, sources_by_id,
-                    loudness=None, asset_resolver=None):
+    def _run_filter(
+        self, monkeypatch, tmp_path, timeline, sources_by_id, loudness=None, asset_resolver=None
+    ):
         import citypods.media as media
+
         calls: list = []
 
         def _fake_run(cmd, **kw):
             calls.append(cmd)
+
             class _R:
                 stdout = ""
+
             return _R()
 
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
@@ -343,17 +380,21 @@ class TestCommandFfmpegFilterPath:
         """Filter path always re-encodes; no bitrate probe needed."""
         tl = self._trim_timeline()
         import citypods.media as media
+
         calls: list = []
 
         def _fake_run(cmd, **kw):
             calls.append(cmd)
+
             class _R:
                 stdout = ""
+
             return _R()
 
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         media.CommandFfmpeg(max_kbps=96).extract_audio(
-            timeline=tl, sources_by_id={"s0": "https://s/v.mp4"},
+            timeline=tl,
+            sources_by_id={"s0": "https://s/v.mp4"},
             dest=tmp_path / "out.m4a",
         )
         # Only ONE subprocess call (no ffprobe in filter path)
@@ -375,8 +416,9 @@ class TestCommandFfmpegFilterPath:
 
     def test_loudnorm_in_filter_complex(self, monkeypatch, tmp_path):
         tl = self._trim_timeline()
-        cmd = self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"},
-                               loudness="ebuR128:-16LUFS")
+        cmd = self._run_filter(
+            monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"}, loudness="ebuR128:-16LUFS"
+        )
         fc_idx = cmd.index("-filter_complex")
         fc_str = cmd[fc_idx + 1]
         assert "loudnorm=I=-16" in fc_str
@@ -393,6 +435,7 @@ class TestCommandFfmpegFilterPath:
 # materialize_audio integration — timeline plumbing
 # ---------------------------------------------------------------------------
 
+
 class TestMaterializeWithTimeline:
     """Verify that materialize_audio passes ep.timeline through to extract_audio."""
 
@@ -401,8 +444,16 @@ class TestMaterializeWithTimeline:
             self.timelines = []
             self.sources = []
 
-        def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *,
-                          loudness_profile=None, asset_resolver=None):
+        def extract_audio(
+            self,
+            timeline,
+            sources_by_id,
+            dest,
+            chapters=None,
+            *,
+            loudness_profile=None,
+            asset_resolver=None,
+        ):
             self.timelines.append(timeline)
             self.sources.append(dict(sources_by_id))
             dest.write_bytes(b"fake")
@@ -415,9 +466,11 @@ class TestMaterializeWithTimeline:
 
         ff = self._CapturingFfmpeg()
         materialize_audio(
-            city, [ep],
+            city,
+            [ep],
             storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn/"),
-            ffmpeg=ff, max_kbps=96,
+            ffmpeg=ff,
+            max_kbps=96,
             resolve_media_url=lambda e: e.video_url,
         )
         assert ff.timelines[0] is None
@@ -437,9 +490,11 @@ class TestMaterializeWithTimeline:
 
         ff = self._CapturingFfmpeg()
         materialize_audio(
-            city, [ep],
+            city,
+            [ep],
             storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn/"),
-            ffmpeg=ff, max_kbps=96,
+            ffmpeg=ff,
+            max_kbps=96,
             resolve_media_url=lambda e: e.video_url,
         )
         assert ff.timelines[0] is tl
@@ -452,9 +507,11 @@ class TestMaterializeWithTimeline:
 
         ff = self._CapturingFfmpeg()
         materialize_audio(
-            city, [ep],
+            city,
+            [ep],
             storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn/"),
-            ffmpeg=ff, max_kbps=96,
+            ffmpeg=ff,
+            max_kbps=96,
             resolve_media_url=lambda e: e.video_url,
         )
         assert "https://src/vid.m3u8" in ff.sources[0].values()

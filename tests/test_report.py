@@ -622,8 +622,16 @@ def test_audio_bytes_set_on_encode(tmp_path):
     fake_size = 5_432_100
 
     class FakeFfmpeg:
-        def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *,
-                          loudness_profile=None, asset_resolver=None):
+        def extract_audio(
+            self,
+            timeline,
+            sources_by_id,
+            dest,
+            chapters=None,
+            *,
+            loudness_profile=None,
+            asset_resolver=None,
+        ):
             dest.write_bytes(b"x" * fake_size)
 
     class FakeStorage:
