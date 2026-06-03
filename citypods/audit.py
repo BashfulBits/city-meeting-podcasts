@@ -438,24 +438,36 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
         uid = ep.uid or ep.guid
 
         if not segs:
-            findings.append(Finding(slug, "timeline-empty", ERROR,
-                                    f"{uid}: timeline.segments is empty"))
+            findings.append(
+                Finding(slug, "timeline-empty", ERROR, f"{uid}: timeline.segments is empty")
+            )
             continue
 
         # 1. Monotonicity and non-overlap
         prev_end = 0.0
         for i, s in enumerate(segs):
             if s.served_start < prev_end - _FRAME_TOLERANCE:
-                findings.append(Finding(slug, "timeline-overlap", ERROR,
-                                        f"{uid}: segment {i} starts at {s.served_start:.3f}s "
-                                        f"before previous end {prev_end:.3f}s"))
+                findings.append(
+                    Finding(
+                        slug,
+                        "timeline-overlap",
+                        ERROR,
+                        f"{uid}: segment {i} starts at {s.served_start:.3f}s "
+                        f"before previous end {prev_end:.3f}s",
+                    )
+                )
             prev_end = s.served_end
 
         # 2. Coverage starts at 0
         if segs[0].served_start > _FRAME_TOLERANCE:
-            findings.append(Finding(slug, "timeline-gap-start", ERROR,
-                                    f"{uid}: first segment starts at {segs[0].served_start:.3f}s "
-                                    f"(expected 0)"))
+            findings.append(
+                Finding(
+                    slug,
+                    "timeline-gap-start",
+                    ERROR,
+                    f"{uid}: first segment starts at {segs[0].served_start:.3f}s (expected 0)",
+                )
+            )
 
         # 3. Duration match (only when audio_duration_served is recorded)
         served_dur = ep.audio_duration_served
@@ -463,10 +475,16 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
             if delta > _FRAME_TOLERANCE:
-                findings.append(Finding(slug, "timeline-duration-mismatch", ERROR,
-                                        f"{uid}: segment total {seg_total:.3f}s != "
-                                        f"audio_duration_served {served_dur:.3f}s "
-                                        f"(delta {delta:.3f}s)"))
+                findings.append(
+                    Finding(
+                        slug,
+                        "timeline-duration-mismatch",
+                        ERROR,
+                        f"{uid}: segment total {seg_total:.3f}s != "
+                        f"audio_duration_served {served_dur:.3f}s "
+                        f"(delta {delta:.3f}s)",
+                    )
+                )
 
         # 4. Source spans within SourceMedia.duration
         src_by_id = {s.id: s for s in (ep.sources or [])}
@@ -477,24 +495,42 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
             if src.duration is None:
                 continue
             if seg.source_start is not None and seg.source_start < -_FRAME_TOLERANCE:
-                findings.append(Finding(slug, "timeline-source-underrun", ERROR,
-                                        f"{uid}: segment {i} source_start {seg.source_start:.3f}s < 0"))
+                findings.append(
+                    Finding(
+                        slug,
+                        "timeline-source-underrun",
+                        ERROR,
+                        f"{uid}: segment {i} source_start {seg.source_start:.3f}s < 0",
+                    )
+                )
             if seg.source_end is not None and seg.source_end > src.duration + _FRAME_TOLERANCE:
-                findings.append(Finding(slug, "timeline-source-overrun", ERROR,
-                                        f"{uid}: segment {i} source_end {seg.source_end:.3f}s > "
-                                        f"SourceMedia.duration {src.duration:.3f}s"))
+                findings.append(
+                    Finding(
+                        slug,
+                        "timeline-source-overrun",
+                        ERROR,
+                        f"{uid}: segment {i} source_end {seg.source_end:.3f}s > "
+                        f"SourceMedia.duration {src.duration:.3f}s",
+                    )
+                )
 
         # 5. Served-time chapters within [0, served_duration]
         if ep.chapters_basis == "served" and served_dur is not None:
-            for ch in (ep.chapters or []):
+            for ch in ep.chapters or []:
                 start = ch.get("start")
                 if start is None:
                     continue
                 if start < -_FRAME_TOLERANCE or start > served_dur + _FRAME_TOLERANCE:
-                    findings.append(Finding(slug, "timeline-chapter-out-of-range", WARN,
-                                            f"{uid}: chapter '{ch.get('title', '')}' at "
-                                            f"{start:.1f}s outside served "
-                                            f"[0, {served_dur:.1f}]"))
+                    findings.append(
+                        Finding(
+                            slug,
+                            "timeline-chapter-out-of-range",
+                            WARN,
+                            f"{uid}: chapter '{ch.get('title', '')}' at "
+                            f"{start:.1f}s outside served "
+                            f"[0, {served_dur:.1f}]",
+                        )
+                    )
 
     return findings
 

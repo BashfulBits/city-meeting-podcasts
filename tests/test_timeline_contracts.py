@@ -10,42 +10,58 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
-
 from citypods.audit import check_timeline_integrity
-from citypods.models import City, Episode
+from citypods.models import Episode
 from citypods.timeline import Segment, SourceMedia, Timeline
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _ep(uid="uid-g1") -> Episode:
     return Episode(
-        guid="g1", uid=uid, title="Meeting",
+        guid="g1",
+        uid=uid,
+        title="Meeting",
         published=datetime(2026, 5, 20, tzinfo=UTC),
         video_url="https://src/vid.mp4",
-        media_kind="direct", duration=3600,
+        media_kind="direct",
+        duration=3600,
     )
 
 
 def _src(id="s0", duration=3600.0) -> SourceMedia:
-    return SourceMedia(id=id, provider="g", ref="https://g.com/1.mp4",
-                       media_kind="direct", duration=duration, watch_url=None)
+    return SourceMedia(
+        id=id,
+        provider="g",
+        ref="https://g.com/1.mp4",
+        media_kind="direct",
+        duration=duration,
+        watch_url=None,
+    )
 
 
 def _seg(ss, se, src_s, src_e, sid="s0") -> Segment:
-    return Segment(served_start=ss, served_end=se, kind="source",
-                   source_id=sid, source_start=src_s, source_end=src_e)
+    return Segment(
+        served_start=ss,
+        served_end=se,
+        kind="source",
+        source_id=sid,
+        source_start=src_s,
+        source_end=src_e,
+    )
 
 
 def _good_timeline() -> Timeline:
     """A valid trimmed timeline: silence cut 300–600."""
-    return Timeline(version="silence-v1", segments=(
-        _seg(0, 300, 0, 300),
-        _seg(300, 3300, 600, 3600),
-    ))
+    return Timeline(
+        version="silence-v1",
+        segments=(
+            _seg(0, 300, 0, 300),
+            _seg(300, 3300, 600, 3600),
+        ),
+    )
 
 
 def _findings(episodes):
@@ -55,6 +71,7 @@ def _findings(episodes):
 # ---------------------------------------------------------------------------
 # Good EDLs — no findings
 # ---------------------------------------------------------------------------
+
 
 class TestGoodEDLs:
     def test_identity_timeline_skipped(self):
@@ -71,10 +88,13 @@ class TestGoodEDLs:
 
     def test_valid_concat_timeline_no_findings(self):
         ep = _ep()
-        ep.timeline = Timeline(version="concat-v1", segments=(
-            _seg(0, 1800, 0, 1800, "s0"),
-            _seg(1800, 3600, 0, 1800, "s1"),
-        ))
+        ep.timeline = Timeline(
+            version="concat-v1",
+            segments=(
+                _seg(0, 1800, 0, 1800, "s0"),
+                _seg(1800, 3600, 0, 1800, "s1"),
+            ),
+        )
         ep.audio_duration_served = 3600.0
         ep.sources = [_src("s0", 1800.0), _src("s1", 1800.0)]
         assert _findings([ep]) == []
@@ -95,13 +115,17 @@ class TestGoodEDLs:
 # Segment overlap
 # ---------------------------------------------------------------------------
 
+
 class TestSegmentOverlap:
     def test_overlapping_segments_caught(self):
         ep = _ep()
-        ep.timeline = Timeline(version="bad-v1", segments=(
-            _seg(0, 400, 0, 400),   # ends at 400
-            _seg(300, 700, 300, 700),  # starts at 300 — OVERLAP!
-        ))
+        ep.timeline = Timeline(
+            version="bad-v1",
+            segments=(
+                _seg(0, 400, 0, 400),  # ends at 400
+                _seg(300, 700, 300, 700),  # starts at 300 — OVERLAP!
+            ),
+        )
         ep.audio_duration_served = 700.0
         fs = _findings([ep])
         checks = [f.check for f in fs]
@@ -110,10 +134,13 @@ class TestSegmentOverlap:
     def test_exactly_touching_segments_ok(self):
         ep = _ep()
         # Segments touch exactly: first ends at 300, second starts at 300 — no overlap.
-        ep.timeline = Timeline(version="v1", segments=(
-            _seg(0, 300, 0, 300),
-            _seg(300, 3300, 600, 3600),
-        ))
+        ep.timeline = Timeline(
+            version="v1",
+            segments=(
+                _seg(0, 300, 0, 300),
+                _seg(300, 3300, 600, 3600),
+            ),
+        )
         ep.audio_duration_served = 3300.0
         fs = _findings([ep])
         overlap = [f for f in fs if f.check == "timeline-overlap"]
@@ -123,6 +150,7 @@ class TestSegmentOverlap:
 # ---------------------------------------------------------------------------
 # Duration mismatch
 # ---------------------------------------------------------------------------
+
 
 class TestDurationMismatch:
     def test_segment_total_ne_served_duration(self):
@@ -159,13 +187,17 @@ class TestDurationMismatch:
 # Gap at start
 # ---------------------------------------------------------------------------
 
+
 class TestGapAtStart:
     def test_first_segment_not_at_zero(self):
         ep = _ep()
-        ep.timeline = Timeline(version="bad-v1", segments=(
-            _seg(5, 300, 5, 300),  # starts at 5, not 0
-            _seg(300, 3300, 600, 3600),
-        ))
+        ep.timeline = Timeline(
+            version="bad-v1",
+            segments=(
+                _seg(5, 300, 5, 300),  # starts at 5, not 0
+                _seg(300, 3300, 600, 3600),
+            ),
+        )
         ep.audio_duration_served = 3295.0
         fs = _findings([ep])
         assert any(f.check == "timeline-gap-start" for f in fs)
@@ -181,13 +213,17 @@ class TestGapAtStart:
 # Source span bounds
 # ---------------------------------------------------------------------------
 
+
 class TestSourceSpanBounds:
     def test_source_end_exceeds_media_duration(self):
         ep = _ep()
         ep.sources = [_src("s0", 3000.0)]  # source is only 3000s
-        ep.timeline = Timeline(version="v1", segments=(
-            _seg(0, 3300, 0, 3600),  # source_end=3600 > SourceMedia.duration=3000
-        ))
+        ep.timeline = Timeline(
+            version="v1",
+            segments=(
+                _seg(0, 3300, 0, 3600),  # source_end=3600 > SourceMedia.duration=3000
+            ),
+        )
         ep.audio_duration_served = 3300.0
         fs = _findings([ep])
         assert any(f.check == "timeline-source-overrun" for f in fs)
@@ -203,11 +239,15 @@ class TestSourceSpanBounds:
     def test_unknown_source_duration_skips_check(self):
         ep = _ep()
         ep.sources = [_src("s0", None)]  # duration unknown
-        ep.sources[0] = SourceMedia(id="s0", provider="g", ref="u", media_kind="direct",
-                                    duration=None, watch_url=None)
-        ep.timeline = Timeline(version="v1", segments=(
-            _seg(0, 3300, 0, 9999),  # would exceed any known duration
-        ))
+        ep.sources[0] = SourceMedia(
+            id="s0", provider="g", ref="u", media_kind="direct", duration=None, watch_url=None
+        )
+        ep.timeline = Timeline(
+            version="v1",
+            segments=(
+                _seg(0, 3300, 0, 9999),  # would exceed any known duration
+            ),
+        )
         ep.audio_duration_served = 3300.0
         fs = _findings([ep])
         assert not any(f.check == "timeline-source-overrun" for f in fs)
@@ -225,6 +265,7 @@ class TestSourceSpanBounds:
 # ---------------------------------------------------------------------------
 # Chapter alignment
 # ---------------------------------------------------------------------------
+
 
 class TestChapterAlignment:
     def test_chapter_past_served_duration_flagged(self):
@@ -269,23 +310,30 @@ class TestChapterAlignment:
 # Finding severity and structure
 # ---------------------------------------------------------------------------
 
+
 class TestFindingStructure:
     def test_findings_are_error_or_warn(self):
         ep = _ep()
-        ep.timeline = Timeline(version="bad", segments=(
-            _seg(0, 400, 0, 400),
-            _seg(300, 700, 300, 700),  # overlap
-        ))
+        ep.timeline = Timeline(
+            version="bad",
+            segments=(
+                _seg(0, 400, 0, 400),
+                _seg(300, 700, 300, 700),  # overlap
+            ),
+        )
         ep.audio_duration_served = 700.0
         fs = _findings([ep])
         assert all(f.severity in ("error", "warn") for f in fs)
 
     def test_finding_slug_matches(self):
         ep = _ep()
-        ep.timeline = Timeline(version="bad", segments=(
-            _seg(0, 400, 0, 400),
-            _seg(300, 700, 300, 700),
-        ))
+        ep.timeline = Timeline(
+            version="bad",
+            segments=(
+                _seg(0, 400, 0, 400),
+                _seg(300, 700, 300, 700),
+            ),
+        )
         ep.audio_duration_served = 700.0
         fs = _findings([ep])
         assert all(f.slug == "test-tx" for f in fs)
@@ -293,10 +341,13 @@ class TestFindingStructure:
     def test_multiple_bad_edls_produce_multiple_findings(self):
         # Both overlap AND duration mismatch
         ep = _ep()
-        ep.timeline = Timeline(version="bad", segments=(
-            _seg(0, 400, 0, 400),
-            _seg(300, 700, 300, 700),  # overlap
-        ))
+        ep.timeline = Timeline(
+            version="bad",
+            segments=(
+                _seg(0, 400, 0, 400),
+                _seg(300, 700, 300, 700),  # overlap
+            ),
+        )
         ep.audio_duration_served = 9999.0  # wrong
         fs = _findings([ep])
         checks = [f.check for f in fs]
@@ -308,11 +359,12 @@ class TestFindingStructure:
 # check_timeline_integrity is in contracts.py deeplink check (INFRA-6 wired it)
 # ---------------------------------------------------------------------------
 
+
 class TestDeeplinkLivenessWired:
     def test_contracts_check_includes_deeplink_for_granicus(self):
         """Verify that the contracts module routes deeplink checks for Granicus."""
-        from citypods.contracts import check_city
         from citypods.providers.granicus import GranicusProvider
+
         # The deeplink check runs after episode fetch; with no real network we just
         # verify the check function exists and accepts the provider name.
         assert "deeplink" in GranicusProvider.capabilities
