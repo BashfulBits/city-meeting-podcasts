@@ -305,6 +305,52 @@ class TestChapterAlignment:
         fs = _findings([ep])
         assert not any(f.check == "timeline-chapter-out-of-range" for f in fs)
 
+    def test_versioned_served_basis_chapters_are_checked(self):
+        # INFRA-5 stamps chapters_basis as "served:<edl-version>"; the range check must still
+        # apply (review item #19/#20 — startswith("served")).
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3300.0
+        ep.chapters = [{"start": 9999, "title": "way past the end"}]
+        ep.chapters_basis = "served:silence-v1"
+        fs = _findings([ep])
+        assert any(f.check == "timeline-chapter-out-of-range" for f in fs)
+
+
+# ---------------------------------------------------------------------------
+# Internal gaps + end coverage (review item #19)
+# ---------------------------------------------------------------------------
+
+
+class TestGapAndCoverage:
+    def test_internal_gap_between_segments_caught(self):
+        ep = _ep()
+        # seg0 ends at 300, seg1 starts at 400 → a 100s hole in the (contiguous) served clock
+        ep.timeline = Timeline(
+            version="bug-v1",
+            segments=(_seg(0, 300, 0, 300), _seg(400, 3400, 600, 3600)),
+        )
+        ep.audio_duration_served = 3300.0
+        assert any(f.check == "timeline-gap" for f in _findings([ep]))
+
+    def test_contiguous_segments_have_no_gap(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3300.0
+        assert not any(f.check == "timeline-gap" for f in _findings([ep]))
+
+    def test_last_segment_short_of_served_duration_caught(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()  # last segment ends at 3300
+        ep.audio_duration_served = 3600.0  # enclosure is 3600 → 300s uncovered at the end
+        assert any(f.check == "timeline-short-coverage" for f in _findings([ep]))
+
+    def test_full_coverage_ok(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3300.0
+        assert not any(f.check == "timeline-short-coverage" for f in _findings([ep]))
+
 
 # ---------------------------------------------------------------------------
 # Finding severity and structure

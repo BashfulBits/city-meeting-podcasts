@@ -443,7 +443,7 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
             )
             continue
 
-        # 1. Monotonicity and non-overlap
+        # 1. Monotonicity, non-overlap, and no internal gaps (served time is contiguous)
         prev_end = 0.0
         for i, s in enumerate(segs):
             if s.served_start < prev_end - _FRAME_TOLERANCE:
@@ -454,6 +454,20 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
                         ERROR,
                         f"{uid}: segment {i} starts at {s.served_start:.3f}s "
                         f"before previous end {prev_end:.3f}s",
+                    )
+                )
+            elif i > 0 and s.served_start > prev_end + _FRAME_TOLERANCE:
+                # Served time is the continuous enclosure clock, so a hole between segments
+                # means the EDL fails to account for some served audio (a planner bug). This is
+                # the mirror image of the overlap check above; together they enforce contiguity.
+                # (The start gap at i==0 is reported separately by check #2.)
+                findings.append(
+                    Finding(
+                        slug,
+                        "timeline-gap",
+                        ERROR,
+                        f"{uid}: gap before segment {i}: previous end {prev_end:.3f}s "
+                        f"→ next start {s.served_start:.3f}s",
                     )
                 )
             prev_end = s.served_end
@@ -469,7 +483,10 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
                 )
             )
 
-        # 3. Duration match (only when audio_duration_served is recorded)
+        # 3. Duration match + end coverage (only when audio_duration_served is recorded).
+        # This is only meaningful because the encoder derives audio_duration_served from the
+        # EDL itself (INFRA-3 review item #7), not from ep.duration (the *source* duration) —
+        # otherwise a trimmed episode would mismatch here purely by construction.
         served_dur = ep.audio_duration_served
         if served_dur is not None:
             seg_total = sum(s.served_end - s.served_start for s in segs)
@@ -483,6 +500,18 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
                         f"{uid}: segment total {seg_total:.3f}s != "
                         f"audio_duration_served {served_dur:.3f}s "
                         f"(delta {delta:.3f}s)",
+                    )
+                )
+            # End coverage: the last segment must reach the served duration. Sum-vs-duration
+            # alone can be fooled by an internal gap plus an equal overrun; this pins the end.
+            if abs(segs[-1].served_end - served_dur) > _FRAME_TOLERANCE:
+                findings.append(
+                    Finding(
+                        slug,
+                        "timeline-short-coverage",
+                        ERROR,
+                        f"{uid}: last segment ends at {segs[-1].served_end:.3f}s != "
+                        f"audio_duration_served {served_dur:.3f}s",
                     )
                 )
 
@@ -514,8 +543,9 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
                     )
                 )
 
-        # 5. Served-time chapters within [0, served_duration]
-        if ep.chapters_basis == "served" and served_dur is not None:
+        # 5. Served-time chapters within [0, served_duration]. Basis is "served" or
+        # "served:<edl-version>" (INFRA-5 stamps the version), so match the prefix.
+        if ep.chapters_basis.startswith("served") and served_dur is not None:
             for ch in ep.chapters or []:
                 start = ch.get("start")
                 if start is None:
