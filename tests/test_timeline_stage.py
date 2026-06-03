@@ -88,6 +88,7 @@ class _SilencePlanner:
     """Fake planner: cuts source 300–600 (returns trimmed two-segment Timeline)."""
 
     name = "silence-fake"
+    version = "1"
 
     def plan(self, provider, city, ep, ctx, current):
         return Timeline(
@@ -117,6 +118,7 @@ class _IntroPlannerFake:
     """Fake planner: prepends a 30s intro insert to whatever timeline it receives."""
 
     name = "intro-fake"
+    version = "1"
 
     def plan(self, provider, city, ep, ctx, current):
         # Shift existing segments by 30s and prepend an intro insert
@@ -161,6 +163,7 @@ class _NoOpPlanner:
     """Planner that never fires."""
 
     name = "noop"
+    version = "1"
 
     def plan(self, provider, city, ep, ctx, current):
         return None  # always passes through
@@ -215,7 +218,9 @@ class TestTimelineStageSinglePlanner:
         stage = TimelineStage(planners=[_SilencePlanner()])
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert ep.timeline is not None
-        assert ep.timeline.version == "silence-v1"
+        # version is stamped with the planner-set signature (review item #9), not the
+        # planner's internal label, so a later run can detect staleness.
+        assert ep.timeline.version == "silence-fake:1"
         assert len(ep.timeline.segments) == 2
         assert stats.ran == 1
 
@@ -242,7 +247,7 @@ class TestTimelineStagePlannerComposition:
 
         tl = ep.timeline
         assert tl is not None
-        assert tl.version == "intro-v1"
+        assert tl.version == "intro-fake:1+silence-fake:1"  # planner-set signature (sorted)
         # Should have an intro insert + the two silence-trimmed segments
         assert len(tl.segments) == 3
         assert tl.segments[0].kind == "insert"
@@ -262,14 +267,15 @@ class TestTimelineStagePlannerComposition:
         stage = TimelineStage(planners=[_NoOpPlanner(), _SilencePlanner()])
         stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert ep.timeline is not None
-        assert ep.timeline.version == "silence-v1"
+        assert ep.timeline.version == "noop:1+silence-fake:1"
 
     def test_silence_then_noop_preserves_silence(self, tmp_path):
         ep = _ep()
         stage = TimelineStage(planners=[_SilencePlanner(), _NoOpPlanner()])
         stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert ep.timeline is not None
-        assert ep.timeline.version == "silence-v1"
+        assert ep.timeline.version == "noop:1+silence-fake:1"
+        assert len(ep.timeline.segments) == 2  # silence output survived the no-op
 
 
 # ---------------------------------------------------------------------------
@@ -339,3 +345,66 @@ class TestTimelinePlannerProtocol:
         stage = TimelineStage(planners=[_MinimalPlanner()])
         stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         # Just verifying it doesn't raise
+
+
+# ---------------------------------------------------------------------------
+# Plan-once / stop-gate (review item #9)
+# ---------------------------------------------------------------------------
+
+
+class _CountingSilence(_SilencePlanner):
+    """Silence planner that counts how many times it actually runs."""
+
+    version = "1"
+
+    def __init__(self):
+        self.calls = 0
+
+    def plan(self, *a, **kw):
+        self.calls += 1
+        return super().plan(*a, **kw)
+
+
+class TestTimelineStageSkipAndStop:
+    def test_skips_replanning_when_signature_matches(self, tmp_path):
+        ep = _ep()
+        planner = _CountingSilence()
+        stage = TimelineStage(planners=[planner])
+        stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert planner.calls == 1
+        assert ep.timeline.version == "silence-fake:1"
+        # Second run: the stored EDL already carries this signature → no recompute.
+        stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert planner.calls == 1  # plan() not invoked again
+        assert stats.reused == 1 and stats.ran == 0
+
+    def test_replans_when_planner_version_changes(self, tmp_path):
+        ep = _ep()
+        TimelineStage(planners=[_SilencePlanner()]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert ep.timeline.version == "silence-fake:1"
+
+        class _SilenceV2(_SilencePlanner):
+            version = "2"
+
+        stats = TimelineStage(planners=[_SilenceV2()]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert ep.timeline.version == "silence-fake:2"  # signature changed → re-planned
+        assert stats.ran == 1
+
+    def test_stop_defers_planning(self, tmp_path):
+        ep = _ep()
+        ctx = StageContext(
+            storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn/"),
+            ffmpeg=_FakeFfmpeg(),
+            max_kbps=96,
+            dry_run=True,
+            stop=lambda: True,  # window spent → defer planning, don't fail
+        )
+        stats = TimelineStage(planners=[_SilencePlanner()]).process(
+            FakeProvider(), _city(), [ep], ctx
+        )
+        assert ep.timeline is None  # not planned this run
+        assert stats.skipped == 1 and stats.ran == 0
