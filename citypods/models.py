@@ -68,10 +68,10 @@ class Episode:
     # Replaces the old external-URL transcript_url field. Provider transcript links
     # that the ChaptersStage scrapes are still stored in ep.links["transcript"];
     # TranscriptStage fetches, stores, and remaps them into these hosted-artifact fields.
-    transcript_key: str | None = None          # storage object key
-    transcript_hosted_url: str | None = None   # public CDN URL
-    transcript_spec_hash: str | None = None    # invalidation hash (source + version)
-    transcript_format: str | None = None       # "vtt" | "srt" | "json" | "txt"
+    transcript_key: str | None = None  # storage object key
+    transcript_hosted_url: str | None = None  # public CDN URL
+    transcript_spec_hash: str | None = None  # invalidation hash (source + version)
+    transcript_format: str | None = None  # "vtt" | "srt" | "json" | "txt"
     # Time basis of cue timestamps: "source:s0" (from provider) or "served" (after remap).
     transcript_basis: str = "source:s0"
     # True = timestamps are present and correct against the enclosure; False = untimed

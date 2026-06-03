@@ -219,7 +219,9 @@ def episode_to_record(ep: Episode) -> dict:
             "format": ep.transcript_format,
             "basis": ep.transcript_basis,
             "synced": ep.transcript_synced,
-        } if ep.transcript_key else None,
+        }
+        if ep.transcript_key
+        else None,
         # v2: source-media registry and timeline EDL (omitted when empty/identity).
         "sources": [dataclasses.asdict(s) for s in ep.sources] if ep.sources else [],
         "timeline": dataclasses.asdict(ep.timeline) if ep.timeline is not None else None,

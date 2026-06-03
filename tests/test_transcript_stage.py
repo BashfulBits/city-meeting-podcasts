@@ -13,8 +13,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from citypods.models import City, Episode
 from citypods.records import episode_to_record, record_to_episode
 from citypods.stages import (
@@ -25,25 +23,32 @@ from citypods.stages import (
 )
 from citypods.storage.local import LocalStorage
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _city() -> City:
     return City(
-        slug="t-tx", provider="civicplus",
-        source={"feed_url": "x"}, podcast_title="T",
-        podcast_author="City of T", podcast_email="", podcast_description="d",
+        slug="t-tx",
+        provider="civicplus",
+        source={"feed_url": "x"},
+        podcast_title="T",
+        podcast_author="City of T",
+        podcast_email="",
+        podcast_description="d",
     )
 
 
 def _ep(uid="uid-g1", links=None) -> Episode:
     return Episode(
-        guid="g1", uid=uid, title="Meeting",
+        guid="g1",
+        uid=uid,
+        title="Meeting",
         published=datetime(2026, 5, 20, tzinfo=UTC),
         video_url="https://src/vid.mp4",
-        media_kind="direct", duration=3600,
+        media_kind="direct",
+        duration=3600,
         links=links or {},
     )
 
@@ -76,11 +81,11 @@ PLAIN_CONTENT = b"These are the minutes of the meeting. No timestamps."
 # Episode model — transcript_url removed
 # ---------------------------------------------------------------------------
 
+
 class TestTranscriptUrlRemoved:
     def test_episode_has_no_transcript_url_field(self):
         ep = _ep()
-        assert not hasattr(ep, "transcript_url"), \
-            "transcript_url should be removed in INFRA-8"
+        assert not hasattr(ep, "transcript_url"), "transcript_url should be removed in INFRA-8"
 
     def test_episode_has_transcript_hosted_url(self):
         ep = _ep()
@@ -104,6 +109,7 @@ class TestTranscriptUrlRemoved:
 # ---------------------------------------------------------------------------
 # Transcript record round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestTranscriptRecordRoundTrip:
     def test_transcript_block_survives_round_trip(self):
@@ -166,6 +172,7 @@ class TestTranscriptRecordRoundTrip:
 # TranscriptStage — no provider transcript (ASR slot stubbed)
 # ---------------------------------------------------------------------------
 
+
 class TestTranscriptStageASRStubbed:
     def test_noop_when_no_transcript_link(self, tmp_path):
         ep = _ep(links={})  # no "transcript" key in links
@@ -179,7 +186,9 @@ class TestTranscriptStageASRStubbed:
         ep = _ep(links={"transcript": "https://provider/transcript.vtt"})
         ctx = StageContext(
             storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn/"),
-            ffmpeg=FakeFfmpeg(), max_kbps=96, dry_run=True,
+            ffmpeg=FakeFfmpeg(),
+            max_kbps=96,
+            dry_run=True,
         )
         stage = TranscriptStage()
         stats = stage.process(FakeProvider(), _city(), [ep], ctx)
@@ -191,6 +200,7 @@ class TestTranscriptStageASRStubbed:
 # TranscriptStage — VTT provider transcript (mocked HTTP)
 # ---------------------------------------------------------------------------
 
+
 class TestTranscriptStageVTT:
     def _run_with_content(self, tmp_path, content: bytes, url="https://provider/t.vtt"):
         from unittest.mock import patch
@@ -201,12 +211,16 @@ class TestTranscriptStageVTT:
         _body = content  # capture for closure
 
         class _FakeSession:
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
 
             def get(self, url, **kw):
                 class _R:
                     status_code = 200
+
                 _r = _R()
                 _r.content = _body
                 return _r
@@ -252,8 +266,12 @@ class TestTranscriptStageVTT:
         first_key = ep.transcript_key
 
         class _FakeSession:
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
             def get(self, *a, **kw):
                 raise AssertionError("should not fetch again on reuse")
 
@@ -268,9 +286,11 @@ class TestTranscriptStageVTT:
 # feeds.py — <podcast:transcript> tag emission
 # ---------------------------------------------------------------------------
 
+
 class TestTranscriptTagEmission:
     def _build_feed(self, ep: Episode, base_url="https://example.com") -> str:
         from citypods.feeds import build_rss
+
         return build_rss(_city(), [ep], kind="audio", base_url=base_url)
 
     def test_tag_emitted_when_synced(self):
@@ -312,6 +332,7 @@ class TestTranscriptTagEmission:
 # Stage ordering
 # ---------------------------------------------------------------------------
 
+
 class TestTranscriptStageOrdering:
     def _names(self, stages):
         return [s.name for s in stages]
@@ -326,10 +347,19 @@ class TestTranscriptStageOrdering:
 
     def test_full_order_default(self):
         assert self._names(default_stages()) == [
-            "chapters", "timeline", "remap", "audio", "transcript", "links"
+            "chapters",
+            "timeline",
+            "remap",
+            "audio",
+            "transcript",
+            "links",
         ]
 
     def test_full_order_enrich(self):
         assert self._names(enrich_stages()) == [
-            "chapters", "timeline", "remap", "audio", "transcript"
+            "chapters",
+            "timeline",
+            "remap",
+            "audio",
+            "transcript",
         ]

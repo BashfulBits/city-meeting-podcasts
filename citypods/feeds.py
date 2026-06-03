@@ -146,7 +146,8 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
                     {"vtt": "text/vtt", "srt": "application/x-subrip"}.get(
                         ep.transcript_format or "", "text/plain"
                     )
-                    if ep.transcript_synced else None
+                    if ep.transcript_synced
+                    else None
                 ),
             }
         )

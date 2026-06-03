@@ -484,13 +484,18 @@ class LinksStage:
 TRANSCRIPT_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag
-_TRANSCRIPT_MIME = {"vtt": "text/vtt", "srt": "application/x-subrip",
-                    "json": "application/json", "txt": "text/plain"}
+_TRANSCRIPT_MIME = {
+    "vtt": "text/vtt",
+    "srt": "application/x-subrip",
+    "json": "application/json",
+    "txt": "text/plain",
+}
 
 
 def _transcript_spec_hash(source_url: str) -> str:
     """Hash of the inputs that determine a transcript's bytes (source URL + version)."""
     import hashlib
+
     spec = {"v": TRANSCRIPT_PIPELINE_VERSION, "source": source_url}
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
@@ -544,7 +549,8 @@ class TranscriptStage:
         src_key = _src_key(city)
         hosted_keys = (
             {k for k, _ in ctx.storage.list_objects(f"transcripts/{src_key}/")}
-            if hasattr(ctx.storage, "list_objects") else None
+            if hasattr(ctx.storage, "list_objects")
+            else None
         )
 
         def _present(k: str) -> bool:
@@ -568,7 +574,6 @@ class TranscriptStage:
                 continue
 
             try:
-                import requests as _req
                 from citypods.http import make_session
 
                 with make_session() as sess:
@@ -586,6 +591,7 @@ class TranscriptStage:
                 # Determine basis: identity timeline → source == served → "served".
                 # Non-identity + timed → basis stays "source:s0" until VTT parser lands.
                 from citypods.timeline import timeline_digest as _td
+
                 is_identity = ep.timeline is None or _td(ep.timeline) == ""
                 if timed and is_identity:
                     basis = "served"
@@ -600,6 +606,7 @@ class TranscriptStage:
                     synced = False
 
                 import tempfile as _tmp
+
                 with _tmp.TemporaryDirectory() as t:
                     dest = Path(t) / f"transcript.{fmt}"
                     dest.write_bytes(content)
@@ -629,7 +636,14 @@ def default_stages() -> list[EnrichmentStage]:
     Ordering invariant: ``chapters`` → ``timeline`` → ``remap`` → ``audio``.
     Chapters must arrive (source-time) before timeline plans the EDL; remap converts
     them to served-time before audio embeds them as M4A markers."""
-    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage(), TranscriptStage(), LinksStage()]
+    return [
+        ChaptersStage(),
+        TimelineStage(),
+        RemapStage(),
+        AudioStage(),
+        TranscriptStage(),
+        LinksStage(),
+    ]
 
 
 def render_stages() -> list[EnrichmentStage]:
