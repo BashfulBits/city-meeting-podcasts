@@ -9,17 +9,15 @@ Acceptance criteria:
 
 from __future__ import annotations
 
-import pytest
-
 from citypods.providers.civicclerk import CivicClerkProvider
 from citypods.providers.civicplus import CivicPlusProvider
 from citypods.providers.granicus import GranicusProvider
 from citypods.providers.swagit import SwagitProvider
 
-
 # ---------------------------------------------------------------------------
 # GranicusProvider — video_deeplink
 # ---------------------------------------------------------------------------
+
 
 class TestGranicusDeeplink:
     PLAYER_URL = "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=5455"
@@ -66,6 +64,7 @@ class TestGranicusDeeplink:
 # SwagitProvider — video_deeplink
 # ---------------------------------------------------------------------------
 
+
 class TestSwagitDeeplink:
     WATCH_URL = "https://dallastx.new.swagit.com/videos/389304"
 
@@ -92,7 +91,8 @@ class TestSwagitDeeplink:
     def test_deeplink_returns_none_for_unparseable_ref(self):
         p = SwagitProvider()
         # A download URL (not a canonical /videos/{id} page)
-        assert p.video_deeplink("https://dallastx.new.swagit.com/videos/389304/download", 60) is None
+        bad_url = "https://dallastx.new.swagit.com/videos/389304/download"
+        assert p.video_deeplink(bad_url, 60) is None
 
     def test_deeplink_returns_none_for_non_numeric_id(self):
         p = SwagitProvider()
@@ -111,6 +111,7 @@ class TestSwagitDeeplink:
         assert url is not None
         # Strip to path and verify it matches the chapter anchor pattern
         from urllib.parse import urlsplit
+
         path = urlsplit(url).path
         assert path == "/play/389304/51"
 
@@ -118,6 +119,7 @@ class TestSwagitDeeplink:
 # ---------------------------------------------------------------------------
 # CivicClerkProvider — no deeplink support
 # ---------------------------------------------------------------------------
+
 
 class TestCivicClerkDeeplink:
     def test_capabilities_excludes_deeplink(self):
@@ -133,6 +135,7 @@ class TestCivicClerkDeeplink:
 # CivicPlusProvider — no deeplink support
 # ---------------------------------------------------------------------------
 
+
 class TestCivicPlusDeeplink:
     def test_capabilities_excludes_deeplink(self):
         assert "deeplink" not in CivicPlusProvider.capabilities
@@ -147,15 +150,17 @@ class TestCivicPlusDeeplink:
 # Capability gating — only "deeplink" providers produce URLs
 # ---------------------------------------------------------------------------
 
+
 class TestCapabilityGating:
     def test_providers_with_deeplink_produce_non_none(self):
         """Every provider with "deeplink" in capabilities must return a non-None URL
         for a valid ref."""
         cases = [
-            (GranicusProvider(),
-             "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=5455"),
-            (SwagitProvider(),
-             "https://dallastx.new.swagit.com/videos/389304"),
+            (
+                GranicusProvider(),
+                "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=5455",
+            ),
+            (SwagitProvider(), "https://dallastx.new.swagit.com/videos/389304"),
         ]
         for provider, ref in cases:
             assert "deeplink" in provider.capabilities
@@ -175,14 +180,24 @@ class TestCapabilityGating:
 
     def test_all_providers_have_capabilities_attribute(self):
         """Every provider must declare capabilities (even if empty)."""
-        providers = [GranicusProvider(), SwagitProvider(), CivicClerkProvider(), CivicPlusProvider()]
+        providers = [
+            GranicusProvider(),
+            SwagitProvider(),
+            CivicClerkProvider(),
+            CivicPlusProvider(),
+        ]
         for p in providers:
             assert hasattr(p, "capabilities"), f"{p.name} missing capabilities"
             assert isinstance(p.capabilities, frozenset), f"{p.name} capabilities is not frozenset"
 
     def test_all_providers_have_video_deeplink_method(self):
         """Every provider must implement video_deeplink (returns None when unsupported)."""
-        providers = [GranicusProvider(), SwagitProvider(), CivicClerkProvider(), CivicPlusProvider()]
+        providers = [
+            GranicusProvider(),
+            SwagitProvider(),
+            CivicClerkProvider(),
+            CivicPlusProvider(),
+        ]
         for p in providers:
             assert hasattr(p, "video_deeplink"), f"{p.name} missing video_deeplink"
             assert callable(p.video_deeplink), f"{p.name}.video_deeplink is not callable"
@@ -191,6 +206,7 @@ class TestCapabilityGating:
 # ---------------------------------------------------------------------------
 # URL structure assertions
 # ---------------------------------------------------------------------------
+
 
 class TestDeeplinkUrlStructure:
     def test_granicus_url_is_valid_https(self):
@@ -202,9 +218,7 @@ class TestDeeplinkUrlStructure:
         assert "?" in url  # has query params
 
     def test_swagit_url_is_valid_https(self):
-        url = SwagitProvider().video_deeplink(
-            "https://dallastx.new.swagit.com/videos/389304", 491
-        )
+        url = SwagitProvider().video_deeplink("https://dallastx.new.swagit.com/videos/389304", 491)
         assert url is not None
         assert url.startswith("https://")
         assert "/play/" in url
