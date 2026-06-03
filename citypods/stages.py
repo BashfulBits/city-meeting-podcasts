@@ -483,8 +483,9 @@ class LinksStage:
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
 
-# MIME types used for the <podcast:transcript> tag
-_TRANSCRIPT_MIME = {
+# MIME types used for the <podcast:transcript> tag and the stored object's content-type.
+# Public (imported by citypods.feeds) so the feed tag and the stored object never disagree.
+TRANSCRIPT_MIME = {
     "vtt": "text/vtt",
     "srt": "application/x-subrip",
     "json": "application/json",
@@ -492,11 +493,17 @@ _TRANSCRIPT_MIME = {
 }
 
 
-def _transcript_spec_hash(source_url: str) -> str:
-    """Hash of the inputs that determine a transcript's bytes (source URL + version)."""
+def _transcript_spec_hash(content: bytes) -> str:
+    """Hash of the inputs that determine a transcript's bytes: the fetched *content* + version.
+
+    Keyed on the content, not the provider URL — mirroring how ``audio_spec_hash`` deliberately
+    excludes the tokenized/expiring source URL. A rotated download token (Swagit/CivicClerk can
+    hand back a signed URL) thus produces the *same* key for identical bytes, so a cold-cache or
+    post-GC re-fetch reuses the object instead of orphaning a near-duplicate."""
     import hashlib
 
-    spec = {"v": TRANSCRIPT_PIPELINE_VERSION, "source": source_url}
+    digest = hashlib.sha1(content).hexdigest()
+    spec = {"v": TRANSCRIPT_PIPELINE_VERSION, "content": digest}
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
@@ -557,11 +564,10 @@ class TranscriptStage:
             return k in hosted_keys if hosted_keys is not None else ctx.storage.exists(k)
 
         for ep in _materialize_set(episodes, city.max_episodes):
-            if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
-                continue
-
-            # 1. Reuse if already stored
+            # 1. Reuse if already stored. This is cheap, idempotent bookkeeping (re-attach the
+            #    hosted URL), so per the stop convention it runs UNCONDITIONALLY — even after the
+            #    window is spent — so a yielded run still leaves every already-stored transcript
+            #    referenced on the feed. (AudioStage reuses before its stop() check the same way.)
             if ep.transcript_key and _present(ep.transcript_key):
                 ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                 stats.reused += 1
@@ -571,6 +577,12 @@ class TranscriptStage:
             provider_url = (ep.links or {}).get("transcript")
             if not provider_url:
                 # 3. ASR slot: stubbed — not implemented (issue #110)
+                continue
+
+            # Fetching + storing is the expensive, restartable work — gate it on stop() here
+            # (after the free reuse short-circuit above), deferred to a later run, not failed.
+            if ctx.stop is not None and ctx.stop():
+                stats.skipped += 1
                 continue
 
             try:
@@ -585,7 +597,7 @@ class TranscriptStage:
                 content = resp.content
                 fmt = _detect_format(content)
                 timed = is_timed_transcript(content)
-                spec = _transcript_spec_hash(provider_url)
+                spec = _transcript_spec_hash(content)  # content-addressed, not URL-addressed
                 key = _transcript_object_key(src_key, ep.uid or ep.guid, spec, fmt)
 
                 # Determine basis: identity timeline → source == served → "served".
@@ -610,7 +622,7 @@ class TranscriptStage:
                 with _tmp.TemporaryDirectory() as t:
                     dest = Path(t) / f"transcript.{fmt}"
                     dest.write_bytes(content)
-                    mime = _TRANSCRIPT_MIME.get(fmt, "text/plain")
+                    mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
                     url = ctx.storage.put_file(key, dest, mime)
 
                 ep.transcript_key = key

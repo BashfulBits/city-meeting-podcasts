@@ -1,18 +1,26 @@
 #!/usr/bin/env python
-"""Garbage-collect orphaned audio objects from storage.
+"""Garbage-collect orphaned content-addressed objects from storage.
 
-Audio is content-addressed (the key embeds the audio spec), so when an episode's audio is
-regenerated — e.g. chapters added or a bitrate-policy bump — the old object is left behind,
-no longer referenced by any record. This sweep deletes those orphans.
+Audio and transcripts are content-addressed (the key embeds a spec hash), so when an episode's
+artifact is regenerated — chapters added, a bitrate bump, a new transcript version — the old
+object is left behind, no longer referenced by any record. This sweep deletes those orphans.
+
+The live set comes from ``records.referenced_audio_keys`` (despite the name, it returns both
+audio AND transcript keys), so hosted transcripts are protected, not reaped.
 
 Safe by default:
   * dry-run unless ``--apply`` is given;
   * only deletes objects older than ``--min-age-days`` (default 7) so an object written by a
     build that hasn't yet persisted its record isn't reaped out from under it;
-  * only considers keys under the audio prefix the pipeline writes.
+  * refuses to run if no records are found (would look like everything is orphaned);
+  * never touches the durable ``state/`` snapshot.
+
+By default it scans the whole bucket (``--prefix ""``); pass ``--prefix`` to scope it. Note:
+clip objects (``clips/…``) are not produced yet — when soundbites land, either reference them
+in the live set or give them their own ephemeral GC policy before running this unscoped.
 
 Usage:
-    PYTHONPATH=. python scripts/gc_audio.py [--apply] [--min-age-days N]
+    PYTHONPATH=. python scripts/gc_audio.py [--apply] [--min-age-days N] [--prefix P]
 """
 
 from __future__ import annotations

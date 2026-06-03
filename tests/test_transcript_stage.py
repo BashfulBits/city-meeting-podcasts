@@ -14,7 +14,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from citypods.models import City, Episode
-from citypods.records import episode_to_record, record_to_episode
+from citypods.records import (
+    episode_to_record,
+    record_to_episode,
+    referenced_audio_keys,
+    save_records,
+    source_key,
+)
 from citypods.stages import (
     StageContext,
     TranscriptStage,
@@ -363,3 +369,92 @@ class TestTranscriptStageOrdering:
             "audio",
             "transcript",
         ]
+
+
+# ---------------------------------------------------------------------------
+# stop convention, content-addressing, GC protection (review items #16, #17, A)
+# ---------------------------------------------------------------------------
+
+
+def _fetch(content: bytes):
+    """A make_session() replacement that returns `content` from a GET."""
+
+    class _R:
+        status_code = 200
+
+    class _Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def get(self, *a, **kw):
+            r = _R()
+            r.content = content
+            return r
+
+    return _Session()
+
+
+class _NoFetch:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def get(self, *a, **kw):
+        raise AssertionError("must not fetch")
+
+
+class TestTranscriptStopAndStorage:
+    def _store_once(self, tmp_path):
+        ep = _ep(links={"transcript": "https://provider/t.vtt"})
+        ep.timeline = None
+        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+            TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        return ep
+
+    def test_reuse_runs_even_when_stopped(self, tmp_path):
+        # #16: reuse is cheap idempotent bookkeeping → must run even after stop(), so a yielded
+        # run still references the already-stored transcript (mirrors AudioStage).
+        ep = self._store_once(tmp_path)
+        ep.transcript_hosted_url = None  # a fresh run must re-attach the URL
+        ctx = _ctx(tmp_path)
+        ctx.stop = lambda: True
+        with patch("citypods.http.make_session", return_value=_NoFetch()):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+        assert stats.reused == 1 and stats.skipped == 0
+        assert ep.transcript_hosted_url is not None  # re-attached despite the stop
+
+    def test_fetch_deferred_when_stopped(self, tmp_path):
+        # The expensive fetch+store IS gated: an un-stored transcript defers under stop().
+        ep = _ep(links={"transcript": "https://provider/t.vtt"})
+        ep.timeline = None
+        ctx = _ctx(tmp_path)
+        ctx.stop = lambda: True
+        with patch("citypods.http.make_session", return_value=_NoFetch()):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+        assert stats.skipped == 1
+        assert ep.transcript_key is None
+
+    def test_spec_is_content_addressed_not_url(self, tmp_path):
+        # #17: identical content behind different (tokenized) URLs → same spec/key.
+        ep_a = _ep(uid="uid-x", links={"transcript": "https://p/a.vtt?token=AAA"})
+        ep_b = _ep(uid="uid-x", links={"transcript": "https://p/b.vtt?token=ZZZ"})
+        ep_a.timeline = ep_b.timeline = None
+        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+            TranscriptStage().process(FakeProvider(), _city(), [ep_a], _ctx(tmp_path))
+            TranscriptStage().process(FakeProvider(), _city(), [ep_b], _ctx(tmp_path))
+        assert ep_a.transcript_spec_hash == ep_b.transcript_spec_hash
+        assert ep_a.transcript_key == ep_b.transcript_key
+
+    def test_referenced_keys_protect_transcripts_from_gc(self, tmp_path):
+        # Fix A: the live set the orphan GC keeps must include transcript keys, or
+        # gc_audio.py --apply would reap hosted transcripts.
+        ep = self._store_once(tmp_path)
+        state_dir = tmp_path / "state"
+        save_records(state_dir, source_key(_city()), {ep.uid: episode_to_record(ep)})
+        refs = referenced_audio_keys(state_dir)
+        assert ep.transcript_key in refs

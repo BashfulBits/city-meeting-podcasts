@@ -181,8 +181,18 @@ def save_records(state_dir: Path, src_key: str, records: dict) -> None:
 
 
 def referenced_audio_keys(state_dir: Path) -> set[str]:
-    """Every audio object key currently referenced by any source's records — the live set an
-    orphan GC keeps; anything in storage outside this set is a candidate for deletion."""
+    """Every *managed* object key currently referenced by any source's records — the live set
+    an orphan GC keeps; anything in storage outside this set is a candidate for deletion.
+
+    Includes both the per-episode **audio** key and the **transcript** key. Transcripts are
+    content-addressed objects too (``transcripts/<src>/<uid>-<spec>.<fmt>``, written by
+    TranscriptStage), so they MUST be in the live set or ``scripts/gc_audio.py`` — which by
+    default sweeps every object under the bucket — would reap live hosted transcripts the first
+    time it runs with ``--apply``. (Clip objects are not produced yet; when soundbites land they
+    should either be added here or given an ephemeral/derivable GC policy of their own.)
+
+    The name is kept for its callers (gc_audio, report, statesync); read it as
+    "referenced object keys.\""""
     keys: set[str] = set()
     for path in Path(state_dir).glob("sources/*/episodes.json"):
         try:
@@ -190,9 +200,12 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
         except (OSError, ValueError):
             continue
         for rec in (data.get("episodes") or {}).values():
-            key = (rec.get("audio") or {}).get("key")
-            if key:
-                keys.add(key)
+            audio_key = (rec.get("audio") or {}).get("key")
+            if audio_key:
+                keys.add(audio_key)
+            transcript_key = (rec.get("transcript") or {}).get("key")
+            if transcript_key:
+                keys.add(transcript_key)
     return keys
 
 
