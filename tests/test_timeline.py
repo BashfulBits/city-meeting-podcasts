@@ -402,3 +402,57 @@ class TestRemap:
         out = remap(tl, items)
         assert len(out) == 1
         assert out[0]["start"] == 1799.0  # s0@1799 → served 1799
+
+
+# ---------------------------------------------------------------------------
+# Concat-seam boundary convention (review item #1) — pins the documented
+# asymmetry between the two maps at a source→source handoff so it can't drift.
+# ---------------------------------------------------------------------------
+
+
+class TestConcatSeamConvention:
+    def test_served_boundary_belongs_to_the_later_segment(self):
+        # served 1800 is the s0→s1 seam; served_to_source assigns it to the segment that
+        # STARTS there (s1@0), because non-last segments are half-open [start, end).
+        tl = _concat_timeline()
+        assert served_to_source(tl, 1800.0) == ("s1", 0.0)
+
+    def test_source_boundary_is_closed_for_its_own_segment(self):
+        # Going the other way, 1800 is the closed right endpoint of s0's (only) segment,
+        # so it maps to served 1800 — the same instant served_to_source hands to s1.
+        tl = _concat_timeline()
+        assert source_to_served(tl, "s0", 1800.0) == 1800.0
+        assert source_to_served(tl, "s1", 0.0) == 1800.0
+
+    def test_maps_are_inverse_everywhere_except_the_seam(self):
+        # The documented sub-frame asymmetry: round-tripping s0@1800 lands on s1, not s0 …
+        tl = _concat_timeline()
+        assert served_to_source(tl, source_to_served(tl, "s0", 1800.0)) == ("s1", 0.0)
+        # … but one frame earlier the maps are exact inverses (true away from the seam).
+        assert served_to_source(tl, source_to_served(tl, "s0", 1799.0)) == ("s0", 1799.0)
+
+
+# ---------------------------------------------------------------------------
+# remap(clamp_to=...) — review item #3: a cut end is clamped instead of None.
+# ---------------------------------------------------------------------------
+
+
+class TestRemapClampTo:
+    def test_cut_end_is_clamped_when_requested(self):
+        # _trimmed_timeline cuts source 300–600; an item ending at 450 (inside the cut)
+        # would otherwise remap to end=None. clamp_to pins it to the served boundary.
+        tl = _trimmed_timeline()
+        items = [{"start": 100, "end": 450, "title": "runs into the cut"}]
+        out = remap(tl, items, clamp_to=3300.0)
+        assert out[0]["start"] == 100.0
+        assert out[0]["end"] == 3300.0
+
+    def test_without_clamp_cut_end_is_still_none(self):
+        tl = _trimmed_timeline()
+        out = remap(tl, [{"start": 100, "end": 450}])  # no clamp_to
+        assert out[0]["end"] is None
+
+    def test_clamp_leaves_an_uncut_end_untouched(self):
+        tl = _trimmed_timeline()
+        out = remap(tl, [{"start": 100, "end": 200}], clamp_to=3300.0)
+        assert out[0]["end"] == 200.0  # 200 is in the kept span → unchanged
