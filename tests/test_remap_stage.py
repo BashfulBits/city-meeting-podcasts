@@ -13,8 +13,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from citypods.models import City, Episode
 from citypods.stages import (
     RemapStage,
@@ -26,34 +24,44 @@ from citypods.stages import (
 from citypods.storage.local import LocalStorage
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _city() -> City:
     return City(
-        slug="t-tx", provider="civicplus",
-        source={"feed_url": "x"}, podcast_title="T",
-        podcast_author="City of T", podcast_email="", podcast_description="d",
+        slug="t-tx",
+        provider="civicplus",
+        source={"feed_url": "x"},
+        podcast_title="T",
+        podcast_author="City of T",
+        podcast_email="",
+        podcast_description="d",
         extract_audio=True,
     )
 
 
 def _ep(chapters=None) -> Episode:
     return Episode(
-        guid="g1", uid="uid-g1", title="Meeting",
+        guid="g1",
+        uid="uid-g1",
+        title="Meeting",
         published=datetime(2026, 5, 20, tzinfo=UTC),
         video_url="https://src/vid.mp4",
-        media_kind="direct", duration=3600,
+        media_kind="direct",
+        duration=3600,
         chapters=chapters or [],
     )
 
 
 def _ctx(tmp_path: Path) -> StageContext:
     class FakeFfmpeg:
-        def extract_audio(self, tl, srcs, dest, ch=None, *, loudness_profile=None, asset_resolver=None):
+        def extract_audio(
+            self, tl, srcs, dest, ch=None, *, loudness_profile=None, asset_resolver=None
+        ):
             dest.write_bytes(b"fake")
+
     return StageContext(
         storage=LocalStorage(root=tmp_path / "audio", url_prefix="https://cdn/"),
         ffmpeg=FakeFfmpeg(),
@@ -72,10 +80,22 @@ def _trimmed_timeline() -> Timeline:
     return Timeline(
         version="silence-v1",
         segments=(
-            Segment(served_start=0, served_end=300, kind="source",
-                    source_id="s0", source_start=0, source_end=300),
-            Segment(served_start=300, served_end=3300, kind="source",
-                    source_id="s0", source_start=600, source_end=3600),
+            Segment(
+                served_start=0,
+                served_end=300,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=300,
+            ),
+            Segment(
+                served_start=300,
+                served_end=3300,
+                kind="source",
+                source_id="s0",
+                source_start=600,
+                source_end=3600,
+            ),
         ),
     )
 
@@ -83,6 +103,7 @@ def _trimmed_timeline() -> Timeline:
 # ---------------------------------------------------------------------------
 # RemapStage — identity timeline (no-op)
 # ---------------------------------------------------------------------------
+
 
 class TestRemapStageIdentity:
     def test_noop_when_timeline_is_none(self, tmp_path):
@@ -97,8 +118,9 @@ class TestRemapStageIdentity:
         assert stats.reused == 1
 
     def test_noop_when_identity_timeline(self, tmp_path):
-        src = SourceMedia(id="s0", provider="g", ref="u", media_kind="direct",
-                          duration=3600.0, watch_url=None)
+        src = SourceMedia(
+            id="s0", provider="g", ref="u", media_kind="direct", duration=3600.0, watch_url=None
+        )
         ep = _ep(chapters=[{"start": 60, "title": "A"}])
         ep.timeline = identity_timeline(src, 3600.0)
         stage = RemapStage()
@@ -129,22 +151,27 @@ class TestRemapStageIdentity:
 # RemapStage — trimmed timeline (chapters remap + cut-span drop)
 # ---------------------------------------------------------------------------
 
+
 class TestRemapStageTrimmed:
     def test_chapters_in_first_span_remap_unchanged(self, tmp_path):
-        ep = _ep(chapters=[
-            {"start": 0, "title": "Call to order"},
-            {"start": 200, "title": "Agenda"},
-        ])
+        ep = _ep(
+            chapters=[
+                {"start": 0, "title": "Call to order"},
+                {"start": 200, "title": "Agenda"},
+            ]
+        )
         ep.timeline = _trimmed_timeline()
         RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert ep.chapters[0]["start"] == 0.0
         assert ep.chapters[1]["start"] == 200.0
 
     def test_chapters_in_second_span_get_offset(self, tmp_path):
-        ep = _ep(chapters=[
-            {"start": 600, "title": "After recess"},
-            {"start": 1200, "title": "New business"},
-        ])
+        ep = _ep(
+            chapters=[
+                {"start": 600, "title": "After recess"},
+                {"start": 1200, "title": "New business"},
+            ]
+        )
         ep.timeline = _trimmed_timeline()
         RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         # source 600 → served 300; source 1200 → served 900
@@ -152,11 +179,13 @@ class TestRemapStageTrimmed:
         assert ep.chapters[1]["start"] == 900.0
 
     def test_cut_span_chapters_are_dropped(self, tmp_path):
-        ep = _ep(chapters=[
-            {"start": 0, "title": "Before cut"},
-            {"start": 350, "title": "IN CUT SPAN — should be dropped"},
-            {"start": 600, "title": "After cut"},
-        ])
+        ep = _ep(
+            chapters=[
+                {"start": 0, "title": "Before cut"},
+                {"start": 350, "title": "IN CUT SPAN — should be dropped"},
+                {"start": 600, "title": "After cut"},
+            ]
+        )
         ep.timeline = _trimmed_timeline()
         RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         titles = [c["title"] for c in ep.chapters]
@@ -200,8 +229,11 @@ class TestRemapStageTrimmed:
         """When ep.sources is populated, use the first source's id."""
         ep = _ep(chapters=[{"start": 600, "title": "A"}])
         ep.timeline = _trimmed_timeline()
-        ep.sources = [SourceMedia(id="s0", provider="g", ref="u", media_kind="direct",
-                                  duration=3600.0, watch_url=None)]
+        ep.sources = [
+            SourceMedia(
+                id="s0", provider="g", ref="u", media_kind="direct", duration=3600.0, watch_url=None
+            )
+        ]
         RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert ep.chapters[0]["start"] == 300.0  # correctly remapped via s0
 
@@ -209,6 +241,7 @@ class TestRemapStageTrimmed:
 # ---------------------------------------------------------------------------
 # is_timed_transcript — heuristic detection
 # ---------------------------------------------------------------------------
+
 
 class TestIsTimedTranscript:
     def test_webvtt_is_timed(self):
@@ -243,9 +276,11 @@ class TestIsTimedTranscript:
 # chapters_basis round-trip through records
 # ---------------------------------------------------------------------------
 
+
 class TestChaptersBasisRoundTrip:
     def test_served_basis_survives_record_round_trip(self):
         from citypods.records import episode_to_record, record_to_episode
+
         ep = _ep(chapters=[{"start": 300, "title": "Remapped"}])
         ep.chapters_basis = "served"
         rec = episode_to_record(ep)
@@ -254,6 +289,7 @@ class TestChaptersBasisRoundTrip:
 
     def test_default_basis_is_source_s0(self):
         from citypods.records import episode_to_record, record_to_episode
+
         ep = _ep()
         ep2 = record_to_episode(episode_to_record(ep))
         assert ep2.chapters_basis == "source:s0"
@@ -262,6 +298,7 @@ class TestChaptersBasisRoundTrip:
 # ---------------------------------------------------------------------------
 # Ordering assertions (remap precedes audio)
 # ---------------------------------------------------------------------------
+
 
 class TestRemapOrdering:
     def _names(self, stages):

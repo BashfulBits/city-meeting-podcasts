@@ -68,12 +68,11 @@ the most valuable expensive stages earliest.
 from __future__ import annotations
 
 import collections
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Protocol
-
-import re
 
 from citypods.bodies import body_key, canonical_body
 from citypods.media import MaterializeStats, materialize_audio
