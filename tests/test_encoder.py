@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from citypods.media import (
     _parse_lufs,
+    _served_duration,
     build_filter_complex,
     materialize_audio,
 )
@@ -515,3 +516,67 @@ class TestMaterializeWithTimeline:
             resolve_media_url=lambda e: e.video_url,
         )
         assert "https://src/vid.m3u8" in ff.sources[0].values()
+
+
+# ---------------------------------------------------------------------------
+# build_filter_complex — format normalization before concat (review item #8)
+# ---------------------------------------------------------------------------
+
+
+class TestFiltergraphFormatNorm:
+    """Branches are normalized to a common mono rate before concat only when they can
+    differ (multiple distinct sources, or an insert asset) — never for same-source trims."""
+
+    def test_multi_source_concat_normalizes_each_branch(self):
+        segs = (_seg_src(0, 1800, 0, 1800, "s0"), _seg_src(1800, 3600, 0, 1800, "s1"))
+        fc, _ = build_filter_complex(segs, {"s0": 0, "s1": 1}, {})
+        assert fc.count("aresample=48000") == 2
+        assert "aformat=channel_layouts=mono" in fc
+        assert "concat=n=2:v=0:a=1[outa]" in fc
+
+    def test_insert_branch_is_normalized(self):
+        segs = (_seg_insert(0, 60), _seg_src(60, 3660, 0, 3600))
+        fc, _ = build_filter_complex(segs, {"s0": 0}, {("brand", "1"): 1})
+        assert "aresample=48000" in fc
+        assert "concat=n=2" in fc
+
+    def test_same_source_trim_is_not_resampled(self):
+        # #111's path: one source, multiple kept spans → already uniform, no extra resample.
+        segs = (_seg_src(0, 300, 0, 300), _seg_src(300, 3300, 600, 3600))
+        fc, _ = build_filter_complex(segs, {"s0": 0}, {})
+        assert "aresample" not in fc
+        assert "concat=n=2:v=0:a=1[outa]" in fc
+
+
+# ---------------------------------------------------------------------------
+# _served_duration — EDL-derived served duration (review item #7)
+# ---------------------------------------------------------------------------
+
+
+class TestServedDuration:
+    def _ep(self, duration):
+        return Episode(
+            guid="g",
+            title="t",
+            published=datetime(2026, 5, 1, tzinfo=UTC),
+            video_url="https://g/1.mp4",
+            duration=duration,
+        )
+
+    def test_identity_uses_source_duration(self):
+        assert _served_duration(self._ep(3600)) == 3600.0
+
+    def test_trim_uses_segment_sum_not_source_duration(self):
+        ep = self._ep(3600)
+        # cut 300–600 → served total 3300, while ep.duration is still source 3600
+        ep.timeline = Timeline(
+            version="silence-v1",
+            segments=(_seg_src(0, 300, 0, 300), _seg_src(300, 3300, 600, 3600)),
+        )
+        assert _served_duration(ep) == 3300.0
+        assert ep.duration == 3600  # source duration left untouched
+
+    def test_identity_timeline_object_falls_back_to_source(self):
+        ep = self._ep(1234)
+        ep.timeline = identity_timeline(_src(), 1234.0)  # digest "" → identity
+        assert _served_duration(ep) == 1234.0
