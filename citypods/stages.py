@@ -73,11 +73,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Protocol
 
+import re
+
 from citypods.bodies import body_key, canonical_body
 from citypods.media import MaterializeStats, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
-from citypods.timeline import Timeline
+from citypods.timeline import Timeline, remap, timeline_digest
 
 
 def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode]:
@@ -306,6 +308,71 @@ class TimelineStage:
         return stats
 
 
+def is_timed_transcript(content: bytes) -> bool:
+    """Heuristic: does this content look like a timed transcript (VTT or SRT)?
+
+    Returns ``True`` for WebVTT files (``WEBVTT`` header) and SRT files (cues with
+    ``HH:MM:SS,mmm --> HH:MM:SS,mmm`` timestamps).  Returns ``False`` for plain text,
+    PDF, and other untimed formats.  Used to set ``transcript.synced`` on ingestion
+    (INFRA-8) — untimed transcripts render as notes-only, never mis-aligned.
+    """
+    head = content[:1024].decode("utf-8", errors="replace").strip()
+    if head.startswith("WEBVTT"):
+        return True
+    if re.search(r"\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}", head):
+        return True
+    return False
+
+
+class RemapStage:
+    """Converts source-time chapters (and, later, transcript cues) to served-time
+    using the episode's EDL.
+
+    Runs after :class:`TimelineStage` (which produces the EDL) and **before**
+    :class:`AudioStage` so the embedded M4A chapter markers are in served-time (the
+    time a listener's app scrubs to).  No-op for identity timelines (source == served)
+    or when chapters are already remapped.
+
+    The ``chapters_basis`` field on the episode tracks which time-base chapters are in:
+      - ``"source:s0"`` (default): provider-supplied, source-clock timestamps.
+      - ``"served"``: remapped to the served enclosure clock.
+
+    Cut-span chapters (whose start falls in a removed silence gap) are dropped by
+    :func:`~citypods.timeline.remap` — they would scrub to nothing in the served file.
+    Chapters whose ``end`` was cut get ``end=None``; renderers clamp to the next start.
+    """
+
+    name = "remap"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        stats = StageStats(self.name)
+        for ep in _materialize_set(episodes, city.max_episodes):
+            if not _needs_chapter_remap(ep):
+                stats.reused += 1
+                continue
+            source_id = ep.sources[0].id if ep.sources else "s0"
+            ep.chapters = remap(ep.timeline, ep.chapters, source_id=source_id)
+            ep.chapters_basis = "served"
+            stats.ran += 1
+        return stats
+
+
+def _needs_chapter_remap(ep: Episode) -> bool:
+    """True when ep.chapters need to be remapped from source-time to served-time."""
+    if ep.chapters_basis == "served":
+        return False  # already done
+    if not ep.chapters:
+        return False  # nothing to remap
+    if ep.timeline is None:
+        return False  # identity: source == served, no remap needed
+    if timeline_digest(ep.timeline) == "":
+        return False  # identity timeline: source == served
+    return True
+
+
 class ChaptersStage:
     """Fetch agenda-item chapter markers (and a transcript link) for providers that expose
     them. Audio-affecting, so it runs *before* ``audio``: chapters are part of
@@ -397,14 +464,15 @@ class LinksStage:
 
 
 def default_stages() -> list[EnrichmentStage]:
-    """Ordered: audio-affecting stages (``chapters``, ``timeline``) must precede ``audio``
-    so a change re-encodes; feed-only stages (``links``) follow it. This is the full list —
-    used by a one-shot ``citypods build`` (local dev / PR preview / tests). Production splits
-    it across two phases via :func:`render_stages` + :func:`enrich_stages` (see build).
+    """Ordered: audio-affecting stages must precede ``audio`` so a change re-encodes;
+    feed-only stages (``links``) follow it. This is the full list — used by a one-shot
+    ``citypods build`` (local dev / PR preview / tests). Production splits it across two
+    phases via :func:`render_stages` + :func:`enrich_stages` (see build).
 
-    Ordering invariant: ``timeline`` before ``audio`` (EDL must be fixed before spec hash);
-    ``chapters`` before ``timeline`` (planners may read chapters for cue alignment)."""
-    return [ChaptersStage(), TimelineStage(), AudioStage(), LinksStage()]
+    Ordering invariant: ``chapters`` → ``timeline`` → ``remap`` → ``audio``.
+    Chapters must arrive (source-time) before timeline plans the EDL; remap converts
+    them to served-time before audio embeds them as M4A markers."""
+    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage(), LinksStage()]
 
 
 def render_stages() -> list[EnrichmentStage]:
@@ -423,7 +491,7 @@ def enrich_stages() -> list[EnrichmentStage]:
     audio encoding (download+ffmpeg), bounded by the wall-clock ``stop`` window.
 
     Ordering: ``chapters`` → ``timeline`` → ``audio`` (each feeds the next's spec hash)."""
-    return [ChaptersStage(), TimelineStage(), AudioStage()]
+    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage()]
 
 
 def run_stages(
