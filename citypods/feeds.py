@@ -139,6 +139,15 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
                 "enclosure_url": url,
                 "notes_html": episode_notes_html(ep),
                 "chapters_url": chapters_url(city, ep, base_url),
+                # <podcast:transcript> emitted only when transcript is hosted and synced
+                # (timed VTT/SRT); untimed transcripts render as notes-only.
+                "transcript_url": ep.transcript_hosted_url if ep.transcript_synced else None,
+                "transcript_mime": (
+                    {"vtt": "text/vtt", "srt": "application/x-subrip"}.get(
+                        ep.transcript_format or "", "text/plain"
+                    )
+                    if ep.transcript_synced else None
+                ),
             }
         )
 

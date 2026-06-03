@@ -108,7 +108,7 @@ def test_audio_stage_noop_without_storage(tmp_path):
 def test_run_stages_returns_stats_per_stage(tmp_path):
     eps = [_ep("g1")]
     stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
-    assert [s.name for s in stats] == ["chapters", "timeline", "remap", "audio", "links"]
+    assert [s.name for s in stats] == ["chapters", "timeline", "remap", "audio", "transcript", "links"]
     # chapters is a no-op (FakeProvider has no fetch_chapters); audio hosts; links defaults.
     audio = next(s for s in stats if s.name == "audio")
     assert audio.ran == 1

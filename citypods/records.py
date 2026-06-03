@@ -140,7 +140,9 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             e.published.isoformat(),
             e.description,
             e.summary,
-            e.transcript_url,
+            e.transcript_hosted_url,
+            e.transcript_synced,
+            e.transcript_basis,
             sorted((e.links or {}).items()),
             e.chapters,
             e.chapters_basis,
@@ -208,7 +210,16 @@ def episode_to_record(ep: Episode) -> dict:
         "chapters": ep.chapters,
         "chapters_basis": ep.chapters_basis,
         "summary": ep.summary,
-        "transcript_url": ep.transcript_url,
+        # v2 transcript block (INFRA-8): replaces old transcript_url (external link).
+        # External provider transcript links remain in ep.links["transcript"].
+        "transcript": {
+            "key": ep.transcript_key,
+            "url": ep.transcript_hosted_url,
+            "spec_hash": ep.transcript_spec_hash,
+            "format": ep.transcript_format,
+            "basis": ep.transcript_basis,
+            "synced": ep.transcript_synced,
+        } if ep.transcript_key else None,
         # v2: source-media registry and timeline EDL (omitted when empty/identity).
         "sources": [dataclasses.asdict(s) for s in ep.sources] if ep.sources else [],
         "timeline": dataclasses.asdict(ep.timeline) if ep.timeline is not None else None,
@@ -225,6 +236,23 @@ def episode_to_record(ep: Episode) -> dict:
             "last_attempt": ep.materialize_last_attempt,
             "error": ep.materialize_error,
         },
+    }
+
+
+def _transcript_fields_from_rec(rec: dict) -> dict:
+    """Extract transcript artifact fields from a v2 record.  Returns empty-value dict for v1
+    records (where the old ``transcript_url`` field is silently dropped — those transcripts
+    will be re-scraped by TranscriptStage on the next enrich run)."""
+    t = rec.get("transcript") or {}
+    if not isinstance(t, dict):
+        return {}
+    return {
+        "transcript_key": t.get("key"),
+        "transcript_hosted_url": t.get("url"),
+        "transcript_spec_hash": t.get("spec_hash"),
+        "transcript_format": t.get("format"),
+        "transcript_basis": t.get("basis", "source:s0"),
+        "transcript_synced": bool(t.get("synced", False)),
     }
 
 
@@ -280,7 +308,8 @@ def record_to_episode(rec: dict) -> Episode:
         links=rec.get("links") or {},
         chapters=rec.get("chapters") or [],
         summary=rec.get("summary") or "",
-        transcript_url=rec.get("transcript_url"),
+        # v2 transcript block (INFRA-8); v1 records with old transcript_url silently dropped.
+        **_transcript_fields_from_rec(rec),
         # v2 fields (default to identity/empty for v1 records — lazy upgrade)
         sources=sources,
         timeline=timeline,
@@ -348,7 +377,14 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.audio_duration_served = audio.get("duration_served")
         ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
-        ep.transcript_url = rec.get("transcript_url", ep.transcript_url)
+        t = rec.get("transcript") or {}
+        if isinstance(t, dict) and t.get("key"):
+            ep.transcript_key = t.get("key")
+            ep.transcript_hosted_url = t.get("url")
+            ep.transcript_spec_hash = t.get("spec_hash")
+            ep.transcript_format = t.get("format")
+            ep.transcript_basis = t.get("basis", "source:s0")
+            ep.transcript_synced = bool(t.get("synced", False))
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)

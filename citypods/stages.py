@@ -68,10 +68,12 @@ the most valuable expensive stages earliest.
 from __future__ import annotations
 
 import collections
+import json
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Protocol
 
 from citypods.bodies import body_key, canonical_body
@@ -479,6 +481,145 @@ class LinksStage:
         return stats
 
 
+TRANSCRIPT_PIPELINE_VERSION = "1"
+
+# MIME types used for the <podcast:transcript> tag
+_TRANSCRIPT_MIME = {"vtt": "text/vtt", "srt": "application/x-subrip",
+                    "json": "application/json", "txt": "text/plain"}
+
+
+def _transcript_spec_hash(source_url: str) -> str:
+    """Hash of the inputs that determine a transcript's bytes (source URL + version)."""
+    import hashlib
+    spec = {"v": TRANSCRIPT_PIPELINE_VERSION, "source": source_url}
+    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha1(blob.encode()).hexdigest()[:12]
+
+
+def _transcript_object_key(src_key: str, uid: str, spec: str, fmt: str) -> str:
+    return f"transcripts/{src_key}/{uid}-{spec}.{fmt}"
+
+
+def _detect_format(content: bytes) -> str:
+    head = content[:512].decode("utf-8", errors="replace").strip()
+    if head.startswith("WEBVTT"):
+        return "vtt"
+    if re.search(r"\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}", head):
+        return "srt"
+    return "txt"
+
+
+class TranscriptStage:
+    """Stores and references provider transcripts as content-addressed objects.
+
+    Implements the **reuse-first** provider transcript slot from design doc §5:
+      1. If transcript already stored (``ep.transcript_key`` set + object present) → reuse.
+      2. If a provider transcript URL is in ``ep.links["transcript"]`` → fetch, detect
+         timing, store content-addressed, set ``transcript_synced`` and ``transcript_basis``.
+      3. ASR slot: **stubbed** (issue #110 fills this; no-op here).
+
+    The ``<podcast:transcript>`` tag is only emitted by :mod:`citypods.feeds` when
+    ``ep.transcript_synced is True`` — untimed transcripts (plain text, PDFs) are
+    not mis-aligned to the audio and never produce the tag.
+
+    Note on remapping: for identity timelines, provider transcript timestamps are
+    already in served time (source == served), so ``transcript_basis = "served"``.
+    For non-identity timelines, a full VTT/SRT parser + remap is required (pending;
+    see INFRA-5). Until then, non-identity episodes carry ``basis = "source:s0"`` and
+    ``synced = False`` to prevent mis-alignment.
+    """
+
+    name = "transcript"
+    version = TRANSCRIPT_PIPELINE_VERSION
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.records import source_key as _src_key
+
+        stats = StageStats(self.name)
+        if ctx.dry_run or ctx.storage is None:
+            return stats
+
+        src_key = _src_key(city)
+        hosted_keys = (
+            {k for k, _ in ctx.storage.list_objects(f"transcripts/{src_key}/")}
+            if hasattr(ctx.storage, "list_objects") else None
+        )
+
+        def _present(k: str) -> bool:
+            return k in hosted_keys if hosted_keys is not None else ctx.storage.exists(k)
+
+        for ep in _materialize_set(episodes, city.max_episodes):
+            if ctx.stop is not None and ctx.stop():
+                stats.skipped += 1
+                continue
+
+            # 1. Reuse if already stored
+            if ep.transcript_key and _present(ep.transcript_key):
+                ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+                stats.reused += 1
+                continue
+
+            # 2. Provider transcript slot: look for an external transcript URL in links
+            provider_url = (ep.links or {}).get("transcript")
+            if not provider_url:
+                # 3. ASR slot: stubbed — not implemented (issue #110)
+                continue
+
+            try:
+                import requests as _req
+                from citypods.http import make_session
+
+                with make_session() as sess:
+                    resp = sess.get(provider_url, timeout=30)
+                if resp.status_code >= 400:
+                    stats.errors.append(f"{ep.uid}: HTTP {resp.status_code} for {provider_url}")
+                    continue
+
+                content = resp.content
+                fmt = _detect_format(content)
+                timed = is_timed_transcript(content)
+                spec = _transcript_spec_hash(provider_url)
+                key = _transcript_object_key(src_key, ep.uid or ep.guid, spec, fmt)
+
+                # Determine basis: identity timeline → source == served → "served".
+                # Non-identity + timed → basis stays "source:s0" until VTT parser lands.
+                from citypods.timeline import timeline_digest as _td
+                is_identity = ep.timeline is None or _td(ep.timeline) == ""
+                if timed and is_identity:
+                    basis = "served"
+                    synced = True
+                elif timed:
+                    # Non-identity: timestamps not yet remapped → mark unsynced to avoid
+                    # mis-alignment. VTT remap is a future follow-up on this scaffold.
+                    basis = "source:s0"
+                    synced = False
+                else:
+                    basis = "source:s0"
+                    synced = False
+
+                import tempfile as _tmp
+                with _tmp.TemporaryDirectory() as t:
+                    dest = Path(t) / f"transcript.{fmt}"
+                    dest.write_bytes(content)
+                    mime = _TRANSCRIPT_MIME.get(fmt, "text/plain")
+                    url = ctx.storage.put_file(key, dest, mime)
+
+                ep.transcript_key = key
+                ep.transcript_hosted_url = url
+                ep.transcript_spec_hash = spec
+                ep.transcript_format = fmt
+                ep.transcript_basis = basis
+                ep.transcript_synced = synced
+                stats.ran += 1
+
+            except Exception as exc:  # noqa: BLE001
+                stats.errors.append(f"{ep.uid}: {exc}")
+
+        return stats
+
+
 def default_stages() -> list[EnrichmentStage]:
     """Ordered: audio-affecting stages must precede ``audio`` so a change re-encodes;
     feed-only stages (``links``) follow it. This is the full list — used by a one-shot
@@ -488,7 +629,7 @@ def default_stages() -> list[EnrichmentStage]:
     Ordering invariant: ``chapters`` → ``timeline`` → ``remap`` → ``audio``.
     Chapters must arrive (source-time) before timeline plans the EDL; remap converts
     them to served-time before audio embeds them as M4A markers."""
-    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage(), LinksStage()]
+    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage(), TranscriptStage(), LinksStage()]
 
 
 def render_stages() -> list[EnrichmentStage]:
@@ -507,7 +648,7 @@ def enrich_stages() -> list[EnrichmentStage]:
     audio encoding (download+ffmpeg), bounded by the wall-clock ``stop`` window.
 
     Ordering: ``chapters`` → ``timeline`` → ``audio`` (each feeds the next's spec hash)."""
-    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage()]
+    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage(), TranscriptStage()]
 
 
 def run_stages(
