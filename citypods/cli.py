@@ -116,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
         "so the next build re-encodes the same key. Mutually exclusive with --reason.",
     )
     ra.add_argument(
+        "--all",
+        action="store_true",
+        help="explicitly stamp EVERY episode (required to proceed with --reason when no "
+        "--uid/--source/--body/--encoded-* selector is given). Same blast radius as an "
+        "AUDIO_PIPELINE_VERSION bump — use deliberately.",
+    )
+    ra.add_argument(
         "--dry-run", action="store_true", help="print what would be changed; write nothing"
     )
 
@@ -310,6 +317,20 @@ def _rebuild_audio(args) -> int:
     target_uids: set[str] = set(args.uids or [])
     target_source = args.source
     target_body = args.body
+
+    # Guard the foot-gun: stamping the nonce with no selector would queue the ENTIRE catalog
+    # for re-encode — the blunt blast radius the nonce is meant to be the scalpel against.
+    # Require an explicit --all to do that on purpose. (Dropping objects is always scoped by a
+    # selector in practice, but an unscoped --drop-object is harmless: it only clears pointers
+    # for objects that exist, and is itself gated by the matched set.)
+    has_selector = bool(target_uids or target_source or target_body or after or before)
+    if not drop and not has_selector and not args.all:
+        print(
+            "error: --reason with no selector would stamp every episode for re-encode. "
+            "Pass a selector (--uid/--source/--body/--encoded-after/--encoded-before), "
+            "or --all to deliberately rebuild the whole catalog."
+        )
+        return 1
 
     total_matched = 0
     total_sources = 0
