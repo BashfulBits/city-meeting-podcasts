@@ -113,7 +113,15 @@ def identity_timeline(source: SourceMedia, duration: float) -> Timeline:
 
 
 def _is_identity(tl: Timeline) -> bool:
-    """True when the timeline is a single full-pass source segment (no offset, no trim)."""
+    """True when the timeline is a single full-pass source segment (no offset, no trim).
+
+    The comparison is *exact* (``served_start == source_start`` etc.), so a planner that
+    no-ops must return the canonical :func:`identity_timeline` (or leave ``ep.timeline``
+    as ``None``). A segment that is identity only up to floating-point error is treated as
+    a real manipulation → non-empty digest → a (needless) re-encode. This is deliberate:
+    we never want to *accidentally* collapse a real edit to identity, and an exact no-op is
+    cheap to produce.
+    """
     if len(tl.segments) != 1:
         return False
     s = tl.segments[0]
@@ -178,6 +186,14 @@ def source_to_served(tl: Timeline, source_id: str, t: float) -> float | None:
     Uses the same half-open convention as :func:`served_to_source`: the right endpoint
     of each non-last source segment is excluded so boundary points uniquely belong to
     the segment that begins there.
+
+    Boundary caveat (matters only for concat, #122): "last" here means *last segment for
+    this source_id*, whereas :func:`served_to_source` treats only the *globally* last
+    segment as closed. At a concat seam where source ``A`` hands off to source ``B``, the
+    shared instant is therefore claimed by ``A`` going one way and by ``B`` going the other,
+    so the two maps are not exact inverses *at that single instant* (they agree everywhere
+    else). The discrepancy is sub-frame and only affects an item whose timestamp lands
+    exactly on a seam; it is pinned by the concat-seam tests in ``test_timeline.py``.
     """
     source_segs = [s for s in tl.segments if s.kind == "source" and s.source_id == source_id]
     for i, s in enumerate(source_segs):
@@ -198,12 +214,16 @@ def remap(
     items: list[dict],
     *,
     source_id: str | None = None,
+    clamp_to: float | None = None,
 ) -> list[dict]:
     """Remap timestamped items (chapters, transcript cues) from source-time to served-time.
 
     Items whose ``start`` falls in a cut span are dropped entirely. ``end`` is remapped
-    when present; it becomes ``None`` if the end was cut (caller may clamp to the next
-    item's start or the served duration).
+    when present; if the end was cut it becomes ``None`` — *unless* ``clamp_to`` is given,
+    in which case it is clamped to that value (typically the served duration). Passing
+    ``clamp_to`` centralizes the "an item that runs into a removed span ends at the
+    boundary" rule so no downstream consumer has to special-case ``None`` (e.g. the
+    transcript and permalink renderers).
 
     ``source_id`` names which source's clock the items are in. When ``None``, defaults to
     the first source segment's id (correct for all single-source episodes).
@@ -222,6 +242,9 @@ def remap(
         new_item = dict(item)
         new_item["start"] = new_start
         if "end" in item and item["end"] is not None:
-            new_item["end"] = source_to_served(tl, source_id, item["end"])  # type: ignore[arg-type]
+            new_end = source_to_served(tl, source_id, item["end"])  # type: ignore[arg-type]
+            if new_end is None and clamp_to is not None:
+                new_end = clamp_to  # end fell in a cut span — clamp to the served boundary
+            new_item["end"] = new_end
         result.append(new_item)
     return result
