@@ -79,9 +79,14 @@ def clip_object_key(
     """Content-addressed storage key for a clip.
 
     Stable across re-extractions with the same parameters; changes when the EDL or
-    served range changes (giving a cache-bust URL and orphan-GC reclaim).
+    served range changes (giving a cache-bust URL and orphan-GC reclaim). The range bounds
+    are normalized to integer milliseconds first, so trivially-different floats (``600`` vs
+    ``600.0`` vs ``600.0000001``) produce the *same* key and reuse the cached object instead
+    of re-encoding.
     """
-    content = f"{uid}|{served_start}|{served_end}|{timeline_version}|{kind}"
+    start_ms = round(served_start * 1000)
+    end_ms = round(served_end * 1000)
+    content = f"{uid}|{start_ms}|{end_ms}|{timeline_version}|{kind}"
     h = hashlib.sha1(content.encode()).hexdigest()[:16]
     ext = "m4a" if kind == "audio" else "mp4"
     return f"clips/{uid}/{h}.{ext}"
@@ -210,6 +215,18 @@ def extract_clip(
     """
     if served_end <= served_start:
         raise ValueError(f"empty clip range: {served_start} >= {served_end}")
+    if kind not in ("audio", "video"):
+        raise ValueError(f"unknown clip kind: {kind!r}")
+    if kind == "video":
+        # The shared FfmpegRunner.extract_audio strips video (-vn), so a "video" clip would be
+        # a silent/empty container. Refuse rather than ship a broken artifact. The EDL
+        # forward-map, content-addressing (clip_object_key) and source_cuts already support
+        # kind="video"; only a real video render path is missing (INFRA-3 video kind + a video
+        # FfmpegRunner — design §7). Until then this is a hard NotImplementedError, not a stub.
+        raise NotImplementedError(
+            "video clip extraction is not implemented: the audio encoder drops video (-vn). "
+            "Wire a video render path (design §7) before calling extract_clip(kind='video')."
+        )
 
     # Determine timeline version for content-addressing
     tl_version = ep.timeline.version if ep.timeline is not None else "identity"
@@ -235,7 +252,12 @@ def extract_clip(
     else:
         clip_tl, source_cuts = _clip_timeline(ep.timeline, served_start, served_end)
 
-    # Resolve source URLs (for now: single-resolver pattern; multi-source extension point)
+    # Resolve source URLs. NOTE: this maps EVERY distinct source in the clip to the single URL
+    # from resolve_media_url(ep), which is correct only when the clip comes from one source (the
+    # case today). A clip spanning a concat boundary (#122) needs per-source resolution; the
+    # source_cuts above already identify which sources are involved, so this is the seam where
+    # the concat planner will supply a per-source resolver. (The cut MAP is already correct —
+    # only the URL each cut is fetched from would be wrong for a true multi-source clip.)
     source_url = resolve_media_url(ep)
     sources_by_id: dict[str, str] = {}
     for seg in clip_tl.segments:

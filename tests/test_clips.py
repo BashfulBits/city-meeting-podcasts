@@ -150,6 +150,16 @@ class TestClipObjectKey:
         b = clip_object_key("uid-abc", 0.0, 60.0, "v2", "audio")
         assert a != b
 
+    def test_subms_float_jitter_yields_same_key(self):
+        # Review item #14: range bounds normalize to integer ms, so trivially-different
+        # floats map to the same key and reuse the cached object.
+        assert clip_object_key("u", 600.0, 660.0, "v1", "audio") == clip_object_key(
+            "u", 600.0000001, 660.0, "v1", "audio"
+        )
+        assert clip_object_key("u", 600, 660, "v1", "audio") == clip_object_key(
+            "u", 600.0, 660.0, "v1", "audio"
+        )
+
 
 # ---------------------------------------------------------------------------
 # _clip_timeline — sub-timeline construction
@@ -307,6 +317,21 @@ class TestExtractClipArtifact:
             resolve_media_url=lambda e: e.video_url,
         )
         assert isinstance(artifact, ClipArtifact)
+
+    def test_video_kind_not_implemented(self, tmp_path):
+        # Review item #13: the audio encoder strips video (-vn), so video clips are refused
+        # until a real video render path exists, rather than shipping a silent container.
+        ep = _ep()
+        with pytest.raises(NotImplementedError):
+            extract_clip(
+                ep,
+                0.0,
+                60.0,
+                kind="video",
+                storage=_store(tmp_path),
+                ffmpeg=CapturingFfmpeg(),
+                resolve_media_url=lambda e: e.video_url,
+            )
 
     def test_artifact_served_range(self, tmp_path):
         ep = _ep()
