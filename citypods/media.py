@@ -191,23 +191,41 @@ def build_filter_complex(
         labels.append(f"[{lbl}]")
 
     n = len(labels)
-    joined = "".join(labels)
 
     if n == 1:
         # Single segment: no concat needed.
+        joined = "".join(labels)
         if loudness_profile:
             lufs = _parse_lufs(loudness_profile)
             parts.append(f"{joined}loudnorm=I={lufs}:TP=-1.5:LRA=11[outa]")
             return ";".join(parts), "[outa]"
         return ";".join(parts), labels[0]
+
+    # n > 1: concatenate. When branches can differ in format — multiple distinct sources
+    # (#122) or an insert asset (#25) spliced beside source audio — normalize every branch to
+    # a common mono rate first so ``concat`` never has to negotiate mismatched sample rates /
+    # channel layouts (deterministic across ffmpeg versions; complements the pinned-ffmpeg CI
+    # decision). Same-source trims (#111) are already uniform, so we skip the extra resample
+    # there to keep that graph — and its bytes — minimal. Mono matches the final ``-ac 1``.
+    distinct_sources = {s.source_id for s in segments if s.kind == "source"}
+    needs_norm = len(distinct_sources) > 1 or any(s.kind == "insert" for s in segments)
+    if needs_norm:
+        norm_labels: list[str] = []
+        for i, lbl in enumerate(labels):
+            nlbl = f"n{i}"
+            parts.append(f"{lbl}aresample=48000,aformat=channel_layouts=mono[{nlbl}]")
+            norm_labels.append(f"[{nlbl}]")
+        joined = "".join(norm_labels)
     else:
-        if loudness_profile:
-            lufs = _parse_lufs(loudness_profile)
-            parts.append(f"{joined}concat=n={n}:v=0:a=1[preln]")
-            parts.append(f"[preln]loudnorm=I={lufs}:TP=-1.5:LRA=11[outa]")
-        else:
-            parts.append(f"{joined}concat=n={n}:v=0:a=1[outa]")
-        return ";".join(parts), "[outa]"
+        joined = "".join(labels)
+
+    if loudness_profile:
+        lufs = _parse_lufs(loudness_profile)
+        parts.append(f"{joined}concat=n={n}:v=0:a=1[preln]")
+        parts.append(f"[preln]loudnorm=I={lufs}:TP=-1.5:LRA=11[outa]")
+    else:
+        parts.append(f"{joined}concat=n={n}:v=0:a=1[outa]")
+    return ";".join(parts), "[outa]"
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +499,22 @@ def _sources_by_id(ep: Episode, source_url: str) -> dict[str, str]:
     return {"s0": source_url}
 
 
+def _served_duration(ep: Episode) -> float | None:
+    """The served (enclosure) duration to record as ``audio_duration_served``.
+
+    Derived from the EDL — the sum of served segment lengths — whenever the episode is
+    actually manipulated, rather than trusting ``ep.duration`` (which stays the *source*
+    duration until a planner overwrites it). For identity episodes the two are equal, so this
+    is a no-op there; for trims/concats it keeps ``audio_duration_served`` correct by
+    construction and makes the INFRA-9 ``timeline-duration-mismatch`` contract check meaningful
+    (it compares the segment total against this field). Falls back to ``ep.duration`` when there
+    is no timeline (identity) or no known duration."""
+    tl = ep.timeline
+    if tl is not None and timeline_digest(tl) != "":
+        return sum(s.served_end - s.served_start for s in tl.segments)
+    return float(ep.duration) if ep.duration is not None else None
+
+
 def materialize_audio(
     city: City,
     episodes: list[Episode],
@@ -579,7 +613,7 @@ def materialize_audio(
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
             ep.audio_encode_time = now.isoformat()
-            ep.audio_duration_served = float(ep.duration) if ep.duration is not None else None
+            ep.audio_duration_served = _served_duration(ep)
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None
