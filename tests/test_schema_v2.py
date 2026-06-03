@@ -449,6 +449,21 @@ class TestRebuildAudioNonce:
         assert updated["uid-a"]["audio"]["rebuild"] == "fix-pr-999"
         assert updated["uid-b"]["audio"].get("rebuild") is None
 
+    def test_no_selector_refuses_without_all(self, tmp_path):
+        # Review item #4: --reason with no selector would stamp the whole catalog → refuse.
+        key, state_dir = self._setup(tmp_path, {"uid-a": _make_rec("uid-a")})
+        assert cli_main(_cli(tmp_path, "--reason", "oops")) == 1
+        assert load_records(state_dir, key)["uid-a"]["audio"].get("rebuild") is None
+
+    def test_all_flag_allows_catalog_wide_stamp(self, tmp_path):
+        key, state_dir = self._setup(
+            tmp_path, {"uid-a": _make_rec("uid-a"), "uid-b": _make_rec("uid-b")}
+        )
+        assert cli_main(_cli(tmp_path, "--all", "--reason", "rebuild-all")) == 0
+        updated = load_records(state_dir, key)
+        assert updated["uid-a"]["audio"]["rebuild"] == "rebuild-all"
+        assert updated["uid-b"]["audio"]["rebuild"] == "rebuild-all"
+
     def test_date_range_stamps_only_within_window(self, tmp_path):
         key, state_dir = self._setup(
             tmp_path,

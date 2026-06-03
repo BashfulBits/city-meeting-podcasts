@@ -86,8 +86,11 @@ def audio_spec_hash(ep: Episode, *, max_kbps: int) -> str:
     ``rebuild`` fields.  New fields are included at their defaults (``""``, ``[]``) so
     future features that set them only re-encode the episodes they actually affect.
 
-    Note: the HLS *resolved* URL is tokenized/expiring and is deliberately excluded —
-    only the stable source ref is used.
+    Note: the HLS *resolved* URL is tokenized/expiring and is deliberately excluded.
+    Identity-equivalence intentionally keys the v1 path on ``ep.video_url`` (the stable
+    source handle today), **not** on ``SourceMedia.ref`` — so once ``TimelineStage`` starts
+    registering a single identity source, the hash stays byte-identical and no re-encode
+    storm occurs. Do not "fix" this to read ``ref``: it would change every identity hash.
     """
     tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
     loudness = ""  # populated by future loudness stage (#21); field reserved in v2 format
@@ -124,7 +127,12 @@ def audio_object_key(city: City, ep: Episode, spec: str) -> str:
 
 def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
     """Hash of the render-relevant fields of the (filtered+capped) feed. Drives the
-    re-render skip. Includes notes/summary/links/chapters so an enrichment change re-renders."""
+    re-render skip. Includes notes/summary/links/chapters so an enrichment change re-renders.
+
+    Note: adding a field here (e.g. the v2 ``chapters_basis`` / ``audio_duration_served``)
+    changes every feed's hash once, so the first deploy after this lands re-renders the whole
+    catalog. That's a cheap render-phase pass (not a re-encode) — expected, like a
+    template-fingerprint bump, not a regression."""
     payload = [
         [
             e.uid,
