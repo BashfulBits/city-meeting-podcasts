@@ -334,11 +334,15 @@ class RemapStage:
 
     The ``chapters_basis`` field on the episode tracks which time-base chapters are in:
       - ``"source:s0"`` (default): provider-supplied, source-clock timestamps.
-      - ``"served"``: remapped to the served enclosure clock.
+      - ``"served:<edl-version>"``: remapped to the served clock, tagged with the EDL
+        version they were remapped against (so a later run can detect a stale remap).
 
     Cut-span chapters (whose start falls in a removed silence gap) are dropped by
     :func:`~citypods.timeline.remap` — they would scrub to nothing in the served file.
-    Chapters whose ``end`` was cut get ``end=None``; renderers clamp to the next start.
+    A chapter whose ``end`` was cut keeps ``end=None``; the encoder's ``_ffmetadata`` derives
+    its end from the next chapter's start (the INFRA-1 ``remap(clamp_to=…)`` primitive is for
+    single-boundary consumers like the transcript/permalink renderers, not multi-chapter
+    embedding — clamping to the served *duration* would wrongly overlap later chapters).
     """
 
     name = "remap"
@@ -353,16 +357,29 @@ class RemapStage:
                 stats.reused += 1
                 continue
             source_id = ep.sources[0].id if ep.sources else "s0"
+            # A cut chapter end stays None on purpose: the encoder derives it from the next
+            # chapter's start, which is correct for a chapter truncated by a removed span
+            # (clamping to the served duration would overlap later chapters).
             ep.chapters = remap(ep.timeline, ep.chapters, source_id=source_id)
-            ep.chapters_basis = "served"
+            # Stamp the EDL version so a later run can tell these served-time chapters were
+            # remapped against *this* timeline (staleness — see _needs_chapter_remap).
+            ep.chapters_basis = f"served:{ep.timeline.version}"
             stats.ran += 1
         return stats
 
 
 def _needs_chapter_remap(ep: Episode) -> bool:
     """True when ep.chapters need to be remapped from source-time to served-time."""
-    if ep.chapters_basis == "served":
-        return False  # already done
+    if ep.chapters_basis.startswith("served"):
+        # Already remapped (basis is "served" or "served:<edl-version>"). We do NOT re-remap
+        # even if the EDL has since changed (a bumped planner version → ep.timeline.version no
+        # longer matches the stamped one): remapping already-served values as if they were
+        # source-time would corrupt them, and the source-time originals aren't retained
+        # (served-time is canonical, design §10.2).
+        # TODO(when a planner can mutate an existing EDL, e.g. #111/#122): on a version
+        # mismatch, re-fetch source chapters (ChaptersStage short-circuits once ep.chapters is
+        # set) and re-run remap. Inert today — no planner changes an episode's EDL yet.
+        return False
     if not ep.chapters:
         return False  # nothing to remap
     if ep.timeline is None:
