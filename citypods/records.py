@@ -169,6 +169,7 @@ def episode_to_record(ep: Episode) -> dict:
             "key": ep.audio_key,
             "url": ep.hosted_audio_url,
             "spec_hash": ep.audio_spec_hash,
+            "bytes": ep.audio_bytes,
             # Materialization backoff state (#120): persisted so failures back off across runs.
             "attempts": ep.materialize_attempts,
             "last_attempt": ep.materialize_last_attempt,
@@ -200,6 +201,7 @@ def record_to_episode(rec: dict) -> Episode:
         materialize_attempts=audio.get("attempts") or 0,
         materialize_last_attempt=audio.get("last_attempt"),
         materialize_error=audio.get("error"),
+        audio_bytes=audio.get("bytes"),
         links=rec.get("links") or {},
         chapters=rec.get("chapters") or [],
         summary=rec.get("summary") or "",
@@ -259,6 +261,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.materialize_attempts = audio.get("attempts") or 0
         ep.materialize_last_attempt = audio.get("last_attempt")
         ep.materialize_error = audio.get("error")
+        ep.audio_bytes = audio.get("bytes")
         ep.summary = rec.get("summary", ep.summary)
         ep.transcript_url = rec.get("transcript_url", ep.transcript_url)
         ep.links = rec.get("links") or ep.links

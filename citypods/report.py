@@ -24,6 +24,7 @@ from citypods.projection import (
 _HLS_PROVIDERS = {"civicplus", "swagit"}
 SCALE_SCENARIOS = (200, 500, 1000, 5000)
 _ADMIN_TEMPLATE = Path(__file__).resolve().parent / "assets" / "admin.html"
+_STATUS_TEMPLATE = Path(__file__).resolve().parent / "assets" / "status.html"
 
 
 def _hosted_fraction(cities: list) -> float:
@@ -280,6 +281,379 @@ def to_markdown(report: dict) -> str:
         lines.append(f"| {f} | {s['storage_gb'] / 1000:.2f} | ${s['monthly_cost_usd']:.2f} |")
     lines += ["", "_Open `/admin/` for the interactive what-if calculator._", ""]
     return "\n".join(lines)
+
+
+def _classify_record(rec: dict, max_kbps: int) -> str:
+    """Return the pipeline state for one record (mutually exclusive taxonomy from issue #124).
+
+    States (in order of precedence):
+      served         — hosted audio exists and spec matches current desired spec (or "legacy")
+      stale          — hosted audio exists but spec no longer matches (re-encode queued)
+      linked_video   — direct provider MP4 link; we never host this episode's audio
+      deferred       — awaiting multi-segment concat (#122)
+      dead           — no usable media (#120)
+      transient_error— last attempt failed for an uncategorized reason (in exponential backoff)
+      pending        — HLS episode, no enclosure yet, never attempted
+    """
+    from citypods.records import audio_spec_hash as _spec_hash
+    from citypods.records import record_to_episode
+
+    audio = rec.get("audio") or {}
+    hosted_url = audio.get("url")
+    spec_hash = audio.get("spec_hash")
+    error = audio.get("error")
+    media_kind = rec.get("media_kind", "direct")
+
+    if hosted_url:
+        if spec_hash in ("legacy", None):
+            return "served"
+        ep = record_to_episode(rec)
+        return "served" if spec_hash == _spec_hash(ep, max_kbps=max_kbps) else "stale"
+
+    if media_kind == "direct":
+        return "linked_video"
+    if error == "deferred":
+        return "deferred"
+    if error == "dead":
+        return "dead"
+    if error is not None:
+        return "transient_error"
+    return "pending"
+
+
+def _feed_row(city, records: dict, *, max_kbps: int) -> dict:
+    """Aggregate per-episode stats for one feed (city config), filtered by body where applicable."""
+    from citypods.bodies import matches
+
+    body = city.source.get("body")
+    episodes = hosted = linked_video = served = stale = 0
+    pending = deferred = dead = transient_errors = 0
+    hours_hosted = hours_linked = gb_stored = 0.0
+    gb_exact = True
+    last_pub = None
+
+    for rec in records.values():
+        if body and not matches(rec.get("body"), body):
+            continue
+        episodes += 1
+
+        pub = rec.get("published")
+        if pub:
+            try:
+                from datetime import datetime
+
+                dt = datetime.fromisoformat(pub)
+                if last_pub is None or dt > last_pub:
+                    last_pub = dt
+            except ValueError:
+                pass
+
+        audio = rec.get("audio") or {}
+        duration_s = rec.get("duration") or 0
+        state = _classify_record(rec, max_kbps)
+
+        if state in ("served", "stale"):
+            hosted += 1
+            hours_hosted += duration_s / 3600
+            raw_bytes = audio.get("bytes")
+            if raw_bytes is not None:
+                gb_stored += raw_bytes / 1e9
+            else:
+                gb_exact = False
+            if state == "served":
+                served += 1
+            else:
+                stale += 1
+        elif state == "linked_video":
+            linked_video += 1
+            hours_linked += duration_s / 3600
+        elif state == "deferred":
+            deferred += 1
+        elif state == "dead":
+            dead += 1
+        elif state == "transient_error":
+            transient_errors += 1
+        else:
+            pending += 1
+
+    if dead > 0 or transient_errors > 0:
+        health = "error"
+    elif deferred > 0 or stale > 0 or pending > 0:
+        health = "warn"
+    else:
+        health = "ok"
+
+    return {
+        "slug": city.slug,
+        "body": city.source.get("body"),
+        "provider": city.provider,
+        "podcast_author": city.podcast_author,
+        "state": city.state,
+        "episodes": episodes,
+        "hosted": hosted,
+        "linked_video": linked_video,
+        "served": served,
+        "stale": stale,
+        "pending": pending,
+        "deferred": deferred,
+        "dead": dead,
+        "transient_errors": transient_errors,
+        "hours_hosted": round(hours_hosted, 2),
+        "hours_linked": round(hours_linked, 2),
+        "gb_stored": round(gb_stored, 4),
+        "gb_exact": gb_exact,
+        "last_published": last_pub.date().isoformat() if last_pub else None,
+        "health": health,
+    }
+
+
+def _city_rows(feed_rows: list[dict]) -> list[dict]:
+    """Roll up per-feed rows by ``podcast_author`` (the city grouping key)."""
+    from collections import defaultdict
+
+    buckets: dict[str, list] = defaultdict(list)
+    for row in feed_rows:
+        buckets[row["podcast_author"]].append(row)
+
+    rows = []
+    for author, feeds in sorted(buckets.items()):
+        gb = sum(f["gb_stored"] for f in feeds)
+        providers = sorted({f["provider"] for f in feeds})
+        pub_dates = [f["last_published"] for f in feeds if f["last_published"]]
+        last_published = max(pub_dates) if pub_dates else None
+        rows.append(
+            {
+                "city": author,
+                "state": feeds[0]["state"],
+                "feeds": len(feeds),
+                "provider": providers[0] if len(providers) == 1 else ", ".join(providers),
+                "episodes": sum(f["episodes"] for f in feeds),
+                "hosted": sum(f["hosted"] for f in feeds),
+                "linked_video": sum(f["linked_video"] for f in feeds),
+                "served": sum(f["served"] for f in feeds),
+                "stale": sum(f["stale"] for f in feeds),
+                "pending": sum(f["pending"] for f in feeds),
+                "deferred": sum(f["deferred"] for f in feeds),
+                "dead": sum(f["dead"] for f in feeds),
+                "transient_errors": sum(f["transient_errors"] for f in feeds),
+                "hours_hosted": round(sum(f["hours_hosted"] for f in feeds), 2),
+                "hours_linked": round(sum(f["hours_linked"] for f in feeds), 2),
+                "gb_stored": round(gb, 4),
+                "gb_exact": all(f["gb_exact"] for f in feeds),
+                "last_published": last_published,
+                "health_ok": sum(1 for f in feeds if f["health"] == "ok"),
+                "health_warn": sum(1 for f in feeds if f["health"] == "warn"),
+                "health_error": sum(1 for f in feeds if f["health"] == "error"),
+            }
+        )
+    return rows
+
+
+def _load_run_summary(state_dir: Path) -> dict:
+    path = state_dir / "run_summary.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def build_status(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
+    """Build the operational status snapshot for the /admin/status/ dashboard (issue #124).
+
+    Classifies every archived episode into the taxonomy from the issue (served, stale, pending,
+    deferred, dead, transient_error, linked_video), aggregates per-feed and per-city, and stitches
+    in run history and projection model output. Pure: reads the local state files, no network.
+    """
+    import os
+    from datetime import UTC, datetime
+
+    from citypods.projection import (
+        B2_FREE_GB,
+        B2_USD_PER_GB_MONTH,
+        gb_per_episode,
+        measured_inputs,
+        project,
+    )
+    from citypods.records import load_records, referenced_audio_keys, source_key
+
+    now = datetime.now(UTC)
+    defaults = site_config.get("defaults", {})
+    max_kbps = int(defaults.get("audio_max_kbps", 96))
+    avg_duration_h = 2.0
+
+    records_cache: dict[str, dict] = {}
+    if state_dir:
+        seen: set[str] = set()
+        for city in cities:
+            key = source_key(city)
+            if key not in seen:
+                seen.add(key)
+                records_cache[key] = load_records(Path(state_dir), key)
+
+    # Per-feed rows
+    feed_rows: list[dict] = []
+    for city in cities:
+        key = source_key(city) if state_dir else ""
+        recs = records_cache.get(key, {})
+        feed_rows.append(_feed_row(city, recs, max_kbps=max_kbps))
+
+    city_rows = _city_rows(feed_rows)
+
+    # KPI totals
+    meetings_archived = sum(r["episodes"] for r in feed_rows)
+    hosted_audio = sum(r["hosted"] for r in feed_rows)
+    linked_video = sum(r["linked_video"] for r in feed_rows)
+    hours_hosted = round(sum(r["hours_hosted"] for r in feed_rows), 2)
+    hours_linked = round(sum(r["hours_linked"] for r in feed_rows), 2)
+    gb_stored = round(sum(r["gb_stored"] for r in feed_rows), 4)
+    gb_exact = all(r["gb_exact"] for r in feed_rows)
+    monthly_cost = round(max(0.0, gb_stored - B2_FREE_GB) * B2_USD_PER_GB_MONTH, 4)
+
+    # Issue tallies and top-N sources
+    def _top(field: str, n: int = 3) -> list[list]:
+        rows = sorted(feed_rows, key=lambda r: r[field], reverse=True)
+        return [[r["slug"], r[field]] for r in rows if r[field] > 0][:n]
+
+    # Backlog & projection
+    run_summary = _load_run_summary(Path(state_dir)) if state_dir else {}
+    history = _load_run_history(Path(state_dir)) if state_dir else []
+    history_tail = list(reversed(history[-10:])) if history else []
+
+    base = ModelInputs(
+        episodes_per_feed=int(defaults.get("max_episodes", 50)),
+        kbps=max_kbps,
+        per_run_cap=int(defaults.get("materialize_budget_per_run", 25)),
+    )
+    inputs = measured_inputs(
+        cities,
+        run_history=history,
+        hosted_feeds=hosted_audio or None,
+        archive_items=_measured_archive_items(cities, state_dir),
+        base=base,
+    )
+    proj = project(inputs)
+
+    stale_total = sum(r["stale"] for r in feed_rows)
+    stale_drain_runs = (
+        round(stale_total / proj.per_run_throughput, 2) if proj.per_run_throughput else None
+    )
+    stale_drain_days = (
+        round(stale_drain_runs * (inputs.cycle_hours / 24), 2) if stale_drain_runs else None
+    )
+
+    # Storage detail
+    ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
+    retained = _measured_archive_items(cities, state_dir) or int(defaults.get("max_episodes", 50))
+    g_per_ep = gb_per_episode(max_kbps, avg_duration_h)
+
+    # Oldest publication year across all records — used by the age-cap what-if slider.
+    oldest_pub_year: int | None = None
+    for recs in records_cache.values():
+        for rec in recs.values():
+            pub = rec.get("published")
+            if pub:
+                try:
+                    yr = datetime.fromisoformat(pub).year
+                    if oldest_pub_year is None or yr < oldest_pub_year:
+                        oldest_pub_year = yr
+                except ValueError:
+                    pass
+
+    top_city_storage = sorted(city_rows, key=lambda r: r["gb_stored"], reverse=True)[:5]
+    top_feed_storage = sorted(feed_rows, key=lambda r: r["gb_stored"], reverse=True)[:5]
+
+    github_repo = os.environ.get("GITHUB_REPOSITORY")
+    site_url = (
+        f"https://{site_config['custom_domain']}" if site_config.get("custom_domain") else None
+    )
+
+    return {
+        "snapshot_ts": now.isoformat(),
+        "kpis": {
+            "feeds": len(cities),
+            "meetings_archived": meetings_archived,
+            "hosted_audio": hosted_audio,
+            "linked_video": linked_video,
+            "hours_hosted": hours_hosted,
+            "hours_linked": hours_linked,
+            "gb_stored": gb_stored,
+            "gb_exact": gb_exact,
+            "monthly_cost_usd": monthly_cost,
+            "last_build": {
+                "ts": run_summary.get("ts"),
+                "status": (
+                    "errors"
+                    if run_summary.get("errors", 0) > 0
+                    else ("built" if run_summary.get("built", 0) > 0 else "skipped")
+                )
+                if run_summary
+                else None,
+                "built": run_summary.get("built", 0),
+                "skipped": run_summary.get("skipped", 0),
+                "errors": run_summary.get("errors", 0),
+                "github_run_url": run_summary.get("github_run_url"),
+                "github_run_id": run_summary.get("github_run_id"),
+            },
+        },
+        "backlog": {
+            "pending": sum(r["pending"] for r in feed_rows),
+            "stale": stale_total,
+            "stale_drain_runs": stale_drain_runs,
+            "stale_drain_days": stale_drain_days,
+            "stage_totals": run_summary.get("stages", {}),
+            "capacity_per_day": proj.capacity_per_day,
+            "inflow_per_day": round(proj.inflow_per_day, 2),
+            "keeps_up": proj.keeps_up,
+            "full_backfill_days": round(proj.full_backfill_days, 2),
+        },
+        "issues": {
+            "deferred": sum(r["deferred"] for r in feed_rows),
+            "dead": sum(r["dead"] for r in feed_rows),
+            "transient_errors": sum(r["transient_errors"] for r in feed_rows),
+            "top_deferred": _top("deferred"),
+            "top_dead": _top("dead"),
+            "top_errors": _top("transient_errors"),
+        },
+        "feeds_by_feed": feed_rows,
+        "feeds_by_city": city_rows,
+        "storage": {
+            "referenced_keys": ref_keys,
+            "gb_stored": gb_stored,
+            "gb_exact": gb_exact,
+            "monthly_cost_usd": monthly_cost,
+            "archive_cap": int(defaults.get("max_archive_items", 5000)),
+            "archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
+            "retained_per_feed": retained,
+            "gb_per_ep": round(g_per_ep, 5),
+            "hosted_feeds": sum(1 for r in feed_rows if r["hosted"] > 0),
+            "oldest_publication_year": oldest_pub_year,
+            "top_by_city": [
+                {"city": r["city"], "gb_stored": r["gb_stored"]} for r in top_city_storage
+            ],
+            "top_by_feed": [
+                {"slug": r["slug"], "gb_stored": r["gb_stored"]} for r in top_feed_storage
+            ],
+        },
+        "run_history": history_tail,
+        "config": {
+            "github_repo": github_repo,
+            "max_kbps": max_kbps,
+            "site_url": site_url,
+        },
+    }
+
+
+def to_status_html(status: dict) -> str:
+    """Render the operational status snapshot as a self-contained static HTML page.
+
+    The HTML template lives in ``assets/status.html`` with a ``__STATUS_JSON__`` placeholder.
+    Must be served behind Cloudflare Access — it publishes actuals (cost, errors, GB).
+    """
+    data = json.dumps(status, indent=2)
+    html = _STATUS_TEMPLATE.read_text()
+    return html.replace("__STATUS_JSON__", data)
 
 
 def to_admin_html(report: dict) -> str:

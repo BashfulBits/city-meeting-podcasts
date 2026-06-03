@@ -302,7 +302,9 @@ def materialize_audio(
                 ffmpeg.extract_audio(source_url, dest, ep.chapters or None)
                 url = storage.put_file(key, dest, CONTENT_TYPE)
                 try:
-                    stats.bytes_written += dest.stat().st_size
+                    size = dest.stat().st_size
+                    stats.bytes_written += size
+                    ep.audio_bytes = size
                 except OSError:
                     pass
             ep.audio_key = key
