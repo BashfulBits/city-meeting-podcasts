@@ -15,8 +15,6 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from citypods.cli import main as cli_main
 from citypods.models import City, Episode
 from citypods.records import (
@@ -29,10 +27,10 @@ from citypods.records import (
 )
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _city(slug="test-tx"):
     return City(
@@ -73,6 +71,7 @@ def _src(id="s0") -> SourceMedia:
 # Config helpers for CLI tests (write minimal site_config + city config)
 # ---------------------------------------------------------------------------
 
+
 def _write_config(tmp_path: Path, city: City, state_dir: Path) -> None:
     """Write a minimal site_config.yml and feed YAML for CLI tests.
 
@@ -112,9 +111,12 @@ def _write_config(tmp_path: Path, city: City, state_dir: Path) -> None:
 def _cli(tmp_path, *extra):
     return [
         "rebuild-audio",
-        "--site-config", str(tmp_path / "site_config.yml"),
-        "--config-dir",  str(tmp_path / "config"),
-        "--output-dir",  str(tmp_path / "docs"),
+        "--site-config",
+        str(tmp_path / "site_config.yml"),
+        "--config-dir",
+        str(tmp_path / "config"),
+        "--output-dir",
+        str(tmp_path / "docs"),
         *extra,
     ]
 
@@ -123,12 +125,14 @@ def _cli(tmp_path, *extra):
 # Identity hash: must be byte-identical to v1 for un-manipulated episodes
 # ---------------------------------------------------------------------------
 
+
 class TestAudioSpecHashV1Compat:
     """The v1 hash format must survive the schema upgrade for identity episodes."""
 
     def _v1_hash(self, ep, max_kbps=96):
         """Reproduce the exact v1 formula to assert against."""
         import hashlib
+
         spec = {
             "v": "1",
             "source": ep.video_url,
@@ -177,10 +181,22 @@ class TestAudioSpecHashV1Compat:
         tl = Timeline(
             version="silence-v1",
             segments=(
-                Segment(served_start=0, served_end=300, kind="source",
-                        source_id="s0", source_start=0, source_end=300),
-                Segment(served_start=300, served_end=3300, kind="source",
-                        source_id="s0", source_start=600, source_end=3600),
+                Segment(
+                    served_start=0,
+                    served_end=300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=300,
+                ),
+                Segment(
+                    served_start=300,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3600,
+                ),
             ),
         )
         ep.timeline = tl
@@ -189,6 +205,7 @@ class TestAudioSpecHashV1Compat:
 
     def test_only_stamped_episodes_get_new_key(self):
         from citypods.records import audio_object_key
+
         city = _city()
         ep_clean = _ep("g1")
         ep_stamped = _ep("g2")
@@ -197,12 +214,15 @@ class TestAudioSpecHashV1Compat:
         spec_clean = audio_spec_hash(ep_clean, max_kbps=96)
         spec_stamped = audio_spec_hash(ep_stamped, max_kbps=96)
         assert spec_clean != spec_stamped
-        assert audio_object_key(city, ep_clean, spec_clean) != audio_object_key(city, ep_stamped, spec_stamped)
+        assert audio_object_key(city, ep_clean, spec_clean) != audio_object_key(
+            city, ep_stamped, spec_stamped
+        )
 
 
 # ---------------------------------------------------------------------------
 # Round-trip: episode → record → episode
 # ---------------------------------------------------------------------------
+
 
 class TestRoundTrip:
     def test_basic_fields_survive_round_trip(self):
@@ -227,10 +247,22 @@ class TestRoundTrip:
         ep.timeline = Timeline(
             version="silence-v1",
             segments=(
-                Segment(served_start=0, served_end=300, kind="source",
-                        source_id="s0", source_start=0, source_end=300),
-                Segment(served_start=300, served_end=3300, kind="source",
-                        source_id="s0", source_start=600, source_end=3600),
+                Segment(
+                    served_start=0,
+                    served_end=300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=300,
+                ),
+                Segment(
+                    served_start=300,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3600,
+                ),
             ),
         )
         ep2 = record_to_episode(episode_to_record(ep))
@@ -278,6 +310,7 @@ class TestRoundTrip:
 # Lazy v1→v2 upgrade
 # ---------------------------------------------------------------------------
 
+
 class TestLazyV1Upgrade:
     def _v1_rec(self):
         return {
@@ -320,11 +353,13 @@ class TestLazyV1Upgrade:
 # Duration semantics
 # ---------------------------------------------------------------------------
 
+
 class TestDurationSemantics:
     def _fake_ffmpeg(self):
         class FF:
             def extract_audio(self, url, dest, chapters=None):
                 dest.write_bytes(b"fake-m4a")
+
         return FF()
 
     def test_audio_duration_served_set_on_encode(self, tmp_path):
@@ -338,9 +373,11 @@ class TestDurationSemantics:
         ep.media_kind = "hls"
 
         materialize_audio(
-            city, [ep],
+            city,
+            [ep],
             storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn/"),
-            ffmpeg=self._fake_ffmpeg(), max_kbps=96,
+            ffmpeg=self._fake_ffmpeg(),
+            max_kbps=96,
             resolve_media_url=lambda e: e.video_url,
         )
         assert ep.audio_duration_served == 3600.0
@@ -355,9 +392,11 @@ class TestDurationSemantics:
         ep.media_kind = "hls"
 
         materialize_audio(
-            city, [ep],
+            city,
+            [ep],
             storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn/"),
-            ffmpeg=self._fake_ffmpeg(), max_kbps=96,
+            ffmpeg=self._fake_ffmpeg(),
+            max_kbps=96,
             resolve_media_url=lambda e: e.video_url,
         )
         assert ep.audio_encode_time is not None
@@ -368,6 +407,7 @@ class TestDurationSemantics:
 # ---------------------------------------------------------------------------
 # rebuild-audio CLI — nonce stamping
 # ---------------------------------------------------------------------------
+
 
 def _make_rec(uid, encode_time=None, body="City Council"):
     return {
@@ -396,10 +436,13 @@ class TestRebuildAudioNonce:
         return key, state_dir
 
     def test_stamps_nonce_on_matching_uid(self, tmp_path):
-        key, state_dir = self._setup(tmp_path, {
-            "uid-a": _make_rec("uid-a"),
-            "uid-b": _make_rec("uid-b"),
-        })
+        key, state_dir = self._setup(
+            tmp_path,
+            {
+                "uid-a": _make_rec("uid-a"),
+                "uid-b": _make_rec("uid-b"),
+            },
+        )
         assert cli_main(_cli(tmp_path, "--uid", "uid-a", "--reason", "fix-pr-999")) == 0
 
         updated = load_records(state_dir, key)
@@ -407,15 +450,28 @@ class TestRebuildAudioNonce:
         assert updated["uid-b"]["audio"].get("rebuild") is None
 
     def test_date_range_stamps_only_within_window(self, tmp_path):
-        key, state_dir = self._setup(tmp_path, {
-            "uid-early": _make_rec("uid-early", encode_time="2026-06-01T00:00:00+00:00"),
-            "uid-in":    _make_rec("uid-in",    encode_time="2026-06-05T00:00:00+00:00"),
-            "uid-late":  _make_rec("uid-late",  encode_time="2026-06-10T00:00:00+00:00"),
-        })
-        assert cli_main(_cli(tmp_path,
-            "--encoded-after", "2026-06-03", "--encoded-before", "2026-06-07",
-            "--reason", "fix-pr-42",
-        )) == 0
+        key, state_dir = self._setup(
+            tmp_path,
+            {
+                "uid-early": _make_rec("uid-early", encode_time="2026-06-01T00:00:00+00:00"),
+                "uid-in": _make_rec("uid-in", encode_time="2026-06-05T00:00:00+00:00"),
+                "uid-late": _make_rec("uid-late", encode_time="2026-06-10T00:00:00+00:00"),
+            },
+        )
+        assert (
+            cli_main(
+                _cli(
+                    tmp_path,
+                    "--encoded-after",
+                    "2026-06-03",
+                    "--encoded-before",
+                    "2026-06-07",
+                    "--reason",
+                    "fix-pr-42",
+                )
+            )
+            == 0
+        )
 
         updated = load_records(state_dir, key)
         assert updated["uid-early"]["audio"].get("rebuild") is None
@@ -423,10 +479,13 @@ class TestRebuildAudioNonce:
         assert updated["uid-late"]["audio"].get("rebuild") is None
 
     def test_open_ended_after_bound(self, tmp_path):
-        key, state_dir = self._setup(tmp_path, {
-            "uid-old": _make_rec("uid-old", encode_time="2026-05-01T00:00:00+00:00"),
-            "uid-new": _make_rec("uid-new", encode_time="2026-06-05T00:00:00+00:00"),
-        })
+        key, state_dir = self._setup(
+            tmp_path,
+            {
+                "uid-old": _make_rec("uid-old", encode_time="2026-05-01T00:00:00+00:00"),
+                "uid-new": _make_rec("uid-new", encode_time="2026-06-05T00:00:00+00:00"),
+            },
+        )
         cli_main(_cli(tmp_path, "--encoded-after", "2026-06-01", "--reason", "fix-55"))
 
         updated = load_records(state_dir, key)
@@ -434,17 +493,23 @@ class TestRebuildAudioNonce:
         assert updated["uid-new"]["audio"]["rebuild"] == "fix-55"
 
     def test_missing_encode_time_excluded_from_date_range(self, tmp_path):
-        key, state_dir = self._setup(tmp_path, {
-            "uid-none": _make_rec("uid-none", encode_time=None),
-        })
+        key, state_dir = self._setup(
+            tmp_path,
+            {
+                "uid-none": _make_rec("uid-none", encode_time=None),
+            },
+        )
         cli_main(_cli(tmp_path, "--encoded-after", "2026-01-01", "--reason", "fix"))
 
         assert load_records(state_dir, key)["uid-none"]["audio"].get("rebuild") is None
 
     def test_dry_run_does_not_write(self, tmp_path):
-        key, state_dir = self._setup(tmp_path, {
-            "uid-a": _make_rec("uid-a", encode_time="2026-06-05T00:00:00+00:00"),
-        })
+        key, state_dir = self._setup(
+            tmp_path,
+            {
+                "uid-a": _make_rec("uid-a", encode_time="2026-06-05T00:00:00+00:00"),
+            },
+        )
         cli_main(_cli(tmp_path, "--uid", "uid-a", "--reason", "fix", "--dry-run"))
 
         assert load_records(state_dir, key)["uid-a"]["audio"].get("rebuild") is None
@@ -461,6 +526,7 @@ class TestRebuildAudioNonce:
 # rebuild-audio CLI — drop-object
 # ---------------------------------------------------------------------------
 
+
 class TestRebuildAudioDropObject:
     def test_drop_object_clears_audio_pointer(self, tmp_path):
         city = _city("demo-tx")
@@ -468,21 +534,25 @@ class TestRebuildAudioDropObject:
         state_dir = tmp_path / "state"
         obj_key = "granicus/src/abc-123.m4a"
 
-        save_records(state_dir, key, {
-            "uid-bad": {
-                "uid": "uid-bad",
-                "provider_guid": "pg-bad",
-                "title": "Meeting",
-                "published": "2026-05-19T16:00:00+00:00",
-                "video_url": "https://x/bad.mp4",
-                "audio": {
-                    "key": obj_key,
-                    "url": "https://cdn/bad.m4a",
-                    "spec_hash": "abc123def456",
-                    "encode_time": "2026-06-01T00:00:00+00:00",
-                },
-            }
-        })
+        save_records(
+            state_dir,
+            key,
+            {
+                "uid-bad": {
+                    "uid": "uid-bad",
+                    "provider_guid": "pg-bad",
+                    "title": "Meeting",
+                    "published": "2026-05-19T16:00:00+00:00",
+                    "video_url": "https://x/bad.mp4",
+                    "audio": {
+                        "key": obj_key,
+                        "url": "https://cdn/bad.m4a",
+                        "spec_hash": "abc123def456",
+                        "encode_time": "2026-06-01T00:00:00+00:00",
+                    },
+                }
+            },
+        )
         _write_config(tmp_path, city, state_dir)
 
         audio_dir = tmp_path / "docs" / "audio"

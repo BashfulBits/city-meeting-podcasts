@@ -1,4 +1,4 @@
-"""Command-line entry point: ``citypods build`` / ``citypods bodies`` / ``citypods rebuild-audio``."""
+"""Command-line entry point: ``citypods build`` / ``citypods bodies`` / ``citypods rebuild-audio``."""  # noqa: E501
 
 from __future__ import annotations
 
@@ -115,7 +115,9 @@ def main(argv: list[str] | None = None) -> int:
         help="case 1: delete the audio object from storage and clear the record pointer "
         "so the next build re-encodes the same key. Mutually exclusive with --reason.",
     )
-    ra.add_argument("--dry-run", action="store_true", help="print what would be changed; write nothing")
+    ra.add_argument(
+        "--dry-run", action="store_true", help="print what would be changed; write nothing"
+    )
 
     args = parser.parse_args(argv)
 
@@ -269,7 +271,7 @@ def _rebuild_audio(args) -> int:
     from datetime import UTC, datetime
     from pathlib import Path
 
-    from citypods.records import load_records, records_path, save_records, source_key
+    from citypods.records import load_records, save_records, source_key
     from citypods.state import resolve_state_dir
     from citypods.storage import make_storage
 
@@ -358,7 +360,8 @@ def _rebuild_audio(args) -> int:
                         print(f"  [dry-run] would delete object {obj_key}")
                 # Clear the audio pointer so next build re-encodes the same key.
                 rec["audio"] = {
-                    k: v for k, v in audio.items()
+                    k: v
+                    for k, v in audio.items()
                     if k not in ("key", "url", "spec_hash", "encode_time", "duration_served")
                 }
                 rec["audio"]["attempts"] = 0
