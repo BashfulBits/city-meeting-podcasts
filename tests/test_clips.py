@@ -8,7 +8,6 @@ Acceptance criteria:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 
@@ -21,59 +20,91 @@ from citypods.clips import (
 )
 from citypods.models import Episode
 from citypods.storage.local import LocalStorage
-from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
-
+from citypods.timeline import Segment, SourceMedia, Timeline
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _ep(uid="uid-g1", duration=3600.0) -> Episode:
     return Episode(
-        guid="g1", uid=uid, title="Meeting",
+        guid="g1",
+        uid=uid,
+        title="Meeting",
         published=datetime(2026, 5, 20, tzinfo=UTC),
         video_url="https://src/vid.mp4",
-        media_kind="direct", duration=int(duration),
+        media_kind="direct",
+        duration=int(duration),
     )
 
 
 def _src(id="s0") -> SourceMedia:
-    return SourceMedia(id=id, provider="g", ref="https://src/vid.mp4",
-                       media_kind="direct", duration=3600.0, watch_url=None)
+    return SourceMedia(
+        id=id,
+        provider="g",
+        ref="https://src/vid.mp4",
+        media_kind="direct",
+        duration=3600.0,
+        watch_url=None,
+    )
 
 
 def _seg_src(ss, se, src_s, src_e, sid="s0") -> Segment:
-    return Segment(served_start=ss, served_end=se, kind="source",
-                   source_id=sid, source_start=src_s, source_end=src_e)
+    return Segment(
+        served_start=ss,
+        served_end=se,
+        kind="source",
+        source_id=sid,
+        source_start=src_s,
+        source_end=src_e,
+    )
 
 
 def _trimmed_tl() -> Timeline:
     """Source 3600s; silence cut 300–600 → served [0,300] ++ [300,3300]."""
-    return Timeline(version="silence-v1", segments=(
-        _seg_src(0, 300, 0, 300),
-        _seg_src(300, 3300, 600, 3600),
-    ))
+    return Timeline(
+        version="silence-v1",
+        segments=(
+            _seg_src(0, 300, 0, 300),
+            _seg_src(300, 3300, 600, 3600),
+        ),
+    )
 
 
 def _concat_tl() -> Timeline:
     """s0: 0–1800s, s1: 0–1800s, concatenated → served 0–3600."""
-    return Timeline(version="concat-v1", segments=(
-        _seg_src(0, 1800, 0, 1800, "s0"),
-        _seg_src(1800, 3600, 0, 1800, "s1"),
-    ))
+    return Timeline(
+        version="concat-v1",
+        segments=(
+            _seg_src(0, 1800, 0, 1800, "s0"),
+            _seg_src(1800, 3600, 0, 1800, "s1"),
+        ),
+    )
 
 
 class CapturingFfmpeg:
     """Records extract_audio calls without running ffmpeg; writes stub bytes."""
+
     def __init__(self):
         self.calls: list[dict] = []
 
-    def extract_audio(self, timeline, sources_by_id, dest, chapters=None, *,
-                      loudness_profile=None, asset_resolver=None):
-        self.calls.append({
-            "timeline": timeline,
-            "sources_by_id": dict(sources_by_id),
-        })
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ):
+        self.calls.append(
+            {
+                "timeline": timeline,
+                "sources_by_id": dict(sources_by_id),
+            }
+        )
         dest.write_bytes(b"fake-clip")
 
 
@@ -84,6 +115,7 @@ def _store(tmp_path):
 # ---------------------------------------------------------------------------
 # clip_object_key — content addressing
 # ---------------------------------------------------------------------------
+
 
 class TestClipObjectKey:
     def test_key_includes_uid_prefix(self):
@@ -123,6 +155,7 @@ class TestClipObjectKey:
 # _clip_timeline — sub-timeline construction
 # ---------------------------------------------------------------------------
 
+
 class TestClipTimeline:
     def test_identity_clip_is_direct_source_range(self):
         clip_tl, cuts = _identity_clip_timeline("s0", 100.0, 200.0)
@@ -149,7 +182,7 @@ class TestClipTimeline:
         clip_tl, cuts = _clip_timeline(_trimmed_tl(), 400.0, 600.0)
         assert len(clip_tl.segments) == 1
         s = clip_tl.segments[0]
-        assert s.source_start == 700.0   # source offset = 600 - 300 = 300; served 400 + 300 = 700
+        assert s.source_start == 700.0  # source offset = 600 - 300 = 300; served 400 + 300 = 700
         assert s.source_end == 900.0
         assert cuts == (("s0", 700.0, 900.0),)
 
@@ -194,14 +227,18 @@ class TestClipTimeline:
 # extract_clip — filtergraph plan assertions (CapturingFfmpeg)
 # ---------------------------------------------------------------------------
 
+
 class TestExtractClipFiltergraph:
     def test_identity_clip_single_source_atrim(self, tmp_path):
         ep = _ep()
         ep.timeline = None
         ff = CapturingFfmpeg()
-        artifact = extract_clip(
-            ep, 100.0, 200.0,
-            storage=_store(tmp_path), ffmpeg=ff,
+        extract_clip(
+            ep,
+            100.0,
+            200.0,
+            storage=_store(tmp_path),
+            ffmpeg=ff,
             resolve_media_url=lambda e: e.video_url,
         )
         assert len(ff.calls) == 1
@@ -219,8 +256,11 @@ class TestExtractClipFiltergraph:
 
         ff = CapturingFfmpeg()
         extract_clip(
-            ep, 1600.0, 2000.0,
-            storage=_store(tmp_path), ffmpeg=ff,
+            ep,
+            1600.0,
+            2000.0,
+            storage=_store(tmp_path),
+            ffmpeg=ff,
             resolve_media_url=lambda e: e.video_url,
         )
         assert len(ff.calls) == 1
@@ -235,8 +275,11 @@ class TestExtractClipFiltergraph:
 
         ff = CapturingFfmpeg()
         extract_clip(
-            ep, 400.0, 600.0,
-            storage=_store(tmp_path), ffmpeg=ff,
+            ep,
+            400.0,
+            600.0,
+            storage=_store(tmp_path),
+            ffmpeg=ff,
             resolve_media_url=lambda e: e.video_url,
         )
         call = ff.calls[0]
@@ -250,13 +293,17 @@ class TestExtractClipFiltergraph:
 # extract_clip — artifact fields
 # ---------------------------------------------------------------------------
 
+
 class TestExtractClipArtifact:
     def test_returns_clip_artifact(self, tmp_path):
         ep = _ep()
         ep.timeline = None
         artifact = extract_clip(
-            ep, 0.0, 60.0,
-            storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
+            ep,
+            0.0,
+            60.0,
+            storage=_store(tmp_path),
+            ffmpeg=CapturingFfmpeg(),
             resolve_media_url=lambda e: e.video_url,
         )
         assert isinstance(artifact, ClipArtifact)
@@ -264,8 +311,11 @@ class TestExtractClipArtifact:
     def test_artifact_served_range(self, tmp_path):
         ep = _ep()
         artifact = extract_clip(
-            ep, 100.0, 200.0,
-            storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
+            ep,
+            100.0,
+            200.0,
+            storage=_store(tmp_path),
+            ffmpeg=CapturingFfmpeg(),
             resolve_media_url=lambda e: e.video_url,
         )
         assert artifact.served_start == 100.0
@@ -274,8 +324,11 @@ class TestExtractClipArtifact:
     def test_artifact_uid(self, tmp_path):
         ep = _ep(uid="uid-test")
         artifact = extract_clip(
-            ep, 0.0, 60.0,
-            storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
+            ep,
+            0.0,
+            60.0,
+            storage=_store(tmp_path),
+            ffmpeg=CapturingFfmpeg(),
             resolve_media_url=lambda e: e.video_url,
         )
         assert artifact.uid == "uid-test"
@@ -284,8 +337,11 @@ class TestExtractClipArtifact:
         ep = _ep()
         ep.timeline = None
         artifact = extract_clip(
-            ep, 100.0, 200.0,
-            storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
+            ep,
+            100.0,
+            200.0,
+            storage=_store(tmp_path),
+            ffmpeg=CapturingFfmpeg(),
             resolve_media_url=lambda e: e.video_url,
         )
         assert len(artifact.source_cuts) == 1
@@ -298,8 +354,11 @@ class TestExtractClipArtifact:
         ep.sources = [_src("s0"), _src("s1")]
         ep.timeline = _concat_tl()
         artifact = extract_clip(
-            ep, 1600.0, 2000.0,
-            storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
+            ep,
+            1600.0,
+            2000.0,
+            storage=_store(tmp_path),
+            ffmpeg=CapturingFfmpeg(),
             resolve_media_url=lambda e: e.video_url,
         )
         assert len(artifact.source_cuts) == 2
@@ -310,8 +369,11 @@ class TestExtractClipArtifact:
         ep = _ep(uid="uid-abc")
         ep.timeline = None
         artifact = extract_clip(
-            ep, 0.0, 60.0,
-            storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
+            ep,
+            0.0,
+            60.0,
+            storage=_store(tmp_path),
+            ffmpeg=CapturingFfmpeg(),
             resolve_media_url=lambda e: e.video_url,
         )
         expected_key = clip_object_key("uid-abc", 0.0, 60.0, "identity", "audio")
@@ -320,8 +382,11 @@ class TestExtractClipArtifact:
     def test_artifact_url_publicly_accessible(self, tmp_path):
         ep = _ep()
         artifact = extract_clip(
-            ep, 0.0, 60.0,
-            storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
+            ep,
+            0.0,
+            60.0,
+            storage=_store(tmp_path),
+            ffmpeg=CapturingFfmpeg(),
             resolve_media_url=lambda e: e.video_url,
         )
         assert artifact.url.startswith("https://")
@@ -332,15 +397,21 @@ class TestExtractClipArtifact:
 
         ff1 = CapturingFfmpeg()
         artifact1 = extract_clip(
-            ep, 0.0, 60.0,
-            storage=_store(tmp_path), ffmpeg=ff1,
+            ep,
+            0.0,
+            60.0,
+            storage=_store(tmp_path),
+            ffmpeg=ff1,
             resolve_media_url=lambda e: e.video_url,
         )
         # Second call: object already in storage → should reuse without encoding
         ff2 = CapturingFfmpeg()
         artifact2 = extract_clip(
-            ep, 0.0, 60.0,
-            storage=_store(tmp_path), ffmpeg=ff2,
+            ep,
+            0.0,
+            60.0,
+            storage=_store(tmp_path),
+            ffmpeg=ff2,
             resolve_media_url=lambda e: e.video_url,
         )
         assert artifact2.key == artifact1.key
@@ -350,13 +421,23 @@ class TestExtractClipArtifact:
     def test_raises_on_empty_range(self, tmp_path):
         ep = _ep()
         with pytest.raises(ValueError):
-            extract_clip(ep, 100.0, 100.0,
-                         storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
-                         resolve_media_url=lambda e: e.video_url)
+            extract_clip(
+                ep,
+                100.0,
+                100.0,
+                storage=_store(tmp_path),
+                ffmpeg=CapturingFfmpeg(),
+                resolve_media_url=lambda e: e.video_url,
+            )
 
     def test_raises_on_inverted_range(self, tmp_path):
         ep = _ep()
         with pytest.raises(ValueError):
-            extract_clip(ep, 200.0, 100.0,
-                         storage=_store(tmp_path), ffmpeg=CapturingFfmpeg(),
-                         resolve_media_url=lambda e: e.video_url)
+            extract_clip(
+                ep,
+                200.0,
+                100.0,
+                storage=_store(tmp_path),
+                ffmpeg=CapturingFfmpeg(),
+                resolve_media_url=lambda e: e.video_url,
+            )

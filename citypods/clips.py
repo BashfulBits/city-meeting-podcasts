@@ -34,20 +34,20 @@ concatenates them exactly as the timeline encoder does.
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import tempfile
 
-from citypods.media import CONTENT_TYPE, build_filter_complex
+from citypods.media import CONTENT_TYPE
 from citypods.models import Episode
 from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, Timeline, timeline_digest
 
-
 # ---------------------------------------------------------------------------
 # ClipArtifact
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class ClipArtifact:
@@ -72,8 +72,10 @@ class ClipArtifact:
 # Key / Timeline helpers
 # ---------------------------------------------------------------------------
 
-def clip_object_key(uid: str, served_start: float, served_end: float,
-                    timeline_version: str, kind: str) -> str:
+
+def clip_object_key(
+    uid: str, served_start: float, served_end: float, timeline_version: str, kind: str
+) -> str:
     """Content-addressed storage key for a clip.
 
     Stable across re-extractions with the same parameters; changes when the EDL or
@@ -115,25 +117,29 @@ def _clip_timeline(
             offset = seg.source_start - seg.served_start  # type: ignore[operator]
             src_start = overlap_start + offset
             src_end = overlap_end + offset
-            new_segs.append(Segment(
-                served_start=cur,
-                served_end=cur + span,
-                kind="source",
-                source_id=seg.source_id,
-                source_start=src_start,
-                source_end=src_end,
-            ))
+            new_segs.append(
+                Segment(
+                    served_start=cur,
+                    served_end=cur + span,
+                    kind="source",
+                    source_id=seg.source_id,
+                    source_start=src_start,
+                    source_end=src_end,
+                )
+            )
             cuts.append((seg.source_id, src_start, src_end))  # type: ignore[arg-type]
 
         elif seg.kind == "insert":
-            new_segs.append(Segment(
-                served_start=cur,
-                served_end=cur + span,
-                kind="insert",
-                insert=seg.insert,
-                asset_id=seg.asset_id,
-                asset_version=seg.asset_version,
-            ))
+            new_segs.append(
+                Segment(
+                    served_start=cur,
+                    served_end=cur + span,
+                    kind="insert",
+                    insert=seg.insert,
+                    asset_id=seg.asset_id,
+                    asset_version=seg.asset_version,
+                )
+            )
 
         cur += span
 
@@ -163,6 +169,7 @@ def _identity_clip_timeline(
 # ---------------------------------------------------------------------------
 # extract_clip
 # ---------------------------------------------------------------------------
+
 
 def extract_clip(
     ep: Episode,
@@ -205,7 +212,7 @@ def extract_clip(
         raise ValueError(f"empty clip range: {served_start} >= {served_end}")
 
     # Determine timeline version for content-addressing
-    tl_version = (ep.timeline.version if ep.timeline is not None else "identity")
+    tl_version = ep.timeline.version if ep.timeline is not None else "identity"
     key = clip_object_key(ep.uid or "", served_start, served_end, tl_version, kind)
 
     # Reuse if already in storage
