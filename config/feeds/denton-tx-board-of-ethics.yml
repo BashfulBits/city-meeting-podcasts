@@ -1,0 +1,11 @@
+slug: denton-tx-board-of-ethics
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: "Board of Ethics"
+podcast_title: "Denton: Board of Ethics"
+podcast_author: "City of Denton, TX"
+podcast_email: ""
+podcast_description: "Board of Ethics meetings for Denton."
+max_episodes: 25
