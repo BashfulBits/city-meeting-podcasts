@@ -216,13 +216,20 @@ class SilencePlanner:
         if not (ep.media_kind == "hls" or city.extract_audio):
             return None
 
+        ffmpeg_binary = getattr(ctx.ffmpeg, "binary", "ffmpeg")
+
+        # Skip silently when ffmpeg isn't installed (e.g. PR preview CI). Avoid the expensive
+        # resolve_media_url network call when we can't do anything with the result.
+        import shutil
+
+        if not shutil.which(ffmpeg_binary):
+            return None
+
         # Resolve the source URL (may involve a network request for Swagit/CivicPlus).
         try:
             source_url = provider.resolve_media_url(ep, city.source)
         except (ProviderError, MediaUnavailable, Exception):  # noqa: BLE001
             return None
-
-        ffmpeg_binary = getattr(ctx.ffmpeg, "binary", "ffmpeg")
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 
         silences, source_duration = detect_silences(
