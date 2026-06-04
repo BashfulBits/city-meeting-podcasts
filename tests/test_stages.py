@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 from citypods.models import City, Episode
 from citypods.stages import AudioStage, LinksStage, StageContext, default_stages, run_stages
@@ -14,8 +13,18 @@ class FakeFfmpeg:
     def __init__(self):
         self.calls: list[str] = []
 
-    def extract_audio(self, source_url: str, dest: Path, chapters=None) -> None:
-        self.calls.append(source_url)
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ) -> None:
+        first_url = next(iter(sources_by_id.values())) if sources_by_id else ""
+        self.calls.append(first_url)
         dest.write_bytes(b"fake")
 
 

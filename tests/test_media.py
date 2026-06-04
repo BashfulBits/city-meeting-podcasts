@@ -15,14 +15,29 @@ MAX_KBPS = 96
 
 
 class FakeFfmpeg:
+    """Minimal fake for materialize_audio tests — records calls, writes stub bytes."""
+
     def __init__(self, fail: bool = False):
-        self.calls: list[str] = []
+        self.calls: list[str] = []  # first resolved URL per call
         self.chapters: list[list[dict] | None] = []
+        self.timelines: list = []
         self.fail = fail
 
-    def extract_audio(self, source_url: str, dest: Path, chapters=None) -> None:
-        self.calls.append(source_url)
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ) -> None:
+        # Expose the first source URL for backward-compat assertions
+        first_url = next(iter(sources_by_id.values())) if sources_by_id else ""
+        self.calls.append(first_url)
         self.chapters.append(chapters)
+        self.timelines.append(timeline)
         if self.fail:
             raise subprocess.CalledProcessError(1, "ffmpeg")
         dest.write_bytes(b"fake-m4a")
@@ -241,9 +256,19 @@ class _FailUrls:
         self.marker = marker
         self.calls: list[str] = []
 
-    def extract_audio(self, source_url, dest, chapters=None):
-        self.calls.append(source_url)
-        if self.marker in source_url:
+    def extract_audio(
+        self,
+        timeline,
+        sources_by_id,
+        dest,
+        chapters=None,
+        *,
+        loudness_profile=None,
+        asset_resolver=None,
+    ):
+        first_url = next(iter(sources_by_id.values())) if sources_by_id else ""
+        self.calls.append(first_url)
+        if self.marker in first_url:
             raise subprocess.CalledProcessError(1, "ffmpeg")
         dest.write_bytes(b"fake-m4a")
 
@@ -387,7 +412,16 @@ def test_encode_timeout_is_caught_and_tagged_timeout(tmp_path):
     # (not crash the build / hang the worker) and recorded as a backoff-eligible failure tagged
     # "timeout" so it isn't retried every run — the in-flight-hang gap behind issue #63.
     class _TimeoutFfmpeg:
-        def extract_audio(self, source_url, dest, chapters=None):
+        def extract_audio(
+            self,
+            timeline,
+            sources_by_id,
+            dest,
+            chapters=None,
+            *,
+            loudness_profile=None,
+            asset_resolver=None,
+        ):
             raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=2700)
 
     ep = _ep("slow")
@@ -415,7 +449,9 @@ def test_command_ffmpeg_wires_timeouts(monkeypatch, tmp_path):
 
     monkeypatch.setattr(media.subprocess, "run", _fake_run)
     media.CommandFfmpeg(max_kbps=96, timeout_seconds=2700).extract_audio(
-        "https://src/manifest.m3u8", tmp_path / "out.m4a"
+        timeline=None,
+        sources_by_id={"s0": "https://src/manifest.m3u8"},
+        dest=tmp_path / "out.m4a",
     )
     (_probe_cmd, probe_kw), (enc_cmd, enc_kw) = calls[0], calls[1]
     assert probe_kw["timeout"] == 120.0  # capped to _PROBE_TIMEOUT_S

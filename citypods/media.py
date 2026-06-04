@@ -9,6 +9,14 @@ ffmpeg invocation is injectable (``FfmpegRunner``) so the pipeline is unit-testa
 offline with a fake. A per-run ``budget`` caps how many *new* episodes are processed,
 so a large first-time backfill is spread over successive scheduled runs rather than
 blowing the Actions 6-hour job limit.
+
+Timeline-aware rendering (INFRA-3, #144)
+-----------------------------------------
+``FfmpegRunner.extract_audio`` now accepts a ``Timeline | None`` and a ``sources_by_id``
+dict (``source_id -> resolved_url``) instead of a bare ``source_url``.  The identity
+path (``timeline is None`` or ``timeline_digest == ""``) uses the same copy/re-encode
+args as before.  Non-identity timelines are rendered via an ffmpeg ``filter_complex``
+that assembles ``atrim``/``concat``/insert segments and optionally applies ``loudnorm``.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.base import StorageBackend
+from citypods.timeline import Segment, Timeline, timeline_digest
 
 CONTENT_TYPE = "audio/mp4"
 
@@ -59,15 +68,42 @@ def _in_backoff(ep: Episode, now: datetime) -> bool:
 
 
 class FfmpegRunner(Protocol):
-    def extract_audio(
-        self, source_url: str, dest: Path, chapters: list[dict] | None = None
-    ) -> None:
-        """Demux/encode audio from ``source_url`` (URL or HLS manifest) into ``dest`` (.m4a).
+    """Renders a Timeline's audio segments into a single M4A file.
 
-        ``chapters`` (``[{"start": secs, "end": secs|None, "title": str}, ...]``) are embedded
-        as M4A chapter markers when provided.
+    Implementations receive the episode's EDL (``timeline``) and a dict mapping
+    each ``source_id`` to the resolved, playable URL for that source.  The identity
+    path (``timeline is None``) must produce the same bytes as the pre-INFRA-3
+    copy/re-encode behaviour — no re-encode storm for existing un-manipulated audio.
+    """
+
+    def extract_audio(
+        self,
+        timeline: Timeline | None,
+        sources_by_id: dict[str, str],
+        dest: Path,
+        chapters: list[dict] | None = None,
+        *,
+        loudness_profile: str | None = None,
+        asset_resolver: Callable[[str, str | None], Path] | None = None,
+    ) -> None:
+        """Render ``timeline`` into ``dest`` (.m4a).
+
+        Args:
+            timeline: The episode's EDL, or ``None`` for the identity (full-copy) path.
+            sources_by_id: Maps ``source_id`` → resolved playable URL.  For identity
+                episodes this has exactly one entry; for concat it has N.
+            dest: Output file path (will be created/overwritten).
+            chapters: Served-time chapter markers embedded as M4A chapter atoms.
+            loudness_profile: e.g. ``"ebuR128:-16LUFS"``; ``None`` = no loudnorm.
+            asset_resolver: Required when ``timeline`` contains insert segments; maps
+                ``(asset_id, asset_version)`` to a local file path.
         """
         ...
+
+
+# ---------------------------------------------------------------------------
+# ffmetadata (chapters)
+# ---------------------------------------------------------------------------
 
 
 def _ffmetadata(chapters: list[dict]) -> str:
@@ -88,6 +124,11 @@ def _ffmetadata(chapters: list[dict]) -> str:
     return "\n".join(out) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# Codec / bitrate helpers
+# ---------------------------------------------------------------------------
+
+
 def encode_args(source_bitrate: int | None, max_kbps: int) -> list[str]:
     """ffmpeg audio codec args: copy if the source is already <= the cap, else re-encode
     to ``max_kbps`` mono AAC. Unknown source bitrate -> re-encode (safe upper bound)."""
@@ -96,8 +137,112 @@ def encode_args(source_bitrate: int | None, max_kbps: int) -> list[str]:
     return ["-c:a", "aac", "-b:a", f"{max_kbps}k", "-ac", "1"]
 
 
+def _parse_lufs(profile: str) -> str:
+    """Extract the integrated loudness target from a profile string.
+
+    e.g. ``"ebuR128:-16LUFS"`` → ``"-16"``.  Falls back to ``"-16"`` when unparseable.
+    """
+    if ":" in profile:
+        _, part = profile.rsplit(":", 1)
+        val = part.replace("LUFS", "").strip()
+        if val:
+            return val
+    return "-16"
+
+
+# ---------------------------------------------------------------------------
+# Filtergraph builder (pure — no subprocess, fully testable)
+# ---------------------------------------------------------------------------
+
+
+def build_filter_complex(
+    segments: tuple[Segment, ...],
+    source_input_idx: dict[str, int],
+    asset_input_idx: dict[tuple[str | None, str | None], int],
+    loudness_profile: str | None = None,
+) -> tuple[str, str]:
+    """Build an ffmpeg ``filter_complex`` string from Timeline segments.
+
+    Returns ``(filter_complex_string, output_stream_label)`` where
+    ``output_stream_label`` is the label to pass to ``-map`` (e.g. ``"[outa]"``).
+
+    Each source segment uses ``atrim+asetpts`` to extract the correct span; insert
+    segments copy their asset input directly.  Multiple segments are joined with
+    ``concat``.  An optional ``loudnorm`` is appended when ``loudness_profile`` is set.
+
+    ``source_input_idx`` maps ``source_id -> ffmpeg input index`` (0-based).
+    ``asset_input_idx`` maps ``(asset_id, asset_version) -> ffmpeg input index``.
+    """
+    parts: list[str] = []
+    labels: list[str] = []
+
+    for i, seg in enumerate(segments):
+        lbl = f"a{i}"
+        if seg.kind == "source":
+            idx = source_input_idx[seg.source_id]  # type: ignore[index]
+            start = seg.source_start or 0.0
+            end = seg.source_end
+            trim = f"atrim=start={start}:end={end}" if end is not None else f"atrim=start={start}"
+            parts.append(f"[{idx}:a]{trim},asetpts=PTS-STARTPTS[{lbl}]")
+        elif seg.kind == "insert":
+            key = (seg.asset_id, seg.asset_version)
+            idx = asset_input_idx[key]
+            parts.append(f"[{idx}:a]acopy[{lbl}]")
+        labels.append(f"[{lbl}]")
+
+    n = len(labels)
+
+    if n == 1:
+        # Single segment: no concat needed.
+        joined = "".join(labels)
+        if loudness_profile:
+            lufs = _parse_lufs(loudness_profile)
+            parts.append(f"{joined}loudnorm=I={lufs}:TP=-1.5:LRA=11[outa]")
+            return ";".join(parts), "[outa]"
+        return ";".join(parts), labels[0]
+
+    # n > 1: concatenate. When branches can differ in format — multiple distinct sources
+    # (#122) or an insert asset (#25) spliced beside source audio — normalize every branch to
+    # a common mono rate first so ``concat`` never has to negotiate mismatched sample rates /
+    # channel layouts (deterministic across ffmpeg versions; complements the pinned-ffmpeg CI
+    # decision). Same-source trims (#111) are already uniform, so we skip the extra resample
+    # there to keep that graph — and its bytes — minimal. Mono matches the final ``-ac 1``.
+    distinct_sources = {s.source_id for s in segments if s.kind == "source"}
+    needs_norm = len(distinct_sources) > 1 or any(s.kind == "insert" for s in segments)
+    if needs_norm:
+        norm_labels: list[str] = []
+        for i, lbl in enumerate(labels):
+            nlbl = f"n{i}"
+            parts.append(f"{lbl}aresample=48000,aformat=channel_layouts=mono[{nlbl}]")
+            norm_labels.append(f"[{nlbl}]")
+        joined = "".join(norm_labels)
+    else:
+        joined = "".join(labels)
+
+    if loudness_profile:
+        lufs = _parse_lufs(loudness_profile)
+        parts.append(f"{joined}concat=n={n}:v=0:a=1[preln]")
+        parts.append(f"[preln]loudnorm=I={lufs}:TP=-1.5:LRA=11[outa]")
+    else:
+        parts.append(f"{joined}concat=n={n}:v=0:a=1[outa]")
+    return ";".join(parts), "[outa]"
+
+
+# ---------------------------------------------------------------------------
+# CommandFfmpeg
+# ---------------------------------------------------------------------------
+
+
 class CommandFfmpeg:
-    """Runs the real ffmpeg binary, re-encoding only when the source exceeds the cap."""
+    """Runs the real ffmpeg binary.
+
+    **Identity path** (``timeline is None`` or identity digest): re-encodes only when
+    the source exceeds the bitrate cap, exactly as before INFRA-3.
+
+    **Filter path** (non-identity timeline or loudnorm): builds a ``filter_complex``
+    that trims/concatenates/inserts segments; always re-encodes (copy is incompatible
+    with ``filter_complex``).
+    """
 
     def __init__(
         self, binary: str = "ffmpeg", max_kbps: int = 96, timeout_seconds: float | None = None
@@ -108,46 +253,168 @@ class CommandFfmpeg:
         # constants above for why an in-flight encode must be bounded.
         self.timeout_seconds = timeout_seconds
 
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
     def extract_audio(
-        self, source_url: str, dest: Path, chapters: list[dict] | None = None
+        self,
+        timeline: Timeline | None,
+        sources_by_id: dict[str, str],
+        dest: Path,
+        chapters: list[dict] | None = None,
+        *,
+        loudness_profile: str | None = None,
+        asset_resolver: Callable[[str, str | None], Path] | None = None,
     ) -> None:
+        use_filter = (timeline is not None and timeline_digest(timeline) != "") or bool(
+            loudness_profile
+        )
+
+        if use_filter:
+            self._render_filter(
+                timeline,
+                sources_by_id,
+                dest,
+                chapters=chapters,
+                loudness_profile=loudness_profile,
+                asset_resolver=asset_resolver,
+            )
+        else:
+            self._render_identity(sources_by_id, dest, chapters=chapters)
+
+    # ------------------------------------------------------------------
+    # Identity path: same args as pre-INFRA-3
+    # ------------------------------------------------------------------
+
+    def _render_identity(
+        self,
+        sources_by_id: dict[str, str],
+        dest: Path,
+        chapters: list[dict] | None = None,
+    ) -> None:
+        source_url = next(iter(sources_by_id.values()))
         probe_timeout = (
             None if self.timeout_seconds is None else min(self.timeout_seconds, _PROBE_TIMEOUT_S)
         )
-        args = encode_args(
+        codec_args = encode_args(
             _probe_audio_bitrate(source_url, self.binary, timeout=probe_timeout), self.max_kbps
         )
         with tempfile.TemporaryDirectory() as tmp:
-            # ``-rw_timeout`` (microseconds) is an *input* option, so it must precede the source
-            # ``-i`` it guards; it makes ffmpeg give up on a stalled read rather than hang.
             inputs = ["-rw_timeout", str(_STALL_TIMEOUT_US), "-i", source_url]
             chapter_args: list[str] = []
             if chapters:
                 meta = Path(tmp) / "chapters.ffmeta"
                 meta.write_text(_ffmetadata(chapters))
                 inputs += ["-i", str(meta)]
-                # take chapters from the metadata input; keep audio from the media input
                 chapter_args = ["-map_chapters", "1", "-map", "0:a:0"]
             cmd = [
                 self.binary,
                 "-y",
                 "-loglevel",
                 "error",
-                # Restrict ffmpeg to the protocols HLS/MP4-over-HTTPS actually need, so a hostile
-                # manifest/redirect can't coax it into reading local files or other schemes.
                 "-protocol_whitelist",
                 "file,crypto,data,http,https,tcp,tls",
                 *inputs,
                 "-vn",
                 *chapter_args,
-                *args,
+                *codec_args,
                 "-movflags",
                 "+faststart",
                 str(dest),
             ]
-            # ``timeout`` is the hard backstop if ``-rw_timeout`` doesn't trip: it kills ffmpeg and
-            # raises subprocess.TimeoutExpired, which materialize_audio records as a failed attempt.
             subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
+
+    # ------------------------------------------------------------------
+    # Filter path: atrim + concat + optional loudnorm
+    # ------------------------------------------------------------------
+
+    def _render_filter(
+        self,
+        timeline: Timeline | None,
+        sources_by_id: dict[str, str],
+        dest: Path,
+        chapters: list[dict] | None = None,
+        loudness_profile: str | None = None,
+        asset_resolver: Callable[[str, str | None], Path] | None = None,
+    ) -> None:
+        segs: tuple[Segment, ...] = timeline.segments if timeline is not None else ()
+
+        # --- collect ordered source inputs (in order of first appearance) ---
+        source_ids: list[str] = []
+        for seg in segs:
+            if seg.kind == "source" and seg.source_id not in source_ids:
+                source_ids.append(seg.source_id)  # type: ignore[arg-type]
+
+        source_input_idx = {sid: i for i, sid in enumerate(source_ids)}
+        next_idx = len(source_ids)
+
+        # --- collect insert asset inputs ---
+        asset_keys: list[tuple[str | None, str | None]] = []
+        asset_input_idx: dict[tuple[str | None, str | None], int] = {}
+        for seg in segs:
+            if seg.kind == "insert":
+                key = (seg.asset_id, seg.asset_version)
+                if key not in asset_input_idx:
+                    if asset_resolver is None:
+                        raise ValueError(
+                            f"insert segment (asset_id={seg.asset_id!r}) requires an asset_resolver"
+                        )
+                    asset_input_idx[key] = next_idx
+                    asset_keys.append(key)
+                    next_idx += 1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            # Build input flags
+            inputs: list[str] = []
+            for sid in source_ids:
+                inputs += ["-rw_timeout", str(_STALL_TIMEOUT_US), "-i", sources_by_id[sid]]
+            for asset_id, asset_version in asset_keys:
+                asset_path = asset_resolver(asset_id, asset_version)  # type: ignore[misc]
+                inputs += ["-i", str(asset_path)]
+
+            filter_str, out_label = build_filter_complex(
+                segs, source_input_idx, asset_input_idx, loudness_profile
+            )
+
+            # Chapter metadata (served-time; comes in as a separate input)
+            chapter_args: list[str] = []
+            if chapters:
+                meta = Path(tmp) / "chapters.ffmeta"
+                meta.write_text(_ffmetadata(chapters))
+                inputs += ["-i", str(meta)]
+                chapter_args = ["-map_chapters", str(next_idx + len(asset_keys))]
+
+            cmd = [
+                self.binary,
+                "-y",
+                "-loglevel",
+                "error",
+                "-protocol_whitelist",
+                "file,crypto,data,http,https,tcp,tls",
+                *inputs,
+                "-filter_complex",
+                filter_str,
+                "-map",
+                out_label,
+                "-vn",
+                *chapter_args,
+                "-c:a",
+                "aac",
+                "-b:a",
+                f"{self.max_kbps}k",
+                "-ac",
+                "1",
+                "-movflags",
+                "+faststart",
+                str(dest),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
+
+
+# ---------------------------------------------------------------------------
+# ffprobe helper
+# ---------------------------------------------------------------------------
 
 
 def _probe_audio_bitrate(
@@ -182,6 +449,11 @@ def _probe_audio_bitrate(
         return None
 
 
+# ---------------------------------------------------------------------------
+# Materialization stats + pipeline
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class MaterializeStats:
     hosted: int = 0  # newly hosted this run (encoded + credited)
@@ -212,6 +484,35 @@ def _hosted_keys(city: City, storage: StorageBackend) -> set[str] | None:
         return None
     prefix = f"{city.provider}/{source_key(city)}/"
     return {key for key, _ in storage.list_objects(prefix)}
+
+
+def _sources_by_id(ep: Episode, source_url: str) -> dict[str, str]:
+    """Map source_id → resolved URL.
+
+    For single-source identity episodes (the common case today), returns a one-entry
+    dict keyed by the episode's first registered source id (or "s0" when no SourceMedia
+    is registered).  Multi-source URL resolution will be extended by the concat-planner
+    feature (#122); for now all registered sources map to the same resolved URL.
+    """
+    if ep.sources:
+        return {ep.sources[0].id: source_url}
+    return {"s0": source_url}
+
+
+def _served_duration(ep: Episode) -> float | None:
+    """The served (enclosure) duration to record as ``audio_duration_served``.
+
+    Derived from the EDL — the sum of served segment lengths — whenever the episode is
+    actually manipulated, rather than trusting ``ep.duration`` (which stays the *source*
+    duration until a planner overwrites it). For identity episodes the two are equal, so this
+    is a no-op there; for trims/concats it keeps ``audio_duration_served`` correct by
+    construction and makes the INFRA-9 ``timeline-duration-mismatch`` contract check meaningful
+    (it compares the segment total against this field). Falls back to ``ep.duration`` when there
+    is no timeline (identity) or no known duration."""
+    tl = ep.timeline
+    if tl is not None and timeline_digest(tl) != "":
+        return sum(s.served_end - s.served_start for s in tl.segments)
+    return float(ep.duration) if ep.duration is not None else None
 
 
 def materialize_audio(
@@ -299,7 +600,8 @@ def materialize_audio(
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
                 source_url = resolve_media_url(ep)
-                ffmpeg.extract_audio(source_url, dest, ep.chapters or None)
+                by_id = _sources_by_id(ep, source_url)
+                ffmpeg.extract_audio(ep.timeline, by_id, dest, ep.chapters or None)
                 url = storage.put_file(key, dest, CONTENT_TYPE)
                 try:
                     size = dest.stat().st_size
@@ -311,7 +613,7 @@ def materialize_audio(
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
             ep.audio_encode_time = now.isoformat()
-            ep.audio_duration_served = float(ep.duration) if ep.duration is not None else None
+            ep.audio_duration_served = _served_duration(ep)
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None

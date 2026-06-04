@@ -357,7 +357,16 @@ class TestLazyV1Upgrade:
 class TestDurationSemantics:
     def _fake_ffmpeg(self):
         class FF:
-            def extract_audio(self, url, dest, chapters=None):
+            def extract_audio(
+                self,
+                timeline,
+                sources_by_id,
+                dest,
+                chapters=None,
+                *,
+                loudness_profile=None,
+                asset_resolver=None,
+            ):
                 dest.write_bytes(b"fake-m4a")
 
         return FF()
