@@ -155,8 +155,14 @@ def test_sources_by_id_single_source_uses_resolved_url(tmp_path):
 
     ep = _ep("g1")
     ep.sources = [
-        SourceMedia(id="s0", provider="swagit", ref="https://cdn/old.mp4",
-                    media_kind="direct", duration=3600.0, watch_url=None)
+        SourceMedia(
+            id="s0",
+            provider="swagit",
+            ref="https://cdn/old.mp4",
+            media_kind="direct",
+            duration=3600.0,
+            watch_url=None,
+        )
     ]
     result = _sources_by_id(ep, "https://cdn/fresh.mp4")
     assert result == {"s0": "https://cdn/fresh.mp4"}
@@ -169,10 +175,22 @@ def test_sources_by_id_multi_source_uses_refs(tmp_path):
 
     ep = _ep("g1")
     ep.sources = [
-        SourceMedia(id="s0", provider="swagit", ref="https://cdn/seg1.mp4",
-                    media_kind="direct", duration=1800.0, watch_url=None),
-        SourceMedia(id="s1", provider="swagit", ref="https://cdn/seg2.mp4",
-                    media_kind="direct", duration=2700.0, watch_url=None),
+        SourceMedia(
+            id="s0",
+            provider="swagit",
+            ref="https://cdn/seg1.mp4",
+            media_kind="direct",
+            duration=1800.0,
+            watch_url=None,
+        ),
+        SourceMedia(
+            id="s1",
+            provider="swagit",
+            ref="https://cdn/seg2.mp4",
+            media_kind="direct",
+            duration=2700.0,
+            watch_url=None,
+        ),
     ]
     result = _sources_by_id(ep, "https://cdn/ignored.mp4")
     assert result == {"s0": "https://cdn/seg1.mp4", "s1": "https://cdn/seg2.mp4"}

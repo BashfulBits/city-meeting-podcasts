@@ -133,8 +133,9 @@ class TestTimelineConstruction:
         dur_iter = iter(durations)
         with (
             patch("citypods.concat.shutil.which", return_value="ffmpeg"),
-            patch("citypods.concat._probe_duration_url",
-                  side_effect=lambda *a, **kw: next(dur_iter)),
+            patch(
+                "citypods.concat._probe_duration_url", side_effect=lambda *a, **kw: next(dur_iter)
+            ),
         ):
             tl = planner.plan(_make_provider(seg_objs), _make_city(), ep, _make_ctx(), None)
         return tl, ep
@@ -195,8 +196,9 @@ class TestChapterConstruction:
         dur_iter = iter(durations)
         with (
             patch("citypods.concat.shutil.which", return_value="ffmpeg"),
-            patch("citypods.concat._probe_duration_url",
-                  side_effect=lambda *a, **kw: next(dur_iter)),
+            patch(
+                "citypods.concat._probe_duration_url", side_effect=lambda *a, **kw: next(dur_iter)
+            ),
         ):
             planner.plan(_make_provider(seg_objs), _make_city(), ep, _make_ctx(), None)
         return ep
@@ -224,8 +226,9 @@ class TestChapterConstruction:
         dur_iter = iter([1800.0, 2700.0])
         with (
             patch("citypods.concat.shutil.which", return_value="ffmpeg"),
-            patch("citypods.concat._probe_duration_url",
-                  side_effect=lambda *a, **kw: next(dur_iter)),
+            patch(
+                "citypods.concat._probe_duration_url", side_effect=lambda *a, **kw: next(dur_iter)
+            ),
         ):
             planner.plan(_make_provider(seg_objs), _make_city(), ep, _make_ctx(), None)
         # ep.chapters should not have been overwritten (stays as MagicMock default or [])

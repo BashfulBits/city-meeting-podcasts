@@ -219,9 +219,7 @@ class SwagitProvider:
         transcript = f"{origin}{transcript_path}" if transcript_path in resp.text else None
         return chapters, transcript
 
-    def fetch_segment_objects(
-        self, episode: Episode, source: dict
-    ) -> list[tuple[str, str]] | None:
+    def fetch_segment_objects(self, episode: Episode, source: dict) -> list[tuple[str, str]] | None:
         """Return ``(url, title)`` pairs for keyless legacy meetings; ``None`` for modern ones.
 
         Called by :class:`~citypods.concat.SwagitConcatPlanner` during the timeline stage.

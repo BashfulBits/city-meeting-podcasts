@@ -109,9 +109,7 @@ class SwagitConcatPlanner:
             return None  # modern meeting or single-segment: normal path handles it
 
         ffprobe = (
-            "ffprobe"
-            if ffmpeg_binary == "ffmpeg"
-            else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+            "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
         )
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 

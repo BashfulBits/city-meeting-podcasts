@@ -250,6 +250,7 @@ class TestSilencePlanner:
     def test_returns_none_for_multi_source_concat_episode(self):
         """SwagitConcatPlanner owns multi-source episodes; SilencePlanner must skip them."""
         from unittest.mock import MagicMock as MM
+
         planner = SilencePlanner()
         ctx = _make_ctx()
         src = MM()

@@ -312,12 +312,20 @@ def test_resolve_media_url_fast_path_when_sources_populated():
     ep = parse_list(SAMPLE, ORIGIN)[0]
     ep.sources = [
         SourceMedia(
-            id="s0", provider="swagit", ref="https://cdn.example.com/seg1.mp4",
-            media_kind="direct", duration=1800.0, watch_url=None,
+            id="s0",
+            provider="swagit",
+            ref="https://cdn.example.com/seg1.mp4",
+            media_kind="direct",
+            duration=1800.0,
+            watch_url=None,
         ),
         SourceMedia(
-            id="s1", provider="swagit", ref="https://cdn.example.com/seg2.mp4",
-            media_kind="direct", duration=2700.0, watch_url=None,
+            id="s1",
+            provider="swagit",
+            ref="https://cdn.example.com/seg2.mp4",
+            media_kind="direct",
+            duration=2700.0,
+            watch_url=None,
         ),
     ]
     # No monkeypatching of make_session: any network call would raise → proves no call made.
