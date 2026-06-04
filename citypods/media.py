@@ -551,6 +551,7 @@ def materialize_audio(
     storage: StorageBackend,
     ffmpeg: FfmpegRunner,
     max_kbps: int,
+    loudness_profile: str = "",
     resolve_media_url: Callable[[Episode], str],
     stop: Callable[[], bool] | None = None,
 ) -> MaterializeStats:
@@ -579,7 +580,7 @@ def materialize_audio(
         if not _should_host(ep, city):
             continue
 
-        spec = audio_spec_hash(ep, max_kbps=max_kbps)
+        spec = audio_spec_hash(ep, max_kbps=max_kbps, loudness_profile=loudness_profile)
         # Already hosted with a matching spec (or carried over from the legacy manifest)?
         # Trust the record only when its object is actually in storage — otherwise a stale
         # record (e.g. a Swagit episode whose presigned source expired before the object was
@@ -630,7 +631,13 @@ def materialize_audio(
                 dest = Path(tmp) / "audio.m4a"
                 source_url = resolve_media_url(ep)
                 by_id = _sources_by_id(ep, source_url)
-                ffmpeg.extract_audio(ep.timeline, by_id, dest, ep.chapters or None)
+                ffmpeg.extract_audio(
+                    ep.timeline,
+                    by_id,
+                    dest,
+                    ep.chapters or None,
+                    loudness_profile=loudness_profile or None,
+                )
                 try:
                     probed = _probe_duration_secs(dest, getattr(ffmpeg, "binary", "ffmpeg"))
                     if probed is not None:

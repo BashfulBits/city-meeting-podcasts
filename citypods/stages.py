@@ -119,6 +119,9 @@ class StageContext:
     dry_run: bool
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
+    # EBU R128 loudness normalization (#151). Empty string = disabled.
+    # e.g. "ebuR128:-16LUFS" normalises to -16 LUFS (Apple Podcasts / Spotify speech standard).
+    loudness_profile: str = ""
     # Silence-trim planner config (#111). Config flows through ctx so SilencePlanner needs no
     # constructor args and enrich_stages() needs no site_config parameter.
     trim_silence: bool = False
@@ -181,6 +184,7 @@ class AudioStage:
             storage=ctx.storage,
             ffmpeg=ctx.ffmpeg,
             max_kbps=ctx.max_kbps,
+            loudness_profile=ctx.loudness_profile,
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
             stop=ctx.stop,
         )
