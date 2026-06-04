@@ -253,7 +253,10 @@ class TestSilencePlanner:
         ep = _make_episode(media_kind="direct", duration=3600)
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
-        with patch("citypods.silence.detect_silences") as mock_detect:
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
             mock_detect.return_value = ([], 3600.0)
             result = planner.plan(provider, _make_city(extract_audio=True), ep, ctx, None)
         # No silence → identity timeline
@@ -272,7 +275,10 @@ class TestSilencePlanner:
         ctx = _make_ctx()
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
-        with patch("citypods.silence.detect_silences") as mock_detect:
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
             mock_detect.return_value = ([], 3600.0)
             result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         assert result is not None
@@ -283,7 +289,10 @@ class TestSilencePlanner:
         ctx = _make_ctx()
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
-        with patch("citypods.silence.detect_silences") as mock_detect:
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
             mock_detect.return_value = ([(0.0, 5.0)], 3600.0)
             result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         assert result is not None
@@ -298,7 +307,8 @@ class TestSilencePlanner:
         ctx = _make_ctx()
         provider = MagicMock()
         provider.resolve_media_url.side_effect = ProviderError("network error")
-        result = planner.plan(provider, _make_city(), _make_episode(), ctx, None)
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            result = planner.plan(provider, _make_city(), _make_episode(), ctx, None)
         assert result is None
 
     def test_returns_none_when_no_duration_available(self):
@@ -307,7 +317,10 @@ class TestSilencePlanner:
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
         ep = _make_episode(duration=None)  # no duration in record
-        with patch("citypods.silence.detect_silences") as mock_detect:
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
             mock_detect.return_value = ([], None)  # also no duration from ffmpeg
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is None
@@ -318,9 +331,21 @@ class TestSilencePlanner:
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
         ep = _make_episode(duration=7200)  # ep.duration set, ffmpeg doesn't return duration
-        with patch("citypods.silence.detect_silences") as mock_detect:
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
             mock_detect.return_value = ([], None)  # no duration from ffmpeg
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         # No silence, ep.duration used → identity
         assert result is not None
         assert timeline_digest(result) == ""
+
+    def test_returns_none_when_ffmpeg_not_installed(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        with patch("citypods.silence.shutil.which", return_value=None):
+            result = planner.plan(provider, _make_city(), _make_episode(), ctx, None)
+        assert result is None
+        provider.resolve_media_url.assert_not_called()  # no network call when ffmpeg absent

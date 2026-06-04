@@ -19,6 +19,7 @@ this: it re-encodes using the *existing* timeline, which would still be the iden
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 
 from citypods.timeline import Segment, Timeline, identity_timeline
@@ -220,8 +221,6 @@ class SilencePlanner:
 
         # Skip silently when ffmpeg isn't installed (e.g. PR preview CI). Avoid the expensive
         # resolve_media_url network call when we can't do anything with the result.
-        import shutil
-
         if not shutil.which(ffmpeg_binary):
             return None
 
