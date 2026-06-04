@@ -187,7 +187,7 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     # Feed truncation: how many sources have more archived episodes than max_episodes renders.
     truncation = _truncation_stats(cities, state_dir)
 
-    # Un-materializable audio tally (issue #120): deferred (MEDIA_DEFERRED, in backoff) vs dead (no media).
+    # Un-materializable audio tally (#120): deferred (in backoff) vs dead (no usable media).
     audio_failures = _audio_failure_stats(cities, state_dir)
 
     # "host all audio" = host_frac 1.0 regardless of provider

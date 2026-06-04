@@ -29,7 +29,10 @@ def _make_ctx(ffmpeg_binary="ffmpeg", timeout=None):
 def _make_city(provider="swagit"):
     city = MagicMock()
     city.provider = provider
-    city.source = {"list_url": "https://dallastx.new.swagit.com/views/default", "body": "City Council"}
+    city.source = {
+        "list_url": "https://dallastx.new.swagit.com/views/default",
+        "body": "City Council",
+    }
     return city
 
 
@@ -63,7 +66,9 @@ class TestGuards:
 
     def test_skips_non_hls_episode(self):
         planner = SwagitConcatPlanner()
-        result = planner.plan(_make_provider(), _make_city(), _make_ep(media_kind="direct"), _make_ctx(), None)
+        result = planner.plan(
+            _make_provider(), _make_city(), _make_ep(media_kind="direct"), _make_ctx(), None
+        )
         assert result is None
 
     def test_skips_when_ffmpeg_not_installed(self):
@@ -128,7 +133,8 @@ class TestTimelineConstruction:
         dur_iter = iter(durations)
         with (
             patch("citypods.concat.shutil.which", return_value="ffmpeg"),
-            patch("citypods.concat._probe_duration_url", side_effect=lambda *a, **kw: next(dur_iter)),
+            patch("citypods.concat._probe_duration_url",
+                  side_effect=lambda *a, **kw: next(dur_iter)),
         ):
             tl = planner.plan(_make_provider(seg_objs), _make_city(), ep, _make_ctx(), None)
         return tl, ep
@@ -153,7 +159,7 @@ class TestTimelineConstruction:
     def test_each_source_spans_full_duration(self):
         """source_start=0, source_end=duration for each segment (full copy, no trim)."""
         tl, _ = self._run(durations=(1800.0, 2700.0))
-        for seg, dur in zip(tl.segments, (1800.0, 2700.0)):
+        for seg, dur in zip(tl.segments, (1800.0, 2700.0), strict=True):
             assert seg.source_start == 0.0
             assert seg.source_end == dur
 
@@ -189,7 +195,8 @@ class TestChapterConstruction:
         dur_iter = iter(durations)
         with (
             patch("citypods.concat.shutil.which", return_value="ffmpeg"),
-            patch("citypods.concat._probe_duration_url", side_effect=lambda *a, **kw: next(dur_iter)),
+            patch("citypods.concat._probe_duration_url",
+                  side_effect=lambda *a, **kw: next(dur_iter)),
         ):
             planner.plan(_make_provider(seg_objs), _make_city(), ep, _make_ctx(), None)
         return ep
@@ -217,7 +224,8 @@ class TestChapterConstruction:
         dur_iter = iter([1800.0, 2700.0])
         with (
             patch("citypods.concat.shutil.which", return_value="ffmpeg"),
-            patch("citypods.concat._probe_duration_url", side_effect=lambda *a, **kw: next(dur_iter)),
+            patch("citypods.concat._probe_duration_url",
+                  side_effect=lambda *a, **kw: next(dur_iter)),
         ):
             planner.plan(_make_provider(seg_objs), _make_city(), ep, _make_ctx(), None)
         # ep.chapters should not have been overwritten (stays as MagicMock default or [])
@@ -245,14 +253,16 @@ class TestProbeDurationUrl:
     def test_returns_none_on_subprocess_error(self):
         import subprocess
 
-        with patch("citypods.concat.subprocess.run", side_effect=subprocess.CalledProcessError(1, "ffprobe")):
+        err = subprocess.CalledProcessError(1, "ffprobe")
+        with patch("citypods.concat.subprocess.run", side_effect=err):
             result = _probe_duration_url("http://example.com/file.mp4")
         assert result is None
 
     def test_returns_none_on_timeout(self):
         import subprocess
 
-        with patch("citypods.concat.subprocess.run", side_effect=subprocess.TimeoutExpired("ffprobe", 30)):
+        err = subprocess.TimeoutExpired("ffprobe", 30)
+        with patch("citypods.concat.subprocess.run", side_effect=err):
             result = _probe_duration_url("http://example.com/file.mp4", timeout=30)
         assert result is None
 

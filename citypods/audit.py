@@ -48,7 +48,8 @@ WARN = "warn"
 # Project-wide audio-failure alert (issue #120): file a single aggregate finding when the number
 # of episodes that can't be materialized crosses this many across all feeds, so a creeping rise in
 # dead audio surfaces as one auto-closing ticket rather than per-feed noise (deferred meetings are
-# tracked separately by check_deferred_audio_aggregate). Override via defaults.dead_audio_alert_threshold.
+# tracked separately by check_deferred_audio_aggregate).
+# Override via defaults.dead_audio_alert_threshold.
 DEAD_AUDIO_ALERT_THRESHOLD = 10
 
 
@@ -252,7 +253,9 @@ def check_dead_audio_aggregate(
         f"(keyless source with no usable page media — issue #120)."
     )
     if deferred_total:
-        msg += f" Separately, {deferred_total} episode(s) are in materialization backoff (will retry)."
+        msg += (
+            f" Separately, {deferred_total} episode(s) are in materialization backoff (will retry)."
+        )
     return Finding("(all)", "dead-audio", ERROR, msg)
 
 

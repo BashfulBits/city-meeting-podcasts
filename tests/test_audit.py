@@ -168,7 +168,8 @@ def test_dead_audio_aggregate_fires_above_threshold():
     f = check_dead_audio_aggregate(deferred_total=4, dead_total=12, threshold=10)
     assert f is not None
     assert f.slug == "(all)" and f.check == "dead-audio" and f.severity == "error"
-    assert "12 episode(s)" in f.message and "4 episode(s) are in materialization backoff" in f.message
+    assert "12 episode(s)" in f.message
+    assert "4 episode(s) are in materialization backoff" in f.message
 
 
 def test_dead_audio_aggregate_silent_below_threshold():

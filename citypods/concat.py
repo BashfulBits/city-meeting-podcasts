@@ -56,9 +56,9 @@ def _probe_duration_url(
 class SwagitConcatPlanner:
     """TimelinePlanner that materializes legacy multi-segment Swagit meetings (#122).
 
-    Registered before :class:`~citypods.silence.SilencePlanner` in :class:`~citypods.stages.TimelineStage`.
-    ``SilencePlanner`` skips any episode with ``len(ep.sources) > 1`` so the two planners don't
-    conflict.
+    Registered before :class:`~citypods.silence.SilencePlanner` in
+    :class:`~citypods.stages.TimelineStage`.  ``SilencePlanner`` skips any episode with
+    ``len(ep.sources) > 1`` so the two planners don't conflict.
 
     Detection is Swagit-specific (keyless ``/download`` redirect + ``dfile`` page scrape).  All
     downstream rendering — ``filter_complex``, :func:`~citypods.media.materialize_audio`, the clip
@@ -131,7 +131,7 @@ class SwagitConcatPlanner:
                 duration=dur,
                 watch_url=(ep.links or {}).get("canonical_video"),
             )
-            for i, ((url, _), dur) in enumerate(zip(seg_objs, durations))
+            for i, ((url, _), dur) in enumerate(zip(seg_objs, durations, strict=True))
         ]
         ep.sources = sources
 
@@ -139,7 +139,7 @@ class SwagitConcatPlanner:
         # starts at the cumulative offset where that segment's audio begins.
         chapters = []
         offset = 0.0
-        for (_, title), dur in zip(seg_objs, durations):
+        for (_, title), dur in zip(seg_objs, durations, strict=True):
             if title:
                 chapters.append({"start": offset, "end": offset + dur, "title": title})
             offset += dur
@@ -150,7 +150,7 @@ class SwagitConcatPlanner:
         # Build the concat Timeline: N consecutive full-source segments.
         segs: list[Segment] = []
         offset = 0.0
-        for src, dur in zip(sources, durations):
+        for src, dur in zip(sources, durations, strict=True):
             segs.append(
                 Segment(
                     served_start=offset,

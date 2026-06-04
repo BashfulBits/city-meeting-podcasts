@@ -88,7 +88,8 @@ def _s3_object_key(url: str) -> str:
 
 
 def parse_segment_objects(content: bytes) -> list[tuple[str, str]]:
-    """Parse a Swagit video page's inline ``dfile`` segments, returning ``(url, title)`` ordered by ``seq``.
+    """Parse a Swagit video page's inline ``dfile`` segments, returning ``(url, title)`` pairs
+    ordered by ``seq``.
 
     Each JSON object on older meeting pages carries a ``dfile`` (direct MP4), a ``seq`` (playback
     order), and a ``title`` (the agenda-item name). Returns pairs sorted by ``seq``; ``title``
@@ -306,7 +307,7 @@ class SwagitProvider:
     def _page_segment_objects(
         self, episode: Episode, source: dict, session
     ) -> list[tuple[str, str]]:
-        """Fetch the ``/videos/{id}`` page and return its inline ``(dfile, title)`` segment pairs."""
+        """Fetch the ``/videos/{id}`` page and return its inline ``(dfile, title)`` pairs."""
         origin = _origin(source["list_url"])
         url = f"{origin}/videos/{episode.guid}"
         try:
