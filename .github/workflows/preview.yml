@@ -34,10 +34,11 @@ jobs:
       - name: Build feeds
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url || 'https://preview.example' }}
-        # --chapters-cap keeps this PR sanity-check fast: the preview has no cached chapters, so an
-        # uncapped scrape would walk the whole backlog (minutes). Production (deploy.yml) omits it
-        # and lets chapters backfill fully, bounded only by the wall-clock window.
-        run: citypods build --chapters-cap 40
+        # --phase render skips all expensive enrichment stages (chapter scraping, silence
+        # planning, audio encoding) and just renders feeds + pages from existing state.
+        # A full --phase all with --chapters-cap N is too slow: cap is per-source, so with
+        # 50+ Swagit feeds it still takes 6-8 min of page-scraping with no cached state.
+        run: citypods build --phase render
 
       - name: Upload preview artifact
         id: upload
