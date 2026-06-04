@@ -247,6 +247,16 @@ class TestSilencePlanner:
         result = planner.plan(MagicMock(), _make_city(extract_audio=False), ep, ctx, None)
         assert result is None
 
+    def test_returns_none_for_multi_source_concat_episode(self):
+        """SwagitConcatPlanner owns multi-source episodes; SilencePlanner must skip them."""
+        from unittest.mock import MagicMock as MM
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        src = MM()
+        ep = _make_episode(sources=[src, src])  # len > 1
+        result = planner.plan(MagicMock(), _make_city(), ep, ctx, None)
+        assert result is None
+
     def test_runs_for_direct_with_extract_audio(self):
         planner = SilencePlanner()
         ctx = _make_ctx()

@@ -91,9 +91,9 @@ def test_resolve_errors_on_failure(monkeypatch):
 KEYLESS = "https://granicus-aasmp-swagit-video.s3.amazonaws.com/dallastx/?X-Amz-Signature=abc"
 
 
-def _segment(seq, name):
+def _segment(seq, name, title="Item"):
     return (
-        f'{{"id":{seq},"seq":{seq},"title":"Item","dfile":'
+        f'{{"id":{seq},"seq":{seq},"title":"{title}","dfile":'
         f'"https://swagit-video.granicus.com/archive/2014/01/21/{name}.h264.mp4",'
         f'"file":"https://archive-stream.granicus.com/x/playlist.m3u8"}}'
     )
@@ -131,6 +131,22 @@ def test_parse_media_segments_ordered_by_seq():
     assert parse_media_segments(page) == [
         "https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4",
         "https://swagit-video.granicus.com/archive/2014/01/21/617.h264.mp4",
+    ]
+
+
+def test_parse_segment_objects_returns_urls_and_titles():
+    from citypods.providers.swagit import parse_segment_objects
+
+    page = (
+        b"<body>"
+        + _segment(2, "616", title="Call to Order").encode()
+        + _segment(3, "617", title="Item 1").encode()
+        + b"</body>"
+    )
+    objs = parse_segment_objects(page)
+    assert objs == [
+        ("https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4", "Call to Order"),
+        ("https://swagit-video.granicus.com/archive/2014/01/21/617.h264.mp4", "Item 1"),
     ]
 
 
@@ -243,3 +259,67 @@ def test_fetch_chapters_no_transcript_link(monkeypatch):
     ep = parse_list(SAMPLE, ORIGIN)[0]
     chapters, transcript = SwagitProvider().fetch_chapters(ep, {"list_url": f"{ORIGIN}/x"})
     assert chapters and transcript is None
+
+
+# --- fetch_segment_objects (SwagitConcatPlanner entry point) ----------------------------------
+
+
+def test_fetch_segment_objects_modern_meeting_returns_none(monkeypatch):
+    """Keyed /download redirect → None (modern meeting, resolve_media_url handles it)."""
+    presigned = "https://s3.amazonaws.com/dallastx/abc.mp4?X-Amz=1"
+    monkeypatch.setattr(
+        "citypods.providers.swagit.make_session", lambda: _Session(_Resp(302, presigned))
+    )
+    eps = parse_list(SAMPLE, ORIGIN)
+    result = SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
+    assert result is None
+
+
+def test_fetch_segment_objects_multi_segment_returns_pairs(monkeypatch):
+    """Keyless redirect + multi-segment page → list of (url, title) pairs."""
+    page = (
+        b"<body>"
+        + _segment(2, "616", title="Call to Order").encode()
+        + _segment(3, "617", title="Item 1").encode()
+        + b"</body>"
+    )
+    monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    eps = parse_list(SAMPLE, ORIGIN)
+    result = SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
+    assert result == [
+        ("https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4", "Call to Order"),
+        ("https://swagit-video.granicus.com/archive/2014/01/21/617.h264.mp4", "Item 1"),
+    ]
+
+
+def test_fetch_segment_objects_single_segment(monkeypatch):
+    """Single-segment keyless → list with one entry (caller checks length)."""
+    page = b"<body>" + _segment(1, "616", title="Full Meeting").encode() + b"</body>"
+    monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    eps = parse_list(SAMPLE, ORIGIN)
+    result = SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
+    assert len(result) == 1
+
+
+# --- resolve_media_url fast-path for pre-planned concat episodes ------------------------------
+
+
+def test_resolve_media_url_fast_path_when_sources_populated():
+    """When ep.sources > 1 (set by SwagitConcatPlanner), resolve_media_url returns sources[0].ref
+    without any network call."""
+    from citypods.timeline import SourceMedia
+
+    ep = parse_list(SAMPLE, ORIGIN)[0]
+    ep.sources = [
+        SourceMedia(
+            id="s0", provider="swagit", ref="https://cdn.example.com/seg1.mp4",
+            media_kind="direct", duration=1800.0, watch_url=None,
+        ),
+        SourceMedia(
+            id="s1", provider="swagit", ref="https://cdn.example.com/seg2.mp4",
+            media_kind="direct", duration=2700.0, watch_url=None,
+        ),
+    ]
+    # No monkeypatching of make_session: any network call would raise → proves no call made.
+    url = SwagitProvider().resolve_media_url(ep, {"list_url": f"{ORIGIN}/x"})
+    assert url == "https://cdn.example.com/seg1.mp4"

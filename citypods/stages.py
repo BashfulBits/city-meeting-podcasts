@@ -658,11 +658,12 @@ def default_stages() -> list[EnrichmentStage]:
     Ordering invariant: ``chapters`` → ``timeline`` → ``remap`` → ``audio``.
     Chapters must arrive (source-time) before timeline plans the EDL; remap converts
     them to served-time before audio embeds them as M4A markers."""
+    from citypods.concat import SwagitConcatPlanner
     from citypods.silence import SilencePlanner
 
     return [
         ChaptersStage(),
-        TimelineStage(planners=[SilencePlanner()]),
+        TimelineStage(planners=[SwagitConcatPlanner(), SilencePlanner()]),
         RemapStage(),
         AudioStage(),
         TranscriptStage(),
@@ -686,11 +687,12 @@ def enrich_stages() -> list[EnrichmentStage]:
     audio encoding (download+ffmpeg), bounded by the wall-clock ``stop`` window.
 
     Ordering: ``chapters`` → ``timeline`` → ``audio`` (each feeds the next's spec hash)."""
+    from citypods.concat import SwagitConcatPlanner
     from citypods.silence import SilencePlanner
 
     return [
         ChaptersStage(),
-        TimelineStage(planners=[SilencePlanner()]),
+        TimelineStage(planners=[SwagitConcatPlanner(), SilencePlanner()]),
         RemapStage(),
         AudioStage(),
         TranscriptStage(),
