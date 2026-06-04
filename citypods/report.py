@@ -81,8 +81,8 @@ def _truncation_stats(cities: list, state_dir: Path | None) -> dict:
 def _audio_failure_stats(cities: list, state_dir: Path | None) -> dict:
     """Project-wide count of episodes that can't be materialized, split by category (issue #120).
 
-    ``deferred`` = recoverable once multi-segment Swagit concat ships (#122); ``dead`` = no usable
-    media exists. Counted once per source (per-body feeds share a record store)."""
+    ``deferred`` = MEDIA_DEFERRED (in backoff, will retry); ``dead`` = no usable media (MEDIA_DEAD).
+    Counted once per source (per-body feeds share a record store)."""
     empty = {"deferred": 0, "dead": 0, "examples": []}
     if not state_dir or not cities:
         return empty
@@ -187,7 +187,7 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     # Feed truncation: how many sources have more archived episodes than max_episodes renders.
     truncation = _truncation_stats(cities, state_dir)
 
-    # Un-materializable audio tally (issue #120): deferred (pending concat #122) vs dead (no media).
+    # Un-materializable audio tally (#120): deferred (in backoff) vs dead (no usable media).
     audio_failures = _audio_failure_stats(cities, state_dir)
 
     # "host all audio" = host_frac 1.0 regardless of provider
@@ -272,7 +272,7 @@ def to_markdown(report: dict) -> str:
         icon = "⚠️ " if af["dead"] else ""
         lines.append(
             f"- {icon}**Un-materializable audio:** {af['dead']} dead (no usable media){ex}, "
-            f"{af['deferred']} deferred (await multi-segment concat, #122)"
+            f"{af['deferred']} deferred (MEDIA_DEFERRED; in backoff, will retry)"
         )
 
     lines += ["", "### At scale (storage / month)", "", "| Feeds | TB | $/mo |", "|--:|--:|--:|"]
@@ -290,7 +290,7 @@ def _classify_record(rec: dict, max_kbps: int, loudness_profile: str = "") -> st
       served         — hosted audio exists and spec matches current desired spec (or "legacy")
       stale          — hosted audio exists but spec no longer matches (re-encode queued)
       linked_video   — direct provider MP4 link; we never host this episode's audio
-      deferred       — awaiting multi-segment concat (#122)
+      deferred       — MEDIA_DEFERRED (in materialization backoff, will retry)
       dead           — no usable media (#120)
       transient_error— last attempt failed for an uncategorized reason (in exponential backoff)
       pending        — HLS episode, no enclosure yet, never attempted

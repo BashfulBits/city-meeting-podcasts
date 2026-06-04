@@ -217,6 +217,11 @@ class SilencePlanner:
         if not (ep.media_kind == "hls" or city.extract_audio):
             return None
 
+        # Multi-segment concat episodes are owned by SwagitConcatPlanner; silence-trimming
+        # a single-source URL when the episode spans N sources would only trim the first segment.
+        if ep.sources and len(ep.sources) > 1:
+            return None
+
         ffmpeg_binary = getattr(ctx.ffmpeg, "binary", "ffmpeg")
 
         # Skip silently when ffmpeg isn't installed (e.g. PR preview CI). Avoid the expensive

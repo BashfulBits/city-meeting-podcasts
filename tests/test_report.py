@@ -72,7 +72,7 @@ def test_audio_failures_surface_in_report_and_markdown(tmp_path):
     rep = build_report([city], site_config=SITE, state_dir=tmp_path)
     assert rep["audio_failures"] == {"deferred": 1, "dead": 2, "examples": ["a (2 dead)"]}
     md = to_markdown(rep)
-    assert "Un-materializable audio" in md and "2 dead" in md and "#122" in md
+    assert "Un-materializable audio" in md and "2 dead" in md and "MEDIA_DEFERRED" in md
 
 
 def test_truncation_counts_per_body_not_whole_shared_archive(tmp_path):

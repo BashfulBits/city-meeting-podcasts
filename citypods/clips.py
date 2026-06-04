@@ -252,17 +252,22 @@ def extract_clip(
     else:
         clip_tl, source_cuts = _clip_timeline(ep.timeline, served_start, served_end)
 
-    # Resolve source URLs. NOTE: this maps EVERY distinct source in the clip to the single URL
-    # from resolve_media_url(ep), which is correct only when the clip comes from one source (the
-    # case today). A clip spanning a concat boundary (#122) needs per-source resolution; the
-    # source_cuts above already identify which sources are involved, so this is the seam where
-    # the concat planner will supply a per-source resolver. (The cut MAP is already correct —
-    # only the URL each cut is fetched from would be wrong for a true multi-source clip.)
-    source_url = resolve_media_url(ep)
-    sources_by_id: dict[str, str] = {}
-    for seg in clip_tl.segments:
-        if seg.kind == "source" and seg.source_id not in sources_by_id:
-            sources_by_id[seg.source_id] = source_url  # type: ignore[index]
+    # Resolve source URLs. For multi-source concat episodes ep.sources carries a stable ref
+    # per segment (set by SwagitConcatPlanner); use those directly so a clip spanning a concat
+    # boundary fetches each cut from the correct source file. For single-source episodes, use
+    # resolve_media_url so we always get a fresh presigned URL rather than a stale cached ref.
+    if ep.sources and len(ep.sources) > 1:
+        all_refs = {s.id: s.ref for s in ep.sources}
+        sources_by_id: dict[str, str] = {}
+        for seg in clip_tl.segments:
+            if seg.kind == "source" and seg.source_id not in sources_by_id:
+                sources_by_id[seg.source_id] = all_refs[seg.source_id]  # type: ignore[index]
+    else:
+        source_url = resolve_media_url(ep)
+        sources_by_id = {}
+        for seg in clip_tl.segments:
+            if seg.kind == "source" and seg.source_id not in sources_by_id:
+                sources_by_id[seg.source_id] = source_url  # type: ignore[index]
 
     # Encode and upload
     with tempfile.TemporaryDirectory() as tmp:

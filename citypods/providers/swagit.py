@@ -12,7 +12,7 @@ re-hosted as audio by the materialization pipeline, like CivicPlus).
 Older meetings 302 to a *keyless* presigned URL (signs only the bucket prefix, no object), so
 ``/download`` is unusable; for those we fall back to the direct ``dfile`` MP4(s) embedded in the
 ``/videos/{id}`` page (issue #120). Single-segment meetings resolve directly; multi-segment ones
-are deferred (audio concat is a roadmap item) and the pipeline backs off re-trying them.
+are concatenated into a single M4A by :class:`~citypods.concat.SwagitConcatPlanner` (issue #122).
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ CHAPTER_ANCHOR_RE = re.compile(r'<a\b[^>]*class="[^"]*playerControl[^"]*"[^>]*>'
 _SEGMENT_OBJ_RE = re.compile(r'\{[^{}]*"dfile"[^{}]*\}')
 _DFILE_RE = re.compile(r'"dfile":"([^"]+)"')
 _SEQ_RE = re.compile(r'"seq":(\d+)')
+_TITLE_RE = re.compile(r'"title":"([^"]+)"')
 
 
 def _attr(tag: str, name: str) -> str | None:
@@ -86,22 +87,34 @@ def _s3_object_key(url: str) -> str:
     return urlsplit(url).path.rsplit("/", 1)[-1]
 
 
+def parse_segment_objects(content: bytes) -> list[tuple[str, str]]:
+    """Parse a Swagit video page's inline ``dfile`` segments, returning ``(url, title)`` pairs
+    ordered by ``seq``.
+
+    Each JSON object on older meeting pages carries a ``dfile`` (direct MP4), a ``seq`` (playback
+    order), and a ``title`` (the agenda-item name). Returns pairs sorted by ``seq``; ``title``
+    is an empty string when the field is absent. Pure (no network)."""
+    text = content.decode("utf-8", errors="replace")
+    found: list[tuple[int, str, str]] = []
+    for obj in _SEGMENT_OBJ_RE.findall(text):
+        df = _DFILE_RE.search(obj)
+        if not df:
+            continue
+        seq = _SEQ_RE.search(obj)
+        title_m = _TITLE_RE.search(obj)
+        title = html.unescape(title_m.group(1)).strip() if title_m else ""
+        found.append((int(seq.group(1)) if seq else 0, df.group(1), title))
+    found.sort(key=lambda s: s[0])
+    return [(url, title) for _, url, title in found]
+
+
 def parse_media_segments(content: bytes) -> list[str]:
     """Parse a Swagit video page's inline ``dfile`` media segments, ordered by ``seq``.
 
     Older meetings render each agenda segment as a JSON object carrying a direct, reachable MP4
     (``dfile``); newer meetings have none (they use ``/download``). Returns the segment MP4 URLs
     in playback order. Pure (no network)."""
-    text = content.decode("utf-8", errors="replace")
-    found: list[tuple[int, str]] = []
-    for obj in _SEGMENT_OBJ_RE.findall(text):
-        df = _DFILE_RE.search(obj)
-        if not df:
-            continue
-        seq = _SEQ_RE.search(obj)
-        found.append((int(seq.group(1)) if seq else 0, df.group(1)))
-    found.sort(key=lambda s: s[0])
-    return [url for _, url in found]
+    return [url for url, _ in parse_segment_objects(content)]
 
 
 def parse_list(content: bytes, origin: str) -> list[Episode]:
@@ -206,6 +219,37 @@ class SwagitProvider:
         transcript = f"{origin}{transcript_path}" if transcript_path in resp.text else None
         return chapters, transcript
 
+    def fetch_segment_objects(self, episode: Episode, source: dict) -> list[tuple[str, str]] | None:
+        """Return ``(url, title)`` pairs for keyless legacy meetings; ``None`` for modern ones.
+
+        Called by :class:`~citypods.concat.SwagitConcatPlanner` during the timeline stage.
+
+        * Returns ``None`` when ``/download`` resolves to a keyed presigned URL — the meeting
+          is modern and ``resolve_media_url`` handles it normally.
+        * Returns a list (possibly empty) for keyless meetings.  The caller checks the length:
+          0 → dead (no usable media), 1 → single-segment (normal path), ≥2 → concat.
+
+        Raises :class:`~citypods.providers.base.ProviderError` on unrecoverable network failure.
+        """
+        with make_session() as session:
+            try:
+                resp = session.get(
+                    episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False
+                )
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
+            loc = resp.headers.get("Location")
+            is_redirect = resp.status_code in (301, 302, 303, 307, 308) and bool(loc)
+            if is_redirect and _s3_object_key(loc):
+                return None  # modern: keyed presigned URL
+            if not is_redirect and resp.status_code < 400:
+                return None  # already a direct file (non-redirect path)
+            if not is_redirect:
+                raise ProviderError(
+                    f"download resolve for {episode.guid} returned {resp.status_code}"
+                )
+            return self._page_segment_objects(episode, source, session)
+
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
         """Resolve an episode's audio source URL.
 
@@ -215,11 +259,18 @@ class SwagitProvider:
         ``/videos/{id}`` page:
 
           * one segment  -> return it directly;
-          * many segments -> not yet materializable (TODO: concat — issue #122, ROADMAP pri 5).
-            Raised as a ``ProviderError`` so the media pipeline records the attempt and backs off
-            rather than churning the budget;
-          * no segments  -> truly un-materializable; same backoff path.
+          * many segments -> planned by :class:`~citypods.concat.SwagitConcatPlanner`; when
+            ``ep.sources`` is already populated the fast-path below returns without a network call.
+            If the planner hasn't run (e.g. not registered), raises :data:`MEDIA_DEFERRED` so the
+            pipeline backs off rather than churning the budget;
+          * no segments  -> truly un-materializable; raised as :data:`MEDIA_DEAD`.
         """
+        # Fast path: already planned as multi-segment concat by SwagitConcatPlanner.
+        # _sources_by_id will build the full source→URL map from ep.sources; this return
+        # value is only used as the single-source fallback and is ignored for concat episodes.
+        if len(episode.sources) > 1:
+            return episode.sources[0].ref
+
         with make_session() as session:
             resp = session.get(episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
             loc = resp.headers.get("Location")
@@ -238,8 +289,8 @@ class SwagitProvider:
             return segments[0]
         if len(segments) > 1:
             raise MediaUnavailable(
-                f"{episode.guid}: legacy multi-segment meeting ({len(segments)} parts) is not yet "
-                "materializable (audio concat pending — issue #122)",
+                f"{episode.guid}: legacy multi-segment meeting ({len(segments)} parts) — "
+                "SwagitConcatPlanner not registered or probe failed; backing off",
                 code=MEDIA_DEFERRED,
             )
         raise MediaUnavailable(
@@ -249,6 +300,12 @@ class SwagitProvider:
 
     def _page_segments(self, episode: Episode, source: dict, session) -> list[str]:
         """Fetch the ``/videos/{id}`` page and return its inline ``dfile`` segment URLs."""
+        return [url for url, _ in self._page_segment_objects(episode, source, session)]
+
+    def _page_segment_objects(
+        self, episode: Episode, source: dict, session
+    ) -> list[tuple[str, str]]:
+        """Fetch the ``/videos/{id}`` page and return its inline ``(dfile, title)`` pairs."""
         origin = _origin(source["list_url"])
         url = f"{origin}/videos/{episode.guid}"
         try:
@@ -257,4 +314,4 @@ class SwagitProvider:
             raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
-        return parse_media_segments(resp.content)
+        return parse_segment_objects(resp.content)

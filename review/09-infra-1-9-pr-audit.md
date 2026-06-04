@@ -391,10 +391,11 @@ exactly the multi-source case the design calls for. Content-addressing by
     with a slightly different float misses the cache and re-encodes. Normalize to integer
     milliseconds before hashing.
 
-15. **Single-resolver for multi-source clips (low, acknowledged).** `resolve_media_url(ep)` is called
+15. **Single-resolver for multi-source clips (low, acknowledged — fixed in PR #182).** `resolve_media_url(ep)` was called
     once and mapped to *every* `source_id`, so a true concat clip would point all cuts at one URL.
-    The docstring flags this as the #122 extension point — fine, just don't let #15 ship before #122
-    if any concat feed exists.
+    Fixed in PR #182 (`citypods/clips.py`): multi-source episodes now use `ep.sources[*].ref` directly,
+    so each source in a clip spanning a concat boundary fetches from the correct file. #15 can now
+    ship for concat feeds.
 
 *Diff: PR #165 · clean increment `infra/6-provider-deeplink...infra/7-clip-service`.*
 

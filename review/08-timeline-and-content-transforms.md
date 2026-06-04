@@ -565,7 +565,7 @@ Tracking epic: **#141** — *Epic: Timeline & content-transform foundation*. All
 2. **#151** loudness normalization (P1.5) — deps #142,#143,#144
 3. **#152** host-all-audio (P1.5) — deps #142,#143,#144
 4. **#153** intro/outro stinger (P3) — deps #142,#143,#144,#145
-5. **#122** multi-segment concat (P5; pullable earlier) — deps #142,#143,#144,#145
+5. **#122** multi-segment concat (P5; pullable earlier) — deps #142,#143,#144,#145 — **Shipped PR #182**
 6. **#110** ASR transcripts (P1) — deps #142,#143,#146,#149
 7. **#154** `<podcast:transcript>` (P1.5) — deps #149 + #110
 8. **#155** per-agenda-item summaries (P2) — deps #110 + #146

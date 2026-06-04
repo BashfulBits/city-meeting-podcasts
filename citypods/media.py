@@ -518,11 +518,13 @@ def _hosted_keys(city: City, storage: StorageBackend) -> set[str] | None:
 def _sources_by_id(ep: Episode, source_url: str) -> dict[str, str]:
     """Map source_id → resolved URL.
 
-    For single-source identity episodes (the common case today), returns a one-entry
-    dict keyed by the episode's first registered source id (or "s0" when no SourceMedia
-    is registered).  Multi-source URL resolution will be extended by the concat-planner
-    feature (#122); for now all registered sources map to the same resolved URL.
+    For multi-source concat episodes (``len(ep.sources) > 1``), each ``SourceMedia.ref``
+    is a stable direct-MP4 URL set by the concat planner — no re-resolution needed.
+    For single-source episodes, the freshly-resolved ``source_url`` is used (it may be a
+    short-lived presigned URL, so we don't cache it on the record).
     """
+    if ep.sources and len(ep.sources) > 1:
+        return {s.id: s.ref for s in ep.sources}
     if ep.sources:
         return {ep.sources[0].id: source_url}
     return {"s0": source_url}
@@ -572,6 +574,14 @@ def materialize_audio(
     stats = MaterializeStats()
     hosted_keys = _hosted_keys(city, storage)
     now = datetime.now(UTC)
+
+    # Deferred-but-out-of-backoff episodes first: when a feature lands that unblocks
+    # previously-deferred meetings (e.g. SwagitConcatPlanner), those episodes get encode
+    # slots before fresh ones so the backlog drains within the current run window.
+    episodes = sorted(
+        episodes,
+        key=lambda ep: 0 if (ep.materialize_attempts > 0 and not _in_backoff(ep, now)) else 1,
+    )
 
     def _present(key: str) -> bool:
         return key in hosted_keys if hosted_keys is not None else storage.exists(key)

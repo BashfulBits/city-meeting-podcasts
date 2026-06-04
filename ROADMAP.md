@@ -35,7 +35,7 @@ front-end design cycle, **#50** accessibility.
 | **3**   | #4 topic tags · #6 full-text search · #18 newsletter (RSS-first) · #25 intro/outro stinger · #31 Legistar provider · #41 backlog catch-up auto-rebalance · #50 accessibility · #56 user "report a feed problem" template |
 | **3.5** | #19 upcoming-meetings calendar (.ics) · #49 admin dashboard |
 | **4**   | #8 vote extraction (platform metadata + minutes) · #12 custom query feed builder · #14 attendee extraction · #17 OPML export · #27 population-ranked discovery · #32 scheduled board-feed generation · #33 dead-city archival · #39 per-provider rate limiting · #40 actual-cost dashboard · #42 index sharding · #57 contributor scaffolding (do at 1.0) |
-| **5**   | newsletter email delivery · #31 YouTube + other providers · per-feed config via issue comments · structured logging · map browser · #122 audio concat for multi-segment legacy Swagit meetings (single-segment fallback already ships in #120; multi-segment meetings are detected and deferred via materialization backoff until ffmpeg concat lands) |
+| **5**   | newsletter email delivery · #31 YouTube + other providers · per-feed config via issue comments · structured logging · map browser |
 | **deferred** | speaker diarization · translation · bitrate ladders · chapter images · "new since last visit" |
 
 ## How priorities work here

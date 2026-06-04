@@ -148,6 +148,89 @@ def test_loudness_profile_changes_spec_hash_and_key():
     assert spec_plain != spec_loud
 
 
+def test_sources_by_id_single_source_uses_resolved_url(tmp_path):
+    """Single ep.sources entry → resolved URL (may be fresher presigned) is used."""
+    from citypods.media import _sources_by_id
+    from citypods.timeline import SourceMedia
+
+    ep = _ep("g1")
+    ep.sources = [
+        SourceMedia(
+            id="s0",
+            provider="swagit",
+            ref="https://cdn/old.mp4",
+            media_kind="direct",
+            duration=3600.0,
+            watch_url=None,
+        )
+    ]
+    result = _sources_by_id(ep, "https://cdn/fresh.mp4")
+    assert result == {"s0": "https://cdn/fresh.mp4"}
+
+
+def test_sources_by_id_multi_source_uses_refs(tmp_path):
+    """Multiple ep.sources → each ref URL used directly; resolved_url ignored."""
+    from citypods.media import _sources_by_id
+    from citypods.timeline import SourceMedia
+
+    ep = _ep("g1")
+    ep.sources = [
+        SourceMedia(
+            id="s0",
+            provider="swagit",
+            ref="https://cdn/seg1.mp4",
+            media_kind="direct",
+            duration=1800.0,
+            watch_url=None,
+        ),
+        SourceMedia(
+            id="s1",
+            provider="swagit",
+            ref="https://cdn/seg2.mp4",
+            media_kind="direct",
+            duration=2700.0,
+            watch_url=None,
+        ),
+    ]
+    result = _sources_by_id(ep, "https://cdn/ignored.mp4")
+    assert result == {"s0": "https://cdn/seg1.mp4", "s1": "https://cdn/seg2.mp4"}
+
+
+def test_sources_by_id_no_sources_uses_s0():
+    from citypods.media import _sources_by_id
+
+    ep = _ep("g1")
+    assert _sources_by_id(ep, "https://cdn/file.mp4") == {"s0": "https://cdn/file.mp4"}
+
+
+def test_deferred_episodes_encoded_before_fresh(tmp_path):
+    """Episodes with prior failed attempts (out of backoff) are encoded before fresh ones."""
+    from datetime import timedelta
+
+    store = _store(tmp_path)
+    ff = FakeFfmpeg()
+
+    fresh = _ep("fresh")
+    deferred = _ep("deferred")
+    deferred.materialize_attempts = 2
+    deferred.materialize_last_attempt = (
+        datetime(2026, 1, 1, tzinfo=UTC) - timedelta(days=10)
+    ).isoformat()  # well past backoff window
+
+    # Pass fresh first; deferred should still be encoded first due to sort.
+    materialize_audio(
+        _city(),
+        [fresh, deferred],
+        storage=store,
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+    )
+    # deferred was encoded first → its URL appears first in ff.calls
+    assert ff.calls[0] == deferred.video_url
+    assert ff.calls[1] == fresh.video_url
+
+
 def test_content_addressed_key_changes_only_when_spec_changes():
     ep = _ep("g1")
     city = _city()
