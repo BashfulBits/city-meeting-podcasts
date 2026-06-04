@@ -424,6 +424,11 @@ def build(
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
         # preview, whose sanity-check should finish in seconds and starts with no cached chapters.
         chapters_per_source=chapters_cap if chapters_cap is not None else 10_000,
+        # Silence-trim planner config (#111).
+        trim_silence=bool(defaults.get("trim_silence", False)),
+        silence_noise_db=float(defaults.get("silence_noise_db", -40.0)),
+        silence_lead_trail_min_s=float(defaults.get("silence_lead_trail_min_s", 1.0)),
+        silence_mid_min_s=float(defaults.get("silence_mid_min_s", 10.0)),
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,

@@ -6,7 +6,9 @@ import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from citypods.media import encode_args, materialize_audio
+import pytest
+
+from citypods.media import _probe_duration_secs, encode_args, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.local import LocalStorage
@@ -429,6 +431,79 @@ def test_encode_timeout_is_caught_and_tagged_timeout(tmp_path):
     assert stats.hosted == 0 and len(stats.errors) == 1
     assert ep.materialize_error == "timeout" and ep.materialize_attempts == 1
     assert ep.materialize_last_attempt is not None
+
+
+def test_probe_duration_reads_local_file(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    fake_path = tmp_path / "audio.m4a"
+    fake_path.write_bytes(b"fake")
+
+    def _fake_run(cmd, **kw):
+        class _R:
+            stdout = "7265.123\n"
+
+        return _R()
+
+    monkeypatch.setattr(media.subprocess, "run", _fake_run)
+    result = _probe_duration_secs(fake_path)
+    assert result == pytest.approx(7265.123)
+
+
+def test_probe_duration_returns_none_on_error(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setattr(
+        media.subprocess, "run", lambda *a, **kw: (_ for _ in ()).throw(OSError("no ffprobe"))
+    )
+    result = _probe_duration_secs(tmp_path / "audio.m4a")
+    assert result is None
+
+
+def test_audio_duration_served_set_from_probe(tmp_path):
+    """materialize_audio sets audio_duration_served from the probed output file."""
+    import citypods.media as media
+
+    eps = [_ep("g1")]
+    city = _city()
+    ff = FakeFfmpeg()
+
+    probed_values: list[float] = []
+
+    def _fake_probe(path, ffmpeg_binary="ffmpeg"):
+        v = 7200.5
+        probed_values.append(v)
+        return v
+
+    original = media._probe_duration_secs
+    media._probe_duration_secs = _fake_probe
+    try:
+        _materialize(city, eps, _store(tmp_path), ff)
+    finally:
+        media._probe_duration_secs = original
+
+    assert probed_values == [7200.5]
+    assert eps[0].audio_duration_served == pytest.approx(7200.5)
+
+
+def test_audio_duration_served_fallback_when_probe_fails(tmp_path):
+    """When probe returns None, _served_duration fallback is used (ep.duration)."""
+    import citypods.media as media
+
+    ep = _ep("g1")
+    ep.duration = 3600
+
+    def _failing_probe(path, ffmpeg_binary="ffmpeg"):
+        return None
+
+    original = media._probe_duration_secs
+    media._probe_duration_secs = _failing_probe
+    try:
+        _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg())
+    finally:
+        media._probe_duration_secs = original
+
+    assert ep.audio_duration_served == pytest.approx(3600.0)
 
 
 def test_command_ffmpeg_wires_timeouts(monkeypatch, tmp_path):

@@ -317,6 +317,18 @@ class TestStageOrdering:
         names = self._names(enrich_stages())
         assert names == ["chapters", "timeline", "remap", "audio", "transcript"]
 
+    def test_silence_planner_registered_in_default_stages(self):
+        from citypods.silence import SilencePlanner
+
+        tl_stage = next(s for s in default_stages() if s.name == "timeline")
+        assert any(isinstance(p, SilencePlanner) for p in tl_stage.planners)
+
+    def test_silence_planner_registered_in_enrich_stages(self):
+        from citypods.silence import SilencePlanner
+
+        tl_stage = next(s for s in enrich_stages() if s.name == "timeline")
+        assert any(isinstance(p, SilencePlanner) for p in tl_stage.planners)
+
 
 # ---------------------------------------------------------------------------
 # TimelinePlanner is a structural Protocol (duck-typed)
