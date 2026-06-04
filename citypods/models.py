@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from citypods.timeline import SourceMedia, Timeline
+
 
 @dataclass(frozen=True)
 class ChangeToken:
@@ -78,6 +80,24 @@ class Episode:
     # exact per-feed and per-city GB totals in the status dashboard without a storage round-trip.
     # Older records carry ``None`` until re-hosted; the dashboard shows "~estimated" in that case.
     audio_bytes: int | None = None
+
+    # --- v2 schema fields (INFRA-2, #143) -----------------------------------------------
+    # SourceMedia registry: one entry per source file contributing to this episode's audio.
+    # Empty list = single un-registered source (identity path; populated by TimelineStage).
+    sources: list[SourceMedia] = field(default_factory=list)
+    # Edit Decision List: None means identity (no manipulation). Set by TimelineStage.
+    timeline: Timeline | None = None
+    # Basis of ep.chapters: "source:s0" (provider time, before remap) or "served" (after).
+    chapters_basis: str = "source:s0"
+    # Surgical re-encode nonce (§4): when non-empty it's mixed into audio_spec_hash so only
+    # stamped episodes get a new key and re-encode. Empty string = no effect on the hash.
+    audio_rebuild: str = ""
+    # ISO8601 timestamp recorded at encode time so rebuild-audio --encoded-after/before can
+    # select a precise window without touching unaffected episodes. None for pre-v2 records.
+    audio_encode_time: str | None = None
+    # Served audio duration in seconds (may differ from source duration after trim/concat).
+    # None for pre-v2 records; set by the encoder on each successful encode.
+    audio_duration_served: float | None = None
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url
