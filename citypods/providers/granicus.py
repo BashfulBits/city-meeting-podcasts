@@ -61,6 +61,21 @@ def _feed_urls(source: dict) -> list[str]:
 
 class GranicusProvider:
     name = "granicus"
+    # Granicus MediaPlayer.php accepts &starttime=<seconds> for time-anchored deep-links.
+    capabilities: frozenset[str] = frozenset({"deeplink"})
+
+    def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
+        """Append ``&starttime=<t>`` to a Granicus MediaPlayer URL.
+
+        ``ref`` must be a ``MediaPlayer.php?view_id=X&clip_id=Y`` URL — the
+        canonical_video link set by :func:`_episode_links`. Returns ``None`` when
+        ``ref`` doesn't look like a Granicus player page (safety guard).
+
+        Verified format: ``https://<tenant>.granicus.com/MediaPlayer.php?view_id=N&clip_id=N&starttime=T``
+        """
+        if "MediaPlayer.php" not in ref:
+            return None
+        return f"{ref}&starttime={int(t_seconds)}"
 
     def validate(self, source: dict) -> None:
         if not _feed_urls(source):

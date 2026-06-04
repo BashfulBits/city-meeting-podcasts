@@ -74,6 +74,11 @@ def parse_civicmedia_feed(content: bytes) -> list[Episode]:
 
 class CivicPlusProvider:
     name = "civicplus"
+    # CivicPlus/CivicMedia serves tokenized HLS; no public player deep-link.
+    capabilities: frozenset[str] = frozenset()
+
+    def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
+        return None
 
     def validate(self, source: dict) -> None:
         if not source.get("feed_url"):

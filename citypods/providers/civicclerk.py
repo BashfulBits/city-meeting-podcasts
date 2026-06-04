@@ -128,6 +128,12 @@ def parse_bookmarks(media: dict) -> tuple[list[dict], str | None]:
 
 class CivicClerkProvider:
     name = "civicclerk"
+    # CivicClerk episodes are direct CDN MP4s; no confirmed time-anchored player URL.
+    # Revisit when a public portal deep-link format is established.
+    capabilities: frozenset[str] = frozenset()
+
+    def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
+        return None
 
     def validate(self, source: dict) -> None:
         if not source.get("api_base"):

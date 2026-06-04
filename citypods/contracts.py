@@ -75,6 +75,46 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
         except Exception as exc:  # noqa: BLE001
             out.append(_r(provider_name, slug, "view_counts", False, repr(exc)))
 
+    # 5. Video deep-link — sampled *page-liveness* check for providers that declare "deeplink".
+    #    A HEAD on the player URL only confirms the page/redirect is alive; it does NOT verify
+    #    the time anchor is honored (Granicus &starttime= and Swagit /play/{id}/{t} both return
+    #    2xx regardless of the offset). So this catches a dead/relocated player, not a broken
+    #    seek. Reuses ``newest`` from the listing check above (episodes is non-empty here).
+    capabilities = getattr(provider, "capabilities", frozenset())
+    if "deeplink" in capabilities and episodes:
+        ref = (newest.links or {}).get("canonical_video") or newest.video_url
+        video_deeplink = getattr(provider, "video_deeplink", None)
+        if video_deeplink is not None:
+            try:
+                url = video_deeplink(ref, 30.0)  # sample: 30 seconds in
+                if url:
+                    from citypods.http import make_session
+
+                    with make_session() as sess:
+                        resp = sess.head(url, timeout=10, allow_redirects=True)
+                    ok = resp.status_code < 400
+                    out.append(
+                        _r(
+                            provider_name,
+                            slug,
+                            "deeplink",
+                            ok,
+                            f"page {resp.status_code} (seek not verified) {url[:50]}",
+                        )
+                    )
+                else:
+                    out.append(
+                        _r(
+                            provider_name,
+                            slug,
+                            "deeplink",
+                            False,
+                            "video_deeplink returned None for a valid ref",
+                        )
+                    )
+            except Exception as exc:  # noqa: BLE001
+                out.append(_r(provider_name, slug, "deeplink", False, repr(exc)))
+
     return out
 
 

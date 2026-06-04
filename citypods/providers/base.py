@@ -37,9 +37,22 @@ class MeetingProvider(Protocol):
     Implementations are registered in ``citypods.providers`` and selected by the
     ``provider:`` key in a city's YAML. They translate platform-specific responses
     into the normalized :class:`~citypods.models.Episode` model.
+
+    Capability declarations (INFRA-6, #147)
+    -----------------------------------------
+    ``capabilities`` is a ``frozenset[str]`` of feature tokens the provider supports.
+    Downstream code gates optional behaviour on membership rather than isinstance checks:
+
+    - ``"deeplink"`` — :meth:`video_deeplink` returns a non-None, time-anchored player URL
+      that a human can click or a bot can download from. Features that deep-link back to the
+      source video (newsletter, soundbites, per-meeting pages) check this before calling.
+
+    Providers that cannot produce a time-anchored URL set ``capabilities = frozenset()`` and
+    return ``None`` from :meth:`video_deeplink`; callers fall back to the plain ``watch_url``.
     """
 
     name: str
+    capabilities: frozenset[str]
 
     def validate(self, source: dict) -> None:
         """Raise ``ValueError`` if ``source`` is missing required keys."""
@@ -69,5 +82,18 @@ class MeetingProvider(Protocol):
         Called by the materialization pipeline immediately before download, only for
         episodes being hosted this run (keeps expiring tokens fresh). The default returns
         the already-usable ``episode.video_url`` (correct for direct-media providers).
+        """
+        ...
+
+    def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
+        """Return a player URL that opens the video at ``t_seconds`` in, or ``None``.
+
+        ``ref`` is the ``SourceMedia.ref`` — the stable, non-expiring handle for a
+        source (watch-page URL, clip id, etc.).  Only produces a URL when
+        ``"deeplink" in self.capabilities``; returns ``None`` otherwise.
+
+        Callers: always gate on ``"deeplink" in provider.capabilities`` before
+        calling, and treat ``None`` as "no time-anchored link available — fall back
+        to ``watch_url``."
         """
         ...
