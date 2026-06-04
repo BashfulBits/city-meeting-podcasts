@@ -319,8 +319,8 @@ class TestRemapOrdering:
 
     def test_full_order_default(self):
         names = self._names(default_stages())
-        assert names == ["chapters", "timeline", "remap", "audio", "links"]
+        assert names == ["chapters", "timeline", "remap", "audio", "transcript", "links"]
 
     def test_full_order_enrich(self):
         names = self._names(enrich_stages())
-        assert names == ["chapters", "timeline", "remap", "audio"]
+        assert names == ["chapters", "timeline", "remap", "audio", "transcript"]

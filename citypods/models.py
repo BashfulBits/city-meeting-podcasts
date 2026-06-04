@@ -63,7 +63,20 @@ class Episode:
     links: dict = field(default_factory=dict)  # {"agenda": url, "canonical_video": url, ...}
     chapters: list = field(default_factory=list)  # [{"start": secs, "title": str}, ...]
     summary: str = ""
-    transcript_url: str | None = None
+
+    # --- content-addressed transcript artifact (INFRA-8, #149) ---------------------
+    # Replaces the old external-URL transcript_url field. Provider transcript links
+    # that the ChaptersStage scrapes are still stored in ep.links["transcript"];
+    # TranscriptStage fetches, stores, and remaps them into these hosted-artifact fields.
+    transcript_key: str | None = None  # storage object key
+    transcript_hosted_url: str | None = None  # public CDN URL
+    transcript_spec_hash: str | None = None  # invalidation hash (source + version)
+    transcript_format: str | None = None  # "vtt" | "srt" | "json" | "txt"
+    # Time basis of cue timestamps: "source:s0" (from provider) or "served" (after remap).
+    transcript_basis: str = "source:s0"
+    # True = timestamps are present and correct against the enclosure; False = untimed
+    # (plain text, PDF, or not yet remapped) — rendered as notes-only, never mis-aligned.
+    transcript_synced: bool = False
     # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
     # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
     # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs

@@ -35,6 +35,9 @@
       {% if item.chapters_url %}
       <podcast:chapters url="{{ item.chapters_url }}" type="application/json+chapters"/>
       {% endif %}
+      {% if item.transcript_url %}
+      <podcast:transcript url="{{ item.transcript_url }}" type="{{ item.transcript_mime }}"/>
+      {% endif %}
       <pubDate>{{ item.ep.published | rfc822 }}</pubDate>
       <guid isPermaLink="false">{{ item.ep.uid or item.ep.guid }}</guid>
       <enclosure url="{{ item.enclosure_url }}" type="{{ mime }}" length="{{ enclosure_length }}"/>

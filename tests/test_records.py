@@ -135,7 +135,7 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "links",
         "chapters",
         "summary",
-        "transcript_url",
+        "transcript_key",
         "hosted_audio_url",
         "audio_key",
         "audio_spec_hash",

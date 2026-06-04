@@ -7,6 +7,7 @@ from html import escape
 
 from citypods.models import City, Episode
 from citypods.render import get_env
+from citypods.stages import TRANSCRIPT_MIME  # single source for transcript MIME types
 
 # Podcasting 2.0 chapters media type (a JSON sidecar referenced per item). This surfaces
 # chapters to apps even for direct enclosures we don't re-host, where embedding into the
@@ -139,6 +140,14 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
                 "enclosure_url": url,
                 "notes_html": episode_notes_html(ep),
                 "chapters_url": chapters_url(city, ep, base_url),
+                # <podcast:transcript> emitted only when transcript is hosted and synced
+                # (timed VTT/SRT); untimed transcripts render as notes-only.
+                "transcript_url": ep.transcript_hosted_url if ep.transcript_synced else None,
+                "transcript_mime": (
+                    TRANSCRIPT_MIME.get(ep.transcript_format or "", "text/plain")
+                    if ep.transcript_synced
+                    else None
+                ),
             }
         )
 
