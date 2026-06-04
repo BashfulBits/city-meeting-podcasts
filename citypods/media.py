@@ -449,6 +449,35 @@ def _probe_audio_bitrate(
         return None
 
 
+def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | None:
+    """Read container duration from a local file via ffprobe (header-only, fast).
+
+    Used after encoding to capture the served duration before the temp file is deleted,
+    so the record carries ``audio_duration_served`` even for providers (Swagit, CivicPlus)
+    that never set ``ep.duration``."""
+    ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+    try:
+        out = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=nw=1:nk=1",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+        ).stdout.strip()
+        return float(out) if out else None
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Materialization stats + pipeline
 # ---------------------------------------------------------------------------
@@ -602,6 +631,12 @@ def materialize_audio(
                 source_url = resolve_media_url(ep)
                 by_id = _sources_by_id(ep, source_url)
                 ffmpeg.extract_audio(ep.timeline, by_id, dest, ep.chapters or None)
+                try:
+                    probed = _probe_duration_secs(dest, getattr(ffmpeg, "binary", "ffmpeg"))
+                    if probed is not None:
+                        ep.audio_duration_served = probed
+                except Exception:  # noqa: BLE001
+                    pass
                 url = storage.put_file(key, dest, CONTENT_TYPE)
                 try:
                     size = dest.stat().st_size
@@ -613,7 +648,8 @@ def materialize_audio(
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
             ep.audio_encode_time = now.isoformat()
-            ep.audio_duration_served = _served_duration(ep)
+            if ep.audio_duration_served is None:
+                ep.audio_duration_served = _served_duration(ep)
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None

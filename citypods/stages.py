@@ -119,6 +119,12 @@ class StageContext:
     dry_run: bool
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
+    # Silence-trim planner config (#111). Config flows through ctx so SilencePlanner needs no
+    # constructor args and enrich_stages() needs no site_config parameter.
+    trim_silence: bool = False
+    silence_noise_db: float = -40.0
+    silence_lead_trail_min_s: float = 1.0
+    silence_mid_min_s: float = 10.0
 
 
 @dataclass
@@ -648,9 +654,11 @@ def default_stages() -> list[EnrichmentStage]:
     Ordering invariant: ``chapters`` → ``timeline`` → ``remap`` → ``audio``.
     Chapters must arrive (source-time) before timeline plans the EDL; remap converts
     them to served-time before audio embeds them as M4A markers."""
+    from citypods.silence import SilencePlanner
+
     return [
         ChaptersStage(),
-        TimelineStage(),
+        TimelineStage(planners=[SilencePlanner()]),
         RemapStage(),
         AudioStage(),
         TranscriptStage(),
@@ -674,7 +682,15 @@ def enrich_stages() -> list[EnrichmentStage]:
     audio encoding (download+ffmpeg), bounded by the wall-clock ``stop`` window.
 
     Ordering: ``chapters`` → ``timeline`` → ``audio`` (each feeds the next's spec hash)."""
-    return [ChaptersStage(), TimelineStage(), RemapStage(), AudioStage(), TranscriptStage()]
+    from citypods.silence import SilencePlanner
+
+    return [
+        ChaptersStage(),
+        TimelineStage(planners=[SilencePlanner()]),
+        RemapStage(),
+        AudioStage(),
+        TranscriptStage(),
+    ]
 
 
 def run_stages(

@@ -349,7 +349,7 @@ def _feed_row(city, records: dict, *, max_kbps: int) -> dict:
                 pass
 
         audio = rec.get("audio") or {}
-        duration_s = rec.get("duration") or 0
+        duration_s = rec.get("duration") or audio.get("duration_served") or 0
         state = _classify_record(rec, max_kbps)
 
         if state in ("served", "stale"):
