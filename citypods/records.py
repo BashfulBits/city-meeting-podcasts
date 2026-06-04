@@ -73,7 +73,7 @@ def assign_uids(city: City, episodes: list[Episode]) -> None:
             ep.uid = _uid(author, ep.body, date, seq)
 
 
-def audio_spec_hash(ep: Episode, *, max_kbps: int) -> str:
+def audio_spec_hash(ep: Episode, *, max_kbps: int, loudness_profile: str = "") -> str:
     """Hash of everything that determines the audio bytes.
 
     **Identity path (v1-compatible):** when no timeline manipulation, rebuild nonce, or
@@ -93,7 +93,7 @@ def audio_spec_hash(ep: Episode, *, max_kbps: int) -> str:
     storm occurs. Do not "fix" this to read ``ref``: it would change every identity hash.
     """
     tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
-    loudness = ""  # populated by future loudness stage (#21); field reserved in v2 format
+    loudness = loudness_profile
     rebuild = ep.audio_rebuild or ""
 
     if not tl_digest and not rebuild and not loudness and len(ep.sources) <= 1:

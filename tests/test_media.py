@@ -23,6 +23,7 @@ class FakeFfmpeg:
         self.calls: list[str] = []  # first resolved URL per call
         self.chapters: list[list[dict] | None] = []
         self.timelines: list = []
+        self.loudness_profiles: list[str | None] = []
         self.fail = fail
 
     def extract_audio(
@@ -40,6 +41,7 @@ class FakeFfmpeg:
         self.calls.append(first_url)
         self.chapters.append(chapters)
         self.timelines.append(timeline)
+        self.loudness_profiles.append(loudness_profile)
         if self.fail:
             raise subprocess.CalledProcessError(1, "ffmpeg")
         dest.write_bytes(b"fake-m4a")
@@ -104,6 +106,46 @@ def test_encode_args_copies_or_reencodes_by_cap():
     assert encode_args(96_000, 96) == ["-c:a", "copy"]
     assert encode_args(128_000, 96) == ["-c:a", "aac", "-b:a", "96k", "-ac", "1"]
     assert encode_args(None, 96) == ["-c:a", "aac", "-b:a", "96k", "-ac", "1"]
+
+
+def test_loudness_profile_passed_to_ffmpeg(tmp_path):
+    eps = [_ep("g1")]
+    ff = FakeFfmpeg()
+    materialize_audio(
+        _city(),
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        loudness_profile="ebuR128:-16LUFS",
+        resolve_media_url=lambda e: e.video_url,
+    )
+    assert ff.loudness_profiles == ["ebuR128:-16LUFS"]
+
+
+def test_loudness_empty_string_passed_as_none_to_ffmpeg(tmp_path):
+    eps = [_ep("g1")]
+    ff = FakeFfmpeg()
+    materialize_audio(
+        _city(),
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        loudness_profile="",
+        resolve_media_url=lambda e: e.video_url,
+    )
+    assert ff.loudness_profiles == [None]
+
+
+def test_loudness_profile_changes_spec_hash_and_key():
+    from citypods.records import audio_spec_hash
+
+    ep = _ep("g1")
+    ep.uid = "uid-g1"
+    spec_plain = audio_spec_hash(ep, max_kbps=MAX_KBPS, loudness_profile="")
+    spec_loud = audio_spec_hash(ep, max_kbps=MAX_KBPS, loudness_profile="ebuR128:-16LUFS")
+    assert spec_plain != spec_loud
 
 
 def test_content_addressed_key_changes_only_when_spec_changes():

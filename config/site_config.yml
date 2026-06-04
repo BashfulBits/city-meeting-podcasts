@@ -39,6 +39,10 @@ defaults:
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
+  audio_loudness_profile: "ebuR128:-16LUFS"  # EBU R128 loudness normalization (-16 LUFS is the
+                                              # Apple Podcasts / Spotify speech standard). Re-encodes
+                                              # the full catalog on first enable (spec hash change).
+                                              # Clear to disable / revert.
   # Silence trimming via SilencePlanner (#111). Ships enabled; the re-encode backfill is gradual
   # (bounded by ~204 min run budget, spread across multiple cron ticks). To force a full catalog
   # re-trim after changing parameters, bump SilencePlanner.version in citypods/silence.py.

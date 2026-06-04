@@ -283,7 +283,7 @@ def to_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
-def _classify_record(rec: dict, max_kbps: int) -> str:
+def _classify_record(rec: dict, max_kbps: int, loudness_profile: str = "") -> str:
     """Return the pipeline state for one record (mutually exclusive taxonomy from issue #124).
 
     States (in order of precedence):
@@ -308,7 +308,11 @@ def _classify_record(rec: dict, max_kbps: int) -> str:
         if spec_hash in ("legacy", None):
             return "served"
         ep = record_to_episode(rec)
-        return "served" if spec_hash == _spec_hash(ep, max_kbps=max_kbps) else "stale"
+        return (
+            "served"
+            if spec_hash == _spec_hash(ep, max_kbps=max_kbps, loudness_profile=loudness_profile)
+            else "stale"
+        )
 
     if media_kind == "direct":
         return "linked_video"
@@ -321,7 +325,7 @@ def _classify_record(rec: dict, max_kbps: int) -> str:
     return "pending"
 
 
-def _feed_row(city, records: dict, *, max_kbps: int) -> dict:
+def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "") -> dict:
     """Aggregate per-episode stats for one feed (city config), filtered by body where applicable."""
     from citypods.bodies import matches
 
@@ -350,7 +354,7 @@ def _feed_row(city, records: dict, *, max_kbps: int) -> dict:
 
         audio = rec.get("audio") or {}
         duration_s = rec.get("duration") or audio.get("duration_served") or 0
-        state = _classify_record(rec, max_kbps)
+        state = _classify_record(rec, max_kbps, loudness_profile=loudness_profile)
 
         if state in ("served", "stale"):
             hosted += 1
@@ -481,6 +485,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     now = datetime.now(UTC)
     defaults = site_config.get("defaults", {})
     max_kbps = int(defaults.get("audio_max_kbps", 96))
+    loudness_profile = str(defaults.get("audio_loudness_profile", ""))
     avg_duration_h = 2.0
 
     records_cache: dict[str, dict] = {}
@@ -497,7 +502,9 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     for city in cities:
         key = source_key(city) if state_dir else ""
         recs = records_cache.get(key, {})
-        feed_rows.append(_feed_row(city, recs, max_kbps=max_kbps))
+        feed_rows.append(
+            _feed_row(city, recs, max_kbps=max_kbps, loudness_profile=loudness_profile)
+        )
 
     city_rows = _city_rows(feed_rows)
 

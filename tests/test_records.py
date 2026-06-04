@@ -78,6 +78,29 @@ def test_audio_spec_hash_and_key_track_only_audio_inputs():
     assert audio_object_key(_city(), ep, base).endswith(f"u1-{base}.m4a")
 
 
+def test_audio_spec_hash_loudness_profile_changes_hash():
+    ep = _ep("g1")
+    ep.uid = "u1"
+    base = audio_spec_hash(ep, max_kbps=96)
+    with_loudness = audio_spec_hash(ep, max_kbps=96, loudness_profile="ebuR128:-16LUFS")
+    assert base != with_loudness
+
+
+def test_audio_spec_hash_loudness_empty_string_matches_default():
+    # Empty string and omitted loudness_profile must produce identical hashes (backward-compat).
+    ep = _ep("g1")
+    ep.uid = "u1"
+    assert audio_spec_hash(ep, max_kbps=96) == audio_spec_hash(ep, max_kbps=96, loudness_profile="")
+
+
+def test_audio_spec_hash_different_loudness_targets_differ():
+    ep = _ep("g1")
+    ep.uid = "u1"
+    assert audio_spec_hash(ep, max_kbps=96, loudness_profile="ebuR128:-16LUFS") != audio_spec_hash(
+        ep, max_kbps=96, loudness_profile="ebuR128:-23LUFS"
+    )
+
+
 def test_feed_hash_reacts_to_notes_but_audio_spec_does_not():
     ep = _ep("g1")
     ep.uid = "u1"
