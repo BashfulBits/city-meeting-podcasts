@@ -70,13 +70,14 @@ from __future__ import annotations
 import collections
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from citypods.bodies import body_key, canonical_body
 from citypods.media import MaterializeStats, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
+from citypods.timeline import Timeline
 
 
 def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode]:
@@ -186,6 +187,125 @@ class AudioStage:
         )
 
 
+class TimelinePlanner(Protocol):
+    """Plugin interface for audio-manipulation planners.
+
+    Planners compose: each receives the currently accumulated ``Timeline`` (or ``None``
+    for identity) and may return a new/modified ``Timeline``.  Returning ``None`` leaves
+    the current timeline unchanged.  The :class:`TimelineStage` calls planners in
+    registration order; the final accumulated result is persisted onto the episode.
+
+    **Planned implementations (separate feature PRs):**
+      - Silence trimmer (#111) — cuts silent spans, returns a multi-segment source Timeline.
+      - Concat planner (#122) — builds a multi-source Timeline from Swagit segments.
+      - Intro/outro inserter (#25) — prepends/appends insert segments.
+    """
+
+    name: str
+    # Bump to force re-planning. ``TimelineStage`` folds every registered planner's
+    # ``(name, version)`` into the signature it stamps on ``Timeline.version``, so a later run
+    # can distinguish an up-to-date EDL (skip — planning may be an expensive ffmpeg pass) from
+    # one made by an older planner set (re-plan → new digest → re-encode only what changed).
+    version: str
+
+    def plan(
+        self,
+        provider,
+        city: City,
+        ep: Episode,
+        ctx: StageContext,
+        current: Timeline | None,
+    ) -> Timeline | None:
+        """Return a new or modified Timeline, or ``None`` to leave the current one unchanged.
+
+        A planner whose work is expensive (e.g. silence detection runs an ffmpeg pass) and
+        that *examined* the episode but found no edit should return an **identity** Timeline
+        rather than ``None`` — that way the stage stamps it with the current signature and the
+        detection is not re-run next time. Return ``None`` only to genuinely pass through
+        (e.g. an inapplicable planner); if every planner returns ``None`` the episode stays
+        identity and is re-examined on the next run.
+        """
+        ...
+
+
+class TimelineStage:
+    """Enrichment stage that builds the episode's Edit Decision List from registered planners.
+
+    Runs **before** :class:`AudioStage` in both ``default_stages`` and ``enrich_stages``
+    so the persisted EDL is in place when ``audio_spec_hash`` is computed.  With no
+    planners registered (the current state until silence/concat/intro feature PRs land)
+    the stage is a no-op: ``ep.timeline`` stays ``None``, which the encoder treats as
+    identity (no manipulation, same bytes as always).
+
+    Each planner is called in registration order with the accumulated timeline; it may
+    return a new/modified Timeline or ``None`` to pass through.  The first planner to
+    produce a non-None result establishes the base; later planners can augment it (e.g.
+    an intro planner can prepend an insert segment to a silence-trimmed Timeline).
+
+    **Plan once, persist, don't recompute** (design §4/§7). The stage stamps the produced
+    EDL's ``version`` with a signature of the registered planner set+versions and, on later
+    runs, *skips* episodes whose stored EDL already carries that signature — so an expensive
+    planner (silence detection is an ffmpeg pass) runs once, not every build. A bumped planner
+    version changes the signature → those episodes re-plan → new digest → they (and only they)
+    re-encode. Planning is gated on ``ctx.stop()`` like an encode: deferred, not failed.
+    """
+
+    name = "timeline"
+    version = "1"
+
+    def __init__(self, planners: list[TimelinePlanner] | None = None):
+        self.planners: list[TimelinePlanner] = planners or []
+
+    def _signature(self) -> str:
+        """Stable signature of the registered planner set, stamped onto ``Timeline.version``.
+        Lets a later run skip episodes already planned by this exact set+versions and re-plan
+        ones produced by an older set. ``"identity"`` when no planners are registered."""
+        if not self.planners:
+            return "identity"
+        return "+".join(sorted(f"{p.name}:{getattr(p, 'version', '1')}" for p in self.planners))
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        stats = StageStats(self.name)
+        sig = self._signature()
+        for ep in _materialize_set(episodes, city.max_episodes):
+            if not self.planners:
+                # No planners → identity path; ep.timeline stays as-is (None == identity).
+                stats.reused += 1
+                continue
+
+            # Already planned by this exact planner set+versions → don't recompute. A stale
+            # signature (older set) falls through and re-plans.
+            if ep.timeline is not None and ep.timeline.version == sig:
+                stats.reused += 1
+                continue
+
+            # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
+            # stop signal exactly like an encode — deferred to a later run, not an error.
+            if ctx.stop is not None and ctx.stop():
+                stats.skipped += 1
+                continue
+
+            current: Timeline | None = ep.timeline
+            changed = False
+            for planner in self.planners:
+                result = planner.plan(provider, city, ep, ctx, current)
+                if result is not None:
+                    current = result
+                    changed = True
+
+            if changed and current is not None:
+                # Stamp the planner-set signature so a future run can detect staleness.
+                ep.timeline = replace(current, version=sig)
+                stats.ran += 1
+            else:
+                # No planner fired → identity path; ep.timeline stays None (== identity).
+                stats.reused += 1
+
+        return stats
+
+
 class ChaptersStage:
     """Fetch agenda-item chapter markers (and a transcript link) for providers that expose
     them. Audio-affecting, so it runs *before* ``audio``: chapters are part of
@@ -277,11 +397,14 @@ class LinksStage:
 
 
 def default_stages() -> list[EnrichmentStage]:
-    """Ordered: audio-affecting stages (``chapters``) must precede ``audio`` so a chapter
-    change re-encodes; feed-only stages (``summary``, ``links``) follow it. This is the full
-    list — used by a one-shot ``citypods build`` (local dev / PR preview / tests). Production
-    splits it across two phases via :func:`render_stages` + :func:`enrich_stages` (see build)."""
-    return [ChaptersStage(), AudioStage(), LinksStage()]
+    """Ordered: audio-affecting stages (``chapters``, ``timeline``) must precede ``audio``
+    so a change re-encodes; feed-only stages (``links``) follow it. This is the full list —
+    used by a one-shot ``citypods build`` (local dev / PR preview / tests). Production splits
+    it across two phases via :func:`render_stages` + :func:`enrich_stages` (see build).
+
+    Ordering invariant: ``timeline`` before ``audio`` (EDL must be fixed before spec hash);
+    ``chapters`` before ``timeline`` (planners may read chapters for cue alignment)."""
+    return [ChaptersStage(), TimelineStage(), AudioStage(), LinksStage()]
 
 
 def render_stages() -> list[EnrichmentStage]:
@@ -296,10 +419,11 @@ def render_stages() -> list[EnrichmentStage]:
 
 def enrich_stages() -> list[EnrichmentStage]:
     """The *expensive*, deferrable stages that run in the heavy phase after the deploy: chapter
-    scraping (per-item network) and audio encoding (download+ffmpeg), bounded by the wall-clock
-    ``stop`` window. ``chapters`` precedes ``audio`` (it feeds ``audio_spec_hash``). Future ASR/LLM
-    stages (transcripts, summaries) belong here too. Their output lands in the next render."""
-    return [ChaptersStage(), AudioStage()]
+    scraping (per-item network), timeline planning (once silence/concat planners land), and
+    audio encoding (download+ffmpeg), bounded by the wall-clock ``stop`` window.
+
+    Ordering: ``chapters`` → ``timeline`` → ``audio`` (each feeds the next's spec hash)."""
+    return [ChaptersStage(), TimelineStage(), AudioStage()]
 
 
 def run_stages(
