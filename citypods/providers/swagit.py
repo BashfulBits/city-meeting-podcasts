@@ -12,7 +12,7 @@ re-hosted as audio by the materialization pipeline, like CivicPlus).
 Older meetings 302 to a *keyless* presigned URL (signs only the bucket prefix, no object), so
 ``/download`` is unusable; for those we fall back to the direct ``dfile`` MP4(s) embedded in the
 ``/videos/{id}`` page (issue #120). Single-segment meetings resolve directly; multi-segment ones
-are deferred (audio concat is a roadmap item) and the pipeline backs off re-trying them.
+are concatenated into a single M4A by :class:`~citypods.concat.SwagitConcatPlanner` (issue #122).
 """
 
 from __future__ import annotations

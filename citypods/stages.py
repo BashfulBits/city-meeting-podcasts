@@ -388,9 +388,10 @@ def _needs_chapter_remap(ep: Episode) -> bool:
         # longer matches the stamped one): remapping already-served values as if they were
         # source-time would corrupt them, and the source-time originals aren't retained
         # (served-time is canonical, design §10.2).
-        # TODO(when a planner can mutate an existing EDL, e.g. #111/#122): on a version
-        # mismatch, re-fetch source chapters (ChaptersStage short-circuits once ep.chapters is
-        # set) and re-run remap. Inert today — no planner changes an episode's EDL yet.
+        # TODO(#111): when SilencePlanner bumps its version, the stored timeline changes but
+        # chapters are already in served-time and can't be trivially re-remapped (the source-time
+        # originals are not retained — design §10.2). Re-fetch source chapters from the provider
+        # and re-run remap on EDL version mismatch. Inert until a planner version is bumped.
         return False
     if not ep.chapters:
         return False  # nothing to remap
@@ -683,7 +684,7 @@ def render_stages() -> list[EnrichmentStage]:
 
 def enrich_stages() -> list[EnrichmentStage]:
     """The *expensive*, deferrable stages that run in the heavy phase after the deploy: chapter
-    scraping (per-item network), timeline planning (once silence/concat planners land), and
+    scraping (per-item network), timeline planning (silence + concat planners), and
     audio encoding (download+ffmpeg), bounded by the wall-clock ``stop`` window.
 
     Ordering: ``chapters`` → ``timeline`` → ``audio`` (each feeds the next's spec hash)."""

@@ -14,8 +14,8 @@ the audit catches the next instance automatically instead of by manual investiga
   * ``dead-enclosure`` — expiring Swagit presigned URLs / dead Granicus DownloadFile links.
   * ``dead-audio``     — one project-wide alert when too many episodes can't be materialized at
                          all (keyless Swagit source with no usable page media, issue #120).
-  * ``deferred-audio`` — one project-wide tracker of episodes parked awaiting a pending feature
-                         (multi-segment Swagit concat, #122), so its prevalence stays visible.
+  * ``deferred-audio`` — one project-wide tracker of episodes parked in materialization backoff
+                         (MEDIA_DEFERRED), so any recoverable backlog stays visible.
 
 The check functions are pure (no network) so they unit-test from fixtures; ``audit_city``
 does the one fetch and wires them together, taking injectable ``head`` / ``view_counts`` so
@@ -48,7 +48,7 @@ WARN = "warn"
 # Project-wide audio-failure alert (issue #120): file a single aggregate finding when the number
 # of episodes that can't be materialized crosses this many across all feeds, so a creeping rise in
 # dead audio surfaces as one auto-closing ticket rather than per-feed noise (deferred meetings are
-# tracked by their feature issue #122, not here). Override via defaults.dead_audio_alert_threshold.
+# tracked separately by check_deferred_audio_aggregate). Override via defaults.dead_audio_alert_threshold.
 DEAD_AUDIO_ALERT_THRESHOLD = 10
 
 
@@ -224,9 +224,9 @@ def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Find
 def count_audio_failures(records: dict) -> tuple[int, int]:
     """Count records currently failing materialization, as ``(deferred, dead)`` (issue #120).
 
-    ``deferred`` = recoverable once a pending feature ships (multi-segment Swagit concat, #122);
-    ``dead`` = no usable media exists. Reads the persisted record store, so it reflects every
-    parked episode regardless of whether it's in this run's fetch window."""
+    ``deferred`` = recoverable (MEDIA_DEFERRED; episode is in backoff and will re-attempt);
+    ``dead`` = no usable media exists (MEDIA_DEAD). Reads the persisted record store, so it
+    reflects every parked episode regardless of whether it's in this run's fetch window."""
     deferred = dead = 0
     for rec in records.values():
         code = (rec.get("audio") or {}).get("error")
@@ -244,7 +244,7 @@ def check_dead_audio_aggregate(
 
     Filed against the pseudo-slug ``(all)`` so the feed-health reconciler keeps it as a single
     deduplicated, auto-closing issue. Deferred episodes are reported for context but don't trip
-    the alert — they're tracked by their feature issue (#122) and clear when it ships."""
+    the alert — they're in backoff and will re-attempt automatically."""
     if dead_total < threshold:
         return None
     msg = (
@@ -252,7 +252,7 @@ def check_dead_audio_aggregate(
         f"(keyless source with no usable page media — issue #120)."
     )
     if deferred_total:
-        msg += f" Separately, {deferred_total} await multi-segment audio concat (#122)."
+        msg += f" Separately, {deferred_total} episode(s) are in materialization backoff (will retry)."
     return Finding("(all)", "dead-audio", ERROR, msg)
 
 
@@ -308,17 +308,16 @@ def check_meetings_url(
 def check_deferred_audio_aggregate(
     deferred_total: int, *, examples: list[tuple[str, int]] | None = None, issue: int = 122
 ) -> Finding | None:
-    """Project-wide prevalence tracker for deferred (recoverable) audio (issue #120).
+    """Project-wide prevalence tracker for deferred (recoverable) audio.
 
-    Fires whenever any episode is parked awaiting a pending feature (multi-segment Swagit concat),
-    so the count of meetings that feature would unblock stays visible for prioritization. Filed as
+    Fires whenever any episode is parked in materialization backoff (MEDIA_DEFERRED). Filed as
     ``severity:warn`` against pseudo-slug ``(all)``; the feed-health reconciler keeps it a single
-    deduplicated issue that auto-closes once ``#issue`` ships and the count returns to 0."""
+    deduplicated issue that auto-closes once the count returns to 0."""
     if deferred_total <= 0:
         return None
     msg = (
-        f"{deferred_total} episode(s) across all feeds await multi-segment audio concat "
-        f"(deferred via backoff). Implementing #{issue} would unblock them."
+        f"{deferred_total} episode(s) across all feeds are in materialization backoff "
+        f"(MEDIA_DEFERRED; will retry automatically)."
     )
     if examples:
         top = sorted(examples, key=lambda kv: kv[1], reverse=True)[:3]

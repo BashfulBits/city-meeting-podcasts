@@ -168,7 +168,7 @@ def test_dead_audio_aggregate_fires_above_threshold():
     f = check_dead_audio_aggregate(deferred_total=4, dead_total=12, threshold=10)
     assert f is not None
     assert f.slug == "(all)" and f.check == "dead-audio" and f.severity == "error"
-    assert "12 episode(s)" in f.message and "4 await" in f.message
+    assert "12 episode(s)" in f.message and "4 episode(s) are in materialization backoff" in f.message
 
 
 def test_dead_audio_aggregate_silent_below_threshold():
@@ -181,7 +181,7 @@ def test_deferred_audio_aggregate_tracks_prevalence():
     )
     assert f is not None
     assert f.slug == "(all)" and f.check == "deferred-audio" and f.severity == "warn"
-    assert "7 episode(s)" in f.message and "#122" in f.message
+    assert "7 episode(s)" in f.message and "MEDIA_DEFERRED" in f.message
     # examples sorted by count desc, most-affected first
     assert "dallas-tx-city-council (5)" in f.message
     assert f.message.index("dallas-tx-city-council") < f.message.index("denton-tx-council")
