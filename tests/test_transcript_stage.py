@@ -482,22 +482,33 @@ ASR_VTT = b"WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nCouncil meeting called to o
 class _FakeAsr:
     """Replaces citypods.asr in TranscriptStage for tests."""
 
-    def __init__(self, vtt: bytes = ASR_VTT, *, fail: bool = False):
+    def __init__(self, vtt: bytes = ASR_VTT, *, fail: bool = False, fail_load: bool = False):
         self.vtt = vtt
         self.fail = fail
+        self.fail_load = fail_load
         self.transcribe_calls: list[dict] = []
         self.align_calls: list[dict] = []
 
-    def transcribe(self, audio_path, model, language, compute_type, beam_size, prompt, cpu_threads):
+    # Sentinel returned by load_model() so tests can verify it is passed through.
+    _FAKE_MODEL = object()
+
+    def load_model(self, model, compute_type, cpu_threads):
+        if self.fail_load:
+            raise RuntimeError("model load failed")
+        return self._FAKE_MODEL
+
+    def transcribe(
+        self, audio_path, model_or_name, language, compute_type, beam_size, prompt, cpu_threads
+    ):
         if self.fail:
             raise RuntimeError("transcribe failed")
-        self.transcribe_calls.append({"model": model, "prompt": prompt})
+        self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
         return self.vtt
 
-    def align(self, audio_path, text, model, language, cpu_threads):
+    def align(self, audio_path, text, model_or_name, language, cpu_threads):
         if self.fail:
             raise RuntimeError("align failed")
-        self.align_calls.append({"text": text, "model": model})
+        self.align_calls.append({"text": text, "model": model_or_name})
         return self.vtt
 
     def asr_spec_hash(self, audio_spec_hash, model, align_hash, version):
@@ -763,6 +774,21 @@ class TestTranscriptStageASR:
 
         assert stats.errors  # at least one error recorded
         assert ep.transcript_synced is False  # left in un-synced state
+
+    def test_model_load_failure_skips_asr_with_single_error(self, tmp_path):
+        """If the model can't be loaded (e.g. HF Hub 429), one error is recorded and
+        all episodes skip ASR — no per-episode errors, no crash."""
+        eps = [_ep_with_audio(f"uid-{i}") for i in range(3)]
+
+        fake_asr = _FakeAsr(fail_load=True)
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stage = TranscriptStage()
+            stats = stage.process(FakeProvider(), _city(), eps, _ctx(tmp_path))
+
+        assert fake_asr.transcribe_calls == []
+        assert all(ep.transcript_key is None for ep in eps)
+        assert len(stats.errors) == 1  # single batch-level error, not per-episode
+        assert "model load failed" in stats.errors[0]
 
     def test_asr_disabled_skips_slot(self, tmp_path):
         """asr_enabled=False → slot is skipped entirely."""

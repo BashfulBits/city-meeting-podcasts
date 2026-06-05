@@ -75,12 +75,31 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      # Restore the cached Whisper model weights.  The mkdir ensures the path exists so
+      # the cache save step works even on a cold first run (Actions skips save when the
+      # path doesn't exist, which would leave every subsequent run cold too).
       - name: Cache Whisper model
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
           key: whisper-large-v3-turbo-v1
           restore-keys: whisper-large-v3-turbo-
+
+      # Pre-download model weights NOW so the enrich step can use HF_HUB_OFFLINE=1.
+      # If HuggingFace rate-limits this step we get one clear failure rather than 200+
+      # per-episode errors during enrich.  The 'continue-on-error' lets the rest of the
+      # workflow continue (render + deploy still publish); enrich will skip ASR gracefully
+      # (single "model load failed" error per source) rather than spamming the error log.
+      - name: Pre-download Whisper model
+        continue-on-error: true
+        run: |
+          mkdir -p ~/.cache/huggingface
+          python - <<'EOF'
+          from faster_whisper import WhisperModel
+          print("Loading large-v3-turbo weights...")
+          WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
+          print("Model ready.")
+          EOF
 
       - name: Configure Pages
         id: pages
@@ -110,11 +129,14 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v5
 
-      # Phase 2 (heavy, time-bounded): scrape chapters + encode audio (later: transcripts) into
+      # Phase 2 (heavy, time-bounded): scrape chapters + encode audio + transcribe into
       # object storage. Does NOT render or deploy; its output is picked up by the NEXT run's render.
       # Bounded by the wall-clock window and yields gracefully when a newer run is queued behind it,
       # so it never blocks the next deploy for long (issue #63).
-      - name: Enrich (chapters + audio)
+      # HF_HUB_OFFLINE=1: the Whisper model was pre-downloaded above; tell HuggingFace to
+      # read from local cache only and never make Hub API calls during inference.
+      - name: Enrich (chapters + audio + transcripts)
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+          HF_HUB_OFFLINE: "1"
         run: citypods enrich
