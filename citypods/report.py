@@ -335,6 +335,7 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
     hours_hosted = hours_linked = gb_stored = 0.0
     gb_exact = True
     last_pub = None
+    tx_synced = tx_text = tx_none = 0
 
     for rec in records.values():
         if body and not matches(rec.get("body"), body):
@@ -380,6 +381,14 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
         else:
             pending += 1
 
+        t = rec.get("transcript") or {}
+        if t.get("synced"):
+            tx_synced += 1
+        elif t.get("key"):
+            tx_text += 1
+        else:
+            tx_none += 1
+
     if dead > 0 or transient_errors > 0:
         health = "error"
     elif deferred > 0 or stale > 0 or pending > 0:
@@ -408,6 +417,9 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
         "gb_exact": gb_exact,
         "last_published": last_pub.date().isoformat() if last_pub else None,
         "health": health,
+        "tx_synced": tx_synced,
+        "tx_text": tx_text,
+        "tx_none": tx_none,
     }
 
 
@@ -448,6 +460,9 @@ def _city_rows(feed_rows: list[dict]) -> list[dict]:
                 "health_ok": sum(1 for f in feeds if f["health"] == "ok"),
                 "health_warn": sum(1 for f in feeds if f["health"] == "warn"),
                 "health_error": sum(1 for f in feeds if f["health"] == "error"),
+                "tx_synced": sum(f["tx_synced"] for f in feeds),
+                "tx_text": sum(f["tx_text"] for f in feeds),
+                "tx_none": sum(f["tx_none"] for f in feeds),
             }
         )
     return rows

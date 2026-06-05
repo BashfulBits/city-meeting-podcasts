@@ -70,10 +70,17 @@ jobs:
             build-state-
 
       - name: Install
-        run: pip install -e ".[storage]"
+        run: pip install -e ".[asr,storage]"
 
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Cache Whisper model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-large-v3-turbo-v1
+          restore-keys: whisper-large-v3-turbo-
 
       - name: Configure Pages
         id: pages
