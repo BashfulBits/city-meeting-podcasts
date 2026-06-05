@@ -669,9 +669,16 @@ class TranscriptStage:
         _asr_model = None
         if city.asr_enabled:
             try:
+                print(
+                    f"  [transcript] loading {city.asr_model}"
+                    f" ({city.asr_compute_type}, {cpu_threads} threads)",
+                    flush=True,
+                )
                 _asr_model = asr_mod.load_model(city.asr_model, city.asr_compute_type, cpu_threads)
+                print("  [transcript] model ready", flush=True)
             except Exception as exc:  # noqa: BLE001
                 stats.errors.append(f"ASR model load failed ({city.asr_model}): {exc}")
+                print(f"  [transcript] model load failed: {exc}", flush=True)
 
         for ep in _materialize_set(episodes, city.max_episodes):
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
@@ -783,6 +790,10 @@ class TranscriptStage:
                 stats.skipped += 1
                 continue
 
+            dur_h = (ep.audio_duration_served or ep.duration or 0) / 3600
+            mode = "align" if align_text else "transcribe"
+            print(f"  [transcript] {mode} {ep.uid} ({dur_h:.1f}h audio)", flush=True)
+
             try:
                 with _download_audio(ep.hosted_audio_url) as audio_path:
                     if align_text:
@@ -819,6 +830,7 @@ class TranscriptStage:
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True
                 stats.ran += 1
+                print(f"  [transcript] done {ep.uid}", flush=True)
 
             except Exception as exc:  # noqa: BLE001
                 stats.errors.append(f"{ep.uid}: ASR: {exc}")
