@@ -561,6 +561,58 @@ def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:
     return f"transcripts/{src_key}/{uid}-asr-{recipe}.vtt"
 
 
+def _preprocess_align_text(text: str) -> str:
+    """Extract spoken dialogue from a meeting-minutes source transcript.
+
+    Provider transcripts (CivicClerk, etc.) are *minutes documents*, not pure
+    speech transcripts.  They include agenda headers, speaker attribution labels
+    (``COUNCIL MEMBER SMITH:``), coarse timestamps, motion/vote boilerplate, and
+    legal text that was never spoken aloud.  Passing that verbatim to stable-ts
+    causes ~50 % alignment failures because half the words don't appear in the audio.
+
+    Strategy:
+    - Lines that are pure timestamps (``[00:15:23]`` / ``00:15:23``) → drop
+    - Speaker-label prefix on a line (``ALL CAPS NAME:``) → strip the label, keep the rest
+    - Lines that are entirely ALL-CAPS with no lower-case → likely headers, drop
+    - Very short lines (≤ 2 words after stripping) → drop (vote tallies, "Aye", "No", etc.)
+    - Strip inline timestamps embedded mid-sentence
+
+    Returns the cleaned spoken-only text as a single space-joined string.  Returns
+    the original text unchanged if the cleaned result is < 20 % of the original
+    word count (safety valve: the transcript may not be minutes-style).
+    """
+    import re
+
+    lines_out = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        # Drop pure-timestamp lines: [HH:MM:SS], HH:MM:SS, HH:MM, etc.
+        if re.fullmatch(r"\[?\d{1,2}:\d{2}(:\d{2})?\]?", s):
+            continue
+        # Drop ALL-CAPS-only lines (agenda headers, section dividers)
+        if s == s.upper() and re.search(r"[A-Z]", s):
+            continue
+        # Strip inline timestamps
+        s = re.sub(r"\[?\d{1,2}:\d{2}(:\d{2})?\]?", "", s).strip()
+        # Strip leading speaker-attribution label: "FIRSTNAME LASTNAME:" or "DR. NAME:"
+        s = re.sub(r"^[A-Z][A-Z\s\.\-]+:\s*", "", s).strip()
+        # Skip very short residuals (single words, vote tallies)
+        if len(s.split()) <= 2:
+            continue
+        lines_out.append(s)
+
+    cleaned = " ".join(lines_out)
+    orig_words = len(text.split())
+    clean_words = len(cleaned.split())
+    # Safety valve: if we stripped > 80 % of the words the heuristics were too aggressive —
+    # return the original so alignment at least gets something to work with.
+    if orig_words > 0 and clean_words < orig_words * 0.20:
+        return text
+    return cleaned
+
+
 def _detect_format(content: bytes) -> str:
     head = content[:512].decode("utf-8", errors="replace").strip()
     if head.startswith("WEBVTT"):
@@ -758,6 +810,10 @@ class TranscriptStage:
                 continue  # step 2 may have just set this in the same pass
 
             # Determine alignment text from any stored untimed source transcript.
+            # Strip non-spoken minutes content (headers, speaker labels, vote tallies)
+            # before passing to stable-ts — provider "transcripts" are minutes documents
+            # that include text never spoken in the audio, which causes ~50 % alignment
+            # failures when passed verbatim.
             align_text: str | None = None
             if ep.transcript_hosted_url and ep.transcript_format == "txt":
                 try:
@@ -766,7 +822,8 @@ class TranscriptStage:
                     with make_session() as sess:
                         r = sess.get(ep.transcript_hosted_url, timeout=30)
                     if r.status_code == 200:
-                        align_text = r.content.decode("utf-8", errors="replace")
+                        raw_text = r.content.decode("utf-8", errors="replace")
+                        align_text = _preprocess_align_text(raw_text)
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
 
@@ -797,14 +854,36 @@ class TranscriptStage:
             try:
                 with _download_audio(ep.hosted_audio_url) as audio_path:
                     if align_text:
-                        vtt = asr_mod.align(
-                            audio_path,
-                            align_text,
-                            _asr_model,  # pre-loaded instance
-                            city.asr_language or None,
-                            cpu_threads,
-                        )
-                        stats.aligned += 1
+                        try:
+                            vtt = asr_mod.align(
+                                audio_path,
+                                align_text,
+                                _asr_model,  # pre-loaded instance
+                                city.asr_language or None,
+                                cpu_threads,
+                            )
+                            stats.aligned += 1
+                        except asr_mod.AlignmentQualityError as aqe:
+                            # Coverage too low — fall back to fresh transcription so the
+                            # episode still gets a usable VTT rather than a sparse one.
+                            print(
+                                f"  [transcript] low-quality alignment, retrying as transcribe:"
+                                f" {aqe}",
+                                flush=True,
+                            )
+                            prompt = ". ".join(
+                                p for p in (city.podcast_title, ep.body, ep.title) if p
+                            )
+                            vtt = asr_mod.transcribe(
+                                audio_path,
+                                _asr_model,
+                                city.asr_language or None,
+                                city.asr_compute_type,
+                                city.asr_beam_size,
+                                prompt,
+                                cpu_threads,
+                            )
+                            stats.transcribed += 1
                     else:
                         prompt = ". ".join(p for p in (city.podcast_title, ep.body, ep.title) if p)
                         vtt = asr_mod.transcribe(
