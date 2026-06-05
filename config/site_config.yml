@@ -22,8 +22,7 @@ defaults:
   # DOWN to reclaim storage (the admin/usage report shows the $/mo cost of keeping old audio).
   max_archive_items: 5000                # max records RETAINED per source (newest kept)
   max_archive_age_years: 1000            # drop records older than this many years
-  extract_audio: false                   # opt-in audio re-hosting for direct providers (per-city)
-  host_all_audio: true                   # re-host ALL direct (Granicus) sources; flips host_frac → 1.0
+  extract_audio: true                    # re-host audio for direct (Granicus) sources as M4A
   audio_storage_backend: "b2"            # "local" | "b2" | "r2"  (override: AUDIO_STORAGE_BACKEND=local)
   # This bounds the HEAVY `citypods enrich` phase only (chapters + audio + later transcripts). The
   # fast `citypods build --phase render` runs first and the Pages deploy happens BEFORE enrich, so

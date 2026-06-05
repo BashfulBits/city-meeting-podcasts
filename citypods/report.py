@@ -20,7 +20,7 @@ from citypods.projection import (
 )
 
 # Providers whose audio we always host (ephemeral/HLS) vs. direct providers (hosted only when a
-# city sets extract_audio or host_all_audio). Mirrors media._should_host.
+# city sets extract_audio). Mirrors media._should_host.
 _HLS_PROVIDERS = {"civicplus", "swagit"}
 SCALE_SCENARIOS = (200, 500, 1000, 5000)
 _ADMIN_TEMPLATE = Path(__file__).resolve().parent / "assets" / "admin.html"
@@ -31,11 +31,7 @@ def _hosted_fraction(cities: list) -> float:
     if not cities:
         return 1.0
     hosted = sum(
-        1
-        for c in cities
-        if c.provider in _HLS_PROVIDERS
-        or getattr(c, "extract_audio", False)
-        or getattr(c, "host_all_audio", False)
+        1 for c in cities if c.provider in _HLS_PROVIDERS or getattr(c, "extract_audio", False)
     )
     return hosted / len(cities)
 

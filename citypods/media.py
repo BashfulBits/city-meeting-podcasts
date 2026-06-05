@@ -584,7 +584,7 @@ class MaterializeStats:
 def _should_host(episode: Episode, city: City) -> bool:
     if episode.media_kind == "hls":
         return True
-    return city.extract_audio or city.host_all_audio  # direct source, opt-in extraction
+    return city.extract_audio  # direct source, opt-in extraction
 
 
 def _hosted_keys(city: City, storage: StorageBackend) -> set[str] | None:

@@ -48,12 +48,9 @@ def test_build_report_measures_host_fraction():
     assert "1000" in rep["scale_scenarios"]
 
 
-def test_host_all_audio_counts_toward_host_fraction():
-    cities = _cities()
-    # Flip host_all_audio on the two plain-granicus cities -> all 4 hosted
-    for c in cities:
-        if c.slug in ("c", "d"):
-            c.host_all_audio = True
+def test_extract_audio_true_by_default_counts_all_as_hosted():
+    # When extract_audio=True on all cities (as the site default now sets), host_frac == 1.0
+    cities = [_city(s, "granicus", extract=True) for s in ("a", "b", "c", "d")]
     rep = build_report(cities, site_config=SITE)
     assert rep["current"]["inputs"]["host_frac"] == 1.0
 

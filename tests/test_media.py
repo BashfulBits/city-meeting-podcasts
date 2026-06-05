@@ -260,15 +260,6 @@ def test_direct_hosted_when_extract_audio(tmp_path):
     assert stats.hosted == 1 and eps[0].hosted_audio_url
 
 
-def test_direct_hosted_when_host_all_audio(tmp_path):
-    """host_all_audio re-hosts direct sources even when extract_audio is False."""
-    eps = [_ep("g1", kind="direct", url="https://src/v.mp4")]
-    ff = FakeFfmpeg()
-    city = _city(extract_audio=False)
-    city.host_all_audio = True
-    stats = _materialize(city, eps, _store(tmp_path), ff)
-    assert stats.hosted == 1 and eps[0].hosted_audio_url
-
 
 def test_stop_signal_defers_encodes(tmp_path):
     """When the shared stop predicate is True (wall-clock spent or superseded), no new encode

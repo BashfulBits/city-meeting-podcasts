@@ -143,10 +143,6 @@ class City:
     podcast_category: str = "Government"
     max_episodes: int = 50
     extract_audio: bool = False
-    # Re-host audio for ALL direct (Granicus) sources, not just those with extract_audio set.
-    # Equivalent to setting extract_audio on every direct feed; use as a site-level knob to flip
-    # host_frac → 1.0 (doc 03) without editing every feed YAML.
-    host_all_audio: bool = False
     # body substrings to skip when generating per-board feeds
     body_exclude: list[str] = field(default_factory=list)
     # 1-2 brand hex colors for cover art (e.g. ["#0B5", "#fff"]); empty -> derived from name

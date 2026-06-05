@@ -213,9 +213,8 @@ class SilencePlanner:
         if not city.extra.get("trim_silence", ctx.trim_silence):
             return None
 
-        # Only plan for episodes whose audio we re-host (HLS always; direct only if extract_audio
-        # or host_all_audio).
-        if not (ep.media_kind == "hls" or city.extract_audio or city.host_all_audio):
+        # Only plan for episodes whose audio we re-host (HLS always; direct only if extract_audio).
+        if not (ep.media_kind == "hls" or city.extract_audio):
             return None
 
         # Multi-segment concat episodes are owned by SwagitConcatPlanner; silence-trimming
