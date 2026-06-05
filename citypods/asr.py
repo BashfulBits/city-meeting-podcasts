@@ -130,6 +130,20 @@ def transcribe(
     return _to_vtt(segments)
 
 
+class AlignmentQualityError(RuntimeError):
+    """Raised when forced alignment quality falls below the acceptable threshold.
+
+    The caller (``TranscriptStage``) catches this and falls back to fresh
+    transcription (Path B) so the episode still gets a usable timed VTT.
+    """
+
+
+# Minimum fraction of words that must receive a timestamp for the alignment to be
+# considered usable.  Below this threshold we raise AlignmentQualityError so the
+# caller can fall back to fresh transcription.
+_MIN_ALIGN_COVERAGE = 0.60
+
+
 def align(
     audio_path: Path,
     text: str,
@@ -141,6 +155,10 @@ def align(
 
     *model_or_name* may be a pre-loaded stable-ts model instance or a name string.
     Preserves the official transcript wording exactly; faster than generation.
+
+    Raises :exc:`AlignmentQualityError` when the fraction of successfully aligned
+    words falls below ``_MIN_ALIGN_COVERAGE`` (default 60 %).  The caller should
+    catch this and fall back to fresh :func:`transcribe`.
     """
     try:
         import stable_whisper
@@ -156,6 +174,24 @@ def align(
         wm = model_or_name  # pre-loaded instance
 
     result = wm.align(str(audio_path), text, language=language or "en")
+
+    # Quality check: count words that received a valid timestamp.
+    total_words = sum(len(seg.words) for seg in result.segments if hasattr(seg, "words"))
+    timed_words = sum(
+        1
+        for seg in result.segments
+        if hasattr(seg, "words")
+        for w in seg.words
+        if getattr(w, "start", None) is not None
+    )
+    if total_words > 0:
+        coverage = timed_words / total_words
+        if coverage < _MIN_ALIGN_COVERAGE:
+            raise AlignmentQualityError(
+                f"alignment coverage {coverage:.0%} < {_MIN_ALIGN_COVERAGE:.0%} "
+                f"({timed_words}/{total_words} words timed) — falling back to transcription"
+            )
+
     vtt_str: str = result.to_vtt()
     if not vtt_str.startswith("WEBVTT"):
         vtt_str = "WEBVTT\n\n" + vtt_str
