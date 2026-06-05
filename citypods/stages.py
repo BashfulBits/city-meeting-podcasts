@@ -572,14 +572,22 @@ def _detect_format(content: bytes) -> str:
 
 @contextmanager
 def _download_audio(url: str):
-    """Download the hosted audio to a temp file, yield the Path, then clean up."""
+    """Download the hosted audio to a temp file, yield the Path, then clean up.
+
+    Uses a plain ``requests`` session (not ``make_session``) because:
+    - ``ep.hosted_audio_url`` is a URL *we* generated (our own CDN), not untrusted user input,
+      so the SSRF guard in ``GuardedHTTPAdapter`` adds no value here.
+    - Hosted M4A files routinely exceed the 64 MiB ``MAX_RESPONSE_BYTES`` cap that
+      ``make_session`` enforces on Content-Length, which would reject valid audio.
+    """
     import tempfile as _tmp2
 
-    from citypods.http import make_session
+    import requests as _req
 
     with _tmp2.TemporaryDirectory() as t:
         dest = Path(t) / "audio.m4a"
-        with make_session() as sess:
+        with _req.Session() as sess:
+            sess.headers["User-Agent"] = "citypods/0.1 (+https://github.com/)"
             r = sess.get(url, timeout=300, stream=True)
             r.raise_for_status()
             with open(dest, "wb") as f:
@@ -653,6 +661,18 @@ class TranscriptStage:
 
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
 
+        # Load the Whisper model ONCE for the batch — model loading is expensive (downloads
+        # weights on cold start, allocates memory) and must not happen per-episode. If it
+        # fails (e.g. HuggingFace Hub rate-limit on first run), record one error and fall
+        # through: provider transcript fetching (step 2) still runs normally; only step 3
+        # (ASR) is skipped for all episodes in this source.
+        _asr_model = None
+        if city.asr_enabled:
+            try:
+                _asr_model = asr_mod.load_model(city.asr_model, city.asr_compute_type, cpu_threads)
+            except Exception as exc:  # noqa: BLE001
+                stats.errors.append(f"ASR model load failed ({city.asr_model}): {exc}")
+
         for ep in _materialize_set(episodes, city.max_episodes):
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
@@ -721,10 +741,11 @@ class TranscriptStage:
                     continue
 
             # 3. ASR slot (issue #110): produce a timed VTT from hosted audio.
-            #    Guard: need hosted audio with a stable spec hash (implies ChaptersStage ran).
-            if not (
-                city.asr_enabled and ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url
-            ):
+            #    Guards: model must be loaded (skip gracefully if load failed), need hosted
+            #    audio with a stable spec hash (implies ChaptersStage ran).
+            if _asr_model is None:
+                continue
+            if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
                 continue
             if ep.transcript_synced:
                 continue  # step 2 may have just set this in the same pass
@@ -768,7 +789,7 @@ class TranscriptStage:
                         vtt = asr_mod.align(
                             audio_path,
                             align_text,
-                            city.asr_model,
+                            _asr_model,  # pre-loaded instance
                             city.asr_language or None,
                             cpu_threads,
                         )
@@ -777,7 +798,7 @@ class TranscriptStage:
                         prompt = ". ".join(p for p in (city.podcast_title, ep.body, ep.title) if p)
                         vtt = asr_mod.transcribe(
                             audio_path,
-                            city.asr_model,
+                            _asr_model,  # pre-loaded instance
                             city.asr_language or None,
                             city.asr_compute_type,
                             city.asr_beam_size,

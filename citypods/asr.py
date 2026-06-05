@@ -46,9 +46,27 @@ def _to_vtt(segments) -> bytes:
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
+def load_model(model: str, compute_type: str, cpu_threads: int):
+    """Load and return a faster-whisper ``WhisperModel``.
+
+    Callers should load the model **once** (outside the episode loop) and pass it
+    to :func:`transcribe` / :func:`align` to avoid re-downloading weights on every
+    episode and to surface model-loading failures (e.g. HuggingFace Hub rate-limits)
+    as a single batch-level error rather than one per episode.
+    """
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as exc:
+        raise ImportError(
+            "faster-whisper is required for ASR. Install it with: pip install 'citypods[asr]'"
+        ) from exc
+
+    return WhisperModel(model, device="cpu", compute_type=compute_type, cpu_threads=cpu_threads)
+
+
 def transcribe(
     audio_path: Path,
-    model: str,
+    model_or_name: object,
     language: str | None,
     compute_type: str,
     beam_size: int,
@@ -57,8 +75,9 @@ def transcribe(
 ) -> bytes:
     """Run faster-whisper transcription on *audio_path*; return WebVTT bytes.
 
-    Parameters mirror site_config ``asr_*`` fields.  ``cpu_threads`` is derived
-    from ``asr_workers`` by the caller (total CPU / workers).
+    *model_or_name* may be a pre-loaded ``WhisperModel`` instance (preferred — avoids
+    reloading weights on every call) or a model-name string (loads inline, kept for
+    backward compatibility with tests that pass a name directly).
     """
     try:
         from faster_whisper import WhisperModel
@@ -68,12 +87,16 @@ def transcribe(
             "Install it with: pip install 'citypods[asr]'"
         ) from exc
 
-    wm = WhisperModel(
-        model,
-        device="cpu",
-        compute_type=compute_type,
-        cpu_threads=cpu_threads,
-    )
+    if isinstance(model_or_name, str):
+        wm = WhisperModel(
+            model_or_name,
+            device="cpu",
+            compute_type=compute_type,
+            cpu_threads=cpu_threads,
+        )
+    else:
+        wm = model_or_name  # pre-loaded instance
+
     segments, _ = wm.transcribe(
         str(audio_path),
         language=language or None,
@@ -86,15 +109,14 @@ def transcribe(
 def align(
     audio_path: Path,
     text: str,
-    model: str,
+    model_or_name: object,
     language: str | None,
     cpu_threads: int,
 ) -> bytes:
     """Force-align *text* to *audio_path* using stable-ts; return WebVTT bytes.
 
-    This is faster than full transcription (no beam search) and preserves the
-    official transcript wording exactly.  Used when a source (untimed) transcript
-    is available via ``ep.links["transcript"]``.
+    *model_or_name* may be a pre-loaded stable-ts model instance or a name string.
+    Preserves the official transcript wording exactly; faster than generation.
     """
     try:
         import stable_whisper
@@ -104,7 +126,11 @@ def align(
             "Install it with: pip install 'citypods[asr]'"
         ) from exc
 
-    wm = stable_whisper.load_faster_whisper(model, cpu_threads=cpu_threads)
+    if isinstance(model_or_name, str):
+        wm = stable_whisper.load_faster_whisper(model_or_name, cpu_threads=cpu_threads)
+    else:
+        wm = model_or_name  # pre-loaded instance
+
     result = wm.align(str(audio_path), text, language=language or "en")
     vtt_str: str = result.to_vtt()
     if not vtt_str.startswith("WEBVTT"):
