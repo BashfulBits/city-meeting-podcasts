@@ -17,6 +17,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
 from citypods.config import load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
-from citypods.media import CommandFfmpeg, FfmpegRunner
+from citypods.media import CommandFfmpeg, FfmpegRunner, SourceCache
 from citypods.models import City, Episode
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
@@ -365,6 +366,7 @@ def build(
     fingerprint = build_fingerprint(base_url)
     request_delay = float(site_config.get("request_delay_seconds", 0.1))
     max_workers = int(site_config.get("max_workers", 20))
+    max_encodes_per_source = int(site_config.get("max_encodes_per_source", 1))
     defaults = site_config.get("defaults", {})
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     storage = make_storage(site_config, base_url, output_dir)
@@ -414,6 +416,14 @@ def build(
         max_kbps=max_kbps,
         timeout_seconds=(encode_timeout_min * 60) if encode_timeout_min > 0 else None,
     )
+    source_cache = (
+        SourceCache(
+            ffmpeg_binary=getattr(ffmpeg, "binary", "ffmpeg"),
+            timeout_seconds=getattr(ffmpeg, "timeout_seconds", None),
+        )
+        if not dry_run
+        else None
+    )
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -431,6 +441,8 @@ def build(
         silence_noise_db=float(defaults.get("silence_noise_db", -40.0)),
         silence_lead_trail_min_s=float(defaults.get("silence_lead_trail_min_s", 1.0)),
         silence_mid_min_s=float(defaults.get("silence_mid_min_s", 10.0)),
+        max_encodes_per_source=max_encodes_per_source,
+        source_cache=source_cache,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
@@ -443,7 +455,7 @@ def build(
     )
 
     results: list[CityResult] = []
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+    with (source_cache or _nullcontext()), ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [
             pool.submit(
                 _process_city,
