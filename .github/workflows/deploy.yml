@@ -99,6 +99,10 @@ jobs:
       - name: Pre-download Whisper model
         continue-on-error: true
         env:
+          # huggingface_hub < 0.18 uses HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
+          # Set both so whichever version is installed picks it up and silences the
+          # "unauthenticated requests" warning.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           mkdir -p ~/.cache/huggingface
@@ -148,5 +152,9 @@ jobs:
       - name: Enrich (chapters + audio + transcripts)
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+          # huggingface_hub < 0.18 uses HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
+          # Set both so whichever version is installed picks it up and silences the
+          # "unauthenticated requests" warning.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
         run: citypods enrich
