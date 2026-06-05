@@ -17,7 +17,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from pathlib import Path
+
+# ── Module-level model cache ─────────────────────────────────────────────────
+# The Whisper model is large (~800 MB) and downloading / loading it is expensive.
+# We cache it here (keyed by model name + compute type + cpu_threads) so it is
+# loaded at most ONCE per process, regardless of how many sources are processed in
+# parallel.  The lock ensures only one thread downloads/loads on a cold start;
+# all others wait and then reuse the cached instance.
+_model_cache: dict[tuple, object] = {}
+_model_lock = threading.Lock()
 
 # ── VTT helpers ─────────────────────────────────────────────────────────────
 
@@ -47,12 +57,16 @@ def _to_vtt(segments) -> bytes:
 
 
 def load_model(model: str, compute_type: str, cpu_threads: int):
-    """Load and return a faster-whisper ``WhisperModel``.
+    """Load and return a faster-whisper ``WhisperModel``, using a process-level cache.
 
-    Callers should load the model **once** (outside the episode loop) and pass it
-    to :func:`transcribe` / :func:`align` to avoid re-downloading weights on every
-    episode and to surface model-loading failures (e.g. HuggingFace Hub rate-limits)
-    as a single batch-level error rather than one per episode.
+    The model is loaded at most ONCE per process regardless of how many sources are
+    processed in parallel.  A threading lock ensures only one thread downloads/loads
+    on a cold start; all others wait and then reuse the cached instance.  This
+    reduces HuggingFace Hub API calls from one-per-source to one-per-process, which
+    is critical on GitHub Actions where anonymous API calls are tightly rate-limited.
+
+    Callers (``TranscriptStage.process``) should call this once before the episode
+    loop and pass the returned instance to :func:`transcribe` / :func:`align`.
     """
     try:
         from faster_whisper import WhisperModel
@@ -61,7 +75,17 @@ def load_model(model: str, compute_type: str, cpu_threads: int):
             "faster-whisper is required for ASR. Install it with: pip install 'citypods[asr]'"
         ) from exc
 
-    return WhisperModel(model, device="cpu", compute_type=compute_type, cpu_threads=cpu_threads)
+    cache_key = (model, compute_type, cpu_threads)
+    if cache_key in _model_cache:
+        return _model_cache[cache_key]
+
+    with _model_lock:
+        # Double-checked locking: another thread may have loaded while we waited.
+        if cache_key not in _model_cache:
+            _model_cache[cache_key] = WhisperModel(
+                model, device="cpu", compute_type=compute_type, cpu_threads=cpu_threads
+            )
+    return _model_cache[cache_key]
 
 
 def transcribe(

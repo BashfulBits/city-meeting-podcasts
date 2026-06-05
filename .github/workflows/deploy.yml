@@ -85,13 +85,21 @@ jobs:
           key: whisper-large-v3-turbo-v1
           restore-keys: whisper-large-v3-turbo-
 
-      # Pre-download model weights NOW so the enrich step can use HF_HUB_OFFLINE=1.
-      # If HuggingFace rate-limits this step we get one clear failure rather than 200+
-      # per-episode errors during enrich.  The 'continue-on-error' lets the rest of the
-      # workflow continue (render + deploy still publish); enrich will skip ASR gracefully
-      # (single "model load failed" error per source) rather than spamming the error log.
+      # Pre-download model weights so they are in the HuggingFace cache before the
+      # parallel enrich pass starts.  Without this, every source would race to load the
+      # model simultaneously, each making an authenticated Hub API call.
+      #
+      # HF_TOKEN (optional): a read-only HuggingFace token stored as a repo secret.
+      # Unauthenticated requests share GitHub Actions' IP pool and hit HF's anonymous
+      # rate limit (429) regularly.  A free HF account + read token raises that limit
+      # dramatically.  Add it at:
+      #   github.com/<org>/<repo>/settings/secrets/actions → New secret → HF_TOKEN
+      # The step still succeeds if the token is absent; enrich falls back gracefully
+      # (one "model load failed" error per source, ASR skipped for that run).
       - name: Pre-download Whisper model
         continue-on-error: true
+        env:
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           mkdir -p ~/.cache/huggingface
           python - <<'EOF'
@@ -133,10 +141,12 @@ jobs:
       # object storage. Does NOT render or deploy; its output is picked up by the NEXT run's render.
       # Bounded by the wall-clock window and yields gracefully when a newer run is queued behind it,
       # so it never blocks the next deploy for long (issue #63).
-      # HF_HUB_OFFLINE=1: the Whisper model was pre-downloaded above; tell HuggingFace to
-      # read from local cache only and never make Hub API calls during inference.
+      # The Whisper model was pre-downloaded above; if that step failed (e.g. HF 429), the
+      # model loads here on first use instead (one API call total, not per-episode, thanks to
+      # the process-level cache in citypods/asr.py).  If it still can't load, one "model load
+      # failed" error is recorded per source and ASR is skipped gracefully for that run.
       - name: Enrich (chapters + audio + transcripts)
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
-          HF_HUB_OFFLINE: "1"
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
         run: citypods enrich
