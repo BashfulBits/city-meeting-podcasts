@@ -99,6 +99,12 @@ def _build_city(
             "body_exclude",
             "colors",
             "aliases",
+            "asr_enabled",
+            "asr_model",
+            "asr_compute_type",
+            "asr_language",
+            "asr_workers",
+            "asr_beam_size",
         }
     )
     return City(
@@ -121,6 +127,12 @@ def _build_city(
         colors=[str(c) for c in _get("colors", [])],
         aliases=[str(a) for a in _get("aliases", [])],
         extra={k: v for k, v in raw.items() if k not in known},
+        asr_enabled=bool(_get("asr_enabled", defaults.get("asr_enabled", True))),
+        asr_model=str(_get("asr_model", defaults.get("asr_model", "large-v3-turbo"))),
+        asr_compute_type=str(_get("asr_compute_type", defaults.get("asr_compute_type", "int8"))),
+        asr_language=str(_get("asr_language", defaults.get("asr_language", "en"))),
+        asr_workers=int(_get("asr_workers", defaults.get("asr_workers", 1))),
+        asr_beam_size=int(_get("asr_beam_size", defaults.get("asr_beam_size", 5))),
     )
 
 

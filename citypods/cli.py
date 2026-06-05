@@ -126,6 +126,28 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="print what would be changed; write nothing"
     )
 
+    ab = sub.add_parser(
+        "asr-bench",
+        help="dev diagnostic: measure ASR model WER and speed on a known episode "
+        "(requires [asr] extras and a hosted episode with a stored source transcript).",
+    )
+    ab.add_argument("--city", required=True, metavar="SLUG", help="city feed slug")
+    ab.add_argument("--uid", required=True, metavar="UID", help="episode uid to benchmark")
+    ab.add_argument(
+        "--models",
+        default="base.en,small.en,large-v3-turbo",
+        metavar="M1,M2,...",
+        help="comma-separated faster-whisper model names to compare "
+        "(default: base.en,small.en,large-v3-turbo)",
+    )
+    ab.add_argument(
+        "--cpu-threads", type=int, default=4, metavar="N",
+        help="CPU threads per model (default: 4)"
+    )
+    ab.add_argument("--site-config", default="config/site_config.yml")
+    ab.add_argument("--config-dir", default="config")
+    ab.add_argument("--output-dir", default="docs")
+
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
@@ -145,6 +167,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "rebuild-audio":
         return _rebuild_audio(args)
+
+    if args.command == "asr-bench":
+        return _asr_bench(args)
 
     return 0
 
@@ -215,6 +240,21 @@ def _report(args) -> int:
             f"backfill {c['full_backfill_days']:.0f}d → wrote {admin}/index.html + report.json"
         )
     return 0
+
+
+def _asr_bench(args) -> int:
+    from citypods.bench import run_bench
+
+    models = [m.strip() for m in args.models.split(",") if m.strip()]
+    return run_bench(
+        city_slug=args.city,
+        episode_uid=args.uid,
+        models=models,
+        site_config_path=args.site_config,
+        config_dir=args.config_dir,
+        output_dir=args.output_dir,
+        cpu_threads=args.cpu_threads,
+    )
 
 
 def _bodies(args) -> int:

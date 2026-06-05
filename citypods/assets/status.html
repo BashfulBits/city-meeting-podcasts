@@ -200,6 +200,8 @@ function renderBacklog(){
     const t = stages[name];
     const newVal = name==='audio' && (t.encoded||t.credited)
       ? `${t.ran} <span class="muted">(${t.encoded}enc·${t.credited}crd)</span>`
+      : name==='transcript' && (t.aligned||t.transcribed)
+      ? `${t.ran} <span class="muted">(${t.aligned}aln·${t.transcribed}asr)</span>`
       : t.ran;
     const bytes = t.bytes>0 ? fmtMb(t.bytes) : '—';
     return `<div class="bl-row">
@@ -324,6 +326,10 @@ const FEED_COLS = [
   {key:'stale',         label:'Re-enc',   fmt:r=>r.stale?`<span class="warn">${r.stale}</span>`:'—'},
   {key:'deferred',      label:'Defer',    fmt:r=>r.deferred?`<span class="warn">${r.deferred}</span>`:'—'},
   {key:'dead',          label:'Dead',     fmt:r=>r.dead?`<span class="err">${r.dead}</span>`:'—'},
+  {key:'tx_synced',     label:'Tx',       fmt:r=>{
+    const s=r.tx_synced||0, tot=(r.tx_synced||0)+(r.tx_text||0)+(r.tx_none||0);
+    return tot===0?'—':s===tot?`<span class="ok">${s}</span>`:`${s}/${tot}`;
+  }},
   {key:'last_published',label:'Latest',   fmt:r=>fmtDate(r.last_published)},
   {key:'health',        label:'Health',   fmt:r=>healthBadge(r.health)},
 ];
@@ -340,6 +346,10 @@ const CITY_COLS = [
   {key:'stale',      label:'Re-enc',     fmt:r=>r.stale?`<span class="warn">${r.stale}</span>`:'—'},
   {key:'deferred',   label:'Defer',      fmt:r=>r.deferred?`<span class="warn">${r.deferred}</span>`:'—'},
   {key:'dead',       label:'Dead',       fmt:r=>r.dead?`<span class="err">${r.dead}</span>`:'—'},
+  {key:'tx_synced',  label:'Tx',         fmt:r=>{
+    const s=r.tx_synced||0, tot=(r.tx_synced||0)+(r.tx_text||0)+(r.tx_none||0);
+    return tot===0?'—':s===tot?`<span class="ok">${s}</span>`:`${s}/${tot}`;
+  }},
   {key:'last_published',label:'Latest',  fmt:r=>fmtDate(r.last_published)},
   {key:'health',     label:'Health',     fmt:r=>`<span class="hist"><span class="ok">✓${r.health_ok}</span><span class="warn"> ⚠${r.health_warn}</span><span class="err"> ✗${r.health_error}</span></span>`},
 ];

@@ -152,3 +152,12 @@ class City:
     # re-subscribe if a feed must move. Slugs should otherwise never change.
     aliases: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)
+
+    # --- ASR config (#110) --------------------------------------------------
+    # These mirror the site_config defaults and can be overridden per feed.
+    asr_enabled: bool = True
+    asr_model: str = "large-v3-turbo"   # faster-whisper model name
+    asr_compute_type: str = "int8"       # int8 = fastest/most mem-efficient on CPU
+    asr_language: str = "en"            # Whisper language hint; empty string = auto-detect
+    asr_workers: int = 1                # episode-level parallelism (1 model instance per worker)
+    asr_beam_size: int = 5              # Whisper beam size; reduce to 1 for ~2× speed

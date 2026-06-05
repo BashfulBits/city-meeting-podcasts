@@ -105,6 +105,8 @@ class SourcePipeline:
                 "ran": 0,
                 "encoded": 0,
                 "credited": 0,
+                "aligned": 0,
+                "transcribed": 0,
                 "reused": 0,
                 "backlog": 0,
                 "seconds": 0.0,
@@ -136,6 +138,8 @@ class SourcePipeline:
                     t["ran"] += s.ran
                     t["encoded"] += s.encoded
                     t["credited"] += s.credited
+                    t["aligned"] += s.aligned
+                    t["transcribed"] += s.transcribed
                     t["reused"] += s.reused
                     t["backlog"] += s.skipped
                     t["seconds"] += s.seconds
@@ -644,6 +648,8 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
             "ran": t["ran"],
             "encoded": t["encoded"],
             "credited": t["credited"],
+            "aligned": t["aligned"],
+            "transcribed": t["transcribed"],
             "reused": t["reused"],
             "backlog": t["backlog"],
             "seconds": round(t["seconds"], 1),

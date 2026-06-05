@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from citypods.asr import asr_spec_hash
 from citypods.models import City, Episode
 from citypods.records import (
     episode_to_record,
@@ -22,6 +23,7 @@ from citypods.records import (
     source_key,
 )
 from citypods.stages import (
+    ASR_PIPELINE_VERSION,
     StageContext,
     TranscriptStage,
     default_stages,
@@ -458,3 +460,309 @@ class TestTranscriptStopAndStorage:
         save_records(state_dir, source_key(_city()), {ep.uid: episode_to_record(ep)})
         refs = referenced_audio_keys(state_dir)
         assert ep.transcript_key in refs
+
+
+# ---------------------------------------------------------------------------
+# ASR slot (issue #110)
+# ---------------------------------------------------------------------------
+
+
+def _ep_with_audio(uid="uid-asr", links=None) -> Episode:
+    """Episode with hosted audio (minimal fields needed for the ASR slot)."""
+    ep = _ep(uid=uid, links=links or {})
+    ep.audio_key = "audio/src/uid-asr-abc.m4a"
+    ep.audio_spec_hash = "deadbeef0000"
+    ep.hosted_audio_url = "https://cdn/audio/uid-asr.m4a"
+    return ep
+
+
+ASR_VTT = b"WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nCouncil meeting called to order.\n"
+
+
+class _FakeAsr:
+    """Replaces citypods.asr in TranscriptStage for tests."""
+
+    def __init__(self, vtt: bytes = ASR_VTT, *, fail: bool = False):
+        self.vtt = vtt
+        self.fail = fail
+        self.transcribe_calls: list[dict] = []
+        self.align_calls: list[dict] = []
+
+    def transcribe(self, audio_path, model, language, compute_type, beam_size, prompt, cpu_threads):
+        if self.fail:
+            raise RuntimeError("transcribe failed")
+        self.transcribe_calls.append({"model": model, "prompt": prompt})
+        return self.vtt
+
+    def align(self, audio_path, text, model, language, cpu_threads):
+        if self.fail:
+            raise RuntimeError("align failed")
+        self.align_calls.append({"text": text, "model": model})
+        return self.vtt
+
+    def asr_spec_hash(self, audio_spec_hash, model, align_hash, version):
+        # Use the real implementation
+        return asr_spec_hash(audio_spec_hash, model, align_hash, version)
+
+
+def _asr_ctx(tmp_path: Path, fake_asr: _FakeAsr) -> StageContext:
+    """StageContext with a patched asr module and no stop signal."""
+    ctx = _ctx(tmp_path)
+
+    class _FakeSession:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            pass
+        def get(self, url, **kw):
+            r = type("R", (), {"status_code": 200, "content": b"fake audio bytes"})()
+            r.iter_content = lambda chunk_size=8192: iter([b"fake audio"])
+            r.raise_for_status = lambda: None
+            return r
+
+    # Patch both the asr module and HTTP session
+    ctx._fake_asr = fake_asr
+    ctx._fake_session = _FakeSession()
+    return ctx
+
+
+def _run_asr(tmp_path, ep, fake_asr=None):
+    """Run TranscriptStage with the fake ASR module and a fake HTTP session."""
+    if fake_asr is None:
+        fake_asr = _FakeAsr()
+
+    class _FakeSession:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            pass
+        def get(self, url, **kw):
+            class _R:
+                status_code = 200
+                content = b"fake audio bytes"
+                def iter_content(self, chunk_size=8192):
+                    return iter([b"fake"])
+                def raise_for_status(self):
+                    pass
+            return _R()
+
+    with (
+        patch("citypods.stages.asr_mod", fake_asr),
+        patch("citypods.stages._download_audio") as mock_dl,
+    ):
+        # _download_audio is a context manager that yields a Path
+        from contextlib import contextmanager
+        @contextmanager
+        def _fake_dl(url):
+            yield tmp_path / "fake_audio.m4a"
+        mock_dl.side_effect = _fake_dl
+
+        stage = TranscriptStage()
+        ctx = _ctx(tmp_path)
+        stats = stage.process(FakeProvider(), _city(), [ep], ctx)
+
+    return ep, stats, fake_asr
+
+
+class TestTranscriptStageASR:
+    def test_path_b_fresh_transcription_no_source_text(self, tmp_path):
+        """No provider transcript → Path B (fresh transcription) → synced=True."""
+        ep = _ep_with_audio()
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert ep.transcript_synced is True
+        assert ep.transcript_basis == "served"
+        assert ep.transcript_format == "vtt"
+        assert ep.transcript_key is not None
+        assert ep.transcript_key.endswith(".vtt")
+        assert "asr-" in ep.transcript_key
+        assert stats.ran == 1
+        assert stats.transcribed == 1
+        assert stats.aligned == 0
+
+    def test_path_b_initial_prompt_contains_title(self, tmp_path):
+        """Path B: initial_prompt includes podcast_title and episode title."""
+        ep = _ep_with_audio()
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert len(fake_asr.transcribe_calls) == 1
+        prompt = fake_asr.transcribe_calls[0]["prompt"]
+        assert "Meeting" in prompt  # ep.title
+
+    def test_path_a_forced_alignment_with_source_text(self, tmp_path):
+        """Stored untimed txt transcript → Path A (alignment) → synced=True."""
+        from citypods.records import source_key as _src_key
+        sk = _src_key(_city())
+        ep = _ep_with_audio()
+        # Simulate a prior run storing an untimed provider transcript
+        ep.transcript_key = f"transcripts/{sk}/uid-asr-oldspec.txt"
+        ep.transcript_format = "txt"
+        ep.transcript_synced = False
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                pass
+            def get(self, url, **kw):
+                class _R:
+                    status_code = 200
+                    content = b"These are the meeting minutes."
+                    def iter_content(self, **kw):
+                        return iter([b"fake"])
+                    def raise_for_status(self):
+                        pass
+                return _R()
+
+        fake_asr = _FakeAsr()
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio") as mock_dl,
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            from contextlib import contextmanager
+            @contextmanager
+            def _fake_dl(url):
+                yield tmp_path / "fake_audio.m4a"
+            mock_dl.side_effect = _fake_dl
+
+            # Put the untimed transcript in storage so _present() returns True
+            storage_root = tmp_path / "audio"
+            (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+            (storage_root / ep.transcript_key).write_bytes(b"These are the meeting minutes.")
+            ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+
+            stage = TranscriptStage()
+            stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert ep.transcript_synced is True
+        assert ep.transcript_basis == "served"
+        assert ep.transcript_format == "vtt"
+        assert "asr-" in ep.transcript_key
+        assert stats.aligned == 1
+        assert stats.transcribed == 0
+
+    def test_skip_when_already_synced(self, tmp_path):
+        """synced=True (e.g. from CivicClerk timed VTT) → ASR never called."""
+        from citypods.records import source_key as _src_key
+        sk = _src_key(_city())
+
+        ep = _ep_with_audio()
+        ep.transcript_synced = True
+        ep.transcript_key = f"transcripts/{sk}/uid-asr-existing.vtt"
+
+        storage_root = tmp_path / "audio"
+        storage_root.mkdir(parents=True, exist_ok=True)
+        (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (storage_root / ep.transcript_key).write_bytes(b"WEBVTT\n\ncue\n")
+        ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+
+        fake_asr = _FakeAsr()
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stage = TranscriptStage()
+            stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert fake_asr.transcribe_calls == []
+        assert fake_asr.align_calls == []
+        assert stats.reused == 1
+
+    def test_skip_when_no_audio_key(self, tmp_path):
+        """Episode without hosted audio → ASR skipped (ChaptersStage may not have run yet)."""
+        ep = _ep(links={})
+        ep.audio_key = None  # explicitly no audio
+        assert ep.audio_spec_hash is None
+
+        fake_asr = _FakeAsr()
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stage = TranscriptStage()
+            stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert fake_asr.transcribe_calls == []
+        assert ep.transcript_key is None
+        assert stats.ran == 0
+
+    def test_stop_gate_defers_asr(self, tmp_path):
+        """stop() returns True before ASR → skipped (not an error)."""
+        ep = _ep_with_audio()
+
+        fake_asr = _FakeAsr()
+        with patch("citypods.stages.asr_mod", fake_asr):
+            ctx = _ctx(tmp_path)
+            ctx.stop = lambda: True
+            stage = TranscriptStage()
+            stats = stage.process(FakeProvider(), _city(), [ep], ctx)
+
+        assert fake_asr.transcribe_calls == []
+        assert stats.skipped == 1
+        assert ep.transcript_key is None
+
+    def test_asr_reuse_when_key_already_present(self, tmp_path):
+        """ASR key already in storage → reuse without re-running inference."""
+        from citypods.records import source_key as _src_key
+        ep = _ep_with_audio()
+
+        # Pre-compute the asr_key we expect
+        recipe = asr_spec_hash(ep.audio_spec_hash, "large-v3-turbo", None, ASR_PIPELINE_VERSION)
+        src_key = _src_key(_city())
+        asr_key = f"transcripts/{src_key}/{ep.uid}-asr-{recipe}.vtt"
+
+        # Put the key in storage
+        storage_root = tmp_path / "audio"
+        storage_root.mkdir(parents=True, exist_ok=True)
+        (storage_root / asr_key).parent.mkdir(parents=True, exist_ok=True)
+        (storage_root / asr_key).write_bytes(ASR_VTT)
+
+        fake_asr = _FakeAsr()
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stage = TranscriptStage()
+            stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert fake_asr.transcribe_calls == []
+        assert ep.transcript_synced is True
+        assert ep.transcript_key == asr_key
+        assert stats.reused == 1
+
+    def test_asr_error_recorded_not_raised(self, tmp_path):
+        """ASR failure → error recorded in stats, episode left without transcript."""
+        ep = _ep_with_audio()
+
+        fake_asr = _FakeAsr(fail=True)
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio") as mock_dl,
+        ):
+            from contextlib import contextmanager
+            @contextmanager
+            def _fake_dl(url):
+                yield tmp_path / "fake_audio.m4a"
+            mock_dl.side_effect = _fake_dl
+
+            stage = TranscriptStage()
+            stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert stats.errors  # at least one error recorded
+        assert ep.transcript_synced is False  # left in un-synced state
+
+    def test_asr_disabled_skips_slot(self, tmp_path):
+        """asr_enabled=False → slot is skipped entirely."""
+        ep = _ep_with_audio()
+
+        city = _city()
+        city.asr_enabled = False
+
+        fake_asr = _FakeAsr()
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio") as mock_dl,
+        ):
+            from contextlib import contextmanager
+            @contextmanager
+            def _fake_dl(url):
+                yield tmp_path / "fake_audio.m4a"
+            mock_dl.side_effect = _fake_dl
+
+            stage = TranscriptStage()
+            stage.process(FakeProvider(), city, [ep], _ctx(tmp_path))
+
+        assert fake_asr.transcribe_calls == []
+        assert ep.transcript_key is None

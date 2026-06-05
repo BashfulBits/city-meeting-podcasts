@@ -68,16 +68,19 @@ the most valuable expensive stages earliest.
 from __future__ import annotations
 
 import collections
+import hashlib
 import json
 import re
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
+from citypods import asr as asr_mod
 from citypods.bodies import body_key, canonical_body
 from citypods.media import MaterializeStats, SourceCache, materialize_audio
 from citypods.models import City, Episode
@@ -152,6 +155,10 @@ class StageStats:
     # build log show how much of ``ran`` actually consumed encode time (the rest is metadata-only).
     encoded: int = 0
     credited: int = 0
+    # Transcript-only breakdown of ``ran``: forced-alignment (Path A) vs fresh transcription
+    # (Path B). Shown in the status dashboard as ``Naln·Nasr`` alongside the stage row.
+    aligned: int = 0      # Path A: stable-ts forced alignment from source text
+    transcribed: int = 0  # Path B: fresh faster-whisper transcription
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -518,6 +525,7 @@ class LinksStage:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
+ASR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
 # Public (imported by citypods.feeds) so the feed tag and the stored object never disagree.
@@ -548,6 +556,11 @@ def _transcript_object_key(src_key: str, uid: str, spec: str, fmt: str) -> str:
     return f"transcripts/{src_key}/{uid}-{spec}.{fmt}"
 
 
+def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:
+    """ASR keys use an ``asr-`` infix to distinguish them from provider content-hash keys."""
+    return f"transcripts/{src_key}/{uid}-asr-{recipe}.vtt"
+
+
 def _detect_format(content: bytes) -> str:
     head = content[:512].decode("utf-8", errors="replace").strip()
     if head.startswith("WEBVTT"):
@@ -557,24 +570,58 @@ def _detect_format(content: bytes) -> str:
     return "txt"
 
 
+@contextmanager
+def _download_audio(url: str):
+    """Download the hosted audio to a temp file, yield the Path, then clean up."""
+    import tempfile as _tmp2
+
+    from citypods.http import make_session
+
+    with _tmp2.TemporaryDirectory() as t:
+        dest = Path(t) / "audio.m4a"
+        with make_session() as sess:
+            r = sess.get(url, timeout=300, stream=True)
+            r.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    f.write(chunk)
+        yield dest
+
+
 class TranscriptStage:
     """Stores and references provider transcripts as content-addressed objects.
 
     Implements the **reuse-first** provider transcript slot from design doc §5:
       1. If transcript already stored (``ep.transcript_key`` set + object present) → reuse.
-      2. If a provider transcript URL is in ``ep.links["transcript"]`` → fetch, detect
-         timing, store content-addressed, set ``transcript_synced`` and ``transcript_basis``.
-      3. ASR slot: **stubbed** (issue #110 fills this; no-op here).
+      2. If a provider transcript URL is in ``ep.links["transcript"]`` and the episode
+         has not yet been stored (``ep.transcript_key`` is None) → fetch, detect timing,
+         store content-addressed, set ``transcript_synced`` and ``transcript_basis``.
+         If the result is timed (VTT/SRT) the episode is complete; skip ASR.
+         If untimed (txt), fall through to step 3 so ASR can upgrade it.
+      3. ASR slot (issue #110): produce a timed VTT in *served time* from the hosted
+         audio.  Two sub-paths:
+           A. Forced alignment (stable-ts) — when a stored untimed source transcript
+              is available.  Preserves official wording; faster than full transcription.
+           B. Fresh transcription (faster-whisper) — when no source text exists.
+              Uses episode title/body as ``initial_prompt`` to prime proper nouns.
+
+    Step 1 only fast-paths when ``transcript_synced is True``.  Episodes with an untimed
+    stored transcript (``transcript_key`` set, ``synced=False``) fall through to step 3
+    so alignment can upgrade them to a fully timed VTT.
 
     The ``<podcast:transcript>`` tag is only emitted by :mod:`citypods.feeds` when
     ``ep.transcript_synced is True`` — untimed transcripts (plain text, PDFs) are
-    not mis-aligned to the audio and never produce the tag.
+    never mis-aligned to the audio.
+
+    ASR transcripts are keyed on inputs (recipe hash) not output content: changing the
+    model or audio version triggers re-transcription without downloading the stored file.
 
     Note on remapping: for identity timelines, provider transcript timestamps are
     already in served time (source == served), so ``transcript_basis = "served"``.
     For non-identity timelines, a full VTT/SRT parser + remap is required (pending;
     see INFRA-5). Until then, non-identity episodes carry ``basis = "source:s0"`` and
-    ``synced = False`` to prevent mis-alignment.
+    ``synced = False`` to prevent mis-alignment.  ASR-generated transcripts always
+    use ``basis = "served"`` because ASR runs on the hosted (served) audio.
     """
 
     name = "transcript"
@@ -583,7 +630,12 @@ class TranscriptStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
+        import math
+        import os
+        import tempfile as _tmp
+
         from citypods.records import source_key as _src_key
+        from citypods.timeline import timeline_digest as _td
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -599,78 +651,153 @@ class TranscriptStage:
         def _present(k: str) -> bool:
             return k in hosted_keys if hosted_keys is not None else ctx.storage.exists(k)
 
+        cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
+
         for ep in _materialize_set(episodes, city.max_episodes):
-            # 1. Reuse if already stored. This is cheap, idempotent bookkeeping (re-attach the
-            #    hosted URL), so per the stop convention it runs UNCONDITIONALLY — even after the
-            #    window is spent — so a yielded run still leaves every already-stored transcript
-            #    referenced on the feed. (AudioStage reuses before its stop() check the same way.)
-            if ep.transcript_key and _present(ep.transcript_key):
+            # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
+            #    stop()) so a yielded run still references every already-synced transcript.
+            if ep.transcript_key and ep.transcript_synced and _present(ep.transcript_key):
                 ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                 stats.reused += 1
                 continue
 
-            # 2. Provider transcript slot: look for an external transcript URL in links
+            # 1b. Untimed stored transcript: re-attach URL so the feed still shows it as a
+            #     text note, then fall through to the ASR slot to attempt an upgrade.
+            if ep.transcript_key and not ep.transcript_synced and _present(ep.transcript_key):
+                ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+                # fall through to step 3
+
+            # 2. Provider transcript slot: fetch + store if we don't have it yet.
             provider_url = (ep.links or {}).get("transcript")
-            if not provider_url:
-                # 3. ASR slot: stubbed — not implemented (issue #110)
+            if provider_url and not ep.transcript_key:
+                if ctx.stop is not None and ctx.stop():
+                    stats.skipped += 1
+                    continue
+
+                try:
+                    from citypods.http import make_session
+
+                    with make_session() as sess:
+                        resp = sess.get(provider_url, timeout=30)
+                    if resp.status_code >= 400:
+                        stats.errors.append(
+                            f"{ep.uid}: HTTP {resp.status_code} for {provider_url}"
+                        )
+                        continue
+
+                    content = resp.content
+                    fmt = _detect_format(content)
+                    timed = is_timed_transcript(content)
+                    spec = _transcript_spec_hash(content)
+                    key = _transcript_object_key(src_key, ep.uid or ep.guid, spec, fmt)
+
+                    is_identity = ep.timeline is None or _td(ep.timeline) == ""
+                    if timed and is_identity:
+                        basis = "served"
+                        synced = True
+                    elif timed:
+                        basis = "source:s0"
+                        synced = False
+                    else:
+                        basis = "source:s0"
+                        synced = False
+
+                    with _tmp.TemporaryDirectory() as t:
+                        dest = Path(t) / f"transcript.{fmt}"
+                        dest.write_bytes(content)
+                        mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
+                        url = ctx.storage.put_file(key, dest, mime)
+
+                    ep.transcript_key = key
+                    ep.transcript_hosted_url = url
+                    ep.transcript_spec_hash = spec
+                    ep.transcript_format = fmt
+                    ep.transcript_basis = basis
+                    ep.transcript_synced = synced
+                    stats.ran += 1
+
+                    if synced:
+                        continue  # timed VTT already stored — skip ASR
+                except Exception as exc:  # noqa: BLE001
+                    stats.errors.append(f"{ep.uid}: {exc}")
+                    continue
+
+            # 3. ASR slot (issue #110): produce a timed VTT from hosted audio.
+            #    Guard: need hosted audio with a stable spec hash (implies ChaptersStage ran).
+            if not (city.asr_enabled and ep.audio_key and ep.audio_spec_hash
+                    and ep.hosted_audio_url):
+                continue
+            if ep.transcript_synced:
+                continue  # step 2 may have just set this in the same pass
+
+            # Determine alignment text from any stored untimed source transcript.
+            align_text: str | None = None
+            if ep.transcript_hosted_url and ep.transcript_format == "txt":
+                try:
+                    from citypods.http import make_session
+
+                    with make_session() as sess:
+                        r = sess.get(ep.transcript_hosted_url, timeout=30)
+                    if r.status_code == 200:
+                        align_text = r.content.decode("utf-8", errors="replace")
+                except Exception:  # noqa: BLE001
+                    pass  # alignment hint unavailable; fall back to fresh transcription
+
+            align_hash = (
+                hashlib.sha1(align_text.encode()).hexdigest()[:12] if align_text else None
+            )
+            recipe = asr_mod.asr_spec_hash(
+                ep.audio_spec_hash, city.asr_model, align_hash, ASR_PIPELINE_VERSION
+            )
+            asr_key = _asr_object_key(src_key, ep.uid or ep.guid, recipe)
+
+            if _present(asr_key):
+                ep.transcript_key = asr_key
+                ep.transcript_hosted_url = ctx.storage.public_url(asr_key)
+                ep.transcript_synced = True
+                ep.transcript_basis = "served"
+                ep.transcript_format = "vtt"
+                ep.transcript_spec_hash = recipe
+                stats.reused += 1
                 continue
 
-            # Fetching + storing is the expensive, restartable work — gate it on stop() here
-            # (after the free reuse short-circuit above), deferred to a later run, not failed.
             if ctx.stop is not None and ctx.stop():
                 stats.skipped += 1
                 continue
 
             try:
-                from citypods.http import make_session
-
-                with make_session() as sess:
-                    resp = sess.get(provider_url, timeout=30)
-                if resp.status_code >= 400:
-                    stats.errors.append(f"{ep.uid}: HTTP {resp.status_code} for {provider_url}")
-                    continue
-
-                content = resp.content
-                fmt = _detect_format(content)
-                timed = is_timed_transcript(content)
-                spec = _transcript_spec_hash(content)  # content-addressed, not URL-addressed
-                key = _transcript_object_key(src_key, ep.uid or ep.guid, spec, fmt)
-
-                # Determine basis: identity timeline → source == served → "served".
-                # Non-identity + timed → basis stays "source:s0" until VTT parser lands.
-                from citypods.timeline import timeline_digest as _td
-
-                is_identity = ep.timeline is None or _td(ep.timeline) == ""
-                if timed and is_identity:
-                    basis = "served"
-                    synced = True
-                elif timed:
-                    # Non-identity: timestamps not yet remapped → mark unsynced to avoid
-                    # mis-alignment. VTT remap is a future follow-up on this scaffold.
-                    basis = "source:s0"
-                    synced = False
-                else:
-                    basis = "source:s0"
-                    synced = False
-
-                import tempfile as _tmp
+                with _download_audio(ep.hosted_audio_url) as audio_path:
+                    if align_text:
+                        vtt = asr_mod.align(
+                            audio_path, align_text, city.asr_model,
+                            city.asr_language or None, cpu_threads,
+                        )
+                        stats.aligned += 1
+                    else:
+                        prompt = ". ".join(
+                            p for p in (city.podcast_title, ep.body, ep.title) if p
+                        )
+                        vtt = asr_mod.transcribe(
+                            audio_path, city.asr_model, city.asr_language or None,
+                            city.asr_compute_type, city.asr_beam_size, prompt, cpu_threads,
+                        )
+                        stats.transcribed += 1
 
                 with _tmp.TemporaryDirectory() as t:
-                    dest = Path(t) / f"transcript.{fmt}"
-                    dest.write_bytes(content)
-                    mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
-                    url = ctx.storage.put_file(key, dest, mime)
+                    dest = Path(t) / "transcript.vtt"
+                    dest.write_bytes(vtt)
+                    url = ctx.storage.put_file(asr_key, dest, TRANSCRIPT_MIME["vtt"])
 
-                ep.transcript_key = key
+                ep.transcript_key = asr_key
                 ep.transcript_hosted_url = url
-                ep.transcript_spec_hash = spec
-                ep.transcript_format = fmt
-                ep.transcript_basis = basis
-                ep.transcript_synced = synced
+                ep.transcript_spec_hash = recipe
+                ep.transcript_format = "vtt"
+                ep.transcript_basis = "served"
+                ep.transcript_synced = True
                 stats.ran += 1
 
             except Exception as exc:  # noqa: BLE001
-                stats.errors.append(f"{ep.uid}: {exc}")
+                stats.errors.append(f"{ep.uid}: ASR: {exc}")
 
         return stats
 

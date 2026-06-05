@@ -61,6 +61,27 @@ defaults:
   # extend per city with a `body_exclude:` list in the city YAML.
   body_exclude: ["bid", "purchasing", "public education", "psa"]
 
+  # ASR transcript generation (#110). Runs after audio is hosted; produces timed VTT for
+  # <podcast:transcript> and downstream features (summaries, soundbites, search).
+  # Two paths per episode:
+  #   A. Forced alignment (stable-ts) when the provider has an untimed source transcript —
+  #      preserves official wording, faster than full transcription.
+  #   B. Fresh transcription (faster-whisper) when no source text is available.
+  #
+  # Model throughput on ubuntu-latest (4 vCPU, CPU int8, no GPU):
+  #   large-v3-turbo  809 MB  ~15-20 min/hr audio  ~2-3% WER  ← default (best quality)
+  #   small.en        244 MB  ~8-12 min/hr audio   ~5-7% WER  ← 2-3× more episodes/run
+  #   base.en          74 MB  ~3-4 min/hr audio    ~8-10% WER ← max throughput
+  # Run `citypods asr-bench` on 3-5 episodes with known transcripts to measure WER on this
+  # corpus before changing the model. Per-feed override: set asr_model in the feed YAML.
+  asr_enabled: true
+  asr_model: "large-v3-turbo"           # fastest high-quality model on CPU
+  asr_compute_type: "int8"              # int8 = fastest / most memory-efficient on CPU
+  asr_language: "en"                    # Whisper language hint; clear for auto-detect
+  asr_workers: 1                        # episode-level parallelism (1 model per worker);
+                                        # 2 = ~1.7× throughput at 2× RAM; see models.py
+  asr_beam_size: 5                      # beam search width; 1 = ~2× faster at quality cost
+
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):
 #   b2  -> B2_ENDPOINT, B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_PUBLIC_BASE_URL
