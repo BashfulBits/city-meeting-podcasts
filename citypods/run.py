@@ -455,7 +455,7 @@ def build(
     )
 
     results: list[CityResult] = []
-    with (source_cache or _nullcontext()), ThreadPoolExecutor(max_workers=max_workers) as pool:
+    with source_cache or _nullcontext(), ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [
             pool.submit(
                 _process_city,

@@ -111,7 +111,7 @@ class SourceCache:
         self.ffmpeg_binary = ffmpeg_binary
         self.timeout_seconds = timeout_seconds
 
-    def __enter__(self) -> "SourceCache":
+    def __enter__(self) -> SourceCache:
         return self
 
     def __exit__(self, *_: object) -> None:
