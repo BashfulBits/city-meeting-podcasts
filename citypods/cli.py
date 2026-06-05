@@ -141,8 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         "(default: base.en,small.en,large-v3-turbo)",
     )
     ab.add_argument(
-        "--cpu-threads", type=int, default=4, metavar="N",
-        help="CPU threads per model (default: 4)"
+        "--cpu-threads", type=int, default=4, metavar="N", help="CPU threads per model (default: 4)"
     )
     ab.add_argument("--site-config", default="config/site_config.yml")
     ab.add_argument("--config-dir", default="config")

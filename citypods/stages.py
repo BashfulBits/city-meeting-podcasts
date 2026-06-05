@@ -157,7 +157,7 @@ class StageStats:
     credited: int = 0
     # Transcript-only breakdown of ``ran``: forced-alignment (Path A) vs fresh transcription
     # (Path B). Shown in the status dashboard as ``Naln·Nasr`` alongside the stage row.
-    aligned: int = 0      # Path A: stable-ts forced alignment from source text
+    aligned: int = 0  # Path A: stable-ts forced alignment from source text
     transcribed: int = 0  # Path B: fresh faster-whisper transcription
 
     def note(self) -> str:
@@ -680,9 +680,7 @@ class TranscriptStage:
                     with make_session() as sess:
                         resp = sess.get(provider_url, timeout=30)
                     if resp.status_code >= 400:
-                        stats.errors.append(
-                            f"{ep.uid}: HTTP {resp.status_code} for {provider_url}"
-                        )
+                        stats.errors.append(f"{ep.uid}: HTTP {resp.status_code} for {provider_url}")
                         continue
 
                     content = resp.content
@@ -724,8 +722,9 @@ class TranscriptStage:
 
             # 3. ASR slot (issue #110): produce a timed VTT from hosted audio.
             #    Guard: need hosted audio with a stable spec hash (implies ChaptersStage ran).
-            if not (city.asr_enabled and ep.audio_key and ep.audio_spec_hash
-                    and ep.hosted_audio_url):
+            if not (
+                city.asr_enabled and ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url
+            ):
                 continue
             if ep.transcript_synced:
                 continue  # step 2 may have just set this in the same pass
@@ -743,9 +742,7 @@ class TranscriptStage:
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
 
-            align_hash = (
-                hashlib.sha1(align_text.encode()).hexdigest()[:12] if align_text else None
-            )
+            align_hash = hashlib.sha1(align_text.encode()).hexdigest()[:12] if align_text else None
             recipe = asr_mod.asr_spec_hash(
                 ep.audio_spec_hash, city.asr_model, align_hash, ASR_PIPELINE_VERSION
             )
@@ -769,17 +766,23 @@ class TranscriptStage:
                 with _download_audio(ep.hosted_audio_url) as audio_path:
                     if align_text:
                         vtt = asr_mod.align(
-                            audio_path, align_text, city.asr_model,
-                            city.asr_language or None, cpu_threads,
+                            audio_path,
+                            align_text,
+                            city.asr_model,
+                            city.asr_language or None,
+                            cpu_threads,
                         )
                         stats.aligned += 1
                     else:
-                        prompt = ". ".join(
-                            p for p in (city.podcast_title, ep.body, ep.title) if p
-                        )
+                        prompt = ". ".join(p for p in (city.podcast_title, ep.body, ep.title) if p)
                         vtt = asr_mod.transcribe(
-                            audio_path, city.asr_model, city.asr_language or None,
-                            city.asr_compute_type, city.asr_beam_size, prompt, cpu_threads,
+                            audio_path,
+                            city.asr_model,
+                            city.asr_language or None,
+                            city.asr_compute_type,
+                            city.asr_beam_size,
+                            prompt,
+                            cpu_threads,
                         )
                         stats.transcribed += 1
 

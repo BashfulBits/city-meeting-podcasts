@@ -116,22 +116,30 @@ def run_bench(
             hyp_text = asr_mod.vtt_to_text(vtt.decode("utf-8", errors="replace"))
             hyp_words = len(hyp_text.split())
 
-            wer = jiwer.wer(
-                jiwer.transforms.Compose([
-                    jiwer.transforms.ToLowerCase(),
-                    jiwer.transforms.RemovePunctuation(),
-                    jiwer.transforms.RemoveMultipleSpaces(),
-                    jiwer.transforms.Strip(),
-                    jiwer.transforms.ReduceToListOfListOfWords(),
-                ])(ref_text),
-                jiwer.transforms.Compose([
-                    jiwer.transforms.ToLowerCase(),
-                    jiwer.transforms.RemovePunctuation(),
-                    jiwer.transforms.RemoveMultipleSpaces(),
-                    jiwer.transforms.Strip(),
-                    jiwer.transforms.ReduceToListOfListOfWords(),
-                ])(hyp_text),
-            ) if hyp_text.strip() else 1.0
+            wer = (
+                jiwer.wer(
+                    jiwer.transforms.Compose(
+                        [
+                            jiwer.transforms.ToLowerCase(),
+                            jiwer.transforms.RemovePunctuation(),
+                            jiwer.transforms.RemoveMultipleSpaces(),
+                            jiwer.transforms.Strip(),
+                            jiwer.transforms.ReduceToListOfListOfWords(),
+                        ]
+                    )(ref_text),
+                    jiwer.transforms.Compose(
+                        [
+                            jiwer.transforms.ToLowerCase(),
+                            jiwer.transforms.RemovePunctuation(),
+                            jiwer.transforms.RemoveMultipleSpaces(),
+                            jiwer.transforms.Strip(),
+                            jiwer.transforms.ReduceToListOfListOfWords(),
+                        ]
+                    )(hyp_text),
+                )
+                if hyp_text.strip()
+                else 1.0
+            )
 
             note = " ← best" if wer < best_wer else ""
             if wer < best_wer:
@@ -143,8 +151,14 @@ def run_bench(
             mins = int(elapsed // 60)
             secs = int(elapsed % 60)
             results.append(
-                {"model": model, "wer": wer, "mins": mins,
-                 "secs": secs, "words": hyp_words, "note": note}
+                {
+                    "model": model,
+                    "wer": wer,
+                    "mins": mins,
+                    "secs": secs,
+                    "words": hyp_words,
+                    "note": note,
+                }
             )
             print(f"{model:<{mw}}  {wer:>7.1%}  {mins:>3}m {secs:>02d}s  {hyp_words:>8}{note}")
 

@@ -512,8 +512,10 @@ def _asr_ctx(tmp_path: Path, fake_asr: _FakeAsr) -> StageContext:
     class _FakeSession:
         def __enter__(self):
             return self
+
         def __exit__(self, *a):
             pass
+
         def get(self, url, **kw):
             r = type("R", (), {"status_code": 200, "content": b"fake audio bytes"})()
             r.iter_content = lambda chunk_size=8192: iter([b"fake audio"])
@@ -534,16 +536,21 @@ def _run_asr(tmp_path, ep, fake_asr=None):
     class _FakeSession:
         def __enter__(self):
             return self
+
         def __exit__(self, *a):
             pass
+
         def get(self, url, **kw):
             class _R:
                 status_code = 200
                 content = b"fake audio bytes"
+
                 def iter_content(self, chunk_size=8192):
                     return iter([b"fake"])
+
                 def raise_for_status(self):
                     pass
+
             return _R()
 
     with (
@@ -552,9 +559,11 @@ def _run_asr(tmp_path, ep, fake_asr=None):
     ):
         # _download_audio is a context manager that yields a Path
         from contextlib import contextmanager
+
         @contextmanager
         def _fake_dl(url):
             yield tmp_path / "fake_audio.m4a"
+
         mock_dl.side_effect = _fake_dl
 
         stage = TranscriptStage()
@@ -592,6 +601,7 @@ class TestTranscriptStageASR:
     def test_path_a_forced_alignment_with_source_text(self, tmp_path):
         """Stored untimed txt transcript → Path A (alignment) → synced=True."""
         from citypods.records import source_key as _src_key
+
         sk = _src_key(_city())
         ep = _ep_with_audio()
         # Simulate a prior run storing an untimed provider transcript
@@ -602,16 +612,21 @@ class TestTranscriptStageASR:
         class _TextSession:
             def __enter__(self):
                 return self
+
             def __exit__(self, *a):
                 pass
+
             def get(self, url, **kw):
                 class _R:
                     status_code = 200
                     content = b"These are the meeting minutes."
+
                     def iter_content(self, **kw):
                         return iter([b"fake"])
+
                     def raise_for_status(self):
                         pass
+
                 return _R()
 
         fake_asr = _FakeAsr()
@@ -621,9 +636,11 @@ class TestTranscriptStageASR:
             patch("citypods.http.make_session", return_value=_TextSession()),
         ):
             from contextlib import contextmanager
+
             @contextmanager
             def _fake_dl(url):
                 yield tmp_path / "fake_audio.m4a"
+
             mock_dl.side_effect = _fake_dl
 
             # Put the untimed transcript in storage so _present() returns True
@@ -645,6 +662,7 @@ class TestTranscriptStageASR:
     def test_skip_when_already_synced(self, tmp_path):
         """synced=True (e.g. from CivicClerk timed VTT) → ASR never called."""
         from citypods.records import source_key as _src_key
+
         sk = _src_key(_city())
 
         ep = _ep_with_audio()
@@ -699,6 +717,7 @@ class TestTranscriptStageASR:
     def test_asr_reuse_when_key_already_present(self, tmp_path):
         """ASR key already in storage → reuse without re-running inference."""
         from citypods.records import source_key as _src_key
+
         ep = _ep_with_audio()
 
         # Pre-compute the asr_key we expect
@@ -732,9 +751,11 @@ class TestTranscriptStageASR:
             patch("citypods.stages._download_audio") as mock_dl,
         ):
             from contextlib import contextmanager
+
             @contextmanager
             def _fake_dl(url):
                 yield tmp_path / "fake_audio.m4a"
+
             mock_dl.side_effect = _fake_dl
 
             stage = TranscriptStage()
@@ -756,9 +777,11 @@ class TestTranscriptStageASR:
             patch("citypods.stages._download_audio") as mock_dl,
         ):
             from contextlib import contextmanager
+
             @contextmanager
             def _fake_dl(url):
                 yield tmp_path / "fake_audio.m4a"
+
             mock_dl.side_effect = _fake_dl
 
             stage = TranscriptStage()
