@@ -212,10 +212,11 @@ def _make_ctx(trim_silence=True, noise_db=-40.0, lead_trail=1.0, mid=10.0):
     return ctx
 
 
-def _make_city(provider="swagit", extract_audio=False, extra=None):
+def _make_city(provider="swagit", extract_audio=False, host_all_audio=False, extra=None):
     city = MagicMock()
     city.provider = provider
     city.extract_audio = extract_audio
+    city.host_all_audio = host_all_audio
     city.extra = extra or {}
     city.source = {"list_url": "http://example.com/views/default", "body": "City Council"}
     return city
@@ -247,6 +248,7 @@ class TestSilencePlanner:
         result = planner.plan(MagicMock(), _make_city(extract_audio=False), ep, ctx, None)
         assert result is None
 
+
     def test_returns_none_for_multi_source_concat_episode(self):
         """SwagitConcatPlanner owns multi-source episodes; SilencePlanner must skip them."""
         from unittest.mock import MagicMock as MM
@@ -271,6 +273,23 @@ class TestSilencePlanner:
             mock_detect.return_value = ([], 3600.0)
             result = planner.plan(provider, _make_city(extract_audio=True), ep, ctx, None)
         # No silence → identity timeline
+        assert result is not None
+        assert timeline_digest(result) == ""
+
+    def test_runs_for_direct_with_host_all_audio(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ep = _make_episode(media_kind="direct", duration=3600)
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0)
+            result = planner.plan(
+                provider, _make_city(extract_audio=False, host_all_audio=True), ep, ctx, None
+            )
         assert result is not None
         assert timeline_digest(result) == ""
 

@@ -48,6 +48,16 @@ def test_build_report_measures_host_fraction():
     assert "1000" in rep["scale_scenarios"]
 
 
+def test_host_all_audio_counts_toward_host_fraction():
+    cities = _cities()
+    # Flip host_all_audio on the two plain-granicus cities -> all 4 hosted
+    for c in cities:
+        if c.slug in ("c", "d"):
+            c.host_all_audio = True
+    rep = build_report(cities, site_config=SITE)
+    assert rep["current"]["inputs"]["host_frac"] == 1.0
+
+
 def test_markdown_summary_has_cost_and_bottleneck():
     md = to_markdown(build_report(_cities(), site_config=SITE))
     assert "$" in md and "/mo" in md
