@@ -260,7 +260,6 @@ def test_direct_hosted_when_extract_audio(tmp_path):
     assert stats.hosted == 1 and eps[0].hosted_audio_url
 
 
-
 def test_stop_signal_defers_encodes(tmp_path):
     """When the shared stop predicate is True (wall-clock spent or superseded), no new encode
     starts — every needs-encoding episode is deferred to a later run."""

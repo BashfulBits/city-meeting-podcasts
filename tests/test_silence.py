@@ -247,7 +247,6 @@ class TestSilencePlanner:
         result = planner.plan(MagicMock(), _make_city(extract_audio=False), ep, ctx, None)
         assert result is None
 
-
     def test_returns_none_for_multi_source_concat_episode(self):
         """SwagitConcatPlanner owns multi-source episodes; SilencePlanner must skip them."""
         from unittest.mock import MagicMock as MM
@@ -274,7 +273,6 @@ class TestSilencePlanner:
         # No silence → identity timeline
         assert result is not None
         assert timeline_digest(result) == ""
-
 
     def test_per_feed_opt_out_via_extra(self):
         planner = SilencePlanner()
