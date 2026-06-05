@@ -70,14 +70,16 @@ from __future__ import annotations
 import collections
 import json
 import re
+import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
 from citypods.bodies import body_key, canonical_body
-from citypods.media import MaterializeStats, materialize_audio
+from citypods.media import MaterializeStats, SourceCache, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
 from citypods.timeline import Timeline, remap, timeline_digest
@@ -128,6 +130,12 @@ class StageContext:
     silence_noise_db: float = -40.0
     silence_lead_trail_min_s: float = 1.0
     silence_mid_min_s: float = 10.0
+    # Parallel episode processing within one source. Workers are I/O-bound (rate-limited HLS
+    # streaming), so this can safely exceed CPU count. Set via site_config max_encodes_per_source.
+    max_encodes_per_source: int = 1
+    # Per-run download cache shared across TimelineStage (SilencePlanner) and AudioStage so each
+    # source is streamed at most once per episode, even when both stages need it.
+    source_cache: SourceCache | None = None
 
 
 @dataclass
@@ -187,6 +195,8 @@ class AudioStage:
             loudness_profile=ctx.loudness_profile,
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
             stop=ctx.stop,
+            source_cache=ctx.source_cache,
+            max_workers=ctx.max_encodes_per_source,
         )
         return StageStats(
             self.name,
@@ -282,23 +292,29 @@ class TimelineStage:
     ) -> StageStats:
         stats = StageStats(self.name)
         sig = self._signature()
-        for ep in _materialize_set(episodes, city.max_episodes):
-            if not self.planners:
-                # No planners → identity path; ep.timeline stays as-is (None == identity).
-                stats.reused += 1
-                continue
+        all_eps = list(_materialize_set(episodes, city.max_episodes))
 
+        if not self.planners:
+            # No planners → identity path for all episodes; nothing to run in parallel.
+            stats.reused = len(all_eps)
+            return stats
+
+        lock = threading.Lock()
+
+        def _plan_one(ep: Episode) -> None:
             # Already planned by this exact planner set+versions → don't recompute. A stale
             # signature (older set) falls through and re-plans.
             if ep.timeline is not None and ep.timeline.version == sig:
-                stats.reused += 1
-                continue
+                with lock:
+                    stats.reused += 1
+                return
 
             # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
             # stop signal exactly like an encode — deferred to a later run, not an error.
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
-                continue
+                with lock:
+                    stats.skipped += 1
+                return
 
             current: Timeline | None = ep.timeline
             changed = False
@@ -311,10 +327,19 @@ class TimelineStage:
             if changed and current is not None:
                 # Stamp the planner-set signature so a future run can detect staleness.
                 ep.timeline = replace(current, version=sig)
-                stats.ran += 1
+                with lock:
+                    stats.ran += 1
             else:
                 # No planner fired → identity path; ep.timeline stays None (== identity).
-                stats.reused += 1
+                with lock:
+                    stats.reused += 1
+
+        if ctx.max_encodes_per_source > 1:
+            with ThreadPoolExecutor(max_workers=ctx.max_encodes_per_source) as pool:
+                list(pool.map(_plan_one, all_eps))
+        else:
+            for ep in all_eps:
+                _plan_one(ep)
 
         return stats
 

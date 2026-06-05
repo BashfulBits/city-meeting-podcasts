@@ -21,10 +21,14 @@ that assembles ``atrim``/``concat``/insert segments and optionally applies ``lou
 
 from __future__ import annotations
 
+import collections
+import hashlib
 import re
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -53,6 +57,88 @@ BACKOFF_MAX = timedelta(days=30)
 # materialization failure → the #120 backoff, so a chronically-stalling source stops being retried.
 _STALL_TIMEOUT_US = 120_000_000  # ffmpeg aborts after 120s with zero I/O progress (microseconds)
 _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
+
+
+def _download_audio(
+    url: str, dest: Path, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
+) -> bool:
+    """Copy the audio stream from *url* to *dest* (.m4a) without re-encoding.
+
+    Returns True on success; callers fall back to streaming *url* directly on False.
+    """
+    cmd = [
+        ffmpeg_binary,
+        "-y",
+        "-loglevel",
+        "error",
+        "-protocol_whitelist",
+        "file,crypto,data,http,https,tcp,tls",
+        "-rw_timeout",
+        str(_STALL_TIMEOUT_US),
+        "-i",
+        url,
+        "-vn",
+        "-c:a",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(dest),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        return dest.exists() and dest.stat().st_size > 0
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
+        return False
+
+
+class SourceCache:
+    """Thread-safe per-run cache: episode uid → locally downloaded audio file.
+
+    SilencePlanner downloads each source once; AudioStage reads the local copy rather
+    than streaming the same rate-limited source a second time.
+
+    Use as a context manager so the TemporaryDirectory is cleaned up after the run:
+
+        with SourceCache(ffmpeg_binary="ffmpeg", timeout_seconds=2700) as cache:
+            ctx = StageContext(..., source_cache=cache)
+    """
+
+    def __init__(self, ffmpeg_binary: str = "ffmpeg", timeout_seconds: float | None = None):
+        self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
+        self._paths: dict[str, Path] = {}
+        self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
+        self._guard = threading.Lock()
+        self.ffmpeg_binary = ffmpeg_binary
+        self.timeout_seconds = timeout_seconds
+
+    def __enter__(self) -> SourceCache:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self._tmpdir.cleanup()
+
+    def get(self, uid: str) -> Path | None:
+        """Return the cached local path for *uid*, or None if not yet downloaded."""
+        with self._guard:
+            return self._paths.get(uid)
+
+    def get_or_fetch(self, uid: str, url: str) -> Path | None:
+        """Return a local audio copy keyed by *uid*, downloading *url* on first call.
+
+        Thread-safe: concurrent callers for the same *uid* block until the first
+        download completes, then all receive the same path. Returns None on failure
+        (caller should fall back to streaming *url* directly).
+        """
+        with self._guard:
+            lock = self._locks[uid]
+        with lock:
+            if uid in self._paths:
+                return self._paths[uid]
+            dest = Path(self._tmpdir.name) / f"{hashlib.md5(uid.encode()).hexdigest()}.m4a"
+            if _download_audio(url, dest, self.ffmpeg_binary, self.timeout_seconds):
+                self._paths[uid] = dest
+                return dest
+            return None
 
 
 def _in_backoff(ep: Episode, now: datetime) -> bool:
@@ -556,6 +642,8 @@ def materialize_audio(
     loudness_profile: str = "",
     resolve_media_url: Callable[[Episode], str],
     stop: Callable[[], bool] | None = None,
+    source_cache: SourceCache | None = None,
+    max_workers: int = 1,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -570,6 +658,14 @@ def materialize_audio(
     this one. Only the expensive encode path consults it — cheap reuse/credit/backoff bookkeeping
     always runs — so a superseded run still finishes its in-flight encode, persists, and deploys
     (graceful yield) rather than being hard-cancelled mid-deploy.
+
+    ``source_cache``, when provided, supplies locally downloaded audio files so the encode pass
+    can read from disk rather than streaming the rate-limited source a second time (the first
+    download is done by SilencePlanner in the preceding TimelineStage).
+
+    ``max_workers`` controls the inner ThreadPoolExecutor for the encode loop. Workers are
+    almost entirely I/O-bound (rate-limited HLS streaming), so this can safely exceed the
+    number of CPU cores.
     """
     stats = MaterializeStats()
     hosted_keys = _hosted_keys(city, storage)
@@ -585,6 +681,10 @@ def materialize_audio(
 
     def _present(key: str) -> bool:
         return key in hosted_keys if hosted_keys is not None else storage.exists(key)
+
+    # Cheap pass: handle reuse / credit / backoff inline (always sequential — fast).
+    # Collect episodes that need the expensive encode into to_encode.
+    to_encode: list[tuple[Episode, str, str]] = []  # (ep, spec, key)
 
     for ep in episodes:
         if not _should_host(ep, city):
@@ -630,17 +730,36 @@ def materialize_audio(
             stats.credited += 1
             continue
 
-        # Encode path: download + ffmpeg + upload — the work that actually consumes the time
-        # window, so it's the only thing gated by ``stop()`` (wall-clock spent or superseded). The
-        # rest of the scan keeps running, so cheap credits/reuse still reconcile records this run.
+        to_encode.append((ep, spec, key))
+
+    if not to_encode:
+        return stats
+
+    # Encode pass: parallel when max_workers > 1. Each worker is independent (per-episode state
+    # mutations don't overlap); only stats updates require a lock.
+    lock = threading.Lock()
+
+    def _encode_one(item: tuple[Episode, str, str]) -> None:
+        ep, spec, key = item
+        # Re-check stop inside the worker: submitted-but-not-yet-started tasks yield gracefully
+        # when the budget expires mid-batch.
         if stop is not None and stop():
-            stats.skipped_budget += 1
-            continue
+            with lock:
+                stats.skipped_budget += 1
+            return
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
                 source_url = resolve_media_url(ep)
-                by_id = _sources_by_id(ep, source_url)
+                # For single-source episodes, use a locally cached copy when available so the
+                # encode pass reads from disk rather than re-streaming the rate-limited source.
+                # Multi-source concat episodes use stable .ref URLs from the concat planner and
+                # don't go through resolve_media_url, so skip the cache for them.
+                if source_cache is not None and ep.uid and not (ep.sources and len(ep.sources) > 1):
+                    local = source_cache.get_or_fetch(ep.uid, source_url)
+                    by_id = _sources_by_id(ep, str(local) if local is not None else source_url)
+                else:
+                    by_id = _sources_by_id(ep, source_url)
                 ffmpeg.extract_audio(
                     ep.timeline,
                     by_id,
@@ -657,10 +776,9 @@ def materialize_audio(
                 url = storage.put_file(key, dest, CONTENT_TYPE)
                 try:
                     size = dest.stat().st_size
-                    stats.bytes_written += size
                     ep.audio_bytes = size
                 except OSError:
-                    pass
+                    size = 0
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
@@ -670,15 +788,16 @@ def materialize_audio(
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None
-            stats.hosted += 1
-            stats.encoded += 1
+            with lock:
+                stats.bytes_written += size
+                stats.hosted += 1
+                stats.encoded += 1
         except (
             subprocess.TimeoutExpired,
             subprocess.CalledProcessError,
             OSError,
             ProviderError,
         ) as exc:
-            stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
             # Record the failed attempt so this episode backs off (exponentially) instead of being
             # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
             # A timeout is transient (the source may recover), so like a generic ``error`` it backs
@@ -691,5 +810,14 @@ def materialize_audio(
                 if isinstance(exc, subprocess.TimeoutExpired)
                 else getattr(exc, "code", None) or "error"
             )
+            with lock:
+                stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+
+    if max_workers > 1:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            list(pool.map(_encode_one, to_encode))
+    else:
+        for item in to_encode:
+            _encode_one(item)
 
     return stats

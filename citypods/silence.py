@@ -236,8 +236,16 @@ class SilencePlanner:
             return None
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 
+        # Download the source once and cache it locally so the subsequent AudioStage encode
+        # pass can read from disk rather than re-streaming the rate-limited source.
+        detect_url = source_url
+        if ctx.source_cache is not None and ep.uid:
+            local = ctx.source_cache.get_or_fetch(ep.uid, source_url)
+            if local is not None:
+                detect_url = str(local)
+
         silences, source_duration = detect_silences(
-            source_url,
+            detect_url,
             ffmpeg_binary=ffmpeg_binary,
             noise_db=ctx.silence_noise_db,
             min_duration_s=1.0,  # detect all candidates; thresholds applied below
