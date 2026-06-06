@@ -732,7 +732,7 @@ class TestTranscriptStageASR:
         ep = _ep_with_audio()
 
         # Pre-compute the asr_key we expect
-        recipe = asr_spec_hash(ep.audio_spec_hash, "large-v3-turbo", None, ASR_PIPELINE_VERSION)
+        recipe = asr_spec_hash(ep.audio_spec_hash, _city().asr_model, None, ASR_PIPELINE_VERSION)
         src_key = _src_key(_city())
         asr_key = f"transcripts/{src_key}/{ep.uid}-asr-{recipe}.vtt"
 
