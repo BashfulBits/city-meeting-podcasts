@@ -475,6 +475,14 @@ def build(
         silence_mid_min_s=float(defaults.get("silence_mid_min_s", 10.0)),
         max_encodes_per_source=max_encodes_per_source,
         source_cache=source_cache,
+        # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;
+        # N simultaneous inference calls each get 1/N of available CPU, making each
+        # N× slower. asr_workers=1 (default) serialises all ASR, giving each call full
+        # CPU and making runtime predictable. Raise only if you have spare memory for
+        # multiple model instances (see asr_workers docs in site_config.yml).
+        asr_semaphore=threading.Semaphore(int(defaults.get("asr_workers", 1)))
+        if not dry_run and defaults.get("asr_enabled", True)
+        else None,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
