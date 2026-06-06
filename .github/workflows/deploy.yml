@@ -150,6 +150,7 @@ jobs:
       # An external kill (OOM, runner preemption, GitHub infra) should not mark the whole
       # deployment red — the feeds and pages are already live.
       - name: Enrich (chapters + audio + transcripts)
+        id: enrich
         continue-on-error: true
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
@@ -157,3 +158,15 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
         run: citypods enrich
+
+      # Emit a visible warning annotation when enrich exits non-zero, even though
+      # continue-on-error keeps the overall job green.  Annotations appear in the
+      # job UI and run summary so killed/OOM runs are detectable at a glance.
+      - name: Warn if enrich was killed
+        if: always() && steps.enrich.outcome == 'failure'
+        run: |
+          echo "::warning title=Enrich killed or errored::Enrich exited non-zero \
+          (outcome: ${{ steps.enrich.outcome }}).  Likely causes: OOM kill (exit 137), \
+          runner preemption (exit 143), or unhandled exception.  Audio/transcripts from \
+          this run may be incomplete — the next run will resume from where this one left off. \
+          Check the Enrich step log above for details."
