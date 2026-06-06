@@ -128,7 +128,7 @@ def _build_city(
         aliases=[str(a) for a in _get("aliases", [])],
         extra={k: v for k, v in raw.items() if k not in known},
         asr_enabled=bool(_get("asr_enabled", defaults.get("asr_enabled", True))),
-        asr_model=str(_get("asr_model", defaults.get("asr_model", "distil-large-v3"))),
+        asr_model=str(_get("asr_model", defaults.get("asr_model", "large-v3-turbo"))),
         asr_compute_type=str(_get("asr_compute_type", defaults.get("asr_compute_type", "int8"))),
         asr_language=str(_get("asr_language", defaults.get("asr_language", "en"))),
         asr_workers=int(_get("asr_workers", defaults.get("asr_workers", 1))),
