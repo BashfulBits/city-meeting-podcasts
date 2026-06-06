@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from pathlib import Path
 
@@ -65,6 +66,12 @@ def load_model(model: str, compute_type: str, cpu_threads: int):
     reduces HuggingFace Hub API calls from one-per-source to one-per-process, which
     is critical on GitHub Actions where anonymous API calls are tightly rate-limited.
 
+    ``ASR_MODEL_PATH`` env var (set by ``scripts/prepare_whisper.py``): when set to a
+    local directory, loads from disk directly — bypassing the Hub entirely.  When set
+    to a model name string (distil fallback), uses it in place of the *model* arg.
+    This lets the pre-download cascade (HF → B2 mirror → distil fallback) choose the
+    best available model at download time without touching config.
+
     Callers (``TranscriptStage.process``) should call this once before the episode
     loop and pass the returned instance to :func:`transcribe` / :func:`align`.
     """
@@ -75,7 +82,11 @@ def load_model(model: str, compute_type: str, cpu_threads: int):
             "faster-whisper is required for ASR. Install it with: pip install 'citypods[asr]'"
         ) from exc
 
-    cache_key = (model, compute_type, cpu_threads)
+    # ASR_MODEL_PATH overrides the config model name: either a local directory
+    # (preferred — no Hub call) or a fallback HF model name (e.g. "distil-large-v3").
+    model_or_path = os.environ.get("ASR_MODEL_PATH") or model
+
+    cache_key = (model_or_path, compute_type, cpu_threads)
     if cache_key in _model_cache:
         return _model_cache[cache_key]
 
@@ -83,7 +94,7 @@ def load_model(model: str, compute_type: str, cpu_threads: int):
         # Double-checked locking: another thread may have loaded while we waited.
         if cache_key not in _model_cache:
             _model_cache[cache_key] = WhisperModel(
-                model, device="cpu", compute_type=compute_type, cpu_threads=cpu_threads
+                model_or_path, device="cpu", compute_type=compute_type, cpu_threads=cpu_threads
             )
     return _model_cache[cache_key]
 

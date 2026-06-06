@@ -156,7 +156,8 @@ class City:
     # --- ASR config (#110) --------------------------------------------------
     # These mirror the site_config defaults and can be overridden per feed.
     asr_enabled: bool = True
-    asr_model: str = "large-v3-turbo"  # faster-whisper model name
+    asr_model: str = "large-v3-turbo"  # faster-whisper model name; overridden at runtime
+    # by ASR_MODEL_PATH env var (scripts/prepare_whisper.py cascade)
     asr_compute_type: str = "int8"  # int8 = fastest/most mem-efficient on CPU
     asr_language: str = "en"  # Whisper language hint; empty string = auto-detect
     asr_workers: int = 1  # episode-level parallelism (1 model instance per worker)

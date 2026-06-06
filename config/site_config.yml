@@ -75,7 +75,10 @@ defaults:
   # Run `citypods asr-bench` on 3-5 episodes with known transcripts to measure WER on this
   # corpus before changing the model. Per-feed override: set asr_model in the feed YAML.
   asr_enabled: true
-  asr_model: "large-v3-turbo"           # fastest high-quality model on CPU
+  asr_model: "large-v3-turbo"           # preferred model; overridden at runtime by
+                                        # ASR_MODEL_PATH (set by scripts/prepare_whisper.py)
+                                        # which falls back to distil-large-v3 if large-v3-turbo
+                                        # is unavailable from HuggingFace Hub or our B2 mirror
   asr_compute_type: "int8"              # int8 = fastest / most memory-efficient on CPU
   asr_language: "en"                    # Whisper language hint; clear for auto-detect
   asr_workers: 1                        # episode-level parallelism (1 model per worker);

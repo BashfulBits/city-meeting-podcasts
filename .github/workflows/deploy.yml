@@ -75,43 +75,39 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      # Restore the cached Whisper model weights.  The mkdir ensures the path exists so
-      # the cache save step works even on a cold first run (Actions skips save when the
-      # path doesn't exist, which would leave every subsequent run cold too).
-      - name: Cache Whisper model
+      # Restore the cached large-v3-turbo weights from a previous successful download.
+      # Cache path matches what scripts/prepare_whisper.py uses as PREFERRED_DIR.
+      # Bump the version suffix to manually invalidate a poisoned cache
+      # (a 202-byte entry means a 429 was saved before the model downloaded).
+      - name: Cache Whisper model (large-v3-turbo)
         uses: actions/cache@v4
         with:
-          path: ~/.cache/huggingface
-          key: whisper-large-v3-turbo-v1
+          path: ~/.cache/faster-whisper-large-v3-turbo
+          key: whisper-large-v3-turbo-v2
           restore-keys: whisper-large-v3-turbo-
 
-      # Pre-download model weights so they are in the HuggingFace cache before the
-      # parallel enrich pass starts.  Without this, every source would race to load the
-      # model simultaneously, each making an authenticated Hub API call.
+      # Download the Whisper model via a 4-step cascade:
+      #   1. Local Actions cache hit  (no network)
+      #   2. HuggingFace Hub          mobiuslabsgmbh/faster-whisper-large-v3-turbo
+      #      → on success, mirrors to our B2 bucket for step 3
+      #   3. Our B2 mirror            models/faster-whisper-large-v3-turbo/
+      #   4. HF fallback              distil-whisper/distil-large-v3
+      #      (HuggingFace's own org — separate rate-limit bucket, more reliable)
       #
-      # HF_TOKEN (optional): a read-only HuggingFace token stored as a repo secret.
-      # Unauthenticated requests share GitHub Actions' IP pool and hit HF's anonymous
-      # rate limit (429) regularly.  A free HF account + read token raises that limit
-      # dramatically.  Add it at:
-      #   github.com/<org>/<repo>/settings/secrets/actions → New secret → HF_TOKEN
-      # The step still succeeds if the token is absent; enrich falls back gracefully
-      # (one "model load failed" error per source, ASR skipped for that run).
-      - name: Pre-download Whisper model
+      # The script writes ASR_MODEL_PATH to $GITHUB_ENV so the enrich step picks
+      # it up automatically.  continue-on-error lets render+deploy proceed even if
+      # all four steps fail; enrich falls back gracefully (one "model load failed"
+      # error per source, ASR skipped for that run).
+      - name: Prepare Whisper model
         continue-on-error: true
         env:
-          # huggingface_hub < 0.18 uses HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
-          # Set both so whichever version is installed picks it up and silences the
-          # "unauthenticated requests" warning.
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          mkdir -p ~/.cache/huggingface
-          python - <<'EOF'
-          from faster_whisper import WhisperModel
-          print("Loading large-v3-turbo weights...")
-          WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
-          print("Model ready.")
-          EOF
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        run: python scripts/prepare_whisper.py
 
       - name: Configure Pages
         id: pages
@@ -155,6 +151,8 @@ jobs:
           # huggingface_hub < 0.18 uses HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
           # Set both so whichever version is installed picks it up and silences the
           # "unauthenticated requests" warning.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # huggingface_hub < 0.18 uses HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
         run: citypods enrich
