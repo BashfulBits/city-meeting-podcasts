@@ -139,6 +139,13 @@ class StageContext:
     # Per-run download cache shared across TimelineStage (SilencePlanner) and AudioStage so each
     # source is streamed at most once per episode, even when both stages need it.
     source_cache: SourceCache | None = None
+    # Global semaphore that caps concurrent ASR inference calls across ALL sources in the run.
+    # ASR is CPU-bound and uses all cpu_threads — running N sources' alignment/transcription
+    # simultaneously divides effective CPU by N, making each job N× slower.  With max_workers=20
+    # sources and one 4-hour meeting per source, 20 simultaneous calls would each take 20× longer,
+    # blowing the 6-hour job ceiling.  Serialising to 1 (default) keeps total time predictable.
+    # Set via site_config asr_workers (same field that drives cpu_threads per inference call).
+    asr_semaphore: threading.Semaphore | None = None
 
 
 @dataclass
@@ -713,21 +720,14 @@ class TranscriptStage:
 
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
 
-        # Load the Whisper model ONCE for the batch — model loading is expensive (downloads
-        # weights on cold start, allocates memory) and must not happen per-episode. If it
-        # fails (e.g. HuggingFace Hub rate-limit on first run), record one error and fall
-        # through: provider transcript fetching (step 2) still runs normally; only step 3
-        # (ASR) is skipped for all episodes in this source.
+        # Load the Whisper model — uses the process-level cache so the actual load only
+        # happens once per process (pre-loaded by run.py before workers start).  The log
+        # line is suppressed here since run.py already printed it; any load failure is
+        # still recorded as a single batch error rather than one per episode.
         _asr_model = None
         if city.asr_enabled:
             try:
-                print(
-                    f"  [transcript] loading {city.asr_model}"
-                    f" ({city.asr_compute_type}, {cpu_threads} threads)",
-                    flush=True,
-                )
                 _asr_model = asr_mod.load_model(city.asr_model, city.asr_compute_type, cpu_threads)
-                print("  [transcript] model ready", flush=True)
             except Exception as exc:  # noqa: BLE001
                 stats.errors.append(f"ASR model load failed ({city.asr_model}): {exc}")
                 print(f"  [transcript] model load failed: {exc}", flush=True)
@@ -847,59 +847,131 @@ class TranscriptStage:
                 stats.skipped += 1
                 continue
 
+            # Acquire the global ASR semaphore before starting inference.
+            # ASR is CPU-bound; running N concurrent inference calls divides effective CPU
+            # by N, making each N× slower.  With max_workers=20 sources and one 4h meeting
+            # per source, 20 simultaneous calls would each take 20× longer and blow the
+            # 6-hour job ceiling.  The semaphore (default 1) serialises inference globally
+            # while letting all other stages (chapters, audio) continue in parallel.
+            # After waiting (potentially a long time), re-check stop() so we don't start
+            # work that the budget no longer has room for.
+            sem = ctx.asr_semaphore
+            if sem is not None:
+                sem.acquire()
+                if ctx.stop is not None and ctx.stop():
+                    sem.release()
+                    stats.skipped += 1
+                    continue
+
             dur_h = (ep.audio_duration_served or ep.duration or 0) / 3600
             mode = "align" if align_text else "transcribe"
             print(f"  [transcript] {mode} {ep.uid} ({dur_h:.1f}h audio)", flush=True)
 
-            try:
-                with _download_audio(ep.hosted_audio_url) as audio_path:
-                    if align_text:
-                        try:
-                            vtt = asr_mod.align(
-                                audio_path,
-                                align_text,
-                                _asr_model,  # pre-loaded instance
-                                city.asr_language or None,
-                                cpu_threads,
-                            )
-                            stats.aligned += 1
-                        except asr_mod.AlignmentQualityError as aqe:
-                            # Coverage too low — fall back to fresh transcription so the
-                            # episode still gets a usable VTT rather than a sparse one.
-                            print(
-                                f"  [transcript] low-quality alignment, retrying as transcribe:"
-                                f" {aqe}",
-                                flush=True,
-                            )
-                            prompt = ". ".join(
-                                p for p in (city.podcast_title, ep.body, ep.title) if p
-                            )
-                            vtt = asr_mod.transcribe(
-                                audio_path,
-                                _asr_model,
-                                city.asr_language or None,
-                                city.asr_compute_type,
-                                city.asr_beam_size,
-                                prompt,
-                                cpu_threads,
-                            )
-                            stats.transcribed += 1
-                    else:
-                        prompt = ". ".join(p for p in (city.podcast_title, ep.body, ep.title) if p)
-                        vtt = asr_mod.transcribe(
-                            audio_path,
-                            _asr_model,  # pre-loaded instance
-                            city.asr_language or None,
-                            city.asr_compute_type,
-                            city.asr_beam_size,
-                            prompt,
-                            cpu_threads,
-                        )
-                        stats.transcribed += 1
+            # Run inference in a daemon thread so stop() can interrupt it immediately.
+            # CTranslate2 inference runs in C++ with the GIL released — it cannot be
+            # interrupted from Python.  The daemon thread approach lets the main thread
+            # poll stop() every 2 s and bail out without waiting for inference to finish:
+            #   • Semaphore is released immediately on stop() so cleanup is not blocked.
+            #   • The daemon thread keeps running in the background but dies automatically
+            #     when the process exits (daemon=True), so no zombie work survives the run.
+            #   • Results produced after stop() fires are never stored — this prevents
+            #     ``transcript done`` being reported for work not counted in this run's budget.
+            _vtt: list[bytes] = []
+            _err: list[Exception] = []
+            _aligned: list[bool] = []
 
+            # Bind per-iteration values as default args so the closure captures their
+            # current values, not a reference that may change in future loop iterations
+            # (ruff B023).  The thread calls _infer() with no positional args.
+            def _infer(
+                _ep=ep,
+                _at=align_text,
+                _result=_vtt,
+                _errors=_err,
+                _was_aligned=_aligned,
+            ) -> None:
+                try:
+                    with _download_audio(_ep.hosted_audio_url) as _audio:
+                        if _at:
+                            try:
+                                _result.append(
+                                    asr_mod.align(
+                                        _audio, _at, _asr_model,
+                                        city.asr_language or None, cpu_threads,
+                                    )
+                                )
+                                _was_aligned.append(True)
+                            except asr_mod.AlignmentQualityError as _aqe:
+                                print(
+                                    f"  [transcript] low-quality alignment,"
+                                    f" retrying as transcribe: {_aqe}",
+                                    flush=True,
+                                )
+                                _prompt = ". ".join(
+                                    p for p in (city.podcast_title, _ep.body, _ep.title) if p
+                                )
+                                _result.append(
+                                    asr_mod.transcribe(
+                                        _audio, _asr_model, city.asr_language or None,
+                                        city.asr_compute_type, city.asr_beam_size,
+                                        _prompt, cpu_threads,
+                                    )
+                                )
+                                _was_aligned.append(False)
+                        else:
+                            _prompt = ". ".join(
+                                p for p in (city.podcast_title, _ep.body, _ep.title) if p
+                            )
+                            _result.append(
+                                asr_mod.transcribe(
+                                    _audio, _asr_model, city.asr_language or None,
+                                    city.asr_compute_type, city.asr_beam_size,
+                                    _prompt, cpu_threads,
+                                )
+                            )
+                            _was_aligned.append(False)
+                except Exception as _exc:  # noqa: BLE001
+                    _errors.append(_exc)
+
+            _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{ep.uid[:8]}")
+            _t.start()
+
+            _abandoned = False
+            while _t.is_alive():
+                if ctx.stop is not None and ctx.stop():
+                    _abandoned = True
+                    print(
+                        f"  [transcript] stop signal — abandoning {ep.uid}"
+                        f" (inference continues in background, result discarded)",
+                        flush=True,
+                    )
+                    if sem is not None:
+                        sem.release()
+                        sem = None  # prevent double-release in the outer finally
+                    stats.skipped += 1
+                    break
+                time.sleep(2)
+
+            if _abandoned:
+                continue
+
+            # Normal completion — release semaphore and check for errors/results.
+            if sem is not None:
+                sem.release()
+                sem = None
+
+            if _err:
+                stats.errors.append(f"{ep.uid}: ASR: {_err[0]}")
+                continue
+
+            if not _vtt:
+                stats.errors.append(f"{ep.uid}: ASR: inference produced no result")
+                continue
+
+            try:
                 with _tmp.TemporaryDirectory() as t:
                     dest = Path(t) / "transcript.vtt"
-                    dest.write_bytes(vtt)
+                    dest.write_bytes(_vtt[0])
                     url = ctx.storage.put_file(asr_key, dest, TRANSCRIPT_MIME["vtt"])
 
                 ep.transcript_key = asr_key
@@ -908,11 +980,19 @@ class TranscriptStage:
                 ep.transcript_format = "vtt"
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True
+                if _aligned[0]:
+                    stats.aligned += 1
+                else:
+                    stats.transcribed += 1
                 stats.ran += 1
                 print(f"  [transcript] done {ep.uid}", flush=True)
-
             except Exception as exc:  # noqa: BLE001
-                stats.errors.append(f"{ep.uid}: ASR: {exc}")
+                stats.errors.append(f"{ep.uid}: ASR store: {exc}")
+            finally:
+                # Belt-and-suspenders: release semaphore if not already released.
+                if sem is not None:
+                    sem.release()
+                    sem = None
 
         return stats
 
