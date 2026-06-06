@@ -328,6 +328,34 @@ def _process_city(
     )
 
 
+def _try_preload_asr_model(defaults: dict) -> None:
+    """Pre-load the Whisper model into the process-level cache before workers start.
+
+    Loading the float16 model peaks at ~5.5 GB RAM (float16 → float32 intermediate
+    → int8 quantisation).  Doing this before the ``ThreadPoolExecutor`` opens means
+    that peak resolves to the int8 steady-state (~800 MB) before any ffmpeg subprocesses
+    are spawned — preventing OOM when high audio-encode concurrency coincides with model
+    loading.
+    """
+    if not defaults.get("asr_enabled", True):
+        return
+    try:
+        import math
+
+        from citypods import asr as asr_mod
+
+        model = str(defaults.get("asr_model", "large-v3-turbo"))
+        compute_type = str(defaults.get("asr_compute_type", "int8"))
+        asr_workers = int(defaults.get("asr_workers", 1))
+        cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / asr_workers))
+        print(f"[asr] pre-loading {model} ({compute_type}, {cpu_threads} threads)…", flush=True)
+        asr_mod.load_model(model, compute_type, cpu_threads)
+        print("[asr] model ready — worker pool starting", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        # Non-fatal: TranscriptStage will attempt load again per-source and record the error.
+        print(f"[asr] pre-load failed (non-fatal): {exc}", flush=True)
+
+
 def build(
     *,
     site_config_path: str | Path = "config/site_config.yml",
@@ -457,6 +485,20 @@ def build(
             defaults.get("max_archive_age_years", DEFAULT_MAX_ARCHIVE_AGE_YEARS)
         ),
     )
+
+    # Pre-load the Whisper model BEFORE the parallel worker pool starts.
+    #
+    # Problem: loading the 1617 MB float16 model peaks at ~5.5 GB RAM (float16 → float32
+    # intermediate → int8 conversion).  With max_workers=20 sources × max_encodes_per_source=4
+    # workers = up to 80 concurrent ffmpeg processes (~150 MB each = 12 GB), the model load
+    # coinciding with peak audio-encode concurrency totals ~18+ GB — over the 16 GB runner
+    # limit, causing the Linux OOM killer to send SIGKILL (exit 137).
+    #
+    # Fix: load the model here, before the pool opens, so its 5.5 GB peak is resolved to the
+    # ~800 MB int8 steady state before any ffmpeg processes spawn.  The process-level cache in
+    # asr.py means every TranscriptStage worker reuses this single loaded instance.
+    if time_bounded and not dry_run and storage is not None:
+        _try_preload_asr_model(defaults)
 
     results: list[CityResult] = []
     with source_cache or _nullcontext(), ThreadPoolExecutor(max_workers=max_workers) as pool:

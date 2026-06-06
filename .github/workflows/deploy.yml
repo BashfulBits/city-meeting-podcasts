@@ -145,7 +145,12 @@ jobs:
       # model loads here on first use instead (one API call total, not per-episode, thanks to
       # the process-level cache in citypods/asr.py).  If it still can't load, one "model load
       # failed" error is recorded per source and ASR is skipped gracefully for that run.
+      # continue-on-error: the site was already published by Deploy to GitHub Pages above.
+      # Enrich is a best-effort backfill (time-bounded, designed to be interrupted and resumed).
+      # An external kill (OOM, runner preemption, GitHub infra) should not mark the whole
+      # deployment red — the feeds and pages are already live.
       - name: Enrich (chapters + audio + transcripts)
+        continue-on-error: true
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
           # huggingface_hub < 0.18 reads HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
