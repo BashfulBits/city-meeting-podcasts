@@ -49,29 +49,92 @@ def _complete(directory: Path) -> bool:
     return (directory / SENTINEL).exists()
 
 
-def _hf_download(repo: str, dest: Path, retries: int = 3) -> bool:
-    """Download repo from HuggingFace Hub to *dest*.  Returns True on success."""
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError:
-        print("  huggingface_hub not installed — skipping HF download")
-        return False
+# CTranslate2 faster-whisper models always contain these files.
+# Required files must download successfully; optional ones are skipped on 404.
+_CT2_FILES_REQUIRED = ["config.json", "model.bin", "tokenizer.json", "vocabulary.json"]
+_CT2_FILES_OPTIONAL = [
+    "special_tokens_map.json",
+    "preprocessor_config.json",
+    "tokenizer_config.json",
+]
+
+
+def _hf_download_direct(repo: str, dest: Path, token: str | None = None) -> bool:
+    """Download model files directly from the HuggingFace CDN.
+
+    ``snapshot_download`` always hits ``/api/models/{repo}/revision/main`` first —
+    a metadata endpoint that is aggressively rate-limited on GitHub Actions IPs
+    (429 even with an authenticated token).  The actual file download endpoint
+    ``https://huggingface.co/{repo}/resolve/main/{filename}`` is served by a
+    separate CDN and is not subject to the same API rate limit.
+
+    We hardcode the well-known file list for CTranslate2 faster-whisper models
+    (config.json, model.bin, tokenizer.json, vocabulary.json + optional files)
+    to bypass the metadata lookup entirely.
+    """
+    import requests
 
     dest.mkdir(parents=True, exist_ok=True)
-    for attempt in range(1, retries + 1):
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    for filename in _CT2_FILES_REQUIRED + _CT2_FILES_OPTIONAL:
+        url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+        required = filename in _CT2_FILES_REQUIRED
         try:
-            print(f"  HF attempt {attempt}/{retries}: {repo} → {dest}")
-            snapshot_download(repo, local_dir=str(dest), local_dir_use_symlinks=False)
-            if _complete(dest):
-                print("  HF download complete.")
-                return True
-            print(f"  Download appeared to succeed but {SENTINEL} not found.")
+            r = requests.get(url, headers=headers, stream=True, timeout=300)
+            if r.status_code == 404:
+                if not required:
+                    continue  # optional — skip silently
+                print(f"    {filename}: 404 (required file missing)")
+                return False
+            r.raise_for_status()
+            size_mb = int(r.headers.get("content-length", 0)) // 1_000_000
+            print(f"    {filename}  ({size_mb} MB)…", flush=True)
+            with open(dest / filename, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    f.write(chunk)
         except Exception as exc:
-            print(f"  HF attempt {attempt} failed: {exc}")
-            if attempt < retries:
-                wait = 30 * attempt
-                print(f"  Waiting {wait}s before retry…")
-                time.sleep(wait)
+            if required:
+                print(f"    {filename} FAILED (required): {exc}")
+                return False
+            print(f"    {filename} failed (optional, skipping): {exc}")
+
+    return _complete(dest)
+
+
+def _hf_download(repo: str, dest: Path, retries: int = 3) -> bool:
+    """Download repo to *dest* using direct CDN, with snapshot_download fallback.
+
+    Tries the direct CDN approach first (bypasses the rate-limited metadata API),
+    then falls back to ``snapshot_download`` in case file layout differs.
+    """
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+    dest.mkdir(parents=True, exist_ok=True)
+
+    for attempt in range(1, retries + 1):
+        print(f"  CDN attempt {attempt}/{retries}: {repo} → {dest}")
+        if _hf_download_direct(repo, dest, token=token):
+            print("  Download complete.")
+            return True
+
+        # Fall back to snapshot_download (hits metadata API; may 429 but worth one try)
+        if attempt == retries:
+            try:
+                print("  Trying snapshot_download as last resort…")
+                from huggingface_hub import snapshot_download
+
+                snapshot_download(repo, local_dir=str(dest))
+                if _complete(dest):
+                    print("  snapshot_download complete.")
+                    return True
+            except Exception as exc:
+                print(f"  snapshot_download failed: {exc}")
+
+        if attempt < retries:
+            wait = 15 * attempt
+            print(f"  Waiting {wait}s before retry…")
+            time.sleep(wait)
+
     return False
 
 
