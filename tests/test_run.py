@@ -429,7 +429,7 @@ def test_newer_run_queued_false_for_older_or_completed(monkeypatch):
     assert run._newer_run_queued() is None
 
 
-def test_newer_run_queued_ignores_newer_scheduled_runs(monkeypatch):
+def test_newer_run_queued_detects_newer_scheduled_runs(monkeypatch):
     _set_actions_env(monkeypatch)
     _fake_actions_api(
         monkeypatch,
@@ -440,7 +440,7 @@ def test_newer_run_queued_ignores_newer_scheduled_runs(monkeypatch):
             ]
         },
     )
-    assert run._newer_run_queued() is None
+    assert run._newer_run_queued() == "schedule"
 
 
 def test_newer_run_queued_logs_once_on_error(monkeypatch, capsys):
@@ -469,6 +469,11 @@ def test_stop_signal_records_fired_reason():
     assert s2() is True
     assert s2.fired_reason == "newer build queued behind this run"
     assert s2.should_exit_immediately() is True
+
+    s_schedule = run.StopSignal(superseded=lambda: "schedule", poll_interval=0)
+    assert s_schedule() is True
+    assert s_schedule.fired_reason == "newer build queued behind this run"
+    assert s_schedule.should_exit_immediately() is False
 
     s3 = run.StopSignal(superseded=lambda: None, poll_interval=0)
     assert s3() is False
