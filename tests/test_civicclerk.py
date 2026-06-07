@@ -61,6 +61,31 @@ def test_parse_includes_only_absolute_mp4():
     assert ep.published.year == 2026
 
 
+def test_parse_duration_from_live_times_when_duration_fields_are_zero():
+    payload = json.dumps(
+        {
+            "value": [
+                {
+                    "id": 200,
+                    "eventName": "Voting Session",
+                    "startDateTime": "2026-05-19T09:00:00Z",
+                    "categoryId": 26,
+                    "hasMedia": True,
+                    "mediaSourcePathMp4": "https://cpmedia.azureedge.net/traviscotx/abc.mp4",
+                    "durationHrs": 0,
+                    "durationMin": 0,
+                    "liveStartTime": "2026-05-19T08:45:02.107Z",
+                    "liveEndTime": "2026-05-19T16:39:50.187Z",
+                }
+            ]
+        }
+    ).encode()
+
+    eps = parse_events(payload)
+
+    assert eps[0].duration == pytest.approx(28488.0)
+
+
 def test_category_filter():
     eps = parse_events(SAMPLE, category_id=26)
     assert all(e.guid != "102" for e in eps)  # different category excluded

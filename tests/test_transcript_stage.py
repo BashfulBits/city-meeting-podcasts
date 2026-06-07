@@ -10,6 +10,7 @@ Acceptance criteria:
 from __future__ import annotations
 
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -29,6 +30,7 @@ from citypods.stages import (
     ASR_PIPELINE_VERSION,
     StageContext,
     TranscriptStage,
+    _asr_timeout_seconds,
     default_stages,
     enrich_stages,
 )
@@ -542,6 +544,10 @@ def _asr_ctx(tmp_path: Path, fake_asr: _FakeAsr) -> StageContext:
     return ctx
 
 
+def _fake_audio_download(_url, dest):
+    Path(dest).write_bytes(b"fake audio")
+
+
 def _run_asr(tmp_path, ep, fake_asr=None):
     """Run TranscriptStage with the fake ASR module and a fake HTTP session."""
     if fake_asr is None:
@@ -569,17 +575,8 @@ def _run_asr(tmp_path, ep, fake_asr=None):
 
     with (
         patch("citypods.stages.asr_mod", fake_asr),
-        patch("citypods.stages._download_audio") as mock_dl,
+        patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
     ):
-        # _download_audio is a context manager that yields a Path
-        from contextlib import contextmanager
-
-        @contextmanager
-        def _fake_dl(url):
-            yield tmp_path / "fake_audio.m4a"
-
-        mock_dl.side_effect = _fake_dl
-
         stage = TranscriptStage()
         ctx = _ctx(tmp_path)
         stats = stage.process(FakeProvider(), _city(), [ep], ctx)
@@ -611,6 +608,64 @@ class TestTranscriptStageASR:
         assert len(fake_asr.transcribe_calls) == 1
         prompt = fake_asr.transcribe_calls[0]["prompt"]
         assert "Meeting" in prompt  # ep.title
+
+    def test_asr_log_reports_unknown_duration_without_rounding_to_zero(self, tmp_path, capsys):
+        ep = _ep_with_audio()
+        ep.duration = None
+        ep.audio_duration_served = None
+
+        _run_asr(tmp_path, ep)
+
+        out = capsys.readouterr().out
+        assert "duration_h=unknown" in out
+        assert "duration_source=unknown" in out
+        assert "provider=civicplus" in out
+        assert "guid=g1" in out
+        assert "duration_h=0.0" not in out
+
+    def test_asr_probe_corrects_existing_served_duration(self, tmp_path, capsys):
+        ep = _ep_with_audio()
+        ep.duration = 7200
+        ep.audio_duration_served = 7200
+
+        with patch("citypods.stages._probe_duration_secs", return_value=1800.0):
+            _run_asr(tmp_path, ep)
+
+        out = capsys.readouterr().out
+        assert ep.audio_duration_served == pytest.approx(1800.0)
+        assert "duration_h=0.5" in out
+        assert "duration_source=hosted" in out
+
+    def test_asr_timeout_is_capped_to_remaining_budget(self, tmp_path):
+        ctx = _ctx(tmp_path)
+        ctx.asr_timeout_base_seconds = 120
+        ctx.asr_timeout_per_hour_seconds = 0
+        ctx.asr_deadline = time.monotonic() + 30
+        ctx.asr_timeout_budget_reserve_seconds = 5
+
+        timeout = _asr_timeout_seconds(ctx, 1.0)
+
+        assert timeout == pytest.approx(25, abs=0.25)
+
+    def test_asr_skips_when_no_remaining_budget_after_download(self, tmp_path, capsys):
+        ep = _ep_with_audio()
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_timeout_base_seconds = 120
+        ctx.asr_timeout_per_hour_seconds = 0
+        ctx.asr_deadline = time.monotonic() - 1
+        ctx.asr_timeout_budget_reserve_seconds = 0
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        out = capsys.readouterr().out
+        assert fake_asr.transcribe_calls == []
+        assert stats.skipped == 1
+        assert "reason=budget-exhausted" in out
 
     def test_path_a_forced_alignment_with_source_text(self, tmp_path):
         """Stored untimed txt transcript → Path A (alignment) → synced=True."""
@@ -646,17 +701,9 @@ class TestTranscriptStageASR:
         fake_asr = _FakeAsr()
         with (
             patch("citypods.stages.asr_mod", fake_asr),
-            patch("citypods.stages._download_audio") as mock_dl,
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
             patch("citypods.http.make_session", return_value=_TextSession()),
         ):
-            from contextlib import contextmanager
-
-            @contextmanager
-            def _fake_dl(url):
-                yield tmp_path / "fake_audio.m4a"
-
-            mock_dl.side_effect = _fake_dl
-
             # Put the untimed transcript in storage so _present() returns True
             storage_root = tmp_path / "audio"
             (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
@@ -773,22 +820,59 @@ class TestTranscriptStageASR:
 
         with (
             patch("citypods.stages.asr_mod", fake_asr),
-            patch("citypods.stages._download_audio") as mock_dl,
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
         ):
-            from contextlib import contextmanager
-
-            @contextmanager
-            def _fake_dl(url):
-                yield tmp_path / "fake_audio.m4a"
-
-            mock_dl.side_effect = _fake_dl
-
             stage = TranscriptStage()
             try:
                 with pytest.raises(_FastExit):
                     stage.process(FakeProvider(), _city(), [ep], ctx)
             finally:
                 release.set()
+
+    def test_asr_timeout_aborts_remaining_asr_for_run(self, tmp_path):
+        """A stuck native ASR call is bounded and prevents more ASR from starting this run."""
+        eps = [_ep_with_audio("uid-a"), _ep_with_audio("uid-b")]
+        started = threading.Event()
+        release = threading.Event()
+
+        class _SlowAsr(_FakeAsr):
+            def transcribe(
+                self,
+                audio_path,
+                model_or_name,
+                language,
+                compute_type,
+                beam_size,
+                prompt,
+                cpu_threads,
+            ):
+                self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
+                started.set()
+                release.wait(timeout=10)
+                return self.vtt
+
+        fake_asr = _SlowAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_timeout_base_seconds = 0.01
+        ctx.asr_timeout_per_hour_seconds = 0
+        ctx.asr_abort_event = threading.Event()
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            stage = TranscriptStage()
+            try:
+                stats = stage.process(FakeProvider(), _city(), eps, ctx)
+            finally:
+                release.set()
+
+        assert started.is_set()
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ctx.asr_abort_event.is_set()
+        assert stats.skipped == 2
+        assert any("ASR timeout" in e for e in stats.errors)
+        assert all(ep.transcript_key is None for ep in eps)
 
     def test_asr_reuse_when_key_already_present(self, tmp_path):
         """ASR key already in storage → reuse without re-running inference."""
@@ -824,16 +908,8 @@ class TestTranscriptStageASR:
         fake_asr = _FakeAsr(fail=True)
         with (
             patch("citypods.stages.asr_mod", fake_asr),
-            patch("citypods.stages._download_audio") as mock_dl,
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
         ):
-            from contextlib import contextmanager
-
-            @contextmanager
-            def _fake_dl(url):
-                yield tmp_path / "fake_audio.m4a"
-
-            mock_dl.side_effect = _fake_dl
-
             stage = TranscriptStage()
             stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
 
@@ -865,16 +941,8 @@ class TestTranscriptStageASR:
         fake_asr = _FakeAsr()
         with (
             patch("citypods.stages.asr_mod", fake_asr),
-            patch("citypods.stages._download_audio") as mock_dl,
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
         ):
-            from contextlib import contextmanager
-
-            @contextmanager
-            def _fake_dl(url):
-                yield tmp_path / "fake_audio.m4a"
-
-            mock_dl.side_effect = _fake_dl
-
             stage = TranscriptStage()
             stage.process(FakeProvider(), city, [ep], _ctx(tmp_path))
 

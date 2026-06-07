@@ -314,6 +314,33 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
     assert "audio: 2 ran (2 encoded, 0 credited), 0 reused" in out and "0 errors" in out
 
 
+def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys, monkeypatch):
+    """CI enrich logs should leave source/stage breadcrumbs plus resource snapshots."""
+
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\n"
+        "defaults:\n"
+        "  asr_enabled: false\n"
+    )
+    monkeypatch.setenv("CITYPODS_HEARTBEAT_SECONDS", "999")
+
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        phase="enrich",
+    )
+    out = capsys.readouterr().out
+    assert "[enrich] heartbeat start" in out and "[enrich] heartbeat stop" in out
+    assert "[enrich] source start slug=fake-city provider=faketest" in out
+    assert "[enrich] source fetched slug=fake-city provider=faketest" in out
+    assert "[enrich] stage start slug=fake-city provider=faketest stage=chapters" in out
+    assert "[enrich] stage done slug=fake-city provider=faketest stage=transcript" in out
+    assert "[enrich] source done slug=fake-city provider=faketest" in out
+
+
 def test_stop_signal_fires_on_deadline():
     from citypods.run import StopSignal
 

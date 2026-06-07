@@ -84,6 +84,12 @@ defaults:
   asr_workers: 1                        # episode-level parallelism (1 model per worker);
                                         # 2 = ~1.7× throughput at 2× RAM; see models.py
   asr_beam_size: 5                      # beam search width; 1 = ~2× faster at quality cost
+  # Bound one ASR item by wall-clock. If native inference stalls, abandon that item, skip
+  # remaining ASR for this run, and persist completed enrich work instead of waiting for
+  # GitHub Actions to terminate the whole process with exit 143.
+  asr_timeout_base_minutes: 15
+  asr_timeout_per_audio_hour_minutes: 30
+  asr_timeout_budget_reserve_minutes: 1
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

@@ -82,7 +82,7 @@ from typing import Protocol
 
 from citypods import asr as asr_mod
 from citypods.bodies import body_key, canonical_body
-from citypods.media import MaterializeStats, SourceCache, materialize_audio
+from citypods.media import MaterializeStats, SourceCache, _probe_duration_secs, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
 from citypods.timeline import Timeline, remap, timeline_digest
@@ -146,6 +146,18 @@ class StageContext:
     # blowing the 6-hour job ceiling.  Serialising to 1 (default) keeps total time predictable.
     # Set via site_config asr_workers (same field that drives cpu_threads per inference call).
     asr_semaphore: threading.Semaphore | None = None
+    # ASR inference is native C++ work and can occasionally stop making visible progress. Bound
+    # one item by wall-clock so the run can persist completed work instead of waiting for Actions
+    # to SIGTERM the whole process. The timeout is base + per-audio-hour; <=0 disables it.
+    asr_timeout_base_seconds: float = 15 * 60
+    asr_timeout_per_hour_seconds: float = 30 * 60
+    # Monotonic deadline for the whole enrich/all phase. ASR timeouts are capped to the remaining
+    # budget before this deadline so a single item cannot outlive the planned wrap-up window.
+    asr_deadline: float | None = None
+    asr_timeout_budget_reserve_seconds: float = 60
+    # Set after an ASR timeout so other source workers skip starting more ASR in this run. The
+    # timed-out daemon thread may still be burning CPU until process exit, so don't pile on.
+    asr_abort_event: threading.Event | None = None
     # Called only for a human/code-change supersession after the post-deploy enrich phase has
     # already abandoned in-flight ASR work. This is deliberately not used for scheduled-run
     # supersession or wall-clock budget stops: those should finish/persist as much completed work
@@ -196,6 +208,27 @@ class EnrichmentStage(Protocol):
 
 def _requests_fast_yield_exit(stop: Callable[[], bool] | None) -> bool:
     return bool(stop is not None and getattr(stop, "should_exit_immediately", lambda: False)())
+
+
+def _asr_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | None:
+    configured = ctx.asr_timeout_base_seconds + max(0.0, duration_hours) * (
+        ctx.asr_timeout_per_hour_seconds
+    )
+    timeout = configured if configured > 0 else None
+    if ctx.asr_deadline is None:
+        return timeout
+    remaining = ctx.asr_deadline - time.monotonic() - ctx.asr_timeout_budget_reserve_seconds
+    if remaining <= 0:
+        return 0.0
+    return min(timeout, remaining) if timeout is not None else remaining
+
+
+def _episode_duration_hours(ep: Episode) -> tuple[float, str]:
+    if ep.audio_duration_served is not None and ep.audio_duration_served > 0:
+        return ep.audio_duration_served / 3600, "served"
+    if ep.duration is not None and ep.duration > 0:
+        return ep.duration / 3600, "source"
+    return 0.0, "unknown"
 
 
 class AudioStage:
@@ -650,18 +683,34 @@ def _download_audio(url: str):
     """
     import tempfile as _tmp2
 
-    import requests as _req
-
     with _tmp2.TemporaryDirectory() as t:
         dest = Path(t) / "audio.m4a"
-        with _req.Session() as sess:
-            sess.headers["User-Agent"] = "citypods/0.1 (+https://github.com/)"
-            r = sess.get(url, timeout=300, stream=True)
-            r.raise_for_status()
-            with open(dest, "wb") as f:
-                for chunk in r.iter_content(chunk_size=65536):
-                    f.write(chunk)
+        _download_audio_file(url, dest)
         yield dest
+
+
+def _download_audio_file(url: str, dest: Path) -> None:
+    import requests as _req
+
+    with _req.Session() as sess:
+        sess.headers["User-Agent"] = "citypods/0.1 (+https://github.com/)"
+        r = sess.get(url, timeout=300, stream=True)
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(chunk_size=65536):
+                f.write(chunk)
+
+
+def _refresh_served_duration_from_audio(
+    ep: Episode, audio_path: Path, ffmpeg_binary: str
+) -> str:
+    probed = _probe_duration_secs(audio_path, ffmpeg_binary)
+    if probed is None or probed <= 0:
+        return "unknown"
+    if ep.audio_duration_served is None or abs(ep.audio_duration_served - probed) > 1.0:
+        ep.audio_duration_served = probed
+        return "hosted"
+    return "served"
 
 
 class TranscriptStage:
@@ -739,9 +788,18 @@ class TranscriptStage:
                 _asr_model = asr_mod.load_model(city.asr_model, city.asr_compute_type, cpu_threads)
             except Exception as exc:  # noqa: BLE001
                 stats.errors.append(f"ASR model load failed ({city.asr_model}): {exc}")
-                print(f"  [transcript] model load failed: {exc}", flush=True)
+                print(
+                    f"[enrich] transcript model-load error slug={city.slug} "
+                    f"provider={city.provider}: {exc}",
+                    flush=True,
+                )
 
         for ep in _materialize_set(episodes, city.max_episodes):
+            label = ep.uid or ep.guid
+            ep_ref = (
+                f"slug={city.slug} provider={city.provider} source={src_key} "
+                f"uid={label} guid={ep.guid}"
+            )
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
             if ep.transcript_key and ep.transcript_synced and _present(ep.transcript_key):
@@ -765,6 +823,10 @@ class TranscriptStage:
                 try:
                     from citypods.http import make_session
 
+                    print(
+                        f"[enrich] transcript provider-fetch start {ep_ref}",
+                        flush=True,
+                    )
                     with make_session() as sess:
                         resp = sess.get(provider_url, timeout=30)
                     if resp.status_code >= 400:
@@ -801,11 +863,20 @@ class TranscriptStage:
                     ep.transcript_basis = basis
                     ep.transcript_synced = synced
                     stats.ran += 1
+                    print(
+                        f"[enrich] transcript provider-fetch done {ep_ref} "
+                        f"fmt={fmt} synced={synced}",
+                        flush=True,
+                    )
 
                     if synced:
                         continue  # timed VTT already stored — skip ASR
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: {exc}")
+                    print(
+                        f"[enrich] transcript provider-fetch error {ep_ref}: {exc}",
+                        flush=True,
+                    )
                     continue
 
             # 3. ASR slot (issue #110): produce a timed VTT from hosted audio.
@@ -817,6 +888,13 @@ class TranscriptStage:
                 continue
             if ep.transcript_synced:
                 continue  # step 2 may have just set this in the same pass
+            if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+                stats.skipped += 1
+                print(
+                    f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
+                    flush=True,
+                )
+                continue
 
             # Determine alignment text from any stored untimed source transcript.
             # Strip non-spoken minutes content (headers, speaker labels, vote tallies)
@@ -866,15 +944,80 @@ class TranscriptStage:
             # work that the budget no longer has room for.
             sem = ctx.asr_semaphore
             if sem is not None:
+                print(
+                    f"[enrich] transcript asr wait {ep_ref}",
+                    flush=True,
+                )
                 sem.acquire()
+                print(
+                    f"[enrich] transcript asr acquired {ep_ref}",
+                    flush=True,
+                )
+                if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+                    sem.release()
+                    stats.skipped += 1
+                    print(
+                        f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
+                        flush=True,
+                    )
+                    continue
                 if ctx.stop is not None and ctx.stop():
                     sem.release()
                     stats.skipped += 1
                     continue
 
-            dur_h = (ep.audio_duration_served or ep.duration or 0) / 3600
+            audio_tmp = _tmp.TemporaryDirectory()
+            audio_path = Path(audio_tmp.name) / "audio.m4a"
+            try:
+                _download_audio_file(ep.hosted_audio_url, audio_path)
+            except Exception as exc:  # noqa: BLE001
+                audio_tmp.cleanup()
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                stats.errors.append(f"{ep.uid}: audio download: {exc}")
+                print(
+                    f"[enrich] transcript audio-download error {ep_ref}: {exc}",
+                    flush=True,
+                )
+                continue
+
+            probe_source = _refresh_served_duration_from_audio(
+                ep,
+                audio_path,
+                getattr(ctx.ffmpeg, "binary", "ffmpeg"),
+            )
+            if probe_source == "hosted":
+                print(
+                    f"[enrich] transcript audio-probe {ep_ref} "
+                    f"duration_s={ep.audio_duration_served:.1f}",
+                    flush=True,
+                )
+
+            dur_h, duration_source = _episode_duration_hours(ep)
+            if probe_source == "hosted":
+                duration_source = "hosted"
+            duration_label = f"{dur_h:.1f}" if duration_source != "unknown" else "unknown"
             mode = "align" if align_text else "transcribe"
-            print(f"  [transcript] {mode} {ep.uid} ({dur_h:.1f}h audio)", flush=True)
+            timeout_s = _asr_timeout_seconds(ctx, dur_h)
+            if timeout_s is not None and timeout_s <= 0:
+                audio_tmp.cleanup()
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                stats.skipped += 1
+                print(
+                    f"[enrich] transcript asr skipped {ep_ref} reason=budget-exhausted",
+                    flush=True,
+                )
+                continue
+
+            timeout_label = f"{timeout_s / 60:.1f}" if timeout_s is not None else "disabled"
+            print(
+                f"[enrich] transcript asr start {ep_ref} mode={mode} duration_h={duration_label} "
+                f"duration_source={duration_source} timeout_m={timeout_label}",
+                flush=True,
+            )
 
             # Run inference in a daemon thread so stop() can interrupt it immediately.
             # CTranslate2 inference runs in C++ with the GIL released — it cannot be
@@ -895,46 +1038,33 @@ class TranscriptStage:
             def _infer(
                 _ep=ep,
                 _at=align_text,
+                _ep_ref=ep_ref,
+                _audio=audio_path,
+                _audio_tmp=audio_tmp,
                 _result=_vtt,
                 _errors=_err,
                 _was_aligned=_aligned,
             ) -> None:
+                del _audio_tmp  # keep the tempdir alive for abandoned daemon inference
                 try:
-                    with _download_audio(_ep.hosted_audio_url) as _audio:
-                        if _at:
-                            try:
-                                _result.append(
-                                    asr_mod.align(
-                                        _audio,
-                                        _at,
-                                        _asr_model,
-                                        city.asr_language or None,
-                                        cpu_threads,
-                                    )
+                    if _at:
+                        try:
+                            _result.append(
+                                asr_mod.align(
+                                    _audio,
+                                    _at,
+                                    _asr_model,
+                                    city.asr_language or None,
+                                    cpu_threads,
                                 )
-                                _was_aligned.append(True)
-                            except asr_mod.AlignmentQualityError as _aqe:
-                                print(
-                                    f"  [transcript] low-quality alignment,"
-                                    f" retrying as transcribe: {_aqe}",
-                                    flush=True,
-                                )
-                                _prompt = ". ".join(
-                                    p for p in (city.podcast_title, _ep.body, _ep.title) if p
-                                )
-                                _result.append(
-                                    asr_mod.transcribe(
-                                        _audio,
-                                        _asr_model,
-                                        city.asr_language or None,
-                                        city.asr_compute_type,
-                                        city.asr_beam_size,
-                                        _prompt,
-                                        cpu_threads,
-                                    )
-                                )
-                                _was_aligned.append(False)
-                        else:
+                            )
+                            _was_aligned.append(True)
+                        except asr_mod.AlignmentQualityError as _aqe:
+                            print(
+                                f"[enrich] transcript alignment-low-quality {_ep_ref}, "
+                                f"retrying as transcribe: {_aqe}",
+                                flush=True,
+                            )
                             _prompt = ". ".join(
                                 p for p in (city.podcast_title, _ep.body, _ep.title) if p
                             )
@@ -950,6 +1080,22 @@ class TranscriptStage:
                                 )
                             )
                             _was_aligned.append(False)
+                    else:
+                        _prompt = ". ".join(
+                            p for p in (city.podcast_title, _ep.body, _ep.title) if p
+                        )
+                        _result.append(
+                            asr_mod.transcribe(
+                                _audio,
+                                _asr_model,
+                                city.asr_language or None,
+                                city.asr_compute_type,
+                                city.asr_beam_size,
+                                _prompt,
+                                cpu_threads,
+                            )
+                        )
+                        _was_aligned.append(False)
                 except Exception as _exc:  # noqa: BLE001
                     _errors.append(_exc)
 
@@ -957,11 +1103,12 @@ class TranscriptStage:
             _t.start()
 
             _abandoned = False
+            _timeout_at = time.monotonic() + timeout_s if timeout_s else None
             while _t.is_alive():
                 if ctx.stop is not None and ctx.stop():
                     _abandoned = True
                     print(
-                        f"  [transcript] stop signal — abandoning {ep.uid}"
+                        f"[enrich] transcript stop {ep_ref}"
                         f" (inference continues in background, result discarded)",
                         flush=True,
                     )
@@ -969,6 +1116,23 @@ class TranscriptStage:
                         sem.release()
                         sem = None  # prevent double-release in the outer finally
                     stats.skipped += 1
+                    break
+                if _timeout_at is not None and time.monotonic() >= _timeout_at:
+                    _abandoned = True
+                    message = f"{label}: ASR timeout after {timeout_s / 60:.1f}m"
+                    stats.errors.append(message)
+                    stats.skipped += 1
+                    if ctx.asr_abort_event is not None:
+                        ctx.asr_abort_event.set()
+                    print(
+                        f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
+                        "(inference continues in background, result discarded; "
+                        "remaining ASR skipped this run)",
+                        flush=True,
+                    )
+                    if sem is not None:
+                        sem.release()
+                        sem = None
                     break
                 time.sleep(2)
 
@@ -981,13 +1145,22 @@ class TranscriptStage:
             if sem is not None:
                 sem.release()
                 sem = None
+            audio_tmp.cleanup()
 
             if _err:
                 stats.errors.append(f"{ep.uid}: ASR: {_err[0]}")
+                print(
+                    f"[enrich] transcript asr error {ep_ref}: {_err[0]}",
+                    flush=True,
+                )
                 continue
 
             if not _vtt:
                 stats.errors.append(f"{ep.uid}: ASR: inference produced no result")
+                print(
+                    f"[enrich] transcript asr error {ep_ref}: inference produced no result",
+                    flush=True,
+                )
                 continue
 
             try:
@@ -1007,9 +1180,13 @@ class TranscriptStage:
                 else:
                     stats.transcribed += 1
                 stats.ran += 1
-                print(f"  [transcript] done {ep.uid}", flush=True)
+                print(f"[enrich] transcript asr done {ep_ref}", flush=True)
             except Exception as exc:  # noqa: BLE001
                 stats.errors.append(f"{ep.uid}: ASR store: {exc}")
+                print(
+                    f"[enrich] transcript store error {ep_ref}: {exc}",
+                    flush=True,
+                )
             finally:
                 # Belt-and-suspenders: release semaphore if not already released.
                 if sem is not None:
@@ -1078,8 +1255,19 @@ def run_stages(
 ) -> list[StageStats]:
     out: list[StageStats] = []
     for stage in stages:
+        print(
+            f"[enrich] stage start slug={city.slug} provider={city.provider} "
+            f"stage={stage.name} episodes={len(episodes)}",
+            flush=True,
+        )
         t0 = time.perf_counter()
         stat = stage.process(provider, city, episodes, ctx)
         stat.seconds = time.perf_counter() - t0
+        print(
+            f"[enrich] stage done slug={city.slug} provider={city.provider} stage={stage.name} "
+            f"ran={stat.ran} reused={stat.reused} queued={stat.skipped} "
+            f"errors={len(stat.errors)} seconds={stat.seconds:.1f}",
+            flush=True,
+        )
         out.append(stat)
     return out
