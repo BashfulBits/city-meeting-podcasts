@@ -3,6 +3,17 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
+    # Docs/review-only merges do not change generated Pages output. Keep this list conservative:
+    # do NOT ignore docs/, config/, templates/, citypods/, scripts/, or workflow files.
+    paths-ignore:
+      - "review/**"
+      - "README.md"
+      - "ROADMAP.md"
+      - "PLAN.md"
+      - "CONTRIBUTING.md"
+      - "MIGRATION.md"
+      - ".github/ADD_CITY.md"
+      - ".github/ISSUE_TEMPLATE/**"
   schedule:
     # Keep in sync with site_config.yml schedule_cron.
     - cron: "0 */4 * * *"
