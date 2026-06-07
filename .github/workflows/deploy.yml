@@ -157,7 +157,17 @@ jobs:
           # huggingface_hub < 0.18 reads HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: citypods enrich
+        run: |
+          set +e
+          log="${RUNNER_TEMP:-/tmp}/citypods-enrich.log"
+          citypods enrich 2>&1 | tee "$log"
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then
+            echo "::warning title=Enrich yielded to newer run::Enrich exited 143 after the graceful-yield stop signal. The Pages deploy already succeeded, and the queued run will resume enrichment."
+            exit 0
+          fi
+          exit "$code"
 
       # Emit a visible warning annotation when enrich exits non-zero, even though
       # continue-on-error keeps the overall job green.  Annotations appear in the

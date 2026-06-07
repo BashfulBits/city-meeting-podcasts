@@ -383,13 +383,18 @@ def test_newer_run_queued_uses_workflow_filename_not_branch(monkeypatch):
         monkeypatch,
         {
             "workflow_runs": [
-                {"id": 999, "run_number": 64, "status": "queued"},
-                {"id": 100, "run_number": 63, "status": "in_progress"},  # this run
+                {"id": 999, "run_number": 64, "status": "queued", "event": "push"},
+                {
+                    "id": 100,
+                    "run_number": 63,
+                    "status": "in_progress",
+                    "event": "schedule",
+                },  # this run
             ]
         },
         captured,
     )
-    assert run._newer_run_queued() is True
+    assert run._newer_run_queued() == "push"
     assert "/actions/workflows/deploy.yml/runs" in captured["url"]
     assert "/workflows/main/runs" not in captured["url"]
 
@@ -400,13 +405,42 @@ def test_newer_run_queued_false_for_older_or_completed(monkeypatch):
         monkeypatch,
         {
             "workflow_runs": [
-                {"id": 999, "run_number": 64, "status": "completed"},  # newer but finished
-                {"id": 998, "run_number": 62, "status": "queued"},  # queued but older
-                {"id": 100, "run_number": 63, "status": "in_progress"},  # this run
+                {
+                    "id": 999,
+                    "run_number": 64,
+                    "status": "completed",
+                    "event": "push",
+                },  # newer but finished
+                {
+                    "id": 998,
+                    "run_number": 62,
+                    "status": "queued",
+                    "event": "push",
+                },  # queued but older
+                {
+                    "id": 100,
+                    "run_number": 63,
+                    "status": "in_progress",
+                    "event": "schedule",
+                },  # this run
             ]
         },
     )
-    assert run._newer_run_queued() is False
+    assert run._newer_run_queued() is None
+
+
+def test_newer_run_queued_ignores_newer_scheduled_runs(monkeypatch):
+    _set_actions_env(monkeypatch)
+    _fake_actions_api(
+        monkeypatch,
+        {
+            "workflow_runs": [
+                {"id": 999, "run_number": 64, "status": "queued", "event": "schedule"},
+                {"id": 100, "run_number": 63, "status": "in_progress", "event": "push"},
+            ]
+        },
+    )
+    assert run._newer_run_queued() is None
 
 
 def test_newer_run_queued_logs_once_on_error(monkeypatch, capsys):
@@ -421,8 +455,8 @@ def test_newer_run_queued_logs_once_on_error(monkeypatch, capsys):
 
     monkeypatch.setattr(urllib.request, "urlopen", _boom)
     run._newer_run_queued._warned = False  # reset the module-level once-guard
-    assert run._newer_run_queued() is False
-    assert run._newer_run_queued() is False  # second failure stays silent
+    assert run._newer_run_queued() is None
+    assert run._newer_run_queued() is None  # second failure stays silent
     assert capsys.readouterr().out.count("graceful-yield check failed") == 1
 
 
@@ -431,9 +465,14 @@ def test_stop_signal_records_fired_reason():
     assert s() is True
     assert s.fired_reason == "wall-clock window spent"
 
-    s2 = run.StopSignal(superseded=lambda: True, poll_interval=0)
+    s2 = run.StopSignal(superseded=lambda: "push", poll_interval=0)
     assert s2() is True
     assert s2.fired_reason == "newer build queued behind this run"
+    assert s2.should_exit_immediately() is True
+
+    s3 = run.StopSignal(superseded=lambda: None, poll_interval=0)
+    assert s3() is False
+    assert s3.should_exit_immediately() is False
 
     assert run.StopSignal().fired_reason is None  # never fired
 
