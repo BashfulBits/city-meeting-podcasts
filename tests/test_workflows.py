@@ -21,6 +21,16 @@ def _job(workflow_file: str) -> dict:
     return wf, next(iter(wf["jobs"].values()))
 
 
+def _on(wf: dict) -> dict:
+    """Return a workflow's ``on`` block.
+
+    PyYAML still treats the unquoted key ``on`` as a YAML 1.1 boolean, while GitHub Actions
+    treats it as a string. Handle both so workflow tests can inspect triggers without forcing the
+    workflow files to quote ``on`` just for the parser.
+    """
+    return wf.get("on") or wf.get(True) or {}
+
+
 def _step_index(job: dict, needle: str) -> int:
     """Index of the first step whose `run` or `uses` contains `needle` (or -1)."""
     for i, s in enumerate(job["steps"]):
@@ -69,3 +79,38 @@ def test_deploy_enrich_treats_graceful_yield_as_success():
     assert 'if [ "$code" -eq 143 ] &&' in run
     assert 'grep -q "stop: newer build queued behind this run"' in run
     assert "Enrich yielded to newer run" in run
+
+
+def test_deploy_skips_docs_only_pushes_but_not_deploy_inputs():
+    """Docs/review-only merges to main should not start the expensive Build & Deploy workflow.
+
+    Keep the ignore list narrow: generated Pages output and build inputs must still trigger a
+    deploy when they change.
+    """
+    wf, _ = _job("deploy.yml")
+    push = _on(wf)["push"]
+    ignored = set(push.get("paths-ignore", []))
+
+    assert push.get("branches") == ["main"]
+    assert {
+        "review/**",
+        "README.md",
+        "ROADMAP.md",
+        "PLAN.md",
+        "CONTRIBUTING.md",
+        "MIGRATION.md",
+        ".github/ADD_CITY.md",
+        ".github/ISSUE_TEMPLATE/**",
+    } <= ignored
+
+    assert (
+        not {
+            "docs/**",
+            "config/**",
+            "templates/**",
+            "citypods/**",
+            "scripts/**",
+            ".github/workflows/**",
+        }
+        & ignored
+    )
