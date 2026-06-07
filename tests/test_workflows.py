@@ -58,3 +58,14 @@ def test_deploy_renders_and_deploys_before_enriching():
     assert render < deploy < enrich, (
         "deploy.yml must render → deploy → enrich (deploy the fast outputs before the heavy phase)"
     )
+
+
+def test_deploy_enrich_treats_graceful_yield_as_success():
+    """A superseded enrich run exits 143 after ``StopSignal`` fires. That is an expected yield,
+    not a failed Pages deployment, because deploy already happened before enrich."""
+    _wf, job = _job("deploy.yml")
+    enrich = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    run = str(enrich.get("run", ""))
+    assert 'if [ "$code" -eq 143 ] &&' in run
+    assert 'grep -q "stop: newer build queued behind this run"' in run
+    assert "Enrich yielded to newer run" in run

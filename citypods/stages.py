@@ -146,6 +146,10 @@ class StageContext:
     # blowing the 6-hour job ceiling.  Serialising to 1 (default) keeps total time predictable.
     # Set via site_config asr_workers (same field that drives cpu_threads per inference call).
     asr_semaphore: threading.Semaphore | None = None
+    # Called only for a human/code-change supersession after the post-deploy enrich phase has
+    # already abandoned in-flight ASR work. This is deliberately not used for scheduled runs or
+    # wall-clock budget stops: those should finish/persist as much completed work as possible.
+    fast_yield_exit: Callable[[], None] | None = None
 
 
 @dataclass
@@ -187,6 +191,10 @@ class EnrichmentStage(Protocol):
     ) -> StageStats:
         """Enrich the ``_materialize_set`` of ``episodes`` in place, within budget."""
         ...
+
+
+def _requests_fast_yield_exit(stop: Callable[[], bool] | None) -> bool:
+    return bool(stop is not None and getattr(stop, "should_exit_immediately", lambda: False)())
 
 
 class AudioStage:
@@ -896,8 +904,11 @@ class TranscriptStage:
                             try:
                                 _result.append(
                                     asr_mod.align(
-                                        _audio, _at, _asr_model,
-                                        city.asr_language or None, cpu_threads,
+                                        _audio,
+                                        _at,
+                                        _asr_model,
+                                        city.asr_language or None,
+                                        cpu_threads,
                                     )
                                 )
                                 _was_aligned.append(True)
@@ -912,9 +923,13 @@ class TranscriptStage:
                                 )
                                 _result.append(
                                     asr_mod.transcribe(
-                                        _audio, _asr_model, city.asr_language or None,
-                                        city.asr_compute_type, city.asr_beam_size,
-                                        _prompt, cpu_threads,
+                                        _audio,
+                                        _asr_model,
+                                        city.asr_language or None,
+                                        city.asr_compute_type,
+                                        city.asr_beam_size,
+                                        _prompt,
+                                        cpu_threads,
                                     )
                                 )
                                 _was_aligned.append(False)
@@ -924,9 +939,13 @@ class TranscriptStage:
                             )
                             _result.append(
                                 asr_mod.transcribe(
-                                    _audio, _asr_model, city.asr_language or None,
-                                    city.asr_compute_type, city.asr_beam_size,
-                                    _prompt, cpu_threads,
+                                    _audio,
+                                    _asr_model,
+                                    city.asr_language or None,
+                                    city.asr_compute_type,
+                                    city.asr_beam_size,
+                                    _prompt,
+                                    cpu_threads,
                                 )
                             )
                             _was_aligned.append(False)
@@ -953,6 +972,8 @@ class TranscriptStage:
                 time.sleep(2)
 
             if _abandoned:
+                if ctx.fast_yield_exit is not None and _requests_fast_yield_exit(ctx.stop):
+                    ctx.fast_yield_exit()
                 continue
 
             # Normal completion — release semaphore and check for errors/results.

@@ -9,9 +9,12 @@ Acceptance criteria:
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from citypods.asr import asr_spec_hash
 from citypods.models import City, Episode
@@ -724,6 +727,68 @@ class TestTranscriptStageASR:
         assert fake_asr.transcribe_calls == []
         assert stats.skipped == 1
         assert ep.transcript_key is None
+
+    def test_fast_yield_exits_after_abandoning_inflight_asr(self, tmp_path):
+        """A push/manual supersession abandons in-flight ASR and asks enrich to exit promptly."""
+        ep = _ep_with_audio()
+        started = threading.Event()
+        release = threading.Event()
+
+        class _FastExit(Exception):
+            pass
+
+        class _SlowAsr(_FakeAsr):
+            def transcribe(
+                self,
+                audio_path,
+                model_or_name,
+                language,
+                compute_type,
+                beam_size,
+                prompt,
+                cpu_threads,
+            ):
+                started.set()
+                release.wait(timeout=5)
+                return self.vtt
+
+        class _PreemptingStop:
+            def __init__(self):
+                self.calls = 0
+
+            def __call__(self):
+                self.calls += 1
+                return started.is_set()
+
+            def should_exit_immediately(self):
+                return True
+
+        def _fast_exit():
+            raise _FastExit
+
+        fake_asr = _SlowAsr()
+        ctx = _ctx(tmp_path)
+        ctx.stop = _PreemptingStop()
+        ctx.fast_yield_exit = _fast_exit
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio") as mock_dl,
+        ):
+            from contextlib import contextmanager
+
+            @contextmanager
+            def _fake_dl(url):
+                yield tmp_path / "fake_audio.m4a"
+
+            mock_dl.side_effect = _fake_dl
+
+            stage = TranscriptStage()
+            try:
+                with pytest.raises(_FastExit):
+                    stage.process(FakeProvider(), _city(), [ep], ctx)
+            finally:
+                release.set()
 
     def test_asr_reuse_when_key_already_present(self, tmp_path):
         """ASR key already in storage → reuse without re-running inference."""

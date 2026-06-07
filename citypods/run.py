@@ -70,6 +70,7 @@ from citypods.storage import make_storage
 # later (the admin/usage report shows the storage cost of keeping old recordings around).
 DEFAULT_MAX_ARCHIVE_ITEMS = 5000
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
+_PREEMPTING_RUN_EVENTS = {"push", "workflow_dispatch"}
 
 
 class SourcePipeline:
@@ -483,6 +484,9 @@ def build(
         asr_semaphore=threading.Semaphore(int(defaults.get("asr_workers", 1)))
         if not dry_run and defaults.get("asr_enabled", True)
         else None,
+        fast_yield_exit=(
+            _fast_yield_exit if phase == "enrich" and os.environ.get("GITHUB_ACTIONS") else None
+        ),
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
@@ -741,8 +745,8 @@ class StopSignal:
     Two triggers, both meaning "wrap up this run and deploy":
       * **wall-clock** — ``deadline`` (a ``time.monotonic()`` value) has passed; the run has used
         its time window.
-      * **superseded** — a newer Build & Deploy run is queued behind this one (your push, or the
-        next cron). We yield gracefully so it can take over, rather than relying on a hard
+      * **superseded** — a newer Build & Deploy run is queued behind this one (a push to main, or
+        a manual dispatch). We yield gracefully so it can take over, rather than relying on a hard
         ``cancel-in-progress`` that could abort the in-flight Pages deploy.
 
     Callable so stages just do ``if ctx.stop and ctx.stop(): ...``. The (network) superseded check
@@ -753,7 +757,7 @@ class StopSignal:
         self,
         *,
         deadline: float | None = None,
-        superseded: Callable[[], bool] | None = None,
+        superseded: Callable[[], str | None] | None = None,
         poll_interval: float = 60.0,
     ):
         self._deadline = deadline
@@ -761,6 +765,7 @@ class StopSignal:
         self._poll_interval = poll_interval
         self._last_poll = 0.0
         self._latched = False
+        self._latched_event: str | None = None
         self._lock = threading.Lock()
         # Which trigger first fired (None until then). Drives the once-only announce below and the
         # end-of-run summary in build(), so a log reader can tell "ran the full window" from
@@ -779,7 +784,9 @@ class StopSignal:
                 if now - self._last_poll >= self._poll_interval:
                     self._last_poll = now
                     try:
-                        self._latched = bool(self._superseded())
+                        superseded = self._superseded()
+                        self._latched = bool(superseded)
+                        self._latched_event = str(superseded) if superseded else None
                     except Exception:
                         self._latched = False  # never let a flaky API check stop a run
             latched = self._latched
@@ -795,13 +802,35 @@ class StopSignal:
             self.fired_reason = reason
         print(f"stop: {reason} — finishing in-flight work, then deploying", flush=True)
 
+    def should_exit_immediately(self) -> bool:
+        """True only for code/human-triggered supersession, not cron or wall-clock stops."""
+        return self.fired_reason == "newer build queued behind this run" and (
+            self._latched_event in _PREEMPTING_RUN_EVENTS
+        )
 
-def _newer_run_queued() -> bool:
-    """True if a newer run of this workflow is queued behind the current one (GitHub Actions).
+
+def _fast_yield_exit() -> None:
+    """End post-deploy enrich promptly after a push/manual supersession.
+
+    The ASR inference thread is daemonized, but native CTranslate2/BLAS work and executor
+    shutdown can still keep the process alive long enough to hold the workflow concurrency lock.
+    For a code-change build waiting behind us, the correct product behavior is to discard this
+    partial enrich attempt and let the newer run render/deploy immediately.
+    """
+    import os as _os
+
+    print("fast-yield: exiting enrich immediately for queued code-change build", flush=True)
+    _os._exit(0)
+
+
+def _newer_run_queued() -> str | None:
+    """Event name if a newer preempting run is queued behind this run (GitHub Actions).
 
     Reads the standard ``GITHUB_*`` env + ``GITHUB_TOKEN``; a run waiting on the ``pages``
-    concurrency group shows up with status ``queued``/``waiting``/``pending``. Returns False
-    outside CI or on any error (fail-open — never block a run on this)."""
+    concurrency group shows up with status ``queued``/``waiting``/``pending``. Scheduled runs are
+    intentionally non-preempting: let the current enrich finish instead of discarding work just so
+    a cron run can start. Returns None outside CI or on any error (fail-open — never block a run
+    on this)."""
     import os
     import urllib.request
 
@@ -811,7 +840,7 @@ def _newer_run_queued() -> bool:
     run_number = os.environ.get("GITHUB_RUN_NUMBER")
     workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")  # .../.github/workflows/deploy.yml@ref
     if not (repo and token and run_id and run_number):
-        return False
+        return None
     # GITHUB_WORKFLOW_REF is ``owner/repo/.github/workflows/deploy.yml@refs/heads/main``. The
     # ``@ref`` suffix contains slashes, so the filename is the basename *after dropping the ref* —
     # split on ``@`` BEFORE ``/`` (the reverse silently yields the branch name, "main", which the
@@ -839,21 +868,23 @@ def _newer_run_queued() -> bool:
                 "run bounded by the wall-clock window only",
                 flush=True,
             )
-        return False
+        return None
     me = int(run_number)
     for run in data.get("workflow_runs", []):
+        event = str(run.get("event") or "")
         if (
             str(run.get("id")) != run_id
             and run.get("status") != "completed"
             and int(run.get("run_number", 0)) > me
+            and event in _PREEMPTING_RUN_EVENTS
         ):
             print(
-                f"yield: run #{run.get('run_number')} is queued behind this run (#{me}) — "
+                f"yield: {event} run #{run.get('run_number')} is queued behind this run (#{me}) — "
                 "will wrap up and deploy",
                 flush=True,
             )
-            return True
-    return False
+            return event
+    return None
 
 
 def _resolve_base_url(base_url: str | None, site_config: dict) -> str:
