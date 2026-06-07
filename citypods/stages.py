@@ -147,8 +147,9 @@ class StageContext:
     # Set via site_config asr_workers (same field that drives cpu_threads per inference call).
     asr_semaphore: threading.Semaphore | None = None
     # Called only for a human/code-change supersession after the post-deploy enrich phase has
-    # already abandoned in-flight ASR work. This is deliberately not used for scheduled runs or
-    # wall-clock budget stops: those should finish/persist as much completed work as possible.
+    # already abandoned in-flight ASR work. This is deliberately not used for scheduled-run
+    # supersession or wall-clock budget stops: those should finish/persist as much completed work
+    # as possible.
     fast_yield_exit: Callable[[], None] | None = None
 
 

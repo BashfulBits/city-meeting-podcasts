@@ -70,7 +70,7 @@ from citypods.storage import make_storage
 # later (the admin/usage report shows the storage cost of keeping old recordings around).
 DEFAULT_MAX_ARCHIVE_ITEMS = 5000
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
-_PREEMPTING_RUN_EVENTS = {"push", "workflow_dispatch"}
+_FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
 
 
 class SourcePipeline:
@@ -745,9 +745,9 @@ class StopSignal:
     Two triggers, both meaning "wrap up this run and deploy":
       * **wall-clock** — ``deadline`` (a ``time.monotonic()`` value) has passed; the run has used
         its time window.
-      * **superseded** — a newer Build & Deploy run is queued behind this one (a push to main, or
-        a manual dispatch). We yield gracefully so it can take over, rather than relying on a hard
-        ``cancel-in-progress`` that could abort the in-flight Pages deploy.
+      * **superseded** — a newer Build & Deploy run is queued behind this one. We yield gracefully
+        so it can take over, rather than relying on a hard ``cancel-in-progress`` that could abort
+        the in-flight Pages deploy.
 
     Callable so stages just do ``if ctx.stop and ctx.stop(): ...``. The (network) superseded check
     is polled at most every ``poll_interval`` seconds and latches once true, so calling it per
@@ -805,7 +805,7 @@ class StopSignal:
     def should_exit_immediately(self) -> bool:
         """True only for code/human-triggered supersession, not cron or wall-clock stops."""
         return self.fired_reason == "newer build queued behind this run" and (
-            self._latched_event in _PREEMPTING_RUN_EVENTS
+            self._latched_event in _FAST_EXIT_RUN_EVENTS
         )
 
 
@@ -824,13 +824,14 @@ def _fast_yield_exit() -> None:
 
 
 def _newer_run_queued() -> str | None:
-    """Event name if a newer preempting run is queued behind this run (GitHub Actions).
+    """Event name if a newer run is queued behind this run (GitHub Actions).
 
     Reads the standard ``GITHUB_*`` env + ``GITHUB_TOKEN``; a run waiting on the ``pages``
-    concurrency group shows up with status ``queued``/``waiting``/``pending``. Scheduled runs are
-    intentionally non-preempting: let the current enrich finish instead of discarding work just so
-    a cron run can start. Returns None outside CI or on any error (fail-open — never block a run
-    on this)."""
+    concurrency group shows up with status ``queued``/``waiting``/``pending``. Any newer run should
+    make expensive work stop starting new items so GitHub does not externally terminate a long ASR
+    job while the next run waits. Only push/manual runs trigger the immediate fast-exit path; cron
+    runs use normal graceful stop/persist behavior. Returns None outside CI or on any error
+    (fail-open — never block a run on this)."""
     import os
     import urllib.request
 
@@ -876,7 +877,6 @@ def _newer_run_queued() -> str | None:
             str(run.get("id")) != run_id
             and run.get("status") != "completed"
             and int(run.get("run_number", 0)) > me
-            and event in _PREEMPTING_RUN_EVENTS
         ):
             print(
                 f"yield: {event} run #{run.get('run_number')} is queued behind this run (#{me}) — "
