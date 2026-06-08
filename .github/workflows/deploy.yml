@@ -7,13 +7,20 @@ on:
     # do NOT ignore docs/, config/, templates/, citypods/, scripts/, or workflow files.
     paths-ignore:
       - "review/**"
+      - "AGENTS.md"
+      - "ARCHITECTURE.md"
+      - "CHANGELOG.md"
+      - "CLAUDE.md"
       - "README.md"
       - "ROADMAP.md"
       - "PLAN.md"
       - "CONTRIBUTING.md"
       - "MIGRATION.md"
+      - "SECURITY.md"
+      - "VISION.md"
       - ".github/ADD_CITY.md"
       - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
   schedule:
     # Keep in sync with site_config.yml schedule_cron.
     - cron: "0 */4 * * *"
