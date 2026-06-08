@@ -1045,6 +1045,21 @@ class TranscriptStage:
             ) -> None:
                 del _audio_tmp  # keep the tempdir alive for abandoned daemon inference
                 try:
+
+                    def _transcribe_fresh() -> bytes:
+                        _prompt = ". ".join(
+                            p for p in (city.podcast_title, _ep.body, _ep.title) if p
+                        )
+                        return asr_mod.transcribe(
+                            _audio,
+                            _asr_model,
+                            city.asr_language or None,
+                            city.asr_compute_type,
+                            city.asr_beam_size,
+                            _prompt,
+                            cpu_threads,
+                        )
+
                     if _at:
                         try:
                             _result.append(
@@ -1057,42 +1072,23 @@ class TranscriptStage:
                                 )
                             )
                             _was_aligned.append(True)
-                        except asr_mod.AlignmentQualityError as _aqe:
+                        except Exception as _align_exc:  # noqa: BLE001
+                            _quality_error = getattr(asr_mod, "AlignmentQualityError", None)
+                            if _quality_error is not None and isinstance(
+                                _align_exc, _quality_error
+                            ):
+                                reason = "alignment-low-quality"
+                            else:
+                                reason = "alignment-error"
                             print(
-                                f"[enrich] transcript alignment-low-quality {_ep_ref}, "
-                                f"retrying as transcribe: {_aqe}",
+                                f"[enrich] transcript {reason} {_ep_ref}, "
+                                f"retrying as transcribe: {_align_exc}",
                                 flush=True,
                             )
-                            _prompt = ". ".join(
-                                p for p in (city.podcast_title, _ep.body, _ep.title) if p
-                            )
-                            _result.append(
-                                asr_mod.transcribe(
-                                    _audio,
-                                    _asr_model,
-                                    city.asr_language or None,
-                                    city.asr_compute_type,
-                                    city.asr_beam_size,
-                                    _prompt,
-                                    cpu_threads,
-                                )
-                            )
+                            _result.append(_transcribe_fresh())
                             _was_aligned.append(False)
                     else:
-                        _prompt = ". ".join(
-                            p for p in (city.podcast_title, _ep.body, _ep.title) if p
-                        )
-                        _result.append(
-                            asr_mod.transcribe(
-                                _audio,
-                                _asr_model,
-                                city.asr_language or None,
-                                city.asr_compute_type,
-                                city.asr_beam_size,
-                                _prompt,
-                                cpu_threads,
-                            )
-                        )
+                        _result.append(_transcribe_fresh())
                         _was_aligned.append(False)
                 except Exception as _exc:  # noqa: BLE001
                     _errors.append(_exc)
@@ -1175,10 +1171,12 @@ class TranscriptStage:
                 ep.transcript_synced = True
                 if _aligned[0]:
                     stats.aligned += 1
+                    outcome = "aligned"
                 else:
                     stats.transcribed += 1
+                    outcome = "transcribed"
                 stats.ran += 1
-                print(f"[enrich] transcript asr done {ep_ref}", flush=True)
+                print(f"[enrich] transcript asr done {ep_ref} method={outcome}", flush=True)
             except Exception as exc:  # noqa: BLE001
                 stats.errors.append(f"{ep.uid}: ASR store: {exc}")
                 print(
