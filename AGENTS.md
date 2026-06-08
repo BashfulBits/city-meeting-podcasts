@@ -17,9 +17,7 @@ Read this first, then the doc it points you to for your task.
 | Report or reason about security | [SECURITY.md](SECURITY.md) |
 
 > **Shared context lives in the repo.** The committed docs above are the single source of truth for
-> **all** agents. Claude Code additionally keeps a private `.claude/memory/` cache of the same facts —
-> it is machine-local, **not in the repo, and not visible to other agents or clones**, so never rely on
-> it for shared context. Any durable fact that matters must live in a committed doc.
+> **all** agents — any durable fact that matters must live in a committed doc.
 
 ## How to pick up the next piece of work
 
@@ -40,7 +38,7 @@ When you move a feature along the pipeline, update the listed docs in the **same
 | Committed to near-term | `ROADMAP.md` + `review/11` catalog (L1 sketch inline) |
 | Designed (approach chosen) | break out to `review/NN`; `review/11` entry → L2 + link |
 | Development-ready | mature `review/NN` to L3; cut GitHub Issue(s); `review/11` → L3 |
-| **Implemented (PR merged)** | `review/11` entry → **Shipped** (+ PR link); add **CHANGELOG.md** entry; update **ARCHITECTURE.md** if the architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc (Claude Code also updates its local `.claude/memory`) |
+| **Implemented (PR merged)** | `review/11` entry → **Shipped** (+ PR link); add **CHANGELOG.md** entry; update **ARCHITECTURE.md** if the architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
 
 `review/11` is a **living** document; `review/00–10` and frozen breakouts are point-in-time records.
 

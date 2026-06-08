@@ -41,7 +41,7 @@ travels this pipeline; when you move it forward, update the listed docs **in the
 | **Committed (L0→L1)** | promoted to near-term | `ROADMAP.md` + catalog (§4) at L1 + write the L1 sketch inline (§5) |
 | **Designed (L1→L2)** | approach chosen / next-up | **break out** to a new `review/NN`; catalog entry → L2 + link |
 | **Dev-ready (L2→L3)** | full design done | mature `review/NN` to L3; **cut GitHub Issue(s)**; catalog → L3 |
-| **Implemented** | PR merged | catalog → **Shipped** (+PR link); add **CHANGELOG.md** entry; update **ARCHITECTURE.md** if architecture changed; **freeze + stamp** the breakout ("Implemented in PR #N"); move ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc (Claude Code also updates its local `.claude/memory`) |
+| **Implemented** | PR merged | catalog → **Shipped** (+PR link); add **CHANGELOG.md** entry; update **ARCHITECTURE.md** if architecture changed; **freeze + stamp** the breakout ("Implemented in PR #N"); move ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
 | **Superseded** | abandoned/replaced | mark the catalog entry; note in CHANGELOG if ever partially shipped |
 
 ---
@@ -62,9 +62,9 @@ about to be worked next (or when its design exceeds ~one screen). Until then it 
 
 ## §4. Initiative catalog (exhaustive)
 
-Every feature named anywhere in the project's docs (review/01 #1–#57, review/02–09, ROADMAP, PLAN,
-`.claude/memory`, open issues) appears here, in a phase or the Deferred backlog (§6). `#NN` = review/01
-roadmap item; `GH#` = GitHub issue.
+Every feature named anywhere in the project's docs (review/01 #1–#57, review/02–09, ROADMAP, PLAN, and
+open issues) appears here, in a phase or the Deferred backlog (§6). `#NN` = review/01 roadmap item;
+`GH#` = GitHub issue.
 
 ### Shipped (foundations) — see [CHANGELOG.md](../CHANGELOG.md)
 INFRA-1..9 timeline foundation (GH#141) · #52 content permanence (absorbs **#45** self-healing
@@ -84,6 +84,7 @@ sync · #20 video enclosures (partial).
 | H4 feed-health catch-up vs stalled states | R5 | L3 | committed |
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed |
 | H6 ASR benchmark workflow → sharded ASR workflow | #1, R1 | L3 | committed |
+| H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
 | H8 4-core runner saturation | new | L3 | committed |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
 | #39 per-provider rate limiting | #39 | L2 | committed (efficiency-adjacent) |
@@ -265,8 +266,8 @@ list maintenance; aligns the catalog with the mission. Pairs with onboarding (#2
 
 **City-request + `/approve` onboarding (#28) · "report a feed problem" (#56) · auto-detect provider
 (#30) · contributor scaffolding (#57).** The human-in-the-loop onboarding/health loop is
-sketched here (and in the Claude-local Phase 5 notes); issue templates + PR template **shipped**, label
-taxonomy (`area:*`, `needs-*`) **shipped**, Projects board lands at 1.0.
+sketched here; issue templates + PR template **shipped**, label taxonomy (`area:*`, `needs-*`)
+**shipped**, Projects board lands at 1.0.
 Handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING) **shipped** with this doc set.
 
 ---
@@ -289,8 +290,8 @@ Whenever this file, `VISION.md`, or `ROADMAP.md` changes, verify:
   entry is consistent with VISION.
 - [ ] **ROADMAP ↔ this doc** — every committed near-term ROADMAP item has an L1+ catalog entry; statuses
   agree.
-- [ ] **Catalog completeness** — every feature named in any doc (review/01–10, ROADMAP, PLAN,
-  `.claude/memory`, open issues) is present, in a phase or the Deferred backlog.
+- [ ] **Catalog completeness** — every feature named in any doc (review/01–10, ROADMAP, PLAN, and open
+  issues) is present, in a phase or the Deferred backlog.
 - [ ] **Maturity/status consistency** — each entry's maturity (L0–L3) matches where its design lives
   (L1 inline / L2–L3 breakout) and reality (Shipped ⇒ merged PR).
 - [ ] **CHANGELOG sync** — every Shipped entry has a CHANGELOG line; ARCHITECTURE.md updated if the
@@ -347,7 +348,3 @@ Pointers, not copies — the source of truth for each:
 - **Security** — SSRF gate, ffmpeg whitelist, defusedxml, **untrusted LLM output**:
   [SECURITY.md](../SECURITY.md), [`review/04`](04-audit-bugs-security.md), `security.py`.
 - **Endpoint contracts / fixtures** — [`review/05`](05-endpoint-contract-tests.md), `contracts.yml`.
-
-> Claude Code keeps a local `.claude/memory/` cache of these decisions (e.g.
-> `project-architecture-decisions`, `timeline-content-transform-model`). It is **not in the repo and not
-> authoritative** — the committed sources above are. Don't cite it from committed docs.
