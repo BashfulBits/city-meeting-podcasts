@@ -10,15 +10,19 @@ last updated 2026-06-08**
 
 Most of the heavy product machinery (timeline/EDL, audio-cleanup band, ASR, content permanence) has
 **shipped**. The current risk has shifted from "missing features" to **operational throughput and
-reliability** on free GitHub-hosted runners — ASR now dominates the backlog and recent Build & Deploy
-runs clustered failures around ASR preemption/OOM (Codex review §"Actions Evidence"). This phase makes
-the pipeline **stable, observable, and maximally fast on the free tier** before new user-facing surface
-is added.
+reliability** on free GitHub-hosted runners — ASR now dominates the backlog and Build & Deploy fails on
+**~half of scheduled runs**. A 2026-06-08 build-log review (see the dated root-cause section below)
+traced these to **runner starvation** (unpinned ffmpeg threads + no memory admission control), not the
+clean OOM/preemption the earlier framing assumed — and showed that `continue-on-error` on the enrich
+step *cannot* keep the job green when the runner itself is killed. This phase makes the pipeline
+**stable, observable, and maximally fast on the free tier** before new user-facing surface is added.
 
 **Current production constraints** (`config/site_config.yml`): 4-hour deploy cron; enrich window
-`run_time_budget_minutes: 240 × budget_safety: 0.85 ≈ 204 min`; `max_workers: 20` (source-level),
-`max_encodes_per_source: 4`, `asr_workers: 1`; per-encode timeout 45 min. GitHub free public-repo
-runners: 6-hour job cap, ≤20 concurrent standard jobs, ~1,000 `GITHUB_TOKEN` req/hr.
+`run_time_budget_minutes: 240 × budget_safety: 0.85 ≈ 204 min`; `max_workers: 8` (source-level),
+`max_encodes_per_source: 2`, `asr_workers: 1` (reduced from 20/4 in PR #227 — necessary but **not**
+sufficient; runs still fail post-reduction); per-encode timeout 45 min; ffmpeg `-threads` **unpinned**
+(each encode grabs all cores). GitHub free public-repo runners: 4-core / ~16 GB box, 6-hour job cap,
+≤20 concurrent standard jobs, ~1,000 `GITHUB_TOKEN` req/hr.
 
 **Throughput anchors** (review/03 §7): self-hosted faster-whisper "base" int8 on a 4-vCPU runner ≈ 4–6×
 realtime (a 2 h meeting ≈ 20–30 min). Single 4 h-cron job ≈ 380–400 transcript-meetings/week; a 4-job
@@ -26,18 +30,94 @@ matrix ≈ ~1,500/week; 8-job ≈ ~3,000/week. Reuse-first means only ~34 mostly
 Current ~80 feeds generate ~55 new meetings/week, so the free tier comfortably covers **inflow**; only
 the initial **backlog** takes calendar time.
 
-**Sequencing (DAG).** Cheap reconciliation first, then observability, then the manifest, then ASR
-isolation/efficiency:
+**Sequencing (DAG) — revised 2026-06-08.** The build-log analysis (below) **reprioritizes** the queue:
+the do-now reliability fires (**H10** align bug, **H8** resource guard, **H11** deploy resilience) run
+**before** the docs/issues/observability items, because they are what is actually turning runs red and
+collapsing throughput today. The enrich-isolation half of H11 still waits on H5's manifest.
 
 ```
-H1 (docs/issues) ─┐
-H2 (projection)  ─┼─► H4 (feed-health states, uses H2 ETAs) ─► H5 (backlog manifest + priority)
-H3 (valid. gate) ─┘                                                 │
-                                                                    ▼
-                                              H8 (4-core saturation) ─► H6 (benchmark → sharded ASR)
-                                                                    ▲
-                                                       H9 (offload evaluation feeds H6)
+do-now fires:  H10 (align fix) ─► H8 (resource guard: ffmpeg -threads + mem admission + abandoned-thread accounting)
+                                       └─► H11a (deploy resilience: guard prevents the runner-level kill)
+
+then catch-up:  H1 (docs/issues) ─┐
+                H2 (projection)  ─┼─► H4 (feed-health states, uses H2 ETAs) ─► H5 (backlog manifest + priority)
+                H3 (valid. gate) ─┘                                                 │
+                                                                                    ▼
+                                          H6 (benchmark → sharded ASR) ◄─ H11b (isolate enrich into own workflow)
+                                                       ▲
+                                            H9 (offload evaluation feeds H6)
 ```
+
+---
+
+## Build-log root-cause analysis (2026-06-08)
+
+A thorough review of recent `Build & Deploy` logs (enabled by the new `[enrich] heartbeat …` lines)
+identified why ~half of scheduled runs go red. **This section supersedes the earlier "exit-137 OOM /
+exit-143 preemption" framing** with what the logs actually show, and drives the new/expanded items
+H8/H10/H11 and the reprioritized DAG above.
+
+### Evidence
+
+Representative failed runs. In **every** one, all steps show ✓ green (including **Enrich**), the
+"Warn if enrich was killed" step is **skipped** (so `enrich.outcome == success`), yet the **job** is red:
+
+| Run | Trigger | Dur | Job-level error |
+|---|---|---|---|
+| 27169048941 | schedule | 33m | `##[error]Process completed with exit code 143` (SIGTERM) |
+| 27149025008 | schedule | 1h43m | exit 143 |
+| 27114353508 | schedule | 2h8m | exit 143 |
+| 27074679697 | push | 3h26m | "The hosted runner lost communication with the server … starves it for CPU/Memory" |
+
+Heartbeat trace from 27169048941 (4-core / 15.6 GiB runner): sustained `load=6.5–7.4/4` (≈75 %
+CPU oversubscription); `mem_avail` repeatedly cratering to **~460 MiB** during *concurrent*
+`audio encode start/done` of 100–155 MB M4As; `threads` spiking to 25; the job is SIGTERM'd at the next
+mem-floor dip. Enrich had run only **~23 min of its 204-min budget** before the kill.
+
+Code confirmations (read at the cited lines):
+- **No ffmpeg `-threads` pinning** (`citypods/media.py`) — ffmpeg defaults to all cores, so two
+  concurrent encodes (`max_encodes_per_source: 2`) demand ~8 cores on a 4-core box.
+- **No memory admission control** — `citypods/run.py:434–494` only *logs* the snapshot/heartbeat.
+- **Abandoned daemon ASR threads** — on stop/timeout the semaphore is released and a new worker starts
+  while the CTranslate2 daemon thread "continues in background" (`citypods/stages.py:1110`, `:1127`);
+  abandoned threads are **not** counted against `asr_workers`.
+- **Broken ASR `align`** — `load_model` returns a `faster_whisper.WhisperModel` (`citypods/asr.py:60`)
+  that is passed to `align()`, which at `asr.py:187` calls `wm.align(...)` — a method only
+  `stable_whisper` models expose → `AttributeError: 'WhisperModel' object has no attribute 'align'` on
+  **every** align-mode episode in the logs. The fallback at `stages.py:1060` only catches
+  `AlignmentQualityError`, so the `AttributeError` hits the generic handler (`stages.py:1097`) and the
+  episode is skipped (`stages.py:1148`) with **no transcript and no fresh-transcribe fallback**.
+- `continue-on-error: true` on the enrich step (`deploy.yml:163–193`) cannot prevent a runner-level
+  SIGTERM/lost-comms from marking the whole job red — confirmed by the green-steps/red-job signature.
+
+### Hypotheses
+
+| ID | Hypothesis | Evidence | Confidence |
+|---|---|---|---|
+| **H-A** | ffmpeg CPU oversubscription (unpinned `-threads` × concurrent encodes) starves the runner agent → SIGTERM 143 / lost-comms | load 6.5–7.4/4; `threads`→25 during concurrent encodes; no `-threads` in code | **High** — primary, most frequent |
+| **H-B** | Memory exhaustion at the OOM cliff (concurrent encodes + page cache + model) | `mem_avail`→~460 MiB, death at next dip; admission control absent | **High** |
+| **H-C** | `continue-on-error` cannot catch a runner-level kill | all steps green, "warn" skipped, job still red w/ 143 / lost-comms | **High (confirmed)** |
+| **H-D** | Broken ASR alignment → caption-bearing feeds get zero transcripts; also burns the run's early minutes | dozens of `'WhisperModel' object has no attribute 'align'`; fallback only catches `AlignmentQualityError` | **High (confirmed)** |
+| **H-E** | Abandoned daemon ASR threads compound CPU/RAM (uncounted background inference) | `stages.py:1110/1127` "inference continues in background"; worst in long timeout-heavy runs (the 3h+ lost-comms run) | **Medium** |
+| **H-F** | Throughput collapse from early death — runs die ~23–30 min into a 204-min window, so backlog barely advances | ~50 % of scheduled runs fail *post*-#227; enrich killed at ~23 min | **High** |
+| **H-G** | Observability/alerting gap — the red X hides genuine provider failures; no per-stage "where was it when killed" | green-steps/red-job ambiguity; no alert | **Low** (partially H4) |
+
+### Coverage vs the existing H1–H9 plan
+
+| Hypothesis | Prior coverage | Verdict |
+|---|---|---|
+| H-A ffmpeg threads | H8 listed "pin ffmpeg `-threads`" as a *candidate* lever | **Partial** — not committed; sequenced last |
+| H-B memory guard | H8 listed "add a memory guard" | **Partial** — vague; sequenced last |
+| H-C continue-on-error gap | — | **Gap** → new H11 |
+| H-D align bug | H6 only *measures* alignment-failure rate | **Gap** → new H10 |
+| H-E abandoned threads | — | **Gap** → folded into H8 |
+| H-F early-death throughput | H6/H8/H9 (broad throughput) | **Indirect** — failure mode now named (fixed by H-A/H-B) |
+| H-G observability | H4 (feed-health states) | **Partial** |
+
+**Conclusion.** The active deploy-killer (H-A/H-B) was only loosely covered by H8 *and H8 sat last in the
+queue, behind docs/issue work*; H-C, H-D, and H-E were not covered at all. The response is therefore new
+items (**H10**, **H11**), concrete/committed changes folded into **H8** (incl. H-E), and the
+**reprioritized DAG** above — not just more tuning.
 
 ---
 
@@ -249,32 +329,45 @@ two-shard dry run) and never cancels a Pages deploy.
 documentation foundation the rest of Phase H builds on; no further code work. Kept in the H-sequence so
 the numbering is continuous across `ROADMAP.md`, `review/11`, and this doc.
 
-## H8 — Throughput maximization on the free 4-core runner
+## H8 — Throughput maximization on the free 4-core runner — **PRIORITY: do-now (reprioritized 2026-06-08)**
 
-**Problem.** Before paying for sharding complexity, confirm a single free runner is **saturated**.
-Recent exit-137 (OOM) and exit-143 (preemption) failures suggest the encode/ASR concurrency mix is not
-yet tuned for the 4-vCPU / ~16 GB box.
+**Problem (confirmed by the build-log analysis above, H-A/H-B/H-E).** The encode/ASR concurrency mix
+starves the runner: ffmpeg `-threads` is **unpinned**, so two concurrent encodes drive `load` to 6–7 on
+4 cores, and concurrent 100–155 MB encodes drop `mem_avail` to ~460 MiB. The runner agent is then
+SIGTERM'd (exit 143) or "loses communication." The PR #227 concurrency cut (20→8 / 4→2) helped but
+~half of scheduled runs still fail. This is no longer "confirm saturation" — it is the **active
+deploy-killer**, so the levers below move from *candidates* to **committed changes**.
 
-**Design (measure → tune).**
+**Design — committed changes (do-now):**
+1. **Pin ffmpeg `-threads`** in `citypods/media.py` so total encode threads across in-flight encodes
+   stay ≤ core count (e.g. `-threads = max(1, cpu_count // max_encodes_per_source)`). This is the single
+   biggest lever against H-A.
+2. **Memory/CPU admission guard** — reuse the existing `run.py` snapshot helpers (`_proc_meminfo_bytes`,
+   load avg) to gate *admission* of new encode/ASR work: when `mem_avail` falls below a threshold (e.g.
+   ~1.5 GiB) or load exceeds cores, hold new workers until headroom returns instead of OOM-/SIGTERM-ing
+   the job. Lighter than full resource-class pools; ships first.
+3. **Count abandoned ASR daemon threads against the worker budget (H-E)** — on stop/timeout
+   (`stages.py:1110/1127`) the semaphore is released while the CTranslate2 thread keeps running. Track
+   live abandoned threads and treat them as occupying an ASR/CPU slot (or join with a short grace before
+   admitting new ASR) so a timeout storm can't stack background inference on top of new work.
+
+**Design — follow-on (after the do-now fires land):**
 - **Profile** one representative enrich run: CPU utilization, peak RSS, and wall-time split across
   download / ffmpeg encode / silence / ASR (extend the structured build-log + `bench.py`).
-- **Tune the concurrency mix** so cores stay busy without OOM: ASR (CPU+RAM heavy, one model per worker)
-  vs `max_encodes_per_source` (ffmpeg) vs `max_workers` (network-bound source fetch). Candidate levers:
-  raise `asr_workers` only if RAM headroom allows; pin ffmpeg `-threads`; **overlap CPU-bound ASR with
-  network-bound chapter/link work** (different resource class); stagger model load to avoid load+encode
-  RAM spikes (the exit-137 cause noted in Codex evidence).
 - **Resource classes** (Codex throughput rec #1): treat chapter/link (network), encode (ffmpeg/RAM), ASR
   (CPU/RAM), future LLM (API/rate-limit) as separate pools with separate concurrency, scheduled via H5.
-- Add a **memory guard**: if available RAM drops below a threshold, reduce in-flight ASR/encode workers
-  rather than OOM-killing the job.
+- Re-tune the mix (raise `asr_workers` only if RAM headroom allows; overlap CPU-bound ASR with
+  network-bound chapter/link work; stagger model load to avoid load+encode RAM spikes).
 
-**Files.** `citypods/config.py` (expose/validate the levers), `citypods/run.py` / `citypods/stages.py`
-(resource-class-aware concurrency + memory guard), `citypods/bench.py` (throughput profiling output),
-`config/site_config.yml` (tuned defaults with comments). Mostly tuning + guards; no schema change.
+**Files.** `citypods/media.py` (pin ffmpeg `-threads`), `citypods/run.py` / `citypods/stages.py`
+(admission guard + abandoned-thread accounting), `citypods/config.py` (expose/validate the levers +
+guard threshold), `citypods/bench.py` (throughput profiling output), `config/site_config.yml` (tuned
+defaults + threshold, with comments). Mostly tuning + guards; no schema change.
 
-**Acceptance:** a representative run shows sustained high CPU utilization with no OOM across several
-consecutive Build & Deploy runs; transcript-minutes/runner-hour improves measurably vs the H6 Step-1
-baseline; documented recommended settings.
+**Acceptance:** across several consecutive Build & Deploy runs the heartbeat shows `load` staying near
+core count and `mem_avail` never approaching the OOM floor, **no exit-143 / lost-communication kills**,
+and enrich consistently uses most of its 204-min window; transcript-minutes/runner-hour improves
+measurably vs the H6 Step-1 baseline; documented recommended settings.
 
 ---
 
@@ -300,6 +393,77 @@ documented fallbacks.
 
 ---
 
+## H10 — Fix ASR alignment type mismatch + broaden the fallback — **PRIORITY: do-now (new 2026-06-08)**
+
+**Problem (H-D, confirmed).** Every `mode=align` episode in the logs fails instantly with
+`'WhisperModel' object has no attribute 'align'`. `load_model` (`citypods/asr.py:60`) returns a
+`faster_whisper.WhisperModel` and caches it process-wide; `TranscriptStage` passes that same instance to
+both `transcribe()` and `align()`. `transcribe()` works, but `align()` (`asr.py:158–187`) only works on a
+**`stable_whisper`** model — given a plain `WhisperModel`, `wm.align(...)` raises `AttributeError`. Worse,
+the fallback at `stages.py:1060` only catches `AlignmentQualityError`, so the `AttributeError` propagates
+to the generic handler (`stages.py:1097`) and the episode is skipped at `stages.py:1148` with **no
+transcript and no fresh-transcribe fallback**. Net effect: **caption-bearing feeds produce zero
+transcripts**, invisibly (the site still deploys), while wasting the run's early minutes on
+guaranteed-failing align attempts.
+
+**Design (two parts — both required).**
+1. **Make the align path use a model that actually has `.align`.** Either (a) have the alignment path
+   load/cache a `stable_whisper.load_faster_whisper(...)` model, or (b) make `load_model` return a
+   stable-ts faster-whisper model used for *both* paths. **Constraint to verify before choosing:**
+   stable-ts's `.transcribe()` returns a `WhisperResult`, not the `(segments, info)` tuple that
+   `transcribe()` currently unpacks (`asr.py:135` `segments, _ = wm.transcribe(...)`) — so option (b)
+   requires adapting that call, and option (a) means two model instances in RAM (weigh against H-B
+   memory pressure; prefer one shared instance if the API allows). Pin to the installed `stable-ts`
+   version's actual API.
+2. **Broaden the fallback** so an align failure for *any* reason (not just `AlignmentQualityError`) falls
+   back to fresh `transcribe()` rather than skipping the episode — defensive even once part 1 lands.
+
+**Files.** `citypods/asr.py` (`load_model` / `align`), `citypods/stages.py` (~999 mode select, 1048–1097
+align/fallback), `tests/` (assert: align failure → fresh-transcribe fallback produces a VTT; a
+caption-bearing fixture yields an *aligned* transcript).
+
+**Acceptance:** a caption-bearing feed produces aligned transcripts (logged `transcript asr done … aligned`);
+an injected align failure falls back to transcribe instead of producing nothing; no
+`'WhisperModel' object has no attribute 'align'` in enrich logs.
+
+---
+
+## H11 — Deploy resilience: survive (then contain) runner-level kills — **PRIORITY: do-now (new 2026-06-08)**
+
+**Problem (H-C, confirmed + H-F).** `continue-on-error: true` on the enrich step (`deploy.yml:163–193`)
+plus the graceful-yield/“warn-if-killed” machinery was designed to keep the job green when enrich exits
+non-zero. But the observed failures are **runner-level** SIGTERM (exit 143) / "lost communication" from
+resource starvation — which terminate the whole job regardless of `continue-on-error`. The signature is
+unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" is **skipped**
+(`enrich.outcome == success`), yet the job is red. Because runs die ~23–30 min into the 204-min window
+(**H-F**), enrich backlog also barely advances even though the site itself published fine.
+
+**Design.**
+- **Do-now (H11a): prevent the kill at its source.** The H8 resource guard (ffmpeg `-threads` pin +
+  memory/CPU admission + abandoned-thread accounting) keeps the runner alive, which is the only thing
+  that actually turns these runs green and recovers the ~180 min/run of lost budget (H-F). H11a has **no
+  separate code** beyond H8; it is the *reliability acceptance* tied to H8 landing.
+- **Durable follow-up (H11b): isolate heavy enrich from the deploy job.** Move enrich into its **own
+  workflow** (this is H6 Step 2) with a concurrency group distinct from `pages`, so the Pages deploy job
+  *cannot* be marked red by enrich regardless of what happens to the enrich runner. Depends on **H5**'s
+  manifest/lease for safe cross-workflow state coordination. Until then, the deploy job and enrich share
+  a runner and a red job is possible.
+- **Observability (small, alongside H11a):** because a starved runner can die before emitting a clean
+  signal, ensure the heartbeat's last line is easy to locate post-mortem and consider a step-summary
+  note recording the last heartbeat snapshot, so a genuine provider failure is distinguishable from a
+  resource kill (complements H4 / H-G).
+
+**Files.** None unique to H11a (covered by H8). H11b: `.github/workflows/asr.yml` + `deploy.yml`
+(remove/decouple the heavy enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md
+(workflow split) — sequenced after H5/H6.
+
+**Acceptance:** (H11a) several consecutive scheduled Build & Deploy runs complete **green** with enrich
+using most of its window and no exit-143/lost-comms kills. (H11b, later) a deploy job is never marked red
+by enrich because enrich no longer runs in it; the separate ASR workflow clears backlog without clobbering
+records (shared acceptance with H6).
+
+---
+
 ## Module-split note (Codex maintainability, opportunistic)
 
 While touching these areas, extract along natural seams (do **not** refactor for size alone): H5 creates
@@ -308,5 +472,7 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 
 ## Post-review code queue (recap)
 
-Implement in order: **H1 (issues) → H2 → H3 → H4 → H5 → H8 → H6 → H9**. Each lands as its own PR with
-tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG, stamp this doc per item).
+Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
+first): **H10 (align fix) → H8 (resource guard) → H11a (deploy resilience = H8 acceptance) → H1 (issues)
+→ H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR) → H9**. Each lands as its own PR with tests;
+on merge, follow the lifecycle contract (flip review/11, add CHANGELOG, stamp this doc per item).
