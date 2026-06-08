@@ -94,13 +94,20 @@ def test_deploy_skips_docs_only_pushes_but_not_deploy_inputs():
     assert push.get("branches") == ["main"]
     assert {
         "review/**",
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "CHANGELOG.md",
+        "CLAUDE.md",
         "README.md",
         "ROADMAP.md",
         "PLAN.md",
         "CONTRIBUTING.md",
         "MIGRATION.md",
+        "SECURITY.md",
+        "VISION.md",
         ".github/ADD_CITY.md",
         ".github/ISSUE_TEMPLATE/**",
+        ".github/PULL_REQUEST_TEMPLATE.md",
     } <= ignored
 
     assert (
