@@ -29,7 +29,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H4** | Feed-health **catch-up vs stalled** states + ETA + auto-comment (untangle the issue sprawl) |
 | **H5** | Stage **backlog manifest** + a configurable, extensible **prioritization policy** (recency / city order / feed-visible-first / requested-first / …) |
 | **H6** | ASR **benchmark workflow** → **sharded/separate ASR workflow** (after safe state coordination) |
-| **H7** | Contributor/agent handoff docs (shipped with this doc set) |
+| **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
 | **H8** | **Throughput maximization** — saturate the free 4-core runner (ASR-worker vs encode concurrency, OOM-safety, ffmpeg threads; measure transcript-min/runner-hr) |
 | **H9** | Evaluate **free transcription-offload tiers** (matrix sharding first; then free ASR-API/compute, ToS-checked) |
 

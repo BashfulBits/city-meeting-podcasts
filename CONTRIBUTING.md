@@ -77,7 +77,7 @@ design docs never go stale:
 | **Committed** | promoted to near-term | `ROADMAP.md` + `review/11` catalog (L1) + write the L1 sketch inline in `review/11` |
 | **Designed** | approach chosen / next-up | **break out** to a new `review/NN`; `review/11` entry → L2 + link |
 | **Dev-ready** | full design done | mature `review/NN` to L3; **cut GitHub Issue(s)** from it; `review/11` → L3 |
-| **Implemented** | PR merged | `review/11` entry → **Shipped** (+PR/issue link); **add a `CHANGELOG.md` entry**; update `ARCHITECTURE.md` if architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc (Claude Code also updates its local `.claude/memory` cache, which is not in the repo) |
+| **Implemented** | PR merged | `review/11` entry → **Shipped** (+PR/issue link); **add a `CHANGELOG.md` entry**; update `ARCHITECTURE.md` if architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc |
 | **Superseded** | abandoned/replaced | mark the `review/11` entry; note in `CHANGELOG.md` if ever partially shipped |
 
 ## How to add an enrichment stage

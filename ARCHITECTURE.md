@@ -3,9 +3,7 @@
 The **as-built** map of the system: how the code is laid out and how data flows today. This is the
 companion to the *forward-looking* design — for where the system is **going**, see
 [`review/11-technical-design-roadmap.md`](review/11-technical-design-roadmap.md) (the canonical,
-living Technical Design Roadmap). For *why* past decisions were made, see [`review/`](review/). (Claude
-Code also keeps a local `.claude/memory/` cache of decisions — not in the repo, not visible to other
-agents.)
+living Technical Design Roadmap). For *why* past decisions were made, see [`review/`](review/).
 
 > Convention: this file is kept **current** with the shipped code. When a change alters the shape
 > described here, update this file as part of the same work (see the doc-update contract in

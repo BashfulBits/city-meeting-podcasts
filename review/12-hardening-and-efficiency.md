@@ -242,6 +242,13 @@ two-shard dry run) and never cancels a Pages deploy.
 
 ---
 
+## H7 — Contributor/agent handoff docs
+
+**Shipped** in the doc-set PR (#226): `AGENTS.md` + `CLAUDE.md` pointer, `ARCHITECTURE.md`, the
+`CONTRIBUTING.md` lifecycle / doc-update contract, and the PR + issue templates. This was the
+documentation foundation the rest of Phase H builds on; no further code work. Kept in the H-sequence so
+the numbering is continuous across `ROADMAP.md`, `review/11`, and this doc.
+
 ## H8 — Throughput maximization on the free 4-core runner
 
 **Problem.** Before paying for sharding complexity, confirm a single free runner is **saturated**.
