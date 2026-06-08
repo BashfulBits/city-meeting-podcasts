@@ -13,7 +13,6 @@ from __future__ import annotations
 import collections
 import json
 import os
-import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -43,6 +42,7 @@ from citypods.records import (
     save_records,
     source_key,
 )
+from citypods.resources import ResourceAdmission, snapshot_string
 from citypods.security import SecurityError
 from citypods.site import (
     render_city_page,
@@ -381,73 +381,8 @@ def _try_preload_asr_model(defaults: dict) -> None:
         print(f"[asr] pre-load failed (non-fatal): {exc}", flush=True)
 
 
-def _format_bytes(value: int | None) -> str:
-    if value is None:
-        return "unknown"
-    units = ["B", "KiB", "MiB", "GiB", "TiB"]
-    n = float(value)
-    for unit in units:
-        if abs(n) < 1024 or unit == units[-1]:
-            return f"{n:.1f}{unit}" if unit != "B" else f"{int(n)}B"
-        n /= 1024
-    return f"{n:.1f}TiB"
-
-
-def _proc_meminfo_bytes() -> tuple[int | None, int | None]:
-    path = Path("/proc/meminfo")
-    if not path.exists():
-        return None, None
-    values: dict[str, int] = {}
-    try:
-        for line in path.read_text().splitlines():
-            key, raw = line.split(":", 1)
-            parts = raw.strip().split()
-            if parts:
-                values[key] = int(parts[0]) * 1024
-    except (OSError, ValueError):
-        return None, None
-    return values.get("MemTotal"), values.get("MemAvailable")
-
-
-def _process_rss_bytes() -> int | None:
-    status = Path("/proc/self/status")
-    if status.exists():
-        try:
-            for line in status.read_text().splitlines():
-                if line.startswith("VmRSS:"):
-                    return int(line.split()[1]) * 1024
-        except (OSError, ValueError, IndexError):
-            pass
-    try:
-        import resource
-
-        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        # Linux reports KiB; macOS reports bytes. GitHub's Ubuntu runners take the Linux path.
-        if hasattr(os, "uname") and os.uname().sysname == "Darwin":
-            return int(rss)
-        return int(rss) * 1024
-    except Exception:  # noqa: BLE001
-        return None
-
-
 def _resource_snapshot(root: Path) -> str:
-    parts = [f"rss={_format_bytes(_process_rss_bytes())}"]
-    mem_total, mem_available = _proc_meminfo_bytes()
-    if mem_total is not None and mem_available is not None:
-        parts.append(f"mem_avail={_format_bytes(mem_available)}/{_format_bytes(mem_total)}")
-    try:
-        load1, load5, _load15 = os.getloadavg()
-        cpus = os.cpu_count() or 1
-        parts.append(f"load={load1:.2f},{load5:.2f}/{cpus}")
-    except (AttributeError, OSError):
-        pass
-    try:
-        usage = shutil.disk_usage(root)
-        parts.append(f"disk_free={_format_bytes(usage.free)}/{_format_bytes(usage.total)}")
-    except OSError:
-        pass
-    parts.append(f"threads={threading.active_count()}")
-    return " ".join(parts)
+    return snapshot_string(root)
 
 
 def _heartbeat_interval_seconds() -> float:
@@ -458,6 +393,32 @@ def _heartbeat_interval_seconds() -> float:
         return max(0.0, float(raw))
     except ValueError:
         return 60.0
+
+
+def _bool_default(value: object, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resource_admission_from_defaults(defaults: dict, *, time_bounded: bool, dry_run: bool):
+    enabled = _bool_default(
+        defaults.get("resource_guard_enabled"),
+        bool(os.environ.get("GITHUB_ACTIONS")),
+    )
+    if dry_run or not time_bounded or not enabled:
+        return None
+    min_available_mb = float(defaults.get("resource_guard_min_available_mb", 1536))
+    max_load_per_cpu = float(defaults.get("resource_guard_max_load_per_cpu", 1.0))
+    poll_seconds = float(defaults.get("resource_guard_poll_seconds", 10))
+    return ResourceAdmission(
+        min_available_bytes=int(min_available_mb * 1024 * 1024),
+        max_load_per_cpu=max_load_per_cpu,
+        poll_seconds=poll_seconds,
+        log=lambda msg: print(msg, flush=True),
+    )
 
 
 class _ResourceHeartbeat:
@@ -584,9 +545,15 @@ def build(
     # that stalls would otherwise hang a worker indefinitely — and ``stop()`` can't preempt a thread
     # parked in subprocess.run, so it would pin the whole build until GitHub's 6h cap. 0 = no cap.
     encode_timeout_min = float(defaults.get("audio_encode_timeout_minutes", 45))
+    ffmpeg_threads_raw = defaults.get("audio_ffmpeg_threads")
+    if ffmpeg_threads_raw is None:
+        ffmpeg_threads = max(1, (os.cpu_count() or 1) // max(1, max_encodes_per_source))
+    else:
+        ffmpeg_threads = max(1, int(ffmpeg_threads_raw))
     ffmpeg = ffmpeg or CommandFfmpeg(
         max_kbps=max_kbps,
         timeout_seconds=(encode_timeout_min * 60) if encode_timeout_min > 0 else None,
+        threads=ffmpeg_threads,
     )
     source_cache = (
         SourceCache(
@@ -615,6 +582,11 @@ def build(
         silence_mid_min_s=float(defaults.get("silence_mid_min_s", 10.0)),
         max_encodes_per_source=max_encodes_per_source,
         source_cache=source_cache,
+        resource_admission=_resource_admission_from_defaults(
+            defaults,
+            time_bounded=time_bounded,
+            dry_run=dry_run,
+        ),
         # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;
         # N simultaneous inference calls each get 1/N of available CPU, making each
         # N× slower. asr_workers=1 (default) serialises all ASR, giving each call full

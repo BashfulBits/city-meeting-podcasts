@@ -332,13 +332,20 @@ class CommandFfmpeg:
     """
 
     def __init__(
-        self, binary: str = "ffmpeg", max_kbps: int = 96, timeout_seconds: float | None = None
+        self,
+        binary: str = "ffmpeg",
+        max_kbps: int = 96,
+        timeout_seconds: float | None = None,
+        threads: int | None = None,
     ):
         self.binary = binary
         self.max_kbps = max_kbps
         # Hard wall-clock cap for one probe+encode (None = uncapped, e.g. tests). See module
         # constants above for why an in-flight encode must be bounded.
         self.timeout_seconds = timeout_seconds
+        # ffmpeg defaults to "all cores" for AAC. Pin it so concurrent encodes do not
+        # multiply into CPU oversubscription on the 4-core Actions runner.
+        self.threads = max(1, int(threads)) if threads is not None else None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -387,6 +394,7 @@ class CommandFfmpeg:
         codec_args = encode_args(
             _probe_audio_bitrate(source_url, self.binary, timeout=probe_timeout), self.max_kbps
         )
+        thread_args = self._thread_args(codec_args)
         with tempfile.TemporaryDirectory() as tmp:
             inputs = ["-rw_timeout", str(_STALL_TIMEOUT_US), "-i", source_url]
             chapter_args: list[str] = []
@@ -406,11 +414,17 @@ class CommandFfmpeg:
                 "-vn",
                 *chapter_args,
                 *codec_args,
+                *thread_args,
                 "-movflags",
                 "+faststart",
                 str(dest),
             ]
             subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
+
+    def _thread_args(self, codec_args: list[str]) -> list[str]:
+        if self.threads is None or "aac" not in codec_args:
+            return []
+        return ["-threads", str(self.threads)]
 
     # ------------------------------------------------------------------
     # Filter path: atrim + concat + optional loudnorm
@@ -492,6 +506,7 @@ class CommandFfmpeg:
                 f"{self.max_kbps}k",
                 "-ac",
                 "1",
+                *self._thread_args(["-c:a", "aac"]),
                 "-movflags",
                 "+faststart",
                 str(dest),
@@ -659,6 +674,7 @@ def materialize_audio(
     stop: Callable[[], bool] | None = None,
     source_cache: SourceCache | None = None,
     max_workers: int = 1,
+    resource_admission: object | None = None,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -767,6 +783,12 @@ def materialize_audio(
                 stats.skipped_budget += 1
             return
         label = ep.uid or ep.guid
+        if resource_admission is not None:
+            admitted = resource_admission.wait(kind="audio", label=str(label), stop=stop)
+            if not admitted:
+                with lock:
+                    stats.skipped_budget += 1
+                return
         t0 = time.perf_counter()
         print(
             f"[enrich] audio encode start slug={city.slug} provider={city.provider} "

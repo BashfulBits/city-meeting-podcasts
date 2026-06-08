@@ -55,6 +55,15 @@ defaults:
                                  # pauses and vote transitions for a tighter podcast edit
   audio_encode_timeout_minutes: 45       # hard cap per probe+encode; a stalled source can't pin a
                                          # worker (which stop() can't preempt) past this. 0 = no cap.
+  audio_ffmpeg_threads: 2                # per-encode AAC threads. With max_encodes_per_source=2 on a
+                                         # 4-core Actions runner, this keeps ffmpeg at <=4 total threads.
+                                         # Clear to auto-calc cpu_count // max_encodes_per_source.
+  # Resource admission guard for GitHub Actions enrich runs. It waits before starting another
+  # expensive ffmpeg/ASR item when the runner is near the memory/CPU cliff, preventing exit-143 /
+  # lost-communication kills. Locally it is off unless resource_guard_enabled is set true.
+  resource_guard_min_available_mb: 1536
+  resource_guard_max_load_per_cpu: 1.0
+  resource_guard_poll_seconds: 10
   min_meetings_per_body: 3               # generator: a body needs this many recent meetings to get a feed
   # Bodies whose name contains any of these (case-insensitive) are NOT turned into feeds by
   # the generator (procurement / public-info programs, not deliberative bodies). Override or

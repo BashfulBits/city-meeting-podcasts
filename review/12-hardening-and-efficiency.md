@@ -332,6 +332,10 @@ the numbering is continuous across `ROADMAP.md`, `review/11`, and this doc.
 
 ## H8 — Throughput maximization on the free 4-core runner — **PRIORITY: do-now (reprioritized 2026-06-08)**
 
+**Status.** Implemented in the current branch; pending PR merge and production validation. Do **not**
+stamp this section as "Implemented in PR #N" or flip `review/11` to **Shipped** until the PR merges and
+scheduled Build & Deploy runs demonstrate the acceptance signal below.
+
 **Problem (confirmed by the build-log analysis above, H-A/H-B/H-E).** The encode/ASR concurrency mix
 starves the runner: ffmpeg `-threads` is **unpinned**, so two concurrent encodes drive `load` to 6–7 on
 4 cores, and concurrent 100–155 MB encodes drop `mem_avail` to ~460 MiB. The runner agent is then
@@ -360,10 +364,23 @@ deploy-killer**, so the levers below move from *candidates* to **committed chang
 - Re-tune the mix (raise `asr_workers` only if RAM headroom allows; overlap CPU-bound ASR with
   network-bound chapter/link work; stagger model load to avoid load+encode RAM spikes).
 
-**Files.** `citypods/media.py` (pin ffmpeg `-threads`), `citypods/run.py` / `citypods/stages.py`
-(admission guard + abandoned-thread accounting), `citypods/config.py` (expose/validate the levers +
-guard threshold), `citypods/bench.py` (throughput profiling output), `config/site_config.yml` (tuned
-defaults + threshold, with comments). Mostly tuning + guards; no schema change.
+**Implemented shape (current branch).**
+- `citypods/media.py`: `CommandFfmpeg` accepts a thread count and adds `-threads N` on AAC encode paths
+  only (copy paths stay unmodified).
+- `citypods/resources.py`: shared resource snapshots + `ResourceAdmission` wait loop for memory/load
+  headroom.
+- `citypods/run.py`: creates the guard for time-bounded non-dry-run Actions builds, derives ffmpeg
+  threads from `audio_ffmpeg_threads` or `cpu_count // max_encodes_per_source`, and keeps heartbeat
+  formatting on the same snapshot helper.
+- `citypods/stages.py`: passes the guard into `AudioStage`/`TranscriptStage`; abandoned ASR daemon work
+  retains the ASR semaphore slot until the background inference thread actually exits.
+- `config/site_config.yml`: production defaults `audio_ffmpeg_threads: 2`,
+  `resource_guard_min_available_mb: 1536`, `resource_guard_max_load_per_cpu: 1.0`,
+  `resource_guard_poll_seconds: 10`.
+
+**Files.** `citypods/media.py`, `citypods/resources.py`, `citypods/run.py`, `citypods/stages.py`,
+`config/site_config.yml`, `tests/test_encoder.py`, `tests/test_media.py`,
+`tests/test_transcript_stage.py`, `tests/test_resources.py`. Mostly tuning + guards; no schema change.
 
 **Acceptance:** across several consecutive Build & Deploy runs the heartbeat shows `load` staying near
 core count and `mem_avail` never approaching the OOM floor, **no exit-143 / lost-communication kills**,

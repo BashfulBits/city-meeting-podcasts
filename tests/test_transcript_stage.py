@@ -71,6 +71,16 @@ class FakeFfmpeg:
         dest.write_bytes(b"fake")
 
 
+class FakeAdmission:
+    def __init__(self, admitted=True):
+        self.admitted = admitted
+        self.calls: list[tuple[str, str]] = []
+
+    def wait(self, *, kind, label, stop=None):
+        self.calls.append((kind, label))
+        return self.admitted
+
+
 def _ctx(tmp_path: Path) -> StageContext:
     return StageContext(
         storage=LocalStorage(root=tmp_path / "audio", url_prefix="https://cdn/"),
@@ -935,6 +945,78 @@ class TestTranscriptStageASR:
         assert stats.skipped == 2
         assert any("ASR timeout" in e for e in stats.errors)
         assert all(ep.transcript_key is None for ep in eps)
+
+    def test_abandoned_asr_keeps_worker_slot_until_thread_exits(self, tmp_path):
+        ep = _ep_with_audio("uid-a")
+        started = threading.Event()
+        release = threading.Event()
+
+        class _SlowAsr(_FakeAsr):
+            def transcribe(
+                self,
+                audio_path,
+                model_or_name,
+                language,
+                compute_type,
+                beam_size,
+                prompt,
+                cpu_threads,
+            ):
+                self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
+                started.set()
+                release.wait(timeout=10)
+                return self.vtt
+
+        fake_asr = _SlowAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_timeout_base_seconds = 0.01
+        ctx.asr_timeout_per_hour_seconds = 0
+        ctx.asr_abort_event = threading.Event()
+        ctx.asr_semaphore = threading.Semaphore(1)
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        assert started.is_set()
+        assert stats.skipped == 1
+        assert ctx.asr_semaphore.acquire(blocking=False) is False
+        release.set()
+        assert ctx.asr_semaphore.acquire(timeout=2) is True
+        ctx.asr_semaphore.release()
+
+    def test_asr_waits_for_resource_admission(self, tmp_path):
+        ep = _ep_with_audio()
+        admission = FakeAdmission()
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.resource_admission = admission
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        assert admission.calls == [("asr", ep.uid)]
+        assert stats.transcribed == 1
+        assert fake_asr.transcribe_calls
+
+    def test_asr_defers_when_resource_admission_stops(self, tmp_path):
+        ep = _ep_with_audio()
+        admission = FakeAdmission(admitted=False)
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.resource_admission = admission
+
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        assert admission.calls == [("asr", ep.uid)]
+        assert stats.skipped == 1
+        assert fake_asr.transcribe_calls == []
 
     def test_asr_reuse_when_key_already_present(self, tmp_path):
         """ASR key already in storage → reuse without re-running inference."""
