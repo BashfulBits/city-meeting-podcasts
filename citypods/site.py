@@ -32,9 +32,10 @@ def _feed_label(city: City) -> str:
     return title.split("—", 1)[-1].strip() if "—" in title else title
 
 
-def _duration(seconds: int | None) -> str:
+def _duration(seconds: int | float | None) -> str:
     if not seconds:
         return ""
+    seconds = round(seconds)
     h, m = divmod(seconds // 60, 60)
     return f"{h}h {m:02d}m" if h else f"{m}m"
 

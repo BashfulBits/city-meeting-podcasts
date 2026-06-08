@@ -13,6 +13,7 @@ from __future__ import annotations
 import collections
 import json
 import os
+import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -123,9 +124,26 @@ class SourcePipeline:
             lock = self._locks[key]
         with lock:
             if key in self._cache:
+                print(
+                    f"[enrich] source cache-hit slug={city.slug} "
+                    f"provider={city.provider} source={key}",
+                    flush=True,
+                )
                 return self._cache[key]
+            t0 = time.perf_counter()
+            thread_name = threading.current_thread().name
+            print(
+                f"[enrich] source start slug={city.slug} provider={city.provider} "
+                f"source={key} thread={thread_name}",
+                flush=True,
+            )
             provider = get_provider(city.provider)
             episodes = provider.fetch_episodes(city.source)  # ProviderError propagates
+            print(
+                f"[enrich] source fetched slug={city.slug} provider={city.provider} "
+                f"source={key} episodes={len(episodes)}",
+                flush=True,
+            )
             assign_uids(city, episodes)
             persisted = load_records(self.state_dir, key)
             merge_persisted(episodes, persisted)
@@ -175,6 +193,12 @@ class SourcePipeline:
             ]
             self._cache[key] = archive
             self._notes[key] = ", ".join(notes)
+            elapsed = time.perf_counter() - t0
+            print(
+                f"[enrich] source done slug={city.slug} provider={city.provider} source={key} "
+                f"archive={len(archive)} seconds={elapsed:.1f}",
+                flush=True,
+            )
             return archive
 
     def note(self, city: City) -> str:
@@ -357,6 +381,119 @@ def _try_preload_asr_model(defaults: dict) -> None:
         print(f"[asr] pre-load failed (non-fatal): {exc}", flush=True)
 
 
+def _format_bytes(value: int | None) -> str:
+    if value is None:
+        return "unknown"
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    n = float(value)
+    for unit in units:
+        if abs(n) < 1024 or unit == units[-1]:
+            return f"{n:.1f}{unit}" if unit != "B" else f"{int(n)}B"
+        n /= 1024
+    return f"{n:.1f}TiB"
+
+
+def _proc_meminfo_bytes() -> tuple[int | None, int | None]:
+    path = Path("/proc/meminfo")
+    if not path.exists():
+        return None, None
+    values: dict[str, int] = {}
+    try:
+        for line in path.read_text().splitlines():
+            key, raw = line.split(":", 1)
+            parts = raw.strip().split()
+            if parts:
+                values[key] = int(parts[0]) * 1024
+    except (OSError, ValueError):
+        return None, None
+    return values.get("MemTotal"), values.get("MemAvailable")
+
+
+def _process_rss_bytes() -> int | None:
+    status = Path("/proc/self/status")
+    if status.exists():
+        try:
+            for line in status.read_text().splitlines():
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024
+        except (OSError, ValueError, IndexError):
+            pass
+    try:
+        import resource
+
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports KiB; macOS reports bytes. GitHub's Ubuntu runners take the Linux path.
+        if hasattr(os, "uname") and os.uname().sysname == "Darwin":
+            return int(rss)
+        return int(rss) * 1024
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _resource_snapshot(root: Path) -> str:
+    parts = [f"rss={_format_bytes(_process_rss_bytes())}"]
+    mem_total, mem_available = _proc_meminfo_bytes()
+    if mem_total is not None and mem_available is not None:
+        parts.append(f"mem_avail={_format_bytes(mem_available)}/{_format_bytes(mem_total)}")
+    try:
+        load1, load5, _load15 = os.getloadavg()
+        cpus = os.cpu_count() or 1
+        parts.append(f"load={load1:.2f},{load5:.2f}/{cpus}")
+    except (AttributeError, OSError):
+        pass
+    try:
+        usage = shutil.disk_usage(root)
+        parts.append(f"disk_free={_format_bytes(usage.free)}/{_format_bytes(usage.total)}")
+    except OSError:
+        pass
+    parts.append(f"threads={threading.active_count()}")
+    return " ".join(parts)
+
+
+def _heartbeat_interval_seconds() -> float:
+    raw = os.environ.get("CITYPODS_HEARTBEAT_SECONDS")
+    if raw is None:
+        return 60.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 60.0
+
+
+class _ResourceHeartbeat:
+    def __init__(self, *, enabled: bool, label: str, root: Path, interval_seconds: float):
+        self.enabled = enabled and interval_seconds > 0
+        self.label = label
+        self.root = root
+        self.interval_seconds = interval_seconds
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def __enter__(self) -> _ResourceHeartbeat:
+        if not self.enabled:
+            return self
+        print(f"[{self.label}] heartbeat start {_resource_snapshot(self.root)}", flush=True)
+        self._thread = threading.Thread(
+            target=self._run,
+            name="citypods-heartbeat",
+            daemon=True,
+        )
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        if not self.enabled:
+            return
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        print(f"[{self.label}] heartbeat stop {_resource_snapshot(self.root)}", flush=True)
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
+
+
 def build(
     *,
     site_config_path: str | Path = "config/site_config.yml",
@@ -424,11 +561,13 @@ def build(
     # behind this one (graceful yield — let the next run take over without hard-cancelling the
     # in-flight deploy). No count budget: with variable per-recording cost, wall-clock is the bound.
     stop: StopSignal | None = None
+    deadline: float | None = None
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
+        deadline = (time.monotonic() + window_min * 60 * safety) if window_min > 0 else None
         stop = StopSignal(
-            deadline=(time.monotonic() + window_min * 60 * safety) if window_min > 0 else None,
+            deadline=deadline,
             superseded=_newer_run_queued,
         )
         if window_min > 0:
@@ -484,6 +623,17 @@ def build(
         asr_semaphore=threading.Semaphore(int(defaults.get("asr_workers", 1)))
         if not dry_run and defaults.get("asr_enabled", True)
         else None,
+        asr_timeout_base_seconds=float(defaults.get("asr_timeout_base_minutes", 15)) * 60,
+        asr_timeout_per_hour_seconds=float(defaults.get("asr_timeout_per_audio_hour_minutes", 30))
+        * 60,
+        asr_deadline=deadline,
+        asr_timeout_budget_reserve_seconds=float(
+            defaults.get("asr_timeout_budget_reserve_minutes", 1)
+        )
+        * 60,
+        asr_abort_event=threading.Event()
+        if not dry_run and defaults.get("asr_enabled", True)
+        else None,
         fast_yield_exit=(
             _fast_yield_exit if phase == "enrich" and os.environ.get("GITHUB_ACTIONS") else None
         ),
@@ -509,32 +659,45 @@ def build(
     # Fix: load the model here, before the pool opens, so its 5.5 GB peak is resolved to the
     # ~800 MB int8 steady state before any ffmpeg processes spawn.  The process-level cache in
     # asr.py means every TranscriptStage worker reuses this single loaded instance.
-    if time_bounded and not dry_run and storage is not None:
-        _try_preload_asr_model(defaults)
-
     results: list[CityResult] = []
-    with source_cache or _nullcontext(), ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [
-            pool.submit(
-                _process_city,
-                c,
-                base_url,
-                output_dir,
-                cache,
-                request_delay,
-                dry_run,
-                pipeline,
-                site_config,
-                fingerprint,
-                do_render,
-            )
-            for c in cities
-        ]
-        for fut in futures:
-            result, entry = fut.result()
-            results.append(result)
-            if entry is not None:
-                cache[result.slug] = entry
+    heartbeat_interval = _heartbeat_interval_seconds()
+    heartbeat_requested = "CITYPODS_HEARTBEAT_SECONDS" in os.environ
+    heartbeat_enabled = (
+        time_bounded
+        and not dry_run
+        and (bool(os.environ.get("GITHUB_ACTIONS")) or heartbeat_requested)
+    )
+    with _ResourceHeartbeat(
+        enabled=heartbeat_enabled,
+        label="enrich" if phase == "enrich" else phase,
+        root=output_dir,
+        interval_seconds=heartbeat_interval,
+    ):
+        if time_bounded and not dry_run and storage is not None:
+            _try_preload_asr_model(defaults)
+
+        with source_cache or _nullcontext(), ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [
+                pool.submit(
+                    _process_city,
+                    c,
+                    base_url,
+                    output_dir,
+                    cache,
+                    request_delay,
+                    dry_run,
+                    pipeline,
+                    site_config,
+                    fingerprint,
+                    do_render,
+                )
+                for c in cities
+            ]
+            for fut in futures:
+                result, entry = fut.result()
+                results.append(result)
+                if entry is not None:
+                    cache[result.slug] = entry
 
     # Per-stage activity for the run, to stdout (build logs). Makes "did audio actually
     # materialize?" answerable without the step-summary report: ``ran`` is newly produced this

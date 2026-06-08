@@ -27,6 +27,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -628,8 +629,22 @@ def _served_duration(ep: Episode) -> float | None:
     is no timeline (identity) or no known duration."""
     tl = ep.timeline
     if tl is not None and timeline_digest(tl) != "":
-        return sum(s.served_end - s.served_start for s in tl.segments)
-    return float(ep.duration) if ep.duration is not None else None
+        duration = sum(s.served_end - s.served_start for s in tl.segments)
+        return duration if duration > 0 else None
+    if ep.duration is None:
+        return None
+    duration = float(ep.duration)
+    return duration if duration > 0 else None
+
+
+def _backfill_served_duration(ep: Episode) -> str:
+    if ep.audio_duration_served is not None and ep.audio_duration_served > 0:
+        return "existing"
+    served = _served_duration(ep)
+    if served is not None:
+        ep.audio_duration_served = served
+        return "metadata"
+    return "unknown"
 
 
 def materialize_audio(
@@ -685,6 +700,8 @@ def materialize_audio(
     # Cheap pass: handle reuse / credit / backoff inline (always sequential — fast).
     # Collect episodes that need the expensive encode into to_encode.
     to_encode: list[tuple[Episode, str, str]] = []  # (ep, spec, key)
+    ffmpeg_binary = getattr(ffmpeg, "binary", "ffmpeg")
+    src_key = source_key(city)
 
     for ep in episodes:
         if not _should_host(ep, city):
@@ -698,6 +715,7 @@ def materialize_audio(
         spec_ok = bool(ep.hosted_audio_url) and ep.audio_spec_hash in (spec, "legacy")
         present = bool(ep.audio_key) and _present(ep.audio_key)
         if spec_ok and present:
+            _backfill_served_duration(ep)
             stats.reused += 1
             continue
         if ep.hosted_audio_url and not present:
@@ -723,6 +741,7 @@ def materialize_audio(
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = storage.public_url(key)
+            _backfill_served_duration(ep)
             ep.materialize_attempts = 0
             ep.materialize_last_attempt = None
             ep.materialize_error = None
@@ -747,6 +766,13 @@ def materialize_audio(
             with lock:
                 stats.skipped_budget += 1
             return
+        label = ep.uid or ep.guid
+        t0 = time.perf_counter()
+        print(
+            f"[enrich] audio encode start slug={city.slug} provider={city.provider} "
+            f"source={src_key} uid={label} guid={ep.guid}",
+            flush=True,
+        )
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
@@ -768,7 +794,7 @@ def materialize_audio(
                     loudness_profile=loudness_profile or None,
                 )
                 try:
-                    probed = _probe_duration_secs(dest, getattr(ffmpeg, "binary", "ffmpeg"))
+                    probed = _probe_duration_secs(dest, ffmpeg_binary)
                     if probed is not None:
                         ep.audio_duration_served = probed
                 except Exception:  # noqa: BLE001
@@ -783,8 +809,7 @@ def materialize_audio(
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
             ep.audio_encode_time = now.isoformat()
-            if ep.audio_duration_served is None:
-                ep.audio_duration_served = _served_duration(ep)
+            _backfill_served_duration(ep)
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None
@@ -792,6 +817,13 @@ def materialize_audio(
                 stats.bytes_written += size
                 stats.hosted += 1
                 stats.encoded += 1
+            elapsed = time.perf_counter() - t0
+            print(
+                f"[enrich] audio encode done slug={city.slug} provider={city.provider} "
+                f"source={src_key} uid={label} guid={ep.guid} "
+                f"bytes={size} seconds={elapsed:.1f}",
+                flush=True,
+            )
         except (
             subprocess.TimeoutExpired,
             subprocess.CalledProcessError,
@@ -812,6 +844,13 @@ def materialize_audio(
             )
             with lock:
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+            elapsed = time.perf_counter() - t0
+            print(
+                f"[enrich] audio encode error slug={city.slug} provider={city.provider} "
+                f"source={src_key} uid={label} guid={ep.guid} "
+                f"seconds={elapsed:.1f}: {exc}",
+                flush=True,
+            )
 
     if max_workers > 1:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:

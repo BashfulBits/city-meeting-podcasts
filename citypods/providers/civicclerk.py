@@ -35,6 +35,26 @@ def _parse_dt(raw: str) -> datetime | None:
         return None
 
 
+def _event_duration(e: dict) -> int | None:
+    live_start = _parse_dt(e.get("liveStartTime", ""))
+    live_end = _parse_dt(e.get("liveEndTime", ""))
+    if (
+        live_start is not None
+        and live_end is not None
+        and live_start.year > 1900
+        and live_end > live_start
+    ):
+        return round((live_end - live_start).total_seconds())
+
+    try:
+        hours = int(e.get("durationHrs") or 0)
+        minutes = int(e.get("durationMin") or 0)
+    except (TypeError, ValueError):
+        return None
+    duration = hours * 3600 + minutes * 60
+    return duration if duration > 0 else None
+
+
 # CivicClerk "published file" types -> our normalized link keys. Each published file has a
 # stable ``fileId`` served by the OData file-stream endpoint (verified live), so we can link
 # to the agenda/packet/minutes/transcript PDFs that back every meeting.
@@ -99,6 +119,7 @@ def parse_events(
                 video_url=mp4,
                 description=e.get("eventDescription") or "",
                 media_kind="direct",
+                duration=_event_duration(e),
                 body=(e.get("categoryName") or e.get("meetingTypeName") or "").strip() or None,
                 links=_published_links(e, api_base),
             )

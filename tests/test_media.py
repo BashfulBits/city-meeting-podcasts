@@ -303,6 +303,39 @@ def test_stats_split_encoded_vs_credited(tmp_path):
     assert ff.calls == ["https://src/manifest.m3u8"]  # only the un-stored one was encoded
 
 
+def test_credit_path_backfills_served_duration(tmp_path):
+    city = _city()
+    store = _store(tmp_path)
+    ep = _ep("g1")
+    ep.duration = 3600
+    key = audio_object_key(city, ep, audio_spec_hash(ep, max_kbps=MAX_KBPS))
+    _seed_object(store, key)
+
+    stats = _materialize(city, [ep], store, FakeFfmpeg())
+
+    assert stats.credited == 1
+    assert ep.audio_duration_served == pytest.approx(3600.0)
+
+
+def test_credit_path_does_not_download_hosted_audio_for_duration(tmp_path, monkeypatch):
+    city = _city()
+    store = _store(tmp_path)
+    ep = _ep("g1")
+    ep.duration = 7200
+    key = audio_object_key(city, ep, audio_spec_hash(ep, max_kbps=MAX_KBPS))
+    _seed_object(store, key)
+
+    def _unexpected_probe(*_args, **_kwargs):
+        raise AssertionError("credit/reuse path should not probe hosted audio")
+
+    monkeypatch.setattr("citypods.media._probe_duration_secs", _unexpected_probe)
+
+    stats = _materialize(city, [ep], store, FakeFfmpeg())
+
+    assert stats.credited == 1
+    assert ep.audio_duration_served == pytest.approx(7200.0)
+
+
 def test_credits_run_even_when_stopped(tmp_path):
     """Near-free storage re-credits are not gated by the stop predicate — only encodes are — so a
     superseded/over-window run still reconciles drifted records before it wraps up."""
@@ -329,6 +362,7 @@ def _seed_object(store, key):
 
 def test_matching_spec_reuses_without_ffmpeg(tmp_path):
     ep = _ep("g1")
+    ep.duration = 3600
     city = _city()
     store = _store(tmp_path)
     spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)  # already current
@@ -341,6 +375,25 @@ def test_matching_spec_reuses_without_ffmpeg(tmp_path):
     stats = _materialize(city, [ep], store, ff)
     assert stats.reused == 1 and ff.calls == []
     assert ep.hosted_audio_url == store.public_url(key)
+    assert ep.audio_duration_served == pytest.approx(3600.0)
+
+
+def test_zero_source_duration_does_not_backfill_served_duration(tmp_path):
+    ep = _ep("g1")
+    ep.duration = 0
+    city = _city()
+    store = _store(tmp_path)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, spec)
+    _seed_object(store, key)
+    ep.audio_key = key
+    ep.hosted_audio_url = store.public_url(key)
+    ep.audio_spec_hash = spec
+
+    stats = _materialize(city, [ep], store, FakeFfmpeg())
+
+    assert stats.reused == 1
+    assert ep.audio_duration_served is None
 
 
 def test_legacy_spec_is_reused(tmp_path):
