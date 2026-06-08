@@ -33,10 +33,11 @@ the initial **backlog** takes calendar time.
 **Sequencing (DAG) — revised 2026-06-08.** The build-log analysis (below) **reprioritizes** the queue:
 the do-now reliability fires (**H10** align bug, **H8** resource guard, **H11** deploy resilience) run
 **before** the docs/issues/observability items, because they are what is actually turning runs red and
-collapsing throughput today. The enrich-isolation half of H11 still waits on H5's manifest.
+collapsing throughput today. **H10 shipped in PR #232**; H8 is now the next active do-now item. The
+enrich-isolation half of H11 still waits on H5's manifest.
 
 ```
-do-now fires:  H10 (align fix) ─► H8 (resource guard: ffmpeg -threads + mem admission + abandoned-thread accounting)
+do-now fires:  H10 (align fix; shipped PR #232) ─► H8 (resource guard: ffmpeg -threads + mem admission + abandoned-thread accounting)
                                        └─► H11a (deploy resilience: guard prevents the runner-level kill)
 
 then catch-up:  H1 (docs/issues) ─┐
@@ -393,7 +394,13 @@ documented fallbacks.
 
 ---
 
-## H10 — Fix ASR alignment type mismatch + broaden the fallback — **PRIORITY: do-now (new 2026-06-08)**
+## H10 — Fix ASR alignment type mismatch + broaden the fallback — **Implemented in PR #232**
+
+**Status.** Shipped in [PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232) on
+2026-06-08. This section is frozen as the implementation design record: `load_model()` now carries the
+faster-whisper transcriber plus model metadata; `align()` lazily loads/caches a stable-ts
+`load_faster_whisper(...)` model with `.align()`; `TranscriptStage` falls back to fresh transcription
+for any alignment error.
 
 **Problem (H-D, confirmed).** Every `mode=align` episode in the logs fails instantly with
 `'WhisperModel' object has no attribute 'align'`. `load_model` (`citypods/asr.py:60`) returns a
@@ -473,6 +480,7 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 ## Post-review code queue (recap)
 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
-first): **H10 (align fix) → H8 (resource guard) → H11a (deploy resilience = H8 acceptance) → H1 (issues)
-→ H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR) → H9**. Each lands as its own PR with tests;
-on merge, follow the lifecycle contract (flip review/11, add CHANGELOG, stamp this doc per item).
+first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard)** → H11a (deploy resilience =
+H8 acceptance) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR) → H9. Each
+lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG,
+stamp this doc per item).

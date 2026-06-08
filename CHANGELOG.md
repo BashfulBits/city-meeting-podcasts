@@ -22,6 +22,11 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **Contributor scaffolding (partial #57)**: PR template, feature-request + bug-report issue templates,
   and an `area:*` / `needs-*` GitHub label taxonomy.
 
+### Fixed
+- **ASR alignment fallback (H10, PR #232)**: forced alignment now uses a stable-ts faster-whisper model
+  that supports `.align()`, and any alignment failure falls back to fresh transcription instead of
+  skipping caption-bearing episodes.
+
 ## Timeline & content-transform foundation
 
 ### Added

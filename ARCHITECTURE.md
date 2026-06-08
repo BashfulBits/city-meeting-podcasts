@@ -55,7 +55,7 @@ quickly from already-known state, then heavy enrichment runs best-effort and res
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
 | **Media / audio** | `media.py` — ffmpeg encode, loudness (EBU R128), content-addressed upload. |
-| **Transcripts** | `asr.py` — forced alignment (stable-ts) + fresh transcription (faster-whisper); `bench.py` — `asr-bench` WER/throughput diagnostic. |
+| **Transcripts** | `asr.py` — forced alignment via a stable-ts faster-whisper model, fresh transcription via faster-whisper, and align-error fallback to transcription; `bench.py` — `asr-bench` WER/throughput diagnostic. |
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
 | **Orchestration** | `run.py` — `SourcePipeline`, `build()`, run history, graceful yield. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
 | **State** | `state.py` (build fingerprint), `statesync.py` (bucket↔local; bucket is truth), `storage/{base,local,s3}.py` (`S3CompatibleStorage` b2/r2 presets + local). |

@@ -26,7 +26,11 @@ post-review code queue.
 2. Open its **breakout doc** (`review/12+`) and implement from the file/test/sequencing plan there.
 3. Update the docs per the **lifecycle contract (§2)** in the same change — including flipping this
    document's catalog entry and adding a [CHANGELOG.md](../CHANGELOG.md) line.
-4. Before committing an edit to *this* file, run the **standing verification checklist (§7)**.
+4. When a planned development step is completed (especially once its PR merges), do the **Implemented**
+   row in §2 immediately: mark it Shipped here with the PR link, add the CHANGELOG entry, stamp/freeze
+   its breakout, move/narrow the ROADMAP item, and update ARCHITECTURE if the shipped code changed the
+   as-built system shape.
+5. Before committing an edit to *this* file, run the **standing verification checklist (§7)**.
 
 ---
 
@@ -79,10 +83,11 @@ sync · #20 video enclosures (partial).
 
 > **Reprioritized 2026-06-08** (build-log root-cause analysis — see
 > [review/12 § Build-log root-cause analysis](12-hardening-and-efficiency.md#build-log-root-cause-analysis-2026-06-08)):
-> the do-now reliability fires **H10 → H8 → H11** run **ahead of H1–H5**. They fix what is actually
-> turning Build & Deploy red on ~half of scheduled runs — runner starvation (unpinned ffmpeg `-threads`
-> + no memory admission control; `continue-on-error` can't catch a runner-level SIGTERM/lost-comms) and a
-> broken ASR `align` path that yields zero transcripts for caption-bearing feeds.
+> **H10 shipped in PR #232**; the remaining do-now reliability fires **H8 → H11** run **ahead of
+> H1–H5**. They fix what is actually turning Build & Deploy red on ~half of scheduled runs — runner
+> starvation (unpinned ffmpeg `-threads` + no memory admission control; `continue-on-error` can't catch a
+> runner-level SIGTERM/lost-comms). H10 fixed the broken ASR `align` path that yielded zero transcripts
+> for caption-bearing feeds.
 
 | Item | #/GH | Maturity | Status |
 |---|---|---|---|
@@ -95,7 +100,7 @@ sync · #20 video enclosures (partial).
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | committed · **do-now** (reprioritized 2026-06-08) |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
-| H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | committed · **do-now** |
+| H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
 | H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** (H11a) / after H5 (H11b) |
 | #39 per-provider rate limiting | #39 | L2 | committed (efficiency-adjacent) |
 
@@ -331,11 +336,13 @@ against live code and is **accurate and well-grounded**. Disposition of its reco
 | "defer email" | Modify → RSS/static first, **Substack** shortcut | Phase E |
 | module splits | Adopt opportunistically (e.g. `ops/workqueue.py` from H5) | as touched |
 
-**Post-review code queue (this doc set writes design only; these are the immediate code follow-ups, in
-order):** (1) H1 `gh` issue reconciliation — close/narrow GH#154 (`<podcast:transcript>` shipped),
-GH#110 (ASR → backfill/ops), GH#141 (timeline epic → umbrella only); split feed-health states. (2) H2
-projection wall-clock fix + tests. (3) H3 validation gate. (4) H4 feed-health states. (5) H5 backlog
-manifest + prioritization. (6) H8/H9 efficiency. (7) H6 ASR benchmark workflow → sharded ASR workflow.
+**Post-review code queue (updated 2026-06-08 after H10 shipped in
+[PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)):** H8 resource guard →
+H11a deploy resilience acceptance → H1 `gh` issue reconciliation — close/narrow GH#154
+(`<podcast:transcript>` shipped), GH#110 (ASR → backfill/ops), GH#141 (timeline epic → umbrella only);
+H2 projection wall-clock fix + tests; H3 validation gate; H4 feed-health states; H5 backlog manifest +
+prioritization; H11b/H6 isolate enrich + sharded ASR; H9 offload evaluation. When each step completes,
+apply §2's Implemented-row doc updates in the same PR or immediate post-merge docs PR.
 
 **Explicitly out of scope (now):** move to a hosted DB/API (no); move media off GitHub Actions (keep as
 a fallback only); full video re-hosting (deferred — storage + legal surface). **Already satisfied:** live
