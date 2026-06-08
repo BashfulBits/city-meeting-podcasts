@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Contributing guide & roadmap
+    url: https://github.com/BashfulBits/city-meeting-podcasts/blob/main/CONTRIBUTING.md
+    about: How to contribute, the doc-update contract, and where the roadmap/design lives.

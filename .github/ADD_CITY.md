@@ -56,5 +56,6 @@ the last 12 months (configurable), skipping denylisted bodies and merging `" - s
 ruff check . && ruff format --check . && pytest
 ```
 Open a PR; CI + the per-PR preview build validate the feeds. Note: **Swagit/CivicPlus** feeds
-re-host audio (ffmpeg → B2), bounded by `materialize_budget_per_run`, so a new city backfills
-over several scheduled deploys — that's expected.
+re-host audio (ffmpeg → B2), bounded by the per-run **wall-clock enrich window**
+(`run_time_budget_minutes` × `budget_safety`; a run also yields early if a newer build is queued),
+so a new city backfills over several scheduled deploys — that's expected.

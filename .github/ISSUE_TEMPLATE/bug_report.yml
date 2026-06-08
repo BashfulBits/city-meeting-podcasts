@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a bug in the tooling (for a broken/missing feed, use "Request a city" or describe the feed)
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a **broken or incomplete feed** (missing episodes, dead audio, wrong meeting body), please
+        name the feed/city and what's wrong — that's a feed-health issue, not a code bug.
+        For a **security issue**, see [SECURITY.md](../blob/main/SECURITY.md) (report privately).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What went wrong, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Command(s) run, city/feed slug, and any relevant output.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment (optional)
+      description: OS, Python version, ffmpeg version, local vs CI.
