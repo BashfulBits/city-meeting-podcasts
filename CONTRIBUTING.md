@@ -46,9 +46,6 @@ Regenerate golden snapshots after an intentional output change with `SNAPSHOT_UP
   - `docs/` — documentation-only changes (e.g. `docs/roadmap-doc-consistency`)
   - `refactor/` — internal restructuring with no behavior change
   - `chore/` — maintenance / housekeeping (deps, CI config, repo hygiene)
-
-  An agent acting on the maintainer's behalf may use its own name as the prefix instead of a type,
-  to make provenance visible in the branch list and PR history (e.g. `codex/reduce-enrich-concurrency`).
 - **Architecture:** new platforms are provider adapters behind the `MeetingProvider` Protocol; new
   per-episode features are enrichment **stages** (see `citypods/stages.py`). Most features need no
   core changes — see `review/02-architecture.md`.
