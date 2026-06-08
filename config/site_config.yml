@@ -9,8 +9,8 @@ github_repo: "BashfulBits/city-meeting-podcasts"   # "user/repo" for Issue links
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
 request_delay_seconds: 0.1               # politeness sleep per worker thread
-max_workers: 20
-max_encodes_per_source: 4                # parallel episode workers within one source (silence + encode)
+max_workers: 8
+max_encodes_per_source: 2                # parallel episode workers within one source (silence + encode)
 
 defaults:
   podcast_language: "en-us"
