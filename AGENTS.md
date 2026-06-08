@@ -55,6 +55,9 @@ When you move a feature along the pipeline, update the listed docs in the **same
 - **LLM output is untrusted** — never overwrite official links/titles/dates/transcript text (SECURITY.md).
 - **SSRF gate** — any fetch of a (potentially) user-influenced URL goes through `validate_source_url`.
 - **New platform = adapter; new per-episode feature = stage.** Most features need no core change.
+- **Branch names:** `<type>/<slug>` — `feat/`, `fix/`, `docs/`, `refactor/`, `chore/` (issue number
+  in the slug when one is tracked, e.g. `feat/110-asr-transcripts`). Full convention + examples in
+  [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Local workflow
 

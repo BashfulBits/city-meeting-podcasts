@@ -39,6 +39,13 @@ Regenerate golden snapshots after an intentional output change with `SNAPSHOT_UP
 - **GitHub flow:** feature branch → PR → merge; `main` stays deployable. CI (ruff + pytest) and a
   per-PR site preview must pass. **Merge with a merge commit (`--merge`), not squash** — preserve
   per-commit history.
+- **Branch names:** `<type>/<short-kebab-slug>`, where `<type>` is one of:
+  - `feat/` — new features or capabilities (include the tracking issue number when there is one,
+    e.g. `feat/110-asr-transcripts`, `feat/151-loudness-normalization`)
+  - `fix/` — bug fixes (e.g. `fix/scheduled-run-graceful-yield`)
+  - `docs/` — documentation-only changes (e.g. `docs/roadmap-doc-consistency`)
+  - `refactor/` — internal restructuring with no behavior change
+  - `chore/` — maintenance / housekeeping (deps, CI config, repo hygiene)
 - **Architecture:** new platforms are provider adapters behind the `MeetingProvider` Protocol; new
   per-episode features are enrichment **stages** (see `citypods/stages.py`). Most features need no
   core changes — see `review/02-architecture.md`.
