@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-07**
+**Status: LIVING · last updated 2026-06-08**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -76,6 +76,14 @@ provider capabilities · resource/agenda links + `content:encoded` + `<podcast:c
 sync · #20 video enclosures (partial).
 
 ### Phase H — Hardening & Efficiency · breakout [`review/12`](12-hardening-and-efficiency.md)
+
+> **Reprioritized 2026-06-08** (build-log root-cause analysis — see
+> [review/12 § Build-log root-cause analysis](12-hardening-and-efficiency.md#build-log-root-cause-analysis-2026-06-08)):
+> the do-now reliability fires **H10 → H8 → H11** run **ahead of H1–H5**. They fix what is actually
+> turning Build & Deploy red on ~half of scheduled runs — runner starvation (unpinned ffmpeg `-threads`
+> + no memory admission control; `continue-on-error` can't catch a runner-level SIGTERM/lost-comms) and a
+> broken ASR `align` path that yields zero transcripts for caption-bearing feeds.
+
 | Item | #/GH | Maturity | Status |
 |---|---|---|---|
 | H1 docs/issue reconciliation | #52-health, GH#110/#141/#154 | L3 | in progress (this doc set) |
@@ -85,8 +93,10 @@ sync · #20 video enclosures (partial).
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed |
 | H6 ASR benchmark workflow → sharded ASR workflow | #1, R1 | L3 | committed |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
-| H8 4-core runner saturation | new | L3 | committed |
+| H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | committed · **do-now** (reprioritized 2026-06-08) |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
+| H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | committed · **do-now** |
+| H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** (H11a) / after H5 (H11b) |
 | #39 per-provider rate limiting | #39 | L2 | committed (efficiency-adjacent) |
 
 ### Phase R — Research-Tool Surface (toward 1.0)

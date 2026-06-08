@@ -21,6 +21,11 @@ projection + admin page. Full history → [CHANGELOG.md](CHANGELOG.md).
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
+> **Reprioritized 2026-06-08** after a build-log root-cause review: the do-now reliability fires
+> **H10 → H8 → H11** run **ahead of H1–H5** — they fix what is turning Build & Deploy red on ~half of
+> scheduled runs (runner starvation + a broken ASR `align` path). See
+> [`review/12`](review/12-hardening-and-efficiency.md#build-log-root-cause-analysis-2026-06-08).
+
 | Pri | Item |
 |----:|------|
 | **H1** | Docs/roadmap/issue reconciliation (this doc set; close/narrow shipped issues) |
@@ -30,8 +35,10 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H5** | Stage **backlog manifest** + a configurable, extensible **prioritization policy** (recency / city order / feed-visible-first / requested-first / …) |
 | **H6** | ASR **benchmark workflow** → **sharded/separate ASR workflow** (after safe state coordination) |
 | **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
-| **H8** | **Throughput maximization** — saturate the free 4-core runner (ASR-worker vs encode concurrency, OOM-safety, ffmpeg threads; measure transcript-min/runner-hr) |
+| **H8** | **do-now** · **Throughput maximization** — saturate the free 4-core runner: pin ffmpeg `-threads`, memory/CPU admission guard, abandoned-ASR-thread accounting (fixes the runner starvation that kills deploys) |
 | **H9** | Evaluate **free transcription-offload tiers** (matrix sharding first; then free ASR-API/compute, ToS-checked) |
+| **H10** | **do-now** · **ASR alignment fix** — caption-bearing feeds currently produce *no* transcript (`WhisperModel.align` AttributeError + fallback only catches `AlignmentQualityError`) |
+| **H11** | **do-now** · **Deploy resilience** — `continue-on-error` can't catch a runner-level SIGTERM/lost-comms; survive via the H8 guard now, isolate enrich into its own workflow later (after H5) |
 
 ## Toward 1.0: **R — Research-Tool Surface**
 Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeting-pages-and-search.md)
