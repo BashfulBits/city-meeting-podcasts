@@ -319,9 +319,7 @@ def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys,
 
     cities = _setup(tmp_path)
     (tmp_path / "site_config.yml").write_text(
-        f"state_dir: {tmp_path / 'state'}\n"
-        "defaults:\n"
-        "  asr_enabled: false\n"
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  asr_enabled: false\n"
     )
     monkeypatch.setenv("CITYPODS_HEARTBEAT_SECONDS", "999")
 

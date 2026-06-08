@@ -35,7 +35,7 @@ def _parse_dt(raw: str) -> datetime | None:
         return None
 
 
-def _event_duration(e: dict) -> float | None:
+def _event_duration(e: dict) -> int | None:
     live_start = _parse_dt(e.get("liveStartTime", ""))
     live_end = _parse_dt(e.get("liveEndTime", ""))
     if (
@@ -44,7 +44,7 @@ def _event_duration(e: dict) -> float | None:
         and live_start.year > 1900
         and live_end > live_start
     ):
-        return float(round((live_end - live_start).total_seconds()))
+        return round((live_end - live_start).total_seconds())
 
     try:
         hours = int(e.get("durationHrs") or 0)
@@ -52,7 +52,7 @@ def _event_duration(e: dict) -> float | None:
     except (TypeError, ValueError):
         return None
     duration = hours * 3600 + minutes * 60
-    return float(duration) if duration > 0 else None
+    return duration if duration > 0 else None
 
 
 # CivicClerk "published file" types -> our normalized link keys. Each published file has a

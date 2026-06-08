@@ -83,7 +83,7 @@ def test_parse_duration_from_live_times_when_duration_fields_are_zero():
 
     eps = parse_events(payload)
 
-    assert eps[0].duration == pytest.approx(28488.0)
+    assert eps[0].duration == 28488
 
 
 def test_category_filter():

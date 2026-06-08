@@ -701,9 +701,7 @@ def _download_audio_file(url: str, dest: Path) -> None:
                 f.write(chunk)
 
 
-def _refresh_served_duration_from_audio(
-    ep: Episode, audio_path: Path, ffmpeg_binary: str
-) -> str:
+def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_binary: str) -> str:
     probed = _probe_duration_secs(audio_path, ffmpeg_binary)
     if probed is None or probed <= 0:
         return "unknown"
