@@ -37,7 +37,8 @@ Regenerate golden snapshots after an intentional output change with `SNAPSHOT_UP
 ## Conventions
 
 - **GitHub flow:** feature branch → PR → merge; `main` stays deployable. CI (ruff + pytest) and a
-  per-PR site preview must pass.
+  per-PR site preview must pass. **Merge with a merge commit (`--merge`), not squash** — preserve
+  per-commit history.
 - **Architecture:** new platforms are provider adapters behind the `MeetingProvider` Protocol; new
   per-episode features are enrichment **stages** (see `citypods/stages.py`). Most features need no
   core changes — see `review/02-architecture.md`.
@@ -46,5 +47,78 @@ Regenerate golden snapshots after an intentional output change with `SNAPSHOT_UP
 
 ## Roadmap & priorities
 
-See [ROADMAP.md](ROADMAP.md) for the prioritized backlog and [`review/`](review/) for the detailed
-rationale, cost models, and architecture notes.
+See [ROADMAP.md](ROADMAP.md) for the near-term prioritized backlog, [VISION.md](VISION.md) for the
+long-horizon direction, and **[`review/11-technical-design-roadmap.md`](review/11-technical-design-roadmap.md)**
+— the living canonical design index — to find the design for a feature and pick the next
+development-ready item. [`review/00–10`](review/) hold point-in-time rationale, cost models, and
+architecture history.
+
+## Documentation map
+
+| To understand… | Read |
+|---|---|
+| The system as built | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Near-term plan / long-horizon vision | [ROADMAP.md](ROADMAP.md) / [VISION.md](VISION.md) |
+| Forward design, pick next work | [`review/11`](review/11-technical-design-roadmap.md) + breakouts `review/12+` |
+| What shipped | [CHANGELOG.md](CHANGELOG.md) |
+| Agent/AI orientation | [AGENTS.md](AGENTS.md) (and [CLAUDE.md](CLAUDE.md)) |
+| Security posture & reporting | [SECURITY.md](SECURITY.md) |
+
+## Feature lifecycle & doc-update contract (normative)
+
+This is the **single normative copy** of the contract (mirrored for convenience in
+[`review/11`](review/11-technical-design-roadmap.md) §2 and [AGENTS.md](AGENTS.md)). Every feature
+travels this pipeline; when you move it forward, update the listed docs **in the same change** so the
+design docs never go stale:
+
+| Stage | Trigger | Update (change X → update Y) |
+|---|---|---|
+| **Idea** | captured | `VISION.md` (long-horizon) **or** `review/11` Deferred-backlog entry |
+| **Committed** | promoted to near-term | `ROADMAP.md` + `review/11` catalog (L1) + write the L1 sketch inline in `review/11` |
+| **Designed** | approach chosen / next-up | **break out** to a new `review/NN`; `review/11` entry → L2 + link |
+| **Dev-ready** | full design done | mature `review/NN` to L3; **cut GitHub Issue(s)** from it; `review/11` → L3 |
+| **Implemented** | PR merged | `review/11` entry → **Shipped** (+PR/issue link); **add a `CHANGELOG.md` entry**; update `ARCHITECTURE.md` if architecture changed; **freeze + stamp** the `review/NN` breakout ("Implemented in PR #N"); move the ROADMAP item to "Recently shipped"; close/narrow issues; capture any durable decision in the relevant committed doc (Claude Code also updates its local `.claude/memory` cache, which is not in the repo) |
+| **Superseded** | abandoned/replaced | mark the `review/11` entry; note in `CHANGELOG.md` if ever partially shipped |
+
+## How to add an enrichment stage
+
+A new per-episode feature is almost always a **stage**, not a core change.
+1. Implement `process(provider, city, episodes, ctx) -> StageStats` in `citypods/stages.py` (or a new
+   `citypods/stages/<name>.py` if the module is getting large).
+2. Insert it in `default_stages()` **in the right order**: anything that changes audio bytes
+   (chapters/timeline/loudness/trim) must precede `AudioStage`, since audio is content-addressed by its
+   spec; feed-only stages (transcript/summary/links/tags) run after.
+3. Gate only expensive *restartable* work on `ctx.stop()`; let cheap idempotent bookkeeping always run.
+4. If it produces a durable artifact, give it a **spec hash** + **content-addressed key** (mirror audio).
+5. Add tests in `tests/test_stages.py`; if it changes feed output, regenerate snapshots.
+
+## How to add a provider
+
+1. Implement the `MeetingProvider` Protocol in `citypods/providers/<name>.py` and register it.
+2. Normalize to the episode model (`body`, dates, media URL, optional chapters/agenda/transcript).
+3. Add the host to the **SSRF allowlist** (`citypods/security.py`).
+4. Record offline fixtures (`tests/fixtures/`) — **no live network in default CI**; add parser unit
+   tests and a feed snapshot. Add a live contract test under `@pytest.mark.live` (runs in `contracts.yml`,
+   not PR CI).
+5. Document it in [README.md](README.md) and [`.github/ADD_CITY.md`](.github/ADD_CITY.md).
+
+## Updating feeds & snapshots
+
+Feed output is snapshot-tested byte-for-byte. After an **intentional** change, regenerate with
+`SNAPSHOT_UPDATE=1 pytest` and review the diff in the PR. Never change artifact **identity** (audio
+spec hash inputs, UID derivation) without a migration note in [MIGRATION.md](MIGRATION.md).
+
+## Security checklist (per PR)
+
+- No provider network calls in normal CI; no secrets committed (env-only).
+- Any new fetch of a user-influenced URL goes through `validate_source_url`.
+- No LLM/generated output overwrites official links/titles/dates/transcript text.
+- See [SECURITY.md](SECURITY.md) for the full posture.
+
+## PR checklist
+
+- [ ] Tests added/updated; `ruff check . && ruff format --check .` and `pytest` pass.
+- [ ] Feed snapshots regenerated intentionally (if output changed).
+- [ ] Docs updated per the lifecycle contract (review/11 + CHANGELOG + ARCHITECTURE as applicable).
+- [ ] No artifact-identity change without a migration note.
+- [ ] Security checklist satisfied.

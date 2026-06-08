@@ -7,6 +7,15 @@ with no structural change.
 Legend — Effort: S ≤½ day · M ~1–2 days · L ~a week · XL multi-week.
 Cost: 🆓 none · 💲 small API/compute · 💲💲 material.
 
+> **Status reconciliation (2026-06-07):** this brainstorm is a **point-in-time** document and the
+> priority table below has drifted — much of bands P0.5–P1.5 has since **shipped** (#52 content
+> permanence, #22 silence-trim, #21 loudness, #23 host-all, #122 concat, #1/#110 ASR transcripts, #11
+> `<podcast:transcript>`, #124 status dashboard). For current status, the **living** source of truth is
+> [`review/11-technical-design-roadmap.md`](11-technical-design-roadmap.md) (design + exhaustive
+> catalog), with [`../ROADMAP.md`](../ROADMAP.md) for near-term priorities and
+> [`../CHANGELOG.md`](../CHANGELOG.md) for what has shipped. This doc is retained for its per-item
+> rationale and the original maintainer prioritization rationale.
+
 ## A. Episode content & discoverability (listener-facing)
 
 1. **ASR transcripts (Whisper/Deepgram)** — Value: high · Effort: L · 💲💲. Stage; store transcript

@@ -3,9 +3,21 @@
 Turn US city meeting archives into subscribable podcast feeds (audio + video),
 hosted free on GitHub Pages, with a searchable public directory.
 
-The system is **provider-agnostic**: each video platform (Granicus today;
-CivicPlus and others planned) is a pluggable adapter behind a common interface.
-See [PLAN.md](PLAN.md) for the full architecture and phased roadmap.
+The system is **provider-agnostic**: each video platform (Granicus, CivicPlus, CivicClerk, Swagit
+today; others planned) is a pluggable adapter behind a common interface.
+
+## Documentation
+
+| Doc | What it covers |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | The system as built today (module map, data flow, invariants) |
+| [ROADMAP.md](ROADMAP.md) | Near-term prioritized plan toward 1.0 |
+| [VISION.md](VISION.md) | Long-horizon direction (engagement, foresight, AI co-creation) |
+| [`review/11`](review/11-technical-design-roadmap.md) | Living canonical technical-design index + breakout designs |
+| [CHANGELOG.md](CHANGELOG.md) | What has shipped |
+| [CONTRIBUTING.md](CONTRIBUTING.md) / [AGENTS.md](AGENTS.md) | Process & agent/contributor guide |
+| [SECURITY.md](SECURITY.md) | Security policy & posture |
+| [PLAN.md](PLAN.md) | Original phased build plan (historical) |
 
 ## Quick start
 

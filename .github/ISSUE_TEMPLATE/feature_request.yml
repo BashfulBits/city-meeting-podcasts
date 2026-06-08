@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a feature or improvement
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Before filing, check [ROADMAP.md](../blob/main/ROADMAP.md) and
+        [review/11](../blob/main/review/11-technical-design-roadmap.md) — many ideas are already tracked.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What's the need? Who benefits (e.g. a Strong Towns Local Conversation, a journalist)?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? Rough ideas are fine.
+    validations:
+      required: true
+  - type: input
+    id: roadmap-ref
+    attributes:
+      label: Roadmap / design reference (optional)
+      description: If this maps to a review/11 catalog item, ROADMAP item (#NN), or phase, note it here.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
