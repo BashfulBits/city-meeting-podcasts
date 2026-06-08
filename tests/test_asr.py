@@ -204,6 +204,38 @@ class TestAlignMocked:
 
         assert vtt.startswith(b"WEBVTT")
 
+    def test_loaded_faster_model_uses_stable_ts_model_for_alignment(self, tmp_path):
+        import citypods.asr as asr
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        asr._model_cache.clear()
+        fast_model = MagicMock()
+        fast_model.transcribe.return_value = (iter([]), MagicMock())
+        _inject_fw(fast_model)
+        sys.modules["faster_whisper"].WhisperModel = MagicMock(return_value=fast_model)
+
+        fake_result = MagicMock()
+        fake_result.to_vtt.return_value = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n"
+        stable_model = MagicMock()
+        stable_model.align.return_value = fake_result
+        _inject_sw(stable_model)
+        sys.modules["stable_whisper"].load_faster_whisper = MagicMock(return_value=stable_model)
+
+        loaded = asr.load_model("base.en", "int8", 4)
+        vtt = asr.align(audio, "Hello", loaded, "en", 4)
+
+        assert vtt.startswith(b"WEBVTT")
+        assert fast_model.align.call_count == 0
+        sys.modules["stable_whisper"].load_faster_whisper.assert_called_once_with(
+            "base.en",
+            device="cpu",
+            cpu_threads=4,
+            compute_type="int8",
+        )
+        stable_model.align.assert_called_once_with(str(audio), "Hello", language="en")
+
 
 # ── vtt_to_text / srt_to_text ────────────────────────────────────────────────
 

@@ -720,6 +720,68 @@ class TestTranscriptStageASR:
         assert stats.aligned == 1
         assert stats.transcribed == 0
 
+    def test_alignment_error_falls_back_to_transcription(self, tmp_path, capsys):
+        """Any Path A alignment failure still produces a fresh ASR transcript."""
+        from citypods.records import source_key as _src_key
+
+        sk = _src_key(_city())
+        ep = _ep_with_audio()
+        ep.transcript_key = f"transcripts/{sk}/uid-asr-oldspec.txt"
+        ep.transcript_format = "txt"
+        ep.transcript_synced = False
+        ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+
+        storage_root = tmp_path / "audio"
+        (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (storage_root / ep.transcript_key).write_bytes(b"These are the meeting minutes.")
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+            def get(self, url, **kw):
+                class _R:
+                    status_code = 200
+                    content = b"These are the meeting minutes."
+
+                    def iter_content(self, **kw):
+                        return iter([b"fake"])
+
+                    def raise_for_status(self):
+                        pass
+
+                return _R()
+
+        class _AlignFailingAsr(_FakeAsr):
+            def align(self, audio_path, text, model_or_name, language, cpu_threads):
+                self.align_calls.append({"text": text, "model": model_or_name})
+                raise AttributeError("'WhisperModel' object has no attribute 'align'")
+
+        fake_asr = _AlignFailingAsr()
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        out = capsys.readouterr().out
+        assert len(fake_asr.align_calls) == 1
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ep.transcript_synced is True
+        assert ep.transcript_basis == "served"
+        assert ep.transcript_format == "vtt"
+        assert "asr-" in ep.transcript_key
+        assert stats.aligned == 0
+        assert stats.transcribed == 1
+        assert stats.ran == 1
+        assert not stats.errors
+        assert "alignment-error" in out
+        assert "method=transcribed" in out
+
     def test_skip_when_already_synced(self, tmp_path):
         """synced=True (e.g. from CivicClerk timed VTT) → ASR never called."""
         from citypods.records import source_key as _src_key

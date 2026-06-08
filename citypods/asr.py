@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 # ── Module-level model cache ─────────────────────────────────────────────────
@@ -29,6 +30,22 @@ from pathlib import Path
 # all others wait and then reuse the cached instance.
 _model_cache: dict[tuple, object] = {}
 _model_lock = threading.Lock()
+
+
+@dataclass(frozen=True)
+class _LoadedAsrModel:
+    """A loaded faster-whisper model plus the recipe needed for stable-ts alignment."""
+
+    model_or_path: str
+    compute_type: str
+    cpu_threads: int
+    transcriber: object
+
+
+def _configured_model_or_path(model: str) -> str:
+    """Resolve the configured model through the runtime ASR_MODEL_PATH override."""
+    return os.environ.get("ASR_MODEL_PATH") or model
+
 
 # ── VTT helpers ─────────────────────────────────────────────────────────────
 
@@ -58,7 +75,7 @@ def _to_vtt(segments) -> bytes:
 
 
 def load_model(model: str, compute_type: str, cpu_threads: int):
-    """Load and return a faster-whisper ``WhisperModel``, using a process-level cache.
+    """Load and return a cached ASR model bundle.
 
     The model is loaded at most ONCE per process regardless of how many sources are
     processed in parallel.  A threading lock ensures only one thread downloads/loads
@@ -84,17 +101,49 @@ def load_model(model: str, compute_type: str, cpu_threads: int):
 
     # ASR_MODEL_PATH overrides the config model name: either a local directory
     # (preferred — no Hub call) or a fallback HF model name (e.g. "distil-large-v3").
-    model_or_path = os.environ.get("ASR_MODEL_PATH") or model
+    model_or_path = _configured_model_or_path(model)
 
-    cache_key = (model_or_path, compute_type, cpu_threads)
+    cache_key = ("faster-whisper", model_or_path, compute_type, cpu_threads)
     if cache_key in _model_cache:
         return _model_cache[cache_key]
 
     with _model_lock:
         # Double-checked locking: another thread may have loaded while we waited.
         if cache_key not in _model_cache:
-            _model_cache[cache_key] = WhisperModel(
+            transcriber = WhisperModel(
                 model_or_path, device="cpu", compute_type=compute_type, cpu_threads=cpu_threads
+            )
+            _model_cache[cache_key] = _LoadedAsrModel(
+                model_or_path=model_or_path,
+                compute_type=compute_type,
+                cpu_threads=cpu_threads,
+                transcriber=transcriber,
+            )
+    return _model_cache[cache_key]
+
+
+def _load_alignment_model(model_or_path: str, compute_type: str | None, cpu_threads: int):
+    """Load/cache a stable-ts faster-whisper model that supports ``align()``."""
+    try:
+        import stable_whisper
+    except ImportError as exc:
+        raise ImportError(
+            "stable-ts is required for forced alignment. "
+            "Install it with: pip install 'citypods[asr]'"
+        ) from exc
+
+    cache_key = ("stable-faster-whisper", model_or_path, compute_type, cpu_threads)
+    if cache_key in _model_cache:
+        return _model_cache[cache_key]
+
+    with _model_lock:
+        if cache_key not in _model_cache:
+            options: dict[str, object] = {"device": "cpu", "cpu_threads": cpu_threads}
+            if compute_type:
+                options["compute_type"] = compute_type
+            _model_cache[cache_key] = stable_whisper.load_faster_whisper(
+                model_or_path,
+                **options,
             )
     return _model_cache[cache_key]
 
@@ -124,11 +173,13 @@ def transcribe(
 
     if isinstance(model_or_name, str):
         wm = WhisperModel(
-            model_or_name,
+            _configured_model_or_path(model_or_name),
             device="cpu",
             compute_type=compute_type,
             cpu_threads=cpu_threads,
         )
+    elif isinstance(model_or_name, _LoadedAsrModel):
+        wm = model_or_name.transcriber
     else:
         wm = model_or_name  # pre-loaded instance
 
@@ -171,16 +222,18 @@ def align(
     words falls below ``_MIN_ALIGN_COVERAGE`` (default 60 %).  The caller should
     catch this and fall back to fresh :func:`transcribe`.
     """
-    try:
-        import stable_whisper
-    except ImportError as exc:
-        raise ImportError(
-            "stable-ts is required for forced alignment. "
-            "Install it with: pip install 'citypods[asr]'"
-        ) from exc
-
     if isinstance(model_or_name, str):
-        wm = stable_whisper.load_faster_whisper(model_or_name, cpu_threads=cpu_threads)
+        wm = _load_alignment_model(
+            _configured_model_or_path(model_or_name),
+            None,
+            cpu_threads,
+        )
+    elif isinstance(model_or_name, _LoadedAsrModel):
+        wm = _load_alignment_model(
+            model_or_name.model_or_path,
+            model_or_name.compute_type,
+            model_or_name.cpu_threads,
+        )
     else:
         wm = model_or_name  # pre-loaded instance
 
