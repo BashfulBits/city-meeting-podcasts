@@ -162,3 +162,6 @@ class City:
     asr_language: str = "en"  # Whisper language hint; empty string = auto-detect
     asr_workers: int = 1  # episode-level parallelism (1 model instance per worker)
     asr_beam_size: int = 5  # Whisper beam size; reduce to 1 for ~2× speed
+    # Temporarily disabled in production while Phase H moves alignment into its own
+    # resource lane; untimed provider transcripts remain notes-only when false.
+    asr_alignment_enabled: bool = False

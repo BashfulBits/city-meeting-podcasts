@@ -249,6 +249,15 @@ Each work item: `source_key`, `episode_uid`, `stage`, `stage_version`, `state`
 H6) `lease_owner`/`lease_expires`. This makes "why is this feed still missing audio/transcripts?"
 answerable in the status page, and is the **lease/merge substrate** ASR sharding needs.
 
+**ASR lane split (new H11a mitigation, 2026-06-09).** Production temporarily sets
+`asr_alignment_enabled: false`, so untimed provider transcripts remain notes-only and their timed
+upgrade is skipped as `alignment-disabled` rather than falling back to generated text. H5 should model
+that explicitly instead of hiding it inside the generic transcript backlog: use separate work classes
+for `transcript-asr` (fresh large-v3-turbo transcription for meetings with no source text) and
+`transcript-align` (stable-ts forced alignment for untimed provider text). The manifest should preserve
+the provider-text hash used for alignment and expose `alignment-disabled` / `needs_alignment` counts in
+the status surface, so re-enabling alignment later is a backlog-drain decision, not a behavioral surprise.
+
 **(b) Configurable prioritization policy.** A declarative, ordered list of **sort keys** applied
 lexicographically to the pending set; ties fall through to the next key. Config (`site_config.yml`):
 ```yaml
@@ -269,7 +278,9 @@ registered in a table so new keys are additive.
 `mark(state)`/`lease()`/`release()`. `_materialize_set` becomes a thin caller of `order(...)` with the
 configured policy (default policy = today's behavior, so this is **behavior-preserving** until a policy
 is set). `run.py` consults the manifest to choose what each run/stage works on within the wall-clock
-window.
+window. The transcript stage should claim exactly one ASR lane at a time; an align claim must not
+opportunistically fall back to fresh transcription in the same runner unless a later policy explicitly
+admits that extra model/cpu cost.
 
 **Implementation paths.** (1) **manifest + policy together** (preferred — the policy needs the manifest's
 pending set). (2) policy-only over the in-memory record set first, manifest later (faster to ship, but
@@ -313,10 +324,18 @@ state files with merge-on-push; (3) a lease file in object storage (the manifest
 Render publishes **only completed** transcript artifacts and ignores in-progress ASR. Each job stays
 **below the 6-hour cap** (a daily workflow does **not** grant extra single-job capacity).
 
+**Alignment re-enable criteria.** Reintroduce stable-ts only as an **align-only** workflow lane:
+pre-load the stable-ts model, do not load/run the fresh transcription model in that job, and do not run
+audio encodes concurrently in the same runner. If alignment fails quality checks, mark the item for a
+future `transcript-asr` claim rather than falling back inline. This keeps peak memory lower, makes
+throughput measurements comparable, and prevents the 2026-06-09 failure mode where stable-ts alignment
+stacked with ffmpeg work and GitHub terminated the runner with exit 143.
+
 **Files.** `.github/workflows/asr-bench.yml`, `.github/workflows/asr.yml`; `citypods/cli.py` (ensure
-`enrich --stage transcript --shard k/N` or `--source <key>` selection exists); `citypods/asr.py`
-(global throttle already added — verify under matrix); `citypods/ops/workqueue.py` (lease/claim for
-shards); docs in ARCHITECTURE.md (workflow split) + this file.
+`enrich --stage transcript --lane {transcribe,align} --shard k/N` or `--source <key>` selection exists);
+`citypods/asr.py` (global throttle already added — verify under matrix; add explicit preload entrypoints
+for the selected lane only); `citypods/ops/workqueue.py` (lease/claim for shards); docs in
+ARCHITECTURE.md (workflow split) + this file.
 
 **Acceptance:** the benchmark workflow emits a throughput/quality report artifact; the ASR workflow
 clears transcript backlog across shards with **no record-file clobbering** (verified by a concurrent

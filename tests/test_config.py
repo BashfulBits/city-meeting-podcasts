@@ -88,6 +88,18 @@ def test_override_default(tmp_path):
     assert cities[0].max_episodes == 10
 
 
+def test_asr_alignment_defaults_off_and_can_be_enabled(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID)
+    assert load_city_configs(tmp_path, DEFAULTS)[0].asr_alignment_enabled is False
+
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID + "asr_alignment_enabled: true\n",
+    )
+    assert load_city_configs(tmp_path, DEFAULTS)[0].asr_alignment_enabled is True
+
+
 def test_template_file_skipped(tmp_path):
     _write(tmp_path, "_template.yml", VALID)
     assert load_city_configs(tmp_path, DEFAULTS) == []

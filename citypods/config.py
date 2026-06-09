@@ -105,6 +105,7 @@ def _build_city(
             "asr_language",
             "asr_workers",
             "asr_beam_size",
+            "asr_alignment_enabled",
         }
     )
     return City(
@@ -133,6 +134,9 @@ def _build_city(
         asr_language=str(_get("asr_language", defaults.get("asr_language", "en"))),
         asr_workers=int(_get("asr_workers", defaults.get("asr_workers", 1))),
         asr_beam_size=int(_get("asr_beam_size", defaults.get("asr_beam_size", 5))),
+        asr_alignment_enabled=bool(
+            _get("asr_alignment_enabled", defaults.get("asr_alignment_enabled", False))
+        ),
     )
 
 

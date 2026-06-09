@@ -917,6 +917,14 @@ class TranscriptStage:
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
 
+            if align_text and not city.asr_alignment_enabled:
+                stats.skipped += 1
+                print(
+                    f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
+                    flush=True,
+                )
+                continue
+
             align_hash = hashlib.sha1(align_text.encode()).hexdigest()[:12] if align_text else None
             recipe = asr_mod.asr_spec_hash(
                 ep.audio_spec_hash, city.asr_model, align_hash, ASR_PIPELINE_VERSION

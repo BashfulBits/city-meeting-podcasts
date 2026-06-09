@@ -96,8 +96,8 @@ sync · #20 video enclosures (partial).
 | H2 projection wall-clock fix | R3 | L3 | committed |
 | H3 feed-validation publish gate | #53 | L3 | committed |
 | H4 feed-health catch-up vs stalled states | R5 | L3 | committed |
-| H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed |
-| H6 ASR benchmark workflow → sharded ASR workflow | #1, R1 | L3 | committed |
+| H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed · include `transcript-align` backlog lane |
+| H6 ASR benchmark workflow → sharded ASR workflow | #1, R1 | L3 | committed · split align-only vs transcribe-only ASR lanes |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
@@ -342,8 +342,10 @@ against live code and is **accurate and well-grounded**. Disposition of its reco
 H11a deploy resilience acceptance → H1 `gh` issue reconciliation — close/narrow GH#154
 (`<podcast:transcript>` shipped), GH#110 (ASR → backfill/ops), GH#141 (timeline epic → umbrella only);
 H2 projection wall-clock fix + tests; H3 validation gate; H4 feed-health states; H5 backlog manifest +
-prioritization; H11b/H6 isolate enrich + sharded ASR; H9 offload evaluation. When each step completes,
-apply §2's Implemented-row doc updates in the same PR or immediate post-merge docs PR.
+prioritization (including an explicit alignment-deferred lane for untimed provider transcripts);
+H11b/H6 isolate enrich + sharded ASR, with separate align-only and transcribe-only lanes so stable-ts
+and faster-whisper model loads do not stack in one runner; H9 offload evaluation. When each step
+completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge docs PR.
 
 **Explicitly out of scope (now):** move to a hosted DB/API (no); move media off GitHub Actions (keep as
 a fallback only); full video re-hosting (deferred — storage + legal surface). **Already satisfied:** live
