@@ -331,7 +331,7 @@ two-shard dry run) and never cancels a Pages deploy.
 documentation foundation the rest of Phase H builds on; no further code work. Kept in the H-sequence so
 the numbering is continuous across `ROADMAP.md`, `review/11`, and this doc.
 
-## H8 — Throughput maximization on the free 4-core runner — **PRIORITY: do-now (reprioritized 2026-06-08)**
+## H8 — Throughput maximization on the free 4-core runner — **Implemented in PR #235**
 
 **Status.** Implemented in [PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235),
 merged 2026-06-08. This section is frozen as the implementation design record.
