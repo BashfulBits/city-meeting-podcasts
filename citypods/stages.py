@@ -85,7 +85,7 @@ from citypods.bodies import body_key, canonical_body
 from citypods.media import MaterializeStats, SourceCache, _probe_duration_secs, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
-from citypods.resources import ResourceAdmission
+from citypods.resources import NativeWorkGate, ResourceAdmission
 from citypods.timeline import Timeline, remap, timeline_digest
 
 
@@ -143,6 +143,9 @@ class StageContext:
     # Admission guard for expensive native work. It waits for memory/CPU headroom before
     # starting another ffmpeg encode or ASR inference, preventing runner-level kills.
     resource_admission: ResourceAdmission | None = None
+    # Resource-class gate for native work. Audio encodes may overlap audio, but ASR is exclusive
+    # and must not overlap ffmpeg encodes on the small GitHub-hosted runner.
+    native_work_gate: NativeWorkGate | None = None
     # Global semaphore that caps concurrent ASR inference calls across ALL sources in the run.
     # ASR is CPU-bound and uses all cpu_threads — running N sources' alignment/transcription
     # simultaneously divides effective CPU by N, making each job N× slower.  With max_workers=20
@@ -258,6 +261,7 @@ class AudioStage:
             source_cache=ctx.source_cache,
             max_workers=ctx.max_encodes_per_source,
             resource_admission=ctx.resource_admission,
+            native_work_gate=ctx.native_work_gate,
         )
         return StageStats(
             self.name,
@@ -982,12 +986,27 @@ class TranscriptStage:
                     stats.skipped += 1
                     continue
 
+            native_gate_acquired = False
+            if ctx.native_work_gate is not None:
+                native_gate_acquired = ctx.native_work_gate.acquire(
+                    kind="asr", label=ep.uid or ep.guid, stop=ctx.stop
+                )
+                if not native_gate_acquired:
+                    if sem is not None:
+                        sem.release()
+                        sem = None
+                    stats.skipped += 1
+                    continue
+
             audio_tmp = _tmp.TemporaryDirectory()
             audio_path = Path(audio_tmp.name) / "audio.m4a"
             try:
                 _download_audio_file(ep.hosted_audio_url, audio_path)
             except Exception as exc:  # noqa: BLE001
                 audio_tmp.cleanup()
+                if native_gate_acquired and ctx.native_work_gate is not None:
+                    ctx.native_work_gate.release(kind="asr")
+                    native_gate_acquired = False
                 if sem is not None:
                     sem.release()
                     sem = None
@@ -1018,6 +1037,9 @@ class TranscriptStage:
             timeout_s = _asr_timeout_seconds(ctx, dur_h)
             if timeout_s is not None and timeout_s <= 0:
                 audio_tmp.cleanup()
+                if native_gate_acquired and ctx.native_work_gate is not None:
+                    ctx.native_work_gate.release(kind="asr")
+                    native_gate_acquired = False
                 if sem is not None:
                     sem.release()
                     sem = None
@@ -1048,6 +1070,7 @@ class TranscriptStage:
             _err: list[Exception] = []
             _aligned: list[bool] = []
             _release_abandoned_asr_slot = threading.Event()
+            _release_abandoned_native_gate = threading.Event()
 
             # Bind per-iteration values as default args so the closure captures their
             # current values, not a reference that may change in future loop iterations
@@ -1063,6 +1086,8 @@ class TranscriptStage:
                 _was_aligned=_aligned,
                 _sem=sem,
                 _release_abandoned=_release_abandoned_asr_slot,
+                _native_gate=ctx.native_work_gate,
+                _release_native=_release_abandoned_native_gate,
             ) -> None:
                 try:
 
@@ -1115,6 +1140,8 @@ class TranscriptStage:
                 finally:
                     if _release_abandoned.is_set() and _sem is not None:
                         _sem.release()
+                    if _release_native.is_set() and _native_gate is not None:
+                        _native_gate.release(kind="asr")
                     _audio_tmp.cleanup()
 
             _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{ep.uid[:8]}")
@@ -1133,6 +1160,9 @@ class TranscriptStage:
                     if sem is not None:
                         _release_abandoned_asr_slot.set()
                         sem = None  # daemon thread releases the slot when native work exits
+                    if native_gate_acquired and ctx.native_work_gate is not None:
+                        _release_abandoned_native_gate.set()
+                        native_gate_acquired = False
                     stats.skipped += 1
                     break
                 if _timeout_at is not None and time.monotonic() >= _timeout_at:
@@ -1151,6 +1181,9 @@ class TranscriptStage:
                     if sem is not None:
                         _release_abandoned_asr_slot.set()
                         sem = None
+                    if native_gate_acquired and ctx.native_work_gate is not None:
+                        _release_abandoned_native_gate.set()
+                        native_gate_acquired = False
                     break
                 time.sleep(2)
 
@@ -1163,6 +1196,9 @@ class TranscriptStage:
             if sem is not None:
                 sem.release()
                 sem = None
+            if native_gate_acquired and ctx.native_work_gate is not None:
+                ctx.native_work_gate.release(kind="asr")
+                native_gate_acquired = False
             audio_tmp.cleanup()
 
             if _err:
@@ -1212,6 +1248,9 @@ class TranscriptStage:
                 if sem is not None:
                     sem.release()
                     sem = None
+                if native_gate_acquired and ctx.native_work_gate is not None:
+                    ctx.native_work_gate.release(kind="asr")
+                    native_gate_acquired = False
 
         return stats
 

@@ -42,7 +42,7 @@ from citypods.records import (
     save_records,
     source_key,
 )
-from citypods.resources import ResourceAdmission, snapshot_string
+from citypods.resources import NativeWorkGate, ResourceAdmission, snapshot_string
 from citypods.security import SecurityError
 from citypods.site import (
     render_city_page,
@@ -626,6 +626,9 @@ def build(
             time_bounded=time_bounded,
             dry_run=dry_run,
         ),
+        native_work_gate=NativeWorkGate(log=lambda msg: print(msg, flush=True))
+        if time_bounded and not dry_run
+        else None,
         # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;
         # N simultaneous inference calls each get 1/N of available CPU, making each
         # N× slower. asr_workers=1 (default) serialises all ASR, giving each call full

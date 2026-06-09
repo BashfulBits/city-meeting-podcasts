@@ -38,6 +38,7 @@ from typing import Protocol
 from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
 from citypods.records import audio_object_key, audio_spec_hash, source_key
+from citypods.resources import NativeWorkGate
 from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, Timeline, timeline_digest
 
@@ -675,6 +676,7 @@ def materialize_audio(
     source_cache: SourceCache | None = None,
     max_workers: int = 1,
     resource_admission: object | None = None,
+    native_work_gate: NativeWorkGate | None = None,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -789,6 +791,13 @@ def materialize_audio(
                 with lock:
                     stats.skipped_budget += 1
                 return
+        gate_acquired = False
+        if native_work_gate is not None:
+            gate_acquired = native_work_gate.acquire(kind="audio", label=str(label), stop=stop)
+            if not gate_acquired:
+                with lock:
+                    stats.skipped_budget += 1
+                return
         t0 = time.perf_counter()
         print(
             f"[enrich] audio encode start slug={city.slug} provider={city.provider} "
@@ -873,6 +882,9 @@ def materialize_audio(
                 f"seconds={elapsed:.1f}: {exc}",
                 flush=True,
             )
+        finally:
+            if gate_acquired and native_work_gate is not None:
+                native_work_gate.release(kind="audio")
 
     if max_workers > 1:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:

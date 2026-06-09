@@ -102,7 +102,7 @@ sync · #20 video enclosures (partial).
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
-| H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** (H11a) / after H5 (H11b) |
+| H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** native audio/ASR gate (H11a) / after H5 (H11b) |
 | #39 per-provider rate limiting | #39 | L2 | committed (efficiency-adjacent) |
 
 ### Phase R — Research-Tool Surface (toward 1.0)
