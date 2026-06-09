@@ -76,6 +76,39 @@ def test_native_work_gate_asr_waits_for_active_audio():
     assert any("native gate acquired kind=asr" in line for line in logs)
 
 
+def test_native_work_gate_defaults_to_one_active_audio():
+    logs: list[str] = []
+    gate = NativeWorkGate(poll_seconds=0.01, log=logs.append)
+    assert gate.acquire(kind="audio", label="audio-a") is True
+
+    acquired = threading.Event()
+
+    def _audio():
+        assert gate.acquire(kind="audio", label="audio-b") is True
+        acquired.set()
+        gate.release(kind="audio")
+
+    t = threading.Thread(target=_audio)
+    t.start()
+    assert any("reason=audio-cap" in line for line in _wait_for_logs(logs, "reason=audio-cap"))
+    assert acquired.is_set() is False
+
+    gate.release(kind="audio")
+    t.join(timeout=2)
+
+    assert acquired.is_set() is True
+
+
+def test_native_work_gate_can_allow_multiple_audio_slots():
+    gate = NativeWorkGate(max_audio_active=2, poll_seconds=0.01)
+
+    assert gate.acquire(kind="audio", label="audio-a") is True
+    assert gate.acquire(kind="audio", label="audio-b") is True
+
+    gate.release(kind="audio")
+    gate.release(kind="audio")
+
+
 def test_native_work_gate_waiting_asr_blocks_new_audio():
     logs: list[str] = []
     gate = NativeWorkGate(poll_seconds=0.01, log=logs.append)

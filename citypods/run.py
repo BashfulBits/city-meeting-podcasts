@@ -626,7 +626,10 @@ def build(
             time_bounded=time_bounded,
             dry_run=dry_run,
         ),
-        native_work_gate=NativeWorkGate(log=lambda msg: print(msg, flush=True))
+        native_work_gate=NativeWorkGate(
+            max_audio_active=int(defaults.get("native_audio_max_active", 1)),
+            log=lambda msg: print(msg, flush=True),
+        )
         if time_bounded and not dry_run
         else None,
         # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;

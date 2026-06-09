@@ -10,7 +10,7 @@ site_notice: "Feed URLs and details may change before launch — don't rely on t
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
 request_delay_seconds: 0.1               # politeness sleep per worker thread
 max_workers: 8
-max_encodes_per_source: 2                # parallel episode workers within one source (silence + encode)
+max_encodes_per_source: 1                # parallel episode workers within one source (silence + encode)
 
 defaults:
   podcast_language: "en-us"
@@ -55,9 +55,12 @@ defaults:
                                  # pauses and vote transitions for a tighter podcast edit
   audio_encode_timeout_minutes: 45       # hard cap per probe+encode; a stalled source can't pin a
                                          # worker (which stop() can't preempt) past this. 0 = no cap.
-  audio_ffmpeg_threads: 2                # per-encode AAC threads. With max_encodes_per_source=2 on a
-                                         # 4-core Actions runner, this keeps ffmpeg at <=4 total threads.
+  audio_ffmpeg_threads: 1                # per-encode AAC threads. Production enrich runs this as a
+                                         # one-core audio lane beside ASR/resource-gated native work.
                                          # Clear to auto-calc cpu_count // max_encodes_per_source.
+  native_audio_max_active: 1             # global ffmpeg encode slots during time-bounded enrich.
+                                         # Keep at 1 on 4-core Actions runners until H11 tuning has
+                                         # enough green-run data to safely raise it.
   # Resource admission guard for GitHub Actions enrich runs. It waits before starting another
   # expensive ffmpeg/ASR item when the runner is near the memory/CPU cliff, preventing exit-143 /
   # lost-communication kills. Locally it is off unless resource_guard_enabled is set true.

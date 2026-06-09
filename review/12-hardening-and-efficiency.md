@@ -393,7 +393,8 @@ deploy-killer**, so the levers below move from *candidates* to **committed chang
   formatting on the same snapshot helper.
 - `citypods/stages.py`: passes the guard into `AudioStage`/`TranscriptStage`; abandoned ASR daemon work
   retains the ASR semaphore slot until the background inference thread actually exits.
-- `config/site_config.yml`: production defaults `audio_ffmpeg_threads: 2`,
+- `config/site_config.yml`: production defaults now run audio conservatively with
+  `audio_ffmpeg_threads: 1`, `native_audio_max_active: 1`,
   `resource_guard_min_available_mb: 1536`, `resource_guard_max_load_per_cpu: 1.0`,
   `resource_guard_poll_seconds: 10`.
 
@@ -489,18 +490,21 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   resource-class exclusion that the first guard did not enforce.
 - **2026-06-09 refinement:** disabling stable-ts alignment removed the two-model alignment spike, but
   the next run still died when fresh large-v3-turbo transcription overlapped two active ffmpeg encodes
-  (`mem_avail` dropped to ~95 MiB, load >6/4). Until H5/H6 split heavy work into separate workflows,
-  add a native-work gate: audio encodes may overlap audio, but ASR is exclusive and waits for active
-  audio to drain while blocking new audio admissions. This is intentionally a smaller precursor to H5's
-  full resource-class scheduler.
+  (`mem_avail` dropped to ~95 MiB, load >6/4). PR #239 added a native-work gate so ASR waits for active
+  audio and blocks new audio admissions.
+- **2026-06-09 H11a follow-up:** the first post-#239 deploy died while ASR was correctly waiting on the
+  gate (`native gate wait kind=asr ... active_audio=2`). No ASR inference had started; the two active
+  ffmpeg encodes alone drove `mem_avail` below 300 MiB and the runner exited 143. Until H5/H6 split heavy
+  work into separate workflows, make production enrich a strict **one-core audio lane**: one global
+  native audio slot and `ffmpeg -threads 1`, with ASR still exclusive and prioritized.
 - **Near-term throughput refinement after green baseline:** if several scheduled/push deploys stay
-  green under the exclusive gate, evaluate replacing full exclusion with a **bounded lane split**:
-  ASR uses ~3 CPU threads, while a one-core audio lane continues low-risk download/cache/probe or
+  green under the one-slot audio lane, evaluate loosening to a measured **bounded lane split**: ASR uses
+  ~3 CPU threads, while at most one one-core audio lane continues low-risk download/cache/probe or
   `ffmpeg -threads 1` work. This should happen **before** returning to the rest of H1–H5 only if the
   gate proves stable, because it can recover network/download throughput without waiting for the full H5
-  manifest. Do not simply let audio and ASR overlap again; the refined gate must account for active
-  native work, keep a higher memory floor, and preserve ASR priority so an endless audio backlog cannot
-  starve transcription.
+  manifest. Do not simply let multiple audio encodes overlap again; the refined gate must account for
+  active native work, keep a higher memory floor, and preserve ASR priority so an endless audio backlog
+  cannot starve transcription.
 - **Data needed for that tuning pass:** use the existing heartbeat (`mem_avail`, load, thread count,
   disk free) plus native-gate wait/acquire logs and per-stage `audio encode done` / `transcript asr done`
   timings. That is enough to compare a stable exclusive baseline against a 3+1 split at the run level.
@@ -516,18 +520,19 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   note recording the last heartbeat snapshot, so a genuine provider failure is distinguishable from a
   resource kill (complements H4 / H-G).
 
-**Files.** H11a follow-up: `citypods/resources.py` (`NativeWorkGate`), `citypods/media.py`
-(`audio` shared gate), `citypods/stages.py` / `citypods/run.py` (`asr` exclusive gate),
+**Files.** H11a follow-up: `citypods/resources.py` (`NativeWorkGate` + global native audio cap),
+`citypods/media.py` (`audio` shared gate), `citypods/stages.py` / `citypods/run.py` (`asr` exclusive
+gate + `native_audio_max_active` config), `config/site_config.yml` (one-core production audio lane),
 `tests/test_resources.py`. H11b: `.github/workflows/asr.yml` + `deploy.yml` (remove/decouple the heavy
 enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md (workflow split) — sequenced after
 H5/H6.
 
 **Acceptance:** (H11a) several consecutive scheduled Build & Deploy runs complete **green** with enrich
-using most of its window and no exit-143/lost-comms kills. (H11a tuning, optional) a measured 3-core ASR /
-1-core audio-lane experiment improves completed transcript/audio work per runner-hour while preserving
-the green-run streak and a safe memory floor. (H11b, later) a deploy job is never marked red by enrich
-because enrich no longer runs in it; the separate ASR workflow clears backlog without clobbering records
-(shared acceptance with H6).
+using most of its window and no exit-143/lost-comms kills under the one-slot audio lane. (H11a tuning,
+optional) a measured 3-core ASR / 1-core audio-lane experiment improves completed transcript/audio work
+per runner-hour while preserving the green-run streak and a safe memory floor. (H11b, later) a deploy job
+is never marked red by enrich because enrich no longer runs in it; the separate ASR workflow clears backlog
+without clobbering records (shared acceptance with H6).
 
 ---
 
@@ -541,7 +546,8 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
 first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (native
-audio/ASR gate + green-run acceptance) → optional H11a tuning (3-core ASR / 1-core audio lane, only after
-green baseline) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR) → H9. Each
+audio/ASR gate + one-slot audio lane + green-run acceptance) → optional H11a tuning (3-core ASR /
+1-core audio lane, only after green baseline) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate
+enrich + sharded ASR) → H9. Each
 lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG,
 stamp this doc per item).

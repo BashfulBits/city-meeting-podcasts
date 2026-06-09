@@ -207,20 +207,22 @@ class ResourceAdmission:
 class NativeWorkGate:
     """Coordinate expensive native workloads so ASR does not overlap ffmpeg encodes.
 
-    Audio work may run concurrently with other audio work. ASR is exclusive: once an ASR caller is
-    waiting, new audio work waits until ASR has acquired and released the gate. This prevents a
-    steady stream of audio encodes from starving ASR while also preventing the runner-killing mix of
-    ffmpeg children plus CTranslate2/Whisper native work.
+    Audio work is bounded by ``max_audio_active``. ASR is exclusive: once an ASR caller is waiting,
+    new audio work waits until ASR has acquired and released the gate. This prevents a steady stream
+    of audio encodes from starving ASR while also preventing runner-killing mixes of ffmpeg children
+    plus CTranslate2/Whisper native work.
     """
 
     def __init__(
         self,
         *,
+        max_audio_active: int = 1,
         sleep: Callable[[float], None] = time.sleep,
         poll_seconds: float = 2.0,
         log: Callable[[str], None] | None = None,
     ):
         self._cond = threading.Condition()
+        self._max_audio_active = max(1, max_audio_active)
         self._audio_active = 0
         self._asr_active = False
         self._asr_waiting = 0
@@ -264,15 +266,24 @@ class NativeWorkGate:
             if stop is not None and stop():
                 return False
             with self._cond:
-                if not self._asr_active and self._asr_waiting == 0:
+                if (
+                    not self._asr_active
+                    and self._asr_waiting == 0
+                    and self._audio_active < self._max_audio_active
+                ):
                     self._audio_active += 1
                     if announced:
                         self._emit(f"[enrich] native gate acquired kind=audio label={label}")
                     return True
                 if not announced:
+                    reason = (
+                        "audio-cap"
+                        if self._audio_active >= self._max_audio_active
+                        else "asr-active-or-waiting"
+                    )
                     self._emit(
-                        f"[enrich] native gate wait kind=audio label={label} "
-                        "reason=asr-active-or-waiting"
+                        f"[enrich] native gate wait kind=audio label={label} reason={reason} "
+                        f"active_audio={self._audio_active} max_audio={self._max_audio_active}"
                     )
                     announced = True
                 self._cond.wait(timeout=self._poll_seconds)
