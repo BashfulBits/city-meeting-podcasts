@@ -102,7 +102,7 @@ sync · #20 video enclosures (partial).
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
-| H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** native audio/ASR gate (H11a) / after H5 (H11b) |
+| H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** native audio/ASR gate (H11a), then 3-core ASR / 1-core audio tuning before H1–H5 if green |
 | #39 per-provider rate limiting | #39 | L2 | committed (efficiency-adjacent) |
 
 ### Phase R — Research-Tool Surface (toward 1.0)
@@ -344,8 +344,11 @@ H11a deploy resilience acceptance → H1 `gh` issue reconciliation — close/nar
 H2 projection wall-clock fix + tests; H3 validation gate; H4 feed-health states; H5 backlog manifest +
 prioritization (including an explicit alignment-deferred lane for untimed provider transcripts);
 H11b/H6 isolate enrich + sharded ASR, with separate align-only and transcribe-only lanes so stable-ts
-and faster-whisper model loads do not stack in one runner; H9 offload evaluation. When each step
-completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge docs PR.
+and faster-whisper model loads do not stack in one runner; H9 offload evaluation. If H11a stays green
+for several runs, do one near-term H11 tuning pass before H1–H5: evaluate a 3-core ASR / 1-core
+audio-fetch-or-encode lane using heartbeat/gate logs, without reintroducing the runner-killing overlap.
+When each step completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge
+docs PR.
 
 **Explicitly out of scope (now):** move to a hosted DB/API (no); move media off GitHub Actions (keep as
 a fallback only); full video re-hosting (deferred — storage + legal surface). **Already satisfied:** live
