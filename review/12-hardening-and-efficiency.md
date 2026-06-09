@@ -493,6 +493,19 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   add a native-work gate: audio encodes may overlap audio, but ASR is exclusive and waits for active
   audio to drain while blocking new audio admissions. This is intentionally a smaller precursor to H5's
   full resource-class scheduler.
+- **Near-term throughput refinement after green baseline:** if several scheduled/push deploys stay
+  green under the exclusive gate, evaluate replacing full exclusion with a **bounded lane split**:
+  ASR uses ~3 CPU threads, while a one-core audio lane continues low-risk download/cache/probe or
+  `ffmpeg -threads 1` work. This should happen **before** returning to the rest of H1–H5 only if the
+  gate proves stable, because it can recover network/download throughput without waiting for the full H5
+  manifest. Do not simply let audio and ASR overlap again; the refined gate must account for active
+  native work, keep a higher memory floor, and preserve ASR priority so an endless audio backlog cannot
+  starve transcription.
+- **Data needed for that tuning pass:** use the existing heartbeat (`mem_avail`, load, thread count,
+  disk free) plus native-gate wait/acquire logs and per-stage `audio encode done` / `transcript asr done`
+  timings. That is enough to compare a stable exclusive baseline against a 3+1 split at the run level.
+  If the split decision needs per-child precision, add lightweight instrumentation for active ffmpeg
+  count, ASR-active state, and optional `/proc` child RSS/CPU snapshots before loosening the gate.
 - **Durable follow-up (H11b): isolate heavy enrich from the deploy job.** Move enrich into its **own
   workflow** (this is H6 Step 2) with a concurrency group distinct from `pages`, so the Pages deploy job
   *cannot* be marked red by enrich regardless of what happens to the enrich runner. Depends on **H5**'s
@@ -510,9 +523,11 @@ enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md (workflow 
 H5/H6.
 
 **Acceptance:** (H11a) several consecutive scheduled Build & Deploy runs complete **green** with enrich
-using most of its window and no exit-143/lost-comms kills. (H11b, later) a deploy job is never marked red
-by enrich because enrich no longer runs in it; the separate ASR workflow clears backlog without clobbering
-records (shared acceptance with H6).
+using most of its window and no exit-143/lost-comms kills. (H11a tuning, optional) a measured 3-core ASR /
+1-core audio-lane experiment improves completed transcript/audio work per runner-hour while preserving
+the green-run streak and a safe memory floor. (H11b, later) a deploy job is never marked red by enrich
+because enrich no longer runs in it; the separate ASR workflow clears backlog without clobbering records
+(shared acceptance with H6).
 
 ---
 
@@ -525,7 +540,8 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 ## Post-review code queue (recap)
 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
-first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (deploy
-resilience = H8 acceptance) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR)
-→ H9. Each lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add
-CHANGELOG, stamp this doc per item).
+first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (native
+audio/ASR gate + green-run acceptance) → optional H11a tuning (3-core ASR / 1-core audio lane, only after
+green baseline) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR) → H9. Each
+lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG,
+stamp this doc per item).
