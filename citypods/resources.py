@@ -202,3 +202,111 @@ class ResourceAdmission:
     def _emit(self, message: str) -> None:
         if self._log is not None:
             self._log(message)
+
+
+class NativeWorkGate:
+    """Coordinate expensive native workloads so ASR does not overlap ffmpeg encodes.
+
+    Audio work may run concurrently with other audio work. ASR is exclusive: once an ASR caller is
+    waiting, new audio work waits until ASR has acquired and released the gate. This prevents a
+    steady stream of audio encodes from starving ASR while also preventing the runner-killing mix of
+    ffmpeg children plus CTranslate2/Whisper native work.
+    """
+
+    def __init__(
+        self,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        poll_seconds: float = 2.0,
+        log: Callable[[str], None] | None = None,
+    ):
+        self._cond = threading.Condition()
+        self._audio_active = 0
+        self._asr_active = False
+        self._asr_waiting = 0
+        self._sleep = sleep
+        self._poll_seconds = max(0.1, poll_seconds)
+        self._log = log
+
+    def acquire(
+        self,
+        *,
+        kind: str,
+        label: str,
+        stop: Callable[[], bool] | None = None,
+    ) -> bool:
+        if kind == "audio":
+            return self._acquire_audio(label=label, stop=stop)
+        if kind == "asr":
+            return self._acquire_asr(label=label, stop=stop)
+        raise ValueError(f"unknown native work kind {kind!r}")
+
+    def release(self, *, kind: str) -> None:
+        if kind == "audio":
+            with self._cond:
+                if self._audio_active <= 0:
+                    raise RuntimeError("native audio release without acquire")
+                self._audio_active -= 1
+                self._cond.notify_all()
+            return
+        if kind == "asr":
+            with self._cond:
+                if not self._asr_active:
+                    raise RuntimeError("native ASR release without acquire")
+                self._asr_active = False
+                self._cond.notify_all()
+            return
+        raise ValueError(f"unknown native work kind {kind!r}")
+
+    def _acquire_audio(self, *, label: str, stop: Callable[[], bool] | None) -> bool:
+        announced = False
+        while True:
+            if stop is not None and stop():
+                return False
+            with self._cond:
+                if not self._asr_active and self._asr_waiting == 0:
+                    self._audio_active += 1
+                    if announced:
+                        self._emit(f"[enrich] native gate acquired kind=audio label={label}")
+                    return True
+                if not announced:
+                    self._emit(
+                        f"[enrich] native gate wait kind=audio label={label} "
+                        "reason=asr-active-or-waiting"
+                    )
+                    announced = True
+                self._cond.wait(timeout=self._poll_seconds)
+
+    def _acquire_asr(self, *, label: str, stop: Callable[[], bool] | None) -> bool:
+        announced = False
+        waiting = True
+        with self._cond:
+            self._asr_waiting += 1
+        try:
+            while True:
+                if stop is not None and stop():
+                    return False
+                with self._cond:
+                    if not self._asr_active and self._audio_active == 0:
+                        self._asr_waiting -= 1
+                        waiting = False
+                        self._asr_active = True
+                        if announced:
+                            self._emit(f"[enrich] native gate acquired kind=asr label={label}")
+                        return True
+                    if not announced:
+                        self._emit(
+                            f"[enrich] native gate wait kind=asr label={label} "
+                            f"reason=audio-active active_audio={self._audio_active}"
+                        )
+                        announced = True
+                    self._cond.wait(timeout=self._poll_seconds)
+        finally:
+            with self._cond:
+                if waiting and self._asr_waiting > 0:
+                    self._asr_waiting -= 1
+                self._cond.notify_all()
+
+    def _emit(self, message: str) -> None:
+        if self._log is not None:
+            self._log(message)

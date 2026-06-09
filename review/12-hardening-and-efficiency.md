@@ -484,8 +484,15 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
 **Design.**
 - **Do-now (H11a): prevent the kill at its source.** The H8 resource guard (ffmpeg `-threads` pin +
   memory/CPU admission + abandoned-thread accounting) keeps the runner alive, which is the only thing
-  that actually turns these runs green and recovers the ~180 min/run of lost budget (H-F). H11a has **no
-  separate code** beyond H8; it is the *reliability acceptance* tied to H8 landing.
+  that actually turns these runs green and recovers the ~180 min/run of lost budget (H-F). H11a began as
+  the reliability acceptance tied to H8 landing; the 2026-06-09 follow-up below adds the missing
+  resource-class exclusion that the first guard did not enforce.
+- **2026-06-09 refinement:** disabling stable-ts alignment removed the two-model alignment spike, but
+  the next run still died when fresh large-v3-turbo transcription overlapped two active ffmpeg encodes
+  (`mem_avail` dropped to ~95 MiB, load >6/4). Until H5/H6 split heavy work into separate workflows,
+  add a native-work gate: audio encodes may overlap audio, but ASR is exclusive and waits for active
+  audio to drain while blocking new audio admissions. This is intentionally a smaller precursor to H5's
+  full resource-class scheduler.
 - **Durable follow-up (H11b): isolate heavy enrich from the deploy job.** Move enrich into its **own
   workflow** (this is H6 Step 2) with a concurrency group distinct from `pages`, so the Pages deploy job
   *cannot* be marked red by enrich regardless of what happens to the enrich runner. Depends on **H5**'s
@@ -496,9 +503,11 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   note recording the last heartbeat snapshot, so a genuine provider failure is distinguishable from a
   resource kill (complements H4 / H-G).
 
-**Files.** None unique to H11a (covered by H8). H11b: `.github/workflows/asr.yml` + `deploy.yml`
-(remove/decouple the heavy enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md
-(workflow split) — sequenced after H5/H6.
+**Files.** H11a follow-up: `citypods/resources.py` (`NativeWorkGate`), `citypods/media.py`
+(`audio` shared gate), `citypods/stages.py` / `citypods/run.py` (`asr` exclusive gate),
+`tests/test_resources.py`. H11b: `.github/workflows/asr.yml` + `deploy.yml` (remove/decouple the heavy
+enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md (workflow split) — sequenced after
+H5/H6.
 
 **Acceptance:** (H11a) several consecutive scheduled Build & Deploy runs complete **green** with enrich
 using most of its window and no exit-143/lost-comms kills. (H11b, later) a deploy job is never marked red
