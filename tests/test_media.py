@@ -756,3 +756,58 @@ def test_command_ffmpeg_wires_timeouts(monkeypatch, tmp_path):
     (_probe_cmd, probe_kw), (enc_cmd, enc_kw) = calls[0], calls[1]
     assert probe_kw["timeout"] == 120.0  # capped to _PROBE_TIMEOUT_S
     assert "-rw_timeout" in enc_cmd and enc_kw["timeout"] == 2700
+
+
+def test_guarded_ffmpeg_stops_on_low_available_memory():
+    import citypods.media as media
+    from citypods.resources import ResourceSnapshot
+
+    events: list[str] = []
+
+    class FakeProc:
+        pid = 1234
+        returncode = None
+        terminated = False
+        killed = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.killed = True
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+    proc = FakeProc()
+
+    def _fake_popen(cmd, **kw):
+        events.append(f"popen:{cmd[0]}")
+        return proc
+
+    def _low_memory():
+        return ResourceSnapshot(
+            rss_bytes=100,
+            mem_total_bytes=1000,
+            mem_available_bytes=50,
+            load1=0.0,
+            load5=0.0,
+            cpus=4,
+        )
+
+    with pytest.raises(media.FfmpegMemoryLimitExceeded, match="filter-render"):
+        media._run_ffmpeg_guarded(
+            ["ffmpeg"],
+            phase="filter-render",
+            memory_floor_bytes=100,
+            snapshot=_low_memory,
+            sleep=lambda _seconds: None,
+            log=events.append,
+            popen=_fake_popen,
+        )
+
+    assert proc.terminated
+    assert any("memory-stop" in event for event in events)

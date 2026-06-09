@@ -589,15 +589,26 @@ def build(
         ffmpeg_threads = max(1, (os.cpu_count() or 1) // max(1, max_encodes_per_source))
     else:
         ffmpeg_threads = max(1, int(ffmpeg_threads_raw))
+    ffmpeg_memory_floor_mb = float(
+        defaults.get(
+            "audio_ffmpeg_memory_floor_mb",
+            defaults.get("resource_guard_min_available_mb", 1536),
+        )
+    )
+    ffmpeg_memory_floor_bytes = (
+        int(ffmpeg_memory_floor_mb * 1024 * 1024) if ffmpeg_memory_floor_mb > 0 else None
+    )
     ffmpeg = ffmpeg or CommandFfmpeg(
         max_kbps=max_kbps,
         timeout_seconds=(encode_timeout_min * 60) if encode_timeout_min > 0 else None,
         threads=ffmpeg_threads,
+        memory_floor_bytes=ffmpeg_memory_floor_bytes,
     )
     source_cache = (
         SourceCache(
             ffmpeg_binary=getattr(ffmpeg, "binary", "ffmpeg"),
             timeout_seconds=getattr(ffmpeg, "timeout_seconds", None),
+            memory_floor_bytes=getattr(ffmpeg, "memory_floor_bytes", None),
         )
         if not dry_run
         else None
