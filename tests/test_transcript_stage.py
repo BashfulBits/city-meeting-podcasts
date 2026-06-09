@@ -41,15 +41,19 @@ from citypods.storage.local import LocalStorage
 # ---------------------------------------------------------------------------
 
 
-def _city() -> City:
+def _city(**overrides) -> City:
+    values = {
+        "slug": "t-tx",
+        "provider": "civicplus",
+        "source": {"feed_url": "x"},
+        "podcast_title": "T",
+        "podcast_author": "City of T",
+        "podcast_email": "",
+        "podcast_description": "d",
+    }
+    values.update(overrides)
     return City(
-        slug="t-tx",
-        provider="civicplus",
-        source={"feed_url": "x"},
-        podcast_title="T",
-        podcast_author="City of T",
-        podcast_email="",
-        podcast_description="d",
+        **values,
     )
 
 
@@ -677,11 +681,97 @@ class TestTranscriptStageASR:
         assert stats.skipped == 1
         assert "reason=budget-exhausted" in out
 
-    def test_path_a_forced_alignment_with_source_text(self, tmp_path):
-        """Stored untimed txt transcript → Path A (alignment) → synced=True."""
+    def test_path_a_forced_alignment_skipped_when_disabled(self, tmp_path, capsys):
+        """Stored untimed txt transcript is deferred while alignment is disabled."""
         from citypods.records import source_key as _src_key
 
         sk = _src_key(_city())
+        ep = _ep_with_audio()
+        ep.transcript_key = f"transcripts/{sk}/uid-asr-oldspec.txt"
+        ep.transcript_format = "txt"
+        ep.transcript_synced = False
+        ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+
+        storage_root = tmp_path / "audio"
+        (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (storage_root / ep.transcript_key).write_bytes(b"These are the meeting minutes.")
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+            def get(self, url, **kw):
+                class _R:
+                    status_code = 200
+                    content = b"These are the meeting minutes."
+
+                return _R()
+
+        fake_asr = _FakeAsr()
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        out = capsys.readouterr().out
+        assert ep.transcript_synced is False
+        assert ep.transcript_format == "txt"
+        assert fake_asr.align_calls == []
+        assert fake_asr.transcribe_calls == []
+        assert stats.skipped == 1
+        assert "reason=alignment-disabled" in out
+
+    def test_provider_text_transcript_defers_alignment_without_fallback(self, tmp_path, capsys):
+        """Newly fetched untimed provider text is stored, then deferred while alignment is off."""
+        ep = _ep_with_audio(links={"transcript": "https://provider/t.txt"})
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+            def get(self, url, **kw):
+                class _R:
+                    status_code = 200
+                    content = b"These are the meeting minutes."
+
+                    def iter_content(self, **kw):
+                        return iter([b"fake"])
+
+                    def raise_for_status(self):
+                        pass
+
+                return _R()
+
+        fake_asr = _FakeAsr()
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        out = capsys.readouterr().out
+        assert ep.transcript_key is not None
+        assert ep.transcript_format == "txt"
+        assert ep.transcript_synced is False
+        assert stats.ran == 1  # provider text was stored
+        assert stats.skipped == 1  # timed upgrade deferred
+        assert fake_asr.align_calls == []
+        assert fake_asr.transcribe_calls == []
+        assert "reason=alignment-disabled" in out
+
+    def test_path_a_forced_alignment_with_source_text_when_enabled(self, tmp_path):
+        """Stored untimed txt transcript → Path A (alignment) → synced=True."""
+        from citypods.records import source_key as _src_key
+
+        city = _city(asr_alignment_enabled=True)
+        sk = _src_key(city)
         ep = _ep_with_audio()
         # Simulate a prior run storing an untimed provider transcript
         ep.transcript_key = f"transcripts/{sk}/uid-asr-oldspec.txt"
@@ -721,7 +811,7 @@ class TestTranscriptStageASR:
             ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
 
             stage = TranscriptStage()
-            stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+            stats = stage.process(FakeProvider(), city, [ep], _ctx(tmp_path))
 
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"
@@ -776,7 +866,9 @@ class TestTranscriptStageASR:
             patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
             patch("citypods.http.make_session", return_value=_TextSession()),
         ):
-            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+            stats = TranscriptStage().process(
+                FakeProvider(), _city(asr_alignment_enabled=True), [ep], _ctx(tmp_path)
+            )
 
         out = capsys.readouterr().out
         assert len(fake_asr.align_calls) == 1

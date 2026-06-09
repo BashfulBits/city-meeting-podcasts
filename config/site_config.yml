@@ -93,6 +93,10 @@ defaults:
   asr_workers: 1                        # episode-level parallelism (1 model per worker);
                                         # 2 = ~1.7× throughput at 2× RAM; see models.py
   asr_beam_size: 5                      # beam search width; 1 = ~2× faster at quality cost
+  # Temporarily defer forced alignment of untimed provider transcripts. stable-ts alignment loads a
+  # separate model and has been the active exit-143 pressure point when overlapped with ffmpeg work.
+  # H5/H6 will re-enable it as an align-only backlog/workflow lane with tighter resource isolation.
+  asr_alignment_enabled: false
   # Bound one ASR item by wall-clock. If native inference stalls, abandon that item, skip
   # remaining ASR for this run, and persist completed enrich work instead of waiting for
   # GitHub Actions to terminate the whole process with exit 143.
