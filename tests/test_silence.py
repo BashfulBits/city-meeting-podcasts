@@ -194,6 +194,7 @@ class TestDetectSilences:
             detect_silences("http://x.com/v.mp4", noise_db=-50.0, min_duration_s=2.0)
         cmd = mock_run.call_args[0][0]
         assert "silencedetect=noise=-50.0dB:d=2.0" in " ".join(cmd)
+        assert "-vn" in cmd
 
 
 # ---------------------------------------------------------------------------

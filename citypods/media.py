@@ -38,7 +38,7 @@ from typing import Protocol
 from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
 from citypods.records import audio_object_key, audio_spec_hash, source_key
-from citypods.resources import NativeWorkGate
+from citypods.resources import NativeWorkGate, ResourceSnapshot, current_snapshot, format_bytes
 from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, Timeline, timeline_digest
 
@@ -59,10 +59,129 @@ BACKOFF_MAX = timedelta(days=30)
 # materialization failure → the #120 backoff, so a chronically-stalling source stops being retried.
 _STALL_TIMEOUT_US = 120_000_000  # ffmpeg aborts after 120s with zero I/O progress (microseconds)
 _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
+_FFMPEG_GUARD_POLL_SECONDS = 5.0
+
+
+def _log_ffmpeg_event(log: Callable[[str], None] | None, message: str) -> None:
+    if log is None:
+        return
+    try:
+        log(message, flush=True)  # type: ignore[call-arg]
+    except TypeError:
+        log(message)
+
+
+class FfmpegMemoryLimitExceeded(OSError):
+    """Raised when an ffmpeg child is terminated to preserve runner memory."""
+
+    code = "memory"
+
+    def __init__(self, *, phase: str, cmd: list[str], floor: int, available: int):
+        self.phase = phase
+        self.cmd = cmd
+        self.floor = floor
+        self.available = available
+        super().__init__(
+            f"ffmpeg {phase} stopped: mem_avail {format_bytes(available)} below "
+            f"{format_bytes(floor)}"
+        )
+
+
+def _run_ffmpeg_guarded(
+    cmd: list[str],
+    *,
+    phase: str,
+    timeout: float | None = None,
+    memory_floor_bytes: int | None = None,
+    poll_seconds: float = _FFMPEG_GUARD_POLL_SECONDS,
+    snapshot: Callable[[], ResourceSnapshot] = current_snapshot,
+    sleep: Callable[[float], None] = time.sleep,
+    log: Callable[[str], None] | None = print,
+    popen: Callable[..., subprocess.Popen] = subprocess.Popen,
+) -> None:
+    """Run ffmpeg with wall-clock and available-memory guardrails.
+
+    ``subprocess.run(timeout=...)`` can only bound elapsed time. The Actions failure mode we are
+    seeing is available memory collapsing while a child ffmpeg process is still active, so poll the
+    whole-runner ``MemAvailable`` and terminate ffmpeg before the runner agent is killed.
+    """
+    if not memory_floor_bytes:
+        _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
+        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
+        return
+
+    started = time.monotonic()
+    proc = popen(  # noqa: S603 - command is assembled by this module from validated URLs/paths.
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+
+    _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start pid={proc.pid}")
+
+    while True:
+        returncode = proc.poll()
+        if returncode is not None:
+            stdout, stderr = proc.communicate()
+            elapsed = time.monotonic() - started
+            if returncode != 0:
+                raise subprocess.CalledProcessError(
+                    returncode,
+                    cmd,
+                    output=stdout,
+                    stderr=stderr,
+                )
+            _log_ffmpeg_event(
+                log, f"[enrich] ffmpeg {phase} done pid={proc.pid} seconds={elapsed:.1f}"
+            )
+            return
+
+        elapsed = time.monotonic() - started
+        if timeout is not None and elapsed >= timeout:
+            proc.terminate()
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+            raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=stderr)
+
+        if memory_floor_bytes is not None and memory_floor_bytes > 0:
+            snap = snapshot()
+            available = snap.mem_available_bytes
+            if available is not None and available < memory_floor_bytes:
+                _log_ffmpeg_event(
+                    log,
+                    f"[enrich] ffmpeg {phase} memory-stop pid={proc.pid} "
+                    f"mem_avail={format_bytes(available)} floor="
+                    f"{format_bytes(memory_floor_bytes)}",
+                )
+                proc.terminate()
+                try:
+                    proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()
+                raise FfmpegMemoryLimitExceeded(
+                    phase=phase,
+                    cmd=cmd,
+                    floor=memory_floor_bytes,
+                    available=available,
+                )
+
+        remaining = None if timeout is None else max(0.1, timeout - elapsed)
+        sleep_for = poll_seconds if remaining is None else min(poll_seconds, remaining)
+        sleep(sleep_for)
 
 
 def _download_audio(
-    url: str, dest: Path, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
+    url: str,
+    dest: Path,
+    ffmpeg_binary: str = "ffmpeg",
+    timeout: float | None = None,
+    memory_floor_bytes: int | None = None,
 ) -> bool:
     """Copy the audio stream from *url* to *dest* (.m4a) without re-encoding.
 
@@ -87,7 +206,12 @@ def _download_audio(
         str(dest),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        _run_ffmpeg_guarded(
+            cmd,
+            phase="source-cache",
+            timeout=timeout,
+            memory_floor_bytes=memory_floor_bytes,
+        )
         return dest.exists() and dest.stat().st_size > 0
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
         return False
@@ -105,13 +229,19 @@ class SourceCache:
             ctx = StageContext(..., source_cache=cache)
     """
 
-    def __init__(self, ffmpeg_binary: str = "ffmpeg", timeout_seconds: float | None = None):
+    def __init__(
+        self,
+        ffmpeg_binary: str = "ffmpeg",
+        timeout_seconds: float | None = None,
+        memory_floor_bytes: int | None = None,
+    ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
         self._paths: dict[str, Path] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
         self.ffmpeg_binary = ffmpeg_binary
         self.timeout_seconds = timeout_seconds
+        self.memory_floor_bytes = memory_floor_bytes
 
     def __enter__(self) -> SourceCache:
         return self
@@ -137,7 +267,13 @@ class SourceCache:
             if uid in self._paths:
                 return self._paths[uid]
             dest = Path(self._tmpdir.name) / f"{hashlib.md5(uid.encode()).hexdigest()}.m4a"
-            if _download_audio(url, dest, self.ffmpeg_binary, self.timeout_seconds):
+            if _download_audio(
+                url,
+                dest,
+                self.ffmpeg_binary,
+                self.timeout_seconds,
+                self.memory_floor_bytes,
+            ):
                 self._paths[uid] = dest
                 return dest
             return None
@@ -338,6 +474,7 @@ class CommandFfmpeg:
         max_kbps: int = 96,
         timeout_seconds: float | None = None,
         threads: int | None = None,
+        memory_floor_bytes: int | None = None,
     ):
         self.binary = binary
         self.max_kbps = max_kbps
@@ -347,6 +484,7 @@ class CommandFfmpeg:
         # ffmpeg defaults to "all cores" for AAC. Pin it so concurrent encodes do not
         # multiply into CPU oversubscription on the 4-core Actions runner.
         self.threads = max(1, int(threads)) if threads is not None else None
+        self.memory_floor_bytes = memory_floor_bytes
 
     # ------------------------------------------------------------------
     # Public interface
@@ -420,7 +558,12 @@ class CommandFfmpeg:
                 "+faststart",
                 str(dest),
             ]
-            subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
+            _run_ffmpeg_guarded(
+                cmd,
+                phase="identity-render",
+                timeout=self.timeout_seconds,
+                memory_floor_bytes=self.memory_floor_bytes,
+            )
 
     def _thread_args(self, codec_args: list[str]) -> list[str]:
         if self.threads is None or "aac" not in codec_args:
@@ -512,7 +655,12 @@ class CommandFfmpeg:
                 "+faststart",
                 str(dest),
             ]
-            subprocess.run(cmd, check=True, capture_output=True, timeout=self.timeout_seconds)
+            _run_ffmpeg_guarded(
+                cmd,
+                phase="filter-render",
+                timeout=self.timeout_seconds,
+                memory_floor_bytes=self.memory_floor_bytes,
+            )
 
 
 # ---------------------------------------------------------------------------

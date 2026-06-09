@@ -58,6 +58,9 @@ defaults:
   audio_ffmpeg_threads: 1                # per-encode AAC threads. Production enrich runs this as a
                                          # one-core audio lane beside ASR/resource-gated native work.
                                          # Clear to auto-calc cpu_count // max_encodes_per_source.
+  audio_ffmpeg_memory_floor_mb: 1536     # terminate the active ffmpeg child if runner MemAvailable
+                                         # drops below this floor; records a retryable audio error
+                                         # instead of letting the Actions runner get killed.
   native_audio_max_active: 1             # global ffmpeg encode slots during time-bounded enrich.
                                          # Keep at 1 on 4-core Actions runners until H11 tuning has
                                          # enough green-run data to safely raise it.

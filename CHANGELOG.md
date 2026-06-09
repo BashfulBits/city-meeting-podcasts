@@ -29,6 +29,9 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **Runner resource guard (H8, PR #235)**: AAC ffmpeg encodes now pin `-threads`, heavy audio/ASR
   work waits for memory/load headroom before admission, and abandoned ASR daemon inference keeps its
   worker slot until the native thread exits instead of stacking new CPU/RAM work on top.
+- **ffmpeg audio memory guard**: silence detection ignores video streams, source-cache/identity/filter
+  ffmpeg phases log distinct start/finish markers, and audio ffmpeg children stop when runner memory
+  falls below the configured floor instead of risking an Actions lost-comms kill.
 
 ## Timeline & content-transform foundation
 

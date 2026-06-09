@@ -163,6 +163,7 @@ def detect_silences(
         "file,crypto,data,http,https,tcp,tls",
         "-i",
         url,
+        "-vn",
         "-af",
         f"silencedetect=noise={noise_db}dB:d={min_duration_s}",
         "-f",
