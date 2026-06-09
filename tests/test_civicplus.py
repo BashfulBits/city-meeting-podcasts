@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import requests
 
 from citypods.providers.base import ProviderError
 from citypods.providers.civicplus import CivicPlusProvider, parse_civicmedia_feed
@@ -35,6 +36,7 @@ source: "https://wms.civplus.tikiliveapi.com/vodhttporigin/159920/playlist.m3u8?
 class FakeResponse:
     def __init__(self, text, status=200):
         self.text = text
+        self.content = text.encode()
         self.status_code = status
 
 
@@ -72,6 +74,23 @@ def test_validate_requires_feed_url():
     with pytest.raises(ValueError):
         CivicPlusProvider().validate({})
     CivicPlusProvider().validate({"feed_url": "https://x"})
+
+
+def test_fetch_episodes_wraps_network_errors(monkeypatch):
+    class TimeoutSession:
+        def get(self, url, timeout=None):
+            raise requests.ConnectTimeout("timed out")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("citypods.providers.civicplus.make_session", TimeoutSession)
+
+    with pytest.raises(ProviderError, match=r"GET https://city.example/rss failed: timed out"):
+        CivicPlusProvider().fetch_episodes({"feed_url": "https://city.example/rss"})
 
 
 def test_resolve_media_url_walks_page_then_embed(monkeypatch):

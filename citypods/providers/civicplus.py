@@ -101,7 +101,10 @@ class CivicPlusProvider:
     def fetch_episodes(self, source: dict) -> list[Episode]:
         url = source["feed_url"]
         with make_session() as session:
-            resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            try:
+                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         return parse_civicmedia_feed(resp.content)
@@ -112,7 +115,10 @@ class CivicPlusProvider:
             return self._find_hls_url(session, embed_url)
 
     def _find_embed_url(self, session: requests.Session, page_url: str) -> str:
-        resp = session.get(page_url, timeout=DEFAULT_TIMEOUT)
+        try:
+            resp = session.get(page_url, timeout=DEFAULT_TIMEOUT)
+        except requests.RequestException as exc:
+            raise ProviderError(f"GET watch page {page_url} failed: {exc}") from exc
         if resp.status_code >= 400:
             raise ProviderError(f"GET watch page {page_url} returned {resp.status_code}")
         m = EMBED_RE.search(resp.text)
@@ -121,7 +127,10 @@ class CivicPlusProvider:
         return m.group(0).replace("&amp;", "&")
 
     def _find_hls_url(self, session: requests.Session, embed_url: str) -> str:
-        resp = session.get(embed_url, timeout=DEFAULT_TIMEOUT)
+        try:
+            resp = session.get(embed_url, timeout=DEFAULT_TIMEOUT)
+        except requests.RequestException as exc:
+            raise ProviderError(f"GET embed {embed_url} failed: {exc}") from exc
         if resp.status_code >= 400:
             raise ProviderError(f"GET embed {embed_url} returned {resp.status_code}")
         m = M3U8_RE.search(resp.text)

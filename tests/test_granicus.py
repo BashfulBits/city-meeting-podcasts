@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import requests
 
 from citypods.providers.base import ProviderError
 from citypods.providers.granicus import GranicusProvider, parse_feed
@@ -63,6 +64,23 @@ def test_feed_urls_normalizes_single_and_multi():
     assert _feed_urls({"feed_url": "https://a"}) == ["https://a"]
     assert _feed_urls({"feed_urls": ["https://a", "https://b"]}) == ["https://a", "https://b"]
     assert _feed_urls({}) == []
+
+
+def test_fetch_episodes_wraps_network_errors(monkeypatch):
+    class TimeoutSession:
+        def get(self, url, timeout=None):
+            raise requests.ConnectTimeout("timed out")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("citypods.providers.granicus.make_session", TimeoutSession)
+
+    with pytest.raises(ProviderError, match=r"GET https://city.example/rss failed: timed out"):
+        GranicusProvider().fetch_episodes({"feed_url": "https://city.example/rss"})
 
 
 @pytest.mark.parametrize("slug", recorded_slugs())

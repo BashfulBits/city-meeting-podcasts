@@ -204,6 +204,37 @@ class SourcePipeline:
     def note(self, city: City) -> str:
         return self._notes.get(source_key(city), "")
 
+    def archive_from_records(self, city: City, reason: Exception) -> list[Episode]:
+        """Render fallback for transient provider fetch failures.
+
+        The production render phase should prefer publishing the last known-good archive over
+        failing the whole Pages deploy when one provider endpoint times out. Heavy enrich/all
+        phases still fetch live data and report failures normally.
+        """
+        key = source_key(city)
+        with self._guard:
+            lock = self._locks[key]
+        with lock:
+            if key in self._cache:
+                print(
+                    f"[render] source cache-hit stale slug={city.slug} "
+                    f"provider={city.provider} source={key}",
+                    flush=True,
+                )
+                return self._cache[key]
+            records = load_records(self.state_dir, key)
+            if not records:
+                raise ProviderError(str(reason)) from reason
+            archive = [record_to_episode(rec) for rec in records.values()]
+            self._cache[key] = archive
+            self._notes[key] = f"stale provider fetch failed: {reason}"
+            print(
+                f"[render] source stale slug={city.slug} provider={city.provider} "
+                f"source={key} archive={len(archive)} reason={reason}",
+                flush=True,
+            )
+            return archive
+
 
 @dataclass
 class CityResult:
@@ -241,7 +272,15 @@ def _process_city(
 
     try:
         episodes = pipeline.enrich(city)
-    except (ProviderError, SecurityError) as exc:
+    except ProviderError as exc:
+        if render:
+            try:
+                episodes = pipeline.archive_from_records(city, exc)
+            except ProviderError:
+                return CityResult(city.slug, "error", detail=str(exc)), None
+        else:
+            return CityResult(city.slug, "error", detail=str(exc)), None
+    except SecurityError as exc:
         # SecurityError: a source/redirect URL was blocked by the SSRF gate (audit #S1) —
         # treat as a per-city error so one bad submission can't fail the whole build.
         return CityResult(city.slug, "error", detail=str(exc)), None
