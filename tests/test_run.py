@@ -11,6 +11,7 @@ import pytest
 from citypods import run
 from citypods.models import Episode
 from citypods.providers import get_provider, register
+from citypods.providers.base import ProviderError
 from citypods.records import feed_content_hash
 from citypods.state import build_fingerprint
 
@@ -60,6 +61,7 @@ class _FakeProvider:
     def __init__(self):
         self.episodes = [_ep("g1"), _ep("g2")]
         self.fetches = 0
+        self.error: ProviderError | None = None
 
     def validate(self, source):
         pass
@@ -69,6 +71,8 @@ class _FakeProvider:
 
     def fetch_episodes(self, source):
         self.fetches += 1
+        if self.error:
+            raise self.error
         return list(self.episodes)
 
     def resolve_media_url(self, episode, source):
@@ -638,3 +642,26 @@ def test_enrich_output_surfaces_in_next_render_via_records(tmp_path, fake_provid
     assert ff.calls == 2  # render still didn't encode
     feed = (tmp_path / "docs" / "fake-city" / "audio_feed.xml").read_text()
     assert "<enclosure" in feed  # audio is back, carried by the record store
+
+
+def test_render_phase_uses_persisted_archive_when_provider_fetch_fails(tmp_path, fake_provider):
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+
+    first = _build_phase(tmp_path, cities, "render", ff)
+    assert [r.status for r in first] == ["built"]
+
+    # Simulate a clean checkout with restored state but no rendered docs, then a transient
+    # provider outage during the fast render phase.
+    import shutil
+
+    shutil.rmtree(tmp_path / "docs")
+    fake_provider.error = ProviderError("GET https://x failed: timed out")
+
+    second = _build_phase(tmp_path, cities, "render", ff)
+
+    assert [r.status for r in second] == ["built"]
+    assert "stale provider fetch failed" in second[0].detail
+    assert (tmp_path / "docs" / "fake-city" / "index.html").exists()
+    feed = (tmp_path / "docs" / "fake-city" / "video_feed.xml").read_text()
+    assert "City Council" in feed

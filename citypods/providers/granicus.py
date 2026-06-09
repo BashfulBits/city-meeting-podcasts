@@ -100,7 +100,10 @@ class GranicusProvider:
         seen: set[str] = set()
         with make_session() as session:
             for url in _feed_urls(source):
-                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                try:
+                    resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                except requests.RequestException as exc:
+                    raise ProviderError(f"GET {url} failed: {exc}") from exc
                 if resp.status_code >= 400:
                     raise ProviderError(f"GET {url} returned {resp.status_code}")
                 for ep in parse_feed(resp.content):
@@ -137,7 +140,10 @@ class GranicusProvider:
         counts: list[int] = []
         with make_session() as session:
             for url in _feed_urls(source):
-                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                try:
+                    resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                except requests.RequestException as exc:
+                    raise ProviderError(f"GET {url} failed: {exc}") from exc
                 if resp.status_code >= 400:
                     raise ProviderError(f"GET {url} returned {resp.status_code}")
                 counts.append(len(parse_feed(resp.content)))
