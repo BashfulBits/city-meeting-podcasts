@@ -33,11 +33,12 @@ the initial **backlog** takes calendar time.
 **Sequencing (DAG) — revised 2026-06-08.** The build-log analysis (below) **reprioritizes** the queue:
 the do-now reliability fires (**H10** align bug, **H8** resource guard, **H11** deploy resilience) run
 **before** the docs/issues/observability items, because they are what is actually turning runs red and
-collapsing throughput today. **H10 shipped in PR #232**; H8 is now the next active do-now item. The
-enrich-isolation half of H11 still waits on H5's manifest.
+collapsing throughput today. **H10 shipped in PR #232** and **H8 shipped in PR #235**; H11a is the
+remaining active do-now reliability check. The enrich-isolation half of H11 still waits on H5's
+manifest.
 
 ```
-do-now fires:  H10 (align fix; shipped PR #232) ─► H8 (resource guard: ffmpeg -threads + mem admission + abandoned-thread accounting)
+do-now fires:  H10 (align fix; shipped PR #232) ─► H8 (resource guard; shipped PR #235)
                                        └─► H11a (deploy resilience: guard prevents the runner-level kill)
 
 then catch-up:  H1 (docs/issues) ─┐
@@ -332,9 +333,8 @@ the numbering is continuous across `ROADMAP.md`, `review/11`, and this doc.
 
 ## H8 — Throughput maximization on the free 4-core runner — **PRIORITY: do-now (reprioritized 2026-06-08)**
 
-**Status.** Implemented in the current branch; pending PR merge and production validation. Do **not**
-stamp this section as "Implemented in PR #N" or flip `review/11` to **Shipped** until the PR merges and
-scheduled Build & Deploy runs demonstrate the acceptance signal below.
+**Status.** Implemented in [PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235),
+merged 2026-06-08. This section is frozen as the implementation design record.
 
 **Problem (confirmed by the build-log analysis above, H-A/H-B/H-E).** The encode/ASR concurrency mix
 starves the runner: ffmpeg `-threads` is **unpinned**, so two concurrent encodes drive `load` to 6–7 on
@@ -364,7 +364,7 @@ deploy-killer**, so the levers below move from *candidates* to **committed chang
 - Re-tune the mix (raise `asr_workers` only if RAM headroom allows; overlap CPU-bound ASR with
   network-bound chapter/link work; stagger model load to avoid load+encode RAM spikes).
 
-**Implemented shape (current branch).**
+**Implemented shape (PR #235).**
 - `citypods/media.py`: `CommandFfmpeg` accepts a thread count and adds `-threads N` on AAC encode paths
   only (copy paths stay unmodified).
 - `citypods/resources.py`: shared resource snapshots + `ResourceAdmission` wait loop for memory/load
@@ -497,7 +497,7 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 ## Post-review code queue (recap)
 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
-first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard)** → H11a (deploy resilience =
-H8 acceptance) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR) → H9. Each
-lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG,
-stamp this doc per item).
+first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (deploy
+resilience = H8 acceptance) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate enrich + sharded ASR)
+→ H9. Each lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add
+CHANGELOG, stamp this doc per item).

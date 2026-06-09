@@ -26,7 +26,7 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **ASR alignment fallback (H10, PR #232)**: forced alignment now uses a stable-ts faster-whisper model
   that supports `.align()`, and any alignment failure falls back to fresh transcription instead of
   skipping caption-bearing episodes.
-- **Runner resource guard (H8, pending PR)**: AAC ffmpeg encodes now pin `-threads`, heavy audio/ASR
+- **Runner resource guard (H8, PR #235)**: AAC ffmpeg encodes now pin `-threads`, heavy audio/ASR
   work waits for memory/load headroom before admission, and abandoned ASR daemon inference keeps its
   worker slot until the native thread exits instead of stacking new CPU/RAM work on top.
 

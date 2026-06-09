@@ -83,8 +83,9 @@ sync · #20 video enclosures (partial).
 
 > **Reprioritized 2026-06-08** (build-log root-cause analysis — see
 > [review/12 § Build-log root-cause analysis](12-hardening-and-efficiency.md#build-log-root-cause-analysis-2026-06-08)):
-> **H10 shipped in PR #232**; the remaining do-now reliability fires **H8 → H11** run **ahead of
-> H1–H5**. They fix what is actually turning Build & Deploy red on ~half of scheduled runs — runner
+> **H10 shipped in PR #232** and **H8 shipped in PR #235**; the remaining do-now reliability item
+> **H11a** runs **ahead of H1–H5**. These fixes address what is actually turning Build & Deploy red on
+> ~half of scheduled runs — runner
 > starvation (unpinned ffmpeg `-threads` + no memory admission control; `continue-on-error` can't catch a
 > runner-level SIGTERM/lost-comms). H10 fixed the broken ASR `align` path that yielded zero transcripts
 > for caption-bearing feeds.
@@ -98,7 +99,7 @@ sync · #20 video enclosures (partial).
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed |
 | H6 ASR benchmark workflow → sharded ASR workflow | #1, R1 | L3 | committed |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
-| H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | implemented in current branch · pending PR/production validation |
+| H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
 | H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** (H11a) / after H5 (H11b) |
