@@ -65,7 +65,48 @@ When you move a feature along the pipeline, update the listed docs in the **same
 pip install -e ".[dev]"                 # needs ffmpeg for audio
 ruff check . && ruff format --check .    # lint the WHOLE repo, not just citypods/
 pytest -q                                # offline; live endpoint tests are opt-in: pytest -m live
-python -m citypods.cli build --dry-run   # the console script can be flaky from script dirs; prefer -m
 ```
 
 After an intentional change to feed output, regenerate golden snapshots: `SNAPSHOT_UPDATE=1 pytest`.
+
+### Running the CLI locally
+
+Use `python -m citypods.cli` rather than the `citypods` console script when running from inside the
+repo directory — the console script can be flaky from script subdirectories.
+
+**Quick offline check (seconds, no writes, no credentials):**
+```bash
+# Render feeds/pages from locally cached state — no live provider calls, no storage needed.
+python -m citypods.cli build --phase render --city arlington-tx
+```
+Use this to verify template/feed-rendering changes. It reads `.citypods-state/` (or `docs/`) if
+present; if that directory is empty the feeds will render empty (expected — no state synced locally).
+
+**Full dry-run with live provider fetch (minutes, no writes):**
+```bash
+# Fetches live episode lists from the provider, runs all stages, writes nothing.
+# Expect 1–3 min per city; the whole catalog (~85 feeds) can take 10–15 min.
+python -m citypods.cli build --dry-run --city arlington-tx
+```
+⚠️ **`--city` takes a city slug, not a feed/body slug.** City slugs match filenames under
+`config/cities/` (e.g. `arlington-tx`), not `config/feeds/` (e.g.
+`arlington-tx-planning-and-zoning-commission`). Passing a feed slug silently matches nothing and
+runs the full catalog.
+
+```bash
+# List valid city slugs:
+ls config/cities/ | sed 's/\.yml//'
+```
+
+**What each flag actually does (important gotchas):**
+
+| Command | Provider fetch? | Writes state/docs? | Needs B2 creds? | Duration |
+|---|---|---|---|---|
+| `build --phase render --city <city>` | No | Yes — renders `docs/` | No | Seconds |
+| `build --dry-run --city <city>` | **Yes** — live HTTP scrape | No | No | 1–3 min |
+| `build --dry-run` (no `--city`) | **Yes** — all 85+ feeds | No | No | 10–15 min |
+| `build --city <city>` (no flags) | Yes | Yes — full write | Yes | Minutes–hours |
+
+`--dry-run` skips: all object-storage uploads, `docs/` writes, state saves, and audio encoding.
+It **does** call `provider.fetch_episodes()` for each city — that's a live HTTP scrape and is why
+a full catalog dry-run takes 10–15 minutes across `max_workers=8` concurrent threads.

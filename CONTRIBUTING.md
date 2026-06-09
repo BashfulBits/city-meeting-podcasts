@@ -27,12 +27,53 @@ pip install -e ".[dev]"        # citypods + boto3 + pytest + ruff
 
 ruff check . && ruff format --check .
 pytest -q                      # offline suite; live endpoint tests are opt-in: pytest -m live
-
-python -m citypods.cli build --dry-run      # fetch + report, write nothing
-cd docs && python -m http.server 8000       # browse generated output
 ```
 
 Regenerate golden snapshots after an intentional output change with `SNAPSHOT_UPDATE=1 pytest`.
+
+### Running the CLI locally
+
+Prefer `python -m citypods.cli` over the `citypods` console script when running from the repo root.
+
+**Quick check — no network, no writes (seconds):**
+```bash
+# Renders feeds/pages from locally cached state only.  No provider HTTP calls, no storage creds.
+python -m citypods.cli build --phase render --city arlington-tx
+cd docs && python -m http.server 8000   # browse the result
+```
+If `.citypods-state/` is empty the feeds render empty — that's expected when you haven't synced state
+locally. Use this to check template/rendering changes.
+
+**Dry-run with live provider fetch (1–3 min per city, no writes):**
+```bash
+python -m citypods.cli build --dry-run --city arlington-tx
+```
+This scrapes the live provider (Granicus/Swagit/CivicPlus), runs all pipeline stages, and writes
+nothing — no docs, no storage uploads, no state files saved.
+
+**Two things that commonly cause confusion:**
+
+1. **`--city` takes a city slug, not a feed/body slug.** City slugs are the filenames under
+   `config/cities/` (e.g. `arlington-tx`). Feed/body slugs are under `config/feeds/` (e.g.
+   `arlington-tx-planning-and-zoning-commission`). Passing a feed slug silently matches no cities
+   and processes the entire catalog instead. List valid city slugs with:
+   ```bash
+   ls config/cities/ | sed 's/\.yml//'
+   ```
+
+2. **`--dry-run` still makes live HTTP calls.** It skips all writes (storage, docs, state), but
+   `provider.fetch_episodes()` always runs to discover the episode list. A full-catalog dry-run
+   (`--dry-run` with no `--city`) hits all 85+ feeds across 8 concurrent workers and takes 10–15
+   minutes. Omit `--city` only when you need to check the whole catalog.
+
+**Reference: what each mode actually does:**
+
+| Command | Live fetch? | Writes docs? | Writes state? | Needs B2 creds? |
+|---|---|---|---|---|
+| `build --phase render --city <city>` | No | Yes | Yes | No |
+| `build --dry-run --city <city>` | **Yes** | No | No | No |
+| `build --dry-run` | **Yes (all ~85 feeds)** | No | No | No |
+| `build --city <city>` | Yes | Yes | Yes | Yes |
 
 ## Conventions
 
