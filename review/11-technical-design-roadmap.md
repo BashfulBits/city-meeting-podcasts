@@ -98,7 +98,7 @@ sync · #20 video enclosures (partial).
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed |
 | H6 ASR benchmark workflow → sharded ASR workflow | #1, R1 | L3 | committed |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
-| H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | committed · **do-now** (reprioritized 2026-06-08) |
+| H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | implemented in current branch · pending PR/production validation |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
 | H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** (H11a) / after H5 (H11b) |

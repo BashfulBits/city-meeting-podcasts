@@ -37,7 +37,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H5** | Stage **backlog manifest** + a configurable, extensible **prioritization policy** (recency / city order / feed-visible-first / requested-first / …) |
 | **H6** | ASR **benchmark workflow** → **sharded/separate ASR workflow** (after safe state coordination) |
 | **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
-| **H8** | **do-now** · **Throughput maximization** — saturate the free 4-core runner: pin ffmpeg `-threads`, memory/CPU admission guard, abandoned-ASR-thread accounting (fixes the runner starvation that kills deploys) |
+| **H8** | **implemented in current branch; pending PR/production validation** · **Throughput maximization** — saturate the free 4-core runner: pin ffmpeg `-threads`, memory/CPU admission guard, abandoned-ASR-thread accounting (fixes the runner starvation that kills deploys) |
 | **H9** | Evaluate **free transcription-offload tiers** (matrix sharding first; then free ASR-API/compute, ToS-checked) |
 | **H10** | ✓ Shipped — ASR alignment fix (PR #232): caption-bearing feeds use a stable-ts align model and fall back to fresh transcription on align errors |
 | **H11** | **do-now** · **Deploy resilience** — `continue-on-error` can't catch a runner-level SIGTERM/lost-comms; survive via the H8 guard now, isolate enrich into its own workflow later (after H5) |

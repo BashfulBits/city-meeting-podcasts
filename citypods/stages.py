@@ -85,6 +85,7 @@ from citypods.bodies import body_key, canonical_body
 from citypods.media import MaterializeStats, SourceCache, _probe_duration_secs, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import AUDIO_PIPELINE_VERSION
+from citypods.resources import ResourceAdmission
 from citypods.timeline import Timeline, remap, timeline_digest
 
 
@@ -139,6 +140,9 @@ class StageContext:
     # Per-run download cache shared across TimelineStage (SilencePlanner) and AudioStage so each
     # source is streamed at most once per episode, even when both stages need it.
     source_cache: SourceCache | None = None
+    # Admission guard for expensive native work. It waits for memory/CPU headroom before
+    # starting another ffmpeg encode or ASR inference, preventing runner-level kills.
+    resource_admission: ResourceAdmission | None = None
     # Global semaphore that caps concurrent ASR inference calls across ALL sources in the run.
     # ASR is CPU-bound and uses all cpu_threads — running N sources' alignment/transcription
     # simultaneously divides effective CPU by N, making each job N× slower.  With max_workers=20
@@ -253,6 +257,7 @@ class AudioStage:
             stop=ctx.stop,
             source_cache=ctx.source_cache,
             max_workers=ctx.max_encodes_per_source,
+            resource_admission=ctx.resource_admission,
         )
         return StageStats(
             self.name,
@@ -931,6 +936,11 @@ class TranscriptStage:
             if ctx.stop is not None and ctx.stop():
                 stats.skipped += 1
                 continue
+            if ctx.resource_admission is not None and not ctx.resource_admission.wait(
+                kind="asr", label=ep.uid or ep.guid, stop=ctx.stop
+            ):
+                stats.skipped += 1
+                continue
 
             # Acquire the global ASR semaphore before starting inference.
             # ASR is CPU-bound; running N concurrent inference calls divides effective CPU
@@ -1029,6 +1039,7 @@ class TranscriptStage:
             _vtt: list[bytes] = []
             _err: list[Exception] = []
             _aligned: list[bool] = []
+            _release_abandoned_asr_slot = threading.Event()
 
             # Bind per-iteration values as default args so the closure captures their
             # current values, not a reference that may change in future loop iterations
@@ -1042,8 +1053,9 @@ class TranscriptStage:
                 _result=_vtt,
                 _errors=_err,
                 _was_aligned=_aligned,
+                _sem=sem,
+                _release_abandoned=_release_abandoned_asr_slot,
             ) -> None:
-                del _audio_tmp  # keep the tempdir alive for abandoned daemon inference
                 try:
 
                     def _transcribe_fresh() -> bytes:
@@ -1092,6 +1104,10 @@ class TranscriptStage:
                         _was_aligned.append(False)
                 except Exception as _exc:  # noqa: BLE001
                     _errors.append(_exc)
+                finally:
+                    if _release_abandoned.is_set() and _sem is not None:
+                        _sem.release()
+                    _audio_tmp.cleanup()
 
             _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{ep.uid[:8]}")
             _t.start()
@@ -1107,8 +1123,8 @@ class TranscriptStage:
                         flush=True,
                     )
                     if sem is not None:
-                        sem.release()
-                        sem = None  # prevent double-release in the outer finally
+                        _release_abandoned_asr_slot.set()
+                        sem = None  # daemon thread releases the slot when native work exits
                     stats.skipped += 1
                     break
                 if _timeout_at is not None and time.monotonic() >= _timeout_at:
@@ -1125,7 +1141,7 @@ class TranscriptStage:
                         flush=True,
                     )
                     if sem is not None:
-                        sem.release()
+                        _release_abandoned_asr_slot.set()
                         sem = None
                     break
                 time.sleep(2)

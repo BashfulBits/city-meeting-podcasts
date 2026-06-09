@@ -54,10 +54,10 @@ quickly from already-known state, then heavy enrichment runs best-effort and res
 | **Records / identity** | `records.py` — stable `uid`, `source_key`, `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. |
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
-| **Media / audio** | `media.py` — ffmpeg encode, loudness (EBU R128), content-addressed upload. |
+| **Media / audio** | `media.py` — ffmpeg encode, pinned AAC encode threads, loudness (EBU R128), content-addressed upload. |
 | **Transcripts** | `asr.py` — forced alignment via a stable-ts faster-whisper model, fresh transcription via faster-whisper, and align-error fallback to transcription; `bench.py` — `asr-bench` WER/throughput diagnostic. |
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
-| **Orchestration** | `run.py` — `SourcePipeline`, `build()`, run history, graceful yield. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
+| **Orchestration** | `run.py` — `SourcePipeline`, `build()`, run history, graceful yield, resource-guard wiring. `resources.py` — process resource snapshots + memory/load admission guard for expensive native work. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
 | **State** | `state.py` (build fingerprint), `statesync.py` (bucket↔local; bucket is truth), `storage/{base,local,s3}.py` (`S3CompatibleStorage` b2/r2 presets + local). |
 | **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status`; `validate.py` feed validation. |
 | **Security** | `security.py` — SSRF gate (`validate_source_url`), host allowlists, redirect/size caps; `http.py` retry/backoff; ffmpeg protocol whitelist; defusedxml. |
@@ -74,6 +74,9 @@ quickly from already-known state, then heavy enrichment runs best-effort and res
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.
 - **Wall-clock budget + graceful yield** — heavy work runs until a time window closes or a newer run
   queues; cheap idempotent bookkeeping always finishes (see `stages.py` "stop convention").
+- **Resource admission for expensive native work** — ffmpeg/ASR starts can wait for memory/load
+  headroom, and abandoned ASR inference continues to occupy its worker slot until the native thread
+  exits, so a stopped item does not stack unbounded CPU/RAM work.
 
 ## Hosting & CI/CD
 

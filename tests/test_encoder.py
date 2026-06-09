@@ -291,6 +291,37 @@ class TestCommandFfmpegIdentityPath:
         idx = enc_cmd.index("-c:a")
         assert enc_cmd[idx + 1] == "aac"
 
+    def test_reencode_pins_ffmpeg_threads(self, monkeypatch, tmp_path):
+        import citypods.media as media
+
+        calls: list[tuple[list, dict]] = []
+
+        def _fake_run(cmd, **kw):
+            calls.append((cmd, kw))
+
+            class _R:
+                stdout = "192000"
+
+            return _R()
+
+        monkeypatch.setattr(media.subprocess, "run", _fake_run)
+        media.CommandFfmpeg(max_kbps=96, threads=2).extract_audio(
+            timeline=None,
+            sources_by_id={"s0": "https://src/vid.mp4"},
+            dest=tmp_path / "out.m4a",
+        )
+        _, (enc_cmd, _) = calls[0], calls[1]
+        assert "-threads" in enc_cmd
+        idx = enc_cmd.index("-threads")
+        assert enc_cmd[idx + 1] == "2"
+
+    def test_copy_does_not_add_thread_pin(self, monkeypatch, tmp_path):
+        calls = self._run_identity(
+            monkeypatch, tmp_path, "https://src/vid.mp4", bitrate_str="64000"
+        )
+        _, (enc_cmd, _) = calls[0], calls[1]
+        assert "-threads" not in enc_cmd
+
     def test_source_url_in_identity_inputs(self, monkeypatch, tmp_path):
         calls = self._run_identity(monkeypatch, tmp_path, "https://src/vid.mp4")
         _, (enc_cmd, _) = calls[0], calls[1]
@@ -428,6 +459,30 @@ class TestCommandFfmpegFilterPath:
         tl = self._trim_timeline()
         cmd = self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"})
         assert "-c:a" in cmd
+
+    def test_filter_path_pins_ffmpeg_threads(self, monkeypatch, tmp_path):
+        import citypods.media as media
+
+        calls: list = []
+
+        def _fake_run(cmd, **kw):
+            calls.append(cmd)
+
+            class _R:
+                stdout = ""
+
+            return _R()
+
+        monkeypatch.setattr(media.subprocess, "run", _fake_run)
+        media.CommandFfmpeg(max_kbps=96, threads=2).extract_audio(
+            timeline=self._trim_timeline(),
+            sources_by_id={"s0": "https://s/v.mp4"},
+            dest=tmp_path / "out.m4a",
+        )
+        cmd = calls[0]
+        assert "-threads" in cmd
+        idx = cmd.index("-threads")
+        assert cmd[idx + 1] == "2"
         idx = cmd.index("-c:a")
         assert cmd[idx + 1] == "aac"
 

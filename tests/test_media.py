@@ -87,6 +87,16 @@ def _materialize(city, eps, store, ff, stop=None):
     )
 
 
+class FakeAdmission:
+    def __init__(self, admitted=True):
+        self.admitted = admitted
+        self.calls: list[tuple[str, str]] = []
+
+    def wait(self, *, kind, label, stop=None):
+        self.calls.append((kind, label))
+        return self.admitted
+
+
 def test_hls_episode_is_hosted(tmp_path):
     eps = [_ep("g1")]
     ff = FakeFfmpeg()
@@ -136,6 +146,43 @@ def test_loudness_empty_string_passed_as_none_to_ffmpeg(tmp_path):
         resolve_media_url=lambda e: e.video_url,
     )
     assert ff.loudness_profiles == [None]
+
+
+def test_audio_encode_waits_for_resource_admission(tmp_path):
+    eps = [_ep("g1")]
+    ff = FakeFfmpeg()
+    admission = FakeAdmission()
+    stats = materialize_audio(
+        _city(),
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        resource_admission=admission,
+    )
+    assert admission.calls == [("audio", "uid-g1")]
+    assert stats.encoded == 1
+    assert ff.calls == ["https://src/manifest.m3u8"]
+
+
+def test_audio_encode_defers_when_resource_admission_stops(tmp_path):
+    eps = [_ep("g1")]
+    ff = FakeFfmpeg()
+    admission = FakeAdmission(admitted=False)
+    stats = materialize_audio(
+        _city(),
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        resource_admission=admission,
+    )
+    assert admission.calls == [("audio", "uid-g1")]
+    assert stats.skipped_budget == 1
+    assert stats.encoded == 0
+    assert ff.calls == []
 
 
 def test_loudness_profile_changes_spec_hash_and_key():
