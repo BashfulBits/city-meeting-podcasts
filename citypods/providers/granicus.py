@@ -9,7 +9,9 @@ Change detection uses a HEAD request and compares ETag / Last-Modified.
 from __future__ import annotations
 
 import json
+import random
 import re
+import time
 from email.utils import parsedate_to_datetime
 from html import unescape
 from urllib.parse import parse_qs, urlsplit
@@ -134,18 +136,27 @@ class GranicusProvider:
         # DownloadFile.php redirects to a signed archive-video.granicus.com URL.
         # Pre-follow the redirect here so ffmpeg receives the signed URL directly;
         # the CDN returns 403 for unsigned bare-path requests.
+        #
+        # DownloadFile.php rate-limits concurrent callers with 403 (not 429, so the
+        # shared make_session retry policy doesn't cover it). Retry with backoff +
+        # jitter so parallel workers don't all hammer the endpoint in lockstep.
         url = episode.video_url
         if "DownloadFile.php" not in url:
             return url
-        try:
-            with make_session() as session:
-                resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=False, stream=True)
-            if resp.status_code in (301, 302, 303, 307, 308):
-                location = resp.headers.get("Location", "")
-                if location:
-                    return location
-        except requests.RequestException:
-            pass
+        for delay in (0, 0.5, 1.5, 3.0):
+            if delay:
+                time.sleep(delay + random.uniform(0, delay * 0.5))
+            try:
+                with make_session() as session:
+                    resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    location = resp.headers.get("Location", "")
+                    if location:
+                        return location
+                if resp.status_code != 403:
+                    break  # not a rate-limit; don't retry
+            except requests.RequestException:
+                break
         return url
 
     def fetch_view_counts(self, source: dict) -> list[int]:
