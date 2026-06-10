@@ -33,7 +33,11 @@ _RETRY = Retry(
     status_forcelist=(429, 500, 502, 503, 504),
     allowed_methods=frozenset({"GET", "HEAD"}),
     raise_on_status=False,
-    respect_retry_after_header=True,
+    # Ignore Retry-After headers: a provider returning Retry-After: 3600 would otherwise
+    # hang the entire build for an hour inside urllib3's sleep before the next attempt.
+    # The backoff (0.5 / 1 / 2s) is sufficient politeness; long-delay 429s should surface
+    # as a ProviderError so the next scheduled run retries cleanly.
+    respect_retry_after_header=False,
 )
 
 
