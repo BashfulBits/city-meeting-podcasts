@@ -71,6 +71,24 @@ def _log_ffmpeg_event(log: Callable[[str], None] | None, message: str) -> None:
         log(message)
 
 
+def _format_optional_bytes(value: int | None) -> str:
+    return "unknown" if value is None else format_bytes(value)
+
+
+def _process_rss_bytes(pid: int) -> int | None:
+    """Return resident memory for a child process on Linux, or ``None`` when unavailable."""
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                parts = line.split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    return int(parts[1]) * 1024
+                return None
+    except OSError:
+        return None
+    return None
+
+
 class FfmpegMemoryLimitExceeded(OSError):
     """Raised when an ffmpeg child is terminated to preserve runner memory."""
 
@@ -98,6 +116,7 @@ def _run_ffmpeg_guarded(
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] | None = print,
     popen: Callable[..., subprocess.Popen] = subprocess.Popen,
+    child_rss: Callable[[int], int | None] = _process_rss_bytes,
 ) -> None:
     """Run ffmpeg with wall-clock and available-memory guardrails.
 
@@ -120,8 +139,23 @@ def _run_ffmpeg_guarded(
     )
 
     _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start pid={proc.pid}")
+    peak_child_rss: int | None = None
+    min_mem_available: int | None = None
+    samples = 0
 
     while True:
+        samples += 1
+        rss = child_rss(proc.pid)
+        if rss is not None:
+            peak_child_rss = rss if peak_child_rss is None else max(peak_child_rss, rss)
+
+        snap = snapshot()
+        available = snap.mem_available_bytes
+        if available is not None:
+            min_mem_available = (
+                available if min_mem_available is None else min(min_mem_available, available)
+            )
+
         returncode = proc.poll()
         if returncode is not None:
             stdout, stderr = proc.communicate()
@@ -134,7 +168,10 @@ def _run_ffmpeg_guarded(
                     stderr=stderr,
                 )
             _log_ffmpeg_event(
-                log, f"[enrich] ffmpeg {phase} done pid={proc.pid} seconds={elapsed:.1f}"
+                log,
+                f"[enrich] ffmpeg {phase} done pid={proc.pid} seconds={elapsed:.1f} "
+                f"peak_rss={_format_optional_bytes(peak_child_rss)} "
+                f"min_mem_avail={_format_optional_bytes(min_mem_available)} samples={samples}",
             )
             return
 
@@ -148,28 +185,31 @@ def _run_ffmpeg_guarded(
                 stdout, stderr = proc.communicate()
             raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=stderr)
 
-        if memory_floor_bytes is not None and memory_floor_bytes > 0:
-            snap = snapshot()
-            available = snap.mem_available_bytes
-            if available is not None and available < memory_floor_bytes:
-                _log_ffmpeg_event(
-                    log,
-                    f"[enrich] ffmpeg {phase} memory-stop pid={proc.pid} "
-                    f"mem_avail={format_bytes(available)} floor="
-                    f"{format_bytes(memory_floor_bytes)}",
-                )
-                proc.terminate()
-                try:
-                    proc.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.communicate()
-                raise FfmpegMemoryLimitExceeded(
-                    phase=phase,
-                    cmd=cmd,
-                    floor=memory_floor_bytes,
-                    available=available,
-                )
+        if (
+            memory_floor_bytes is not None
+            and memory_floor_bytes > 0
+            and available is not None
+            and available < memory_floor_bytes
+        ):
+            _log_ffmpeg_event(
+                log,
+                f"[enrich] ffmpeg {phase} memory-stop pid={proc.pid} "
+                f"mem_avail={format_bytes(available)} floor={format_bytes(memory_floor_bytes)} "
+                f"peak_rss={_format_optional_bytes(peak_child_rss)} "
+                f"min_mem_avail={_format_optional_bytes(min_mem_available)} samples={samples}",
+            )
+            proc.terminate()
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+            raise FfmpegMemoryLimitExceeded(
+                phase=phase,
+                cmd=cmd,
+                floor=memory_floor_bytes,
+                available=available,
+            )
 
         remaining = None if timeout is None else max(0.1, timeout - elapsed)
         sleep_for = poll_seconds if remaining is None else min(poll_seconds, remaining)
@@ -570,6 +610,12 @@ class CommandFfmpeg:
             return []
         return ["-threads", str(self.threads)]
 
+    def _filter_thread_args(self) -> list[str]:
+        if self.threads is None:
+            return []
+        n = str(self.threads)
+        return ["-filter_threads", n, "-filter_complex_threads", n]
+
     # ------------------------------------------------------------------
     # Filter path: atrim + concat + optional loudnorm
     # ------------------------------------------------------------------
@@ -638,6 +684,7 @@ class CommandFfmpeg:
                 "-protocol_whitelist",
                 "file,crypto,data,http,https,tcp,tls",
                 *inputs,
+                *self._filter_thread_args(),
                 "-filter_complex",
                 filter_str,
                 "-map",
