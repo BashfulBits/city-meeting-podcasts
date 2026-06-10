@@ -587,7 +587,7 @@ class LinksStage:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
-ASR_PIPELINE_VERSION = "1"
+ASR_PIPELINE_VERSION = "2"  # bumped: word_timestamps=True → word-level VTT cues
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
 # Public (imported by citypods.feeds) so the feed tag and the stored object never disagree.

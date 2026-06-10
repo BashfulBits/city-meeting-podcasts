@@ -57,7 +57,15 @@ class TestToVtt:
         s.start = start
         s.end = end
         s.text = text
+        s.words = []  # no word-level data → segment-level fallback
         return s
+
+    def _word(self, word, start, end):
+        w = MagicMock()
+        w.word = word
+        w.start = start
+        w.end = end
+        return w
 
     def test_starts_with_webvtt(self):
         vtt = _to_vtt([])
@@ -80,6 +88,32 @@ class TestToVtt:
         vtt = _to_vtt(segs).decode()
         assert vtt.count("-->") == 2
         assert "A" in vtt and "B" in vtt
+
+    def test_word_level_cues_when_words_present(self):
+        words = [self._word(" Hello", 1.0, 1.5), self._word(" world", 1.5, 2.0)]
+        seg = MagicMock()
+        seg.words = words
+        vtt = _to_vtt([seg]).decode()
+        assert "00:00:01.000 --> 00:00:01.500" in vtt
+        assert "Hello" in vtt
+        assert "00:00:01.500 --> 00:00:02.000" in vtt
+        assert "world" in vtt
+        assert vtt.count("-->") == 2
+
+    def test_word_level_skips_words_without_timestamps(self):
+        words = [self._word(" Good", 0.5, 1.0), self._word(" morning", None, None)]
+        seg = MagicMock()
+        seg.words = words
+        vtt = _to_vtt([seg]).decode()
+        assert vtt.count("-->") == 1
+        assert "Good" in vtt
+        assert "morning" not in vtt
+
+    def test_empty_words_falls_back_to_segment(self):
+        seg = self._seg(1.0, 5.0, "Hello world")
+        vtt = _to_vtt([seg]).decode()
+        assert "00:00:01.000 --> 00:00:05.000" in vtt
+        assert "Hello world" in vtt
 
 
 # ── asr_spec_hash ─────────────────────────────────────────────────────────────
@@ -129,6 +163,7 @@ class TestTranscribeMocked:
         s.start = start
         s.end = end
         s.text = text
+        s.words = []  # no word-level data → segment-level fallback
         return s
 
     def _mock_model(self, segments):

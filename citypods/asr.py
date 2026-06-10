@@ -59,15 +59,28 @@ def _fmt_ts(seconds: float) -> str:
 
 
 def _to_vtt(segments) -> bytes:
-    """Convert faster-whisper segment iterable to WebVTT bytes."""
+    """Convert faster-whisper segments to WebVTT bytes.
+
+    Emits word-level cues when segments carry a `.words` list (word_timestamps=True);
+    falls back to segment-level cues otherwise.
+    """
     lines = ["WEBVTT", ""]
     for seg in segments:
-        text = seg.text.strip()
-        if not text:
-            continue
-        lines.append(f"{_fmt_ts(seg.start)} --> {_fmt_ts(seg.end)}")
-        lines.append(text)
-        lines.append("")
+        words = getattr(seg, "words", None) or []
+        if words:
+            for w in words:
+                word = w.word.strip()
+                if word and w.start is not None and w.end is not None:
+                    lines.append(f"{_fmt_ts(w.start)} --> {_fmt_ts(w.end)}")
+                    lines.append(word)
+                    lines.append("")
+        else:
+            text = seg.text.strip()
+            if not text:
+                continue
+            lines.append(f"{_fmt_ts(seg.start)} --> {_fmt_ts(seg.end)}")
+            lines.append(text)
+            lines.append("")
     return "\n".join(lines).encode("utf-8")
 
 
@@ -188,6 +201,7 @@ def transcribe(
         language=language or None,
         beam_size=beam_size,
         initial_prompt=initial_prompt or None,
+        word_timestamps=True,
     )
     return _to_vtt(segments)
 

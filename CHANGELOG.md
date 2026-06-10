@@ -22,6 +22,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **Contributor scaffolding (partial #57)**: PR template, feature-request + bug-report issue templates,
   and an `area:*` / `needs-*` GitHub label taxonomy.
 
+### Added
+- **Word-level transcript timestamps**: `citypods/asr.py` now passes `word_timestamps=True` to
+  faster-whisper, producing VTT cues at individual word granularity instead of segment-level.
+  `ASR_PIPELINE_VERSION` bumped to `"2"` so existing segment-level transcripts are re-transcribed
+  gradually over scheduled enrich runs. Word boundaries are a prerequisite for speaker diarization
+  (#7, planned for Phase R after H6).
+
 ### Fixed
 - **ASR alignment fallback (H10, PR #232)**: forced alignment now uses a stable-ts faster-whisper model
   that supports `.align()`, and any alignment failure falls back to fresh transcription instead of
