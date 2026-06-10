@@ -133,8 +133,8 @@ def test_parse_index_json_keeps_agenda_level_only():
     assert chapters[1]["title"] == "7.1. May 5 Afternoon"  # <br/> stripped, whitespace collapsed
 
 
-def test_resolve_media_url_constructs_archive_url():
-    """UUID guid produces a direct archive-video.granicus.com URL, bypassing DownloadFile.php."""
+def test_resolve_media_url_follows_downloadfile_redirect(monkeypatch):
+    """resolve_media_url pre-follows the DownloadFile.php redirect and returns the signed URL."""
     rss = b"""<rss><channel><item>
       <title>Council</title>
       <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
@@ -143,15 +143,35 @@ def test_resolve_media_url_constructs_archive_url():
     </item></channel></rss>"""
     ep = parse_feed(rss)[0]
     source = {"feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2"}
-    url = GranicusProvider().resolve_media_url(ep, source)
-    assert url == (
-        "https://archive-video.granicus.com"
-        "/arlingtontx/arlingtontx_ec2832a9-95ac-4edc-9480-78dfba51d6c1.mp4"
+
+    signed = (
+        "https://archive-video.granicus.com/arlingtontx/arlingtontx_ec2832a9.mp4"
+        "?Expires=9999999999&Signature=FAKESIG&Key-Pair-Id=FAKEKID"
     )
 
+    class _FakeResp:
+        status_code = 302
+        headers = {"Location": signed}
 
-def test_resolve_media_url_falls_back_for_non_uuid_guid():
-    """Non-UUID guid falls back to episode.video_url (the DownloadFile.php enclosure)."""
+    class _FakeSession:
+        def get(self, url, **kwargs):
+            return _FakeResp()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    monkeypatch.setattr("citypods.providers.granicus.make_session", lambda: _FakeSession())
+    url = GranicusProvider().resolve_media_url(ep, source)
+    assert url == signed
+
+
+def test_resolve_media_url_falls_back_when_redirect_fails(monkeypatch):
+    """If the DownloadFile.php request fails, the original URL is returned unchanged."""
+    import requests as req
+
     rss = b"""<rss><channel><item>
       <title>Council</title>
       <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
@@ -160,24 +180,34 @@ def test_resolve_media_url_falls_back_for_non_uuid_guid():
     </item></channel></rss>"""
     ep = parse_feed(rss)[0]
     source = {"feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2"}
+
+    class _FakeSession:
+        def get(self, url, **kwargs):
+            raise req.ConnectionError("timeout")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    monkeypatch.setattr("citypods.providers.granicus.make_session", lambda: _FakeSession())
     url = GranicusProvider().resolve_media_url(ep, source)
     assert url == "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=99"
 
 
-def test_granicus_subdomain_helper():
-    from citypods.providers.granicus import _granicus_subdomain
-
-    assert _granicus_subdomain({"feed_url": "https://arlingtontx.granicus.com/rss"}) == (
-        "arlingtontx"
-    )
-    assert _granicus_subdomain({"feed_url": "https://fortworthgov.granicus.com/rss"}) == (
-        "fortworthgov"
-    )
-    assert (
-        _granicus_subdomain({"feed_urls": ["https://pflugerville.granicus.com/rss"]})
-        == "pflugerville"
-    )
-    assert _granicus_subdomain({}) is None
+def test_resolve_media_url_passthrough_for_non_downloadfile_url():
+    """Non-DownloadFile.php URLs are returned unchanged without a network call."""
+    rss = b"""<rss><channel><item>
+      <title>Council</title>
+      <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
+      <guid>some-guid</guid>
+      <enclosure url="https://archive-video.granicus.com/arlingtontx/arlingtontx_abc.mp4"/>
+    </item></channel></rss>"""
+    ep = parse_feed(rss)[0]
+    source = {"feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2"}
+    url = GranicusProvider().resolve_media_url(ep, source)
+    assert url == "https://archive-video.granicus.com/arlingtontx/arlingtontx_abc.mp4"
 
 
 def test_fetch_chapters_uses_clip_id(monkeypatch):
