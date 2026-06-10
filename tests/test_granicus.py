@@ -168,8 +168,49 @@ def test_resolve_media_url_follows_downloadfile_redirect(monkeypatch):
     assert url == signed
 
 
+def test_resolve_media_url_retries_on_403_then_succeeds(monkeypatch):
+    """resolve_media_url retries on 403 (rate-limit) and returns the signed URL on success."""
+    rss = b"""<rss><channel><item>
+      <title>Council</title>
+      <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
+      <guid>clip-99</guid>
+      <enclosure url="https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&amp;clip_id=99"/>
+    </item></channel></rss>"""
+    ep = parse_feed(rss)[0]
+    source = {"feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2"}
+
+    signed = "https://archive-video.granicus.com/arlingtontx/arlingtontx_99.mp4?Expires=9&Sig=X"
+    calls = []
+
+    class _Resp403:
+        status_code = 403
+        headers: dict = {}
+
+    class _Resp302:
+        status_code = 302
+        headers = {"Location": signed}
+
+    class _FakeSession:
+        def get(self, url, **kwargs):
+            calls.append(url)
+            return _Resp403() if len(calls) < 2 else _Resp302()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    monkeypatch.setattr("citypods.providers.granicus.make_session", lambda: _FakeSession())
+    monkeypatch.setattr("citypods.providers.granicus.time.sleep", lambda _: None)
+    monkeypatch.setattr("citypods.providers.granicus.random.uniform", lambda a, b: 0)
+    url = GranicusProvider().resolve_media_url(ep, source)
+    assert url == signed
+    assert len(calls) == 2  # first attempt 403, second attempt 302
+
+
 def test_resolve_media_url_falls_back_when_redirect_fails(monkeypatch):
-    """If the DownloadFile.php request fails, the original URL is returned unchanged."""
+    """If the DownloadFile.php request raises, the original URL is returned unchanged."""
     import requests as req
 
     rss = b"""<rss><channel><item>
