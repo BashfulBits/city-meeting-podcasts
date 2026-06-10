@@ -29,9 +29,7 @@ NS = {
     "itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
 }
 
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
-)
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
 def _text(item: ET.Element, tag: str) -> str:
@@ -142,8 +140,7 @@ class GranicusProvider:
             subdomain = _granicus_subdomain(source)
             if subdomain:
                 return (
-                    f"https://archive-video.granicus.com"
-                    f"/{subdomain}/{subdomain}_{episode.guid}.mp4"
+                    f"https://archive-video.granicus.com/{subdomain}/{subdomain}_{episode.guid}.mp4"
                 )
         return episode.video_url
 

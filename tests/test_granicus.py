@@ -167,9 +167,16 @@ def test_resolve_media_url_falls_back_for_non_uuid_guid():
 def test_granicus_subdomain_helper():
     from citypods.providers.granicus import _granicus_subdomain
 
-    assert _granicus_subdomain({"feed_url": "https://arlingtontx.granicus.com/rss"}) == "arlingtontx"
-    assert _granicus_subdomain({"feed_url": "https://fortworthgov.granicus.com/rss"}) == "fortworthgov"
-    assert _granicus_subdomain({"feed_urls": ["https://pflugerville.granicus.com/rss"]}) == "pflugerville"
+    assert _granicus_subdomain({"feed_url": "https://arlingtontx.granicus.com/rss"}) == (
+        "arlingtontx"
+    )
+    assert _granicus_subdomain({"feed_url": "https://fortworthgov.granicus.com/rss"}) == (
+        "fortworthgov"
+    )
+    assert (
+        _granicus_subdomain({"feed_urls": ["https://pflugerville.granicus.com/rss"]})
+        == "pflugerville"
+    )
     assert _granicus_subdomain({}) is None
 
 
