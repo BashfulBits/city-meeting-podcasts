@@ -613,6 +613,7 @@ def build(
         if not dry_run
         else None
     )
+    asr_abandoned_event = threading.Event() if time_bounded and not dry_run else None
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -662,6 +663,7 @@ def build(
         asr_abort_event=threading.Event()
         if not dry_run and defaults.get("asr_enabled", True)
         else None,
+        asr_abandoned_event=asr_abandoned_event,
         fast_yield_exit=(
             _fast_yield_exit if phase == "enrich" and os.environ.get("GITHUB_ACTIONS") else None
         ),
@@ -789,6 +791,12 @@ def build(
         reclaimed = reconcile_state(storage, state_dir)
         if reclaimed:
             print(f"state: reclaimed {reclaimed} stale remote file(s)")
+        if (
+            asr_abandoned_event is not None
+            and asr_abandoned_event.is_set()
+            and os.environ.get("GITHUB_ACTIONS")
+        ):
+            _abandoned_asr_exit()
 
     return results
 
@@ -1011,6 +1019,18 @@ def _fast_yield_exit() -> None:
     import os as _os
 
     print("fast-yield: exiting enrich immediately for queued code-change build", flush=True)
+    _os._exit(0)
+
+
+def _abandoned_asr_exit() -> None:
+    """Exit cleanly after state persistence when abandoned native ASR is still running."""
+    import os as _os
+
+    print(
+        "asr-yield: exiting after state push to avoid native ASR teardown while inference "
+        "continues in background",
+        flush=True,
+    )
     _os._exit(0)
 
 

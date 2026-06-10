@@ -75,6 +75,17 @@ def _format_optional_bytes(value: int | None) -> str:
     return "unknown" if value is None else format_bytes(value)
 
 
+def _stderr_tail(stderr: bytes | str | None, *, limit: int = 1200) -> str:
+    if stderr is None:
+        return ""
+    text = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else str(stderr)
+    text = text.strip()
+    if not text:
+        return ""
+    text = text[-limit:]
+    return " ".join(text.split())
+
+
 def _process_rss_bytes(pid: int) -> int | None:
     """Return resident memory for a child process on Linux, or ``None`` when unavailable."""
     try:
@@ -126,7 +137,21 @@ def _run_ffmpeg_guarded(
     """
     if not memory_floor_bytes:
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
-        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        except subprocess.CalledProcessError as exc:
+            stderr = _stderr_tail(exc.stderr)
+            detail = f" stderr={stderr}" if stderr else ""
+            _log_ffmpeg_event(
+                log,
+                f"[enrich] ffmpeg {phase} error returncode={exc.returncode}{detail}",
+            )
+            raise
+        except subprocess.TimeoutExpired as exc:
+            stderr = _stderr_tail(exc.stderr)
+            detail = f" stderr={stderr}" if stderr else ""
+            _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} timeout seconds={timeout}{detail}")
+            raise
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
         return
 
@@ -161,6 +186,15 @@ def _run_ffmpeg_guarded(
             stdout, stderr = proc.communicate()
             elapsed = time.monotonic() - started
             if returncode != 0:
+                stderr_text = _stderr_tail(stderr)
+                detail = f" stderr={stderr_text}" if stderr_text else ""
+                _log_ffmpeg_event(
+                    log,
+                    f"[enrich] ffmpeg {phase} error pid={proc.pid} seconds={elapsed:.1f} "
+                    f"returncode={returncode} peak_rss={_format_optional_bytes(peak_child_rss)} "
+                    f"min_mem_avail={_format_optional_bytes(min_mem_available)} "
+                    f"samples={samples}{detail}",
+                )
                 raise subprocess.CalledProcessError(
                     returncode,
                     cmd,
@@ -183,6 +217,15 @@ def _run_ffmpeg_guarded(
             except subprocess.TimeoutExpired:
                 proc.kill()
                 stdout, stderr = proc.communicate()
+            stderr_text = _stderr_tail(stderr)
+            detail = f" stderr={stderr_text}" if stderr_text else ""
+            _log_ffmpeg_event(
+                log,
+                f"[enrich] ffmpeg {phase} timeout pid={proc.pid} seconds={elapsed:.1f} "
+                f"peak_rss={_format_optional_bytes(peak_child_rss)} "
+                f"min_mem_avail={_format_optional_bytes(min_mem_available)} "
+                f"samples={samples}{detail}",
+            )
             raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=stderr)
 
         if (
