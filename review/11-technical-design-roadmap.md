@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-08**
+**Status: LIVING · last updated 2026-06-10**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -102,7 +102,8 @@ sync · #20 video enclosures (partial).
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
 | H9 free transcription-offload evaluation | new | L2→L3 | committed |
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
-| H11 deploy resilience (survive runner-level kill; later isolate enrich) | new | L3 | committed · **do-now** native audio/ASR gate + one-slot audio lane + ffmpeg child RSS measurement (H11a), then measured audio concurrency tuning only after green runs |
+| H11a deploy resilience — native work gate + one-slot audio lane + concurrency tuning | new | L3 | **Shipped** ([#239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) |
+| H11b deploy resilience — isolate enrich into own workflow | new | L2 | committed · depends on H5 manifest/lease |
 | #39 per-provider rate limiting | #39 | L2 | committed (efficiency-adjacent) |
 
 ### Phase R — Research-Tool Surface (toward 1.0)
@@ -337,17 +338,15 @@ against live code and is **accurate and well-grounded**. Disposition of its reco
 | "defer email" | Modify → RSS/static first, **Substack** shortcut | Phase E |
 | module splits | Adopt opportunistically (e.g. `ops/workqueue.py` from H5) | as touched |
 
-**Post-review code queue (updated 2026-06-08 after H10 shipped in
-[PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)):** H8 resource guard →
-H11a deploy resilience acceptance (native ASR/audio gate + one-slot audio lane + ffmpeg child RSS measurement) → H1 `gh` issue reconciliation — close/narrow GH#154
+**Post-review code queue (updated 2026-06-10 after H11a shipped):**
+H8 resource guard (shipped [PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) →
+H11a deploy resilience (shipped [PRs #239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) →
+**H1 (next):** `gh` issue reconciliation — close/narrow GH#154
 (`<podcast:transcript>` shipped), GH#110 (ASR → backfill/ops), GH#141 (timeline epic → umbrella only);
 H2 projection wall-clock fix + tests; H3 validation gate; H4 feed-health states; H5 backlog manifest +
 prioritization (including an explicit alignment-deferred lane for untimed provider transcripts);
 H11b/H6 isolate enrich + sharded ASR, with separate align-only and transcribe-only lanes so stable-ts
-and faster-whisper model loads do not stack in one runner; H9 offload evaluation. If H11a stays green
-for several runs under the one-slot audio lane, use the new child-RSS/min-available ffmpeg metrics for
-one near-term H11 tuning pass before H1–H5: evaluate whether a 2-lane audio experiment is safe before
-considering any broader 3-core ASR / 1-core audio-fetch-or-encode split.
+and faster-whisper model loads do not stack in one runner; H9 offload evaluation.
 When each step completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge
 docs PR.
 

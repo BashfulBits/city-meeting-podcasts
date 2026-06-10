@@ -32,6 +32,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **ffmpeg audio memory guard**: silence detection ignores video streams, source-cache/identity/filter
   ffmpeg phases log distinct start/finish markers, and audio ffmpeg children stop when runner memory
   falls below the configured floor instead of risking an Actions lost-comms kill.
+- **Deploy resilience — native work gate + one-slot audio lane (H11a, PRs #239/241/242/243/244)**:
+  `NativeWorkGate` strictly serializes ASR and audio so they never run concurrently; `native_audio_max_active`
+  caps the global ffmpeg encode slots; ffmpeg filter/complex threads pinned to 1; per-child peak RSS and
+  minimum runner `MemAvailable` logged per encode; ASR teardown hardened to avoid post-state-push crashes.
+  Together with H8, enrich now completes its full 204-min window without exit-143/lost-comms kills.
+- **Audio concurrency tuning (H11a, PR #246)**: raised `native_audio_max_active` from 1 → 4 after 3
+  consecutive green scheduled runs; at `-threads 1` per encode, 4 slots saturate all 4 cores while
+  targeting ~8 GiB RAM.
+- **HTTP Retry-After hang fix (PR #247)**: sessions now ignore provider `Retry-After` headers; a Granicus
+  429 returning `Retry-After: 3600` previously caused urllib3 to sleep inside the retry loop for a full
+  hour, blocking the entire build.
 
 ## Timeline & content-transform foundation
 
