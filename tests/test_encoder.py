@@ -486,6 +486,35 @@ class TestCommandFfmpegFilterPath:
         idx = cmd.index("-c:a")
         assert cmd[idx + 1] == "aac"
 
+    def test_filter_path_pins_filter_threads(self, monkeypatch, tmp_path):
+        import citypods.media as media
+
+        calls: list = []
+
+        def _fake_run(cmd, **kw):
+            calls.append(cmd)
+
+            class _R:
+                stdout = ""
+
+            return _R()
+
+        monkeypatch.setattr(media.subprocess, "run", _fake_run)
+        media.CommandFfmpeg(max_kbps=96, threads=1).extract_audio(
+            timeline=self._trim_timeline(),
+            sources_by_id={"s0": "https://s/v.mp4"},
+            dest=tmp_path / "out.m4a",
+        )
+        cmd = calls[0]
+        assert "-filter_threads" in cmd
+        idx = cmd.index("-filter_threads")
+        assert cmd[idx + 1] == "1"
+        assert "-filter_complex_threads" in cmd
+        idx = cmd.index("-filter_complex_threads")
+        assert cmd[idx + 1] == "1"
+        assert cmd.index("-filter_threads") < cmd.index("-filter_complex")
+        assert cmd.index("-filter_complex_threads") < cmd.index("-filter_complex")
+
 
 # ---------------------------------------------------------------------------
 # materialize_audio integration — timeline plumbing

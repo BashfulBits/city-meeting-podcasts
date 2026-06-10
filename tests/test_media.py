@@ -807,7 +807,72 @@ def test_guarded_ffmpeg_stops_on_low_available_memory():
             sleep=lambda _seconds: None,
             log=events.append,
             popen=_fake_popen,
+            child_rss=lambda _pid: 12 * 1024 * 1024,
         )
 
     assert proc.terminated
     assert any("memory-stop" in event for event in events)
+    assert any("peak_rss=12.0MiB" in event for event in events)
+    assert any("min_mem_avail=50B" in event for event in events)
+
+
+def test_guarded_ffmpeg_logs_peak_child_rss_and_min_available_memory():
+    import citypods.media as media
+    from citypods.resources import ResourceSnapshot
+
+    events: list[str] = []
+    polls = iter([None, None, 0])
+    snapshots = iter(
+        [
+            ResourceSnapshot(
+                rss_bytes=100,
+                mem_total_bytes=1000,
+                mem_available_bytes=900,
+                load1=0.0,
+                load5=0.0,
+                cpus=4,
+            ),
+            ResourceSnapshot(
+                rss_bytes=100,
+                mem_total_bytes=1000,
+                mem_available_bytes=700,
+                load1=0.0,
+                load5=0.0,
+                cpus=4,
+            ),
+            ResourceSnapshot(
+                rss_bytes=100,
+                mem_total_bytes=1000,
+                mem_available_bytes=800,
+                load1=0.0,
+                load5=0.0,
+                cpus=4,
+            ),
+        ]
+    )
+    rss_values = iter([5 * 1024 * 1024, 23 * 1024 * 1024, 11 * 1024 * 1024])
+
+    class FakeProc:
+        pid = 4321
+
+        def poll(self):
+            return next(polls)
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+    media._run_ffmpeg_guarded(
+        ["ffmpeg"],
+        phase="filter-render",
+        memory_floor_bytes=100,
+        snapshot=lambda: next(snapshots),
+        sleep=lambda _seconds: None,
+        log=events.append,
+        popen=lambda cmd, **kw: FakeProc(),
+        child_rss=lambda _pid: next(rss_values),
+    )
+
+    done = [event for event in events if "ffmpeg filter-render done" in event][0]
+    assert "peak_rss=23.0MiB" in done
+    assert "min_mem_avail=700B" in done
+    assert "samples=3" in done

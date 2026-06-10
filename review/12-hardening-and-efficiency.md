@@ -497,6 +497,12 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   ffmpeg encodes alone drove `mem_avail` below 300 MiB and the runner exited 143. Until H5/H6 split heavy
   work into separate workflows, make production enrich a strict **one-core audio lane**: one global
   native audio slot and `ffmpeg -threads 1`, with ASR still exclusive and prioritized.
+- **2026-06-09 measurement pass before loosening concurrency:** after the one-slot lane, ASR steady-state
+  memory looked safe (~12+ GiB available) while ffmpeg still produced transient memory pressure. Before
+  raising `native_audio_max_active`, pin ffmpeg filter workers too (`-filter_threads 1` and
+  `-filter_complex_threads 1`) and log per-child peak RSS plus minimum runner `MemAvailable` for each
+  guarded ffmpeg process. Keep `native_audio_max_active: 1` for this PR; use the new child metrics to
+  decide whether a later `2`-lane audio experiment is safe.
 - **Near-term throughput refinement after green baseline:** if several scheduled/push deploys stay
   green under the one-slot audio lane, evaluate loosening to a measured **bounded lane split**: ASR uses
   ~3 CPU threads, while at most one one-core audio lane continues low-risk download/cache/probe or
@@ -507,9 +513,10 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   cannot starve transcription.
 - **Data needed for that tuning pass:** use the existing heartbeat (`mem_avail`, load, thread count,
   disk free) plus native-gate wait/acquire logs and per-stage `audio encode done` / `transcript asr done`
-  timings. That is enough to compare a stable exclusive baseline against a 3+1 split at the run level.
-  If the split decision needs per-child precision, add lightweight instrumentation for active ffmpeg
-  count, ASR-active state, and optional `/proc` child RSS/CPU snapshots before loosening the gate.
+  timings. The measurement pass adds per-ffmpeg child peak RSS and min `MemAvailable`, which is enough
+  to compare a stable exclusive baseline against a later 2-lane audio experiment. If the split decision
+  still needs more precision, add active ffmpeg count, ASR-active state, and optional `/proc` child CPU
+  snapshots before loosening the gate further.
 - **Durable follow-up (H11b): isolate heavy enrich from the deploy job.** Move enrich into its **own
   workflow** (this is H6 Step 2) with a concurrency group distinct from `pages`, so the Pages deploy job
   *cannot* be marked red by enrich regardless of what happens to the enrich runner. Depends on **H5**'s
@@ -521,11 +528,12 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   resource kill (complements H4 / H-G).
 
 **Files.** H11a follow-up: `citypods/resources.py` (`NativeWorkGate` + global native audio cap),
-`citypods/media.py` (`audio` shared gate), `citypods/stages.py` / `citypods/run.py` (`asr` exclusive
-gate + `native_audio_max_active` config), `config/site_config.yml` (one-core production audio lane),
-`tests/test_resources.py`. H11b: `.github/workflows/asr.yml` + `deploy.yml` (remove/decouple the heavy
-enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md (workflow split) — sequenced after
-H5/H6.
+`citypods/media.py` (`audio` shared gate, ffmpeg filter-thread caps, child RSS/min-available logging),
+`citypods/stages.py` / `citypods/run.py` (`asr` exclusive gate + `native_audio_max_active` config),
+`config/site_config.yml` (one-core production audio lane), `tests/test_resources.py`,
+`tests/test_media.py`, `tests/test_encoder.py`. H11b: `.github/workflows/asr.yml` + `deploy.yml`
+(remove/decouple the heavy enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md
+(workflow split) — sequenced after H5/H6.
 
 **Acceptance:** (H11a) several consecutive scheduled Build & Deploy runs complete **green** with enrich
 using most of its window and no exit-143/lost-comms kills under the one-slot audio lane. (H11a tuning,
