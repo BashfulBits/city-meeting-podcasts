@@ -135,8 +135,6 @@ def test_parse_index_json_keeps_agenda_level_only():
 
 def test_resolve_media_url_follows_downloadfile_redirect(monkeypatch):
     """resolve_media_url pre-follows the DownloadFile.php redirect and returns the signed URL."""
-    import requests as req
-
     rss = b"""<rss><channel><item>
       <title>Council</title>
       <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
