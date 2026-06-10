@@ -29,6 +29,7 @@ NS = {
     "itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
 }
 
+
 def _text(item: ET.Element, tag: str) -> str:
     el = item.find(tag)
     return (el.text or "").strip() if el is not None and el.text else ""
