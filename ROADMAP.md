@@ -16,8 +16,9 @@ trim, **#21** loudness, **#23** host-all, **#122** concat, clips); **#1/#110** A
 provider transcripts first, self-host the rest); **#11** `<podcast:transcript>`; **#124** status
 dashboard; durable bucket-backed state; SSRF gate; feed-health audit; endpoint contracts; resource
 projection + admin page. Full history → [CHANGELOG.md](CHANGELOG.md).
-Recently shipped Phase H reliability work: **H10** ASR alignment fallback fix (PR #232) and **H8**
-runner resource guard (PR #235).
+Recently shipped Phase H reliability work: **H10** ASR alignment fallback fix (PR #232), **H8**
+runner resource guard (PR #235), and **H11a** deploy resilience — native work gate + one-slot audio
+lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247).
 
 ## Current phase: **H — Hardening & Efficiency** (next up)
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
@@ -41,7 +42,8 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H8** | ✓ Shipped — throughput maximization on the free 4-core runner (PR #235): pinned ffmpeg `-threads`, memory/CPU admission guard, abandoned-ASR-thread accounting |
 | **H9** | Evaluate **free transcription-offload tiers** (matrix sharding first; then free ASR-API/compute, ToS-checked) |
 | **H10** | ✓ Shipped — ASR alignment fix (PR #232): caption-bearing feeds use a stable-ts align model and fall back to fresh transcription on align errors |
-| **H11** | **do-now** · **Deploy resilience** — `continue-on-error` can't catch a runner-level SIGTERM/lost-comms; survive via the H8 guard now, isolate enrich into its own workflow later (after H5) |
+| **H11a** | ✓ Shipped — **Deploy resilience**: native work gate + one-slot audio lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247) |
+| **H11b** | After H5 — isolate enrich into its own workflow (own concurrency group, separate from Pages deploy) |
 
 ## Toward 1.0: **R — Research-Tool Surface**
 Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeting-pages-and-search.md)

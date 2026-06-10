@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-08**
+last updated 2026-06-10**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -472,7 +472,22 @@ an injected align failure falls back to transcribe instead of producing nothing;
 
 ---
 
-## H11 — Deploy resilience: survive (then contain) runner-level kills — **PRIORITY: do-now (new 2026-06-08)**
+## H11 — Deploy resilience — H11a **Implemented** (PRs #239/241/242/243/244/246/247); H11b pending after H5
+
+**H11a status.** Native work gate, one-slot audio lane, ffmpeg filter-thread cap, per-child RSS/memory
+logging, ASR teardown hardening, concurrency tuning, and Retry-After fix implemented across
+[PR #239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239) /
+[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241) /
+[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242) /
+[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243) /
+[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244) /
+[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246) /
+[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247), merged 2026-06-09/10. Three
+consecutive scheduled runs confirmed green at `native_audio_max_active: 4`. Design text below is
+preserved as the implementation record.
+
+**H11b status.** Isolating enrich into its own workflow depends on H5's manifest/lease (not yet
+started); the "Durable follow-up" paragraph below remains the active design.
 
 **Problem (H-C, confirmed + H-F).** `continue-on-error: true` on the enrich step (`deploy.yml:163–193`)
 plus the graceful-yield/“warn-if-killed” machinery was designed to keep the job green when enrich exits
