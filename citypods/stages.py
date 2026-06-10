@@ -165,6 +165,10 @@ class StageContext:
     # Set after an ASR timeout so other source workers skip starting more ASR in this run. The
     # timed-out daemon thread may still be burning CPU until process exit, so don't pile on.
     asr_abort_event: threading.Event | None = None
+    # Set whenever an ASR inference thread is abandoned because stop()/timeout fired. The build
+    # epilogue uses this after state persistence to avoid Python interpreter teardown while native
+    # CTranslate2/BLAS work is still alive, which has been observed to segfault in Actions.
+    asr_abandoned_event: threading.Event | None = None
     # Called only for a human/code-change supersession after the post-deploy enrich phase has
     # already abandoned in-flight ASR work. This is deliberately not used for scheduled-run
     # supersession or wall-clock budget stops: those should finish/persist as much completed work
@@ -1163,6 +1167,8 @@ class TranscriptStage:
                     if native_gate_acquired and ctx.native_work_gate is not None:
                         _release_abandoned_native_gate.set()
                         native_gate_acquired = False
+                    if ctx.asr_abandoned_event is not None:
+                        ctx.asr_abandoned_event.set()
                     stats.skipped += 1
                     break
                 if _timeout_at is not None and time.monotonic() >= _timeout_at:
@@ -1184,6 +1190,8 @@ class TranscriptStage:
                     if native_gate_acquired and ctx.native_work_gate is not None:
                         _release_abandoned_native_gate.set()
                         native_gate_acquired = False
+                    if ctx.asr_abandoned_event is not None:
+                        ctx.asr_abandoned_event.set()
                     break
                 time.sleep(2)
 

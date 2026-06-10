@@ -876,3 +876,44 @@ def test_guarded_ffmpeg_logs_peak_child_rss_and_min_available_memory():
     assert "peak_rss=23.0MiB" in done
     assert "min_mem_avail=700B" in done
     assert "samples=3" in done
+
+
+def test_guarded_ffmpeg_logs_metrics_and_stderr_on_nonzero_exit():
+    import citypods.media as media
+    from citypods.resources import ResourceSnapshot
+
+    events: list[str] = []
+
+    class FakeProc:
+        pid = 5678
+
+        def poll(self):
+            return 8
+
+        def communicate(self, timeout=None):
+            return b"", b"muxer failed\nsecond line"
+
+    with pytest.raises(subprocess.CalledProcessError):
+        media._run_ffmpeg_guarded(
+            ["ffmpeg"],
+            phase="filter-render",
+            memory_floor_bytes=100,
+            snapshot=lambda: ResourceSnapshot(
+                rss_bytes=100,
+                mem_total_bytes=1000,
+                mem_available_bytes=640,
+                load1=0.0,
+                load5=0.0,
+                cpus=4,
+            ),
+            sleep=lambda _seconds: None,
+            log=events.append,
+            popen=lambda cmd, **kw: FakeProc(),
+            child_rss=lambda _pid: 17 * 1024 * 1024,
+        )
+
+    error = [event for event in events if "ffmpeg filter-render error" in event][0]
+    assert "returncode=8" in error
+    assert "peak_rss=17.0MiB" in error
+    assert "min_mem_avail=640B" in error
+    assert "stderr=muxer failed second line" in error

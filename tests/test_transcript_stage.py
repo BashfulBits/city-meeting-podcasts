@@ -1020,6 +1020,7 @@ class TestTranscriptStageASR:
         ctx.asr_timeout_base_seconds = 0.01
         ctx.asr_timeout_per_hour_seconds = 0
         ctx.asr_abort_event = threading.Event()
+        ctx.asr_abandoned_event = threading.Event()
 
         with (
             patch("citypods.stages.asr_mod", fake_asr),
@@ -1034,6 +1035,7 @@ class TestTranscriptStageASR:
         assert started.is_set()
         assert len(fake_asr.transcribe_calls) == 1
         assert ctx.asr_abort_event.is_set()
+        assert ctx.asr_abandoned_event.is_set()
         assert stats.skipped == 2
         assert any("ASR timeout" in e for e in stats.errors)
         assert all(ep.transcript_key is None for ep in eps)
@@ -1064,6 +1066,7 @@ class TestTranscriptStageASR:
         ctx.asr_timeout_base_seconds = 0.01
         ctx.asr_timeout_per_hour_seconds = 0
         ctx.asr_abort_event = threading.Event()
+        ctx.asr_abandoned_event = threading.Event()
         ctx.asr_semaphore = threading.Semaphore(1)
 
         with (
@@ -1074,6 +1077,7 @@ class TestTranscriptStageASR:
 
         assert started.is_set()
         assert stats.skipped == 1
+        assert ctx.asr_abandoned_event.is_set()
         assert ctx.asr_semaphore.acquire(blocking=False) is False
         release.set()
         assert ctx.asr_semaphore.acquire(timeout=2) is True
