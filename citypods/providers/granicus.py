@@ -29,6 +29,8 @@ NS = {
     "itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
 }
 
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
 
 def _text(item: ET.Element, tag: str) -> str:
     el = item.find(tag)
@@ -131,7 +133,15 @@ class GranicusProvider:
         return parse_index_json(resp.content), None
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
-        # Granicus enclosures are already direct progressive MP4s.
+        # DownloadFile.php redirects to archive-video.granicus.com but is intermittently
+        # rate-limited (403). Construct the direct archive URL from the episode GUID, which
+        # Granicus RSS exposes as a UUID that maps 1-to-1 to the archive path.
+        if _UUID_RE.match(episode.guid):
+            subdomain = _granicus_subdomain(source)
+            if subdomain:
+                return (
+                    f"https://archive-video.granicus.com/{subdomain}/{subdomain}_{episode.guid}.mp4"
+                )
         return episode.video_url
 
     def fetch_view_counts(self, source: dict) -> list[int]:
@@ -192,6 +202,17 @@ def parse_feed(content: bytes) -> list[Episode]:
             )
         )
     return episodes
+
+
+def _granicus_subdomain(source: dict) -> str | None:
+    """Extract the Granicus tenant subdomain (e.g. ``arlingtontx``) from the source config."""
+    urls = _feed_urls(source)
+    if not urls:
+        return None
+    host = urlsplit(urls[0]).netloc
+    if host.endswith(".granicus.com"):
+        return host[: -len(".granicus.com")]
+    return None
 
 
 def _player_ids(*urls: str) -> tuple[str, str, str] | None:
