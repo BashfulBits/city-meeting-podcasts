@@ -427,6 +427,12 @@ integration cost, $/transcript-hour, quality.
 "matrix sharding within Actions" unless backlog at 1,000+ feeds proves otherwise. Keep the others as
 documented fallbacks.
 
+**Diarization workload (Phase R #7, after H6).** Speaker diarization is CPU-heavy (pyannote v3 on CPU
+is ~3–5× slower than transcription alone) and is the primary Phase R workload that would benefit from
+GPU offload. Include a diarization benchmark in H9's evaluation: measure pyannote v3 on a free GPU API
+(Groq, Colab) vs the wespeaker/speechbrain ECAPA-TDNN CPU path. The H9 output should include a
+diarization $/speaker-hour estimate alongside the transcription baseline.
+
 **Acceptance:** a written decision with measured numbers; the chosen lever wired (matrix sharding is H6).
 
 ---

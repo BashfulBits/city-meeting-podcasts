@@ -118,6 +118,7 @@ sync · #20 video enclosures (partial).
 | Front-end design cycle | #55 (#20/#54) | L1 | §5.1 |
 | Accessibility (WCAG) | #50 | L1 | §5.1 |
 | `<podcast:funding>` link | #16 | L1 | §5.1 |
+| Speaker diarization | #7 | L1 | §5.1 — after H6; GPU offload via H9 |
 
 ### Phase E — Engagement & Distribution (post-1.0) · sketches §5.2
 | Item | #/GH | Maturity |
@@ -158,7 +159,7 @@ sync · #20 video enclosures (partial).
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
 
 ### Deferred backlog (ongoing) — §6
-#7 diarization · #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
+#9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
 images · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 index sharding (review/02
 Change 6) · #44 structured logging · #47 map browser · #48 new-since-visit · #10 agenda-packet chapter
 descriptions · #14 `podcast:person/location` tags · #33 dead-city archival · review/02 Change 5
@@ -202,6 +203,18 @@ coordinate with per-meeting pages (R1). 1.0-gating. *Tradeoff:* design effort, l
 semantics). 1.0-gating. Pairs with R1 pages.
 
 **`<podcast:funding>` link (#16).** Trivial feed tag + config; funds the rest. Near-$0 do-now.
+
+**Speaker diarization (#7).** *Problem:* transcripts don't identify who's speaking — council members,
+staff, and public commenters look identical. *Approach:* run a speaker-embedding diarization model over
+the audio after transcription, align speaker-change boundaries to the word-level VTT cues (now emitted
+by the ASR stage), and emit `<podcast:person>` or a speaker-labeled VTT. Two CPU-viable backends:
+(a) **wespeaker ECAPA-TDNN** (~100 MB, no HF gate, ~2× transcription cost on CPU); (b) **speechbrain
+ECAPA-TDNN** via simple-diarizer (~300 MB, similarly lightweight). A free/low-cost GPU API
+(H9 evaluation) cuts diarization cost further — pyannote v3 on GPU is fast and accurate but gated;
+the CPU-only path uses the lighter backends to stay within the Actions runner budget. *Depends on:*
+word_timestamps (enabled, PR #249); H6 sharded ASR workflow (dedicated runner/lane for heavy
+inference); H9 offload evaluation (GPU API cost/quality baseline). *Sequencing:* implement after H6
+lands a separate ASR runner — do not add diarization to the current single-runner enrich path.
 
 ### §5.2 Phase E — Engagement & Distribution
 
