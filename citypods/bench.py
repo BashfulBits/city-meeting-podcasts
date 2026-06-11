@@ -9,7 +9,7 @@ Usage::
 
     citypods asr-bench --city dallas-tx-city-council --uid uid-abc123
     citypods asr-bench --city dallas-tx-city-council --uid uid-abc123 \\
-        --models base.en,small.en,large-v3-turbo
+        --models base.en,small.en,large-v3-turbo --beam-size 1
 
 Output example::
 
@@ -90,6 +90,10 @@ def run_bench(
     print(f"\nEpisode : {ep.title}")
     print(f"Duration: {duration_h:.1f} h")
     print(f"Ref text: {ref_words:,} words (from stored {ep.transcript_format or '?'} transcript)")
+    print(
+        f"Settings: compute_type={compute_type}, beam_size={beam_size}, "
+        f"cpu_threads={cpu_threads}, language={language}"
+    )
     print()
 
     # Column widths
