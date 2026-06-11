@@ -110,6 +110,9 @@ Hard-won facts that bite anyone adding/debugging providers:
   URL directly (the CDN `403`s an unsigned bare path), retrying the resolve on `403` with backoff+jitter
   (PRs #245/#250/#251). Resolution stays at **fetch time** (`resolve_media_url`), never persisted, because
   the signed URL expires.
+- **`Retry-After` is honored but clamped to 120s** by the shared HTTP session (`_ClampedRetry` in
+  `http.py`). A Granicus 429 returning `Retry-After: 3600` once hung the whole build for an hour inside
+  urllib3's retry sleep; capping keeps short legitimate backoffs without letting one header stall the run.
 
 ## Security boundary
 
