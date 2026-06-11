@@ -588,9 +588,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     ]
     tx_per_run = round(sum(tx_per_run_hist) / len(tx_per_run_hist), 2) if tx_per_run_hist else None
     tx_drain_runs = round(tx_pending / tx_per_run, 1) if tx_per_run else None
-    tx_drain_days = (
-        round(tx_drain_runs * (inputs.cycle_hours / 24), 1) if tx_drain_runs else None
-    )
+    tx_drain_days = round(tx_drain_runs * (inputs.cycle_hours / 24), 1) if tx_drain_runs else None
 
     # Storage detail
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None

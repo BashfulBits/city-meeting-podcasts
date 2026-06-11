@@ -824,9 +824,7 @@ def build(
                     if _hb.min_mem_avail_bytes is not None
                     else None
                 ),
-                window_used_pct=(
-                    round(100.0 * _elapsed / _window, 1) if _window > 0 else None
-                ),
+                window_used_pct=(round(100.0 * _elapsed / _window, 1) if _window > 0 else None),
                 gate_wait_seconds=(
                     round(_native_work_gate.total_wait_seconds, 1)
                     if _native_work_gate is not None
