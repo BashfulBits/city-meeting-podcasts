@@ -15,6 +15,7 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **H1 issue reconciliation**: closed GH#154 (`<podcast:transcript>` — 28 tags confirmed live in the Arlington TX feed); narrowed GH#110 (ASR transcripts) to backfill + ops follow-up only; marked GH#141 (timeline epic) umbrella-only for remaining Phase R features (#153/#155/#156/#157).
 - **ASR benchmark workflow (H6a)**: added a manual `asr-bench.yml` workflow that runs
   `citypods asr-bench` over maintainer-selected `city:uid` cases, compares max/med/min
   model + beam-size + CPU-thread profiles under a capped runner budget, and publishes a text report

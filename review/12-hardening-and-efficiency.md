@@ -125,17 +125,19 @@ items (**H10**, **H11**), concrete/committed changes folded into **H8** (incl. H
 
 ## H1 — Docs / roadmap / issue reconciliation
 
+> **Implemented.** GH#154 closed (28 `<podcast:transcript>` tags confirmed live 2026-06-11); GH#110 narrowed to backfill/ops; GH#141 marked umbrella-only.
+
 **Problem.** `ROADMAP.md`/`review/01` listed shipped work as future; the issue tracker mixes real
 breakage with catch-up status; `<podcast:transcript>` (GH#154) is already emitted.
 
 **Done in this doc set:** ROADMAP rewrite, CHANGELOG, ARCHITECTURE, review/11 catalog, review/01 banner,
 ADD_CITY.md wall-clock fix.
 
-**Remaining (code/issue work, L3):**
-- `gh` issue reconciliation: **close** GH#154 (verify a production feed emits `<podcast:transcript>`
-  first); **narrow** GH#110 ASR to "backfill + ops follow-up"; keep GH#141 timeline epic open only as an
-  umbrella; the GH#153/#155/#156/#157 feature issues stay (Phase R/E).
-- Feed-health issue cleanup happens as a side effect of **H4** (don't bulk-close by hand).
+**Issue reconciliation (complete):**
+- GH#154 closed — production feed verified (28 tags in Arlington TX feed).
+- GH#110 narrowed — title + body updated to "backfill + ops follow-up"; implementation framing removed.
+- GH#141 kept open as umbrella — comment added listing remaining Phase R features (#153/#155/#156/#157).
+- Feed-health issue cleanup deferred to H4 (don't bulk-close by hand).
 
 **Acceptance:** `gh issue list` shows no open issue describing already-shipped work as unbuilt; review/11
 §7 checklist passes.
