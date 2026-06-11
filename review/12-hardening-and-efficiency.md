@@ -199,6 +199,12 @@ never recommends the removed key. Tests updated.
 
 ## H3 — Feed-validation publish gate (#53)
 
+> **Implemented** — `validate_build(output_dir, known_empty)` added to `citypods/validate.py`:
+> scans all `*.xml` under `docs/`, skips redirect feeds (`<itunes:new-feed-url>`), demotes empty
+> feeds for slugs in `known_empty` to warnings, fatals on everything else. `citypods validate-build`
+> CLI subcommand exits non-zero on fatals. `deploy.yml` gate step added after "Render feeds" /
+> "Resource report", before "Upload Pages artifact". 11 new tests.
+
 **Problem.** `citypods/validate.py` runs in CI/tests but not in the production deploy path; a malformed
 generated feed could publish.
 

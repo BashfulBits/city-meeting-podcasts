@@ -94,7 +94,7 @@ sync · #20 video enclosures (partial).
 |---|---|---|---|
 | H1 docs/issue reconciliation | #52-health, GH#110/#141/#154 | L3 | **Shipped** (this doc set + GH#154 closed, GH#110 narrowed to backfill/ops, GH#141 umbrella-only) |
 | H2 projection wall-clock fix | R3 | L3 | **Shipped** (per_run_cap→None default; materialize_encoded calibration; hours_hosted bytes fallback; gate wait + peak load + window % telemetry in run_history.jsonl; audio + transcript backlog ETAs in build_status) |
-| H3 feed-validation publish gate | #53 | L3 | committed |
+| H3 feed-validation publish gate | #53 | L3 | **Shipped** (`validate_build` + `citypods validate-build` CLI + `deploy.yml` gate before Pages upload; redirect feeds skipped; known-empty slugs demoted to warn) |
 | H4 feed-health catch-up vs stalled states + per-provider error-rate tracking | R5 | L3 | committed · add real-run provider 4xx/timeout rates (provider drift now shows as red deploys, not in the audit) |
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed · include `transcript-align` backlog lane |
 | H6a ASR benchmark workflow (`asr-bench.yml`) | #1 | L3 | **Shipped** ([PR #256](https://github.com/BashfulBits/city-meeting-podcasts/pull/256)) |
