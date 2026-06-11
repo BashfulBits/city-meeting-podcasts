@@ -23,21 +23,35 @@ from citypods.security import (
 USER_AGENT = "citypods/0.1 (+https://github.com/; city meeting podcast generator)"
 DEFAULT_TIMEOUT = 30
 
+
 # Retry transient failures (connection resets, 429s, 5xx) with exponential backoff. At ~80+
 # feeds across a handful of shared provider tenants, an occasional blip shouldn't mark a city
 # `error` for the whole run (which can file a false-positive feed-health issue). GET/HEAD only;
 # we never retry non-idempotent verbs.
-_RETRY = Retry(
+class _ClampedRetry(Retry):
+    """Honor ``Retry-After`` but **cap** it. A provider returning ``Retry-After: 3600`` would
+    otherwise hang the whole build for an hour inside urllib3's retry sleep (observed from a
+    Granicus 429). Clamping keeps politeness for short, legitimate delays without letting one
+    hostile/misconfigured header stall the run; a request that still fails after the bounded
+    retries surfaces as a ``ProviderError`` so the next scheduled run retries cleanly."""
+
+    # Longest we'll wait on a single Retry-After before falling back to plain backoff.
+    MAX_RETRY_AFTER_SECONDS = 120
+
+    def get_retry_after(self, response):
+        retry_after = super().get_retry_after(response)
+        if retry_after is None:
+            return None
+        return min(retry_after, self.MAX_RETRY_AFTER_SECONDS)
+
+
+_RETRY = _ClampedRetry(
     total=3,
     backoff_factor=0.5,  # 0.5s, 1s, 2s
     status_forcelist=(429, 500, 502, 503, 504),
     allowed_methods=frozenset({"GET", "HEAD"}),
     raise_on_status=False,
-    # Ignore Retry-After headers: a provider returning Retry-After: 3600 would otherwise
-    # hang the entire build for an hour inside urllib3's sleep before the next attempt.
-    # The backoff (0.5 / 1 / 2s) is sufficient politeness; long-delay 429s should surface
-    # as a ProviderError so the next scheduled run retries cleanly.
-    respect_retry_after_header=False,
+    respect_retry_after_header=True,  # honored, but clamped to MAX_RETRY_AFTER_SECONDS above
 )
 
 
