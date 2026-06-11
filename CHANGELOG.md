@@ -52,9 +52,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **Audio concurrency tuning (H11a, PR #246)**: raised `native_audio_max_active` from 1 → 4 after 3
   consecutive green scheduled runs; at `-threads 1` per encode, 4 slots saturate all 4 cores while
   targeting ~8 GiB RAM.
-- **HTTP Retry-After hang fix (PR #247)**: sessions now ignore provider `Retry-After` headers; a Granicus
-  429 returning `Retry-After: 3600` previously caused urllib3 to sleep inside the retry loop for a full
-  hour, blocking the entire build.
+- **HTTP Retry-After clamp (PRs #247/[#254](https://github.com/BashfulBits/city-meeting-podcasts/pull/254))**:
+  the shared session honors `Retry-After` but **caps it at 120s** rather than obeying it verbatim — a
+  Granicus 429 returning `Retry-After: 3600` previously caused urllib3 to sleep inside the retry loop for a
+  full hour, blocking the entire build. Short, legitimate delays are still respected; a request that keeps
+  failing surfaces as a `ProviderError` for the next scheduled run. (#247 first ignored the header; #254
+  clamps instead, so a well-behaved provider's backoff is still honored.)
 - **Granicus archive-video URL resolution (PRs #245/#250/#251)**: the adapter now bypasses the broken
   `DownloadFile.php` path by pre-following its redirect to the signed `archive-video.granicus.com` URL and
   handing ffmpeg the signed URL directly; concurrent-access `403`s (Granicus rate-limits with `403`, not
