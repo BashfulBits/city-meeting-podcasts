@@ -145,6 +145,13 @@ jobs:
       - name: Resource report
         run: citypods report --markdown >> "$GITHUB_STEP_SUMMARY"
 
+      # Validate generated feeds before publishing. Fails the deploy on structural
+      # errors (malformed XML, missing required channel/item elements) and on feeds
+      # that are unexpectedly empty. Known-empty feeds (cities mid-backfill whose audio
+      # has not yet been hosted) are demoted to warnings and do not block the deploy.
+      - name: Validate generated feeds
+        run: citypods validate-build docs/ --state-dir .citypods-state
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:

@@ -15,6 +15,11 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Feed-validation publish gate (H3, #53)**: `citypods validate-build docs/` scans every
+  generated `*.xml`, skips redirect feeds, demotes empty feeds for known-backfill-in-progress
+  cities to warnings, and exits non-zero on structural errors or unexpectedly empty feeds.
+  Wired as a gate step in `deploy.yml` after render, before the Pages artifact upload, so a
+  malformed feed can't slip through to production. 11 new tests.
 - **H2 projection wall-clock fix + per-run telemetry**: `per_run_cap` now defaults to `None`
   (wall-clock-bounded) when `materialize_budget_per_run` is absent; `measured_inputs` calibrates
   `sec_per_ep` from `materialize_encoded` (real encodes only, not cheap re-credits); `to_markdown`

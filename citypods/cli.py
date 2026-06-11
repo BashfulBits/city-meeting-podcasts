@@ -154,6 +154,24 @@ def main(argv: list[str] | None = None) -> int:
     ab.add_argument("--config-dir", default="config")
     ab.add_argument("--output-dir", default="docs")
 
+    vb = sub.add_parser(
+        "validate-build",
+        help="validate generated feeds before publishing; exits non-zero on fatal errors",
+    )
+    vb.add_argument(
+        "output_dir",
+        nargs="?",
+        default="docs",
+        help="generated docs directory to validate (default: docs)",
+    )
+    vb.add_argument(
+        "--state-dir",
+        default=".citypods-state",
+        help="state directory used to detect known-empty feeds (default: .citypods-state)",
+    )
+    vb.add_argument("--site-config", default="config/site_config.yml")
+    vb.add_argument("--config-dir", default="config")
+
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
@@ -176,6 +194,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "asr-bench":
         return _asr_bench(args)
+
+    if args.command == "validate-build":
+        return _validate_build(args)
 
     return 0
 
@@ -456,6 +477,48 @@ def _rebuild_audio(args) -> int:
 
     suffix = " (dry run)" if args.dry_run else ""
     print(f"\n{total_matched} episode(s) across {total_sources} source(s) updated{suffix}")
+    return 0
+
+
+def _validate_build(args) -> int:
+    from pathlib import Path
+
+    from citypods.records import load_records, source_key
+    from citypods.validate import validate_build
+
+    output_dir = Path(args.output_dir)
+    state_dir = Path(args.state_dir)
+    site_config = load_site_config(args.site_config)
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+
+    known_empty: set[str] = set()
+    if state_dir.exists():
+        for city in cities:
+            key = source_key(city)
+            records = load_records(state_dir, key)
+            body = city.source.get("body")
+            hosted = sum(
+                1
+                for r in records.values()
+                if (not body or r.get("body") == body) and (r.get("audio") or {}).get("url")
+            )
+            if hosted == 0:
+                known_empty.add(city.slug)
+
+    fatals, warnings = validate_build(output_dir, known_empty)
+
+    for msg in warnings:
+        print(f"WARN  {msg}")
+    for msg in fatals:
+        print(f"ERROR {msg}")
+
+    if fatals:
+        print(f"\nvalidate-build: {len(fatals)} fatal error(s), {len(warnings)} warning(s) — FAIL")
+        return 1
+    if warnings:
+        print(f"\nvalidate-build: 0 fatal errors, {len(warnings)} warning(s) — PASS")
+    else:
+        print(f"validate-build: {sum(1 for _ in output_dir.rglob('*.xml'))} feed(s) valid")
     return 0
 
 

@@ -6,9 +6,12 @@ item elements podcast players actually require, so CI can fail fast on a broken 
 
 from __future__ import annotations
 
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
 ITUNES = "http://www.itunes.com/dtds/podcast-1.0.dtd"
+_REDIRECT_TAG = f"{{{ITUNES}}}new-feed-url"
+_EMPTY_ERROR = "channel has no <item> entries"
 
 REQUIRED_CHANNEL = [
     "title",
@@ -40,7 +43,7 @@ def validate_feed(xml: str | bytes) -> list[str]:
 
     items = channel.findall("item")
     if not items:
-        errors.append("channel has no <item> entries")
+        errors.append(_EMPTY_ERROR)
 
     for i, item in enumerate(items):
         label = f"item[{i}]"
@@ -60,6 +63,55 @@ def validate_feed(xml: str | bytes) -> list[str]:
                 errors.append(f"{label} enclosure missing type")
 
     return errors
+
+
+def validate_build(
+    output_dir: Path,
+    known_empty: frozenset[str] | set[str] = frozenset(),
+) -> tuple[list[str], list[str]]:
+    """Validate every ``*.xml`` feed under *output_dir*.
+
+    Returns ``(fatals, warnings)`` where each item is a string of the form
+    ``"<slug>/feed.xml: <problem>"``.  Callers should exit non-zero when
+    *fatals* is non-empty.
+
+    ``known_empty`` is a set of city slugs whose feeds are expected to contain
+    no items (e.g. a brand-new city whose audio backfill has not run yet).
+    Empty feeds for those slugs are demoted to warnings; all others are fatal.
+
+    Redirect feeds (containing ``<itunes:new-feed-url>``) are intentionally
+    item-free and structurally incomplete — they are skipped entirely.
+    """
+    fatals: list[str] = []
+    warnings: list[str] = []
+
+    for xml_path in sorted(Path(output_dir).rglob("*.xml")):
+        rel = str(xml_path.relative_to(output_dir))
+        slug = xml_path.parent.name
+
+        try:
+            content = xml_path.read_bytes()
+        except OSError as exc:
+            fatals.append(f"{rel}: cannot read: {exc}")
+            continue
+
+        # Redirect feeds carry itunes:new-feed-url and intentionally omit items
+        # and most channel elements — skip them.
+        try:
+            root = ET.fromstring(content)
+            channel = root.find("channel")
+            if channel is not None and channel.find(_REDIRECT_TAG) is not None:
+                continue
+        except ET.ParseError:
+            pass  # fall through; validate_feed will report the parse error
+
+        for problem in validate_feed(content):
+            if problem == _EMPTY_ERROR and slug in known_empty:
+                warnings.append(f"{rel}: {problem}")
+            else:
+                fatals.append(f"{rel}: {problem}")
+
+    return fatals, warnings
 
 
 def _pretty(tag: str) -> str:
