@@ -143,6 +143,13 @@ def main(argv: list[str] | None = None) -> int:
     ab.add_argument(
         "--cpu-threads", type=int, default=4, metavar="N", help="CPU threads per model (default: 4)"
     )
+    ab.add_argument(
+        "--beam-size",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Whisper beam-search width (default: 5; lower is faster, often less accurate)",
+    )
     ab.add_argument("--site-config", default="config/site_config.yml")
     ab.add_argument("--config-dir", default="config")
     ab.add_argument("--output-dir", default="docs")
@@ -253,6 +260,7 @@ def _asr_bench(args) -> int:
         config_dir=args.config_dir,
         output_dir=args.output_dir,
         cpu_threads=args.cpu_threads,
+        beam_size=args.beam_size,
     )
 
 

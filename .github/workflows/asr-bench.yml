@@ -1,0 +1,211 @@
+name: ASR benchmark
+
+# Manual H6a benchmark for comparing ASR model speed/quality before catalog backfill.
+# Each case is `city-slug:episode-uid` for an episode with hosted audio and a stored
+# reference transcript in restored state.
+
+on:
+  workflow_dispatch:
+    inputs:
+      case_1:
+        description: "Required benchmark case: city-slug:episode-uid"
+        required: true
+        type: string
+      case_2:
+        description: "Optional benchmark case: city-slug:episode-uid"
+        required: false
+        type: string
+      case_3:
+        description: "Optional benchmark case: city-slug:episode-uid"
+        required: false
+        type: string
+      case_4:
+        description: "Optional benchmark case: city-slug:episode-uid"
+        required: false
+        type: string
+      case_5:
+        description: "Optional benchmark case: city-slug:episode-uid"
+        required: false
+        type: string
+      models:
+        description: "Three comma-separated models for max,med,min profiles"
+        required: true
+        default: "large-v3-turbo,small.en,base.en"
+        type: string
+      beam_sizes:
+        description: "Three comma-separated beam sizes for max,med,min profiles"
+        required: true
+        default: "5,3,1"
+        type: string
+      cpu_threads:
+        description: "Three comma-separated CPU thread counts for max,med,min profiles"
+        required: true
+        default: "4,2,1"
+        type: string
+      max_minutes:
+        description: "Stop starting new benchmark profiles after this many minutes"
+        required: true
+        default: "330"
+        type: string
+      profile_timeout_minutes:
+        description: "Per city/profile timeout, leaving headroom before the 6-hour job cap"
+        required: true
+        default: "110"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asr-bench
+  cancel-in-progress: false
+
+jobs:
+  asr-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Restore build state
+        uses: actions/cache@v4
+        with:
+          path: |
+            .citypods-state
+            docs
+          key: build-state-${{ github.run_id }}
+          restore-keys: |
+            build-state-
+
+      - name: Cache ASR models
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/faster-whisper-large-v3-turbo
+          key: asr-bench-models-${{ runner.os }}-v1
+          restore-keys: |
+            asr-bench-models-${{ runner.os }}-
+
+      - name: Install
+        run: pip install -e ".[asr]"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Run ASR benchmark
+        env:
+          CASE_1: ${{ inputs.case_1 }}
+          CASE_2: ${{ inputs.case_2 }}
+          CASE_3: ${{ inputs.case_3 }}
+          CASE_4: ${{ inputs.case_4 }}
+          CASE_5: ${{ inputs.case_5 }}
+          MODELS: ${{ inputs.models }}
+          BEAM_SIZES: ${{ inputs.beam_sizes }}
+          CPU_THREADS: ${{ inputs.cpu_threads }}
+          MAX_MINUTES: ${{ inputs.max_minutes }}
+          PROFILE_TIMEOUT_MINUTES: ${{ inputs.profile_timeout_minutes }}
+        run: |
+          set -o pipefail
+
+          mkdir -p artifacts
+          log="artifacts/asr-bench.txt"
+          status=0
+          budget_exhausted=0
+          labels=(max med min)
+          started=$SECONDS
+          max_seconds=$((MAX_MINUTES * 60))
+          profile_timeout_seconds=$((PROFILE_TIMEOUT_MINUTES * 60))
+
+          IFS=',' read -r -a models <<< "$MODELS"
+          IFS=',' read -r -a beam_sizes <<< "$BEAM_SIZES"
+          IFS=',' read -r -a cpu_threads <<< "$CPU_THREADS"
+
+          if [ "${#models[@]}" -ne 3 ] || [ "${#beam_sizes[@]}" -ne 3 ] || [ "${#cpu_threads[@]}" -ne 3 ]; then
+            echo "::error title=Invalid benchmark profiles::models, beam_sizes, and cpu_threads must each contain exactly three comma-separated values for max,med,min."
+            exit 1
+          fi
+
+          {
+            echo "# ASR benchmark"
+            echo
+            echo "- Profiles: max, med, min"
+            echo "- Models: ${MODELS}"
+            echo "- Beam sizes: ${BEAM_SIZES}"
+            echo "- CPU threads: ${CPU_THREADS}"
+            echo "- New-profile budget: ${MAX_MINUTES} minutes"
+            echo "- Per-profile timeout: ${PROFILE_TIMEOUT_MINUTES} minutes"
+            echo "- Runner timeout: 350 minutes"
+            echo
+          } > "$log"
+
+          for case in "$CASE_1" "$CASE_2" "$CASE_3" "$CASE_4" "$CASE_5"; do
+            if [ -z "$case" ]; then
+              continue
+            fi
+
+            city="${case%%:*}"
+            uid="${case#*:}"
+            if [ -z "$city" ] || [ -z "$uid" ] || [ "$city" = "$uid" ]; then
+              echo "::error title=Invalid benchmark case::Expected city-slug:episode-uid, got '${case}'"
+              status=1
+              continue
+            fi
+
+            for i in 0 1 2; do
+              label="${labels[$i]}"
+              elapsed=$((SECONDS - started))
+              remaining=$((max_seconds - elapsed))
+              if [ "$remaining" -lt "$profile_timeout_seconds" ]; then
+                echo "::warning title=ASR benchmark budget exhausted::Skipping ${case} ${label}; ${remaining}s remain, below the ${profile_timeout_seconds}s per-profile timeout."
+                status=1
+                budget_exhausted=1
+                break
+              fi
+
+              model="$(echo "${models[$i]}" | xargs)"
+              beam="$(echo "${beam_sizes[$i]}" | xargs)"
+              threads="$(echo "${cpu_threads[$i]}" | xargs)"
+
+              {
+                echo
+                echo "## ${city} / ${uid} (${label})"
+                echo
+                echo "- Model: ${model}"
+                echo "- Beam size: ${beam}"
+                echo "- CPU threads: ${threads}"
+                echo
+              } | tee -a "$log"
+
+              if ! timeout "${PROFILE_TIMEOUT_MINUTES}m" python -m citypods.cli asr-bench \
+                --city "$city" \
+                --uid "$uid" \
+                --models "$model" \
+                --beam-size "$beam" \
+                --cpu-threads "$threads" 2>&1 | tee -a "$log"; then
+                status=1
+              fi
+            done
+            if [ "$budget_exhausted" -eq 1 ]; then
+              break
+            fi
+          done
+
+          cat "$log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: asr-bench-report
+          path: artifacts/asr-bench.txt

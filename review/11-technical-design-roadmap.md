@@ -97,7 +97,7 @@ sync · #20 video enclosures (partial).
 | H3 feed-validation publish gate | #53 | L3 | committed |
 | H4 feed-health catch-up vs stalled states + per-provider error-rate tracking | R5 | L3 | committed · add real-run provider 4xx/timeout rates (provider drift now shows as red deploys, not in the audit) |
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed · include `transcript-align` backlog lane |
-| H6a ASR benchmark workflow (`asr-bench.yml`) | #1 | L3 | committed · **do-now, no H5 dep**: settle model + measured `word_timestamps` cost before any backfill |
+| H6a ASR benchmark workflow (`asr-bench.yml`) | #1 | L3 | **Shipped** ([PR #256](https://github.com/BashfulBits/city-meeting-podcasts/pull/256)) |
 | H6b sharded/separate ASR workflow | #1, R1 | L3 | committed · after H5 manifest · split align-only vs transcribe-only lanes |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
@@ -367,7 +367,7 @@ against live code and is **accurate and well-grounded**. Disposition of its reco
 
 | Codex | Verdict | Home |
 |---|---|---|
-| R1 ASR benchmark → sharded split | Modify (benchmark CLI exists; need workflow + split) | H6/H9 |
+| R1 ASR benchmark → sharded split | Modify (benchmark workflow shipped; sharded split pending) | H6/H9 |
 | R2 stage backlog manifest | Adopt + **extend** with a configurable prioritization policy | H5 |
 | R3 projection wall-clock fix | Adopt | H2 |
 | R4 roadmap/docs reconciliation | Adopt (this doc set) | H1 |
@@ -379,14 +379,15 @@ against live code and is **accurate and well-grounded**. Disposition of its reco
 | "defer email" | Modify → RSS/static first, **Substack** shortcut | Phase E |
 | module splits | Adopt opportunistically (e.g. `ops/workqueue.py` from H5) | as touched |
 
-**Post-review code queue (updated 2026-06-10 after H11a shipped):**
+**Post-review code queue (updated 2026-06-11 after H6a shipped):**
 H8 resource guard (shipped [PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) →
 H11a deploy resilience (shipped [PRs #239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) →
 **Do-now (this review's follow-ups):** **H12** (shipped, [PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253)) transcript-artifact rework (clean segment-cue VTT + a
 word-JSON sidecar + version-aware gradual re-transcribe — fixes #249's word-per-cue regression and
-unblocks search/clips/diarization); **H6a** ASR benchmark workflow (settles model choice + the measured
-cost of `word_timestamps` before any backfill — no H5 dependency); **B2** Retry-After **clamp** (fold into
-#39). **Then H1 (next):** `gh` issue reconciliation — close/narrow GH#154
+unblocks search/clips/diarization); **H6a** ASR benchmark workflow (shipped,
+[PR #256](https://github.com/BashfulBits/city-meeting-podcasts/pull/256): manual max/med/min
+model + beam-size + CPU-thread benchmark before backfill); **B2** Retry-After **clamp** (fold into #39).
+**Then confirm `native_audio_max_active: 4` / H1 (next):** `gh` issue reconciliation — close/narrow GH#154
 (`<podcast:transcript>` shipped), GH#110 (ASR → backfill/ops), GH#141 (timeline epic → umbrella only);
 H2 projection wall-clock fix + tests (incl. a per-run telemetry summary record — see review/12 H2);
 H3 validation gate; H4 feed-health states + per-provider error rates; H5 backlog manifest +

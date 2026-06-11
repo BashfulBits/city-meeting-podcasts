@@ -18,7 +18,8 @@ dashboard; durable bucket-backed state; SSRF gate; feed-health audit; endpoint c
 projection + admin page. Full history → [CHANGELOG.md](CHANGELOG.md).
 Recently shipped Phase H reliability work: **H10** ASR alignment fallback fix (PR #232), **H8**
 runner resource guard (PR #235), and **H11a** deploy resilience — native work gate + one-slot audio
-lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247).
+lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247). Phase H follow-up:
+**H6a** manual ASR benchmark workflow (PR #256).
 
 ## Current phase: **H — Hardening & Efficiency** (next up)
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
@@ -37,7 +38,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H3** | **#53** feed-validation publish gate in `deploy.yml` |
 | **H4** | Feed-health **catch-up vs stalled** states + ETA + auto-comment (untangle the issue sprawl); **per-provider error-rate tracking** from real runs (provider drift now shows up as red deploys, not in the audit) |
 | **H5** | Stage **backlog manifest** + a configurable, extensible **prioritization policy** (recency / city order / feed-visible-first / requested-first / …) |
-| **H6a** | ASR **benchmark workflow** (`asr-bench.yml`, manual) — **do-now, no H5 dependency**: settles model choice + the measured cost of `word_timestamps` before any backfill decision |
+| **H6a** | ✓ Shipped — ASR **benchmark workflow** (`asr-bench.yml`, manual, PR #256): compares max/med/min model + beam-size + CPU-thread profiles before any backfill decision |
 | **H6b** | **Sharded/separate ASR workflow** (after H5's manifest provides safe state coordination) |
 | **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
 | **H8** | ✓ Shipped — throughput maximization on the free 4-core runner (PR #235): pinned ffmpeg `-threads`, memory/CPU admission guard, abandoned-ASR-thread accounting |

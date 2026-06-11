@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **ASR benchmark workflow (H6a)**: added a manual `asr-bench.yml` workflow that runs
+  `citypods asr-bench` over maintainer-selected `city:uid` cases, compares max/med/min
+  model + beam-size + CPU-thread profiles under a capped runner budget, and publishes a text report
+  artifact. The CLI now accepts `--beam-size` for targeted WER/speed checks.
 - **Documentation architecture & handoff**: `VISION.md`, forward-looking `ROADMAP.md`, this
   `CHANGELOG.md`, `ARCHITECTURE.md`, `SECURITY.md`, `AGENTS.md` + `CLAUDE.md`; the living canonical
   design index `review/11-technical-design-roadmap.md` + breakouts `review/12–14`; the feature

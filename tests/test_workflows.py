@@ -121,3 +121,35 @@ def test_deploy_skips_docs_only_pushes_but_not_deploy_inputs():
         }
         & ignored
     )
+
+
+def test_asr_bench_workflow_is_manual_serial_and_publishes_report():
+    """H6a is a manual benchmark harness, not another scheduled production worker."""
+    wf, job = _job("asr-bench.yml")
+    triggers = _on(wf)
+    assert set(triggers) == {"workflow_dispatch"}
+
+    assert wf.get("permissions", {}).get("contents") == "read"
+    assert wf.get("concurrency", {}).get("group") == "asr-bench"
+    assert wf.get("concurrency", {}).get("cancel-in-progress") is False
+    assert job.get("timeout-minutes") == 350
+
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["models"]["default"] == "large-v3-turbo,small.en,base.en"
+    assert inputs["beam_sizes"]["default"] == "5,3,1"
+    assert inputs["cpu_threads"]["default"] == "4,2,1"
+
+    install = next(s for s in job["steps"] if s.get("name") == "Install")
+    assert 'pip install -e ".[asr]"' in install["run"]
+
+    bench = next(s for s in job["steps"] if s.get("name") == "Run ASR benchmark")
+    run = bench["run"]
+    assert "python -m citypods.cli asr-bench" in run
+    assert '--beam-size "$beam"' in run
+    assert 'timeout "${PROFILE_TIMEOUT_MINUTES}m"' in run
+    assert "exactly three comma-separated values for max,med,min" in run
+    assert 'cat "$log" >> "$GITHUB_STEP_SUMMARY"' in run
+
+    assert _step_index(job, "actions/upload-artifact") > _step_index(
+        job, "python -m citypods.cli asr-bench"
+    )

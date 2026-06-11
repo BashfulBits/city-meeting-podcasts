@@ -312,7 +312,7 @@ round-trips through statesync.
 
 ---
 
-## H6 — ASR benchmark workflow (H6a) → sharded/separate ASR workflow (H6b)
+## H6 — ASR benchmark workflow (H6a implemented in PR #256) → sharded/separate ASR workflow (H6b)
 
 **Problem.** ASR competes with audio/timeline inside the single enrich job and serializes through the
 `pages` concurrency group; it's the dominant backlog and the source of recent OOM/preemption failures.
@@ -325,10 +325,16 @@ choice and the *measured* cost of `word_timestamps` / segment-vs-word output (H1
 re-transcribes the catalog, so the catalog is only re-done once. H6b still waits on H5's manifest for safe
 cross-workflow state coordination.
 
+**Status.** H6a shipped in [PR #256](https://github.com/BashfulBits/city-meeting-podcasts/pull/256):
+the manual benchmark workflow accepts maintainer-selected `city:uid` cases and runs max/med/min
+model + beam-size + CPU-thread profiles under a capped runner budget, with the report written to the
+Actions summary and uploaded as an artifact. H6b remains pending after H5's manifest/lease.
+
 **Design (two steps, in order — measurement before architecture).**
 
-**Step 1 — manual benchmark workflow (H6a).** Add `.github/workflows/asr-bench.yml` (`workflow_dispatch`,
-low concurrency, 1 matrix shard) that runs `citypods asr-bench` over a fixed set of episodes with known
+**Step 1 — manual benchmark workflow (H6a) — Implemented in PR #256.** Add
+`.github/workflows/asr-bench.yml` (`workflow_dispatch`, low concurrency, 1 matrix shard) that runs
+`citypods asr-bench` over a fixed set of episodes with known
 official transcripts and a **fixed wall-clock budget**, recording **transcript-minutes/runner-hour**,
 WER/alignment-failure rate, timeout/error rate, and model-load overhead. This lets model/beam/thread
 changes (`asr_model`, `asr_beam_size`, `asr_compute_type`, threads) be compared safely before any
@@ -357,9 +363,9 @@ stacked with ffmpeg work and GitHub terminated the runner with exit 143.
 for the selected lane only); `citypods/ops/workqueue.py` (lease/claim for shards); docs in
 ARCHITECTURE.md (workflow split) + this file.
 
-**Acceptance:** the benchmark workflow emits a throughput/quality report artifact; the ASR workflow
-clears transcript backlog across shards with **no record-file clobbering** (verified by a concurrent
-two-shard dry run) and never cancels a Pages deploy.
+**Acceptance:** H6a: the benchmark workflow emits a throughput/quality report artifact. H6b: the ASR
+workflow clears transcript backlog across shards with **no record-file clobbering** (verified by a
+concurrent two-shard dry run) and never cancels a Pages deploy.
 
 ---
 
@@ -669,7 +675,7 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
 first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (native
 audio/ASR gate + one-slot audio lane + green-run acceptance, **shipped**; cap now at `4`) → **H12
-(transcript artifact rework, shipped PR #253)** + **H6a (ASR benchmark, do-now)** → confirm
+(transcript artifact rework, shipped PR #253)** + **H6a (ASR benchmark, shipped PR #256)** → confirm
 `native_audio_max_active: 4` against the A2 criterion (else revert toward `1`/`2`) → H1 (issues) →
 H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 → H11b/H6b (isolate
 enrich + sharded ASR) → H9 (against the execution-backend interface). Each
