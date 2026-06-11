@@ -587,7 +587,7 @@ class LinksStage:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
-ASR_PIPELINE_VERSION = "2"  # bumped: word_timestamps=True → word-level VTT cues
+ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
 # Public (imported by citypods.feeds) so the feed tag and the stored object never disagree.
@@ -621,6 +621,11 @@ def _transcript_object_key(src_key: str, uid: str, spec: str, fmt: str) -> str:
 def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:
     """ASR keys use an ``asr-`` infix to distinguish them from provider content-hash keys."""
     return f"transcripts/{src_key}/{uid}-asr-{recipe}.vtt"
+
+
+def _asr_words_object_key(src_key: str, uid: str, recipe: str) -> str:
+    """Word-level JSON sidecar key (H12), paired with the ASR VTT key for the same recipe."""
+    return f"transcripts/{src_key}/{uid}-asr-{recipe}.words.json"
 
 
 def _preprocess_align_text(text: str) -> str:
@@ -811,12 +816,26 @@ class TranscriptStage:
                 f"slug={city.slug} provider={city.provider} source={src_key} "
                 f"uid={label} guid={ep.guid}"
             )
+            redo_stale_asr = False
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
+            #    Version-aware (H12): an ASR transcript (key carries the ``-asr-`` infix) from an
+            #    older pipeline version is re-done — gradually, because the ASR slot below is
+            #    budget/stop-gated.  Provider transcripts (official text, no ``-asr-`` infix) are
+            #    NEVER invalidated by an ASR-version bump.
             if ep.transcript_key and ep.transcript_synced and _present(ep.transcript_key):
-                ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
-                stats.reused += 1
-                continue
+                # ASR keys are ``{uid}-asr-{recipe}.vtt``; match that prefix on the filename
+                # (not a bare ``-asr-`` substring, which a uid ending in ``-asr`` would trip).
+                key_name = ep.transcript_key.rsplit("/", 1)[-1]
+                is_asr = key_name.startswith(f"{ep.uid or ep.guid}-asr-")
+                if is_asr and ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
+                    redo_stale_asr = True  # fall through to the ASR slot to re-transcribe
+                else:
+                    ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+                    if ep.transcript_words_key and _present(ep.transcript_words_key):
+                        ep.transcript_words_url = ctx.storage.public_url(ep.transcript_words_key)
+                    stats.reused += 1
+                    continue
 
             # 1b. Untimed stored transcript: re-attach URL so the feed still shows it as a
             #     text note, then fall through to the ASR slot to attempt an upgrade.
@@ -897,7 +916,7 @@ class TranscriptStage:
                 continue
             if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
                 continue
-            if ep.transcript_synced:
+            if ep.transcript_synced and not redo_stale_asr:
                 continue  # step 2 may have just set this in the same pass
             if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
                 stats.skipped += 1
@@ -942,10 +961,15 @@ class TranscriptStage:
             if _present(asr_key):
                 ep.transcript_key = asr_key
                 ep.transcript_hosted_url = ctx.storage.public_url(asr_key)
+                words_key = _asr_words_object_key(src_key, ep.uid or ep.guid, recipe)
+                if _present(words_key):
+                    ep.transcript_words_key = words_key
+                    ep.transcript_words_url = ctx.storage.public_url(words_key)
                 ep.transcript_synced = True
                 ep.transcript_basis = "served"
                 ep.transcript_format = "vtt"
                 ep.transcript_spec_hash = recipe
+                ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
                 stats.reused += 1
                 continue
 
@@ -1070,7 +1094,7 @@ class TranscriptStage:
             #     when the process exits (daemon=True), so no zombie work survives the run.
             #   • Results produced after stop() fires are never stored — this prevents
             #     ``transcript done`` being reported for work not counted in this run's budget.
-            _vtt: list[bytes] = []
+            _artifacts: list = []
             _err: list[Exception] = []
             _aligned: list[bool] = []
             _release_abandoned_asr_slot = threading.Event()
@@ -1085,7 +1109,7 @@ class TranscriptStage:
                 _ep_ref=ep_ref,
                 _audio=audio_path,
                 _audio_tmp=audio_tmp,
-                _result=_vtt,
+                _result=_artifacts,
                 _errors=_err,
                 _was_aligned=_aligned,
                 _sem=sem,
@@ -1217,7 +1241,7 @@ class TranscriptStage:
                 )
                 continue
 
-            if not _vtt:
+            if not _artifacts:
                 stats.errors.append(f"{ep.uid}: ASR: inference produced no result")
                 print(
                     f"[enrich] transcript asr error {ep_ref}: inference produced no result",
@@ -1226,14 +1250,22 @@ class TranscriptStage:
                 continue
 
             try:
+                artifacts = _artifacts[0]
+                words_key = _asr_words_object_key(src_key, ep.uid or ep.guid, recipe)
                 with _tmp.TemporaryDirectory() as t:
-                    dest = Path(t) / "transcript.vtt"
-                    dest.write_bytes(_vtt[0])
-                    url = ctx.storage.put_file(asr_key, dest, TRANSCRIPT_MIME["vtt"])
+                    vtt_dest = Path(t) / "transcript.vtt"
+                    vtt_dest.write_bytes(artifacts.vtt)
+                    url = ctx.storage.put_file(asr_key, vtt_dest, TRANSCRIPT_MIME["vtt"])
+                    words_dest = Path(t) / "transcript.words.json"
+                    words_dest.write_bytes(artifacts.words)
+                    words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
 
                 ep.transcript_key = asr_key
                 ep.transcript_hosted_url = url
+                ep.transcript_words_key = words_key
+                ep.transcript_words_url = words_url
                 ep.transcript_spec_hash = recipe
+                ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
                 ep.transcript_format = "vtt"
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True

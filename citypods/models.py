@@ -77,6 +77,14 @@ class Episode:
     # True = timestamps are present and correct against the enclosure; False = untimed
     # (plain text, PDF, or not yet remapped) — rendered as notes-only, never mis-aligned.
     transcript_synced: bool = False
+    # Word-level JSON sidecar (H12): clean segment VTT above is served to apps;
+    # this holds per-word timings for server-side search / clips / diarization.
+    transcript_words_key: str | None = None  # storage object key for the word JSON
+    transcript_words_url: str | None = None  # public CDN URL for the word JSON
+    # ASR pipeline version that produced this transcript (None = provider-supplied or
+    # pre-versioning). Drives version-aware re-transcription: an ASR transcript from an
+    # older version is re-done; provider transcripts are never invalidated by a bump.
+    transcript_pipeline_version: str | None = None
     # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
     # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
     # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs

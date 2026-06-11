@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-10**
+**Status: LIVING · last updated 2026-06-11**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -105,7 +105,7 @@ sync · #20 video enclosures (partial).
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
 | H11a deploy resilience — native work gate + one-slot audio lane + concurrency tuning | new | L3 | **Shipped** ([#239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) |
 | H11b deploy resilience — isolate enrich into own workflow | new | L2 | committed · depends on H5 manifest/lease |
-| H12 transcript artifact rework (segment VTT + word-JSON + version-aware re-transcribe) | #249 regression, R2/#7 | L3 | committed · **do-now** (fixes word-per-cue; word-JSON unblocks search/clips/diarization) |
+| H12 transcript artifact rework (segment VTT + word-JSON + version-aware re-transcribe) | #249 regression, R2/#7 | L3 | **Shipped** ([PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253)) |
 | #39 per-provider rate limiting (incl. Retry-After clamp) | #39 | L2 | committed · sequence with H6b (sharded workflows multiply provider request pressure); B2 Retry-After **clamp** (not ignore) folds in here |
 
 ### Phase R — Research-Tool Surface (toward 1.0)
@@ -332,8 +332,9 @@ during Phase H (it informs H6b and H9); implement non-`local` backends post-1.0 
 Items intentionally not in a near-term phase; revisit as scale or demand warrants. (Enumerated in §4
 "Deferred backlog".) Notable rationale: **index sharding (#42)** is demoted because per-meeting pages
 make meetings independently crawlable; the **DerivedArtifact refactor** (review/02 Change 5) is now
-**justified** — H12 introduces the third derived-artifact type (audio M4A · transcript VTT · **word-JSON**),
-the YAGNI trigger it was waiting on — so it moves from deferred to "do opportunistically when H12's storage
+**justified** — H12 (shipped, [PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253))
+added the third derived-artifact type (audio M4A · transcript VTT · **word-JSON**), the YAGNI trigger it
+was waiting on — so it moves from deferred to "do opportunistically now that H12's storage
 plumbing lands"; **full video / hosted DB / off-Actions media** are explicitly out of scope now (§8).
 **Deleted:** #5 NER (the city's own document search is better ground truth).
 
@@ -381,7 +382,7 @@ against live code and is **accurate and well-grounded**. Disposition of its reco
 **Post-review code queue (updated 2026-06-10 after H11a shipped):**
 H8 resource guard (shipped [PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) →
 H11a deploy resilience (shipped [PRs #239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) →
-**Do-now (this review's follow-ups):** **H12** transcript-artifact rework (clean segment-cue VTT + a
+**Do-now (this review's follow-ups):** **H12** (shipped, [PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253)) transcript-artifact rework (clean segment-cue VTT + a
 word-JSON sidecar + version-aware gradual re-transcribe — fixes #249's word-per-cue regression and
 unblocks search/clips/diarization); **H6a** ASR benchmark workflow (settles model choice + the measured
 cost of `word_timestamps` before any backfill — no H5 dependency); **B2** Retry-After **clamp** (fold into

@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-10**
+last updated 2026-06-11**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -597,10 +597,14 @@ without clobbering records (shared acceptance with H6).
 
 ---
 
-## H12 — Transcript artifact: segment-cue VTT + word-JSON sidecar + version-aware re-transcribe — **do-now**
+## H12 — Transcript artifact: segment-cue VTT + word-JSON sidecar + version-aware re-transcribe — **Implemented in PR #253**
 
-**Maturity: L3 (development-ready).** Ships in its own `feat/` PR — this section is the design; the code
-PR implements it and stamps it shipped.
+**Status.** Shipped in [PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253) on
+2026-06-11. This section is frozen as the implementation design record.
+
+**Maturity: L3.** Implemented as designed: `asr.py` returns `TranscriptArtifacts` (segment VTT +
+word-JSON), `stages.py` stores both and does version-aware reuse keyed on the `{uid}-asr-` filename
+prefix, `records.py` persists the sidecar key and GC-protects it, and `ASR_PIPELINE_VERSION` is `"3"`.
 
 **Problem.** PR #249 made the ASR stage emit **one VTT cue per word** (`word_timestamps=True` → `_to_vtt`
 loops over `seg.words`, [`asr.py`](../citypods/asr.py)). Three regressions: (i) `<podcast:transcript>`
@@ -665,7 +669,7 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
 first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (native
 audio/ASR gate + one-slot audio lane + green-run acceptance, **shipped**; cap now at `4`) → **H12
-(transcript artifact rework, do-now)** + **H6a (ASR benchmark, do-now)** → confirm
+(transcript artifact rework, shipped PR #253)** + **H6a (ASR benchmark, do-now)** → confirm
 `native_audio_max_active: 4` against the A2 criterion (else revert toward `1`/`2`) → H1 (issues) →
 H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 → H11b/H6b (isolate
 enrich + sharded ASR) → H9 (against the execution-backend interface). Each
