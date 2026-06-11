@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from citypods.audit import (
+    WARN,
     ArchiveDiff,
     audit_city,
     check_dead_audio_aggregate,
@@ -12,6 +13,7 @@ from citypods.audit import (
     check_empty,
     check_enclosures,
     check_meetings_url,
+    check_provider_error_rates,
     check_rehost_backlog,
     check_staleness,
     check_view_cap,
@@ -134,14 +136,58 @@ def test_check_view_cap():
     assert check_view_cap("s", [42, 7]) is None
 
 
-def test_check_rehost_backlog_only_when_fully_stalled():
-    hls = [_ep(1, "g1", kind="hls"), _ep(8, "g2", kind="hls")]
-    assert check_rehost_backlog("s", hls).check == "rehost-backlog"
-    # Some progress (one hosted) -> not flagged.
-    hls[0].hosted_audio_url = "https://cdn/a.m4a"
-    assert check_rehost_backlog("s", hls) is None
-    # No HLS episodes -> never flagged.
+def _run_history(n_active: int, n_idle: int = 0) -> list[dict]:
+    """Build a synthetic run_history with n_active runs that encoded audio + n_idle that didn't."""
+    active = [{"materialize_encoded": 2, "materialize_seconds": 60.0}] * n_active
+    idle = [{"materialize_encoded": 0, "materialize_seconds": 0.0}] * n_idle
+    return idle + active  # newest-last
+
+
+def test_check_rehost_backlog_no_hls_never_flags():
     assert check_rehost_backlog("s", [_ep(1)]) is None
+
+
+def test_check_rehost_backlog_some_hosted_suppresses():
+    """Catching-up: at least one episode hosted → suppress regardless of history."""
+    hls = [_ep(1, "g1", kind="hls"), _ep(8, "g2", kind="hls")]
+    hls[0].hosted_audio_url = "https://cdn/a.m4a"
+    assert check_rehost_backlog("s", hls, run_history=_run_history(5)) is None
+
+
+def test_check_rehost_backlog_no_history_suppresses():
+    """No run history → can't distinguish new city from stalled → suppress."""
+    hls = [_ep(1, "g1", kind="hls")]
+    assert check_rehost_backlog("s", hls) is None
+    assert check_rehost_backlog("s", hls, run_history=[]) is None
+
+
+def test_check_rehost_backlog_insufficient_active_runs_suppresses():
+    """Fewer than STALL_THRESHOLD active runs → too early to call stalled → suppress."""
+    hls = [_ep(1, "g1", kind="hls")]
+    assert check_rehost_backlog("s", hls, run_history=_run_history(n_active=2)) is None
+
+
+def test_check_rehost_backlog_stalled_warns():
+    """Zero hosted AND pipeline is actively encoding (other feeds) → warn."""
+    from citypods.audit import WARN
+
+    hls = [_ep(1, "g1", kind="hls"), _ep(8, "g2", kind="hls")]
+    f = check_rehost_backlog("s", hls, run_history=_run_history(n_active=3))
+    assert f is not None
+    assert f.check == "rehost-backlog"
+    assert f.severity == WARN
+    assert "stalled" in f.message.lower() or "stall" in f.message.lower()
+
+
+def test_check_rehost_backlog_provider_errors_stay_error():
+    """dead-enclosure and unreachable checks remain ERROR — rehost_backlog never touches them."""
+    from citypods.audit import ERROR, check_enclosures
+
+    # Confirm dead-enclosure is still ERROR (separate check, unchanged severity).
+    ep = _ep(1, "g1", kind="hls")
+    ep.hosted_audio_url = "https://cdn/a.m4a"
+    findings = check_enclosures("s", [ep], lambda url: 404)
+    assert findings and findings[0].severity == ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -434,3 +480,66 @@ def test_check_meetings_url_probe_exception():
 
     f = check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe)
     assert f is not None and f.check == "meetings-url-dead" and "timeout" in f.message
+
+
+# ---------------------------------------------------------------------------
+# check_provider_error_rates
+# ---------------------------------------------------------------------------
+
+
+def _perr(*counts: tuple[str, int]) -> dict:
+    return {"provider_errors": dict(counts)}
+
+
+def test_check_provider_error_rates_empty_history():
+    assert check_provider_error_rates([]) == []
+
+
+def test_check_provider_error_rates_no_errors_no_finding():
+    history = [_perr(("granicus", 0)), _perr(("granicus", 0))]
+    assert check_provider_error_rates(history) == []
+
+
+def test_check_provider_error_rates_below_threshold_no_finding():
+    # Only 1 run with errors — below the default threshold of 2.
+    history = [_perr(("granicus", 3)), {"materialized": 5}]
+    assert check_provider_error_rates(history) == []
+
+
+def test_check_provider_error_rates_threshold_reached():
+    history = [_perr(("granicus", 1)), _perr(("granicus", 2)), _perr(("granicus", 0))]
+    findings = check_provider_error_rates(history)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.check == "provider-errors:granicus"
+    assert f.severity == WARN
+    assert "granicus" in f.message
+    assert "2" in f.message  # 2 of 3 runs
+
+
+def test_check_provider_error_rates_only_flags_breaching_providers():
+    history = [
+        _perr(("granicus", 2), ("swagit", 0)),
+        _perr(("granicus", 1), ("swagit", 1)),
+    ]
+    findings = check_provider_error_rates(history)
+    assert len(findings) == 1
+    assert findings[0].check == "provider-errors:granicus"
+
+
+def test_check_provider_error_rates_missing_key_tolerated():
+    # Runs without a provider_errors key should not crash or count as errors.
+    history = [{"materialized": 5}, {"provider_errors": {"civicplus": 1}}]
+    assert check_provider_error_rates(history) == []
+
+
+def test_check_provider_error_rates_custom_threshold():
+    history = [_perr(("granicus", 1)), _perr(("granicus", 1)), _perr(("granicus", 1))]
+    assert check_provider_error_rates(history, threshold=4) == []
+    assert len(check_provider_error_rates(history, threshold=2)) == 1
+
+
+def test_check_provider_error_rates_slug_is_all():
+    history = [_perr(("granicus", 1)), _perr(("granicus", 1))]
+    f = check_provider_error_rates(history)[0]
+    assert f.slug == "(all)"

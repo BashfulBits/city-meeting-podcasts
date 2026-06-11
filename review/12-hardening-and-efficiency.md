@@ -230,6 +230,17 @@ does not; warnings are surfaced but non-blocking.
 
 ## H4 — Feed-health catch-up vs stalled states + ETA + auto-comment
 
+> **Implemented.** All three design sub-deliverables shipped:
+> - *Rehost-backlog triage*: catching-up → suppressed; stalled (≥ 3/5 active runs, 0 hosted) →
+>   `WARN rehost-backlog`; provider failures stay `ERROR`. `_load_run_history` + `run_history`
+>   threaded through `audit_city` / `audit_all`. 6 new tests.
+> - *Provider error-rate tracking (B3)*: `_record_run_history` writes `provider_errors: {name: n}`
+>   per run; `check_provider_error_rates` (new in `audit.py`) fires `WARN provider-errors:<name>`
+>   when a provider has source-fetch failures in ≥ 2 of the last 5 runs. 8 new tests.
+> - *Auto-comment on state transitions*: `audit_feeds.py reconcile` now calls `issue comment` with
+>   a timestamped state summary when an issue's body changes, in addition to `issue edit --body`.
+>   5 new tests in `tests/test_audit_feeds.py`.
+
 **Problem.** ~50+ open `rehost-backlog`/`view-cap` issues conflate *pipeline catching up* with *real
 breakage*, so genuine failures hide in noise.
 
