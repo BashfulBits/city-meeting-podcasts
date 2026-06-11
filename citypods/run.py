@@ -757,6 +757,13 @@ def build(
                 if entry is not None:
                     cache[result.slug] = entry
 
+    # Tally source-fetch failures by provider for run_history.jsonl.  Used by
+    # check_provider_error_rates in audit.py to surface provider drift before it turns deploys red.
+    provider_errors: dict[str, int] = {}
+    for _city, _res in zip(cities, results, strict=False):
+        if _res.status == "error":
+            provider_errors[_city.provider] = provider_errors.get(_city.provider, 0) + 1
+
     # Per-stage activity for the run, to stdout (build logs). Makes "did audio actually
     # materialize?" answerable without the step-summary report: ``ran`` is newly produced this
     # run, ``reused`` already up to date, ``queued`` deferred by budget (remaining backlog), plus
@@ -830,6 +837,7 @@ def build(
                     if _native_work_gate is not None
                     else None
                 ),
+                provider_errors=provider_errors or None,
             )
         # Persist the updated record store + cache back to durable storage. The bucket — not
         # actions/cache — is the source of truth for derived artifacts.
@@ -938,6 +946,7 @@ def _record_run_history(
     min_mem_avail_mb: float | None = None,
     window_used_pct: float | None = None,
     gate_wait_seconds: float | None = None,
+    provider_errors: dict[str, int] | None = None,
 ) -> None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
@@ -991,6 +1000,7 @@ def _record_run_history(
         "min_mem_avail_mb": min_mem_avail_mb,
         "window_used_pct": window_used_pct,
         "gate_wait_seconds": gate_wait_seconds,
+        "provider_errors": provider_errors or {},
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")

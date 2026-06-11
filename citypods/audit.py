@@ -328,23 +328,96 @@ def check_deferred_audio_aggregate(
     return Finding("(all)", "deferred-audio", WARN, msg)
 
 
-def check_rehost_backlog(slug: str, episodes: list[Episode]) -> Finding | None:
-    """Flag only a *wholly* stalled audio pipeline: there are HLS episodes that need
-    re-hosting but none have been hosted at all (transient per-run backlog is normal and
-    not flagged). Episodes carry ``hosted_audio_url`` from the record store via
-    ``merge_persisted``."""
+_STALL_LOOK_BACK = 5  # examine this many recent runs
+_STALL_THRESHOLD = 3  # pipeline is "active" when >= this many of those runs encoded audio
+
+_PROVIDER_ERR_LOOK_BACK = 5
+_PROVIDER_ERR_THRESHOLD = 2  # warn when a provider has errors in >= this many recent runs
+
+
+def _active_encode_runs(run_history: list[dict], *, limit: int = _STALL_LOOK_BACK) -> int:
+    """Count how many of the last *limit* runs had at least one real encode."""
+    return sum(1 for r in run_history[-limit:] if r.get("materialize_encoded", 0) > 0)
+
+
+def check_rehost_backlog(
+    slug: str,
+    episodes: list[Episode],
+    *,
+    run_history: list[dict] | None = None,
+) -> Finding | None:
+    """Triage the HLS audio backlog into three outcomes:
+
+    * **suppress** — feed is catching-up (some episodes hosted, or pipeline not yet active
+      enough to call anything stalled).  No issue filed; normal operation.
+    * **warn** — feed is stalled: zero hosted audio despite the pipeline running actively
+      in recent runs (other feeds are encoding; this one is not).
+    * Provider failures (dead enclosure, unreachable source) are separate checks and stay
+      at ERROR — ``check_rehost_backlog`` never touches those.
+
+    ``run_history`` is the decoded ``run_history.jsonl`` tail (newest-last).  When absent
+    the check silently suppresses rather than false-positive on new deployments.
+    """
     hls = [e for e in episodes if e.media_kind == "hls"]
     if not hls:
         return None
     hosted = sum(1 for e in hls if e.hosted_audio_url)
-    if hosted == 0:
-        return Finding(
-            slug,
-            "rehost-backlog",
-            ERROR,
-            f"0 of {len(hls)} HLS episodes have hosted audio (pipeline stalled?)",
-        )
-    return None
+
+    if hosted > 0:
+        # At least one episode is hosted — pipeline is working for this feed.  Suppress.
+        return None
+
+    # Nothing hosted yet.  Only warn when we have enough evidence that the pipeline IS
+    # running (encodes happening elsewhere) but this feed is getting nothing.
+    active = _active_encode_runs(run_history) if run_history is not None else 0
+    if active < _STALL_THRESHOLD:
+        # Too few runs to distinguish "new city" from "stalled" — suppress.
+        return None
+
+    backlog = len(hls)
+    return Finding(
+        slug,
+        "rehost-backlog",
+        WARN,
+        f"0 of {backlog} HLS episode(s) hosted; pipeline has encoded audio in {active} of the "
+        f"last {_STALL_LOOK_BACK} runs but none for this feed — pipeline may be stalled.",
+    )
+
+
+def check_provider_error_rates(
+    run_history: list[dict],
+    *,
+    look_back: int = _PROVIDER_ERR_LOOK_BACK,
+    threshold: int = _PROVIDER_ERR_THRESHOLD,
+) -> list[Finding]:
+    """Return a WARN finding for each provider with source-fetch failures in >= *threshold*
+    of the last *look_back* runs.
+
+    Provider errors are recorded in ``run_history.jsonl`` under ``provider_errors``
+    (e.g. ``{"granicus": 2, "swagit": 0}``) by ``_record_run_history`` in ``run.py``.
+    Signals provider drift before a deploy goes red.
+    """
+    if not run_history:
+        return []
+    recent = run_history[-look_back:]
+    runs_with_errors: dict[str, int] = {}
+    for row in recent:
+        for provider, count in (row.get("provider_errors") or {}).items():
+            if count > 0:
+                runs_with_errors[provider] = runs_with_errors.get(provider, 0) + 1
+    findings = []
+    for provider, n in sorted(runs_with_errors.items()):
+        if n >= threshold:
+            findings.append(
+                Finding(
+                    "(all)",
+                    f"provider-errors:{provider}",
+                    WARN,
+                    f"{provider} had source-fetch failures in {n} of the last "
+                    f"{len(recent)} run(s); provider endpoint may be drifting.",
+                )
+            )
+    return findings
 
 
 def check_enclosures(
@@ -582,6 +655,7 @@ def audit_city(
     view_counts: list[int] | None = None,
     head: Callable[[str], int] | None = None,
     resolve: Callable[[Episode], str] | None = None,
+    run_history: list[dict] | None = None,
 ) -> list[Finding]:
     """Fetch a city once and run every applicable check, returning all findings.
 
@@ -639,7 +713,7 @@ def audit_city(
             if cap:
                 findings.append(cap)
         if records is not None:
-            backlog = check_rehost_backlog(city.slug, episodes)
+            backlog = check_rehost_backlog(city.slug, episodes, run_history=run_history)
             if backlog:
                 findings.append(backlog)
         if head is not None:
@@ -648,6 +722,24 @@ def audit_city(
         if records is not None:
             findings.extend(check_timeline_integrity(city.slug, episodes))
     return findings
+
+
+def _load_run_history(state_dir: Path, *, limit: int = _STALL_LOOK_BACK) -> list[dict]:
+    """Return the last *limit* entries from ``run_history.jsonl``, newest-last."""
+    import json
+
+    path = Path(state_dir) / "run_history.jsonl"
+    if not path.exists():
+        return []
+    rows: list[dict] = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line:
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+    return rows[-limit:]
 
 
 def _net_probe() -> Callable[[str], tuple[int, str]]:
@@ -704,6 +796,7 @@ def audit_all(
     min_meetings = int(defaults.get("min_meetings_per_body", 3))
     dead_threshold = int(defaults.get("dead_audio_alert_threshold", DEAD_AUDIO_ALERT_THRESHOLD))
     head = _net_head() if check_enclosures_net else None
+    run_history = _load_run_history(state_dir)
 
     findings: list[Finding] = []
     # Audio-failure tally is per *source* (per-body feeds share one record store), so accumulate
@@ -741,6 +834,7 @@ def audit_all(
                 view_counts=view_counts,
                 head=head,
                 resolve=resolve,
+                run_history=run_history,
             )
         )
 
@@ -755,6 +849,8 @@ def audit_all(
     deferred = check_deferred_audio_aggregate(deferred_total, examples=deferred_examples)
     if deferred:
         findings.append(deferred)
+
+    findings.extend(check_provider_error_rates(run_history))
 
     # meetings_url health — one probe per unique URL, attributed to the shortest slug so
     # cities with many boards (e.g. Dallas's 38 feeds) don't produce 38 identical issues.

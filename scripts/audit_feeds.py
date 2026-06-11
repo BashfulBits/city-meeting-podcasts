@@ -22,7 +22,7 @@ import json
 import subprocess
 import sys
 
-from citypods.audit import audit_all
+from citypods.audit import Finding, audit_all
 from citypods.config import load_city_configs, load_site_config
 
 LABELS = {
@@ -40,6 +40,18 @@ def _title(slug: str, check: str) -> str:
 
 
 _MEETINGS_URL_CHECKS = frozenset({"meetings-url-dead", "meetings-url-changed"})
+
+
+def _state_comment(finding: Finding) -> str:
+    """A comment posted when an existing issue's computed state changes."""
+    from datetime import UTC, datetime
+
+    date = datetime.now(UTC).strftime("%Y-%m-%d")
+    return (
+        f"**Audit update {date}:** `{finding.severity}` — {finding.message}\n\n"
+        "_Added automatically when the finding state changed. "
+        "The issue body has been updated with the current state._"
+    )
 
 
 def _body(message: str, severity: str, check: str = "") -> str:
@@ -99,7 +111,9 @@ def reconcile(findings, *, dry_run: bool) -> int:
                 if dry_run:
                     print(f"UPDATE  {title}")
                 else:
-                    _gh("issue", "edit", str(existing[title]["number"]), "--body", body)
+                    num = str(existing[title]["number"])
+                    _gh("issue", "edit", num, "--body", body)
+                    _gh("issue", "comment", num, "--body", _state_comment(finding))
                 updated += 1
         else:
             needs_human = finding.check in _MEETINGS_URL_CHECKS

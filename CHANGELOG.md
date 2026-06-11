@@ -15,6 +15,21 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Feed-health backlog triage + provider drift (H4)**: three sub-deliverables:
+  - *Rehost-backlog triage*: `check_rehost_backlog` applies a three-tier model — catching-up
+    (any hosted > 0, or pipeline not yet active enough) is **suppressed** (existing issues
+    auto-close via reconcile); stalled (≥ 3 of last 5 runs encoded but feed still 0 hosted) is
+    **`WARN`**; real provider failures stay `ERROR`. `_load_run_history` + `run_history` threaded
+    through `audit_city` / `audit_all`. 6 new tests.
+  - *Provider error-rate tracking*: `_record_run_history` in `run.py` now writes a
+    `provider_errors: {name: count}` dict of city-level source-fetch failures per run to
+    `run_history.jsonl`. `check_provider_error_rates` in `audit.py` raises a `WARN
+    provider-errors:<name>` finding for any provider with failures in ≥ 2 of the last 5 runs,
+    surfacing provider drift before it turns deploys red. 8 new tests.
+  - *Auto-comment on state transitions*: `audit_feeds.py` now adds a timestamped comment to an
+    existing issue whenever its computed body changes (state transition), in addition to updating
+    the body — making transitions visible in the GitHub issue timeline. The close-on-resolve
+    comment was already in place. 5 new tests in `tests/test_audit_feeds.py`.
 - **Feed-validation publish gate (H3, #53)**: `citypods validate-build docs/` scans every
   generated `*.xml`, skips redirect feeds, demotes empty feeds for known-backfill-in-progress
   cities to warnings, and exits non-zero on structural errors or unexpectedly empty feeds.
