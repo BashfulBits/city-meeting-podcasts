@@ -415,7 +415,7 @@ deploy-killer**, so the levers below move from *candidates* to **committed chang
 - `citypods/resources.py`: shared resource snapshots + `ResourceAdmission` wait loop for memory/load
   headroom.
 - `citypods/run.py`: creates the guard for time-bounded non-dry-run Actions builds, derives ffmpeg
-  threads from `audio_ffmpeg_threads` or `cpu_count // max_encodes_per_source`, and keeps heartbeat
+  threads from `audio_ffmpeg_threads` or `cpu_count // native_audio_max_active` (PR #257), and keeps heartbeat
   formatting on the same snapshot helper.
 - `citypods/stages.py`: passes the guard into `AudioStage`/`TranscriptStage`; abandoned ASR daemon work
   retains the ASR semaphore slot until the background inference thread actually exits.

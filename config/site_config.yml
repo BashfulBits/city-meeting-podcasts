@@ -60,10 +60,7 @@ defaults:
                                          # -filter_threads/-filter_complex_threads to this value.
                                          # Production enrich runs this as a one-core audio lane
                                          # beside ASR/resource-gated native work.
-                                         # Clear to auto-calc (cpu_count // max_encodes_per_source).
-                                         # NOTE: native_audio_max_active is now the real encode-
-                                         # concurrency cap, so that auto-calc divisor is stale — set
-                                         # this explicitly (production pins 1) rather than relying on it.
+                                         # Clear to auto-calc (cpu_count // native_audio_max_active).
   audio_ffmpeg_memory_floor_mb: 1536     # terminate the active ffmpeg child if runner MemAvailable
                                          # drops below this floor; records a retryable audio error
                                          # instead of letting the Actions runner get killed.

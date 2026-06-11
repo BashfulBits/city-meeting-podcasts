@@ -538,6 +538,7 @@ def build(
     max_workers = int(site_config.get("max_workers", 20))
     max_encodes_per_source = int(site_config.get("max_encodes_per_source", 1))
     defaults = site_config.get("defaults", {})
+    native_audio_max_active = int(defaults.get("native_audio_max_active", 1))
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     storage = make_storage(site_config, base_url, output_dir)
 
@@ -586,7 +587,7 @@ def build(
     encode_timeout_min = float(defaults.get("audio_encode_timeout_minutes", 45))
     ffmpeg_threads_raw = defaults.get("audio_ffmpeg_threads")
     if ffmpeg_threads_raw is None:
-        ffmpeg_threads = max(1, (os.cpu_count() or 1) // max(1, max_encodes_per_source))
+        ffmpeg_threads = max(1, (os.cpu_count() or 1) // max(1, native_audio_max_active))
     else:
         ffmpeg_threads = max(1, int(ffmpeg_threads_raw))
     ffmpeg_memory_floor_mb = float(
@@ -639,7 +640,7 @@ def build(
             dry_run=dry_run,
         ),
         native_work_gate=NativeWorkGate(
-            max_audio_active=int(defaults.get("native_audio_max_active", 1)),
+            max_audio_active=native_audio_max_active,
             log=lambda msg: print(msg, flush=True),
         )
         if time_bounded and not dry_run
