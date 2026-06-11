@@ -661,3 +661,113 @@ def test_audio_bytes_set_on_encode(tmp_path):
     )
     assert stats.encoded == 1
     assert ep.audio_bytes == fake_size
+
+
+# ---------------------------------------------------------------------------
+# H2: projection / per-run telemetry tests
+# ---------------------------------------------------------------------------
+
+
+def test_per_run_cap_none_when_key_absent():
+    """build_report uses per_run_cap=None (wall-clock bound) when materialize_budget_per_run
+    is not present in site config defaults."""
+    site_no_cap = {"defaults": {"max_episodes": 50, "audio_max_kbps": 96}}
+    rep = build_report(_cities(), site_config=site_no_cap)
+    assert rep["current"]["inputs"]["per_run_cap"] is None
+    assert rep["current"]["cap_is_bottleneck"] is False
+
+
+def test_to_markdown_wall_clock_framing_no_cap():
+    """to_markdown with no per-run cap should not mention a bottleneck warning."""
+    site_no_cap = {"defaults": {"max_episodes": 50, "audio_max_kbps": 96}}
+    md = to_markdown(build_report(_cities(), site_config=site_no_cap))
+    assert "bottleneck" not in md.lower()
+    assert "materialize_budget_per_run" not in md
+
+
+def test_to_markdown_bottleneck_message_no_legacy_key():
+    """When there is a bottleneck the suggestion says to delete the cap, not set a new value."""
+    md = to_markdown(build_report(_cities(), site_config=SITE))
+    assert "bottleneck" in md.lower()
+    # Old message suggested setting materialize_budget_per_run = X; new message says delete it.
+    assert "= " not in md.split("bottleneck")[1].split("\n")[0] or "delete" in md.lower()
+    assert "delete" in md.lower() or "Remove the cap" in md
+
+
+def test_feed_row_hours_hosted_bytes_fallback(tmp_path):
+    """hours_hosted uses bytes-based estimate for records with no duration_served (Swagit-style)."""
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("swagit-city")
+    max_kbps = 96
+    # 96 kbps × 3600s = 43_200_000 bytes for 1 hour
+    expected_bytes = max_kbps * 1000 * 3600 // 8  # 43_200_000
+    records = {
+        "ep1": _rec(
+            "ep1",
+            hosted_url="http://cdn/ep1.m4a",
+            spec_hash="legacy",
+            duration=0,  # no provider duration (Swagit never provides it)
+            bytes_val=expected_bytes,
+        ),
+    }
+    # Ensure duration_served is also absent
+    records["ep1"]["audio"]["duration_served"] = None
+
+    save_records(tmp_path, source_key(city), records)
+    status = build_status([city], site_config=SITE, state_dir=tmp_path)
+    assert status["kpis"]["hours_hosted"] == pytest.approx(1.0, abs=0.01)
+
+
+def test_run_history_telemetry_roundtrip(tmp_path):
+    """_record_run_history writes new telemetry fields; build_status exposes them."""
+    import json
+
+    entry = {
+        "ts": "2026-06-11T12:00:00+00:00",
+        "built": 3,
+        "skipped": 10,
+        "errors": 0,
+        "materialized": 3,
+        "materialize_encoded": 3,
+        "materialize_seconds": 240.0,
+        "stages": {},
+        "github_run_id": None,
+        "github_run_url": None,
+        "peak_load_per_cpu": 0.75,
+        "min_mem_avail_mb": 4096.0,
+        "window_used_pct": 62.5,
+        "gate_wait_seconds": 12.3,
+    }
+    path = tmp_path / "run_history.jsonl"
+    path.write_text(json.dumps(entry) + "\n")
+
+    status = build_status([], site_config=SITE, state_dir=tmp_path)
+    rec = status["run_history"][0]
+    assert rec["peak_load_per_cpu"] == pytest.approx(0.75)
+    assert rec["min_mem_avail_mb"] == pytest.approx(4096.0)
+    assert rec["window_used_pct"] == pytest.approx(62.5)
+    assert rec["gate_wait_seconds"] == pytest.approx(12.3)
+
+
+def test_projection_calibration_uses_encoded_not_materialized(tmp_path):
+    """measured_inputs uses materialize_encoded (not materialized) so cheap re-credits
+    do not dilute the sec/ep estimate."""
+    import json
+
+    from citypods.projection import measured_inputs
+
+    # 1 run: 100 materialized total, but only 10 were actual encodes — 90 were re-credits.
+    entry = {
+        "ts": "2026-06-11T00:00:00+00:00",
+        "materialized": 100,
+        "materialize_encoded": 10,
+        "materialize_seconds": 100.0,
+    }
+    path = tmp_path / "run_history.jsonl"
+    path.write_text(json.dumps(entry) + "\n")
+    history = [json.loads(path.read_text())]
+
+    inputs = measured_inputs([], run_history=history)
+    # 100s / 10 encodes = 10.0 sec/ep; using materialized=100 would give 1.0
+    assert inputs.sec_per_ep == pytest.approx(10.0)

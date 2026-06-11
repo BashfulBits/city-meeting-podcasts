@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **H2 projection wall-clock fix + per-run telemetry**: `per_run_cap` now defaults to `None`
+  (wall-clock-bounded) when `materialize_budget_per_run` is absent; `measured_inputs` calibrates
+  `sec_per_ep` from `materialize_encoded` (real encodes only, not cheap re-credits); `to_markdown`
+  updated to say "delete the cap" rather than recommending the removed config key; `_feed_row` adds
+  a bytes-based `hours_hosted` estimate for providers (Swagit/CivicPlus) that never supply duration
+  metadata; `_ResourceHeartbeat` now samples `peak_load_per_cpu` + `min_mem_avail_bytes` via
+  `current_snapshot()`, and `NativeWorkGate` accumulates `total_wait_seconds`; `_record_run_history`
+  persists `peak_load_per_cpu`, `min_mem_avail_mb`, `window_used_pct`, and `gate_wait_seconds` to
+  `run_history.jsonl`; `build_status` returns `audio_backlog` + `transcript_backlog` sub-dicts with
+  ETAs so the status dashboard shows both queues without JS math.
 - **H1 issue reconciliation**: closed GH#154 (`<podcast:transcript>` — 28 tags confirmed live in the Arlington TX feed); narrowed GH#110 (ASR transcripts) to backfill + ops follow-up only; marked GH#141 (timeline epic) umbrella-only for remaining Phase R features (#153/#155/#156/#157).
 - **ASR benchmark workflow (H6a)**: added a manual `asr-bench.yml` workflow that runs
   `citypods asr-bench` over maintainer-selected `city:uid` cases, compares max/med/min

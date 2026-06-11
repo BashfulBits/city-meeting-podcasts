@@ -158,10 +158,11 @@ def _load_run_history(state_dir: Path) -> list[dict]:
 
 def build_report(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
     defaults = site_config.get("defaults", {})
+    cap_raw = defaults.get("materialize_budget_per_run")
     base = ModelInputs(
         episodes_per_feed=int(defaults.get("max_episodes", 50)),
         kbps=int(defaults.get("audio_max_kbps", 96)),
-        per_run_cap=int(defaults.get("materialize_budget_per_run", 25)),
+        per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
     history = _load_run_history(state_dir) if state_dir else []
     inputs = measured_inputs(
@@ -236,7 +237,7 @@ def to_markdown(report: dict) -> str:
             f"Time-bounded would do **{tb['per_run_throughput']}/run** "
             f"({tb['capacity_per_day']}/day) → full backfill in "
             f"**{tb['full_backfill_days']:.0f} days** instead of {c['full_backfill_days']:.0f}. "
-            f"Consider `materialize_budget_per_run = {c['recommended_per_run']}` (or time-bounded)."
+            f"Remove the cap (delete `materialize_budget_per_run`) to use the wall-clock window."
         )
     ret = report.get("retention")
     if ret:
@@ -355,6 +356,10 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
 
         audio = rec.get("audio") or {}
         duration_s = rec.get("duration") or audio.get("duration_served") or 0
+        # Bytes-based estimate for providers (e.g. Swagit) that never supply a duration and
+        # whose reuse path skips the ffprobe that would set duration_served.
+        if not duration_s and audio.get("bytes"):
+            duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
         state = _classify_record(rec, max_kbps, loudness_profile=loudness_profile)
 
         if state in ("served", "stale"):
@@ -543,10 +548,11 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     history = _load_run_history(Path(state_dir)) if state_dir else []
     history_tail = list(reversed(history[-10:])) if history else []
 
+    cap_raw = defaults.get("materialize_budget_per_run")
     base = ModelInputs(
         episodes_per_feed=int(defaults.get("max_episodes", 50)),
         kbps=max_kbps,
-        per_run_cap=int(defaults.get("materialize_budget_per_run", 25)),
+        per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
     inputs = measured_inputs(
         cities,
@@ -564,6 +570,25 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     stale_drain_days = (
         round(stale_drain_runs * (inputs.cycle_hours / 24), 2) if stale_drain_runs else None
     )
+
+    # Transcript backlog: hosted episodes that have no ASR transcript artifact yet.
+    tx_pending = 0
+    for recs in records_cache.values():
+        for rec in recs.values():
+            audio = rec.get("audio") or {}
+            if audio.get("url"):
+                tx = rec.get("transcript") or {}
+                if not tx.get("key"):
+                    tx_pending += 1
+    tx_per_run_hist = [
+        (r.get("stages") or {}).get("transcript", {}).get("transcribed", 0)
+        + (r.get("stages") or {}).get("transcript", {}).get("aligned", 0)
+        for r in history
+        if (r.get("stages") or {}).get("transcript")
+    ]
+    tx_per_run = round(sum(tx_per_run_hist) / len(tx_per_run_hist), 2) if tx_per_run_hist else None
+    tx_drain_runs = round(tx_pending / tx_per_run, 1) if tx_per_run else None
+    tx_drain_days = round(tx_drain_runs * (inputs.cycle_hours / 24), 1) if tx_drain_runs else None
 
     # Storage detail
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
@@ -629,6 +654,18 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "inflow_per_day": round(proj.inflow_per_day, 2),
             "keeps_up": proj.keeps_up,
             "full_backfill_days": round(proj.full_backfill_days, 2),
+            "audio_backlog": {
+                "total": sum(r["pending"] for r in feed_rows) + stale_total,
+                "pending": sum(r["pending"] for r in feed_rows),
+                "stale": stale_total,
+                "estimated_days": round(proj.full_backfill_days, 1),
+            },
+            "transcript_backlog": {
+                "total_pending": tx_pending,
+                "tx_per_run": tx_per_run,
+                "estimated_runs": tx_drain_runs,
+                "estimated_days": tx_drain_days,
+            },
         },
         "issues": {
             "deferred": sum(r["deferred"] for r in feed_rows),

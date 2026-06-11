@@ -33,8 +33,8 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
 | Pri | Item |
 |----:|------|
-| **H1** | Docs/roadmap/issue reconciliation (this doc set; close/narrow shipped issues) |
-| **H2** | Projection wall-clock fix — drop the legacy `materialize_budget_per_run` default; add audio + transcript backlog rows |
+| **H1** | ✓ Shipped — Docs/roadmap/issue reconciliation (this doc set; close/narrow shipped issues — [PR #258](https://github.com/BashfulBits/city-meeting-podcasts/pull/258)) |
+| **H2** | ✓ Shipped — Projection wall-clock fix — `per_run_cap` defaults to `None`; `sec_per_ep` calibrated from real encodes; `hours_hosted` bytes fallback; per-run telemetry in `run_history.jsonl`; audio + transcript backlog ETAs in `build_status` ([PR #259](https://github.com/BashfulBits/city-meeting-podcasts/pull/259)) |
 | **H3** | **#53** feed-validation publish gate in `deploy.yml` |
 | **H4** | Feed-health **catch-up vs stalled** states + ETA + auto-comment (untangle the issue sprawl); **per-provider error-rate tracking** from real runs (provider drift now shows up as red deploys, not in the audit) |
 | **H5** | Stage **backlog manifest** + a configurable, extensible **prioritization policy** (recency / city order / feed-visible-first / requested-first / …) |

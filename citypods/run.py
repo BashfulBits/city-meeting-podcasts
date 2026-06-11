@@ -42,7 +42,7 @@ from citypods.records import (
     save_records,
     source_key,
 )
-from citypods.resources import NativeWorkGate, ResourceAdmission, snapshot_string
+from citypods.resources import NativeWorkGate, ResourceAdmission, current_snapshot, snapshot_string
 from citypods.security import SecurityError
 from citypods.site import (
     render_city_page,
@@ -468,6 +468,9 @@ class _ResourceHeartbeat:
         self.interval_seconds = interval_seconds
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+        self.peak_load_per_cpu: float | None = None
+        self.min_mem_avail_bytes: int | None = None
 
     def __enter__(self) -> _ResourceHeartbeat:
         if not self.enabled:
@@ -488,10 +491,30 @@ class _ResourceHeartbeat:
         if self._thread is not None:
             self._thread.join(timeout=2)
         print(f"[{self.label}] heartbeat stop {_resource_snapshot(self.root)}", flush=True)
+        self._sample()
 
     def _run(self) -> None:
         while not self._stop.wait(self.interval_seconds):
             print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
+            self._sample()
+
+    def _sample(self) -> None:
+        try:
+            snap = current_snapshot(self.root)
+            cpus = snap.cpus or 1
+            with self._lock:
+                if snap.load1 is not None:
+                    load_per_cpu = snap.load1 / cpus
+                    if self.peak_load_per_cpu is None or load_per_cpu > self.peak_load_per_cpu:
+                        self.peak_load_per_cpu = load_per_cpu
+                if snap.mem_available_bytes is not None:
+                    if (
+                        self.min_mem_avail_bytes is None
+                        or snap.mem_available_bytes < self.min_mem_avail_bytes
+                    ):
+                        self.min_mem_avail_bytes = snap.mem_available_bytes
+        except Exception:
+            pass
 
 
 def build(
@@ -615,6 +638,14 @@ def build(
         else None
     )
     asr_abandoned_event = threading.Event() if time_bounded and not dry_run else None
+    _native_work_gate: NativeWorkGate | None = (
+        NativeWorkGate(
+            max_audio_active=native_audio_max_active,
+            log=lambda msg: print(msg, flush=True),
+        )
+        if time_bounded and not dry_run
+        else None
+    )
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -639,12 +670,7 @@ def build(
             time_bounded=time_bounded,
             dry_run=dry_run,
         ),
-        native_work_gate=NativeWorkGate(
-            max_audio_active=native_audio_max_active,
-            log=lambda msg: print(msg, flush=True),
-        )
-        if time_bounded and not dry_run
-        else None,
+        native_work_gate=_native_work_gate,
         # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;
         # N simultaneous inference calls each get 1/N of available CPU, making each
         # N× slower. asr_workers=1 (default) serialises all ASR, giving each call full
@@ -698,12 +724,13 @@ def build(
         and not dry_run
         and (bool(os.environ.get("GITHUB_ACTIONS")) or heartbeat_requested)
     )
+    build_start = time.monotonic()
     with _ResourceHeartbeat(
         enabled=heartbeat_enabled,
         label="enrich" if phase == "enrich" else phase,
         root=output_dir,
         interval_seconds=heartbeat_interval,
-    ):
+    ) as _hb:
         if time_bounded and not dry_run and storage is not None:
             _try_preload_asr_model(defaults)
 
@@ -781,7 +808,29 @@ def build(
         # Run history calibrates the cost projection from real encode time, so record it only for
         # the phase that does that work (enrich/all) — a near-zero-cost render run would dilute it.
         if time_bounded:
-            _record_run_history(state_dir, results, pipeline.stage_totals)
+            _elapsed = time.monotonic() - build_start
+            _window = (
+                float(defaults.get("run_time_budget_minutes", 0))
+                * 60
+                * float(defaults.get("budget_safety", 0.8))
+            )
+            _record_run_history(
+                state_dir,
+                results,
+                pipeline.stage_totals,
+                peak_load_per_cpu=_hb.peak_load_per_cpu,
+                min_mem_avail_mb=(
+                    round(_hb.min_mem_avail_bytes / (1024 * 1024), 1)
+                    if _hb.min_mem_avail_bytes is not None
+                    else None
+                ),
+                window_used_pct=(round(100.0 * _elapsed / _window, 1) if _window > 0 else None),
+                gate_wait_seconds=(
+                    round(_native_work_gate.total_wait_seconds, 1)
+                    if _native_work_gate is not None
+                    else None
+                ),
+            )
         # Persist the updated record store + cache back to durable storage. The bucket — not
         # actions/cache — is the source of truth for derived artifacts.
         pushed = push_state(storage, state_dir)
@@ -880,7 +929,16 @@ RUN_SUMMARY_NAME = "run_summary.json"
 _RUN_HISTORY_KEEP = 1000  # cap the rolling log so the synced state stays small
 
 
-def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> None:
+def _record_run_history(
+    state_dir: Path,
+    results: list,
+    stage_totals: dict,
+    *,
+    peak_load_per_cpu: float | None = None,
+    min_mem_avail_mb: float | None = None,
+    window_used_pct: float | None = None,
+    gate_wait_seconds: float | None = None,
+) -> None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
     *measured* seconds/episode and per-stage backlog instead of defaults. Lives in the durable
@@ -929,6 +987,10 @@ def _record_run_history(state_dir: Path, results: list, stage_totals: dict) -> N
         "stages": stages,
         "github_run_id": github_run_id,
         "github_run_url": github_run_url,
+        "peak_load_per_cpu": round(peak_load_per_cpu, 3) if peak_load_per_cpu is not None else None,
+        "min_mem_avail_mb": min_mem_avail_mb,
+        "window_used_pct": window_used_pct,
+        "gate_wait_seconds": gate_wait_seconds,
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")

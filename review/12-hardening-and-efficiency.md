@@ -146,6 +146,15 @@ ADD_CITY.md wall-clock fix.
 
 ## H2 — Projection wall-clock fix + backlog rows
 
+> **Implemented** — `per_run_cap` defaults to `None` (wall-clock bound) when `materialize_budget_per_run`
+> is absent; `to_markdown` updated to say "delete the cap" not "set a new value"; `measured_inputs`
+> calibrates from `materialize_encoded` (real encodes only); `_feed_row` adds bytes-based `hours_hosted`
+> fallback for Swagit/CivicPlus; `NativeWorkGate.total_wait_seconds` accumulator added; `_ResourceHeartbeat`
+> samples `peak_load_per_cpu` + `min_mem_avail_bytes` via `current_snapshot()`; `_record_run_history`
+> writes `peak_load_per_cpu`, `min_mem_avail_mb`, `window_used_pct`, `gate_wait_seconds` to
+> `run_history.jsonl`; `build_status` returns `audio_backlog` + `transcript_backlog` sub-dicts with ETAs.
+> 8 new tests.
+
 **Problem.** `citypods/report.py` still models the legacy per-run cap:
 - `report.py:164` and `report.py:549`: `per_run_cap=int(defaults.get("materialize_budget_per_run", 25))`.
 - `to_markdown()` (≈ `report.py:235–239`) can therefore report "the per-run cap (25) is the bottleneck"
