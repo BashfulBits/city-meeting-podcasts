@@ -92,7 +92,7 @@ sync · #20 video enclosures (partial).
 
 | Item | #/GH | Maturity | Status |
 |---|---|---|---|
-| H1 docs/issue reconciliation | #52-health, GH#110/#141/#154 | L3 | in progress (this doc set) |
+| H1 docs/issue reconciliation | #52-health, GH#110/#141/#154 | L3 | **Shipped** (this doc set + GH#154 closed, GH#110 narrowed to backfill/ops, GH#141 umbrella-only) |
 | H2 projection wall-clock fix | R3 | L3 | committed |
 | H3 feed-validation publish gate | #53 | L3 | committed |
 | H4 feed-health catch-up vs stalled states + per-provider error-rate tracking | R5 | L3 | committed · add real-run provider 4xx/timeout rates (provider drift now shows as red deploys, not in the audit) |
