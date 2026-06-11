@@ -35,19 +35,34 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H1** | Docs/roadmap/issue reconciliation (this doc set; close/narrow shipped issues) |
 | **H2** | Projection wall-clock fix — drop the legacy `materialize_budget_per_run` default; add audio + transcript backlog rows |
 | **H3** | **#53** feed-validation publish gate in `deploy.yml` |
-| **H4** | Feed-health **catch-up vs stalled** states + ETA + auto-comment (untangle the issue sprawl) |
+| **H4** | Feed-health **catch-up vs stalled** states + ETA + auto-comment (untangle the issue sprawl); **per-provider error-rate tracking** from real runs (provider drift now shows up as red deploys, not in the audit) |
 | **H5** | Stage **backlog manifest** + a configurable, extensible **prioritization policy** (recency / city order / feed-visible-first / requested-first / …) |
-| **H6** | ASR **benchmark workflow** → **sharded/separate ASR workflow** (after safe state coordination) |
+| **H6a** | ASR **benchmark workflow** (`asr-bench.yml`, manual) — **do-now, no H5 dependency**: settles model choice + the measured cost of `word_timestamps` before any backfill decision |
+| **H6b** | **Sharded/separate ASR workflow** (after H5's manifest provides safe state coordination) |
 | **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
 | **H8** | ✓ Shipped — throughput maximization on the free 4-core runner (PR #235): pinned ffmpeg `-threads`, memory/CPU admission guard, abandoned-ASR-thread accounting |
-| **H9** | Evaluate **free transcription-offload tiers** (matrix sharding first; then free ASR-API/compute, ToS-checked) |
+| **H9** | Evaluate **free transcription-offload tiers** against the **execution-backend interface** (matrix sharding first; then Modal / Kaggle / self-hosted / free ASR-API, ToS-checked) — feeds the pluggable-compute initiative |
 | **H10** | ✓ Shipped — ASR alignment fix (PR #232): caption-bearing feeds use a stable-ts align model and fall back to fresh transcription on align errors |
 | **H11a** | ✓ Shipped — **Deploy resilience**: native work gate + one-slot audio lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247) |
 | **H11b** | After H5 — isolate enrich into its own workflow (own concurrency group, separate from Pages deploy) |
+| **H12** | **Transcript artifact rework** (do-now): clean segment-cue VTT for players + a word-level JSON sidecar for search/clips/diarization + **version-aware gradual re-transcribe** (fixes #249's word-per-cue regression) |
+
+**Phase H exit criteria ("green").** Phase H is done — and Phase R may start — when, measured off
+`run_history.jsonl` + the status page (instruments built in H2/H4):
+- **≥ 95 % of scheduled Build & Deploy runs succeed** over a trailing 14-day window (no exit-143 /
+  lost-comms kills);
+- **zero feeds in `rehost-backlog:stalled`** — every backlog is `catching-up` with a finite, declining ETA;
+- **audio + transcript backlog ETAs are computed and trending down** run-over-run at current inflow.
+(These are proposed defaults — adjust the thresholds to taste.)
 
 ## Toward 1.0: **R — Research-Tool Surface**
 Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeting-pages-and-search.md)
 (pages + search) and [`review/14`](review/14-topic-tags-strong-towns-lens.md) (tags).
+
+> **Scope (depth-first):** prove R1–R5 across the **entire current city catalog** before onboarding new
+> cities (VISION "Depth-first"). The pilot set *is* today's roster — not a hand-picked subset — so search
+> index size and page volume stay bounded by the current ~85 feeds while the engine choices (e.g.
+> Pagefind) are validated.
 
 | Pri | Item |
 |----:|------|
@@ -58,8 +73,11 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R5** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
 
 ## 1.0 milestone (drop the beta tag)
-Phase **H** green + **#52** content permanence (shipped) + **#53** validation gate (H3) + **#55**
-front-end design cycle + **#50** accessibility.
+Phase **H** green (per the exit criteria above) + **#52** content permanence (shipped) + **#53**
+validation gate (H3) + **#55** front-end design cycle + **#50** accessibility + the **execution-backend
+interface locked** (so post-1.0 compute scaling — Modal / Kaggle / self-hosted / AWS — is adapter-only;
+see VISION "Compute is pluggable" and the pluggable-compute initiative in
+[`review/11`](review/11-technical-design-roadmap.md)).
 
 ## Beyond 1.0 (the long-horizon phases)
 Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](review/11-technical-design-roadmap.md):
@@ -75,8 +93,12 @@ Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](
 - **Monetization**: free + donations/grants (**#16**, **#125** OP3 analytics); freemium considered only
   if the project grows enough to sustain it; never paywall the public record.
 - **Security**: LLM output is untrusted; SSRF gate on any user-submitted source (see [SECURITY.md](SECURITY.md)).
-- **Deferred backlog**: speaker diarization (#7), translation (#9), bitrate ladders (#24), chapter
+- **Compute scaling**: heavy inference runs behind a **pluggable execution-backend interface** (free
+  Actions runner now; Modal / Kaggle / self-hosted Mac-mini runner / AWS later) so scaling is adapter-only
+  — the interface is a **pre-1.0 lock**. See VISION "Compute is pluggable" and `review/11`.
+- **Deferred backlog**: translation (#9), bitrate ladders (#24), chapter
   images (#26), "new since last visit" (#48), full video re-hosting, hosted DB/API, off-Actions media.
+  (Speaker diarization (#7) moved to **Phase R** — see [`review/11`](review/11-technical-design-roadmap.md).)
 
 ## How priorities work here
 Items are scoped, rationalized, and cost-modeled in [`review/11`](review/11-technical-design-roadmap.md)

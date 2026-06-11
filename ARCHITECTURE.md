@@ -105,6 +105,11 @@ Hard-won facts that bite anyone adding/debugging providers:
   `python -m citypods.cli …` (and `PYTHONPATH=. python scripts/…`).
 - **Granicus `DownloadFile.php` 302-redirects to a real MP4** even when the RSS `type` says WMV — that
   legacy type is metadata, not the actual media.
+- **Granicus rate-limits `DownloadFile.php` with `403` (not `429`) under concurrent access.** The adapter
+  **pre-follows** the redirect to the signed `archive-video.granicus.com` URL and hands ffmpeg that signed
+  URL directly (the CDN `403`s an unsigned bare path), retrying the resolve on `403` with backoff+jitter
+  (PRs #245/#250/#251). Resolution stays at **fetch time** (`resolve_media_url`), never persisted, because
+  the signed URL expires.
 
 ## Security boundary
 

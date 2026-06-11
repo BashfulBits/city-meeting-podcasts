@@ -55,9 +55,32 @@ When you move a feature along the pipeline, update the listed docs in the **same
 - **LLM output is untrusted** — never overwrite official links/titles/dates/transcript text (SECURITY.md).
 - **SSRF gate** — any fetch of a (potentially) user-influenced URL goes through `validate_source_url`.
 - **New platform = adapter; new per-episode feature = stage.** Most features need no core change.
+- **Pipeline-version bumps state their backfill story.** Bumping a stage's pipeline version (e.g.
+  `ASR_PIPELINE_VERSION`, `SilencePlanner.version`) changes how re-processing is triggered. The PR
+  **must** state — in its description and CHANGELOG entry, matching the code — whether already-stored
+  artifacts are auto-invalidated (gradually re-done) or left as-is. A silent bump that *does* invalidate
+  can queue weeks of catalog rework; one that *doesn't* can leave a stale-format catalog while the docs
+  claim otherwise — both have bitten this project.
 - **Branch names:** `<type>/<slug>` — `feat/`, `fix/`, `docs/`, `refactor/`, `chore/` (issue number
   in the slug when one is tracked, e.g. `feat/110-asr-transcripts`). Full convention + examples in
   [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## When a change deviates from the plan
+
+The committed plan is [ROADMAP.md](ROADMAP.md) + [`review/11`](review/11-technical-design-roadmap.md)
+(sequencing + locked decisions) and the breakouts. When a request — or a change you're about to propose —
+**goes against** that plan (reorders the queue, skips a stated gate, promotes a Deferred item, tunes a
+production knob past its documented ceiling, or reverses a recent decision), **do not just proceed**:
+
+1. **Surface it** — say plainly that it deviates, and from what.
+2. **Give a concise pro/con** of doing it now vs. as written — costs, risks, and what it unblocks.
+3. **Get explicit confirmation, then record the rationale** in the relevant committed doc, so the
+   deviation is auditable rather than silent.
+
+This is a confirmation gate, not a veto — the maintainer decides. Its purpose is to make a deviation a
+*chosen* trade-off with the trade-offs on the table, not an accident. (Cases that warrant it: a
+runner-concurrency jump past a documented "hold at N" ceiling; a Deferred→Phase-R scope promotion bundled
+with a pipeline-version bump.)
 
 ## Local workflow
 
