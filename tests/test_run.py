@@ -458,6 +458,45 @@ def test_newer_run_queued_false_for_older_or_completed(monkeypatch):
     assert run._newer_run_queued() is None
 
 
+# --- ffmpeg threads auto-calc -------------------------------------------------------
+
+
+def test_ffmpeg_threads_autocalc_divides_by_native_audio_max_active(
+    tmp_path, fake_provider, monkeypatch
+):
+    """Auto-calc must use native_audio_max_active as the divisor, not max_encodes_per_source.
+
+    Bug: the old code divided by max_encodes_per_source (default 1), so clearing
+    audio_ffmpeg_threads with native_audio_max_active=4 would give 4×4=16 threads on 4 cores.
+    """
+    monkeypatch.setattr("os.cpu_count", lambda: 4)
+    config_dir = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  native_audio_max_active: 4\n"
+        # No audio_ffmpeg_threads — triggers auto-calc path
+    )
+
+    captured: dict = {}
+    original = run.CommandFfmpeg
+
+    class _CapturingFfmpeg(original):
+        def __init__(self, **kwargs):
+            captured["threads"] = kwargs.get("threads")
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr(run, "CommandFfmpeg", _CapturingFfmpeg)
+
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=config_dir,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        dry_run=True,
+    )
+
+    assert captured["threads"] == 1  # 4 CPUs // 4 active encodes = 1 thread per encode
+
+
 def test_newer_run_queued_detects_newer_scheduled_runs(monkeypatch):
     _set_actions_env(monkeypatch)
     _fake_actions_api(
