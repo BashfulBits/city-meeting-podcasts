@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from types import ModuleType
 from unittest.mock import MagicMock
 
 from citypods.asr import (
+    TranscriptArtifacts,
     _fmt_ts,
     _to_vtt,
+    _to_words_json,
     asr_spec_hash,
     srt_to_text,
     vtt_to_text,
@@ -89,31 +92,66 @@ class TestToVtt:
         assert vtt.count("-->") == 2
         assert "A" in vtt and "B" in vtt
 
-    def test_word_level_cues_when_words_present(self):
-        words = [self._word(" Hello", 1.0, 1.5), self._word(" world", 1.5, 2.0)]
-        seg = MagicMock()
-        seg.words = words
-        vtt = _to_vtt([seg]).decode()
-        assert "00:00:01.000 --> 00:00:01.500" in vtt
-        assert "Hello" in vtt
-        assert "00:00:01.500 --> 00:00:02.000" in vtt
-        assert "world" in vtt
-        assert vtt.count("-->") == 2
-
-    def test_word_level_skips_words_without_timestamps(self):
-        words = [self._word(" Good", 0.5, 1.0), self._word(" morning", None, None)]
-        seg = MagicMock()
-        seg.words = words
+    def test_segment_level_even_when_words_present(self):
+        # H12: _to_vtt is segment-level only; per-word timing lives in the JSON sidecar.
+        seg = self._seg(1.0, 5.0, "Hello world")
+        seg.words = [self._word(" Hello", 1.0, 1.5), self._word(" world", 1.5, 5.0)]
         vtt = _to_vtt([seg]).decode()
         assert vtt.count("-->") == 1
-        assert "Good" in vtt
-        assert "morning" not in vtt
-
-    def test_empty_words_falls_back_to_segment(self):
-        seg = self._seg(1.0, 5.0, "Hello world")
-        vtt = _to_vtt([seg]).decode()
         assert "00:00:01.000 --> 00:00:05.000" in vtt
         assert "Hello world" in vtt
+
+
+# ── _to_words_json ────────────────────────────────────────────────────────────
+
+
+class TestToWordsJson:
+    def _seg(self, start, end, text, words=None):
+        s = MagicMock()
+        s.start = start
+        s.end = end
+        s.text = text
+        s.words = words or []
+        return s
+
+    def _word(self, word, start, end):
+        w = MagicMock()
+        w.word = word
+        w.start = start
+        w.end = end
+        return w
+
+    def test_schema_and_basis(self):
+        data = json.loads(_to_words_json([], basis="served"))
+        assert data["schema"] == "1"
+        assert data["basis"] == "served"
+        assert data["segments"] == []
+
+    def test_segment_and_word_timings(self):
+        seg = self._seg(
+            1.0,
+            2.0,
+            "Hello world",
+            [self._word(" Hello", 1.0, 1.5), self._word(" world", 1.5, 2.0)],
+        )
+        data = json.loads(_to_words_json([seg]))
+        s0 = data["segments"][0]
+        assert s0["start"] == 1.0 and s0["end"] == 2.0
+        assert s0["text"] == "Hello world"
+        assert s0["words"] == [
+            {"w": "Hello", "s": 1.0, "e": 1.5},
+            {"w": "world", "s": 1.5, "e": 2.0},
+        ]
+
+    def test_skips_words_without_timestamps(self):
+        seg = self._seg(
+            0.5,
+            1.0,
+            "Good morning",
+            [self._word(" Good", 0.5, 1.0), self._word(" morning", None, None)],
+        )
+        data = json.loads(_to_words_json([seg]))
+        assert [w["w"] for w in data["segments"][0]["words"]] == ["Good"]
 
 
 # ── asr_spec_hash ─────────────────────────────────────────────────────────────
@@ -181,10 +219,13 @@ class TestTranscribeMocked:
         _inject_fw(model)
         sys.modules["faster_whisper"].WhisperModel = MagicMock(return_value=model)
 
-        vtt = transcribe(audio, "base.en", "en", "int8", 5, None, 4)
+        result = transcribe(audio, "base.en", "en", "int8", 5, None, 4)
 
-        assert vtt.startswith(b"WEBVTT")
-        assert b"Hello world" in vtt
+        assert isinstance(result, TranscriptArtifacts)
+        assert result.vtt.startswith(b"WEBVTT")
+        assert b"Hello world" in result.vtt
+        words = json.loads(result.words)
+        assert words["schema"] == "1" and words["basis"] == "served"
 
     def test_missing_dep_raises_import_error(self, tmp_path):
         from citypods.asr import transcribe
@@ -223,10 +264,11 @@ class TestAlignMocked:
         audio.write_bytes(b"fake")
 
         self._setup_sw("WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world\n")
-        vtt = align(audio, "Hello world", "base.en", "en", 4)
+        result = align(audio, "Hello world", "base.en", "en", 4)
 
-        assert vtt.startswith(b"WEBVTT")
-        assert b"Hello world" in vtt
+        assert isinstance(result, TranscriptArtifacts)
+        assert result.vtt.startswith(b"WEBVTT")
+        assert b"Hello world" in result.vtt
 
     def test_prepends_webvtt_if_missing(self, tmp_path):
         from citypods.asr import align
@@ -235,9 +277,9 @@ class TestAlignMocked:
         audio.write_bytes(b"fake")
 
         self._setup_sw("00:00:00.000 --> 00:00:05.000\nHello\n")
-        vtt = align(audio, "Hello", "base.en", "en", 4)
+        result = align(audio, "Hello", "base.en", "en", 4)
 
-        assert vtt.startswith(b"WEBVTT")
+        assert result.vtt.startswith(b"WEBVTT")
 
     def test_loaded_faster_model_uses_stable_ts_model_for_alignment(self, tmp_path):
         import citypods.asr as asr
@@ -259,9 +301,9 @@ class TestAlignMocked:
         sys.modules["stable_whisper"].load_faster_whisper = MagicMock(return_value=stable_model)
 
         loaded = asr.load_model("base.en", "int8", 4)
-        vtt = asr.align(audio, "Hello", loaded, "en", 4)
+        result = asr.align(audio, "Hello", loaded, "en", 4)
 
-        assert vtt.startswith(b"WEBVTT")
+        assert result.vtt.startswith(b"WEBVTT")
         assert fast_model.align.call_count == 0
         sys.modules["stable_whisper"].load_faster_whisper.assert_called_once_with(
             "base.en",

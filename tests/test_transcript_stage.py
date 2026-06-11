@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
-from citypods.asr import asr_spec_hash
+from citypods.asr import TranscriptArtifacts, asr_spec_hash
 from citypods.models import City, Episode
 from citypods.records import (
     episode_to_record,
@@ -147,6 +147,9 @@ class TestTranscriptRecordRoundTrip:
         ep.transcript_format = "vtt"
         ep.transcript_basis = "served"
         ep.transcript_synced = True
+        ep.transcript_words_key = "transcripts/src/uid-g1-asr-abc.words.json"
+        ep.transcript_words_url = "https://cdn/transcripts/src/uid-g1-asr-abc.words.json"
+        ep.transcript_pipeline_version = "3"
 
         rec = episode_to_record(ep)
         assert rec["transcript"] is not None
@@ -160,6 +163,9 @@ class TestTranscriptRecordRoundTrip:
         assert ep2.transcript_synced is True
         assert ep2.transcript_format == "vtt"
         assert ep2.transcript_basis == "served"
+        assert ep2.transcript_words_key == ep.transcript_words_key
+        assert ep2.transcript_words_url == ep.transcript_words_url
+        assert ep2.transcript_pipeline_version == "3"
 
     def test_no_transcript_stores_null(self):
         ep = _ep()
@@ -480,6 +486,18 @@ class TestTranscriptStopAndStorage:
         refs = referenced_audio_keys(state_dir)
         assert ep.transcript_key in refs
 
+    def test_referenced_keys_protect_word_sidecar_from_gc(self, tmp_path):
+        # H12: the word-JSON sidecar must also be in the orphan-GC live set.
+        ep = _ep()
+        ep.transcript_key = "transcripts/src/uid-g1-asr-abc.vtt"
+        ep.transcript_words_key = "transcripts/src/uid-g1-asr-abc.words.json"
+        ep.transcript_synced = True
+        state_dir = tmp_path / "state"
+        save_records(state_dir, source_key(_city()), {ep.uid: episode_to_record(ep)})
+        refs = referenced_audio_keys(state_dir)
+        assert ep.transcript_key in refs
+        assert ep.transcript_words_key in refs
+
 
 # ---------------------------------------------------------------------------
 # ASR slot (issue #110)
@@ -496,13 +514,22 @@ def _ep_with_audio(uid="uid-asr", links=None) -> Episode:
 
 
 ASR_VTT = b"WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nCouncil meeting called to order.\n"
+ASR_WORDS = b'{"schema":"1","basis":"served","segments":[]}'
 
 
 class _FakeAsr:
     """Replaces citypods.asr in TranscriptStage for tests."""
 
-    def __init__(self, vtt: bytes = ASR_VTT, *, fail: bool = False, fail_load: bool = False):
+    def __init__(
+        self,
+        vtt: bytes = ASR_VTT,
+        words: bytes = ASR_WORDS,
+        *,
+        fail: bool = False,
+        fail_load: bool = False,
+    ):
         self.vtt = vtt
+        self.words = words
         self.fail = fail
         self.fail_load = fail_load
         self.transcribe_calls: list[dict] = []
@@ -522,13 +549,13 @@ class _FakeAsr:
         if self.fail:
             raise RuntimeError("transcribe failed")
         self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
-        return self.vtt
+        return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
     def align(self, audio_path, text, model_or_name, language, cpu_threads):
         if self.fail:
             raise RuntimeError("align failed")
         self.align_calls.append({"text": text, "model": model_or_name})
-        return self.vtt
+        return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
     def asr_spec_hash(self, audio_spec_hash, model, align_hash, version):
         # Use the real implementation
@@ -961,7 +988,7 @@ class TestTranscriptStageASR:
             ):
                 started.set()
                 release.wait(timeout=5)
-                return self.vtt
+                return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
         class _PreemptingStop:
             def __init__(self):
@@ -1013,7 +1040,7 @@ class TestTranscriptStageASR:
                 self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
                 started.set()
                 release.wait(timeout=10)
-                return self.vtt
+                return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
         fake_asr = _SlowAsr()
         ctx = _ctx(tmp_path)
@@ -1059,7 +1086,7 @@ class TestTranscriptStageASR:
                 self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
                 started.set()
                 release.wait(timeout=10)
-                return self.vtt
+                return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
         fake_asr = _SlowAsr()
         ctx = _ctx(tmp_path)
@@ -1188,3 +1215,70 @@ class TestTranscriptStageASR:
 
         assert fake_asr.transcribe_calls == []
         assert ep.transcript_key is None
+
+
+class TestTranscriptVersionAwareReuse:
+    """H12: version-aware reuse — stale ASR transcripts re-do, provider transcripts never do."""
+
+    def test_fresh_transcribe_stores_word_sidecar_and_version(self, tmp_path):
+        ep = _ep_with_audio()
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+        assert ep.transcript_words_key and ep.transcript_words_key.endswith(".words.json")
+        assert ep.transcript_pipeline_version == ASR_PIPELINE_VERSION
+        audio_dir = tmp_path / "audio"
+        assert (audio_dir / ep.transcript_key).exists()
+        assert (audio_dir / ep.transcript_words_key).exists()
+
+    def test_current_version_asr_transcript_is_reused(self, tmp_path):
+        ep = _ep_with_audio()
+        recipe = asr_spec_hash(ep.audio_spec_hash, _city().asr_model, None, ASR_PIPELINE_VERSION)
+        src_key = source_key(_city())
+        asr_key = f"transcripts/{src_key}/{ep.uid}-asr-{recipe}.vtt"
+        ep.transcript_key = asr_key
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+        root = tmp_path / "audio"
+        (root / asr_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / asr_key).write_bytes(ASR_VTT)
+        fake_asr = _FakeAsr()
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert stats.reused == 1
+        assert fake_asr.transcribe_calls == []
+
+    def test_stale_version_asr_transcript_is_redone(self, tmp_path):
+        ep = _ep_with_audio()
+        src_key = source_key(_city())
+        old_recipe = asr_spec_hash(ep.audio_spec_hash, _city().asr_model, None, "1")
+        old_key = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.vtt"
+        ep.transcript_key = old_key
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = "1"
+        root = tmp_path / "audio"
+        (root / old_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / old_key).write_bytes(ASR_VTT)
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+        assert len(fake_asr.transcribe_calls) == 1  # re-transcribed, not reused
+        assert ep.transcript_pipeline_version == ASR_PIPELINE_VERSION
+        new_recipe = asr_spec_hash(
+            ep.audio_spec_hash, _city().asr_model, None, ASR_PIPELINE_VERSION
+        )
+        assert ep.transcript_key == f"transcripts/{src_key}/{ep.uid}-asr-{new_recipe}.vtt"
+        assert ep.transcript_words_key.endswith(f"-asr-{new_recipe}.words.json")
+
+    def test_provider_transcript_not_invalidated_by_asr_version(self, tmp_path):
+        ep = _ep_with_audio()
+        src_key = source_key(_city())
+        prov_key = f"transcripts/{src_key}/{ep.uid}-deadbeef0000.vtt"  # no -asr- infix
+        ep.transcript_key = prov_key
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = None  # provider-supplied
+        root = tmp_path / "audio"
+        (root / prov_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / prov_key).write_bytes(VTT_CONTENT)
+        fake_asr = _FakeAsr()
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert stats.reused == 1
+        assert fake_asr.transcribe_calls == []
+        assert ep.transcript_key == prov_key

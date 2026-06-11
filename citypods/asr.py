@@ -6,7 +6,8 @@ Two public entry points:
   align(audio_path, text, ...) — Path A: forced alignment via stable-ts, preserving
                                   the exact wording of an existing source transcript.
 
-Both return WebVTT bytes in *served time* (caller downloads the hosted M4A before calling).
+Both return a :class:`TranscriptArtifacts` (a clean segment-level VTT + a word-level JSON
+sidecar) in *served time* (caller downloads the hosted M4A before calling).
 
 All third-party imports (faster_whisper, stable_whisper) are lazy — the module loads
 cleanly without the [asr] optional extras; a missing import surfaces only when
@@ -58,30 +59,69 @@ def _fmt_ts(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:06.3f}"
 
 
-def _to_vtt(segments) -> bytes:
-    """Convert faster-whisper segments to WebVTT bytes.
+# Schema version of the word-level JSON sidecar (independent of ASR_PIPELINE_VERSION, which
+# keys re-transcription). Bump only when the JSON *shape* changes.
+_WORDS_SCHEMA_VERSION = "1"
 
-    Emits word-level cues when segments carry a `.words` list (word_timestamps=True);
-    falls back to segment-level cues otherwise.
+
+@dataclass(frozen=True)
+class TranscriptArtifacts:
+    """The two outputs of ASR for one episode:
+
+    * ``vtt``   — clean **segment-level** WebVTT, served to podcast apps via
+      ``<podcast:transcript>`` (one readable cue per utterance; small).
+    * ``words`` — a **word-level** JSON sidecar consumed server-side only (phrase search,
+      clip selection, diarization). Never served as the podcast transcript.
     """
+
+    vtt: bytes
+    words: bytes
+
+
+def _to_vtt(segments) -> bytes:
+    """Convert ASR segments to **segment-level** WebVTT bytes (one readable cue per
+    utterance). Word-level timing is emitted separately by :func:`_to_words_json`."""
     lines = ["WEBVTT", ""]
     for seg in segments:
-        words = getattr(seg, "words", None) or []
-        if words:
-            for w in words:
-                word = w.word.strip()
-                if word and w.start is not None and w.end is not None:
-                    lines.append(f"{_fmt_ts(w.start)} --> {_fmt_ts(w.end)}")
-                    lines.append(word)
-                    lines.append("")
-        else:
-            text = seg.text.strip()
-            if not text:
-                continue
-            lines.append(f"{_fmt_ts(seg.start)} --> {_fmt_ts(seg.end)}")
-            lines.append(text)
-            lines.append("")
+        text = (seg.text or "").strip()
+        if not text:
+            continue
+        lines.append(f"{_fmt_ts(seg.start)} --> {_fmt_ts(seg.end)}")
+        lines.append(text)
+        lines.append("")
     return "\n".join(lines).encode("utf-8")
+
+
+def _to_words_json(segments, basis: str = "served") -> bytes:
+    """Build the word-level JSON sidecar from ASR segments.
+
+    Shape: ``{"schema", "basis", "segments": [{"start","end","text",
+    "words": [{"w","s","e"}]}]}`` — segment text for readable snippets, per-word
+    ``(start, end)`` for deep-links / clip cuts / diarization alignment. Works for both
+    faster-whisper and stable-ts segments (both expose ``.words`` with
+    ``.word``/``.start``/``.end``)."""
+    out_segments = []
+    for seg in segments:
+        words = []
+        for w in getattr(seg, "words", None) or []:
+            start = getattr(w, "start", None)
+            end = getattr(w, "end", None)
+            token = (getattr(w, "word", "") or "").strip()
+            if token and start is not None and end is not None:
+                words.append({"w": token, "s": round(float(start), 3), "e": round(float(end), 3)})
+        text = (seg.text or "").strip()
+        if not text and not words:
+            continue
+        out_segments.append(
+            {
+                "start": round(float(seg.start), 3),
+                "end": round(float(seg.end), 3),
+                "text": text,
+                "words": words,
+            }
+        )
+    payload = {"schema": _WORDS_SCHEMA_VERSION, "basis": basis, "segments": out_segments}
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -203,7 +243,9 @@ def transcribe(
         initial_prompt=initial_prompt or None,
         word_timestamps=True,
     )
-    return _to_vtt(segments)
+    # Materialize the generator once: both the segment VTT and the word JSON consume it.
+    segs = list(segments)
+    return TranscriptArtifacts(vtt=_to_vtt(segs), words=_to_words_json(segs))
 
 
 class AlignmentQualityError(RuntimeError):
@@ -270,10 +312,15 @@ def align(
                 f"({timed_words}/{total_words} words timed) — falling back to transcription"
             )
 
-    vtt_str: str = result.to_vtt()
+    # Segment-level VTT (clean cue-per-utterance) for the podcast tag; word JSON sidecar
+    # from the same aligned result for server-side features.
+    vtt_str: str = result.to_vtt(segment_level=True, word_level=False)
     if not vtt_str.startswith("WEBVTT"):
         vtt_str = "WEBVTT\n\n" + vtt_str
-    return vtt_str.encode("utf-8")
+    return TranscriptArtifacts(
+        vtt=vtt_str.encode("utf-8"),
+        words=_to_words_json(result.segments),
+    )
 
 
 # ── Spec hash ────────────────────────────────────────────────────────────────

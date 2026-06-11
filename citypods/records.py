@@ -203,9 +203,13 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             audio_key = (rec.get("audio") or {}).get("key")
             if audio_key:
                 keys.add(audio_key)
-            transcript_key = (rec.get("transcript") or {}).get("key")
+            transcript = rec.get("transcript") or {}
+            transcript_key = transcript.get("key")
             if transcript_key:
                 keys.add(transcript_key)
+            words_key = transcript.get("words_key")
+            if words_key:
+                keys.add(words_key)
     return keys
 
 
@@ -232,6 +236,9 @@ def episode_to_record(ep: Episode) -> dict:
             "format": ep.transcript_format,
             "basis": ep.transcript_basis,
             "synced": ep.transcript_synced,
+            "words_key": ep.transcript_words_key,
+            "words_url": ep.transcript_words_url,
+            "pipeline_version": ep.transcript_pipeline_version,
         }
         if ep.transcript_key
         else None,
@@ -268,6 +275,9 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_format": t.get("format"),
         "transcript_basis": t.get("basis", "source:s0"),
         "transcript_synced": bool(t.get("synced", False)),
+        "transcript_words_key": t.get("words_key"),
+        "transcript_words_url": t.get("words_url"),
+        "transcript_pipeline_version": t.get("pipeline_version"),
     }
 
 

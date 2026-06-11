@@ -105,7 +105,7 @@ def run_bench(
             prompt = ". ".join(p for p in (city.podcast_title, ep.body, ep.title) if p)
             t0 = time.perf_counter()
             try:
-                vtt = asr_mod.transcribe(
+                result = asr_mod.transcribe(
                     audio_path, model, language, compute_type, beam_size, prompt, cpu_threads
                 )
             except ImportError as exc:
@@ -113,7 +113,7 @@ def run_bench(
                 continue
 
             elapsed = time.perf_counter() - t0
-            hyp_text = asr_mod.vtt_to_text(vtt.decode("utf-8", errors="replace"))
+            hyp_text = asr_mod.vtt_to_text(result.vtt.decode("utf-8", errors="replace"))
             hyp_words = len(hyp_text.split())
 
             wer = (
