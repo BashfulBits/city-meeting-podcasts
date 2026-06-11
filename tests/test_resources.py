@@ -162,3 +162,34 @@ def _wait_for(predicate) -> bool:
             return True
         event.wait(0.01)
     return False
+
+
+def test_native_work_gate_total_wait_seconds_no_contention():
+    """No wait → total_wait_seconds stays 0."""
+    gate = NativeWorkGate(poll_seconds=0.01)
+    assert gate.acquire(kind="audio", label="a") is True
+    gate.release(kind="audio")
+    assert gate.total_wait_seconds == 0.0
+
+
+def test_native_work_gate_total_wait_seconds_accumulates():
+    """total_wait_seconds increases when a caller had to wait for the gate."""
+    gate = NativeWorkGate(poll_seconds=0.01)
+    assert gate.acquire(kind="audio", label="hold") is True
+
+    acquired = threading.Event()
+
+    def _waiter():
+        gate.acquire(kind="audio", label="waiter")
+        acquired.set()
+        gate.release(kind="audio")
+
+    t = threading.Thread(target=_waiter)
+    t.start()
+    assert _wait_for(lambda: not acquired.is_set() and gate._audio_active == 1)
+
+    gate.release(kind="audio")
+    t.join(timeout=2)
+
+    assert acquired.is_set()
+    assert gate.total_wait_seconds > 0.0

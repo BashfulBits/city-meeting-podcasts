@@ -229,6 +229,8 @@ class NativeWorkGate:
         self._sleep = sleep
         self._poll_seconds = max(0.1, poll_seconds)
         self._log = log
+        self._total_wait_seconds: float = 0.0
+        self._wait_lock = threading.Lock()
 
     def acquire(
         self,
@@ -262,8 +264,12 @@ class NativeWorkGate:
 
     def _acquire_audio(self, *, label: str, stop: Callable[[], bool] | None) -> bool:
         announced = False
+        wait_start: float | None = None
         while True:
             if stop is not None and stop():
+                if wait_start is not None:
+                    with self._wait_lock:
+                        self._total_wait_seconds += time.monotonic() - wait_start
                 return False
             with self._cond:
                 if (
@@ -274,6 +280,8 @@ class NativeWorkGate:
                     self._audio_active += 1
                     if announced:
                         self._emit(f"[enrich] native gate acquired kind=audio label={label}")
+                        with self._wait_lock:
+                            self._total_wait_seconds += time.monotonic() - (wait_start or 0.0)
                     return True
                 if not announced:
                     reason = (
@@ -286,16 +294,21 @@ class NativeWorkGate:
                         f"active_audio={self._audio_active} max_audio={self._max_audio_active}"
                     )
                     announced = True
+                    wait_start = time.monotonic()
                 self._cond.wait(timeout=self._poll_seconds)
 
     def _acquire_asr(self, *, label: str, stop: Callable[[], bool] | None) -> bool:
         announced = False
         waiting = True
+        wait_start: float | None = None
         with self._cond:
             self._asr_waiting += 1
         try:
             while True:
                 if stop is not None and stop():
+                    if wait_start is not None:
+                        with self._wait_lock:
+                            self._total_wait_seconds += time.monotonic() - wait_start
                     return False
                 with self._cond:
                     if not self._asr_active and self._audio_active == 0:
@@ -304,6 +317,8 @@ class NativeWorkGate:
                         self._asr_active = True
                         if announced:
                             self._emit(f"[enrich] native gate acquired kind=asr label={label}")
+                            with self._wait_lock:
+                                self._total_wait_seconds += time.monotonic() - (wait_start or 0.0)
                         return True
                     if not announced:
                         self._emit(
@@ -311,12 +326,18 @@ class NativeWorkGate:
                             f"reason=audio-active active_audio={self._audio_active}"
                         )
                         announced = True
+                        wait_start = time.monotonic()
                     self._cond.wait(timeout=self._poll_seconds)
         finally:
             with self._cond:
                 if waiting and self._asr_waiting > 0:
                     self._asr_waiting -= 1
                 self._cond.notify_all()
+
+    @property
+    def total_wait_seconds(self) -> float:
+        with self._wait_lock:
+            return self._total_wait_seconds
 
     def _emit(self, message: str) -> None:
         if self._log is not None:
