@@ -120,26 +120,21 @@ def run_bench(
             hyp_text = asr_mod.vtt_to_text(result.vtt.decode("utf-8", errors="replace"))
             hyp_words = len(hyp_text.split())
 
+            _wer_transform = jiwer.transforms.Compose(
+                [
+                    jiwer.transforms.ToLowerCase(),
+                    jiwer.transforms.RemovePunctuation(),
+                    jiwer.transforms.RemoveMultipleSpaces(),
+                    jiwer.transforms.Strip(),
+                    jiwer.transforms.ReduceToListOfListOfWords(),
+                ]
+            )
             wer = (
                 jiwer.wer(
-                    jiwer.transforms.Compose(
-                        [
-                            jiwer.transforms.ToLowerCase(),
-                            jiwer.transforms.RemovePunctuation(),
-                            jiwer.transforms.RemoveMultipleSpaces(),
-                            jiwer.transforms.Strip(),
-                            jiwer.transforms.ReduceToListOfListOfWords(),
-                        ]
-                    )(ref_text),
-                    jiwer.transforms.Compose(
-                        [
-                            jiwer.transforms.ToLowerCase(),
-                            jiwer.transforms.RemovePunctuation(),
-                            jiwer.transforms.RemoveMultipleSpaces(),
-                            jiwer.transforms.Strip(),
-                            jiwer.transforms.ReduceToListOfListOfWords(),
-                        ]
-                    )(hyp_text),
+                    ref_text,
+                    hyp_text,
+                    reference_transform=_wer_transform,
+                    hypothesis_transform=_wer_transform,
                 )
                 if hyp_text.strip()
                 else 1.0
