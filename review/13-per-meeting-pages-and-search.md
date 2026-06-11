@@ -1,7 +1,7 @@
 # review/13 — Per-Meeting Pages & Static Transcript Search (Phase R)
 
 **Maturity: L2→L3 · breakout of [`review/11`](11-technical-design-roadmap.md) Phase R · last updated
-2026-06-08**
+2026-06-10**
 
 > Two tightly-coupled initiatives: per-meeting permalink pages (#46/GH#157) and static client-side
 > transcript search (#6). Pages are the **product hinge** from "podcast feeds" to "civic research
@@ -94,6 +94,17 @@ documents = meetings, with fields: `title`, `body`, `city`, `date`, `agenda/reso
 **transcript timestamps** that deep-link into the meeting page (`…/<uid>/#t=<seconds>`). Filters: city,
 body, date range, topic.
 
+### Index source: built from records, not scraped from HTML
+
+> **Resolves a contradiction:** Part A keeps the full transcript *out* of the meeting-page HTML (fetched
+> client-side from the bucket for large files), but Pagefind's default mode indexes *rendered HTML* — so a
+> naive Pagefind crawl would never see transcript text. The index is therefore built **from records**
+> (`build_search_index(records)` → `docs/data/search/…`), engine-agnostic: transcript text + per-segment
+> timestamps come straight from the stored VTT / word-JSON (review/12 H12), **not** from the page DOM. If
+> Pagefind is chosen, use its **Node indexing API** to feed these custom records rather than its HTML
+> crawler; MiniSearch consumes the same records directly. This keeps the engine decision (below) orthogonal
+> to where the transcript lives.
+
 ### Index strategy & size budgeting
 
 Transcript text dominates index size, so this is a **size-management** problem (the open question in
@@ -143,3 +154,10 @@ Pages (A) → search (B). Both depend on Phase H landing (stable transcripts + t
 on pages (results link into them) and benefits from tags (#4, review/14) for topic filters but does not
 require them. Soundbites (#15) and the highlights reel (Phase E) consume the same page/transcript surface
 later. Run the `spike/static-search-size` measurement before committing the search engine choice.
+
+**Coverage-gated launch.** Because forced alignment is paused and only post-#249 / H12 transcripts carry
+word-level data, transcript coverage at R2 time will be patchy. Launch search in two steps: (1)
+**titles + agenda/resource text** across the whole catalog immediately (always present); (2) **add
+transcript text per city as that city's transcript coverage passes a threshold** (~60 %), so early
+results aren't silently missing half a city's meetings. The index is rebuilt per city, so this is a
+data-availability gate, not a code fork.

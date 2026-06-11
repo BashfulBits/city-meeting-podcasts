@@ -21,13 +21,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   lifecycle / doc-update contract in `CONTRIBUTING.md`.
 - **Contributor scaffolding (partial #57)**: PR template, feature-request + bug-report issue templates,
   and an `area:*` / `needs-*` GitHub label taxonomy.
-
-### Added
 - **Word-level transcript timestamps**: `citypods/asr.py` now passes `word_timestamps=True` to
-  faster-whisper, producing VTT cues at individual word granularity instead of segment-level.
-  `ASR_PIPELINE_VERSION` bumped to `"2"` so existing segment-level transcripts are re-transcribed
-  gradually over scheduled enrich runs. Word boundaries are a prerequisite for speaker diarization
-  (#7, planned for Phase R after H6).
+  faster-whisper. `ASR_PIPELINE_VERSION` bumped to `"2"`; transcripts produced after this carry
+  word-level timing, which speaker diarization (#7) and phrase-level search / clip selection need.
+  *(Correction to the earlier note here: the transcript stage reuses any already-stored transcript
+  regardless of pipeline version, so existing segment-level transcripts are **not** auto-re-transcribed
+  by this bump. A follow-up — [`review/12`](review/12-hardening-and-efficiency.md) H12 — reworks the
+  served VTT back to clean segment cues + a word-level JSON sidecar and adds version-aware gradual
+  re-transcription.)*
 
 ### Fixed
 - **ASR alignment fallback (H10, PR #232)**: forced alignment now uses a stable-ts faster-whisper model
@@ -50,6 +51,10 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **HTTP Retry-After hang fix (PR #247)**: sessions now ignore provider `Retry-After` headers; a Granicus
   429 returning `Retry-After: 3600` previously caused urllib3 to sleep inside the retry loop for a full
   hour, blocking the entire build.
+- **Granicus archive-video URL resolution (PRs #245/#250/#251)**: the adapter now bypasses the broken
+  `DownloadFile.php` path by pre-following its redirect to the signed `archive-video.granicus.com` URL and
+  handing ffmpeg the signed URL directly; concurrent-access `403`s (Granicus rate-limits with `403`, not
+  `429`) are retried with backoff+jitter. Resolves the recurring Granicus `403` enclosure failures.
 
 ## Timeline & content-transform foundation
 

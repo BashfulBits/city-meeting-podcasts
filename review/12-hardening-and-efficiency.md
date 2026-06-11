@@ -160,11 +160,20 @@ ADD_CITY.md wall-clock fix.
 4. Add explicit **backlog rows**: an **audio backlog** and a **transcript backlog**, the latter from
    `stage_totals.transcript.{aligned, transcribed, seconds, backlog, errors}`. Add "estimated time to
    clear" (days) for each from `run_history.jsonl` rates.
+5. **Per-run telemetry summary record (C2).** Persist a compact summary per enrich run to
+   `run_history.jsonl` — peak `load`, min `mem_avail`, per-encode child peak RSS, encode count,
+   native-gate wait seconds, ASR minutes, and **window-used %** — so H8/H11a acceptance ("enrich uses most
+   of its window"; "`mem_avail` never near the floor") and future concurrency-tuning decisions (the
+   `native_audio_max_active` 1→4 raise being the live example) are **machine-checkable from one record**
+   instead of hand-read from raw logs. This also feeds H4 its ETA inputs and gives the Phase-H exit
+   criteria their measurement source.
 
 **Files.** `citypods/report.py` (both `ModelInputs` construction sites; `to_markdown`; `build_status`);
-`citypods/assets/status.html` (add transcript-backlog + ETA fields); `tests/test_report.py` (cover the
-**no-cap wall-clock default** as the primary case; assert transcript backlog row; assert the legacy-cap
-message only appears when a cap is explicitly set).
+`citypods/assets/status.html` (add transcript-backlog + ETA fields); `citypods/run.py` +
+`citypods/resources.py` (emit the per-run telemetry summary from the existing heartbeat snapshots into
+`run_history.jsonl`); `tests/test_report.py` (cover the **no-cap wall-clock default** as the primary case;
+assert transcript backlog row; assert the legacy-cap message only appears when a cap is explicitly set;
+assert the telemetry summary is written and round-trips).
 
 **Known related bug (fold in here).** `hours_hosted` reports **0** for Swagit/CivicPlus feeds because
 re-hosted M4A duration isn't captured. Deferred fix: probe the output M4A for duration at encode time and
@@ -215,6 +224,11 @@ breakage*, so genuine failures hide in noise.
 - Add a third, orthogonal signal already present (don't fold in): real **provider/source failure**
   (dead enclosure, expired URL, SSRF reject, parse-to-0) stays `error` and is **never** suppressed by
   catch-up awareness.
+- **Per-provider error-rate tracking (B3, new).** Provider drift (e.g. the three Granicus `403` fixes in
+  two days, PRs #245/#250/#251) is currently caught only by red deploys, not by the audit. Emit
+  per-provider 4xx/timeout counts per enrich run into `run_history.jsonl` (rides on the H2/C2 telemetry
+  summary), and have the daily audit raise/annotate an issue when a provider's error rate jumps above a
+  baseline — so a provider going bad is visible *before* it turns a deploy red.
 - `scripts/audit_feeds.py`: when an issue's computed state changes, **auto-comment** with the current
   fields (hosted count, feed-visible missing, transcript queued, last successful stage run, estimated
   remaining runs) instead of churning the body; close on resolve.
@@ -298,16 +312,22 @@ round-trips through statesync.
 
 ---
 
-## H6 — ASR benchmark workflow → sharded/separate ASR workflow
+## H6 — ASR benchmark workflow (H6a) → sharded/separate ASR workflow (H6b)
 
 **Problem.** ASR competes with audio/timeline inside the single enrich job and serializes through the
 `pages` concurrency group; it's the dominant backlog and the source of recent OOM/preemption failures.
 The `asr-bench` CLI exists ([`bench.py`](../citypods/bench.py)) but there is no benchmark **workflow** and
 no **separate ASR workflow**.
 
+**Sequencing (2026-06-10):** the two steps are split into **H6a** (Step 1, benchmark workflow) and
+**H6b** (Step 2, sharded workflow). **H6a has no H5 dependency and is do-now** — it settles the model
+choice and the *measured* cost of `word_timestamps` / segment-vs-word output (H12) **before** any backfill
+re-transcribes the catalog, so the catalog is only re-done once. H6b still waits on H5's manifest for safe
+cross-workflow state coordination.
+
 **Design (two steps, in order — measurement before architecture).**
 
-**Step 1 — manual benchmark workflow.** Add `.github/workflows/asr-bench.yml` (`workflow_dispatch`,
+**Step 1 — manual benchmark workflow (H6a).** Add `.github/workflows/asr-bench.yml` (`workflow_dispatch`,
 low concurrency, 1 matrix shard) that runs `citypods asr-bench` over a fixed set of episodes with known
 official transcripts and a **fixed wall-clock budget**, recording **transcript-minutes/runner-hour**,
 WER/alignment-failure rate, timeout/error rate, and model-load overhead. This lets model/beam/thread
@@ -315,7 +335,7 @@ changes (`asr_model`, `asr_beam_size`, `asr_compute_type`, threads) be compared 
 architecture change. (See also `spike/asr-model-benchmark`: compare `large-v3-turbo` vs `small.en` vs
 `base.en`.)
 
-**Step 2 — separate, sharded ASR workflow.** Once H5's manifest provides safe state coordination, add
+**Step 2 — separate, sharded ASR workflow (H6b).** Once H5's manifest provides safe state coordination, add
 `.github/workflows/asr.yml`: scheduled (e.g. daily) + `workflow_dispatch`, **own concurrency group**
 distinct from `pages` (so it never hard-cancels a deploy), running a **matrix of source-sharded jobs**.
 Coordination options (choose by safety): (1) **source-sharded concurrency** `asr-${shard}` with each
@@ -415,7 +435,9 @@ measurably vs the H6 Step-1 baseline; documented recommended settings.
 run for ~$0 without violating anyone's ToS?
 
 **Design — decision matrix, no commitment.** Evaluate each option on: legitimacy/ToS, reliability,
-integration cost, $/transcript-hour, quality.
+integration cost, $/transcript-hour, quality — **against the execution-backend interface** (review/11
+§5.5), so each option is a candidate *backend adapter* rather than a one-off integration (Modal /
+self-hosted Mac-mini runner / AWS join the free tiers in the matrix below).
 
 | Option | Notes |
 |---|---|
@@ -488,9 +510,19 @@ logging, ASR teardown hardening, concurrency tuning, and Retry-After fix impleme
 [#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243) /
 [#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244) /
 [#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246) /
-[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247), merged 2026-06-09/10. Three
-consecutive scheduled runs confirmed green at `native_audio_max_active: 4`. Design text below is
-preserved as the implementation record.
+[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247), merged 2026-06-09/10. Design text
+below is preserved as the implementation record.
+
+> **Correction (2026-06-10).** An earlier stamp here read "three consecutive scheduled runs confirmed
+> green **at** `native_audio_max_active: 4`." That overstated the evidence: the three green scheduled runs
+> (02:54 / 08:03 / 15:22 UTC on 06-10) ran at **`1`**; #246 raised the cap to `4` at 16:29 and the stamp
+> landed at 16:45 — before *any* scheduled run had completed at `4`, and the `2`-lane setting was never
+> tested (the jump was 1→4). **Confirmation criterion for `4`:** ≥ 6 consecutive green scheduled runs
+> (~24 h at the 4 h cron) with the heartbeat showing `mem_avail` never below the ~1.5 GiB floor and
+> per-encode child peak RSS within budget — record those numbers here once met (the H2/C2 telemetry record
+> makes this a one-line check). **Revert trigger:** any exit-143 / lost-comms kill or a `mem_avail` floor
+> breach → drop to last-known-green (`1`) immediately, then retry `2` *with* the child-RSS metrics before
+> attempting `4` again.
 
 **H11b status.** Isolating enrich into its own workflow depends on H5's manifest/lease (not yet
 started); the "Durable follow-up" paragraph below remains the active design.
@@ -565,6 +597,63 @@ without clobbering records (shared acceptance with H6).
 
 ---
 
+## H12 — Transcript artifact: segment-cue VTT + word-JSON sidecar + version-aware re-transcribe — **do-now**
+
+**Maturity: L3 (development-ready).** Ships in its own `feat/` PR — this section is the design; the code
+PR implements it and stamps it shipped.
+
+**Problem.** PR #249 made the ASR stage emit **one VTT cue per word** (`word_timestamps=True` → `_to_vtt`
+loops over `seg.words`, [`asr.py`](../citypods/asr.py)). Three regressions: (i) `<podcast:transcript>`
+consumers render cues as lines, so listeners get one-word-at-a-time captions; (ii) a 2 h meeting is ~18k
+words → ~5× larger VTT (~1 MB vs ~200 KB) served to every app and fed into the review/13 search index,
+whose core problem *is* transcript size; (iii) review/13's "click a line to seek" + search snippets want
+sentence/segment granularity. Separately, the CHANGELOG claimed the `ASR_PIPELINE_VERSION = "2"` bump
+re-transcribes existing transcripts "gradually" — but the transcript stage **reuses any present transcript
+regardless of version** (`stages.py` step 1 fast-paths on `transcript_synced` before the recipe is
+recomputed), so nothing is re-done.
+
+**Decision (maintainer, 2026-06-10).** **Dual artifact** — player compatibility is the #1 goal and
+server-side features need structured word data: a clean **segment-cue VTT** for `<podcast:transcript>`
+*and* a **word-level JSON sidecar** for search / clip selection / diarization. Re-transcription is
+**auto-gradual** (a version bump invalidates stored ASR transcripts; they re-do across budget-gated enrich
+runs) — cheap now because few meetings are transcribed yet.
+
+**Design.**
+1. **`citypods/asr.py`** — `_to_vtt` reverts to **segment-level** cues (readable lines). `transcribe()`
+   and `align()` each return **both** the segment-VTT bytes and a compact word-JSON
+   (`{"version","basis","segments":[{"start","end","text","words":[{"w","s","e"}]}]}`), built from
+   faster-whisper `seg.words` / stable-ts `result.segments`. Bump `ASR_PIPELINE_VERSION → "3"`.
+2. **`citypods/stages.py`** — store the JSON under a sibling content-addressed key
+   (`transcripts/<src>/<uid>-<recipe>.words.json`); set `ep.transcript_words_key` / `…_url`. **Make the
+   reuse fast-path version-aware:** an ASR-produced transcript whose stored pipeline version differs from
+   the current `ASR_PIPELINE_VERSION` is **not** fast-path-reused — it falls through to the ASR slot and
+   re-transcribes (budget-/stop-gated, so it's gradual). Provider-supplied transcripts (no ASR version)
+   are **never** invalidated by an ASR-version bump.
+3. **`citypods/records.py`** — serialize/deserialize `transcript.words_key` / `words_url`; add the
+   word-JSON key to `referenced_audio_keys` (the orphan-GC live set) so it isn't reaped.
+4. **`citypods/models.py`** — `transcript_words_key` / `transcript_words_url` + a
+   `transcript_pipeline_version` field (so "stale by version?" is a direct read, not re-derived from the
+   recipe hash).
+
+This makes the word-JSON the project's **third derived-artifact type** (audio · VTT · word-JSON) — the
+YAGNI trigger for the deferred `DerivedArtifact` refactor (review/11 §6); do that refactor
+opportunistically while this plumbing is open, not as a prerequisite.
+
+**Backfill story (required by the pipeline-version convention, AGENTS.md).** The v2→v3 bump **does**
+auto-invalidate ASR transcripts; they re-do gradually across scheduled enrich runs within the wall-clock
+budget. Run **H6a** first so the model + `word_timestamps` cost is settled before the catalog
+re-transcribes (re-do once).
+
+**Tests.** `tests/test_asr.py` (segment-VTT shape; word-JSON shape + timings; align path emits both);
+`tests/test_transcript_stage.py` (a stored v2 transcript re-does under v3; a provider transcript is **not**
+invalidated; the word-JSON key is stored + GC-referenced); records round-trip.
+
+**Acceptance.** A fresh transcript yields a clean segment-cue VTT *and* a word-JSON sidecar; an existing v2
+transcript is re-transcribed on a later run (gradually, budget-gated); provider transcripts are untouched
+by the bump; the word-JSON key survives orphan GC; `<podcast:transcript>` still validates.
+
+---
+
 ## Module-split note (Codex maintainability, opportunistic)
 
 While touching these areas, extract along natural seams (do **not** refactor for size alone): H5 creates
@@ -575,8 +664,10 @@ admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → 
 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
 first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (native
-audio/ASR gate + one-slot audio lane + green-run acceptance) → optional H11a tuning (3-core ASR /
-1-core audio lane, only after green baseline) → H1 (issues) → H2 → H3 → H4 → H5 → H11b/H6 (isolate
-enrich + sharded ASR) → H9. Each
+audio/ASR gate + one-slot audio lane + green-run acceptance, **shipped**; cap now at `4`) → **H12
+(transcript artifact rework, do-now)** + **H6a (ASR benchmark, do-now)** → confirm
+`native_audio_max_active: 4` against the A2 criterion (else revert toward `1`/`2`) → H1 (issues) →
+H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 → H11b/H6b (isolate
+enrich + sharded ASR) → H9 (against the execution-backend interface). Each
 lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG,
 stamp this doc per item).

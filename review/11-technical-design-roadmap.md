@@ -95,16 +95,18 @@ sync · #20 video enclosures (partial).
 | H1 docs/issue reconciliation | #52-health, GH#110/#141/#154 | L3 | in progress (this doc set) |
 | H2 projection wall-clock fix | R3 | L3 | committed |
 | H3 feed-validation publish gate | #53 | L3 | committed |
-| H4 feed-health catch-up vs stalled states | R5 | L3 | committed |
+| H4 feed-health catch-up vs stalled states + per-provider error-rate tracking | R5 | L3 | committed · add real-run provider 4xx/timeout rates (provider drift now shows as red deploys, not in the audit) |
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed · include `transcript-align` backlog lane |
-| H6 ASR benchmark workflow → sharded ASR workflow | #1, R1 | L3 | committed · split align-only vs transcribe-only ASR lanes |
+| H6a ASR benchmark workflow (`asr-bench.yml`) | #1 | L3 | committed · **do-now, no H5 dep**: settle model + measured `word_timestamps` cost before any backfill |
+| H6b sharded/separate ASR workflow | #1, R1 | L3 | committed · after H5 manifest · split align-only vs transcribe-only lanes |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
-| H9 free transcription-offload evaluation | new | L2→L3 | committed |
+| H9 free transcription-offload evaluation | new | L2→L3 | committed · evaluate tiers **against the execution-backend interface** (feeds the pluggable-compute initiative) |
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
 | H11a deploy resilience — native work gate + one-slot audio lane + concurrency tuning | new | L3 | **Shipped** ([#239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) |
 | H11b deploy resilience — isolate enrich into own workflow | new | L2 | committed · depends on H5 manifest/lease |
-| #39 per-provider rate limiting | #39 | L2 | committed (efficiency-adjacent) |
+| H12 transcript artifact rework (segment VTT + word-JSON + version-aware re-transcribe) | #249 regression, R2/#7 | L3 | committed · **do-now** (fixes word-per-cue; word-JSON unblocks search/clips/diarization) |
+| #39 per-provider rate limiting (incl. Retry-After clamp) | #39 | L2 | committed · sequence with H6b (sharded workflows multiply provider request pressure); B2 Retry-After **clamp** (not ignore) folds in here |
 
 ### Phase R — Research-Tool Surface (toward 1.0)
 | Item | #/GH | Maturity | Breakout |
@@ -118,7 +120,7 @@ sync · #20 video enclosures (partial).
 | Front-end design cycle | #55 (#20/#54) | L1 | §5.1 |
 | Accessibility (WCAG) | #50 | L1 | §5.1 |
 | `<podcast:funding>` link | #16 | L1 | §5.1 |
-| Speaker diarization | #7 | L1 | §5.1 — after H6; GPU offload via H9 |
+| Speaker diarization | #7 | L1 | §5.1 — after H6b; runs on the execution backend (H9 / §5.5) |
 
 ### Phase E — Engagement & Distribution (post-1.0) · sketches §5.2
 | Item | #/GH | Maturity |
@@ -157,6 +159,7 @@ sync · #20 video enclosures (partial).
 | User "report a feed problem" template | #56 | L1 |
 | Auto-detect provider from a city URL | #30 | L1 |
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
+| Pluggable inference-execution backend (compute offload) | new (Infra) | L1→L2 · **interface = pre-1.0 lock** |
 
 ### Deferred backlog (ongoing) — §6
 #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
@@ -211,10 +214,14 @@ by the ASR stage), and emit `<podcast:person>` or a speaker-labeled VTT. Two CPU
 (a) **wespeaker ECAPA-TDNN** (~100 MB, no HF gate, ~2× transcription cost on CPU); (b) **speechbrain
 ECAPA-TDNN** via simple-diarizer (~300 MB, similarly lightweight). A free/low-cost GPU API
 (H9 evaluation) cuts diarization cost further — pyannote v3 on GPU is fast and accurate but gated;
-the CPU-only path uses the lighter backends to stay within the Actions runner budget. *Depends on:*
-word_timestamps (enabled, PR #249); H6 sharded ASR workflow (dedicated runner/lane for heavy
-inference); H9 offload evaluation (GPU API cost/quality baseline). *Sequencing:* implement after H6
-lands a separate ASR runner — do not add diarization to the current single-runner enrich path.
+the CPU-only path uses the lighter backends to stay within the Actions runner budget. It runs on the
+**execution backend** (§5.5) — the same interface as transcription — so the diarization model can target a
+GPU backend (Modal/Kaggle/self-hosted/AWS) without changing the diarization logic; this is exactly the
+infra the maintainer wants **locked pre-1.0**. *Depends on:* word timing — H12 moves it into the
+word-JSON sidecar, which diarization consumes (built on PR #249's `word_timestamps`); H6b sharded ASR
+workflow (dedicated runner/lane for heavy inference); H9 offload evaluation (cost/quality baseline against
+the backend interface). *Sequencing:* implement after H6b lands a separate ASR runner — do not add
+diarization to the current single-runner enrich path.
 
 ### §5.2 Phase E — Engagement & Distribution
 
@@ -300,15 +307,35 @@ sketched here; issue templates + PR template **shipped**, label taxonomy (`area:
 **shipped**, Projects board lands at 1.0.
 Handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING) **shipped** with this doc set.
 
+**Pluggable inference-execution backend (compute offload).** *Problem:* heavy inference — transcription,
+forced alignment, and (Phase R) diarization, later AI-audio TTS — is the project's main compute cost and
+the first thing to outgrow the free 4-core GitHub Actions runner. We do **not** want to rearchitect the
+pipeline each time the compute home changes as the catalog scales. *Approach:* define one
+**execution-backend interface**, mirroring the pluggable storage backend in `storage/`: a small protocol
+(e.g. `run_inference(job) -> artifact`) where a `job` names the task (`transcribe`/`align`/`diarize`),
+its inputs (audio ref + optional source text), and the recipe hash, and the backend returns the
+content-addressed artifact. Backends: `local` (current — faster-whisper/stable-ts in-process on the
+runner), `modal` (serverless GPU), `kaggle`/`colab`/`hf-spaces` (free notebook compute), `self-hosted`
+(a self-hosted Actions runner on an M4/M5 Mac mini — MPS/CoreML), `aws` (Batch/EC2/SageMaker). The
+callers (`TranscriptStage`, a future `DiarizeStage`) stay backend-agnostic; H5's work manifest + leases
+provide the cross-runner coordination, and H9 is the cost/quality bake-off **against this interface**.
+*Tradeoff:* the interface is real design work and each non-local backend adds a secrets/ToS surface — but
+**only the `local` backend needs to exist at 1.0**; the payoff is that everything after is a single
+adapter. **The interface design is a pre-1.0 lock** — the maintainer wants the compute architecture
+settled before 1.0 so post-1.0 scaling never touches pipeline logic. *Sequencing:* design the interface
+during Phase H (it informs H6b and H9); implement non-`local` backends post-1.0 as scale demands.
+
 ---
 
 ## §6. Deferred backlog (ongoing)
 
 Items intentionally not in a near-term phase; revisit as scale or demand warrants. (Enumerated in §4
 "Deferred backlog".) Notable rationale: **index sharding (#42)** is demoted because per-meeting pages
-make meetings independently crawlable; the **DerivedArtifact refactor** (review/02 Change 5) waits until
-a third artifact type exists (YAGNI); **full video / hosted DB / off-Actions media** are explicitly out
-of scope now (§8). **Deleted:** #5 NER (the city's own document search is better ground truth).
+make meetings independently crawlable; the **DerivedArtifact refactor** (review/02 Change 5) is now
+**justified** — H12 introduces the third derived-artifact type (audio M4A · transcript VTT · **word-JSON**),
+the YAGNI trigger it was waiting on — so it moves from deferred to "do opportunistically when H12's storage
+plumbing lands"; **full video / hosted DB / off-Actions media** are explicitly out of scope now (§8).
+**Deleted:** #5 NER (the city's own document search is better ground truth).
 
 ---
 
@@ -354,12 +381,18 @@ against live code and is **accurate and well-grounded**. Disposition of its reco
 **Post-review code queue (updated 2026-06-10 after H11a shipped):**
 H8 resource guard (shipped [PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) →
 H11a deploy resilience (shipped [PRs #239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) →
-**H1 (next):** `gh` issue reconciliation — close/narrow GH#154
+**Do-now (this review's follow-ups):** **H12** transcript-artifact rework (clean segment-cue VTT + a
+word-JSON sidecar + version-aware gradual re-transcribe — fixes #249's word-per-cue regression and
+unblocks search/clips/diarization); **H6a** ASR benchmark workflow (settles model choice + the measured
+cost of `word_timestamps` before any backfill — no H5 dependency); **B2** Retry-After **clamp** (fold into
+#39). **Then H1 (next):** `gh` issue reconciliation — close/narrow GH#154
 (`<podcast:transcript>` shipped), GH#110 (ASR → backfill/ops), GH#141 (timeline epic → umbrella only);
-H2 projection wall-clock fix + tests; H3 validation gate; H4 feed-health states; H5 backlog manifest +
+H2 projection wall-clock fix + tests (incl. a per-run telemetry summary record — see review/12 H2);
+H3 validation gate; H4 feed-health states + per-provider error rates; H5 backlog manifest +
 prioritization (including an explicit alignment-deferred lane for untimed provider transcripts);
-H11b/H6 isolate enrich + sharded ASR, with separate align-only and transcribe-only lanes so stable-ts
-and faster-whisper model loads do not stack in one runner; H9 offload evaluation.
+H11b/H6b isolate enrich + sharded ASR, with separate align-only and transcribe-only lanes so stable-ts
+and faster-whisper model loads do not stack in one runner; H9 offload evaluation **against the
+execution-backend interface**. The execution-backend **interface design** (§5.5) is a **pre-1.0 lock**.
 When each step completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge
 docs PR.
 

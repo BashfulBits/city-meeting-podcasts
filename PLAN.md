@@ -1,5 +1,12 @@
 # City Meetings Podcast Directory — Software Plan
 
+> **Historical (point-in-time).** This is the *original* phased build plan, kept for provenance — it does
+> **not** track current status. For the system as built, see [ARCHITECTURE.md](ARCHITECTURE.md); for
+> what's planned next, [ROADMAP.md](ROADMAP.md) and the living
+> [`review/11`](review/11-technical-design-roadmap.md); to get oriented, start at [AGENTS.md](AGENTS.md).
+> The current configuration reference is the inline comments in `config/site_config.yml` plus
+> ARCHITECTURE — not the "Configuration reference" section below.
+
 ## Project overview
 
 A GitHub repository that automatically converts any US city's meeting archive into
