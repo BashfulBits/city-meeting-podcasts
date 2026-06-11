@@ -56,6 +56,11 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **Audio concurrency tuning (H11a, PR #246)**: raised `native_audio_max_active` from 1 → 4 after 3
   consecutive green scheduled runs; at `-threads 1` per encode, 4 slots saturate all 4 cores while
   targeting ~8 GiB RAM.
+- **`audio_ffmpeg_threads` auto-calc divisor ([PR #257](https://github.com/BashfulBits/city-meeting-podcasts/pull/257))**:
+  the auto-calc for per-encode ffmpeg thread count divided `cpu_count` by `max_encodes_per_source`
+  (per-source limit, default 1) instead of `native_audio_max_active` (global encode slots, currently 4).
+  Latent bug — production pins `audio_ffmpeg_threads: 1` explicitly so it was never triggered, but
+  clearing that pin would have assigned 16 threads to 4 cores. Config comment and regression test added.
 - **HTTP Retry-After clamp (PRs #247/[#254](https://github.com/BashfulBits/city-meeting-podcasts/pull/254))**:
   the shared session honors `Retry-After` but **caps it at 120s** rather than obeying it verbatim — a
   Granicus 429 returning `Retry-After: 3600` previously caused urllib3 to sleep inside the retry loop for a
