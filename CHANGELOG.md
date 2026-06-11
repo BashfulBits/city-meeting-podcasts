@@ -24,13 +24,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **Word-level transcript timestamps**: `citypods/asr.py` now passes `word_timestamps=True` to
   faster-whisper. `ASR_PIPELINE_VERSION` bumped to `"2"`; transcripts produced after this carry
   word-level timing, which speaker diarization (#7) and phrase-level search / clip selection need.
-  *(Correction to the earlier note here: the transcript stage reuses any already-stored transcript
-  regardless of pipeline version, so existing segment-level transcripts are **not** auto-re-transcribed
-  by this bump. A follow-up — [`review/12`](review/12-hardening-and-efficiency.md) H12 — reworks the
-  served VTT back to clean segment cues + a word-level JSON sidecar and adds version-aware gradual
-  re-transcription.)*
+  *(Superseded by the **H12 transcript artifact rework** below (PR #253): the served VTT reverts to clean
+  segment cues, a word-level JSON sidecar is added, and version-aware gradual re-transcription is wired —
+  `ASR_PIPELINE_VERSION` is now `"3"`.)*
 
 ### Fixed
+- **Transcript artifact rework (H12, [PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253))**:
+  ASR now emits a clean **segment-cue VTT** for `<podcast:transcript>` (fixing #249's one-word-per-cue
+  regression and ~5× size bloat) **plus a word-level JSON sidecar** (`…-asr-<recipe>.words.json`) for
+  phrase search / clip selection / diarization. `ASR_PIPELINE_VERSION` → `"3"`; already-stored **ASR**
+  transcripts re-transcribe gradually across enrich runs, while provider-supplied transcripts are never
+  invalidated. The word-JSON key is content-addressed and protected from orphan-GC.
 - **ASR alignment fallback (H10, PR #232)**: forced alignment now uses a stable-ts faster-whisper model
   that supports `.align()`, and any alignment failure falls back to fresh transcription instead of
   skipping caption-bearing episodes.

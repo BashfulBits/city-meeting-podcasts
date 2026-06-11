@@ -45,7 +45,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H10** | ✓ Shipped — ASR alignment fix (PR #232): caption-bearing feeds use a stable-ts align model and fall back to fresh transcription on align errors |
 | **H11a** | ✓ Shipped — **Deploy resilience**: native work gate + one-slot audio lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247) |
 | **H11b** | After H5 — isolate enrich into its own workflow (own concurrency group, separate from Pages deploy) |
-| **H12** | **Transcript artifact rework** (do-now): clean segment-cue VTT for players + a word-level JSON sidecar for search/clips/diarization + **version-aware gradual re-transcribe** (fixes #249's word-per-cue regression) |
+| **H12** | ✓ Shipped — transcript artifact rework (PR #253): clean segment-cue VTT for players + a word-level JSON sidecar for search/clips/diarization + version-aware gradual re-transcribe (fixes #249's word-per-cue regression) |
 
 **Phase H exit criteria ("green").** Phase H is done — and Phase R may start — when, measured off
 `run_history.jsonl` + the status page (instruments built in H2/H4):
