@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from citypods.models import City
+from citypods.ops.workqueue import BacklogPolicy
 from citypods.providers import get_provider
 from citypods.security import validate_city_sources
 
@@ -28,6 +29,12 @@ def load_site_config(path: str | Path) -> dict:
     data = yaml.safe_load(Path(path).read_text()) or {}
     data.setdefault("defaults", {})
     return data
+
+
+def load_backlog_policy(site_config: dict) -> BacklogPolicy:
+    """Build the H5 backlog prioritization policy from ``backlog_priority`` / ``city_order``
+    in site config. Empty/absent ⇒ the behavior-preserving identity order."""
+    return BacklogPolicy.from_site_config(site_config)
 
 
 def load_entity_configs(entities_dir: str | Path) -> dict[str, dict]:

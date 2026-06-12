@@ -84,15 +84,25 @@ from citypods import asr as asr_mod
 from citypods.bodies import body_key, canonical_body
 from citypods.media import MaterializeStats, SourceCache, _probe_duration_secs, materialize_audio
 from citypods.models import City, Episode
+from citypods.ops.workqueue import BacklogPolicy, sort_key_for, workitem_from_episode
 from citypods.records import AUDIO_PIPELINE_VERSION
 from citypods.resources import NativeWorkGate, ResourceAdmission
 from citypods.timeline import Timeline, remap, timeline_digest
 
 
-def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode]:
+def _materialize_set(
+    episodes: list[Episode],
+    max_per_body: int,
+    *,
+    policy: BacklogPolicy | None = None,
+    city_slug: str = "",
+) -> list[Episode]:
     """The subset worth processing: the most-recent ``max_per_body`` per body. Every
     per-board feed shows at most that many of its body, and the combined feed is a subset of
-    the union, so this is exactly what some feed can display — never the deep archive."""
+    the union, so this is exactly what some feed can display — never the deep archive.
+
+    Selection is unchanged; ``policy`` (H5) only reorders the selected set. With no policy the
+    order is byte-identical to before (body-grouped, newest-first per body)."""
     by_body: dict[str, list[Episode]] = collections.defaultdict(list)
     for ep in episodes:
         by_body[body_key(canonical_body(ep.body or ""))].append(ep)
@@ -100,6 +110,9 @@ def _materialize_set(episodes: list[Episode], max_per_body: int) -> list[Episode
     for eps in by_body.values():
         eps.sort(key=lambda e: e.published, reverse=True)
         out.extend(eps[:max_per_body])
+    if policy is not None and policy.keys:
+        key = sort_key_for(policy)
+        out.sort(key=lambda ep: key(workitem_from_episode(ep, city_slug=city_slug)))
     return out
 
 
@@ -137,6 +150,9 @@ class StageContext:
     # Parallel episode processing within one source. Workers are I/O-bound (rate-limited HLS
     # streaming), so this can safely exceed CPU count. Set via site_config max_encodes_per_source.
     max_encodes_per_source: int = 1
+    # Backlog prioritization policy (H5). None (default) ⇒ behavior-preserving order. When set,
+    # ``_materialize_set`` reorders the per-source set by the configured comparator keys.
+    backlog_policy: BacklogPolicy | None = None
     # Per-run download cache shared across TimelineStage (SilencePlanner) and AudioStage so each
     # source is streamed at most once per episode, even when both stages need it.
     source_cache: SourceCache | None = None
@@ -255,7 +271,9 @@ class AudioStage:
             return StageStats(self.name)
         ms: MaterializeStats = materialize_audio(
             city,
-            _materialize_set(episodes, city.max_episodes),
+            _materialize_set(
+                episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            ),
             storage=ctx.storage,
             ffmpeg=ctx.ffmpeg,
             max_kbps=ctx.max_kbps,
@@ -361,7 +379,11 @@ class TimelineStage:
     ) -> StageStats:
         stats = StageStats(self.name)
         sig = self._signature()
-        all_eps = list(_materialize_set(episodes, city.max_episodes))
+        all_eps = list(
+            _materialize_set(
+                episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            )
+        )
 
         if not self.planners:
             # No planners → identity path for all episodes; nothing to run in parallel.
@@ -458,7 +480,9 @@ class RemapStage:
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         stats = StageStats(self.name)
-        for ep in _materialize_set(episodes, city.max_episodes):
+        for ep in _materialize_set(
+            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+        ):
             if not _needs_chapter_remap(ep):
                 stats.reused += 1
                 continue
@@ -518,7 +542,9 @@ class ChaptersStage:
         if ctx.dry_run or fetch is None:
             return stats
         remaining = ctx.chapters_per_source
-        for ep in _materialize_set(episodes, city.max_episodes):
+        for ep in _materialize_set(
+            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+        ):
             if ep.chapters:  # already captured; chapters don't change once set
                 stats.reused += 1
                 continue
@@ -562,7 +588,9 @@ class LinksStage:
     ) -> StageStats:
         stats = StageStats(self.name)
         episode_links = getattr(provider, "episode_links", None)
-        for ep in _materialize_set(episodes, city.max_episodes):
+        for ep in _materialize_set(
+            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+        ):
             links = dict(ep.links or {})
             if episode_links is not None:
                 try:
@@ -810,7 +838,9 @@ class TranscriptStage:
                     flush=True,
                 )
 
-        for ep in _materialize_set(episodes, city.max_episodes):
+        for ep in _materialize_set(
+            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+        ):
             label = ep.uid or ep.guid
             ep_ref = (
                 f"slug={city.slug} provider={city.provider} source={src_key} "
