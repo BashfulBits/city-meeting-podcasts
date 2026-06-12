@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from citypods import run
-from citypods.models import Episode
+from citypods.models import City, Episode
 from citypods.providers import get_provider, register
 from citypods.providers.base import ProviderError
 from citypods.records import feed_content_hash
@@ -344,7 +344,9 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
 
 
 def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys, monkeypatch):
-    """CI enrich logs should leave source/stage breadcrumbs plus resource snapshots."""
+    """CI enrich logs should leave queue/source breadcrumbs plus resource snapshots. The H5 PR3
+    global queue replaces the per-source/per-stage breadcrumbs with queue + pass-level lines
+    (per-stage detail moves to the end-of-run summary; per-encode logs stay in media.py)."""
 
     cities = _setup(tmp_path)
     (tmp_path / "site_config.yml").write_text(
@@ -361,11 +363,9 @@ def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys,
     )
     out = capsys.readouterr().out
     assert "[enrich] heartbeat start" in out and "[enrich] heartbeat stop" in out
-    assert "[enrich] source start slug=fake-city provider=faketest" in out
     assert "[enrich] source fetched slug=fake-city provider=faketest" in out
-    assert "[enrich] stage start slug=fake-city provider=faketest stage=chapters" in out
-    assert "[enrich] stage done slug=fake-city provider=faketest stage=transcript" in out
-    assert "[enrich] source done slug=fake-city provider=faketest" in out
+    assert "[enrich] global queue:" in out
+    assert "[enrich] audio pass:" in out and "[enrich] audio pass done" in out
 
 
 def test_stop_signal_fires_on_deadline():
@@ -729,3 +729,86 @@ def test_render_phase_uses_persisted_archive_when_provider_fetch_fails(tmp_path,
     assert (tmp_path / "docs" / "fake-city" / "index.html").exists()
     feed = (tmp_path / "docs" / "fake-city" / "video_feed.xml").read_text()
     assert "City Council" in feed
+
+
+# --- H5 PR3: global two-pass enrich queue ----------------------------------------------
+
+_NOW = datetime(2026, 6, 12, tzinfo=UTC)
+
+
+def _dated_ep(guid, days_ago):
+    return Episode(
+        guid=guid,
+        uid=f"uid-{guid}",
+        title="Meeting",
+        published=_NOW - timedelta(days=days_ago),
+        video_url=f"https://x/{guid}.mp4",
+        media_kind="hls",
+        body="City Council",
+    )
+
+
+def _bare_city(slug):
+    return City(
+        slug=slug,
+        provider="faketest",
+        source={},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+    )
+
+
+def test_order_global_candidates_newest_everywhere_first():
+    """The core PR3 deliverable: candidates are ordered newest-first ACROSS sources, not grouped
+    per source (which is all the per-source pool + within-source ordering could give)."""
+    from citypods.ops.workqueue import BacklogPolicy
+    from citypods.run import _order_global_candidates
+
+    prepared = {
+        "srcA": {
+            "city": _bare_city("a-tx"),
+            "episodes": [_dated_ep("a_old", 10), _dated_ep("a_new", 2)],
+        },
+        "srcB": {
+            "city": _bare_city("b-tx"),
+            "episodes": [_dated_ep("b_mid", 5), _dated_ep("b_newest", 1)],
+        },
+    }
+    policy = BacklogPolicy.from_site_config({"backlog_priority": [{"recency": "desc"}]}, now=_NOW)
+    order = [ep.guid for _, ep in _order_global_candidates(prepared, policy)]
+    assert order == ["b_newest", "a_new", "b_mid", "a_old"]
+
+
+def test_order_global_candidates_identity_without_policy():
+    """No policy → per-source materialized sets concatenated in source order; no cross mix."""
+    from citypods.run import _order_global_candidates
+
+    prepared = {
+        "srcA": {
+            "city": _bare_city("a-tx"),
+            "episodes": [_dated_ep("a_old", 10), _dated_ep("a_new", 2)],
+        },
+        "srcB": {"city": _bare_city("b-tx"), "episodes": [_dated_ep("b_newest", 1)]},
+    }
+    keys_order = [key for key, _ in _order_global_candidates(prepared, None)]
+    assert keys_order == ["srcA", "srcA", "srcB"]  # all of A (newest-first per body), then B
+
+
+def test_enrich_phase_two_pass_and_manifest(tmp_path, fake_provider, capsys):
+    """The enrich phase runs the on-runner AUDIO pass then the decoupled TRANSCRIPT pass, and
+    persists the work manifest."""
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  asr_enabled: false\n"
+    )
+    ff = _CountingFfmpeg()
+    _build_phase(tmp_path, cities, "enrich", ff)
+    out = capsys.readouterr().out
+    assert "[enrich] audio pass:" in out and "[enrich] audio pass done" in out
+    # Transcript is a SEPARATE pass over episodes that now have hosted audio (decoupled).
+    assert "[enrich] transcript pass: 2 item(s) with audio" in out
+    assert (tmp_path / "state" / "work.json").exists()
