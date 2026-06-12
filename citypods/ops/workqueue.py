@@ -21,13 +21,19 @@ Scope boundaries (see the "Decisions locked" block in review/12 §H5):
 
 from __future__ import annotations
 
+import collections
+import json
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from citypods.bodies import body_key
-from citypods.models import Episode
+from citypods.bodies import body_key, canonical_body
+from citypods.models import City, Episode
+
+MANIFEST_NAME = "work.json"
+MANIFEST_VERSION = 1
 
 # Work classes are keyed by OUTPUT ARTIFACT (diarization-forward; review/12 §H5).
 WORK_CLASSES = ("audio", "transcript-asr", "transcript-align")
@@ -280,3 +286,266 @@ def order(items: Sequence[WorkItem], policy: BacklogPolicy | None) -> list[WorkI
     if policy is None or not policy.keys:
         return list(items)
     return sorted(items, key=sort_key_for(policy))
+
+
+# --------------------------------------------------------------------------------------------
+# Manifest derivation (PR2). The pending set is DERIVED from the canonical records each run
+# (hybrid model) — this is not authoritative state. It backs the status surface and is the
+# substrate the durable sidecar + H6b leasing build on.
+# --------------------------------------------------------------------------------------------
+
+
+def _published_of(rec: dict) -> datetime | None:
+    raw = rec.get("published")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _episode_buckets(recs: dict, max_per_body: int) -> dict[str, str]:
+    """Classify each episode uid as ``feed_visible`` (within the most-recent ``max_per_body``
+    of its body — what some feed can display / the pipeline materializes) or ``deep_archive``
+    (retained but never worked today). Mirrors ``_materialize_set``'s selection."""
+    by_body: dict[str, list[tuple[str, datetime | None]]] = collections.defaultdict(list)
+    for uid, rec in recs.items():
+        by_body[body_key(canonical_body(rec.get("body") or ""))].append((uid, _published_of(rec)))
+    buckets: dict[str, str] = {}
+    for items in by_body.values():
+        items.sort(
+            key=lambda t: (t[1] is not None, t[1] or datetime.min.replace(tzinfo=UTC)), reverse=True
+        )
+        for i, (uid, _) in enumerate(items):
+            buckets[uid] = BUCKET_FEED_VISIBLE if i < max_per_body else BUCKET_DEEP_ARCHIVE
+    return buckets
+
+
+def _transcript_class(rec: dict) -> str:
+    """A hosted episode with a provider transcript link is an *alignment* candidate; otherwise
+    it needs fresh ASR."""
+    has_source_text = bool((rec.get("links") or {}).get("transcript"))
+    return "transcript-align" if has_source_text else "transcript-asr"
+
+
+def _episode_work_items(
+    source_key: str, city: City, uid: str, rec: dict, bucket: str
+) -> list[WorkItem]:
+    """The work items one episode contributes: an ``audio`` item when it should be hosted, and a
+    transcript item (asr/align, done/queued/alignment-disabled) when hosted audio exists."""
+    base = dict(
+        source_key=source_key,
+        episode_uid=uid,
+        published=_published_of(rec),
+        city_slug=city.slug,
+        body=rec.get("body") or "",
+        priority_bucket=bucket,
+    )
+    items: list[WorkItem] = []
+    audio_done = bool((rec.get("audio") or {}).get("url"))
+    if rec.get("media_kind") == "hls" or bool(city.extract_audio) or audio_done:
+        items.append(WorkItem(work_class="audio", state="done" if audio_done else "queued", **base))
+
+    if audio_done and city.asr_enabled:
+        work_class = _transcript_class(rec)
+        if (rec.get("transcript") or {}).get("key"):
+            items.append(WorkItem(work_class=work_class, state="done", **base))
+        elif work_class == "transcript-align" and not city.asr_alignment_enabled:
+            items.append(
+                WorkItem(work_class="transcript-align", state="alignment-disabled", **base)
+            )
+        else:
+            items.append(WorkItem(work_class=work_class, state="queued", **base))
+    return items
+
+
+def build_manifest(
+    sources: Sequence[tuple[str, City, dict]],
+    *,
+    policy: BacklogPolicy | None = None,
+    now: datetime | None = None,
+) -> list[WorkItem]:
+    """Derive the work manifest from per-source records.
+
+    *sources* is a list of ``(source_key, representative_city, records)`` — one entry per unique
+    source (board feeds sharing a source must be deduplicated by the caller, else episodes
+    double-count). Emits an ``audio`` item for every episode that should be hosted and a
+    ``transcript-asr`` / ``transcript-align`` item for every hosted, ASR-enabled episode, each
+    tagged ``done`` / ``queued`` / ``alignment-disabled`` and bucketed feed_visible vs deep_archive.
+    """
+    items: list[WorkItem] = []
+    for source_key, city, recs in sources:
+        buckets = _episode_buckets(recs, city.max_episodes)
+        for uid, rec in recs.items():
+            items.extend(
+                _episode_work_items(
+                    source_key, city, uid, rec, buckets.get(uid, BUCKET_FEED_VISIBLE)
+                )
+            )
+
+    if policy is not None and policy.keys:
+        items = order(items, policy)
+    return items
+
+
+def manifest_counts(items: Sequence[WorkItem]) -> dict:
+    """Aggregate a manifest for the status surface: per-work-class state counts in the
+    *actionable* (feed_visible) backlog, plus the inert deep_archive total and the
+    alignment-disabled count (so re-enabling alignment is a visible backlog-drain decision)."""
+    by_work_class: dict[str, dict[str, int]] = {}
+    deep_archive = 0
+    alignment_disabled = 0
+    for it in items:
+        if it.priority_bucket != BUCKET_FEED_VISIBLE:
+            deep_archive += 1
+            continue
+        states = by_work_class.setdefault(it.work_class, {})
+        states[it.state] = states.get(it.state, 0) + 1
+        if it.state == "alignment-disabled":
+            alignment_disabled += 1
+    feed_visible_pending = sum(
+        n for states in by_work_class.values() for state, n in states.items() if state == "queued"
+    )
+    return {
+        "by_work_class": by_work_class,
+        "feed_visible_pending": feed_visible_pending,
+        "alignment_disabled": alignment_disabled,
+        "deep_archive_items": deep_archive,
+    }
+
+
+def order_cities_by_policy(
+    cities: Sequence[City],
+    records_by_slug: dict[str, dict],
+    policy: BacklogPolicy | None,
+    *,
+    now: datetime | None = None,
+) -> list[City]:
+    """Order cities for pool submission by each city's highest-priority pending work (proxied by
+    its newest episode). Coarse cross-source prioritization — a started city still drains its own
+    (within-source-ordered) backlog. Identity when no policy. True global interleaving is PR3."""
+    if policy is None or not policy.keys:
+        return list(cities)
+    key = sort_key_for(policy)
+
+    def city_key(city: City):
+        recs = records_by_slug.get(city.slug) or {}
+        newest: datetime | None = None
+        for rec in recs.values():
+            p = _published_of(rec)
+            if p is not None and (newest is None or p > newest):
+                newest = p
+        proxy = WorkItem(
+            source_key=city.slug,
+            episode_uid="",
+            work_class="audio",
+            published=newest,
+            city_slug=city.slug,
+        )
+        return key(proxy)
+
+    return sorted(cities, key=city_key)
+
+
+# --------------------------------------------------------------------------------------------
+# Durable sidecar (PR2). The manifest snapshot is persisted to ``state/work.json`` (auto-synced
+# by statesync). Leases are the H6b substrate: the API is built + tested here, but nothing
+# competitively acquires a lease until concurrent ASR workflows arrive (H6b).
+# --------------------------------------------------------------------------------------------
+
+
+def _iso(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt is not None else None
+
+
+def _parse_dt(raw) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _workitem_to_dict(wi: WorkItem) -> dict:
+    return {
+        "source_key": wi.source_key,
+        "episode_uid": wi.episode_uid,
+        "work_class": wi.work_class,
+        "published": _iso(wi.published),
+        "city_slug": wi.city_slug,
+        "body": wi.body,
+        "priority_bucket": wi.priority_bucket,
+        "state": wi.state,
+        "stage_version": wi.stage_version,
+        "input_hashes": list(wi.input_hashes),
+        "est_seconds": wi.est_seconds,
+        "observed_seconds": wi.observed_seconds,
+        "last_error": wi.last_error,
+        "next_retry": _iso(wi.next_retry),
+        "lease_owner": wi.lease_owner,
+        "lease_expires": _iso(wi.lease_expires),
+    }
+
+
+def _workitem_from_dict(d: dict) -> WorkItem:
+    return WorkItem(
+        source_key=d.get("source_key", ""),
+        episode_uid=d.get("episode_uid", ""),
+        work_class=d.get("work_class", ""),
+        published=_parse_dt(d.get("published")),
+        city_slug=d.get("city_slug", ""),
+        body=d.get("body", ""),
+        priority_bucket=d.get("priority_bucket", BUCKET_FEED_VISIBLE),
+        state=d.get("state", "queued"),
+        stage_version=d.get("stage_version", ""),
+        input_hashes=tuple(d.get("input_hashes") or ()),
+        est_seconds=float(d.get("est_seconds", 0.0)),
+        observed_seconds=float(d.get("observed_seconds", 0.0)),
+        last_error=d.get("last_error", ""),
+        next_retry=_parse_dt(d.get("next_retry")),
+        lease_owner=d.get("lease_owner", ""),
+        lease_expires=_parse_dt(d.get("lease_expires")),
+    )
+
+
+def save_manifest(state_dir: str | Path, items: Sequence[WorkItem]) -> Path:
+    path = Path(state_dir) / MANIFEST_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"version": MANIFEST_VERSION, "items": [_workitem_to_dict(i) for i in items]}
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+    return path
+
+
+def load_manifest(state_dir: str | Path) -> list[WorkItem]:
+    path = Path(state_dir) / MANIFEST_NAME
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return []
+    return [_workitem_from_dict(d) for d in data.get("items", [])]
+
+
+def lease(wi: WorkItem, owner: str, *, ttl_seconds: float, now: datetime | None = None) -> WorkItem:
+    """Claim *wi* for *owner* until ``now + ttl_seconds``. Groupable: a caller may lease several
+    items of one episode under the same owner (e.g. fused ASR + diarization). H6b substrate."""
+    now = now or datetime.now(UTC)
+    wi.lease_owner = owner
+    wi.lease_expires = now + timedelta(seconds=ttl_seconds)
+    wi.state = "running"
+    return wi
+
+
+def release(wi: WorkItem) -> WorkItem:
+    wi.lease_owner = ""
+    wi.lease_expires = None
+    return wi
+
+
+def is_leased(wi: WorkItem, *, now: datetime | None = None) -> bool:
+    """True if *wi* holds an unexpired lease."""
+    now = now or datetime.now(UTC)
+    return bool(wi.lease_owner) and wi.lease_expires is not None and wi.lease_expires > now

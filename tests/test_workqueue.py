@@ -6,13 +6,21 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from citypods.models import Episode
+from citypods.models import City, Episode
 from citypods.ops.workqueue import (
     BUCKET_DEEP_ARCHIVE,
     BUCKET_FEED_VISIBLE,
     BacklogPolicy,
     WorkItem,
+    build_manifest,
+    is_leased,
+    lease,
+    load_manifest,
+    manifest_counts,
     order,
+    order_cities_by_policy,
+    release,
+    save_manifest,
     workitem_from_episode,
 )
 
@@ -325,3 +333,208 @@ def test_materialize_set_selection_unchanged_by_policy():
     with_policy = {e.guid for e in _materialize_set(eps, 2, policy=policy)}
     assert base == with_policy
     assert len(base) == 2
+
+
+# --------------------------------------------------------------------------------------------
+# Manifest derivation (build_manifest / manifest_counts)
+# --------------------------------------------------------------------------------------------
+
+
+def _city(
+    slug, *, max_episodes=50, extract_audio=False, asr_enabled=True, asr_alignment_enabled=False
+):
+    return City(
+        slug=slug,
+        provider="granicus",
+        source={},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+        max_episodes=max_episodes,
+        extract_audio=extract_audio,
+        asr_enabled=asr_enabled,
+        asr_alignment_enabled=asr_alignment_enabled,
+    )
+
+
+def _rec(
+    days_ago,
+    *,
+    hosted=False,
+    body="City Council",
+    provider_text=False,
+    transcript_key=None,
+    media_kind="hls",
+):
+    rec = {
+        "published": (NOW - timedelta(days=days_ago)).isoformat(),
+        "body": body,
+        "media_kind": media_kind,
+        "links": {"transcript": "https://x/t.vtt"} if provider_text else {},
+        "audio": {"url": "https://x/a.m4a"} if hosted else {},
+    }
+    if transcript_key:
+        rec["transcript"] = {"key": transcript_key, "basis": "source:s0"}
+    return rec
+
+
+def _tx_items(items):
+    return [it for it in items if it.work_class.startswith("transcript")]
+
+
+def test_build_manifest_audio_queued_vs_done():
+    recs = {"u1": _rec(1, hosted=False, media_kind="hls"), "u2": _rec(2, hosted=True)}
+    items = build_manifest([("s", _city("d"), recs)])
+    audio = {it.episode_uid: it for it in items if it.work_class == "audio"}
+    assert audio["u1"].state == "queued"
+    assert audio["u2"].state == "done"
+
+
+def test_build_manifest_direct_provider_no_host_no_audio_item():
+    # A direct (non-HLS) episode with no hosting and extract_audio off → no audio work item.
+    recs = {"u": _rec(1, hosted=False, media_kind="direct")}
+    items = build_manifest([("s", _city("d", extract_audio=False), recs)])
+    assert not [it for it in items if it.work_class == "audio"]
+
+
+def test_build_manifest_transcript_asr_when_no_source_text():
+    recs = {"u": _rec(1, hosted=True, provider_text=False)}
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert len(tx) == 1 and tx[0].work_class == "transcript-asr" and tx[0].state == "queued"
+
+
+def test_build_manifest_alignment_disabled():
+    recs = {"u": _rec(1, hosted=True, provider_text=True)}
+    tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=False), recs)]))
+    assert tx[0].work_class == "transcript-align" and tx[0].state == "alignment-disabled"
+
+
+def test_build_manifest_align_queued_when_enabled():
+    recs = {"u": _rec(1, hosted=True, provider_text=True)}
+    tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), recs)]))
+    assert tx[0].work_class == "transcript-align" and tx[0].state == "queued"
+
+
+def test_build_manifest_transcript_done():
+    recs = {"u": _rec(1, hosted=True, transcript_key="k1")}
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert tx[0].state == "done"
+
+
+def test_build_manifest_no_transcript_without_hosted_audio():
+    recs = {"u": _rec(1, hosted=False)}
+    assert not _tx_items(build_manifest([("s", _city("d"), recs)]))
+
+
+def test_build_manifest_no_transcript_when_asr_disabled():
+    recs = {"u": _rec(1, hosted=True)}
+    assert not _tx_items(build_manifest([("s", _city("d", asr_enabled=False), recs)]))
+
+
+def test_build_manifest_deep_archive_beyond_cap():
+    recs = {f"u{i}": _rec(i, hosted=True, body="City Council") for i in range(5)}
+    items = build_manifest([("s", _city("d", max_episodes=2), recs)])
+    audio = {it.episode_uid: it for it in items if it.work_class == "audio"}
+    assert audio["u0"].priority_bucket == BUCKET_FEED_VISIBLE
+    assert audio["u1"].priority_bucket == BUCKET_FEED_VISIBLE
+    assert audio["u2"].priority_bucket == BUCKET_DEEP_ARCHIVE
+    assert audio["u4"].priority_bucket == BUCKET_DEEP_ARCHIVE
+
+
+def test_manifest_counts():
+    recs = {
+        "u0": _rec(0, hosted=True, provider_text=True),  # audio done + align alignment-disabled
+        "u1": _rec(1, hosted=False, media_kind="hls"),  # audio queued
+        "u2": _rec(2, hosted=True, provider_text=False),  # audio done + transcript-asr queued
+    }
+    counts = manifest_counts(build_manifest([("s", _city("d", asr_alignment_enabled=False), recs)]))
+    assert counts["by_work_class"]["audio"]["done"] == 2
+    assert counts["by_work_class"]["audio"]["queued"] == 1
+    assert counts["by_work_class"]["transcript-asr"]["queued"] == 1
+    assert counts["by_work_class"]["transcript-align"]["alignment-disabled"] == 1
+    assert counts["alignment_disabled"] == 1
+    # queued only — alignment-disabled is NOT counted as actionable backlog
+    assert counts["feed_visible_pending"] == 2
+    assert counts["deep_archive_items"] == 0
+
+
+def test_manifest_counts_deep_archive_excluded_from_actionable():
+    recs = {f"u{i}": _rec(i, hosted=False, media_kind="hls") for i in range(4)}
+    counts = manifest_counts(build_manifest([("s", _city("d", max_episodes=2), recs)]))
+    assert counts["feed_visible_pending"] == 2  # only the newest 2 are actionable
+    assert counts["deep_archive_items"] == 2
+
+
+# --------------------------------------------------------------------------------------------
+# Sidecar persistence + lease API
+# --------------------------------------------------------------------------------------------
+
+
+def test_manifest_save_load_round_trip(tmp_path):
+    items = [
+        WorkItem(
+            "s",
+            "u1",
+            "audio",
+            published=NOW,
+            city_slug="d",
+            body="City Council",
+            priority_bucket=BUCKET_FEED_VISIBLE,
+            state="queued",
+        ),
+        WorkItem("s", "u2", "transcript-align", published=None, state="alignment-disabled"),
+    ]
+    save_manifest(tmp_path, items)
+    loaded = load_manifest(tmp_path)
+    assert len(loaded) == 2
+    assert loaded[0].episode_uid == "u1" and loaded[0].published == NOW
+    assert loaded[0].priority_bucket == BUCKET_FEED_VISIBLE and loaded[0].state == "queued"
+    assert loaded[1].published is None and loaded[1].state == "alignment-disabled"
+
+
+def test_load_manifest_absent_returns_empty(tmp_path):
+    assert load_manifest(tmp_path) == []
+
+
+def test_lease_acquire_and_expire():
+    wi = WorkItem("s", "u", "audio")
+    lease(wi, "runner-1", ttl_seconds=300, now=NOW)
+    assert wi.lease_owner == "runner-1" and wi.state == "running"
+    assert is_leased(wi, now=NOW)
+    assert is_leased(wi, now=NOW + timedelta(seconds=299))
+    assert not is_leased(wi, now=NOW + timedelta(seconds=301))
+
+
+def test_lease_release():
+    wi = WorkItem("s", "u", "audio")
+    lease(wi, "r", ttl_seconds=60, now=NOW)
+    release(wi)
+    assert wi.lease_owner == "" and wi.lease_expires is None
+    assert not is_leased(wi, now=NOW)
+
+
+def test_is_leased_false_when_unleased():
+    assert not is_leased(WorkItem("s", "u", "audio"), now=NOW)
+
+
+# --------------------------------------------------------------------------------------------
+# order_cities_by_policy (light cross-source ordering)
+# --------------------------------------------------------------------------------------------
+
+
+def test_order_cities_by_policy_newest_first():
+    a, b, c = _city("a-tx"), _city("b-tx"), _city("c-tx")
+    recs_by_slug = {
+        "a-tx": {"u": _rec(10, hosted=True)},
+        "b-tx": {"u": _rec(1, hosted=True)},
+        "c-tx": {"u": _rec(5, hosted=True)},
+    }
+    ordered = order_cities_by_policy([a, b, c], recs_by_slug, _policy({"recency": "desc"}))
+    assert [c.slug for c in ordered] == ["b-tx", "c-tx", "a-tx"]
+
+
+def test_order_cities_by_policy_identity_without_policy():
+    a, b = _city("a-tx"), _city("b-tx")
+    assert order_cities_by_policy([a, b], {}, None) == [a, b]
+    assert order_cities_by_policy([a, b], {}, BacklogPolicy()) == [a, b]

@@ -252,6 +252,31 @@ def test_build_writes_run_history_and_summary(tmp_path, fake_provider):
     assert all(_json.loads(line)["schema_version"] for line in hist2)
 
 
+def test_build_writes_work_manifest(tmp_path, fake_provider):
+    """H5: an enrich/all run persists the derived work manifest to state/work.json."""
+    from citypods.ops.workqueue import load_manifest
+
+    cities = _setup(tmp_path)
+    _build(tmp_path, cities)
+    work = tmp_path / "state" / "work.json"
+    assert work.exists()
+    data = json.loads(work.read_text())
+    assert data["version"] == 1 and isinstance(data["items"], list)
+    assert isinstance(load_manifest(tmp_path / "state"), list)  # round-trips
+
+
+def test_build_with_backlog_policy_orders_and_succeeds(tmp_path, fake_provider):
+    """H5: a configured policy exercises the city-ordering path; the build still succeeds."""
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\n"
+        "backlog_priority:\n"
+        "  - recency: {order: desc, within_days: 30}\n"
+    )
+    result = _build(tmp_path, cities)
+    assert [r.status for r in result] == ["built"]
+
+
 def test_build_logs_audio_stage_activity_and_errors(tmp_path, fake_provider, capsys):
     """The per-stage run summary must surface audio activity (and sample errors) to stdout, so a
     re-host that triggers but fails downstream is visible rather than hiding behind the

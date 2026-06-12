@@ -590,6 +590,21 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     tx_drain_runs = round(tx_pending / tx_per_run, 1) if tx_per_run else None
     tx_drain_days = round(tx_drain_runs * (inputs.cycle_hours / 24), 1) if tx_drain_runs else None
 
+    # Backlog by work-class (H5): derive the work manifest and bucket the *actionable*
+    # (feed_visible) backlog by audio / transcript-asr / transcript-align, surfacing the
+    # alignment-disabled and deep-archive counts. Derived fresh from records (hybrid model).
+    wc_counts: dict = {}
+    if state_dir:
+        from citypods.ops.workqueue import build_manifest, manifest_counts
+
+        city_by_source: dict = {}
+        for city in cities:
+            city_by_source.setdefault(source_key(city), city)
+        manifest_sources = [
+            (k, city_by_source[k], recs) for k, recs in records_cache.items() if k in city_by_source
+        ]
+        wc_counts = manifest_counts(build_manifest(manifest_sources))
+
     # Storage detail
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
     retained = _measured_archive_items(cities, state_dir) or int(defaults.get("max_episodes", 50))
@@ -666,6 +681,12 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
                 "estimated_runs": tx_drain_runs,
                 "estimated_days": tx_drain_days,
             },
+            # H5: actionable backlog bucketed by output artifact (audio / transcript-asr /
+            # transcript-align), plus alignment-disabled + inert deep-archive counts.
+            "by_work_class": wc_counts.get("by_work_class", {}),
+            "work_pending": wc_counts.get("feed_visible_pending", 0),
+            "alignment_disabled": wc_counts.get("alignment_disabled", 0),
+            "deep_archive_items": wc_counts.get("deep_archive_items", 0),
         },
         "issues": {
             "deferred": sum(r["deferred"] for r in feed_rows),
