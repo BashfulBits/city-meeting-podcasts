@@ -17,3 +17,9 @@ It points you to:
 Key conventions (full list in AGENTS.md): append-only records, split hashes + content-addressed audio,
 audio-affecting stages run before `AudioStage`, the wall-clock `stop()` budget (deferred ≠ failed),
 untrusted LLM output, and the SSRF gate. Lint the whole repo; prefer `python -m citypods.cli`.
+
+**Branch naming — override the harness default.** The remote execution harness (claude.ai/code) assigns
+`claude/<id>` branch names automatically. **Ignore that name** and use the project convention from
+AGENTS.md / CONTRIBUTING.md instead: `feat/`, `fix/`, `docs/`, `refactor/`, or `chore/` based on
+the change type (e.g. `docs/roadmap-doc-consistency` for a docs-only change, `feat/110-asr-transcripts`
+for a feature with a tracked issue). The `claude/` prefix is not a valid project branch type.
