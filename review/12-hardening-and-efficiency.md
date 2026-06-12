@@ -278,18 +278,71 @@ thread pool first consumes the window. There is no deliberate "recent visible au
 transcripts, then deep archive," no per-stage backlog visibility, and no safe basis for splitting ASR
 into its own workflow (H6).
 
+**Decisions locked (2026-06-11) — build to these.** The design below is settled into these choices
+(rationale folded in); where the older prose differs, the decisions win.
+
+- **Manifest = hybrid, not authoritative.** Per-source records stay canonical; the pending set is
+  *derived* fresh each run (a killed run self-heals — no stale `running` rows). A thin sidecar
+  (`state/work/*.json`) persists only what records can't reconstruct: leases, backoff/`next_retry`,
+  `observed_seconds`. Because the pending set is derived, the **ordering policy needs no persisted
+  file** — which is what lets the work split into two PRs (below).
+- **Default order is deterministic and behavior-preserving.** With no `backlog_priority`, the selected
+  set is byte-identical to today's `_materialize_set` (top-`max_episodes`/body) and the previously
+  *nondeterministic* cross-source processing order becomes deterministic (recency desc). Rendered
+  output is unchanged; only the order a budget-limited run picks work in becomes reproducible.
+- **Comparator registry (additive table).** Ships: `recency` (`order: asc|desc`, optional
+  `within_days: N` **horizon** — inside the window sort newest-first `(0,-ts)`, **beyond it collapse to
+  a constant `(1,·)`** so the *next* key governs the backlog instead of date neutering it);
+  `recent_first: N` (boolean recent-vs-old bucket); `city_order` (explicit slug list; **partial lists
+  allowed** — named cities rank by index, every unnamed city shares a sentinel rank and falls through
+  to the next key; placement matters — `city_order` first = city-greedy, after `recency` = same-day
+  tie-break only); `body_order`; `feed_visible_first`. Reserved stubs: `requested_first`,
+  `strong_towns_first`, `population`.
+- **Production policy (initial).** `backlog_priority: [recency: {order: desc, within_days: 30}]` and
+  nothing else — keep the last 30 days complete first, then fall to the deterministic default. Every
+  other comparator ships and is unit-tested but is unconfigured in production until chosen.
+- **Priority buckets are reserved-but-inert today.** feed-visible ≡ materialized ≡
+  top-`max_episodes`(50)/body — the *same* set (`projection.py:53` "renders/materializes (==
+  max_episodes)"; the `_materialize_set` docstring "exactly what some feed can display — never the deep
+  archive"). `max_archive_items`(5000) is **retention only**. So `recent_archive`/`deep_archive` start
+  empty and `feed_visible_first` is a registered no-op; they activate only under a future
+  **archive-backfill** feature (last bullet).
+- **Diarization-forward manifest schema (reserve now, emit nothing).** Key work items by **output
+  artifact**: `work_class ∈ {audio, transcript-asr, transcript-align}` now, with `diarization` and
+  `transcript-merge` **reserved**. Each item carries its own `stage_version` + `input_hashes` (surgical
+  invalidation), and leases are **groupable** (one `lease_owner` may hold `{transcript-asr,
+  diarization}` for an episode). This deliberately **defers the fuse-vs-separate execution decision to
+  the backend adapter** (H9+) because it is platform-dependent — GPU/Modal favors whisperX-style fusion
+  (decode audio once, both models resident); a self-hosted Mac Mini may run pyannote/MPS +
+  faster-whisper/CoreML separately. `speakers.json` will be the content-addressed, version-stamped,
+  orphan-GC-protected peer of H12's `words.json`. H5 writes no diarization logic.
+- **PR split.** **PR1** = `ops/workqueue.py` + comparator registry + config parsing + stages wiring +
+  tests — pure ordering, *no new persisted state*, behavior-preserving. **PR2** = the sidecar
+  (leases/backoff/observed) + status-surface buckets — the H6b lease substrate.
+- **"Byte-identical", precisely.** The acceptance criterion constrains the *refactor at fixed config*
+  (inert by default), parameterized by the knobs — it does **not** freeze `max_episodes` or forbid
+  features. Raising `max_episodes` (feed + materialize stay coupled) is a live knob. **Archive-backfill**
+  (decouple feed-visibility from materialize depth so the deep archive drains over runs) is a separate
+  **opt-in** feature with its own ASR/encode/storage cost; opt-in keeps the default byte-identical, so
+  it is a cohesion/cost call, not a prohibition. Reserved buckets + windowed recency (the natural
+  throttle) let it land later with no manifest migration.
+
 **Design (Adopt + EXTEND — builds on existing primitives, adds a first-class, configurable policy).**
+*Refined by the **Decisions locked** block above; where they differ, the decisions win.*
 
 **(a) Durable work manifest.** Alongside the existing per-source records + `run_history.jsonl`, write a
 lightweight manifest the run consults and updates:
 ```
 state/work/{audio,transcript,timeline}.json   # or one work.json keyed by stage
 ```
-Each work item: `source_key`, `episode_uid`, `stage`, `stage_version`, `state`
-(`queued|running|done|backoff|dead`), `priority_bucket` (`feed_visible|recent_archive|deep_archive`),
-`est_seconds`, `observed_seconds`, `last_error`, `next_retry`, and (when concurrent workflows arrive in
-H6) `lease_owner`/`lease_expires`. This makes "why is this feed still missing audio/transcripts?"
-answerable in the status page, and is the **lease/merge substrate** ASR sharding needs.
+Each work item: `source_key`, `episode_uid`, `work_class` (artifact-keyed — see Decisions),
+`stage_version`, `input_hashes`, `state` (`queued|running|done|backoff|dead`), `priority_bucket`
+(`feed_visible|recent_archive|deep_archive`), `est_seconds`, `observed_seconds`, `last_error`,
+`next_retry`, and (when concurrent workflows arrive in H6) `lease_owner`/`lease_expires`. Under the
+**hybrid** model only the non-derivable fields (leases, backoff/`next_retry`, `observed_seconds`)
+actually persist to the sidecar; the rest is derived from records each run. This makes "why is this
+feed still missing audio/transcripts?" answerable in the status page, and is the **lease/merge
+substrate** ASR sharding needs.
 
 **ASR lane split (new H11a mitigation, 2026-06-09).** Production temporarily sets
 `asr_alignment_enabled: false`, so untimed provider transcripts remain notes-only and their timed
@@ -303,17 +356,20 @@ the status surface, so re-enabling alignment later is a backlog-drain decision, 
 **(b) Configurable prioritization policy.** A declarative, ordered list of **sort keys** applied
 lexicographically to the pending set; ties fall through to the next key. Config (`site_config.yml`):
 ```yaml
-backlog_priority:            # first → last
-  - recency: desc            # newest meeting first
-  - city_order               # then an explicit city ranking
-  - body_order               # then body
+backlog_priority:            # first → last; ties fall through to the next key
+  - recency: {order: desc, within_days: 30}   # PRODUCTION: last 30d newest-first; older → next key
+  # keys below ship + are tested, but stay unconfigured in production until chosen:
+  # - city_order             # explicit ranking; partial list ok (unnamed fall through)
+  # - body_order             # then body
 city_order: [denton-tx, dallas-tx, ...]
 ```
-Worked example: `recency:desc` + `city_order:[denton, dallas]` ⇒ the newest meeting from *either* city
-goes first; a **same-day tie ⇒ Denton before Dallas**. Extensible key types to implement:
-`recency`, `city_order`, `body_order`, `feed_visible_first` (currently-rendered episodes before deep
-archive), `requested_first`, `strong_towns_first`, `population`. Each key is a small comparator
-registered in a table so new keys are additive.
+Worked example (the *city-greedy* arrangement `city_order` first): `city_order:[denton, dallas]` ⇒ all
+Denton, then all Dallas, then every other city by the next key; a **same-day tie within a city ⇒**
+ordered by whatever follows. Key types: `recency` (optional `within_days` horizon — collapses beyond
+the window so later keys fire), `recent_first:N`, `city_order` (partial lists fall through),
+`body_order`, `feed_visible_first` (**reserved/inert today** — see the buckets decision), and reserved
+stubs `requested_first`, `strong_towns_first`, `population`. Each key is a small comparator registered
+in a table so new keys are additive.
 
 **Module shape.** Extract a small `citypods/ops/workqueue.py` (Codex's `ops/scheduler.py` idea):
 `build_manifest(records, stages) -> WorkItems`, `order(work_items, policy) -> ordered`,
@@ -324,19 +380,28 @@ window. The transcript stage should claim exactly one ASR lane at a time; an ali
 opportunistically fall back to fresh transcription in the same runner unless a later policy explicitly
 admits that extra model/cpu cost.
 
-**Implementation paths.** (1) **manifest + policy together** (preferred — the policy needs the manifest's
-pending set). (2) policy-only over the in-memory record set first, manifest later (faster to ship, but
-no cross-run visibility/leases → would be redone for H6). **Lean: (1).**
+**Implementation paths.** Settled: the **hybrid** model (Decisions) derives the pending set from
+records, so the ordering policy needs *no* persisted file — which cleanly splits the work into PR1
+(policy, no new persisted state) and PR2 (sidecar leases/backoff/observed for H6b coordination). This
+supersedes the earlier "manifest + policy must ship together" lean, which assumed an authoritative
+manifest holding the pending set.
 
-**Files.** new `citypods/ops/__init__.py`, `citypods/ops/workqueue.py`; `citypods/stages.py`
-(`_materialize_set` → `order(...)`); `citypods/run.py` (consult/update manifest); `citypods/config.py`
-(`backlog_priority`, `city_order`); `citypods/report.py` + `status.html` (per-stage backlog by priority
-bucket); `tests/test_workqueue.py` (the same-day tie example; each key type; default == legacy order;
-lease acquire/expire).
+**Files.**
+- **PR1** — new `citypods/ops/__init__.py`, `citypods/ops/workqueue.py` (`WorkItem`, comparator
+  registry, `order(items, policy)`); `citypods/stages.py` (`_materialize_set` → `order(...)`,
+  `transcript-asr`/`transcript-align` work-classes); `citypods/config.py` (`backlog_priority`,
+  `city_order`); `config/site_config.yml` (the production `recency:{order:desc, within_days:30}` line);
+  `tests/test_workqueue.py` (windowed-recency collapse-beyond-horizon; partial-`city_order`
+  fallthrough; same-day tie; each key type; **default == legacy selection**).
+- **PR2** — sidecar persistence in `ops/workqueue.py` (`load`/`save`, `lease`/`release`) +
+  `citypods/run.py` (load/update sidecar) + `citypods/report.py` + `status.html` (per-stage backlog by
+  bucket + `alignment-disabled`/`needs_alignment` counts); tests for lease acquire/expire, backoff
+  round-trip, mid-run-kill sidecar consistency, statesync round-trip.
 
 **Acceptance:** with a configured policy, the order matches the worked example deterministically; with
-no policy, output is byte-identical to today; the status page shows per-stage backlog by bucket; manifest
-round-trips through statesync.
+**no** policy the output is byte-identical to today **at fixed config** (the criterion constrains the
+refactor, not the `max_episodes` knob — see the "byte-identical, precisely" decision); the status page
+shows per-stage backlog by bucket; the sidecar round-trips through statesync.
 
 ---
 

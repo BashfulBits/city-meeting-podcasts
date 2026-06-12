@@ -96,7 +96,7 @@ sync · #20 video enclosures (partial).
 | H2 projection wall-clock fix | R3 | L3 | **Shipped** (per_run_cap→None default; materialize_encoded calibration; hours_hosted bytes fallback; gate wait + peak load + window % telemetry in run_history.jsonl; audio + transcript backlog ETAs in build_status) |
 | H3 feed-validation publish gate | #53 | L3 | **Shipped** (`validate_build` + `citypods validate-build` CLI + `deploy.yml` gate before Pages upload; redirect feeds skipped; known-empty slugs demoted to warn) |
 | H4 feed-health catch-up vs stalled states + per-provider error-rate tracking | R5 | L3 | **Shipped** (suppress catching-up; warn stalled ≥ 3/5; `provider_errors` in `run_history.jsonl` + `check_provider_error_rates`; `audit_feeds.py` auto-comments on state transitions; 19 new tests) |
-| H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed · include `transcript-align` backlog lane |
+| H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | committed · **design locked 2026-06-11** ([review/12 §H5](12-hardening-and-efficiency.md#h5--stage-backlog-manifest--configurable-prioritization-policy)): hybrid manifest (records canonical; thin sidecar for leases/backoff/timings); deterministic behavior-preserving default; comparator registry incl. windowed `recency`/`within_days` + partial `city_order`; artifact-keyed diarization-forward schema reserved; buckets reserved-but-inert; **PR1 policy / PR2 sidecar** · prod policy `recency:{desc, within_days:30}` · `transcript-align` lane · archive-backfill split to Deferred (§6) |
 | H6a ASR benchmark workflow (`asr-bench.yml`) | #1 | L3 | **Shipped** ([PR #256](https://github.com/BashfulBits/city-meeting-podcasts/pull/256)) |
 | H6b sharded/separate ASR workflow | #1, R1 | L3 | committed · after H5 manifest · split align-only vs transcribe-only lanes |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
@@ -336,6 +336,10 @@ make meetings independently crawlable; the **DerivedArtifact refactor** (review/
 added the third derived-artifact type (audio M4A · transcript VTT · **word-JSON**), the YAGNI trigger it
 was waiting on — so it moves from deferred to "do opportunistically now that H12's storage
 plumbing lands"; **full video / hosted DB / off-Actions media** are explicitly out of scope now (§8).
+**Archive-backfill** (new, 2026-06-11) — decouple materialize depth from feed-visibility so the
+retained archive (records beyond top-`max_episodes`/body) drains audio/transcripts over many runs.
+**Opt-in**, gated on its own ASR/encode/storage cost analysis; H5 reserves the `recent_archive`/
+`deep_archive` buckets + the windowed-recency throttle so it lands later with no manifest migration.
 **Deleted:** #5 NER (the city's own document search is better ground truth).
 
 ---
