@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-11**
+**Status: LIVING · last updated 2026-06-12**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -159,7 +159,7 @@ sync · #20 video enclosures (partial).
 | User "report a feed problem" template | #56 | L1 |
 | Auto-detect provider from a city URL | #30 | L1 |
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
-| Pluggable inference-execution backend (compute offload) | new (Infra) | L1→L2 · **interface = pre-1.0 lock** |
+| Pluggable inference-execution backend (compute offload) | new (Infra) | L2 · **interface = pre-1.0 lock** |
 
 ### Deferred backlog (ongoing) — §6
 #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
@@ -308,22 +308,67 @@ sketched here; issue templates + PR template **shipped**, label taxonomy (`area:
 Handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING) **shipped** with this doc set.
 
 **Pluggable inference-execution backend (compute offload).** *Problem:* heavy inference — transcription,
-forced alignment, and (Phase R) diarization, later AI-audio TTS — is the project's main compute cost and
-the first thing to outgrow the free 4-core GitHub Actions runner. We do **not** want to rearchitect the
-pipeline each time the compute home changes as the catalog scales. *Approach:* define one
-**execution-backend interface**, mirroring the pluggable storage backend in `storage/`: a small protocol
-(e.g. `run_inference(job) -> artifact`) where a `job` names the task (`transcribe`/`align`/`diarize`),
-its inputs (audio ref + optional source text), and the recipe hash, and the backend returns the
-content-addressed artifact. Backends: `local` (current — faster-whisper/stable-ts in-process on the
-runner), `modal` (serverless GPU), `kaggle`/`colab`/`hf-spaces` (free notebook compute), `self-hosted`
-(a self-hosted Actions runner on an M4/M5 Mac mini — MPS/CoreML), `aws` (Batch/EC2/SageMaker). The
-callers (`TranscriptStage`, a future `DiarizeStage`) stay backend-agnostic; H5's work manifest + leases
-provide the cross-runner coordination, and H9 is the cost/quality bake-off **against this interface**.
-*Tradeoff:* the interface is real design work and each non-local backend adds a secrets/ToS surface — but
-**only the `local` backend needs to exist at 1.0**; the payoff is that everything after is a single
-adapter. **The interface design is a pre-1.0 lock** — the maintainer wants the compute architecture
-settled before 1.0 so post-1.0 scaling never touches pipeline logic. *Sequencing:* design the interface
-during Phase H (it informs H6b and H9); implement non-`local` backends post-1.0 as scale demands.
+forced alignment, diarization, and (Phase R) text inference for summaries, topic tags, and soundbite
+selection — is the project's main compute cost and the first thing to outgrow the free 4-core GitHub
+Actions runner. We do **not** want to rearchitect the pipeline each time the compute home changes as the
+catalog scales. The backend design must be **provider-agnostic at two levels**:
+
+- **GPU/process backends** (ASR, diarization, TTS): `local` (current — faster-whisper/stable-ts
+  in-process on the runner), `modal` (serverless GPU), `kaggle`/`colab`/`hf-spaces` (free notebook
+  compute), `self-hosted` (M4/M5 Mac mini, MPS/CoreML), `aws` (Batch/EC2/SageMaker)
+- **LLM API backends** (text inference — summaries, tags, soundbite selection): `anthropic` (Claude
+  Haiku 4.5 / Sonnet via Batch API + prompt caching), `openai` (GPT family), `deepseek`, `gemini`
+  (Google), `together` (open models — Llama, Mistral, Qwen, etc. via Together AI API); open weights
+  self-hosted on a GPU backend are also a peer option
+
+*Approach:* define one **execution-backend interface**, mirroring the pluggable storage backend in
+`storage/` (same `runtime_checkable` Protocol pattern as `StorageBackend`): a small protocol
+`run_inference(job) -> artifact` where a `job` specifies:
+
+- `task` — one of the GPU/ASR verbs (`transcribe` / `align` / `diarize`) **or** the text-inference
+  verbs (`summarize` / `tag` / `soundbite-select`)
+- `inputs` — audio ref + optional source text for ASR tasks; transcript text + meeting metadata for LLM
+  tasks
+- `recipe_hash` — for ASR tasks: audio-content hash + model config (existing); **for LLM tasks: must
+  include `prompt_hash` + `model_id`** so any prompt revision or model swap triggers re-derivation of the
+  artifact (version-aware re-tagging), consistent with the project's content-addressed artifact strategy
+
+The backend returns the content-addressed artifact — VTT / word-JSON for ASR; structured JSON for LLM
+tasks (tag list, summary blob, soundbite timecodes). The callers (`TranscriptStage`, a future `TagStage`
+/ `SummarizeStage`, a future `DiarizeStage`) stay backend-agnostic; backend selection is config/env.
+
+**LLM adapter cost note.** A hosted LLM API adapter running Haiku 4.5 via the Batch API + prompt
+caching costs ~2–3.5¢/meeting for tagging + summarization — well under the <$20/mo cost gate. This is
+the correct allocation: LLM text tasks should use a hosted API adapter, **not** GPU credits. GPU credits
+(Modal/Beam free tiers, $30/mo each) are better reserved for the genuinely GPU-bound ASR and diarization
+work (H6b, H9, diarization #7). Folding `prompt_hash` + `model_id` into the recipe hash means switching
+providers or refining a prompt automatically re-runs only stale artifacts without touching pipeline
+logic.
+
+**H5 manifest integration.** H5's artifact-keyed work manifest already enforces the
+`audio → transcribe → diarize` DAG and explicitly reserves downstream work-class slots. The LLM
+text-inference work-classes (`summary`, `tags`, `soundbite-select`) extend this DAG naturally: they gate
+on `transcript: done` and consume `diarization` opportunistically (a speaker-labeled transcript improves
+tag and summary quality). No manifest migration is required — H5's `buckets` reservation and
+`within_days` windowing were designed with exactly this extension in mind.
+
+**First consumers.** R3 (topic tags / Strong Towns lens, [`review/14`](14-topic-tags-strong-towns-lens.md))
+and R4 (auto-summaries + soundbite selection, §5.1) are the first callers of the `tag` / `summarize` /
+`soundbite-select` task verbs. H9 (free transcription-offload evaluation) is the first exercise of the
+GPU backend path.
+
+*Tradeoff:* the interface is real design work and each non-`local` / non-API backend adds a secrets/ToS
+surface. But **only the `local` backend and one LLM API adapter need to exist at 1.0**; every later swap
+is a single adapter. The untrusted-output rule — all LLM outputs labeled, cached, and never overwriting
+the official record ([SECURITY.md](../SECURITY.md)) — applies to every LLM adapter regardless of
+provider.
+
+**The interface design — in its widened form, covering both GPU/ASR backends and provider-agnostic LLM
+API backends — is the pre-1.0 lock.** The compute + inference architecture must be settled before 1.0
+so post-1.0 scaling (new providers, new model tiers, new task verbs) is always adapter-only and never
+touches pipeline logic. *Sequencing:* design the interface during Phase H (informs H6b and H9);
+implement the first LLM API adapter (evaluate Anthropic, Deepseek, Gemini, OpenAI, Together) as part of
+R3/R4; implement non-`local` GPU backends post-1.0 as ASR/diarization scale demands.
 
 ---
 
