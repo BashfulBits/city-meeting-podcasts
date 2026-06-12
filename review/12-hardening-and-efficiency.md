@@ -272,6 +272,14 @@ dead enclosure still reports `error`; no real failure is hidden.
 
 ## H5 — Stage backlog manifest + configurable prioritization policy
 
+> **✓ Implemented in [#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263) (ordering
+> engine) · [#264](https://github.com/BashfulBits/city-meeting-podcasts/pull/264) (manifest + lean
+> sidecar + status + light city-ordering) · [#265](https://github.com/BashfulBits/city-meeting-podcasts/pull/265)
+> (global two-pass enrich queue).** This section is frozen as the design of record; the "Decisions
+> locked" block and the "Async dispatch & per-episode ordering" note below are the canonical reference
+> for the future external-backend work (H9/H6b). Competitive lease acquisition + per-item incremental
+> persistence are deferred to H6b/H9, where the external backend first exercises them.
+
 **Problem.** Scheduling is **implicit**: `_materialize_set(episodes, max_per_body)`
 ([`stages.py:91`](../citypods/stages.py)) picks the top-N-per-body, and whichever source enters the
 thread pool first consumes the window. There is no deliberate "recent visible audio first, then

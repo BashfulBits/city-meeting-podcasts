@@ -44,7 +44,12 @@ docs/  ──► GitHub Pages              ;   audio + transcripts + state ─�
 ```
 
 The production deploy **splits render from enrich** (separate CLI commands, see below): Pages publishes
-quickly from already-known state, then heavy enrichment runs best-effort and resumable.
+quickly from already-known state, then heavy enrichment runs best-effort and resumable. The heavy
+`enrich` phase processes its backlog as a **global, policy-ordered two-pass queue** (`ops/workqueue.py` +
+`run.py`): prepare every source, then run an on-runner **audio pass** (`chapters→timeline→remap→audio`,
+newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
+pass is *dispatch-not-await-ready* — transcription/diarization will run on external workers and reconcile
+from durable state on a later deploy (design: [`review/12` §H5](review/12-hardening-and-efficiency.md)).
 
 ## Module map (`citypods/`)
 
@@ -53,11 +58,12 @@ quickly from already-known state, then heavy enrichment runs best-effort and res
 | **Providers** | `providers/{base,granicus,civicplus,civicclerk,swagit}.py` — `MeetingProvider` Protocol + registry; each normalizes to the episode model. |
 | **Records / identity** | `records.py` — stable `uid`, `source_key`, `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. |
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
+| **Scheduling / backlog** | `ops/workqueue.py` — the `backlog_priority` policy (comparator registry: windowed `recency`, `city_order`, `body_order`, `feed_visible_first`, …), the derived **work manifest** (`WorkItem` per episode × output `work_class`, persisted to `state/work.json`), and the `lease`/`release`/`is_leased` API — the coordination substrate for off-runner ASR/diarization workers (H6b/H9). |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
 | **Media / audio** | `media.py` — ffmpeg encode, pinned AAC encode threads, loudness (EBU R128), content-addressed upload. |
 | **Transcripts** | `asr.py` — forced alignment (stable-ts) / fresh transcription (faster-whisper) with align-error fallback; emits a clean **segment-cue VTT** (served via `<podcast:transcript>`) **plus a word-level JSON sidecar** (`…-asr-<recipe>.words.json`) for search/clips/diarization; version-aware re-transcribe on an `ASR_PIPELINE_VERSION` bump (provider transcripts never invalidated); both objects are content-addressed + GC-referenced. `bench.py` — `asr-bench` diagnostic. |
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
-| **Orchestration** | `run.py` — `SourcePipeline`, `build()`, run history, graceful yield, resource-guard wiring. `resources.py` — process resource snapshots + memory/load admission guard for expensive native work. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
+| **Orchestration** | `run.py` — `SourcePipeline`, `build()`, the **global two-pass enrich queue** (`_run_enrich_global_queue`: newest-everywhere-first on-runner audio + decoupled transcript), run history, graceful yield, resource-guard wiring. `resources.py` — process resource snapshots + memory/load admission guard for expensive native work. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
 | **State** | `state.py` (build fingerprint), `statesync.py` (bucket↔local; bucket is truth), `storage/{base,local,s3}.py` (`S3CompatibleStorage` b2/r2 presets + local). |
 | **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status`; `validate.py` feed validation. |
 | **Security** | `security.py` — SSRF gate (`validate_source_url`), host allowlists, redirect/size caps; `http.py` retry/backoff; ffmpeg protocol whitelist; defusedxml. |
@@ -77,6 +83,11 @@ quickly from already-known state, then heavy enrichment runs best-effort and res
 - **Resource admission for expensive native work** — ffmpeg/ASR starts can wait for memory/load
   headroom, and abandoned ASR inference continues to occupy its worker slot until the native thread
   exits, so a stopped item does not stack unbounded CPU/RAM work.
+- **Backlog prioritization + async-ready dispatch** — the enrich phase orders work
+  *newest-everywhere-first* across all sources by a configurable `backlog_priority` policy; audio
+  re-hosting runs on the runner while transcribe/diarize are modeled as **dispatch-not-await** work
+  reconciled from the manifest across runs, so moving that compute to an external backend is an adapter
+  swap (no change to the audio queue or feed rendering). See [`review/12` §H5](review/12-hardening-and-efficiency.md).
 
 ## Hosting & CI/CD
 
