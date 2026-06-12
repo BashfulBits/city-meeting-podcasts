@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-11**
+last updated 2026-06-12**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -487,10 +487,12 @@ no render) is preserved; `all`/`render` are untouched.
 
 ## H6 — ASR benchmark workflow (H6a implemented in PR #256) → sharded/separate ASR workflow (H6b)
 
-**Problem.** ASR competes with audio/timeline inside the single enrich job and serializes through the
-`pages` concurrency group; it's the dominant backlog and the source of recent OOM/preemption failures.
-The `asr-bench` CLI exists ([`bench.py`](../citypods/bench.py)) but there is no benchmark **workflow** and
-no **separate ASR workflow**.
+**Problem.** Both audio encoding and ASR transcription compete with each other and with the Pages deploy
+inside the single enrich job, serializing through the `pages` concurrency group. An enrich kill marks
+the deploy job red even though the site is already live. Neither process has a dedicated workflow, and
+their combined resource draw was the primary cause of recent OOM/preemption failures. The `asr-bench`
+CLI exists ([`bench.py`](../citypods/bench.py)) but there is no benchmark **workflow** and no **separate
+audio or ASR workflow**.
 
 **Sequencing (2026-06-10):** the two steps are split into **H6a** (Step 1, benchmark workflow) and
 **H6b** (Step 2, sharded workflow). **H6a has no H5 dependency and is do-now** — it settles the model
@@ -514,14 +516,33 @@ changes (`asr_model`, `asr_beam_size`, `asr_compute_type`, threads) be compared 
 architecture change. (See also `spike/asr-model-benchmark`: compare `large-v3-turbo` vs `small.en` vs
 `base.en`.)
 
-**Step 2 — separate, sharded ASR workflow (H6b).** Once H5's manifest provides safe state coordination, add
-`.github/workflows/asr.yml`: scheduled (e.g. daily) + `workflow_dispatch`, **own concurrency group**
-distinct from `pages` (so it never hard-cancels a deploy), running a **matrix of source-sharded jobs**.
-Coordination options (choose by safety): (1) **source-sharded concurrency** `asr-${shard}` with each
-shard owning disjoint `source_key`s (preferred — no two writers touch one record file); (2) per-source
-state files with merge-on-push; (3) a lease file in object storage (the manifest's `lease_owner`).
-Render publishes **only completed** transcript artifacts and ignores in-progress ASR. Each job stays
-**below the 6-hour cap** (a daily workflow does **not** grant extra single-job capacity).
+**Step 2 — separate audio and ASR workflows; render-only deploy (H6b/H11b).** Once H5's manifest
+provides safe state coordination, split both heavy work classes out of `deploy.yml` into dedicated
+workflows with their own concurrency groups, so the Pages deploy job is never blocked or marked red by
+encoding or transcription:
+
+- **`.github/workflows/audio.yml`** (or combined `enrich.yml`): audio materialization (download, ffmpeg
+  encode, upload to object storage); scheduled frequently (e.g. every 4 hours, aligned with the deploy
+  cron); own concurrency group `audio` distinct from `pages`; `workflow_dispatch`.
+- **`.github/workflows/asr.yml`**: ASR transcription; scheduled daily + `workflow_dispatch`; own
+  concurrency group `asr` distinct from `pages`; running a **matrix of source-sharded jobs**.
+
+After the split, `deploy.yml` runs only: checkout → install → restore state → render → validate →
+upload → deploy (no ffmpeg, no ASR model, no heavy encodes). Deploy finishes in minutes and is never
+blocked by or marked red by an audio/ASR failure.
+
+Coordination options for state safety (choose by safety): (1) **source-sharded concurrency**
+`audio-${shard}` / `asr-${shard}` with each shard owning disjoint `source_key`s (preferred — no two
+writers touch one record file); (2) per-source state files with merge-on-push; (3) a lease file in
+object storage (the manifest's `lease_owner`). Render publishes **only completed** audio and transcript
+artifacts and ignores in-progress work. Each job stays **below the 6-hour cap** (a daily/4-hour workflow
+does **not** grant extra single-job capacity).
+
+> **Review before implementing:** this scope expansion (audio workflow alongside ASR workflow, render-only
+> deploy) was drafted 2026-06-10 and has not been validated against the current post-H5 state of
+> `deploy.yml`, the H5 lease/manifest implementation, or the `native_audio_max_active` tuning that landed
+> in H11a. Verify that the proposed `audio.yml` schedule and the H5 lease sidecar interact correctly
+> before cutting implementation issues.
 
 **Alignment re-enable criteria.** Reintroduce stable-ts only as an **align-only** workflow lane:
 pre-load the stable-ts model, do not load/run the fresh transcription model in that job, and do not run
@@ -530,15 +551,17 @@ future `transcript-asr` claim rather than falling back inline. This keeps peak m
 throughput measurements comparable, and prevents the 2026-06-09 failure mode where stable-ts alignment
 stacked with ffmpeg work and GitHub terminated the runner with exit 143.
 
-**Files.** `.github/workflows/asr-bench.yml`, `.github/workflows/asr.yml`; `citypods/cli.py` (ensure
+**Files.** `.github/workflows/asr-bench.yml`, `.github/workflows/asr.yml`,
+`.github/workflows/audio.yml` (new, H6b/H11b); `citypods/cli.py` (ensure
 `enrich --stage transcript --lane {transcribe,align} --shard k/N` or `--source <key>` selection exists);
 `citypods/asr.py` (global throttle already added — verify under matrix; add explicit preload entrypoints
-for the selected lane only); `citypods/ops/workqueue.py` (lease/claim for shards); docs in
-ARCHITECTURE.md (workflow split) + this file.
+for the selected lane only); `citypods/ops/workqueue.py` (lease/claim for shards); `deploy.yml` (strip
+to render-only — remove enrich step); docs in ARCHITECTURE.md (workflow split) + this file.
 
-**Acceptance:** H6a: the benchmark workflow emits a throughput/quality report artifact. H6b: the ASR
-workflow clears transcript backlog across shards with **no record-file clobbering** (verified by a
-concurrent two-shard dry run) and never cancels a Pages deploy.
+**Acceptance:** H6a: the benchmark workflow emits a throughput/quality report artifact. H6b: the audio
+workflow and ASR workflow clear their respective backlogs with **no record-file clobbering** (verified by
+a concurrent two-shard dry run); `deploy.yml` is a render-only job that never stalls on or is marked red
+by audio encoding or transcription.
 
 ---
 
@@ -749,11 +772,12 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
   to compare a stable exclusive baseline against a later 2-lane audio experiment. If the split decision
   still needs more precision, add active ffmpeg count, ASR-active state, and optional `/proc` child CPU
   snapshots before loosening the gate further.
-- **Durable follow-up (H11b): isolate heavy enrich from the deploy job.** Move enrich into its **own
-  workflow** (this is H6 Step 2) with a concurrency group distinct from `pages`, so the Pages deploy job
-  *cannot* be marked red by enrich regardless of what happens to the enrich runner. Depends on **H5**'s
-  manifest/lease for safe cross-workflow state coordination. Until then, the deploy job and enrich share
-  a runner and a red job is possible.
+- **Durable follow-up (H11b): isolate all heavy work from the deploy job.** Move both **audio
+  materialization** and **ASR/transcription** out of `deploy.yml` into dedicated workflows (this is H6b
+  Step 2, expanded to cover audio as well as ASR). `deploy.yml` becomes a lightweight render-only job
+  (render + validate + upload + deploy) that finishes in minutes and can never be marked red by encoding
+  or transcription failures. Depends on **H5**'s manifest/lease for safe cross-workflow state
+  coordination. Until then, the deploy job and enrich share a runner and a red job is possible.
 - **Observability (small, alongside H11a):** because a starved runner can die before emitting a clean
   signal, ensure the heartbeat's last line is easy to locate post-mortem and consider a step-summary
   note recording the last heartbeat snapshot, so a genuine provider failure is distinguishable from a
@@ -763,16 +787,16 @@ unmistakable: every step (incl. Enrich) shows ✓, "Warn if enrich was killed" i
 `citypods/media.py` (`audio` shared gate, ffmpeg filter-thread caps, child RSS/min-available logging),
 `citypods/stages.py` / `citypods/run.py` (`asr` exclusive gate + `native_audio_max_active` config),
 `config/site_config.yml` (one-core production audio lane), `tests/test_resources.py`,
-`tests/test_media.py`, `tests/test_encoder.py`. H11b: `.github/workflows/asr.yml` + `deploy.yml`
-(remove/decouple the heavy enrich step), `citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md
-(workflow split) — sequenced after H5/H6.
+`tests/test_media.py`, `tests/test_encoder.py`. H11b: `.github/workflows/asr.yml`,
+`.github/workflows/audio.yml` + `deploy.yml` (strip to render-only, remove enrich step),
+`citypods/ops/workqueue.py` (H5 lease), ARCHITECTURE.md (workflow split) — sequenced after H5/H6b.
 
 **Acceptance:** (H11a) several consecutive scheduled Build & Deploy runs complete **green** with enrich
 using most of its window and no exit-143/lost-comms kills under the one-slot audio lane. (H11a tuning,
 optional) a measured 3-core ASR / 1-core audio-lane experiment improves completed transcript/audio work
-per runner-hour while preserving the green-run streak and a safe memory floor. (H11b, later) a deploy job
-is never marked red by enrich because enrich no longer runs in it; the separate ASR workflow clears backlog
-without clobbering records (shared acceptance with H6).
+per runner-hour while preserving the green-run streak and a safe memory floor. (H11b, later) `deploy.yml`
+is a render-only job that never stalls on or is marked red by audio encoding or transcription; both the
+audio workflow and ASR workflow clear backlog without clobbering records (shared acceptance with H6b).
 
 ---
 
@@ -851,6 +875,7 @@ audio/ASR gate + one-slot audio lane + green-run acceptance, **shipped**; cap no
 (transcript artifact rework, shipped PR #253)** + **H6a (ASR benchmark, shipped PR #256)** → confirm
 `native_audio_max_active: 4` against the A2 criterion (else revert toward `1`/`2`) → H1 (issues) →
 H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 → H11b/H6b (isolate
-enrich + sharded ASR) → H9 (against the execution-backend interface). Each
+audio materialization + ASR into dedicated workflows; render-only deploy) → H9 (against the
+execution-backend interface). Each
 lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG,
 stamp this doc per item).
