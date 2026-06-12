@@ -217,6 +217,15 @@ function renderBacklog(){
 
   const keepIcon = B.keeps_up ? '<span class="ok">✓ keeps up</span>' : '<span class="warn">⚠ falling behind</span>';
 
+  // H5: actionable backlog by output artifact (audio / transcript-asr / transcript-align).
+  const wc = B.by_work_class||{};
+  const wcKeys = Object.keys(wc).sort();
+  const wcRows = wcKeys.length ? wcKeys.map(name=>{
+    const states = wc[name];
+    const parts = Object.keys(states).sort().map(st=>`${esc(st)}: <strong>${states[st]}</strong>`).join(' · ');
+    return `<div style="font-size:.8rem"><span class="muted">${esc(name)}</span> — ${parts}</div>`;
+  }).join('') : '<div class="muted" style="font-size:.8rem">No manifest derived (no local state).</div>';
+
   document.getElementById('backlog').innerHTML = `
 <h2>Backlog &amp; Pipeline Health</h2>
 <div class="section-card">
@@ -237,6 +246,13 @@ function renderBacklog(){
     <div>Capacity vs. inflow: <strong>${B.capacity_per_day}</strong>/day capacity · <strong>${B.inflow_per_day}</strong>/day inflow — ${keepIcon}
       <span class="muted"> &nbsp;|&nbsp; <a href="/admin/">→ /admin/ for full projection</a></span></div>
     <div>Full backfill estimate: ${B.pending} pending ep(s) → ${B.full_backfill_days} day(s) at current budget</div>
+  </div>
+  <div style="margin-top:.6rem;font-size:.85rem">
+    <div><strong>Backlog by work-class</strong> (feed-visible, actionable): <strong>${B.work_pending??0}</strong> queued</div>
+    ${wcRows}
+    <div class="muted" style="font-size:.75rem;margin-top:.3rem">
+      Alignment-disabled: ${B.alignment_disabled??0} · Deep-archive (inert, not worked today): ${B.deep_archive_items??0}
+    </div>
   </div>
 </div>`;
 }

@@ -27,6 +27,7 @@ from citypods.config import load_backlog_policy, load_city_configs, load_site_co
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.media import CommandFfmpeg, FfmpegRunner, SourceCache
 from citypods.models import City, Episode
+from citypods.ops.workqueue import build_manifest, order_cities_by_policy, save_manifest
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
 from citypods.records import (
@@ -738,6 +739,20 @@ def build(
         if time_bounded and not dry_run and storage is not None:
             _try_preload_asr_model(defaults)
 
+        # Light cross-source prioritization (H5): submit cities to the pool in policy order so
+        # high-priority cities start first. Coarse — a started city still drains its own
+        # (within-source-ordered) backlog; true global interleaving is PR3. Identity (and no
+        # records load) when no policy is configured.
+        if backlog_policy.keys:
+            _recs_by_slug: dict[str, dict] = {}
+            _recs_by_source: dict[str, dict] = {}
+            for c in cities:
+                sk = source_key(c)
+                if sk not in _recs_by_source:
+                    _recs_by_source[sk] = load_records(state_dir, sk)
+                _recs_by_slug[c.slug] = _recs_by_source[sk]
+            cities = order_cities_by_policy(cities, _recs_by_slug, backlog_policy)
+
         with source_cache or _nullcontext(), ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = [
                 pool.submit(
@@ -843,6 +858,17 @@ def build(
                 ),
                 provider_errors=provider_errors or None,
             )
+            # Persist the derived work manifest (H5) for the status surface + as the H6b lease
+            # substrate. Derived fresh from the just-updated records (hybrid model); ordered by
+            # the configured policy. statesync picks up state/work.json automatically.
+            if not dry_run:
+                _city_by_source: dict[str, City] = {}
+                for c in cities:
+                    _city_by_source.setdefault(source_key(c), c)
+                _manifest_sources = [
+                    (sk, c, load_records(state_dir, sk)) for sk, c in _city_by_source.items()
+                ]
+                save_manifest(state_dir, build_manifest(_manifest_sources, policy=backlog_policy))
         # Persist the updated record store + cache back to durable storage. The bucket — not
         # actions/cache — is the source of truth for derived artifacts.
         pushed = push_state(storage, state_dir)

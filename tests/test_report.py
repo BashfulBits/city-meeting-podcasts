@@ -291,6 +291,28 @@ def test_build_status_episode_taxonomy(tmp_path):
     assert issues["transient_errors"] == 1
 
 
+def test_build_status_backlog_by_work_class(tmp_path):
+    """H5: the actionable backlog is bucketed by output artifact + alignment-disabled split out."""
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("wc-city")  # asr_enabled True, asr_alignment_enabled False by default
+    a1 = _rec("a1", media_kind="hls", hosted_url=None)  # audio queued
+    a2 = _rec("a2", media_kind="hls", hosted_url="http://cdn/a2.m4a")  # audio done + transcript-asr
+    a3 = _rec("a3", media_kind="hls", hosted_url="http://cdn/a3.m4a")
+    a3["links"] = {"transcript": "http://cdn/a3.vtt"}  # provider text + alignment off → disabled
+    save_records(tmp_path, source_key(city), {"a1": a1, "a2": a2, "a3": a3})
+
+    bl = build_status([city], site_config=SITE, state_dir=tmp_path)["backlog"]
+    wc = bl["by_work_class"]
+    assert wc["audio"]["queued"] == 1
+    assert wc["audio"]["done"] == 2
+    assert wc["transcript-asr"]["queued"] == 1
+    assert wc["transcript-align"]["alignment-disabled"] == 1
+    assert bl["alignment_disabled"] == 1
+    assert bl["work_pending"] == 2  # audio a1 + transcript-asr a2 (alignment-disabled NOT counted)
+    assert bl["deep_archive_items"] == 0
+
+
 def test_build_status_stale_detection(tmp_path):
     """Stale = hosted audio whose stored spec hash differs from the current desired spec."""
     from citypods.records import audio_spec_hash, record_to_episode, save_records, source_key

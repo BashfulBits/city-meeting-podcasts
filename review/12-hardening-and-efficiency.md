@@ -316,9 +316,18 @@ into its own workflow (H6).
   (decode audio once, both models resident); a self-hosted Mac Mini may run pyannote/MPS +
   faster-whisper/CoreML separately. `speakers.json` will be the content-addressed, version-stamped,
   orphan-GC-protected peer of H12's `words.json`. H5 writes no diarization logic.
-- **PR split.** **PR1** = `ops/workqueue.py` + comparator registry + config parsing + stages wiring +
-  tests — pure ordering, *no new persisted state*, behavior-preserving. **PR2** = the sidecar
-  (leases/backoff/observed) + status-surface buckets — the H6b lease substrate.
+- **PR split (revised 2026-06-12 → three PRs).** **PR1** (shipped, [#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263)) =
+  `ops/workqueue.py` + comparator registry + config parsing + stages wiring — pure within-source
+  ordering, *no new persisted state*, behavior-preserving. **PR2** = the derived **work manifest**
+  (`build_manifest`) + **lean sidecar** (persist `state/work.json` + `lease`/`release`/`is_leased` API,
+  the H6b substrate — leases inert in a single workflow) + **status surface** (backlog by work-class /
+  bucket + alignment-disabled counts) + **light city-ordering** (`order_cities_by_policy` — submit
+  cities to the pool in policy order; coarse cross-source priority). **PR3** = the **full global
+  work-queue**: split `run.py`'s per-source `fetch→all-stages→persist` model into a cheap per-source
+  phase + a globally-ordered expensive-work queue (true newest-everywhere-first), with per-item
+  persistence and competitive leasing. PR3 is the riskiest piece (it rewrites the parallel execution
+  model around the H8/H11a native-work-gate) and is the execution-model foundation **H6b/H11b** build on,
+  so it is isolated into its own PR — see the dispatch note below.
 - **"Byte-identical", precisely.** The acceptance criterion constrains the *refactor at fixed config*
   (inert by default), parameterized by the knobs — it does **not** freeze `max_episodes` or forbid
   features. Raising `max_episodes` (feed + materialize stay coupled) is a live knob. **Archive-backfill**
@@ -380,28 +389,43 @@ window. The transcript stage should claim exactly one ASR lane at a time; an ali
 opportunistically fall back to fresh transcription in the same runner unless a later policy explicitly
 admits that extra model/cpu cost.
 
+**Dispatch note (PR2 light vs PR3 full).** The current model dispatches one `_process_city` per city to
+an 8-worker pool; each city runs its *full* stage pipeline (`fetch→all-stages→persist`) under a per-source
+lock, and the expensive native work is globally serialized only by the `native_work_gate`, granted in
+*arrival* order. True newest-everywhere-first therefore needs the global backlog enumerated up front and a
+worker queue pulling in policy order — i.e. splitting the per-source pipeline into a cheap phase + a global
+expensive-work queue with per-item persistence. That is **PR3** (a parallel-execution rewrite on top of the
+H8/H11a gate machinery). **PR2** delivers the cheaper, low-risk approximation: `order_cities_by_policy`
+submits cities to the pool in policy order (a started city still drains its own within-source-ordered
+backlog).
+
 **Implementation paths.** Settled: the **hybrid** model (Decisions) derives the pending set from
-records, so the ordering policy needs *no* persisted file — which cleanly splits the work into PR1
-(policy, no new persisted state) and PR2 (sidecar leases/backoff/observed for H6b coordination). This
-supersedes the earlier "manifest + policy must ship together" lean, which assumed an authoritative
-manifest holding the pending set.
+records, so the ordering policy needs *no* persisted file — which splits the work into PR1 (policy,
+behavior-preserving), PR2 (manifest + lean sidecar + status + light ordering), and PR3 (full global
+queue). This supersedes the earlier "manifest + policy must ship together" lean, which assumed an
+authoritative manifest holding the pending set.
 
 **Files.**
-- **PR1** — new `citypods/ops/__init__.py`, `citypods/ops/workqueue.py` (`WorkItem`, comparator
+- **PR1** (shipped) — new `citypods/ops/__init__.py`, `citypods/ops/workqueue.py` (`WorkItem`, comparator
   registry, `order(items, policy)`); `citypods/stages.py` (`_materialize_set` → `order(...)`,
   `transcript-asr`/`transcript-align` work-classes); `citypods/config.py` (`backlog_priority`,
   `city_order`); `config/site_config.yml` (the production `recency:{order:desc, within_days:30}` line);
   `tests/test_workqueue.py` (windowed-recency collapse-beyond-horizon; partial-`city_order`
   fallthrough; same-day tie; each key type; **default == legacy selection**).
-- **PR2** — sidecar persistence in `ops/workqueue.py` (`load`/`save`, `lease`/`release`) +
-  `citypods/run.py` (load/update sidecar) + `citypods/report.py` + `status.html` (per-stage backlog by
-  bucket + `alignment-disabled`/`needs_alignment` counts); tests for lease acquire/expire, backoff
-  round-trip, mid-run-kill sidecar consistency, statesync round-trip.
+- **PR2** — `ops/workqueue.py` (`build_manifest` + `manifest_counts`; `save_manifest`/`load_manifest`;
+  `lease`/`release`/`is_leased`; `order_cities_by_policy`); `citypods/run.py` (light city-ordering before
+  dispatch + persist `state/work.json` each enrich/all run); `citypods/report.py` + `assets/status.html`
+  (backlog `by_work_class` + `alignment_disabled` + `deep_archive_items`); tests in `test_workqueue.py`
+  (manifest derivation/counts, save/load round-trip, lease acquire/expire/release), `test_report.py`
+  (status by-work-class), `test_run.py` (manifest written; policy-ordered build succeeds).
+- **PR3** — `citypods/run.py` (split per-source fetch/cheap-stages from a global expensive-work queue;
+  per-item persistence) + `ops/workqueue.py` (competitive lease acquisition) + the gate/semaphore/cache
+  interplay; tests for global ordering across sources, mid-run-kill consistency, and lease contention.
 
-**Acceptance:** with a configured policy, the order matches the worked example deterministically; with
-**no** policy the output is byte-identical to today **at fixed config** (the criterion constrains the
-refactor, not the `max_episodes` knob — see the "byte-identical, precisely" decision); the status page
-shows per-stage backlog by bucket; the sidecar round-trips through statesync.
+**Acceptance.** **PR1:** default (no policy) selection byte-identical to today; comparators per the worked
+examples. **PR2:** the status page shows backlog by work-class/bucket; the manifest round-trips through
+statesync; a configured policy reorders city submission. **PR3:** with a configured policy, expensive work
+runs newest-everywhere-first across sources; deploys stay green (no H8/H11a regression).
 
 ---
 
