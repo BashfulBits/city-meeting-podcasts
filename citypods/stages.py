@@ -1381,22 +1381,29 @@ def run_stages(
     episodes: list[Episode],
     stages: list[EnrichmentStage],
     ctx: StageContext,
+    *,
+    quiet: bool = False,
 ) -> list[StageStats]:
+    """Run ``stages`` over ``episodes`` in order, timing each. ``quiet`` suppresses the
+    per-stage log lines — used by the PR3 global queue, which dispatches per *episode* and
+    would otherwise emit thousands of per-stage lines; it logs its own per-item summary."""
     out: list[StageStats] = []
     for stage in stages:
-        print(
-            f"[enrich] stage start slug={city.slug} provider={city.provider} "
-            f"stage={stage.name} episodes={len(episodes)}",
-            flush=True,
-        )
+        if not quiet:
+            print(
+                f"[enrich] stage start slug={city.slug} provider={city.provider} "
+                f"stage={stage.name} episodes={len(episodes)}",
+                flush=True,
+            )
         t0 = time.perf_counter()
         stat = stage.process(provider, city, episodes, ctx)
         stat.seconds = time.perf_counter() - t0
-        print(
-            f"[enrich] stage done slug={city.slug} provider={city.provider} stage={stage.name} "
-            f"ran={stat.ran} reused={stat.reused} queued={stat.skipped} "
-            f"errors={len(stat.errors)} seconds={stat.seconds:.1f}",
-            flush=True,
-        )
+        if not quiet:
+            print(
+                f"[enrich] stage done slug={city.slug} provider={city.provider} stage={stage.name} "
+                f"ran={stat.ran} reused={stat.reused} queued={stat.skipped} "
+                f"errors={len(stat.errors)} seconds={stat.seconds:.1f}",
+                flush=True,
+            )
         out.append(stat)
     return out

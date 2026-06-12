@@ -53,6 +53,7 @@ from citypods.site import (
 )
 from citypods.stages import (
     StageContext,
+    _materialize_set,
     default_stages,
     enrich_stages,
     render_stages,
@@ -119,6 +120,72 @@ class SourcePipeline:
             }
         )
 
+    def fetch_merge(self, city: City, key: str) -> tuple[object, list[Episode], dict, int]:
+        """Fetch the source + merge persisted records + migrate legacy manifests. The cheap
+        prepare step shared by ``enrich`` (per-source) and the global orchestrator (PR3).
+        Returns ``(provider, episodes, persisted, seeded)``. ``ProviderError`` propagates."""
+        provider = get_provider(city.provider)
+        episodes = provider.fetch_episodes(city.source)
+        print(
+            f"[enrich] source fetched slug={city.slug} provider={city.provider} "
+            f"source={key} episodes={len(episodes)}",
+            flush=True,
+        )
+        assign_uids(city, episodes)
+        persisted = load_records(self.state_dir, key)
+        merge_persisted(episodes, persisted)
+        seeded = migrate_legacy_manifests(self.state_dir, episodes)
+        return provider, episodes, persisted, seeded
+
+    def accumulate_stats(self, stats: list) -> None:
+        """Fold a ``run_stages`` result into the run-wide per-stage totals (thread-safe)."""
+        with self._guard:
+            for s in stats:
+                t = self.stage_totals[s.name]
+                t["ran"] += s.ran
+                t["encoded"] += s.encoded
+                t["credited"] += s.credited
+                t["aligned"] += s.aligned
+                t["transcribed"] += s.transcribed
+                t["reused"] += s.reused
+                t["backlog"] += s.skipped
+                t["seconds"] += s.seconds
+                t["bytes"] += s.bytes_written
+                t["errors"] += len(s.errors)
+                if s.errors and len(t["error_samples"]) < 3:
+                    t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
+
+    def persist_source(
+        self, key: str, episodes: list[Episode], persisted: dict, *, notes: list[str]
+    ) -> list[Episode]:
+        """Build + persist the append-only record store for one source, cache the rendered
+        archive, and return it. Shared by ``enrich`` and the global orchestrator (PR3)."""
+        # Append-only archive (issue #109): merge this run's freshly-enriched records over
+        # the persisted store (fresh wins on uid) instead of replacing it, so a meeting that
+        # left the provider window keeps its record + audio. Bounded by the (high) retention
+        # caps so it never grows truly unbounded.
+        fresh = {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid}
+        combined = prune_archive(
+            merge_records(persisted, fresh),
+            max_items=self.max_archive_items,
+            max_age_years=self.max_archive_age_years,
+        )
+        archived = len(combined) - len(fresh)
+        if archived > 0:
+            notes.append(f"{archived} archived")
+        if not self.ctx.dry_run:
+            save_records(self.state_dir, key, combined)
+
+        # Render from the full archive: prefer this run's in-memory enriched Episode for a
+        # uid, else rehydrate a persisted-only one (dropped from the provider window).
+        fetched_by_uid = {ep.uid: ep for ep in episodes if ep.uid}
+        archive = [
+            fetched_by_uid.get(uid) or record_to_episode(rec) for uid, rec in combined.items()
+        ]
+        self._cache[key] = archive
+        self._notes[key] = ", ".join(notes)
+        return archive
+
     def enrich(self, city: City) -> list[Episode]:
         key = source_key(city)
         with self._guard:
@@ -138,62 +205,13 @@ class SourcePipeline:
                 f"source={key} thread={thread_name}",
                 flush=True,
             )
-            provider = get_provider(city.provider)
-            episodes = provider.fetch_episodes(city.source)  # ProviderError propagates
-            print(
-                f"[enrich] source fetched slug={city.slug} provider={city.provider} "
-                f"source={key} episodes={len(episodes)}",
-                flush=True,
-            )
-            assign_uids(city, episodes)
-            persisted = load_records(self.state_dir, key)
-            merge_persisted(episodes, persisted)
-            seeded = migrate_legacy_manifests(self.state_dir, episodes)
-
+            provider, episodes, persisted, seeded = self.fetch_merge(city, key)
             stats = run_stages(provider, city, episodes, self.stages, self.ctx)
             notes = [s.note() for s in stats if s.note()]
-            with self._guard:
-                for s in stats:
-                    t = self.stage_totals[s.name]
-                    t["ran"] += s.ran
-                    t["encoded"] += s.encoded
-                    t["credited"] += s.credited
-                    t["aligned"] += s.aligned
-                    t["transcribed"] += s.transcribed
-                    t["reused"] += s.reused
-                    t["backlog"] += s.skipped
-                    t["seconds"] += s.seconds
-                    t["bytes"] += s.bytes_written
-                    t["errors"] += len(s.errors)
-                    if s.errors and len(t["error_samples"]) < 3:
-                        t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
+            self.accumulate_stats(stats)
             if seeded:
                 notes.append(f"{seeded} legacy")
-
-            # Append-only archive (issue #109): merge this run's freshly-enriched records over
-            # the persisted store (fresh wins on uid) instead of replacing it, so a meeting that
-            # left the provider window keeps its record + audio. Bounded by the (high) retention
-            # caps so it never grows truly unbounded.
-            fresh = {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid}
-            combined = prune_archive(
-                merge_records(persisted, fresh),
-                max_items=self.max_archive_items,
-                max_age_years=self.max_archive_age_years,
-            )
-            archived = len(combined) - len(fresh)
-            if archived > 0:
-                notes.append(f"{archived} archived")
-            if not self.ctx.dry_run:
-                save_records(self.state_dir, key, combined)
-
-            # Render from the full archive: prefer this run's in-memory enriched Episode for a
-            # uid, else rehydrate a persisted-only one (dropped from the provider window).
-            fetched_by_uid = {ep.uid: ep for ep in episodes if ep.uid}
-            archive = [
-                fetched_by_uid.get(uid) or record_to_episode(rec) for uid, rec in combined.items()
-            ]
-            self._cache[key] = archive
-            self._notes[key] = ", ".join(notes)
+            archive = self.persist_source(key, episodes, persisted, notes=notes)
             elapsed = time.perf_counter() - t0
             print(
                 f"[enrich] source done slug={city.slug} provider={city.provider} source={key} "
@@ -518,6 +536,145 @@ class _ResourceHeartbeat:
             pass
 
 
+def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]]:
+    """Build the global candidate queue — each prepared source's materialized set — ordered
+    across sources by the backlog policy. Pure + unit-testable. ``prepared`` maps each
+    ``source_key`` to a dict with at least ``{"city": City, "episodes": list[Episode]}``."""
+    from citypods.ops.workqueue import sort_key_for, workitem_from_episode
+
+    candidates: list[tuple[str, Episode]] = []
+    for key, st in prepared.items():
+        city = st["city"]
+        for ep in _materialize_set(
+            st["episodes"], city.max_episodes, policy=policy, city_slug=city.slug
+        ):
+            candidates.append((key, ep))
+    if policy is not None and policy.keys:
+        keyfn = sort_key_for(policy)
+        candidates.sort(
+            key=lambda ke: keyfn(
+                workitem_from_episode(ke[1], city_slug=prepared[ke[0]]["city"].slug)
+            )
+        )
+    return candidates
+
+
+def _run_enrich_global_queue(
+    pipeline: SourcePipeline,
+    cities: list[City],
+    *,
+    source_cache,
+    max_workers: int,
+    policy,
+) -> list[CityResult]:
+    """H5 PR3 — global two-pass enrich for the time-bounded heavy phase.
+
+    Instead of the per-source pool (each city runs its full pipeline; expensive work serializes in
+    thread-arrival order), this enumerates the whole backlog up front and processes it
+    **newest-everywhere-first across all sources**:
+
+    1. **Prepare** every unique source in parallel (fetch + merge records; no expensive stages).
+    2. **Audio pass** — the on-runner work (``chapters→timeline→remap→audio``) over all candidate
+       episodes in policy order, gated by the existing ``native_work_gate``/``stop``.
+    3. **Transcript pass** — decoupled and *dispatch-not-await ready*: over episodes that now have
+       hosted audio, in policy order. Runs faster-whisper on-runner today, but is structurally
+       separate so an external (over-the-wall) backend replaces only this pass — the audio queue and
+       feed rendering never assume in-run completion (H6b/H9).
+
+    Records persist after the passes; content-addressed audio means a graceful ``stop`` (or a kill)
+    never loses an encode — the object stays in storage and is re-credited next run.
+    """
+    ctx = pipeline.ctx
+    audio_stages = [s for s in pipeline.stages if s.name != "transcript"]
+    transcript_stages = [s for s in pipeline.stages if s.name == "transcript"]
+
+    # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
+    #    double-count). ProviderError is captured per source and surfaces as that city's result.
+    rep_city: dict[str, City] = {}
+    for c in cities:
+        rep_city.setdefault(source_key(c), c)
+    prepared: dict[str, dict] = {}
+    errors: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        fut_key = {
+            pool.submit(pipeline.fetch_merge, city, key): key for key, city in rep_city.items()
+        }
+        for fut in fut_key:
+            key = fut_key[fut]
+            try:
+                provider, episodes, persisted, seeded = fut.result()
+            except ProviderError as exc:
+                errors[key] = str(exc)
+                continue
+            notes: list[str] = [f"{seeded} legacy"] if seeded else []
+            prepared[key] = {
+                "city": rep_city[key],
+                "provider": provider,
+                "episodes": episodes,
+                "persisted": persisted,
+                "notes": notes,
+            }
+
+    # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
+    candidates = _order_global_candidates(prepared, policy)
+    print(
+        f"[enrich] global queue: {len(prepared)} source(s), {len(candidates)} candidate episode(s)"
+        f"{f', {len(errors)} fetch error(s)' if errors else ''}",
+        flush=True,
+    )
+
+    def _run_for(item: tuple[str, Episode], stages) -> None:
+        key, ep = item
+        st = prepared[key]
+        try:
+            pipeline.accumulate_stats(
+                run_stages(st["provider"], st["city"], [ep], stages, ctx, quiet=True)
+            )
+        except Exception as exc:  # noqa: BLE001 — one bad episode must not abort the pass
+            print(f"[enrich] global queue item failed source={key} uid={ep.uid}: {exc}", flush=True)
+
+    # 3) Passes. Submission order = global priority order; the native_work_gate still serializes
+    #    the actual encodes (so the top-priority batch encodes first), and stages self-limit on
+    #    ``stop`` (post-budget items count as backlog), so the maps drain fast once the window is
+    #    spent. source_cache spans both passes (one download per episode).
+    def _audio_task(item: tuple[str, Episode]) -> None:
+        _run_for(item, audio_stages)
+
+    def _transcript_task(item: tuple[str, Episode]) -> None:
+        _run_for(item, transcript_stages)
+
+    with source_cache or _nullcontext():
+        if audio_stages:
+            print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                list(pool.map(_audio_task, candidates))
+            print("[enrich] audio pass done", flush=True)
+        if transcript_stages:
+            # Decoupled from the audio pass: only episodes that now have hosted audio.
+            tx = [item for item in candidates if item[1].hosted_audio_url]
+            print(
+                f"[enrich] transcript pass: {len(tx)} item(s) with audio (newest-first)", flush=True
+            )
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                list(pool.map(_transcript_task, tx))
+            print("[enrich] transcript pass done", flush=True)
+
+    # 4) Persist each prepared source (episodes were mutated in place by the passes).
+    for key, st in prepared.items():
+        pipeline.persist_source(key, st["episodes"], st["persisted"], notes=st["notes"])
+
+    # 5) One CityResult per configured city, mirroring its source's outcome.
+    results: list[CityResult] = []
+    for c in cities:
+        key = source_key(c)
+        if key in errors:
+            results.append(CityResult(c.slug, "error", detail=errors[key]))
+        else:
+            episodes = prepared.get(key, {}).get("episodes", [])
+            results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
+    return results
+
+
 def build(
     *,
     site_config_path: str | Path = "config/site_config.yml",
@@ -739,42 +896,56 @@ def build(
         if time_bounded and not dry_run and storage is not None:
             _try_preload_asr_model(defaults)
 
-        # Light cross-source prioritization (H5): submit cities to the pool in policy order so
-        # high-priority cities start first. Coarse — a started city still drains its own
-        # (within-source-ordered) backlog; true global interleaving is PR3. Identity (and no
-        # records load) when no policy is configured.
-        if backlog_policy.keys:
-            _recs_by_slug: dict[str, dict] = {}
-            _recs_by_source: dict[str, dict] = {}
-            for c in cities:
-                sk = source_key(c)
-                if sk not in _recs_by_source:
-                    _recs_by_source[sk] = load_records(state_dir, sk)
-                _recs_by_slug[c.slug] = _recs_by_source[sk]
-            cities = order_cities_by_policy(cities, _recs_by_slug, backlog_policy)
+        if phase == "enrich":
+            # H5 PR3: the heavy production phase uses the global two-pass queue for true
+            # newest-everywhere-first prioritization across all sources (the per-source pool
+            # below can only order within a source). Renderless by definition.
+            results = _run_enrich_global_queue(
+                pipeline,
+                cities,
+                source_cache=source_cache,
+                max_workers=max_workers,
+                policy=backlog_policy,
+            )
+        else:
+            # all/render: the per-city pool. Light cross-source ordering (H5 PR2) submits cities
+            # in policy order so high-priority cities start first (coarse — a started city drains
+            # its own within-source-ordered backlog). Identity (no records load) without a policy.
+            if backlog_policy.keys:
+                _recs_by_slug: dict[str, dict] = {}
+                _recs_by_source: dict[str, dict] = {}
+                for c in cities:
+                    sk = source_key(c)
+                    if sk not in _recs_by_source:
+                        _recs_by_source[sk] = load_records(state_dir, sk)
+                    _recs_by_slug[c.slug] = _recs_by_source[sk]
+                cities = order_cities_by_policy(cities, _recs_by_slug, backlog_policy)
 
-        with source_cache or _nullcontext(), ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = [
-                pool.submit(
-                    _process_city,
-                    c,
-                    base_url,
-                    output_dir,
-                    cache,
-                    request_delay,
-                    dry_run,
-                    pipeline,
-                    site_config,
-                    fingerprint,
-                    do_render,
-                )
-                for c in cities
-            ]
-            for fut in futures:
-                result, entry = fut.result()
-                results.append(result)
-                if entry is not None:
-                    cache[result.slug] = entry
+            with (
+                source_cache or _nullcontext(),
+                ThreadPoolExecutor(max_workers=max_workers) as pool,
+            ):
+                futures = [
+                    pool.submit(
+                        _process_city,
+                        c,
+                        base_url,
+                        output_dir,
+                        cache,
+                        request_delay,
+                        dry_run,
+                        pipeline,
+                        site_config,
+                        fingerprint,
+                        do_render,
+                    )
+                    for c in cities
+                ]
+                for fut in futures:
+                    result, entry = fut.result()
+                    results.append(result)
+                    if entry is not None:
+                        cache[result.slug] = entry
 
     # Tally source-fetch failures by provider for run_history.jsonl.  Used by
     # check_provider_error_rates in audit.py to surface provider drift before it turns deploys red.

@@ -322,12 +322,24 @@ into its own workflow (H6).
   (`build_manifest`) + **lean sidecar** (persist `state/work.json` + `lease`/`release`/`is_leased` API,
   the H6b substrate — leases inert in a single workflow) + **status surface** (backlog by work-class /
   bucket + alignment-disabled counts) + **light city-ordering** (`order_cities_by_policy` — submit
-  cities to the pool in policy order; coarse cross-source priority). **PR3** = the **full global
-  work-queue**: split `run.py`'s per-source `fetch→all-stages→persist` model into a cheap per-source
-  phase + a globally-ordered expensive-work queue (true newest-everywhere-first), with per-item
-  persistence and competitive leasing. PR3 is the riskiest piece (it rewrites the parallel execution
-  model around the H8/H11a native-work-gate) and is the execution-model foundation **H6b/H11b** build on,
-  so it is isolated into its own PR — see the dispatch note below.
+  cities to the pool in policy order; coarse cross-source priority). **PR3** (implemented; async-aware) =
+  the **global two-pass queue** for the `enrich` phase: prepare every source in parallel, then process
+  the backlog **newest-everywhere-first across all sources** as (1) an on-runner **AUDIO pass**
+  (`chapters→timeline→remap→audio`, gated by the H8/H11a `native_work_gate`) followed by (2) a
+  **decoupled TRANSCRIPT pass**. `all`/`render` keep the per-city pool untouched. PR3 is the
+  execution-model foundation **H6b/H11b** build on — see the dispatch note + the async-dispatch decision
+  below.
+- **Transcribe/diarize are async "over the wall" (decided 2026-06-12).** Audio re-hosting stays
+  **on-runner** (the feed needs the M4A enclosure immediately). Transcription and diarization will run
+  on **external workers** (Modal / Beam / self-hosted Mac Mini) — the enrich run **dispatches and does
+  not await**; the worker writes results into the durable state on its own clock, and the **next** build
+  & deploy's `render` phase reconciles them onto the feed (exactly like a not-yet-hosted episode does
+  today). PR2's manifest `state` + `lease_owner`/`lease_expires` is the coordination medium. PR3 already
+  models this: the transcript pass is a **separate, dispatch-not-await-ready** pass — it runs
+  faster-whisper on-runner *today*, but swapping in the external backend replaces only that pass, and
+  neither the audio queue nor feed rendering ever assumes in-run completion. The external backend itself
+  is **H9/H6b**; ordering of async work is enforced at **dispatch** time (the policy decides submission
+  order; the backend runs its own queue). This is the concrete shape of VISION's "compute is pluggable".
 - **"Byte-identical", precisely.** The acceptance criterion constrains the *refactor at fixed config*
   (inert by default), parameterized by the knobs — it does **not** freeze `max_episodes` or forbid
   features. Raising `max_episodes` (feed + materialize stay coupled) is a live knob. **Archive-backfill**
@@ -399,6 +411,34 @@ H8/H11a gate machinery). **PR2** delivers the cheaper, low-risk approximation: `
 submits cities to the pool in policy order (a started city still drains its own within-source-ordered
 backlog).
 
+**Async dispatch & per-episode ordering (PR3 → H6b/H9).** The per-episode pipeline is
+`audio → transcribe → diarize`, and PR3 enforces that order **without assuming any step finishes in the
+run that started it**:
+
+- *Within a run:* the enrich orchestrator runs **sequential passes** — the audio pass completes before
+  the transcript pass begins — and each pass is **dependency-gated**: the transcript pass includes only
+  episodes whose audio is hosted (`ep.hosted_audio_url`), and a future diarize pass only those with a
+  transcript. Within one episode `run_stages` runs its stages in order; the worker pool parallelizes only
+  *across* episodes (throughput), never the steps inside an episode.
+- *Across runs (the async future):* transcribe/diarize run on **external workers** — the run
+  **dispatches and does not await**; results land in durable state and the next deploy's `render`
+  reconciles them onto the feed. The dependency order then holds via the manifest `state`: transcribe is
+  eligible only when `audio` is `done`, diarize only when the transcript is `done`. So `1→2→3` holds
+  whether a step runs in-pass today or lands from a worker two deploys later.
+- *Fused vs separate execution is the backend adapter's call* (platform-dependent), expressed through
+  **groupable leases** — one `lease_owner` may hold several work items of one episode:
+  - A **fused** worker (e.g. whisperX on a GPU/Modal box) claims the episode's `transcript-*` **and**
+    `diarization` items under a single lease, runs them in series, writes both, marks both `done` — **one
+    dispatch, one reconcile** (audio in run N → both land in run N+1). The shared lease is also what stops
+    the orchestrator from separately re-dispatching diarize.
+  - A **separate** setup (e.g. transcribe on Modal, diarize on the Mac Mini) takes independent leases —
+    **two dispatches** (transcript lands N+1, diarize dispatched N+1, lands N+2).
+  The manifest keeps them as **distinct, independently-versioned artifacts** (so re-diarizing without
+  re-transcribing stays possible) but never bakes in the grouping — chosen per platform in **H9/H6b**.
+  PR3 ships only the on-runner audio pass + the decoupled (on-runner-today) transcript pass; the
+  `lease_owner`/`lease_expires` fields + the reserved `diarization` work-class are the PR2 substrate it
+  builds on.
+
 **Implementation paths.** Settled: the **hybrid** model (Decisions) derives the pending set from
 records, so the ordering policy needs *no* persisted file — which splits the work into PR1 (policy,
 behavior-preserving), PR2 (manifest + lean sidecar + status + light ordering), and PR3 (full global
@@ -418,14 +458,22 @@ authoritative manifest holding the pending set.
   (backlog `by_work_class` + `alignment_disabled` + `deep_archive_items`); tests in `test_workqueue.py`
   (manifest derivation/counts, save/load round-trip, lease acquire/expire/release), `test_report.py`
   (status by-work-class), `test_run.py` (manifest written; policy-ordered build succeeds).
-- **PR3** — `citypods/run.py` (split per-source fetch/cheap-stages from a global expensive-work queue;
-  per-item persistence) + `ops/workqueue.py` (competitive lease acquisition) + the gate/semaphore/cache
-  interplay; tests for global ordering across sources, mid-run-kill consistency, and lease contention.
+- **PR3** (implemented) — `citypods/stages.py` (`run_stages(..., quiet=)` so per-episode dispatch doesn't
+  flood logs); `citypods/run.py` (`SourcePipeline.fetch_merge`/`accumulate_stats`/`persist_source`
+  extracted from `enrich` behavior-preservingly; `_order_global_candidates` + `_run_enrich_global_queue`
+  two-pass orchestrator; `build()` routes `phase=="enrich"` to it and leaves `all`/`render` on the
+  per-city pool); `tests/test_run.py` (cross-source newest-first ordering; identity without policy;
+  enrich two-pass + manifest; the new enrich logging contract). Records persist after the passes —
+  content-addressed audio means a graceful stop (or kill) never loses an encode. **Competitive lease
+  acquisition + per-item incremental persistence are deferred to H6b/H9**, where the external backend
+  first exercises them.
 
 **Acceptance.** **PR1:** default (no policy) selection byte-identical to today; comparators per the worked
 examples. **PR2:** the status page shows backlog by work-class/bucket; the manifest round-trips through
-statesync; a configured policy reorders city submission. **PR3:** with a configured policy, expensive work
-runs newest-everywhere-first across sources; deploys stay green (no H8/H11a regression).
+statesync; a configured policy reorders city submission. **PR3:** the global candidate queue orders
+newest-everywhere-first across sources with a configured policy; the enrich phase runs the on-runner audio
+pass then the decoupled transcript pass; the existing enrich contract (encode set, persist, run_history,
+no render) is preserved; `all`/`render` are untouched.
 
 ---
 
