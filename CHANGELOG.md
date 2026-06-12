@@ -15,6 +15,32 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Stage backlog manifest + configurable prioritization policy (H5)** — shipped across three PRs
+  ([#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263) ·
+  [#264](https://github.com/BashfulBits/city-meeting-podcasts/pull/264) ·
+  [#265](https://github.com/BashfulBits/city-meeting-podcasts/pull/265)):
+  - *Ordering engine (PR1)*: new `citypods/ops/workqueue.py` — a declarative `backlog_priority` policy
+    (`site_config.yml`) of composable comparator keys: `recency` (with an optional `within_days`
+    horizon that collapses beyond the window so the next key governs), `recent_first`, `city_order`
+    (explicit slug list, partial lists fall through), `body_order`, `feed_visible_first`. `order()` is
+    the identity with no policy, so wiring it into `_materialize_set` is byte-identical by default.
+    Production runs `recency: {order: desc, within_days: 30}`.
+  - *Work manifest + lean sidecar + status (PR2)*: `build_manifest` derives a `WorkItem` per
+    (episode, output `work_class`) from records — `audio` / `transcript-asr` / `transcript-align`,
+    tagged done/queued/alignment-disabled, bucketed feed_visible vs deep_archive — persisted to
+    `state/work.json` (statesync-synced) with a `lease`/`release`/`is_leased` API (the H6b substrate).
+    `/admin/status` gains a backlog-by-work-class block. `order_cities_by_policy` adds coarse
+    cross-source ordering to the per-city pool.
+  - *Global two-pass enrich queue (PR3)*: the time-bounded `enrich` phase becomes a global,
+    policy-ordered queue — prepare all sources in parallel, then process the backlog
+    **newest-everywhere-first across all sources** as an on-runner **audio pass**
+    (`chapters→timeline→remap→audio`, gated by the H8/H11a `native_work_gate`) followed by a
+    **decoupled transcript pass**. `all`/`render` keep the per-city pool. The transcript pass is
+    **dispatch-not-await-ready**: transcription/diarization will run on external workers
+    ("over the wall", H9/H6b), reconciled from durable state on a later deploy — per-episode
+    `audio→transcribe→diarize` order is enforced by sequential dependency-gated passes in-run and by
+    manifest `state` across runs; fused vs separate execution is the backend adapter's call via
+    groupable leases. Design: [`review/12` §H5](review/12-hardening-and-efficiency.md).
 - **Feed-health backlog triage + provider drift (H4)**: three sub-deliverables:
   - *Rehost-backlog triage*: `check_rehost_backlog` applies a three-tier model — catching-up
     (any hosted > 0, or pipeline not yet active enough) is **suppressed** (existing issues

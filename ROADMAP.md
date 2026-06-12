@@ -19,7 +19,9 @@ projection + admin page. Full history → [CHANGELOG.md](CHANGELOG.md).
 Recently shipped Phase H reliability work: **H10** ASR alignment fallback fix (PR #232), **H8**
 runner resource guard (PR #235), and **H11a** deploy resilience — native work gate + one-slot audio
 lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247). Phase H follow-up:
-**H6a** manual ASR benchmark workflow (PR #256).
+**H6a** manual ASR benchmark workflow (PR #256). Phase H observability/scheduling: **H1–H4** docs +
+projection + validation gate + feed-health triage; **H5** backlog manifest + prioritization policy +
+global newest-everywhere-first enrich queue (PRs #263/#264/#265).
 
 ## Current phase: **H — Hardening & Efficiency** (next up)
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
@@ -37,7 +39,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H2** | ✓ Shipped — Projection wall-clock fix — `per_run_cap` defaults to `None`; `sec_per_ep` calibrated from real encodes; `hours_hosted` bytes fallback; per-run telemetry in `run_history.jsonl`; audio + transcript backlog ETAs in `build_status` ([PR #259](https://github.com/BashfulBits/city-meeting-podcasts/pull/259)) |
 | **H3** | ✓ Shipped — **#53** feed-validation publish gate: `citypods validate-build` CLI + `deploy.yml` gate before Pages upload ([PR #260](https://github.com/BashfulBits/city-meeting-podcasts/pull/260)) |
 | **H4** | ✓ Shipped — Feed-health triage: catching-up suppressed, stalled → `WARN`; `provider_errors` per run in `run_history.jsonl` → `check_provider_error_rates` fires before deploys go red; `audit_feeds.py` auto-comments on state transitions |
-| **H5** | Stage **backlog manifest** + configurable **prioritization policy** — *design locked 2026-06-11* ([review/12 §H5](review/12-hardening-and-efficiency.md#h5--stage-backlog-manifest--configurable-prioritization-policy)): hybrid manifest (records canonical; thin sidecar for leases/backoff/timings); behavior-preserving deterministic default; comparator registry (windowed `recency`/`within_days`, partial `city_order`, `body_order`, `feed_visible_first`, …); diarization-forward artifact-keyed schema reserved. Prod starts `recency:{desc, within_days:30}`. **PR1 policy (shipped [#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263)) → PR2 manifest + sidecar + status + light city-ordering (shipped [#264](https://github.com/BashfulBits/city-meeting-podcasts/pull/264)) → PR3 global two-pass enrich queue (audio on-runner + decoupled async-ready transcript pass).** Transcribe/diarize go over-the-wall to external workers (H9/H6b); whole-archive backfill split out as a separate opt-in. |
+| **H5** | ✓ Shipped — Stage **backlog manifest** + configurable **prioritization policy** ([#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263)/[#264](https://github.com/BashfulBits/city-meeting-podcasts/pull/264)/[#265](https://github.com/BashfulBits/city-meeting-podcasts/pull/265)): `citypods/ops/workqueue.py` policy engine (windowed `recency`, `city_order`, …; prod `recency:{desc, within_days:30}`); derived work manifest + lease sidecar + `/admin/status` backlog-by-work-class; **global two-pass enrich queue** — newest-everywhere-first on-runner audio + decoupled async-ready transcript pass (transcribe/diarize go over-the-wall to external workers, H9/H6b). Whole-archive backfill split out as a separate opt-in. |
 | **H6a** | ✓ Shipped — ASR **benchmark workflow** (`asr-bench.yml`, manual, PR #256): compares max/med/min model + beam-size + CPU-thread profiles before any backfill decision |
 | **H6b** | **Sharded/separate ASR workflow** (after H5's manifest provides safe state coordination) |
 | **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
