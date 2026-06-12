@@ -13,6 +13,15 @@ request_delay_seconds: 0.1               # politeness sleep per worker thread
 max_workers: 8
 max_encodes_per_source: 1                # parallel episode workers within one source (silence + encode)
 
+# Backlog prioritization (H5). An ordered list of comparator keys applied to the work backlog;
+# ties fall through to the next key. With no list set, ordering is the behavior-preserving default.
+# Keys: recency ({order: asc|desc, within_days: N}), recent_first: N, city_order (ranks by the
+# city_order list below — partial lists fall through), body_order, feed_visible_first. See
+# review/12 §H5. Today: keep the last 30 days complete first, then fall to the default order.
+backlog_priority:
+  - recency: {order: desc, within_days: 30}
+# city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
+
 defaults:
   podcast_language: "en-us"
   podcast_category: "Government"

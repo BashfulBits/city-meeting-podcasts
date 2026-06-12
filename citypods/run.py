@@ -23,7 +23,7 @@ from pathlib import Path
 
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
-from citypods.config import load_city_configs, load_site_config
+from citypods.config import load_backlog_policy, load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.media import CommandFfmpeg, FfmpegRunner, SourceCache
 from citypods.models import City, Episode
@@ -563,6 +563,9 @@ def build(
     defaults = site_config.get("defaults", {})
     native_audio_max_active = int(defaults.get("native_audio_max_active", 1))
     max_kbps = int(defaults.get("audio_max_kbps", 96))
+    # Backlog prioritization policy (H5). Built once per run so any windowed-recency horizon is
+    # evaluated against a single ``now``. Empty/absent ⇒ behavior-preserving identity order.
+    backlog_policy = load_backlog_policy(site_config)
     storage = make_storage(site_config, base_url, output_dir)
 
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
@@ -664,6 +667,7 @@ def build(
         silence_lead_trail_min_s=float(defaults.get("silence_lead_trail_min_s", 1.0)),
         silence_mid_min_s=float(defaults.get("silence_mid_min_s", 10.0)),
         max_encodes_per_source=max_encodes_per_source,
+        backlog_policy=backlog_policy,
         source_cache=source_cache,
         resource_admission=_resource_admission_from_defaults(
             defaults,
