@@ -82,6 +82,8 @@ from typing import Protocol
 
 from citypods import asr as asr_mod
 from citypods.bodies import body_key, canonical_body
+from citypods.compute import InferenceJob
+from citypods.compute.local import LocalBackend
 from citypods.media import MaterializeStats, SourceCache, _probe_duration_secs, materialize_audio
 from citypods.models import City, Episode
 from citypods.ops.workqueue import BacklogPolicy, sort_key_for, workitem_from_episode
@@ -136,6 +138,11 @@ class StageContext:
     ffmpeg: object
     max_kbps: int
     dry_run: bool
+    # GPU/ASR execution backend (H13). The pluggable seam ``TranscriptStage`` routes inference
+    # through — ``local`` (in-process faster-whisper/stable-ts) by default; H14 swaps in the
+    # Modal/Beam dispatch adapters here with no stage change. None ⇒ build an in-process
+    # ``LocalBackend`` on the stage's ``asr_mod`` (keeps the default path behavior-preserving).
+    compute_backend: object | None = None
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
     # EBU R128 loudness normalization (#151). Empty string = disabled.
@@ -838,6 +845,11 @@ class TranscriptStage:
                     flush=True,
                 )
 
+        # Route inference through the H13 execution backend. Default to an in-process LocalBackend
+        # bound to this module's ``asr_mod`` so the path is behavior-preserving (and stays patchable
+        # in tests); production injects the configured backend via ``ctx.compute_backend``.
+        backend = ctx.compute_backend or LocalBackend(asr_mod)
+
         for ep in _materialize_set(
             episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
         ):
@@ -1146,33 +1158,47 @@ class TranscriptStage:
                 _release_abandoned=_release_abandoned_asr_slot,
                 _native_gate=ctx.native_work_gate,
                 _release_native=_release_abandoned_native_gate,
+                _backend=backend,
+                _recipe=recipe,
             ) -> None:
                 try:
 
-                    def _transcribe_fresh() -> bytes:
+                    def _transcribe_fresh():
                         _prompt = ". ".join(
                             p for p in (city.podcast_title, _ep.body, _ep.title) if p
                         )
-                        return asr_mod.transcribe(
-                            _audio,
-                            _asr_model,
-                            city.asr_language or None,
-                            city.asr_compute_type,
-                            city.asr_beam_size,
-                            _prompt,
-                            cpu_threads,
-                        )
+                        return _backend.run_inference(
+                            InferenceJob(
+                                task="transcribe",
+                                inputs={
+                                    "audio_path": _audio,
+                                    "model": _asr_model,
+                                    "language": city.asr_language or None,
+                                    "compute_type": city.asr_compute_type,
+                                    "beam_size": city.asr_beam_size,
+                                    "initial_prompt": _prompt,
+                                    "cpu_threads": cpu_threads,
+                                },
+                                recipe_hash=_recipe,
+                            )
+                        ).output
 
                     if _at:
                         try:
                             _result.append(
-                                asr_mod.align(
-                                    _audio,
-                                    _at,
-                                    _asr_model,
-                                    city.asr_language or None,
-                                    cpu_threads,
-                                )
+                                _backend.run_inference(
+                                    InferenceJob(
+                                        task="align",
+                                        inputs={
+                                            "audio_path": _audio,
+                                            "text": _at,
+                                            "model": _asr_model,
+                                            "language": city.asr_language or None,
+                                            "cpu_threads": cpu_threads,
+                                        },
+                                        recipe_hash=_recipe,
+                                    )
+                                ).output
                             )
                             _was_aligned.append(True)
                         except Exception as _align_exc:  # noqa: BLE001

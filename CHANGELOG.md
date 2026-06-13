@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **GPU/ASR execution-backend interface + `local` adapter (H13)** — the pre-1.0 "compute is
+  pluggable" lock ([#271](https://github.com/BashfulBits/city-meeting-podcasts/issues/271)). New
+  `citypods/compute/` module, peer of `storage/`: `base.py` defines `InferenceJob(task, inputs,
+  recipe_hash)` — `task` typed for the **full §5.5 verb set** (ASR `transcribe`/`align`/`diarize`
+  + the reserved R3/R4 LLM verbs `summarize`/`tag`/`soundbite-select`) — plus `JobResult`/
+  `JobHandle` and a `runtime_checkable` `Backend` protocol `run_inference(job)`. `local.py` wraps
+  the in-process faster-whisper/stable-ts path (**byte-identical** VTT + words.json output);
+  `TranscriptStage` now routes inference through `backend.run_inference(...)`, and
+  `make_compute` selects the backend from `compute_backend` (`site_config.yml` default `local`;
+  `COMPUTE_BACKEND` env override). Behavior-preserving refactor — `ASR_PIPELINE_VERSION`
+  unchanged. The seam H6b's lane split and H14's Modal/Beam **dispatch** adapters (which return a
+  `JobHandle`) both build on.
 - **Stage backlog manifest + configurable prioritization policy (H5)** — shipped across three PRs
   ([#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263) ·
   [#264](https://github.com/BashfulBits/city-meeting-podcasts/pull/264) ·

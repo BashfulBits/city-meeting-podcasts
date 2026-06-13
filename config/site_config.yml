@@ -122,6 +122,10 @@ defaults:
   asr_timeout_base_minutes: 15
   asr_timeout_per_audio_hour_minutes: 30
   asr_timeout_budget_reserve_minutes: 1
+  # GPU/ASR execution backend (H13 — the pre-1.0 "compute is pluggable" lock). Selects where
+  # transcribe/align inference runs; "local" runs faster-whisper/stable-ts in-process on the
+  # runner. The Modal/Beam off-runner dispatch adapters (H14) plug in here with no stage change.
+  compute_backend: "local"               # "local"  (override: COMPUTE_BACKEND=local)
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):
