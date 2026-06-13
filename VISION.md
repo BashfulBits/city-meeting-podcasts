@@ -76,13 +76,14 @@ genuine differentiator *if and when* revenue supports the generation cost.
   at cities with active Strong Towns Local Conversations rather than raw population rank.
 - **Hardening & efficiency first.** Stabilize and maximize throughput of the (free) pipeline before
   layering on new product surface.
-- **AI used judiciously.** Stay near $0 cash in the near term (self-hosted transcription on free CI);
-  spend on high-value generation as donations/subscriptions grow with the catalog.
+- **AI used judiciously.** Stay near $0 cash in the near term (self-hosted transcription on free CI +
+  free-tier serverless GPU); spend on high-value generation as donations/subscriptions grow with the catalog.
 - **Compute is pluggable.** Heavy inference — transcription, forced alignment, and later diarization /
   AI audio — runs behind a single **execution-backend interface**: the free GitHub Actions runner today,
-  with Modal / Kaggle / a self-hosted Mac-mini runner / AWS as drop-in backends as the catalog grows. The
-  goal is that scaling compute post-1.0 means writing **one adapter**, never rearchitecting the pipeline
-  logic — the same shape as the existing pluggable storage backend. This interface is a **pre-1.0 lock**.
+  with Modal / Beam / Kaggle / a self-hosted Mac-mini runner / AWS as drop-in backends as the catalog grows.
+  The goal is that scaling compute post-1.0 means writing **one adapter**, never rearchitecting the pipeline
+  logic — the same shape as the existing pluggable storage backend. This interface is a **pre-1.0 lock**;
+  Phase H lands it (H13) and proves it with two live free-tier adapters — Modal + Beam (H14).
 
 ## Sustainability & monetization
 

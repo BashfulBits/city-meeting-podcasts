@@ -6,6 +6,15 @@ last updated 2026-06-12**
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
 
+> **2026-06-12 — Phase H tail.** With H1–H5/H6a/H7/H8/H10/H11a/H12 shipped, six interlocking items remain,
+> designed below, in order: **H13** GPU/ASR execution-backend interface (+ `local` adapter — the pre-1.0
+> lock) → **H11b** render-only `deploy.yml` (render stops persisting records) → **H6b** split audio + ASR
+> into `audio.yml` + `asr.yml`, sharded + scoped state-push + lanes → **#39** per-provider rate limits →
+> **H14** Modal + Beam free-tier transcription adapters (async dispatch from `asr.yml`) → **H9** combined-
+> throughput evaluation. The maintainer pulled the external-worker *build* (Modal + Beam) into Phase H so
+> "compute is pluggable" ships proven by two live GPU adapters before 1.0; the first **LLM-API** adapter
+> (the other half of the §5.5 interface) lands with R3/R4.
+
 ## Purpose & context
 
 Most of the heavy product machinery (timeline/EDL, audio-cleanup band, ASR, content permanence) has
@@ -544,6 +553,26 @@ does **not** grant extra single-job capacity).
 > in H11a. Verify that the proposed `audio.yml` schedule and the H5 lease sidecar interact correctly
 > before cutting implementation issues.
 
+**Resolving the caveat — the record-write race (validated 2026-06-12).** Reading the post-H5 code closes
+the open question above and surfaces one hazard the "render-only deploy" framing alone does not cover.
+Today only one job writes `state/sources/*.json`, so the whole-directory `push_state`
+([`statesync.py`](../citypods/statesync.py)) is safe. Three concurrent workflows (`deploy` render +
+`audio` + `asr`) are **not**, for two reasons that must both be fixed:
+
+1. **Render still persists records.** `render_stages()` is links-only and produces no new audio/transcript
+   data, yet `build()` still calls `save_records` + `push_state` + `reconcile_state` unconditionally
+   ([`run.py`](../citypods/run.py)). If render pulls at T1, an `asr` shard writes a transcript at T2, and
+   render pushes its stale view at T3, render **silently erases the transcript** (transcript fields live
+   inside the episode record). So "render-only deploy" must also mean **render writes only `docs/`** —
+   gate `save_records`/`push_state`/`reconcile_state` off the render phase (H11b). The `audio`/`asr`
+   workflows become the sole record writers.
+2. **Sharded jobs over-push.** Each shard `pull_state`s the whole prefix (it needs all records for render
+   context) but must `push_state(..., only_prefixes=owned)` — push back **only** the `source_key`s it
+   owns — or it re-uploads its stale copy of a sibling shard's source. `reconcile_state` must likewise run
+   **only on a full, unsharded run**. With these two fixes, option (1) source-sharding is genuinely safe;
+   competitive leases stay reserved for the **external** backend (H14), where a worker holds an item
+   across runs.
+
 **Alignment re-enable criteria.** Reintroduce stable-ts only as an **align-only** workflow lane:
 pre-load the stable-ts model, do not load/run the fresh transcription model in that job, and do not run
 audio encodes concurrently in the same runner. If alignment fails quality checks, mark the item for a
@@ -555,8 +584,13 @@ stacked with ffmpeg work and GitHub terminated the runner with exit 143.
 `.github/workflows/audio.yml` (new, H6b/H11b); `citypods/cli.py` (ensure
 `enrich --stage transcript --lane {transcribe,align} --shard k/N` or `--source <key>` selection exists);
 `citypods/asr.py` (global throttle already added — verify under matrix; add explicit preload entrypoints
-for the selected lane only); `citypods/ops/workqueue.py` (lease/claim for shards); `deploy.yml` (strip
-to render-only — remove enrich step); docs in ARCHITECTURE.md (workflow split) + this file.
+for the selected lane only — transcription runs through the **H13 `local` adapter**);
+`citypods/ops/workqueue.py` (lease/claim for shards); `citypods/run.py` (filter `cities` to the shard via
+`stable_hash(source_key) % N`; gate record-persistence off the render phase); `citypods/statesync.py`
+(`push_state(..., only_prefixes=)` + scope-guard `reconcile_state` to full runs); `deploy.yml` (strip
+to render-only — remove enrich step); `tests/test_statesync.py` (scoped push leaves unowned sources
+untouched); `tests/test_run.py` (render persists no records; disjoint+exhaustive shard partition); docs
+in ARCHITECTURE.md (workflow split) + this file.
 
 **Acceptance:** H6a: the benchmark workflow emits a throughput/quality report artifact. H6b: the audio
 workflow and ASR workflow clear their respective backlogs with **no record-file clobbering** (verified by
@@ -631,33 +665,41 @@ measurably vs the H6 Step-1 baseline; documented recommended settings.
 
 ---
 
-## H9 — Evaluate free transcription-offload tiers
+## H9 — Combined-throughput evaluation across execution homes
 
-**Problem.** If a single tuned runner can't keep up with backlog at the target scale, where else can ASR
-run for ~$0 without violating anyone's ToS?
+> **Rescoped 2026-06-12.** H9 was "decision matrix, no commitment." Now that **H14 builds the Modal +
+> Beam adapters**, H9 is the **measurement** of the three execution homes that actually exist behind the
+> H13 interface — it answers "how far do the free tiers get us, and when is paid/self-hosted worth it?"
+> with numbers, not a paper survey.
 
-**Design — decision matrix, no commitment.** Evaluate each option on: legitimacy/ToS, reliability,
-integration cost, $/transcript-hour, quality — **against the execution-backend interface** (review/11
-§5.5), so each option is a candidate *backend adapter* rather than a one-off integration (Modal /
-self-hosted Mac-mini runner / AWS join the free tiers in the matrix below).
+**Problem.** After H6b shards the on-runner `local` backend and H14 adds two free-tier GPU backends, what
+is the **combined** sustainable throughput at $0, and where is the ceiling?
 
-| Option | Notes |
-|---|---|
-| **GitHub Actions matrix sharding** (= H6 Step 2) | The primary legitimate lever: free, ≤20 concurrent jobs, native to the repo. ~1,500/wk at 4 shards, ~3,000 at 8. **Recommended first.** |
-| Free ASR API quotas (e.g. Groq Whisper, Deepgram credits) | Fast, but quota-limited and external dependency; treat output as untrusted; watch for PII/ToS. |
-| Free cloud compute (Oracle Free Tier ARM, Colab/Kaggle/HF Spaces) | Real free compute but reliability/ToS caveats (interactive-notebook ToS, session limits); higher integration + secrets surface. |
+**Design — measure the built homes against the interface (H13).** Run the H6a `bench.py` harness across
+each backend adapter and report, per option: transcript-minutes/runner-hour (or /wall-week), WER /
+alignment-failure rate, reliability (job-success %), integration/secrets surface, and **$/transcript-hour
+(target $0 inside the free tier)**.
 
-**Output.** A short recommendation in this doc + ARCHITECTURE.md once measured: almost certainly
-"matrix sharding within Actions" unless backlog at 1,000+ feeds proves otherwise. Keep the others as
-documented fallbacks.
+| Execution home | Adapter | Notes |
+|---|---|---|
+| **GitHub Actions matrix sharding** (H6b) | `local`, sharded | Free, ≤20 concurrent jobs, native to the repo. ~1,500/wk at 4 shards, ~3,000 at 8. The always-available floor. |
+| **Modal free tier** (H14) | `modal` | Serverless GPU; budget-bounded to the monthly free credits (H14 ledger). Measure GPU-seconds/transcript-hour → confirm the free allotment's weekly transcript ceiling. |
+| **Beam free tier** (H14) | `beam` | Same serverless-GPU model; independent free allotment, so it stacks with Modal. Measure separately, then summed. |
+| *(documented fallbacks, not built)* | Groq/Deepgram credits; Oracle/Colab/Kaggle; self-hosted Mac-mini; AWS | Kept as the post-1.0 menu — each is "just another adapter" once H13 lands. |
 
-**Diarization workload (Phase R #7, after H6).** Speaker diarization is CPU-heavy (pyannote v3 on CPU
-is ~3–5× slower than transcription alone) and is the primary Phase R workload that would benefit from
-GPU offload. Include a diarization benchmark in H9's evaluation: measure pyannote v3 on a free GPU API
-(Groq, Colab) vs the wespeaker/speechbrain ECAPA-TDNN CPU path. The H9 output should include a
-diarization $/speaker-hour estimate alongside the transcription baseline.
+**Output.** A written recommendation in this doc + ARCHITECTURE.md, with the measured numbers: the
+**combined free-tier weekly transcript ceiling** (`local`-sharded + Modal + Beam), whether it clears the
+initial backlog at the current ~80-feed catalog and at 1,000+, and the first paid/self-hosted step if not.
 
-**Acceptance:** a written decision with measured numbers; the chosen lever wired (matrix sharding is H6).
+**Diarization workload (Phase R #7).** Speaker diarization is the GPU-hungriest workload (pyannote v3 on
+CPU is ~3–5× slower than transcription) and rides the **same** H13 interface + H14 backends (a
+`task=diarize` job). Include a diarization benchmark: pyannote v3 on Modal/Beam GPU vs the
+wespeaker/speechbrain ECAPA-TDNN CPU path on the runner, reporting **$/speaker-hour** alongside the
+transcription baseline — this is what tells Phase R whether diarization runs on the GPU backends or the
+CPU lane.
+
+**Acceptance:** a written decision with measured per-backend + combined numbers; the recommended mix
+wired (sharding via H6b, Modal/Beam via H14); diarization $/speaker-hour recorded for Phase R.
 
 ---
 
@@ -861,6 +903,134 @@ by the bump; the word-JSON key survives orphan GC; `<podcast:transcript>` still 
 
 ---
 
+## H13 — GPU/ASR execution-backend interface (+ `local` adapter) — **the pre-1.0 lock**
+
+**Maturity: L3.** The GPU/process half of the widened execution-backend interface (review/11 §5.5, which
+covers **two** backend families: GPU/process backends for ASR/diarize/TTS, and LLM-API backends for the
+R3/R4 text tasks). H13 builds the **interface + the `local` GPU/ASR adapter**; the first LLM-API adapter
+lands with R3/R4, and the Modal/Beam GPU adapters are **H14**. VISION names this interface a **pre-1.0
+lock**.
+
+**Problem.** Heavy inference is the project's main compute cost and the first thing to outgrow the free
+runner. Today `TranscriptStage` calls `citypods/asr.py` directly, so swapping in Modal/Beam (H14) would
+mean editing the stage. We want backend swaps to be adapter-only.
+
+**Design (mirror `storage/`).** Define one protocol — same `runtime_checkable` Protocol pattern as
+`StorageBackend`:
+- `citypods/compute/base.py` — `InferenceJob(task, inputs, recipe_hash)` where `task` is **typed for the
+  full §5.5 verb set** — GPU/ASR verbs `transcribe`/`align`/`diarize` **and** the reserved LLM verbs
+  `summarize`/`tag`/`soundbite-select` (so R3/R4's adapter slots in with no interface change) — plus
+  `JobResult`/`JobHandle` and a `Backend` protocol `run_inference(job) -> JobResult | JobHandle`. A
+  synchronous backend returns the artifact; a **dispatch** backend (H14) returns a handle.
+- `citypods/compute/local.py` — wraps **today's** in-process faster-whisper / stable-ts path (a pure move
+  of the calls in `asr.py`; **byte-identical output**). The only adapter that must exist at 1.0 (alongside
+  one LLM-API adapter from R3/R4).
+- `citypods/stages.py` `TranscriptStage` — call `backend.run_inference(...)`; the H6b `--lane` maps onto
+  `task` (`transcribe`/`align`).
+- `citypods/config.py` / `config/site_config.yml` — `compute_backend: local` (default).
+
+**Why first.** Low-risk behavior-preserving refactor; it is the seam H6b's lane split and H14's adapters
+both depend on. Diarization-forward by construction (the `diarize` verb is already typed) — Phase R #7
+adds an adapter call, not a new interface.
+
+**Files.** `citypods/compute/__init__.py`, `citypods/compute/base.py`, `citypods/compute/local.py`;
+`citypods/stages.py`; `citypods/config.py`, `config/site_config.yml`; `tests/test_compute_local.py` (the
+`local` adapter yields byte-identical VTT + words.json to the pre-refactor path); `ARCHITECTURE.md` (new
+`compute/` module, peer of `storage/`).
+
+**Acceptance.** `TranscriptStage` routes through `compute.local`; `ASR_PIPELINE_VERSION` unchanged;
+`tests/test_transcript_stage.py` passes untouched; `base.py` types the full §5.5 verb set; the protocol is
+documented as the pre-1.0-locked shape.
+
+---
+
+## H14 — External transcription adapters: Modal + Beam (free-tier-bounded async dispatch)
+
+**Maturity: L3.** The first real non-`local` GPU backends — pulled into Phase H on 2026-06-12 so the
+"compute is pluggable" lock is proven by **two live adapters** before 1.0 (overriding the earlier
+"GPU backends post-1.0" framing for these two specifically). Builds on **H13** (interface), **H5 PR3**
+(the transcript pass is already *dispatch-not-await ready* and the `work.json` lease fields were reserved
+for exactly this), and **H6b**'s `asr.yml` workflow (which becomes the dispatcher).
+
+**Problem.** Even sharded (H6b), the on-runner `local` backend caps at the free tier's ≤20 concurrent
+jobs / 6-h cap, and the GPU-hungry diarization workload (Phase R) won't fit it at all. Free
+serverless-GPU tiers (**Modal**, **Beam**) add real capacity at **$0 — but only while usage stays inside
+each provider's monthly free allotment**, which the design must *enforce*.
+
+**Design — async dispatch behind H13, bounded by a budget ledger.**
+- **Two adapters**, `citypods/compute/modal_backend.py` and `citypods/compute/beam_backend.py`, implement
+  the H13 `Backend` protocol in **dispatch mode**: `run_inference(job)` submits the job (audio bucket/
+  enclosure URL + `recipe_hash` + `task`) and returns a `JobHandle` **without awaiting**. The remote
+  worker writes the **content-addressed** artifact (`transcripts/<src>/<uid>-<recipe>.vtt` + `.words.json`)
+  back to the **same object bucket**, then marks the manifest item `done`. The **next** deploy's `render`
+  reconciles it onto the feed — exactly how a not-yet-hosted episode is handled today.
+- **`asr.yml` is the dispatcher.** With H14, the `asr.yml` workflow's transcribe lane dispatches to Modal/
+  Beam instead of running faster-whisper on-runner; the `local` adapter remains the **fallback** (budget
+  exhausted, or dispatch failure). The `audio.yml` workflow is unaffected — audio stays on-runner.
+- **Remote worker entrypoints** (`scripts/compute/modal_app.py`, `scripts/compute/beam_app.py`): a thin
+  function running faster-whisper (transcribe) / stable-ts (align) / later pyannote (diarize), reading
+  audio from the public URL and writing artifacts to the bucket via the existing storage backend (creds as
+  Modal/Beam **secrets**). The untrusted-output rule applies; no PII; verify each provider's free-tier ToS
+  permits this batch use (record the check here).
+- **Free-tier budget ledger (the $0 guarantee).** New `citypods/compute/budget.py` + a persisted
+  `state/compute_budget.json` (rides statesync). Config:
+  ```yaml
+  compute_backend: local            # default; "auto" enables the dispatcher below
+  compute_backends:
+    modal: { monthly_gpu_seconds: 108000, max_inflight: 8 }   # ≈ free credits — pin to the live plan
+    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8 }
+  ```
+  The dispatcher checks remaining monthly budget + open in-flight slots, **decrements on dispatch**, and
+  **reconciles actuals** on done. When an allotment is spent, that backend is skipped until the month
+  resets. Exceeding the free tier is structurally impossible.
+- **Routing = fill free tiers first, overflow to `local`.** For each queued `transcript-*` item in policy
+  order: pick the first backend with budget + an open slot (Modal, then Beam); else run on-runner via
+  `local`. The in-flight claim is a **live `work.json` lease** (`lease_owner = "modal:<job_id>"`) — **this
+  is where H5's reserved leases activate.**
+- **Reconcile dead workers.** An `asr.yml`-start `compute reconcile` reaps **expired** leases (worker died
+  → re-queue); a `done` item whose artifact is already present is a no-op (content-addressing makes
+  re-dispatch idempotent).
+- **Diarization-ready.** The same adapters carry `task=diarize` for Phase R #7 — the workload that most
+  needs the GPU (H9 measures $/speaker-hour).
+
+**Files.** `citypods/compute/{modal_backend,beam_backend,budget}.py`; `scripts/compute/{modal_app,beam_app}.py`;
+`citypods/compute/base.py` (the dispatch/`JobHandle` half); `citypods/stages.py` (dispatcher when
+`compute_backend != local`); `citypods/ops/workqueue.py` (leases go live + reconcile-expired);
+`config/site_config.yml` (`compute_backends`); `.github/workflows/asr.yml` (dispatch + `compute reconcile`
+step; Modal/Beam tokens as secrets); `tests/test_compute_dispatch.py` (dispatch records a lease +
+decrements budget; budget-exhausted → `local` fallback; reconcile reaps an expired lease + re-queues; the
+result-write contract round-trips an artifact onto a mock bucket); `ARCHITECTURE.md` + `SECURITY.md`
+(external-worker trust boundary + secrets surface).
+
+**Acceptance.** With Modal + Beam configured, the `asr.yml` transcribe lane dispatches up to each
+free-tier budget then falls back to `local`; artifacts written by a (mocked) remote worker are reconciled
+onto the feed by the next render; `state/compute_budget.json` is never exceeded in a month; no deploy is
+ever blocked; a killed remote worker's lease expires and the item re-queues.
+
+---
+
+## #39 — Per-provider rate limiting (sequence with H6b)
+
+**Maturity: L2→L3.** Sharded `audio.yml`/`asr.yml` (H6b) multiply concurrent hits on shared provider
+tenants — the three Granicus `403` fixes in two days (PRs #245/#250/#251) are the warning shot. The
+**Retry-After clamp is already shipped** (`_ClampedRetry.MAX_RETRY_AFTER_SECONDS = 120`,
+`citypods/http.py`); #39 generalizes the bespoke Granicus 403 backoff (`providers/granicus.py`) into a
+shared **per-host concurrency cap** so every shard stays polite.
+
+**Design.** A per-registrable-domain semaphore (or token bucket) in `GuardedHTTPAdapter.send`
+(`citypods/http.py`), configured by `provider_rate_limits: {granicus: 2, swagit: 3, ...}` in
+`site_config.yml`; lift the Granicus ad-hoc retry into the shared layer (keep the 403-as-rate-limit
+special case).
+
+**Files.** `citypods/http.py`, `citypods/providers/granicus.py`, `citypods/config.py` +
+`config/site_config.yml` (`provider_rate_limits`), `tests/test_http.py` (concurrent requests to one host
+serialize to the cap; Retry-After still clamps).
+
+**Acceptance.** Under a simulated N-shard burst, per-host in-flight requests never exceed the configured
+cap; no provider 403/429 storm; the Retry-After clamp regression test passes.
+
+---
+
 ## Module-split note (Codex maintainability, opportunistic)
 
 While touching these areas, extract along natural seams (do **not** refactor for size alone): H5 creates
@@ -874,8 +1044,12 @@ first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped P
 audio/ASR gate + one-slot audio lane + green-run acceptance, **shipped**; cap now at `4`) → **H12
 (transcript artifact rework, shipped PR #253)** + **H6a (ASR benchmark, shipped PR #256)** → confirm
 `native_audio_max_active: 4` against the A2 criterion (else revert toward `1`/`2`) → H1 (issues) →
-H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 → H11b/H6b (isolate
-audio materialization + ASR into dedicated workflows; render-only deploy) → H9 (against the
-execution-backend interface). Each
-lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11, add CHANGELOG,
-stamp this doc per item).
+H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 (all **shipped**).
+**Remaining tail (this plan):** **H13** (GPU/ASR execution-backend interface + `local` adapter — the
+pre-1.0 lock, do first) → **H11b** (strip `deploy.yml` to render-only; render stops persisting records)
+→ **H6b** (`audio.yml` + `asr.yml`, sharded by `source_key` + scoped `push_state` + align/transcribe
+lanes) → **#39** (per-provider rate limits) → **H14** (Modal + Beam free-tier transcription adapters;
+`asr.yml` dispatches; leases go live) → **H9** (combined local-sharded + Modal + Beam throughput eval,
+incl. diarization $/speaker-hour). Each lands as its own PR with tests; on merge, follow the lifecycle
+contract (flip review/11, add CHANGELOG, stamp this doc per item). Self-hosted Mac-mini + AWS remain
+post-1.0 adapters; the first **LLM API adapter** lands with R3/R4.
