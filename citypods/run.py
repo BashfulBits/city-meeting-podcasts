@@ -23,6 +23,7 @@ from pathlib import Path
 
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
+from citypods.compute import make_compute
 from citypods.config import load_backlog_policy, load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.media import CommandFfmpeg, FfmpegRunner, SourceCache
@@ -725,6 +726,9 @@ def build(
     # evaluated against a single ``now``. Empty/absent ⇒ behavior-preserving identity order.
     backlog_policy = load_backlog_policy(site_config)
     storage = make_storage(site_config, base_url, output_dir)
+    # GPU/ASR execution backend (H13). ``local`` (in-process) by default; the seam H14's Modal/Beam
+    # dispatch adapters swap into with no stage change.
+    compute_backend = make_compute(site_config)
 
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
     # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
@@ -812,6 +816,7 @@ def build(
         ffmpeg=ffmpeg,
         max_kbps=max_kbps,
         dry_run=dry_run,
+        compute_backend=compute_backend,
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
