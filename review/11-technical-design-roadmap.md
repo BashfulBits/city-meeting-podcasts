@@ -98,15 +98,17 @@ sync · #20 video enclosures (partial).
 | H4 feed-health catch-up vs stalled states + per-provider error-rate tracking | R5 | L3 | **Shipped** (suppress catching-up; warn stalled ≥ 3/5; `provider_errors` in `run_history.jsonl` + `check_provider_error_rates`; `audit_feeds.py` auto-comments on state transitions; 19 new tests) |
 | H5 stage backlog manifest + prioritization policy | #41, R2 | L3 | **Shipped** ([#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263) ordering engine + [#264](https://github.com/BashfulBits/city-meeting-podcasts/pull/264) manifest/sidecar/status/light-ordering + [#265](https://github.com/BashfulBits/city-meeting-podcasts/pull/265) global two-pass enrich queue) — hybrid manifest (`citypods/ops/workqueue.py`); behavior-preserving deterministic default; comparator registry (windowed `recency`/`within_days`, partial `city_order`, …); diarization-forward artifact-keyed schema; prod policy `recency:{desc, within_days:30}`; global newest-everywhere-first enrich (on-runner audio pass + decoupled async-ready transcript pass — transcribe/diarize go over-the-wall to external workers, H9/H6b); buckets reserved-but-inert; archive-backfill → Deferred (§6). Design frozen in [review/12 §H5](12-hardening-and-efficiency.md#h5--stage-backlog-manifest--configurable-prioritization-policy). Deferred to H6b/H9: competitive lease acquisition + per-item persistence. |
 | H6a ASR benchmark workflow (`asr-bench.yml`) | #1 | L3 | **Shipped** ([PR #256](https://github.com/BashfulBits/city-meeting-podcasts/pull/256)) |
-| H6b sharded/separate ASR workflow | #1, R1 | L3 | committed · after H5 manifest · split align-only vs transcribe-only lanes |
+| H6b separate audio + ASR workflows, sharded | #1, R1 | L3 | committed · after H11b · `audio.yml` + `asr.yml` (own concurrency groups, #269), sharded by `source_key` + **scoped `push_state`** (no cross-shard clobber); align-only vs transcribe-only lanes via the H13 `local` adapter; leases reserved for H14 |
 | H7 contributor/agent handoff docs | #57 (partial), R9 | L3 | **Shipped** (this doc set: AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + templates) |
 | H8 4-core runner saturation (ffmpeg `-threads` + memory admission + abandoned-thread accounting) | new | L3 | **Shipped** ([PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235)) |
-| H9 free transcription-offload evaluation | new | L2→L3 | committed · evaluate tiers **against the execution-backend interface** (feeds the pluggable-compute initiative) |
+| H9 combined-throughput evaluation | new | L2→L3 | committed · **measure** the three built execution homes (local-sharded H6b + Modal + Beam H14) for combined free-tier transcript ceiling + diarization $/speaker-hour — no longer a paper survey |
 | H10 ASR alignment fix (`WhisperModel.align` AttributeError + fallback gap) | new | L3 | **Shipped** ([PR #232](https://github.com/BashfulBits/city-meeting-podcasts/pull/232)) |
 | H11a deploy resilience — native work gate + one-slot audio lane + concurrency tuning | new | L3 | **Shipped** ([#239](https://github.com/BashfulBits/city-meeting-podcasts/pull/239)/[#241](https://github.com/BashfulBits/city-meeting-podcasts/pull/241)/[#242](https://github.com/BashfulBits/city-meeting-podcasts/pull/242)/[#243](https://github.com/BashfulBits/city-meeting-podcasts/pull/243)/[#244](https://github.com/BashfulBits/city-meeting-podcasts/pull/244)/[#246](https://github.com/BashfulBits/city-meeting-podcasts/pull/246)/[#247](https://github.com/BashfulBits/city-meeting-podcasts/pull/247)) |
-| H11b deploy resilience — isolate enrich into own workflow | new | L2 | committed · depends on H5 manifest/lease |
+| H11b deploy resilience — render-only deploy | new | L3 | committed · strip `deploy.yml` to render-only (audio/ASR → own workflows, #269) **+ make render stop persisting records** (the lost-update fix); precedes H6b |
 | H12 transcript artifact rework (segment VTT + word-JSON + version-aware re-transcribe) | #249 regression, R2/#7 | L3 | **Shipped** ([PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253)) |
-| #39 per-provider rate limiting (incl. Retry-After clamp) | #39 | L2 | committed · sequence with H6b (sharded workflows multiply provider request pressure); B2 Retry-After **clamp** (not ignore) folds in here |
+| #39 per-provider rate limiting (incl. Retry-After clamp) | #39 | L2→L3 | committed · sequence with H6b (sharded workflows multiply provider request pressure); generalize the Granicus 403 backoff into a shared per-host cap; Retry-After **clamp** already shipped (`http.py`) |
+| **H13 GPU/ASR execution-backend interface (+ `local` adapter)** | §5.5, new | L3 | committed · **pre-1.0 lock** · `citypods/compute/{base,local}.py` mirrors `storage/`; `base.py` types all task verbs (ASR + the R3/R4 LLM verbs), implements the `local` GPU/ASR adapter; `TranscriptStage` routes through it; behavior-preserving; do **first**. Design: [review/12 §H13](12-hardening-and-efficiency.md#h13--gpuasr-execution-backend-interface--local-adapter--the-pre-10-lock) |
+| **H14 external transcription adapters — Modal + Beam** | new, #7-adjacent | L3 | committed (2026-06-12) · free-tier-bounded **async dispatch** behind H13; `asr.yml` dispatches; budget ledger (`state/compute_budget.json`) guarantees $0; H5 leases go **live**; `diarize` reserved for Phase R; Mac-mini/AWS post-1.0. Design: [review/12 §H14](12-hardening-and-efficiency.md#h14--external-transcription-adapters-modal--beam-free-tier-bounded-async-dispatch) |
 
 ### Phase R — Research-Tool Surface (toward 1.0)
 | Item | #/GH | Maturity | Breakout |
@@ -159,7 +161,7 @@ sync · #20 video enclosures (partial).
 | User "report a feed problem" template | #56 | L1 |
 | Auto-detect provider from a city URL | #30 | L1 |
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
-| Pluggable inference-execution backend (compute offload) | new (Infra) | L2 · **interface = pre-1.0 lock** |
+| Pluggable inference-execution backend (compute offload) | new (Infra) | L3 · **pre-1.0 lock** — GPU/ASR interface = H13; Modal+Beam GPU adapters = H14 (built in Phase H); first LLM API adapter = R3/R4 |
 
 ### Deferred backlog (ongoing) — §6
 #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
@@ -366,9 +368,14 @@ provider.
 **The interface design — in its widened form, covering both GPU/ASR backends and provider-agnostic LLM
 API backends — is the pre-1.0 lock.** The compute + inference architecture must be settled before 1.0
 so post-1.0 scaling (new providers, new model tiers, new task verbs) is always adapter-only and never
-touches pipeline logic. *Sequencing:* design the interface during Phase H (informs H6b and H9);
-implement the first LLM API adapter (evaluate Anthropic, Deepseek, Gemini, OpenAI, Together) as part of
-R3/R4; implement non-`local` GPU backends post-1.0 as ASR/diarization scale demands.
+touches pipeline logic. *Sequencing (revised 2026-06-12):* the GPU/ASR interface + `local` adapter ship
+as **H13** (do-first — the pre-1.0 lock). The maintainer then pulled the first non-`local` GPU backends
+into Phase H: **H14** builds **Modal + Beam** as free-tier-bounded async-dispatch transcription backends
+(so the lock is proven by two live adapters before 1.0), dispatched from the `asr.yml` workflow; **H9**
+measures the combined local-sharded + Modal + Beam throughput. The first **LLM API adapter** (evaluate
+Anthropic, Deepseek, Gemini, OpenAI, Together) lands with **R3/R4**, its first consumers. Self-hosted
+Mac-mini + AWS GPU backends stay post-1.0 (no hardware yet) — each is then a single adapter against the
+same interface.
 
 ---
 
@@ -441,9 +448,14 @@ model + beam-size + CPU-thread benchmark before backfill); **B2** Retry-After **
 H2 projection wall-clock fix + tests (incl. a per-run telemetry summary record — see review/12 H2);
 H3 validation gate; H4 feed-health states + per-provider error rates; H5 backlog manifest +
 prioritization (including an explicit alignment-deferred lane for untimed provider transcripts);
-H11b/H6b isolate enrich + sharded ASR, with separate align-only and transcribe-only lanes so stable-ts
-and faster-whisper model loads do not stack in one runner; H9 offload evaluation **against the
-execution-backend interface**. The execution-backend **interface design** (§5.5) is a **pre-1.0 lock**.
+**remaining Phase H tail (this plan):** H13 GPU/ASR execution-backend interface (+ `local` adapter —
+pre-1.0 lock, do first) → H11b render-only `deploy.yml` (record-write stops in render) → H6b `audio.yml`
++ `asr.yml` workflows, sharded by `source_key` + scoped `push_state` + align-only/transcribe-only lanes
+(so stable-ts and faster-whisper model loads do not stack in one runner) → #39 per-provider rate limits
+→ H14 Modal + Beam free-tier transcription adapters (async dispatch from `asr.yml`; H5 leases go live)
+→ H9 combined-throughput evaluation. The execution-backend **interface design** (§5.5/H13) is a
+**pre-1.0 lock**, proven in Phase H by H14's two live GPU adapters; the first **LLM API adapter** lands
+with R3/R4.
 When each step completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge
 docs PR.
 
