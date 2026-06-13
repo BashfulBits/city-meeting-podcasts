@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-12**
+**Status: LIVING · last updated 2026-06-13**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -116,6 +116,7 @@ sync · #20 video enclosures (partial).
 | Per-meeting permalink pages | #46/GH#157 | L2→L3 | [`review/13`](13-per-meeting-pages-and-search.md) |
 | Static transcript search | #6 | L2→L3 | [`review/13`](13-per-meeting-pages-and-search.md) |
 | Topic tags / Strong Towns lens | #4 | L2→L3 | [`review/14`](14-topic-tags-strong-towns-lens.md) |
+| Legistar calendar provider (historical Granicus coverage) | new | L2→L3 | [`review/15`](15-legistar-catalog-provider.md) |
 | Per-agenda-item "what changed" cards | #3/GH#155 | L1 | §5.1 |
 | Auto-summaries | #2 | L1 | §5.1 |
 | Soundbite highlights | #15/GH#156 | L1 | §5.1 |
@@ -143,7 +144,7 @@ sync · #20 video enclosures (partial).
 | Upcoming-meetings `.ics` calendar | #19 | L1 |
 | Watchlists + topic alerts | new (R8 extension) | L1 |
 | Backup-material (packet) analysis | new (Feature B) | L1 |
-| Legistar provider (rich agendas/votes/rosters) | #31 | L1 |
+| Legistar provider (rich agendas/votes/rosters — InSite API) | #31 | L1 |
 | Vote/roll-call extraction (metadata + minutes) | #8 | L1 |
 | Attendee extraction (from minutes) | #14 | L1 |
 
@@ -275,8 +276,11 @@ email/Substack later. *Tradeoff:* RSS-first keeps it PII-free; precision depends
 structured/LLM "what's being proposed" brief — cost-gated, cached, **additive + labeled**. *Tradeoff:*
 PDF parsing + LLM cost; never overwrites official docs.
 
-**Legistar provider (#31).** Rich InSite API: agendas, votes, rosters, upcoming events. Unlocks #8/#14
-and high-quality foresight. *Approach:* standard new-adapter work + SSRF allowlist + fixtures.
+**Legistar provider (#31) — InSite API.** Rich structured data: agendas, votes, rosters, upcoming
+events. Unlocks #8/#14 and high-quality foresight. *Approach:* standard new-adapter work + SSRF
+allowlist + fixtures. *Distinct from Phase R's calendar provider* ([`review/15`](15-legistar-catalog-provider.md)),
+which scrapes `Calendar.aspx` solely to extend Granicus video coverage past the RSS view-cap; the
+InSite API adapter and the calendar scraper are independent and can coexist.
 
 **Vote/roll-call (#8) + attendee (#14) extraction.** From **platform metadata** (CivicClerk per-member
 tallies) + scraped **released minutes** — **never inferred from audio**. Shared "minutes-ingestion"
