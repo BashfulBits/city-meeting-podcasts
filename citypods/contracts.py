@@ -12,9 +12,16 @@ the default offline test suite.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 from citypods.providers import get_provider
+
+# Seconds of audio the media-fetch check copies — a *truncated* download that proves the endpoint is
+# reachable + serves real media without pulling a whole meeting.
+_MEDIA_FETCH_SECONDS = 3.0
 
 
 @dataclass
@@ -49,11 +56,41 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
     newest = max(episodes, key=lambda e: e.published)
 
     # 2. Media resolution — the URL handed to ffmpeg must resolve (HLS chain / presigned MP4).
+    resolved_url = ""
     try:
-        url = provider.resolve_media_url(newest, source)
-        out.append(_r(provider_name, slug, "media", bool(url) and url.startswith("http"), url[:80]))
+        resolved_url = provider.resolve_media_url(newest, source)
+        ok = bool(resolved_url) and resolved_url.startswith("http")
+        out.append(_r(provider_name, slug, "media", ok, resolved_url[:80]))
     except Exception as exc:  # noqa: BLE001
         out.append(_r(provider_name, slug, "media", False, repr(exc)))
+
+    # 2b. Media FETCH — resolution returning a fine-looking URL is not enough: the CDN can still 403
+    #     the actual byte fetch (e.g. Granicus blocks non-browser User-Agents). Truncated-download
+    #     the first few seconds through the *production* fetch path (citypods.media._download_audio,
+    #     same UA / protocol-whitelist / timeout ffmpeg uses in a real run) and require real bytes.
+    #     This catches the silent "audio never downloads" class without log-diving.
+    if resolved_url.startswith("http"):
+        if shutil.which("ffmpeg") is None:
+            out.append(_r(provider_name, slug, "media-fetch", True, "skipped (ffmpeg unavailable)"))
+        else:
+            from citypods.media import _download_audio
+
+            try:
+                with tempfile.TemporaryDirectory() as td:
+                    dest = Path(td) / "probe.m4a"
+                    ok = _download_audio(resolved_url, dest, max_seconds=_MEDIA_FETCH_SECONDS)
+                    size = dest.stat().st_size if dest.exists() else 0
+                    out.append(
+                        _r(
+                            provider_name,
+                            slug,
+                            "media-fetch",
+                            bool(ok) and size > 0,
+                            f"{size}B from first {_MEDIA_FETCH_SECONDS:g}s",
+                        )
+                    )
+            except Exception as exc:  # noqa: BLE001
+                out.append(_r(provider_name, slug, "media-fetch", False, repr(exc)))
 
     # 3. Chapters/transcript — only for providers that expose them; reachable + parseable.
     fetch_chapters = getattr(provider, "fetch_chapters", None)

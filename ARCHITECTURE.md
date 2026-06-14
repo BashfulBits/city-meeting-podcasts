@@ -130,11 +130,17 @@ Hard-won facts that bite anyone adding/debugging providers:
   `python -m citypods.cli …` (and `PYTHONPATH=. python scripts/…`).
 - **Granicus `DownloadFile.php` 302-redirects to a real MP4** even when the RSS `type` says WMV — that
   legacy type is metadata, not the actual media.
-- **Granicus rate-limits `DownloadFile.php` with `403` (not `429`) under concurrent access.** The adapter
-  **pre-follows** the redirect to the signed `archive-video.granicus.com` URL and hands ffmpeg that signed
-  URL directly (the CDN `403`s an unsigned bare path). Resolution stays at **fetch time**
-  (`resolve_media_url`), never persisted, because the signed URL expires. The `403`-as-rate-limit retry
-  now lives in the shared layer (next bullet), not in `resolve_media_url`.
+- **The Granicus media CDN `403`s non-browser User-Agents** — this, not signing or rate-limiting, is
+  why Granicus audio `403`'d. `DownloadFile.php` 302-redirects to a plain (unsigned)
+  `archive-video.granicus.com` URL; that URL serves fine to a `Mozilla/5.0 (compatible; …)` UA but
+  `403`s our old bare `citypods/0.1` UA and ffmpeg's default `Lavf/…`. The fix: `USER_AGENT`
+  (`http.py`) is browser-compatible, and `media.py` passes it to ffmpeg/ffprobe via `-user_agent`.
+  *(History: PRs #245/#250/#251 misdiagnosed this as a signing/rate-limit problem — their tests
+  mocked a **signed** redirect, so they passed CI while granicus never actually downloaded. The
+  `tests/live` **media-fetch** check now truncated-downloads each provider's newest clip through the
+  real fetch path, so a UA/endpoint regression fails loudly instead of silently.)* `resolve_media_url`
+  still pre-follows `DownloadFile.php` (one redirect resolved in Python, not per ffmpeg process), and
+  resolution stays at **fetch time**, never persisted.
 - **Per-host concurrency cap — the same limiter governs `requests` *and* ffmpeg** (`HostRateLimiter` in
   `http.py`, issue #39). Sharded `audio.yml`/`asr.yml` (H6b) concentrate many workers on a few sources
   sharing one provider CDN; that burst throttles the tenant (Granicus `403`; Swagit short/truncated
