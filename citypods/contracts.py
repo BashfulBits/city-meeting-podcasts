@@ -37,6 +37,17 @@ def _r(provider, slug, endpoint, ok, detail=""):
     return CheckResult(provider, slug, endpoint, ok, detail)
 
 
+def _is_spa_seek_url(url: str) -> bool:
+    """True for a path-style time anchor like ``…/play/{id}/{seconds}`` (no query string) — a
+    client-side SPA route that a server typically 404s on a direct HEAD/GET even though it works in
+    the browser (Swagit's player). Query-param anchors (Granicus ``…?starttime=``) are not SPA."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    seg = parts.path.rstrip("/").rsplit("/", 1)
+    return len(seg) == 2 and seg[1].isdigit() and not parts.query
+
+
 def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]:
     """Run the contract checks applicable to one city's provider. Each check is isolated so one
     broken endpoint doesn't mask the others."""
@@ -112,11 +123,13 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
         except Exception as exc:  # noqa: BLE001
             out.append(_r(provider_name, slug, "view_counts", False, repr(exc)))
 
-    # 5. Video deep-link — sampled *page-liveness* check for providers that declare "deeplink".
-    #    A HEAD on the player URL only confirms the page/redirect is alive; it does NOT verify
-    #    the time anchor is honored (Granicus &starttime= and Swagit /play/{id}/{t} both return
-    #    2xx regardless of the offset). So this catches a dead/relocated player, not a broken
-    #    seek. Reuses ``newest`` from the listing check above (episodes is non-empty here).
+    # 5. Video deep-link — page-liveness / URL-scheme check for providers that declare "deeplink".
+    #    A HEAD confirms a server-resolvable player is alive (Granicus MediaPlayer.php?starttime=).
+    #    Swagit's /play/{id}/{t} is a client-side SPA route: the server 404s it on a direct request
+    #    (even the real chapter-anchor timestamps the watch page links) though it works in-browser.
+    #    So on a 4xx for an SPA-style path-timestamp deeplink, fall back to confirming the scheme is
+    #    still current by finding the deeplink's path on the live watch page. Either way catches a
+    #    dead/relocated player or a changed scheme; the time anchor itself isn't server-verifiable.
     capabilities = getattr(provider, "capabilities", frozenset())
     if "deeplink" in capabilities and episodes:
         ref = (newest.links or {}).get("canonical_video") or newest.video_url
@@ -124,31 +137,30 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
         if video_deeplink is not None:
             try:
                 url = video_deeplink(ref, 30.0)  # sample: 30 seconds in
-                if url:
+                if not url:
+                    out.append(
+                        _r(provider_name, slug, "deeplink", False, "returned None for a valid ref")
+                    )
+                else:
+                    from urllib.parse import urlsplit
+
                     from citypods.http import make_session
 
                     with make_session() as sess:
                         resp = sess.head(url, timeout=10, allow_redirects=True)
-                    ok = resp.status_code < 400
-                    out.append(
-                        _r(
-                            provider_name,
-                            slug,
-                            "deeplink",
-                            ok,
-                            f"page {resp.status_code} (seek not verified) {url[:50]}",
-                        )
-                    )
-                else:
-                    out.append(
-                        _r(
-                            provider_name,
-                            slug,
-                            "deeplink",
-                            False,
-                            "video_deeplink returned None for a valid ref",
-                        )
-                    )
+                        ok = resp.status_code < 400
+                        detail = f"page {resp.status_code} (seek not verified)"
+                        if not ok and _is_spa_seek_url(url):
+                            # SPA route: a server 4xx is expected. Confirm the scheme is current by
+                            # finding the deeplink's path prefix (…/play/{id}) in the watch page.
+                            path_prefix = urlsplit(url.rsplit("/", 1)[0]).path
+                            page = sess.get(ref, timeout=10)
+                            if page.status_code < 400 and path_prefix and path_prefix in page.text:
+                                ok = True
+                                detail = (
+                                    f"SPA seek route (server {resp.status_code}; scheme current)"
+                                )
+                    out.append(_r(provider_name, slug, "deeplink", ok, f"{detail} {url[:50]}"))
             except Exception as exc:  # noqa: BLE001
                 out.append(_r(provider_name, slug, "deeplink", False, repr(exc)))
 

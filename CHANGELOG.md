@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Fixed
+- **Swagit deep-link contract check no longer false-fails on the SPA player route.** Swagit's
+  `/play/{id}/{t}` is a client-side route the server `404`s on a direct request — even the real
+  chapter-anchor timestamps the watch page itself links — so the contract check's `HEAD` (which
+  assumed a server-resolvable 2xx, true only for Granicus' `?starttime=`) flagged a false breakage.
+  The check now, on a 4xx for an SPA-style path-timestamp deeplink, confirms the scheme is still
+  current by finding the deeplink's path on the live watch page (`citypods/contracts.py`,
+  `_is_spa_seek_url`). The deeplink *generation* was always correct (it matches the page's anchors).
 - **Granicus audio now downloads — the CDN `403` was a User-Agent block, not signing/rate-limiting.**
   `archive-video.granicus.com` `403`s non-browser User-Agents; our bare `citypods/0.1` UA (and
   ffmpeg's default `Lavf/…`) were blocked, so Granicus audio had **never** materialized (every run
