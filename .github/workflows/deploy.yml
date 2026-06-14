@@ -31,11 +31,13 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# Render-only deploy (H11b): no `actions: read` graceful-yield token — render is not time-bounded
+# (it always finishes in minutes), so it never polls the Actions API or yields. The heavy phase
+# that needed that token lives in enrich.yml now.
 permissions:
   contents: read
   pages: write
   id-token: write
-  actions: read   # citypods build polls the Actions API to detect a newer queued run (graceful yield)
 
 jobs:
   build-deploy:
@@ -43,13 +45,11 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    # Shared by both the render and enrich phases (the heavy `enrich` is what actually encodes +
-    # polls the Actions API to yield; render needs the storage creds for durable state pull/push).
+    # Render-only: it reads the durable record store (restored from object storage by
+    # citypods/statesync.py) to publish feeds/pages, so it needs the storage creds — but no
+    # ffmpeg, no Whisper model, and no audio/ASR encodes. All heavy work moved to enrich.yml.
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      # Lets `citypods enrich` poll the Actions API and yield gracefully when a newer run is queued
-      # behind it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
-      GITHUB_TOKEN: ${{ github.token }}
       # Audio hosting (CivicPlus + extract_audio). Set the secrets for whichever backend
       # site_config.defaults.audio_storage_backend selects; if unset, HLS feeds stay empty.
       # Backblaze B2 (+ Cloudflare CDN for free egress):
@@ -73,10 +73,11 @@ jobs:
           cache: pip
 
       # Latency optimization only: the object bucket is the source of truth for build state
-      # (citypods/statesync.py restores it at build start and pushes at the end), so an evicted
-      # or missing cache self-heals from the bucket. This cache just avoids re-downloading that
-      # snapshot and lets unchanged cities skip re-rendering. The unique key forces a fresh save
-      # each run; restore-keys pulls the most recent previous cache.
+      # (citypods/statesync.py restores it at build start), so an evicted or missing cache
+      # self-heals from the bucket. This cache just avoids re-downloading that snapshot and lets
+      # unchanged cities skip re-rendering. The unique key forces a fresh save each run;
+      # restore-keys pulls the most recent previous cache. Render never pushes records back to the
+      # bucket (H11b) — the enrich workflow is the sole record writer.
       - name: Restore build state
         uses: actions/cache@v4
         with:
@@ -88,52 +89,16 @@ jobs:
             build-state-
 
       - name: Install
-        run: pip install -e ".[asr,storage]"
-
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      # Restore the cached large-v3-turbo weights from a previous successful download.
-      # Cache path matches what scripts/prepare_whisper.py uses as PREFERRED_DIR.
-      # Bump the version suffix to manually invalidate a poisoned cache
-      # (a 202-byte entry means a 429 was saved before the model downloaded).
-      - name: Cache Whisper model (large-v3-turbo)
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/faster-whisper-large-v3-turbo
-          key: whisper-large-v3-turbo-v2
-          restore-keys: whisper-large-v3-turbo-
-
-      # Download the Whisper model via a 4-step cascade:
-      #   1. Local Actions cache hit  (no network)
-      #   2. HuggingFace Hub          mobiuslabsgmbh/faster-whisper-large-v3-turbo
-      #      → on success, mirrors to our B2 bucket for step 3
-      #   3. Our B2 mirror            models/faster-whisper-large-v3-turbo/
-      #   4. HF fallback              distil-whisper/distil-large-v3
-      #      (HuggingFace's own org — separate rate-limit bucket, more reliable)
-      #
-      # The script writes ASR_MODEL_PATH to $GITHUB_ENV so the enrich step picks
-      # it up automatically.  continue-on-error lets render+deploy proceed even if
-      # all four steps fail; enrich falls back gracefully (one "model load failed"
-      # error per source, ASR skipped for that run).
-      - name: Prepare Whisper model
-        continue-on-error: true
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
-          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
-          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
-          B2_BUCKET: ${{ secrets.B2_BUCKET }}
-        run: python scripts/prepare_whisper.py
+        run: pip install -e ".[storage]"
 
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v6
 
-      # Phase 1 (fast): render feeds/pages from the record store + apply any code/template/config
-      # changes, using audio & chapters already hosted by prior runs. No encoding, so this finishes
-      # in minutes — the whole point is to publish merge fixes + new meetings ASAP, then enrich.
+      # Render feeds/pages from the record store + apply any code/template/config changes, using
+      # audio & chapters already hosted by the enrich workflow. No encoding, so this finishes in
+      # minutes — the whole point is to publish merge fixes + new meetings ASAP, never blocked by
+      # or marked red by audio/ASR work (which runs in enrich.yml).
       - name: Render feeds
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
@@ -157,51 +122,6 @@ jobs:
         with:
           path: docs
 
-      # The fast outputs go live HERE — before the heavy phase runs.
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
-
-      # Phase 2 (heavy, time-bounded): scrape chapters + encode audio + transcribe into
-      # object storage. Does NOT render or deploy; its output is picked up by the NEXT run's render.
-      # Bounded by the wall-clock window and yields gracefully when a newer run is queued behind it,
-      # so it never blocks the next deploy for long (issue #63).
-      # The Whisper model was pre-downloaded above; if that step failed (e.g. HF 429), the
-      # model loads here on first use instead (one API call total, not per-episode, thanks to
-      # the process-level cache in citypods/asr.py).  If it still can't load, one "model load
-      # failed" error is recorded per source and ASR is skipped gracefully for that run.
-      # continue-on-error: the site was already published by Deploy to GitHub Pages above.
-      # Enrich is a best-effort backfill (time-bounded, designed to be interrupted and resumed).
-      # An external kill (OOM, runner preemption, GitHub infra) should not mark the whole
-      # deployment red — the feeds and pages are already live.
-      - name: Enrich (chapters + audio + transcripts)
-        id: enrich
-        continue-on-error: true
-        env:
-          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
-          # huggingface_hub < 0.18 reads HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          set +e
-          log="${RUNNER_TEMP:-/tmp}/citypods-enrich.log"
-          citypods enrich 2>&1 | tee "$log"
-          code=${PIPESTATUS[0]}
-          set -e
-          if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then
-            echo "::warning title=Enrich yielded to newer run::Enrich exited 143 after the graceful-yield stop signal. The Pages deploy already succeeded, and the queued run will resume enrichment."
-            exit 0
-          fi
-          exit "$code"
-
-      # Emit a visible warning annotation when enrich exits non-zero, even though
-      # continue-on-error keeps the overall job green.  Annotations appear in the
-      # job UI and run summary so killed/OOM runs are detectable at a glance.
-      - name: Warn if enrich was killed
-        if: always() && steps.enrich.outcome == 'failure'
-        run: |
-          echo "::warning title=Enrich killed or errored::Enrich exited non-zero \
-          (outcome: ${{ steps.enrich.outcome }}).  Likely causes: OOM kill (exit 137), \
-          runner preemption (exit 143), or unhandled exception.  Audio/transcripts from \
-          this run may be incomplete — the next run will resume from where this one left off. \
-          Check the Enrich step log above for details."

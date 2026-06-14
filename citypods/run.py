@@ -94,12 +94,16 @@ class SourcePipeline:
         ctx: StageContext,
         max_archive_items: int = DEFAULT_MAX_ARCHIVE_ITEMS,
         max_archive_age_years: float = DEFAULT_MAX_ARCHIVE_AGE_YEARS,
+        persist_records: bool = True,
     ):
         self.state_dir = state_dir
         self.stages = stages
         self.ctx = ctx
         self.max_archive_items = max_archive_items
         self.max_archive_age_years = max_archive_age_years
+        # The render phase writes only docs/: it persists no records, so a stale render push can't
+        # clobber audio/transcripts written by the separate enrich workflow (review/12 §H6/H11b).
+        self.persist_records = persist_records
         self._cache: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
@@ -174,7 +178,7 @@ class SourcePipeline:
         archived = len(combined) - len(fresh)
         if archived > 0:
             notes.append(f"{archived} archived")
-        if not self.ctx.dry_run:
+        if not self.ctx.dry_run and self.persist_records:
             save_records(self.state_dir, key, combined)
 
         # Render from the full archive: prefer this run's in-memory enriched Episode for a
@@ -743,6 +747,11 @@ def build(
     # yield; "render" is cheap and must always finish so the deploy isn't gated on a budget.
     do_render = phase in ("all", "render")
     time_bounded = phase in ("all", "enrich")
+    # H11b: render writes ONLY docs/ — it persists no records and never pushes/reconciles durable
+    # state. The audio/ASR enrich workflows are the sole record writers, so a stale render push can
+    # no longer silently erase a transcript/hosted-audio they wrote (the record-write race that the
+    # render-only deploy split would otherwise open — review/12 §H6/H11b).
+    persist_records = phase != "render"
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
 
     # A time-bounded phase processes recordings (encode, chapter scrape) until a shared ``stop``
@@ -870,6 +879,7 @@ def build(
         max_archive_age_years=float(
             defaults.get("max_archive_age_years", DEFAULT_MAX_ARCHIVE_AGE_YEARS)
         ),
+        persist_records=persist_records,
     )
 
     # Pre-load the Whisper model BEFORE the parallel worker pool starts.
@@ -1046,15 +1056,18 @@ def build(
                 ]
                 save_manifest(state_dir, build_manifest(_manifest_sources, policy=backlog_policy))
         # Persist the updated record store + cache back to durable storage. The bucket — not
-        # actions/cache — is the source of truth for derived artifacts.
-        pushed = push_state(storage, state_dir)
-        if pushed:
-            print(f"state: pushed {pushed} file(s) to durable storage")
-        # Reap remote state objects with no local counterpart (e.g. records orphaned by a
-        # source edit that changed source_key) so they don't leak or pin orphaned audio.
-        reclaimed = reconcile_state(storage, state_dir)
-        if reclaimed:
-            print(f"state: reclaimed {reclaimed} stale remote file(s)")
+        # actions/cache — is the source of truth for derived artifacts. Render is gated out
+        # (persist_records is False): it produced no new records, and pushing its stale view would
+        # clobber what the concurrent enrich workflow wrote (review/12 §H6/H11b).
+        if persist_records:
+            pushed = push_state(storage, state_dir)
+            if pushed:
+                print(f"state: pushed {pushed} file(s) to durable storage")
+            # Reap remote state objects with no local counterpart (e.g. records orphaned by a
+            # source edit that changed source_key) so they don't leak or pin orphaned audio.
+            reclaimed = reconcile_state(storage, state_dir)
+            if reclaimed:
+                print(f"state: reclaimed {reclaimed} stale remote file(s)")
         if (
             asr_abandoned_event is not None
             and asr_abandoned_event.is_set()
