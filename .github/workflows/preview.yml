@@ -26,6 +26,22 @@ jobs:
       - name: Install
         run: pip install -e .
 
+      # Read-only restore of the record store the production deploy caches on `main`
+      # (`build-state-*`, ~8 MiB). No B2 creds needed — a PR workflow can read its base branch's
+      # Actions caches. This gives `--no-refresh` real records to render; on a cache miss (first run
+      # / eviction) the render is empty-but-valid (it still verifies the build/render flow).
+      - name: Restore build state
+        uses: actions/cache/restore@v4
+        with:
+          # Match the path set deploy.yml caches under, so a restore-keys hit extracts cleanly.
+          # (docs/ is harmless here — the render below overwrites it.)
+          path: |
+            .citypods-state
+            docs
+          key: build-state-preview-${{ github.run_id }}
+          restore-keys: |
+            build-state-
+
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v6
@@ -34,11 +50,12 @@ jobs:
       - name: Build feeds
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url || 'https://preview.example' }}
-        # --phase render skips all expensive enrichment stages (chapter scraping, silence
-        # planning, audio encoding) and just renders feeds + pages from existing state.
-        # A full --phase all with --chapters-cap N is too slow: cap is per-source, so with
-        # 50+ Swagit feeds it still takes 6-8 min of page-scraping with no cached state.
-        run: citypods build --phase render
+        # Render-only AND --no-refresh: render feeds + pages purely from the restored record store,
+        # making NO provider connections. The preview verifies the build/render flow against the
+        # last-known state; it does not validate live provider URLs (that's contracts.yml). This keeps
+        # the preview fast and immune to provider outages — live fetching only ever timed out and
+        # failed it (e.g. granicus connection timeouts), without adding value.
+        run: citypods build --phase render --no-refresh
 
       - name: Upload preview artifact
         id: upload

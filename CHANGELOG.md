@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Fixed
+- **PR preview no longer depends on live providers (was failing/ballooning on provider outages).**
+  The preview ran `citypods build --phase render` with **no record store**, so it fetched all ~84
+  feeds live just to have something to render — slow, and the *only* thing that could fail it (a
+  granicus connection-timeout storm, amplified by a concurrent Audio run, produced 33 errors → exit
+  1). New `citypods build --no-refresh` renders **purely from the record store with zero provider
+  connections** (`SourcePipeline.render_from_records`; an empty store renders an empty feed, not an
+  error). `preview.yml` now restores the `build-state-*` Actions cache (read-only, no B2 creds — a PR
+  can read its base branch's caches) and runs `--phase render --no-refresh`: ~seconds instead of
+  minutes, deterministic, and immune to provider availability. Production deploys are unchanged (they
+  still refresh + already fall back to `archive_from_records` on a fetch error). URL/contract
+  validation continues to live in `contracts.yml`.
 - **Swagit deep-link contract check no longer false-fails on the SPA player route.** Swagit's
   `/play/{id}/{t}` is a client-side route the server `404`s on a direct request — even the real
   chapter-anchor timestamps the watch page itself links — so the contract check's `HEAD` (which
