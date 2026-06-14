@@ -19,7 +19,7 @@ from citypods.records import (
     prune_archive,
     record_to_episode,
     save_records,
-    shard_index,
+    shard_assignment,
     source_key,
 )
 
@@ -66,24 +66,40 @@ def test_source_key_ignores_body_so_feeds_share_storage():
     assert source_key(combined) == source_key(per_board)
 
 
-def test_shard_index_is_deterministic_and_in_range():
-    # Stable across calls/processes (SHA-1, not salted hash()), and always 0 <= i < n.
-    for key in ("abc123", "deadbeef", source_key(_city(source={"feed_url": "F"}))):
-        for n in (1, 4, 7):
-            i = shard_index(key, n)
-            assert 0 <= i < n
-            assert shard_index(key, n) == i  # deterministic
+def test_shard_assignment_is_deterministic_and_in_range():
+    # Stable across calls/processes (sorted order, not salted hash()), and always 0 <= i < n.
+    keys = ["abc123", "deadbeef", source_key(_city(source={"feed_url": "F"}))]
+    for n in (1, 4, 7):
+        a = shard_assignment(keys, n)
+        assert set(a) == set(keys)
+        assert all(0 <= v < n for v in a.values())
+        assert shard_assignment(keys, n) == a  # deterministic
+        assert shard_assignment(reversed(keys), n) == a  # order-independent (sorts internally)
 
 
-def test_shard_partition_is_disjoint_and_exhaustive():
+def test_shard_assignment_is_disjoint_and_exhaustive():
     """The H6b acceptance: across k in range(N) the shards partition every source exactly once —
     so two concurrent shards never own (and never write) the same record file."""
     keys = [source_key(_city(source={"feed_url": f"F{i}"})) for i in range(50)]
     n = 4
-    buckets = {k: [key for key in keys if shard_index(key, n) == k] for k in range(n)}
+    a = shard_assignment(keys, n)
+    buckets = {k: [key for key in keys if a[key] == k] for k in range(n)}
     flat = [key for b in buckets.values() for key in b]
     assert sorted(flat) == sorted(keys)  # exhaustive
     assert len(flat) == len(set(flat)) == len(keys)  # disjoint (each source in exactly one shard)
+
+
+def test_shard_assignment_is_balanced_and_never_empty():
+    """#39 follow-up: round-robin keeps every shard non-empty (within ±1) until #sources < N —
+    fixing the wasted empty ``audio (0)`` runner the hash-mod assignment produced."""
+    # 10 distinct sources, N=4 (the catalog shape that left shards empty under hash-mod).
+    keys = [source_key(_city(source={"feed_url": f"F{i}"})) for i in range(10)]
+    n = 4
+    a = shard_assignment(keys, n)
+    sizes = [sum(1 for v in a.values() if v == k) for k in range(n)]
+    assert min(sizes) >= 1  # no empty shard
+    assert max(sizes) - min(sizes) <= 1  # balanced (10 over 4 → 3,3,2,2)
+    assert sorted(sizes, reverse=True) == [3, 3, 2, 2]
 
 
 def test_audio_spec_hash_and_key_track_only_audio_inputs():

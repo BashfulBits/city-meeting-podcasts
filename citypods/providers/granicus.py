@@ -9,9 +9,7 @@ Change detection uses a HEAD request and compares ETag / Last-Modified.
 from __future__ import annotations
 
 import json
-import random
 import re
-import time
 from email.utils import parsedate_to_datetime
 from html import unescape
 from urllib.parse import parse_qs, urlsplit
@@ -133,30 +131,27 @@ class GranicusProvider:
         return parse_index_json(resp.content), None
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
-        # DownloadFile.php redirects to a signed archive-video.granicus.com URL.
-        # Pre-follow the redirect here so ffmpeg receives the signed URL directly;
-        # the CDN returns 403 for unsigned bare-path requests.
+        # DownloadFile.php 302-redirects to a signed archive-video.granicus.com URL. Pre-follow the
+        # redirect here so ffmpeg receives the signed URL directly; the CDN returns 403 for unsigned
+        # bare-path requests.
         #
-        # DownloadFile.php rate-limits concurrent callers with 403 (not 429, so the
-        # shared make_session retry policy doesn't cover it). Retry with backoff +
-        # jitter so parallel workers don't all hammer the endpoint in lockstep.
+        # DownloadFile.php rate-limits concurrent callers with 403 (not 429). That backoff+retry now
+        # lives in the shared layer — ``make_session``'s adapter treats 403 as a rate-limit signal
+        # (issue #39), and the per-host concurrency cap keeps parallel workers from hammering the
+        # endpoint in lockstep — so the bespoke retry loop that used to live here is gone. On any
+        # failure we fall back to the bare URL.
         url = episode.video_url
         if "DownloadFile.php" not in url:
             return url
-        for delay in (0, 0.5, 1.5, 3.0):
-            if delay:
-                time.sleep(delay + random.uniform(0, delay * 0.5))
-            try:
-                with make_session() as session:
-                    resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
-                if resp.status_code in (301, 302, 303, 307, 308):
-                    location = resp.headers.get("Location", "")
-                    if location:
-                        return location
-                if resp.status_code != 403:
-                    break  # not a rate-limit; don't retry
-            except requests.RequestException:
-                break
+        try:
+            with make_session() as session:
+                resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+        except requests.RequestException:
+            return url
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location", "")
+            if location:
+                return location
         return url
 
     def fetch_view_counts(self, source: dict) -> list[int]:

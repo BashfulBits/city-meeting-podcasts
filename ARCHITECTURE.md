@@ -132,9 +132,25 @@ Hard-won facts that bite anyone adding/debugging providers:
   legacy type is metadata, not the actual media.
 - **Granicus rate-limits `DownloadFile.php` with `403` (not `429`) under concurrent access.** The adapter
   **pre-follows** the redirect to the signed `archive-video.granicus.com` URL and hands ffmpeg that signed
-  URL directly (the CDN `403`s an unsigned bare path), retrying the resolve on `403` with backoff+jitter
-  (PRs #245/#250/#251). Resolution stays at **fetch time** (`resolve_media_url`), never persisted, because
-  the signed URL expires.
+  URL directly (the CDN `403`s an unsigned bare path). Resolution stays at **fetch time**
+  (`resolve_media_url`), never persisted, because the signed URL expires. The `403`-as-rate-limit retry
+  now lives in the shared layer (next bullet), not in `resolve_media_url`.
+- **Per-host concurrency cap — the same limiter governs `requests` *and* ffmpeg** (`HostRateLimiter` in
+  `http.py`, issue #39). Sharded `audio.yml`/`asr.yml` (H6b) concentrate many workers on a few sources
+  sharing one provider CDN; that burst throttles the tenant (Granicus `403`; Swagit short/truncated
+  responses). `HostRateLimiter` caps simultaneous in-flight requests **per registrable domain**
+  (`provider_rate_limits` in `site_config.yml`, e.g. `granicus.com: 2`) and is acquired by both
+  `GuardedHTTPAdapter.send` and the ffmpeg fetch paths (`media.py`) — capping only the `requests`
+  adapter would miss the media downloads, which is where the storm actually was. Keyed by registrable
+  domain so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the tenant sees.
+  Per-process (each shard is its own runner); cross-shard coordination is H14's lease territory.
+- **`403` is retried as a rate-limit signal** by the shared session (`403` in `_ClampedRetry`'s
+  `status_forcelist`): media bytes never go through `requests`, so a `403` a `requests` call sees is a
+  provider throttle, not auth — retrying with backoff generalizes the old bespoke Granicus loop.
+- **A truncated source fetch is failed, not hosted** (`media.py`, issue #39). A throttled provider can
+  return a short response ffmpeg copies and exits 0 on — a 5-second clip of a multi-hour meeting. When
+  the feed declares a duration (Granicus/CivicClerk), an encode under 50 % of it is failed into the #120
+  backoff instead of being published (Swagit declares none → the concurrency cap is its guard).
 - **`Retry-After` is honored but clamped to 120s** by the shared HTTP session (`_ClampedRetry` in
   `http.py`). A Granicus 429 returning `Retry-After: 3600` once hung the whole build for an hour inside
   urllib3's retry sleep; capping keeps short legitimate backoffs without letting one header stall the run.

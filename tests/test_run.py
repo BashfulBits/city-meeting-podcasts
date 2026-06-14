@@ -326,7 +326,9 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
             loudness_profile=None,
             asset_resolver=None,
         ):
-            dest.write_bytes(b"fake-m4a")
+            dest.write_bytes(
+                b"fake-m4a" * 1024
+            )  # >_MIN_PLAUSIBLE_AUDIO_BYTES (#39 truncation guard)
 
     for ep in fake_provider.episodes:
         ep.media_kind = "hls"
@@ -643,7 +645,7 @@ class _CountingFfmpeg:
         asset_resolver=None,
     ):
         self.calls += 1
-        dest.write_bytes(b"fake-m4a")
+        dest.write_bytes(b"fake-m4a" * 1024)  # >_MIN_PLAUSIBLE_AUDIO_BYTES (#39 truncation guard)
 
 
 def _build_phase(tmp_path, cities, phase, ffmpeg, **kw):
@@ -807,7 +809,7 @@ def test_render_phase_uses_persisted_archive_when_provider_fetch_fails(tmp_path,
 def test_enrich_shards_partition_sources_disjoint_and_exhaustive(tmp_path, fake_provider):
     """The acceptance: across shards each configured source is enriched by exactly one shard, so
     two concurrent shards never touch the same record file."""
-    from citypods.records import shard_index, source_key
+    from citypods.records import shard_assignment, source_key
 
     cities_dir = _setup_multi(tmp_path)
     ff = _CountingFfmpeg()
@@ -820,11 +822,13 @@ def test_enrich_shards_partition_sources_disjoint_and_exhaustive(tmp_path, fake_
     flat = [slug for slugs in by_shard.values() for slug in slugs]
     assert sorted(flat) == ["feed-a", "feed-b"]
     assert len(flat) == len(set(flat))
-    # And the partition matches the pure shard function.
+    # And the partition matches the balanced shard assignment.
     from citypods.config import load_city_configs
 
-    for c in load_city_configs(cities_dir, {}):
-        assert c.slug in by_shard[shard_index(source_key(c), n)]
+    cfg = load_city_configs(cities_dir, {})
+    assignment = shard_assignment((source_key(c) for c in cfg), n)
+    for c in cfg:
+        assert c.slug in by_shard[assignment[source_key(c)]]
 
 
 def test_enrich_source_scopes_to_one_source(tmp_path, fake_provider):
@@ -841,7 +845,7 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     """A sharded run pushes back ONLY its owned ``sources/<key>/`` records and does not reconcile —
     the H11b scope hooks, so concurrent shards never clobber a sibling's records."""
     from citypods.config import load_city_configs
-    from citypods.records import shard_index, source_key
+    from citypods.records import shard_assignment, source_key
 
     cities_dir = _setup_multi(tmp_path)
     captured = {}
@@ -860,11 +864,9 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2))
 
     assert captured["full_run"] is False  # a shard never sweeps siblings' records
-    owned = {
-        f"sources/{source_key(c)}/"
-        for c in load_city_configs(cities_dir, {})
-        if shard_index(source_key(c), 2) == 0
-    }
+    cfg = load_city_configs(cities_dir, {})
+    assignment = shard_assignment((source_key(c) for c in cfg), 2)
+    owned = {f"sources/{source_key(c)}/" for c in cfg if assignment[source_key(c)] == 0}
     assert set(captured["only_prefixes"]) == owned
 
 

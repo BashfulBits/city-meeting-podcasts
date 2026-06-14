@@ -26,6 +26,7 @@ from citypods.bodies import filter_by_body
 from citypods.compute import make_compute
 from citypods.config import load_backlog_policy, load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
+from citypods.http import HOST_LIMITER
 from citypods.media import CommandFfmpeg, FfmpegRunner, SourceCache
 from citypods.models import City, Episode
 from citypods.ops.workqueue import build_manifest, order_cities_by_policy, save_manifest
@@ -42,7 +43,7 @@ from citypods.records import (
     prune_archive,
     record_to_episode,
     save_records,
-    shard_index,
+    shard_assignment,
     source_key,
 )
 from citypods.resources import NativeWorkGate, ResourceAdmission, current_snapshot, snapshot_string
@@ -727,15 +728,20 @@ def build(
     waiting out the whole audio window (issue #63 follow-up).
 
     ``shard``/``source``/``lane`` drive the H6b sharded ``audio``/``asr`` workflows (enrich phase):
-    ``shard=(k, n)`` keeps only sources with ``shard_index(source_key) == k`` (disjoint, exhaustive
-    across ``k in range(n)``); ``source`` keeps only that one ``source_key``; ``lane`` selects the
-    work class (``audio`` / ``transcribe`` / ``align``). A sharded or source-scoped run pushes back
+    ``shard=(k, n)`` keeps only the sources ``shard_assignment`` maps to shard ``k`` (a balanced
+    round-robin over the sorted source_keys — disjoint, exhaustive, and never empty until
+    ``#sources < n``); ``source`` keeps only that one ``source_key``; ``lane`` selects the work
+    class (``audio`` / ``transcribe`` / ``align``). A sharded or source-scoped run pushes back
     **only** the records it owns (scoped ``push_state``) and does not reconcile (H11b hooks)."""
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
     if lane is not None and lane not in ("audio", "transcribe", "align"):
         raise ValueError(f"unknown lane {lane!r}")
     site_config = load_site_config(site_config_path)
+    # Per-host concurrency caps (issue #39). Configure the process-global limiter once, before any
+    # fetching, so both make_session and the ffmpeg fetch paths (media.py) honor it — bounding the
+    # sharded burst that triggered the Granicus 403 / truncated-fetch storm.
+    HOST_LIMITER.configure(site_config.get("provider_rate_limits", {}))
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
     if only_slug:
         cities = [c for c in cities if c.slug == only_slug]
@@ -752,7 +758,10 @@ def build(
         k, n = shard
         if not (0 <= k < n):
             raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
-        cities = [c for c in cities if shard_index(source_key(c), n) == k]
+        # Balanced round-robin over the sorted distinct source_keys (computed over the full catalog,
+        # so every shard process derives the same partition) → no empty shard until #sources < n.
+        assignment = shard_assignment((source_key(c) for c in cities), n)
+        cities = [c for c in cities if assignment.get(source_key(c)) == k]
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -25,7 +25,7 @@ class FakeFfmpeg:
     ) -> None:
         first_url = next(iter(sources_by_id.values())) if sources_by_id else ""
         self.calls.append(first_url)
-        dest.write_bytes(b"fake")
+        dest.write_bytes(b"fake" * 2048)  # > #39 truncation-guard byte floor
 
 
 class FakeProvider:

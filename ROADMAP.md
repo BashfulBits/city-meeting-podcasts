@@ -27,11 +27,13 @@ global newest-everywhere-first enrich queue (PRs #263/#264/#265).
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
-> **Remaining tail (2026-06-12, updated 2026-06-14).** With H1–H5/H6a/H6b/H7/H8/H10/H11a/H11b/H12/H13
-> shipped, three interlocking items remain, in order: **#39** per-provider rate limits → **H14** the
-> first real external workers (**Modal + Beam**, free-tier-bounded) → **H9** combined-throughput eval.
-> The maintainer pulled the external-worker *build* into Phase H so "compute is pluggable" ships proven
-> by two live GPU adapters before 1.0.
+> **Remaining tail (2026-06-12, updated 2026-06-14).** With
+> H1–H5/H6a/H6b/H7/H8/H10/H11a/H11b/H12/H13/**#39** shipped, two interlocking items remain, in order:
+> **H14** the first real external workers (**Modal + Beam**, free-tier-bounded) → **H9**
+> combined-throughput eval. The maintainer pulled the external-worker *build* into Phase H so "compute
+> is pluggable" ships proven by two live GPU adapters before 1.0. (**#39** per-provider rate limiting
+> shipped in [#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274) — it fixed the
+> Granicus 403 / truncated-fetch storm the first sharded Audio run hit.)
 
 > **Reprioritized 2026-06-08** after a build-log root-cause review: **H10 shipped in PR #232** and
 > **H8 shipped in PR #235**; the remaining do-now reliability item **H11a** runs **ahead of H1–H5**.

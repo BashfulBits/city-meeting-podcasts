@@ -44,7 +44,9 @@ class FakeFfmpeg:
         self.loudness_profiles.append(loudness_profile)
         if self.fail:
             raise subprocess.CalledProcessError(1, "ffmpeg")
-        dest.write_bytes(b"fake-m4a")
+        # Write a realistic, non-empty stub: the #39 truncation guard rejects an encode under
+        # _MIN_PLAUSIBLE_AUDIO_BYTES (an empty/throttled fetch), so a few marker bytes won't do.
+        dest.write_bytes(b"fake-m4a" * 1024)
 
 
 def _city(slug="x-tx", extract_audio=False):
@@ -497,7 +499,7 @@ class _FailUrls:
         self.calls.append(first_url)
         if self.marker in first_url:
             raise subprocess.CalledProcessError(1, "ffmpeg")
-        dest.write_bytes(b"fake-m4a")
+        dest.write_bytes(b"fake-m4a" * 1024)
 
 
 def test_stale_record_cleared_when_stopped(tmp_path):
@@ -917,3 +919,195 @@ def test_guarded_ffmpeg_logs_metrics_and_stderr_on_nonzero_exit():
     assert "peak_rss=17.0MiB" in error
     assert "min_mem_avail=640B" in error
     assert "stderr=muxer failed second line" in error
+
+
+# --------------------------------------------------------------------------------------------------
+# Per-host rate limiting + truncation guard + responsive timing (issue #39)
+# --------------------------------------------------------------------------------------------------
+
+
+def _snap():
+    from citypods.resources import ResourceSnapshot
+
+    return ResourceSnapshot(
+        rss_bytes=1,
+        mem_total_bytes=10**9,
+        mem_available_bytes=10**9,
+        load1=0.0,
+        load5=0.0,
+        cpus=4,
+    )
+
+
+def test_run_ffmpeg_guarded_serializes_remote_fetches_per_host_to_the_cap():
+    """#39: the ffmpeg fetch path acquires the same per-host slot as the requests session, so a
+    sharded burst of encodes never opens more than the cap of connections to one host."""
+    import threading
+    import time
+
+    import citypods.media as media
+    from citypods.http import HOST_LIMITER
+
+    HOST_LIMITER.configure({"granicus.com": 1})
+    active = [0]
+    peak = [0]
+    lock = threading.Lock()
+
+    def _popen(cmd, **kw):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        time.sleep(0.02)
+        with lock:
+            active[0] -= 1
+
+        class _P:
+            pid = 1
+
+            def poll(self):
+                return 0
+
+            def communicate(self, timeout=None):
+                return b"", b""
+
+        return _P()
+
+    def run_once():
+        media._run_ffmpeg_guarded(
+            ["ffmpeg"],
+            phase="source-cache",
+            memory_floor_bytes=1,
+            rate_limit_urls=("https://archive-video.granicus.com/x.mp4",),
+            snapshot=_snap,
+            sleep=lambda _s: None,
+            log=lambda *a, **k: None,
+            popen=_popen,
+            child_rss=lambda _p: 0,
+        )
+
+    try:
+        ts = [threading.Thread(target=run_once) for _ in range(5)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        assert peak[0] == 1  # cap-1 fully serialized the 5-way burst
+    finally:
+        HOST_LIMITER.configure({})  # reset the process-global singleton
+
+
+def test_run_ffmpeg_guarded_poll_interval_is_responsive():
+    """Regression guard: a 5s poll cadence logged every sub-5s fetch as ``seconds=5.0``, masking the
+    truncation bug. Keep the cadence small so reported timings reflect real runtime."""
+    import citypods.media as media
+
+    assert media._FFMPEG_GUARD_POLL_SECONDS <= 1.0
+
+
+def test_run_ffmpeg_guarded_sleeps_responsively_between_polls():
+    import citypods.media as media
+
+    slept: list[float] = []
+    polls = iter([None, None, 0])
+
+    class _P:
+        pid = 1
+
+        def poll(self):
+            return next(polls)
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+    media._run_ffmpeg_guarded(
+        ["ffmpeg"],
+        phase="source-cache",
+        memory_floor_bytes=1,
+        snapshot=_snap,
+        sleep=lambda s: slept.append(s),
+        log=lambda *a, **k: None,
+        popen=lambda cmd, **kw: _P(),
+        child_rss=lambda _p: 0,
+    )
+    assert slept  # it did sleep between polls
+    assert max(slept) <= media._FFMPEG_GUARD_POLL_SECONDS <= 1.0
+
+
+def _ep_with_duration(duration):
+    return Episode(
+        guid="g",
+        title="Council",
+        published=datetime(2026, 5, 19, 16, 0, tzinfo=UTC),
+        video_url="https://x/v.mp4",
+        body="City Council",
+        duration=duration,
+    )
+
+
+def test_truncation_guard_raises_when_encode_far_shorter_than_declared():
+    import citypods.media as media
+
+    ep = _ep_with_duration(7200)  # a 2h meeting
+    with pytest.raises(media.TruncatedAudioError):
+        media._guard_against_truncated_audio(ep, probed=5.0)  # the ~5s throttled-fetch stub
+
+
+def test_truncation_guard_passes_full_length_and_silence_trimmed_output():
+    import citypods.media as media
+
+    ep = _ep_with_duration(7200)
+    media._guard_against_truncated_audio(ep, probed=7200.0)  # identity / loudnorm-only
+    media._guard_against_truncated_audio(ep, probed=6500.0)  # silence-trimmed (~10% removed)
+
+
+def test_truncation_guard_is_noop_without_a_declared_duration_or_probe():
+    import citypods.media as media
+
+    media._guard_against_truncated_audio(_ep_with_duration(None), probed=5.0)  # e.g. Swagit
+    media._guard_against_truncated_audio(_ep_with_duration(0), probed=5.0)
+    media._guard_against_truncated_audio(_ep_with_duration(7200), probed=None)  # probe failed
+
+
+def test_truncation_guard_rejects_empty_output_even_without_a_declared_duration():
+    """The 258-byte Swagit stubs: no declared duration (ratio check can't see them), so the absolute
+    byte floor is what catches them."""
+    import citypods.media as media
+
+    ep = _ep_with_duration(None)  # Swagit declares none
+    with pytest.raises(media.TruncatedAudioError):
+        media._guard_against_truncated_audio(ep, probed=None, size_bytes=258)
+
+
+def test_truncation_guard_passes_a_realistic_size_with_no_duration():
+    import citypods.media as media
+
+    media._guard_against_truncated_audio(
+        _ep_with_duration(None), probed=None, size_bytes=media._MIN_PLAUSIBLE_AUDIO_BYTES + 1
+    )
+
+
+def test_truncated_audio_error_carries_backoff_code():
+    import citypods.media as media
+    from citypods.providers.base import ProviderError
+
+    err = media.TruncatedAudioError("short")
+    assert isinstance(err, ProviderError)  # caught by the encode loop's handler → #120 backoff
+    assert err.code == "truncated"
+
+
+def test_materialize_backs_off_a_truncated_encode_instead_of_hosting_it(tmp_path, monkeypatch):
+    """End-to-end (#39): when the encoded audio probes far shorter than the feed-declared duration
+    (a throttled/truncated fetch), the episode is failed into the #120 backoff — not hosted."""
+    ep = _ep("g1")
+    ep.duration = 7200  # feed says 2 hours
+    monkeypatch.setattr(
+        "citypods.media._probe_duration_secs", lambda *a, **k: 5.0
+    )  # but ~5s landed
+    store = _store(tmp_path)
+    stats = _materialize(_city(), [ep], store, FakeFfmpeg())
+
+    assert stats.hosted == 0
+    assert ep.hosted_audio_url is None
+    assert ep.materialize_attempts == 1  # backed off (will retry next run)
+    assert ep.materialize_error == "truncated"
+    assert len(stats.errors) == 1

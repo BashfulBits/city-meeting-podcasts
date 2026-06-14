@@ -27,6 +27,7 @@ import dataclasses
 import hashlib
 import json
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -48,16 +49,25 @@ def source_key(city: City) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
-def shard_index(src_key: str, num_shards: int) -> int:
-    """Stable shard assignment for a ``source_key``: ``stable_hash(source_key) % N`` (H6b).
+def shard_assignment(source_keys: Iterable[str], num_shards: int) -> dict[str, int]:
+    """Balanced, deterministic shard assignment for a set of source_keys (H6b, #39 follow-up).
 
-    Deterministic across processes/runs (uses SHA-1, not Python's salted ``hash()``), so a
-    source always lands in the same shard — two concurrent ``audio``/``asr`` shards then own
-    disjoint, exhaustive sets of sources and never write the same ``state/sources/<key>`` file.
-    ``num_shards`` must be ≥ 1."""
+    Round-robin over the **sorted distinct** keys, so each shard gets ``floor``/``ceil(total/N)``
+    sources — never empty until ``total < N``. This replaces the earlier ``stable_hash(key) % N``,
+    which left shards empty when the catalog had few distinct sources (the first sharded Audio run
+    spun up ``audio (0)`` with zero work — a wasted runner).
+
+    Still deterministic (sorted order, not Python's salted ``hash()``), disjoint, and exhaustive, so
+    two concurrent ``audio``/``asr`` shards own non-overlapping source sets and never write the same
+    ``state/sources/<key>`` file. ``num_shards`` must be ≥ 1.
+
+    Tradeoff vs. hash-mod: adding a source shifts the sorted order and can move some keys to a
+    different shard. Harmless — records are keyed by ``source_key`` (not by shard) and the push is
+    scoped per ``sources/<key>/``, so a reshuffle only changes which shard refreshes a record next
+    run; no record is lost or clobbered."""
     if num_shards < 1:
         raise ValueError(f"num_shards must be >= 1, got {num_shards}")
-    return int(hashlib.sha1(src_key.encode()).hexdigest(), 16) % num_shards
+    return {key: i % num_shards for i, key in enumerate(sorted(set(source_keys)))}
 
 
 def _author_key(city: City) -> str:

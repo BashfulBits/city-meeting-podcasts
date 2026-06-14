@@ -168,8 +168,10 @@ def test_resolve_media_url_follows_downloadfile_redirect(monkeypatch):
     assert url == signed
 
 
-def test_resolve_media_url_retries_on_403_then_succeeds(monkeypatch):
-    """resolve_media_url retries on 403 (rate-limit) and returns the signed URL on success."""
+def test_resolve_media_url_makes_a_single_request_no_bespoke_retry(monkeypatch):
+    """The 403-as-rate-limit retry was lifted into the shared make_session adapter (#39), so
+    resolve_media_url itself issues exactly ONE request. A 403 the mock returns here bypasses the
+    adapter's internal retry, so it falls back to the bare URL rather than looping."""
     rss = b"""<rss><channel><item>
       <title>Council</title>
       <pubDate>Tue, 19 May 2026 18:30:00 GMT</pubDate>
@@ -179,21 +181,16 @@ def test_resolve_media_url_retries_on_403_then_succeeds(monkeypatch):
     ep = parse_feed(rss)[0]
     source = {"feed_url": "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2"}
 
-    signed = "https://archive-video.granicus.com/arlingtontx/arlingtontx_99.mp4?Expires=9&Sig=X"
     calls = []
 
     class _Resp403:
         status_code = 403
         headers: dict = {}
 
-    class _Resp302:
-        status_code = 302
-        headers = {"Location": signed}
-
     class _FakeSession:
         def get(self, url, **kwargs):
             calls.append(url)
-            return _Resp403() if len(calls) < 2 else _Resp302()
+            return _Resp403()
 
         def __enter__(self):
             return self
@@ -202,11 +199,10 @@ def test_resolve_media_url_retries_on_403_then_succeeds(monkeypatch):
             pass
 
     monkeypatch.setattr("citypods.providers.granicus.make_session", lambda: _FakeSession())
-    monkeypatch.setattr("citypods.providers.granicus.time.sleep", lambda _: None)
-    monkeypatch.setattr("citypods.providers.granicus.random.uniform", lambda a, b: 0)
     url = GranicusProvider().resolve_media_url(ep, source)
-    assert url == signed
-    assert len(calls) == 2  # first attempt 403, second attempt 302
+    # No bespoke loop: a single call, and (mock-bypassed adapter) 403 falls back to the bare URL.
+    assert len(calls) == 1
+    assert url == "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=99"
 
 
 def test_resolve_media_url_falls_back_when_redirect_fails(monkeypatch):
