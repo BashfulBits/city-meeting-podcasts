@@ -230,6 +230,22 @@ class SourcePipeline:
     def note(self, city: City) -> str:
         return self._notes.get(source_key(city), "")
 
+    def render_from_records(self, city: City) -> list[Episode]:
+        """Load the city's last-known archive from the record store with **no provider connection**
+        — the ``--no-refresh`` render path (PR preview). Unlike :meth:`archive_from_records` (the
+        transient-failure fallback, which errors on an empty store), an empty store here is fine and
+        returns ``[]`` (renders an empty feed). No enrich stages, no persist."""
+        key = source_key(city)
+        with self._guard:
+            lock = self._locks[key]
+        with lock:
+            if key in self._cache:
+                return self._cache[key]
+            records = load_records(self.state_dir, key)
+            archive = [record_to_episode(rec) for rec in records.values()]
+            self._cache[key] = archive
+            return archive
+
     def archive_from_records(self, city: City, reason: Exception) -> list[Episode]:
         """Render fallback for transient provider fetch failures.
 
@@ -288,28 +304,34 @@ def _process_city(
     site_config: dict,
     fingerprint: str,
     render: bool = True,
+    no_refresh: bool = False,
 ) -> tuple[CityResult, dict | None]:
     """Enrich the city (runs the pipeline's stages) and, when ``render`` is set, write its feeds/
     pages. In the enrich phase ``render`` is False: the expensive stages still run and persist via
-    ``pipeline.enrich``, but ``docs/`` is left untouched. Returns the result and the new
-    render-cache entry (or None to leave it unchanged)."""
-    if request_delay:
+    ``pipeline.enrich``, but ``docs/`` is left untouched. When ``no_refresh`` is set (render phase
+    only), the city is rendered purely from the record store with no provider connection at all (PR
+    preview). Returns the result and the new render-cache entry (or None to leave it unchanged)."""
+    if request_delay and not no_refresh:
         time.sleep(request_delay)
 
-    try:
-        episodes = pipeline.enrich(city)
-    except ProviderError as exc:
-        if render:
-            try:
-                episodes = pipeline.archive_from_records(city, exc)
-            except ProviderError:
+    if no_refresh:
+        # PR preview: render from the last-known archive, no provider fetch (immune to outages).
+        episodes = pipeline.render_from_records(city)
+    else:
+        try:
+            episodes = pipeline.enrich(city)
+        except ProviderError as exc:
+            if render:
+                try:
+                    episodes = pipeline.archive_from_records(city, exc)
+                except ProviderError:
+                    return CityResult(city.slug, "error", detail=str(exc)), None
+            else:
                 return CityResult(city.slug, "error", detail=str(exc)), None
-        else:
+        except SecurityError as exc:
+            # SecurityError: a source/redirect URL was blocked by the SSRF gate (audit #S1) —
+            # treat as a per-city error so one bad submission can't fail the whole build.
             return CityResult(city.slug, "error", detail=str(exc)), None
-    except SecurityError as exc:
-        # SecurityError: a source/redirect URL was blocked by the SSRF gate (audit #S1) —
-        # treat as a per-city error so one bad submission can't fail the whole build.
-        return CityResult(city.slug, "error", detail=str(exc)), None
 
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
@@ -712,6 +734,7 @@ def build(
     shard: tuple[int, int] | None = None,
     source: str | None = None,
     lane: str | None = None,
+    no_refresh: bool = False,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
 
@@ -732,7 +755,14 @@ def build(
     round-robin over the sorted source_keys — disjoint, exhaustive, and never empty until
     ``#sources < n``); ``source`` keeps only that one ``source_key``; ``lane`` selects the work
     class (``audio`` / ``transcribe`` / ``align``). A sharded or source-scoped run pushes back
-    **only** the records it owns (scoped ``push_state``) and does not reconcile (H11b hooks)."""
+    **only** the records it owns (scoped ``push_state``) and does not reconcile (H11b hooks).
+
+    ``no_refresh`` (render phase) renders each city purely from the record store and makes **no
+    provider connections at all** — no ``detect_change``/``fetch_episodes``. Used by the PR preview:
+    it verifies the render/build flow against the last-known state (restored from the build-state
+    cache) without depending on live provider availability (which only timed out the preview, never
+    added value — URL/contract validation lives in ``contracts.yml``). An empty store renders an
+    empty feed, not an error."""
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
     if lane is not None and lane not in ("audio", "transcribe", "align"):
@@ -1006,6 +1036,7 @@ def build(
                         site_config,
                         fingerprint,
                         do_render,
+                        no_refresh,
                     )
                     for c in cities
                 ]

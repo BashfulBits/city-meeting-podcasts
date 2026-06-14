@@ -998,3 +998,41 @@ def test_enrich_phase_two_pass_and_manifest(tmp_path, fake_provider, capsys):
     # Transcript is a SEPARATE pass over episodes that now have hosted audio (decoupled).
     assert "[enrich] transcript pass: 2 item(s) with audio" in out
     assert (tmp_path / "state" / "work.json").exists()
+
+
+def test_no_refresh_renders_from_records_without_any_fetch(tmp_path, fake_provider):
+    """--no-refresh (PR preview) renders from the record store with ZERO provider connections."""
+    cities = _setup(tmp_path)
+    _build(tmp_path, cities)  # normal build persists records
+    assert fake_provider.fetches >= 1
+    fetches_before = fake_provider.fetches
+
+    # Fresh output dir so it must re-render (the first build's docs/ would otherwise hash-skip).
+    # state_dir is fixed by site_config, so records persist across output dirs.
+    results = run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=tmp_path / "docs2",
+        base_url="https://example.test",
+        phase="render",
+        no_refresh=True,
+    )
+    assert fake_provider.fetches == fetches_before  # no new provider fetch
+    assert [r.status for r in results] == ["built"]
+    feed = (tmp_path / "docs2" / "fake-city" / "audio_feed.xml").read_text()
+    assert feed.count("<item>") == 2  # rendered g1 + g2 from records, not a live fetch
+
+
+def test_no_refresh_empty_store_is_not_an_error(tmp_path, fake_provider):
+    """An empty record store renders an empty feed (not an error) and still makes no connection."""
+    cities = _setup(tmp_path)  # no prior build → no records
+    results = run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        phase="render",
+        no_refresh=True,
+    )
+    assert fake_provider.fetches == 0  # never touched the provider
+    assert [r.status for r in results] != ["error"]

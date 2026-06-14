@@ -39,6 +39,13 @@ def main(argv: list[str] | None = None) -> int:
         help="max chapter pages scraped per source this run (for the PR preview; "
         "unset = bounded only by the wall-clock window, as in production)",
     )
+    b.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="render purely from the record store with NO provider connections (for the PR "
+        "preview: verifies the build/render flow against the last-known state without depending "
+        "on live provider availability). Only meaningful with --phase render.",
+    )
 
     e = sub.add_parser(
         "enrich",
@@ -245,6 +252,7 @@ def _run_build(args, *, phase: str, dry_run: bool) -> int:
         shard=_parse_shard(getattr(args, "shard", None)),
         source=getattr(args, "source", None),
         lane=getattr(args, "lane", None),
+        no_refresh=getattr(args, "no_refresh", False),
     )
     built = sum(r.status == "built" for r in results)
     skipped = sum(r.status == "skipped" for r in results)
