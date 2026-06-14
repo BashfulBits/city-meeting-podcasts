@@ -1,0 +1,92 @@
+name: Audio
+
+# Audio materialization lane (H6b): download → ffmpeg encode → upload to object storage, sharded
+# by source_key so concurrent shards own disjoint record files (scoped push_state, no clobber).
+# Split out of the combined enrich so it runs on its own concurrency group — never blocking or
+# reddening the Pages deploy (deploy.yml), and never sharing a runner with ASR.
+
+on:
+  schedule:
+    # Offset from the deploy cron (deploy at :00) so audio backfill trails each render.
+    - cron: "30 */4 * * *"
+  workflow_dispatch:
+
+# Own concurrency group, distinct from `pages` and `asr`: one audio run at a time (its shards run
+# in parallel), and a deploy is never canceled by it. Let a running one finish — shards yield
+# gracefully when a newer audio run is queued behind them (citypods/run.py _newer_run_queued).
+concurrency:
+  group: audio
+  cancel-in-progress: false
+
+# `actions: read` lets each shard poll the Actions API for a newer queued audio run and yield
+# gracefully (issue #63). Asserted statically in tests/test_workflows.py.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
+        shard: [0, 1, 2, 3]
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Lets the shard poll the Actions API and yield gracefully when a newer run is queued behind
+      # it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
+      GITHUB_TOKEN: ${{ github.token }}
+      # Audio hosting. Set the secrets for whichever backend
+      # site_config.defaults.audio_storage_backend selects.
+      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Latency optimization only: the object bucket is the source of truth for build state
+      # (citypods/statesync.py pulls it at start, scoped-pushes owned records at the end), so an
+      # evicted cache self-heals from the bucket. Per-shard key so shards don't fight over one entry.
+      - name: Restore build state
+        uses: actions/cache@v4
+        with:
+          path: .citypods-state
+          key: build-state-audio-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: |
+            build-state-
+
+      # The audio lane never runs ASR, so no `[asr]` extra and no Whisper model — just storage.
+      - name: Install
+        run: pip install -e ".[storage]"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # Materialize audio for this shard's sources only. Bounded by the wall-clock window; yields
+      # gracefully (exit 143 after the stop signal) when a newer audio run is queued behind it.
+      - name: Audio (shard ${{ matrix.shard }}/4)
+        id: audio
+        run: |
+          set +e
+          log="${RUNNER_TEMP:-/tmp}/citypods-audio.log"
+          citypods enrich --lane audio --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then
+            echo "::warning title=Audio yielded to newer run::Shard ${{ matrix.shard }} exited 143 after the graceful-yield stop signal. The queued run will resume."
+            exit 0
+          fi
+          exit "$code"

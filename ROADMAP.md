@@ -27,12 +27,11 @@ global newest-everywhere-first enrich queue (PRs #263/#264/#265).
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
-> **Remaining tail (2026-06-12, updated 2026-06-14).** With H1–H5/H6a/H7/H8/H10/H11a/H11b/H12/H13
-> shipped, four interlocking items remain, in order: **H6b** split audio + ASR into `audio.yml` +
-> `asr.yml`, sharded → **#39** per-provider rate limits → **H14** the first real external workers
-> (**Modal + Beam**, free-tier-bounded) → **H9** combined-throughput eval. The maintainer pulled the
-> external-worker *build* into Phase H so "compute is pluggable" ships proven by two live GPU adapters
-> before 1.0.
+> **Remaining tail (2026-06-12, updated 2026-06-14).** With H1–H5/H6a/H6b/H7/H8/H10/H11a/H11b/H12/H13
+> shipped, three interlocking items remain, in order: **#39** per-provider rate limits → **H14** the
+> first real external workers (**Modal + Beam**, free-tier-bounded) → **H9** combined-throughput eval.
+> The maintainer pulled the external-worker *build* into Phase H so "compute is pluggable" ships proven
+> by two live GPU adapters before 1.0.
 
 > **Reprioritized 2026-06-08** after a build-log root-cause review: **H10 shipped in PR #232** and
 > **H8 shipped in PR #235**; the remaining do-now reliability item **H11a** runs **ahead of H1–H5**.
@@ -48,7 +47,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H4** | ✓ Shipped — Feed-health triage: catching-up suppressed, stalled → `WARN`; `provider_errors` per run in `run_history.jsonl` → `check_provider_error_rates` fires before deploys go red; `audit_feeds.py` auto-comments on state transitions |
 | **H5** | ✓ Shipped — Stage **backlog manifest** + configurable **prioritization policy** ([#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263)/[#264](https://github.com/BashfulBits/city-meeting-podcasts/pull/264)/[#265](https://github.com/BashfulBits/city-meeting-podcasts/pull/265)): `citypods/ops/workqueue.py` policy engine (windowed `recency`, `city_order`, …; prod `recency:{desc, within_days:30}`); derived work manifest + lease sidecar + `/admin/status` backlog-by-work-class; **global two-pass enrich queue** — newest-everywhere-first on-runner audio + decoupled async-ready transcript pass (transcribe/diarize go over-the-wall to external workers, H9/H6b). Whole-archive backfill split out as a separate opt-in. |
 | **H6a** | ✓ Shipped — ASR **benchmark workflow** (`asr-bench.yml`, manual, PR #256): compares max/med/min model + beam-size + CPU-thread profiles before any backfill decision |
-| **H6b** | **Split audio + ASR into dedicated workflows** (`audio.yml` + `asr.yml`, own concurrency groups), sharded by `source_key` + scoped state-push + align/transcribe lanes (after H11b) |
+| **H6b** | ✓ Shipped — **Split audio + ASR into dedicated sharded workflows** (`audio.yml` + `asr.yml`, own `audio`/`asr` concurrency groups, `matrix.shard`=4) replacing the combined `enrich.yml`; `enrich --shard K/N`/`--source`/`--lane {audio,transcribe,align}`; cities filtered by `shard_index(source_key)%N` + scoped `push_state`/`reconcile_state` so shards don't clobber; `asr.yml` runs transcribe-only (forced-alignment `align` lane implemented but unscheduled) ([#273](https://github.com/BashfulBits/city-meeting-podcasts/issues/273)) |
 | **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
 | **H8** | ✓ Shipped — throughput maximization on the free 4-core runner (PR #235): pinned ffmpeg `-threads`, memory/CPU admission guard, abandoned-ASR-thread accounting |
 | **H9** | **Combined-throughput evaluation** — measure local-sharded (H6b) + Modal + Beam (H14) free-tier transcript ceiling + diarization $/speaker-hour; decide the first paid/self-hosted step if the free tiers don't clear backlog |

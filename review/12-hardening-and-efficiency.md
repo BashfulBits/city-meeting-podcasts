@@ -494,7 +494,22 @@ no render) is preserved; `all`/`render` are untouched.
 
 ---
 
-## H6 — ASR benchmark workflow (H6a implemented in PR #256) → sharded/separate ASR workflow (H6b)
+## H6 — ASR benchmark workflow (H6a implemented in PR #256) → sharded/separate ASR workflow (H6b **Implemented**, [#273](https://github.com/BashfulBits/city-meeting-podcasts/issues/273))
+
+> **H6b status — Implemented in [#273](https://github.com/BashfulBits/city-meeting-podcasts/issues/273).**
+> The combined `enrich.yml` (H11b) is replaced by `audio.yml` (`--lane audio`) and `asr.yml`
+> (`--lane transcribe`), each a `strategy.matrix.shard`=4 job on its own concurrency group
+> (`audio`/`asr`, distinct from `pages`). `citypods enrich` gained `--shard K/N` / `--source KEY` /
+> `--lane {audio,transcribe,align}`; `run.py` filters cities by `records.shard_index(source_key) % N`
+> and threads the lane into the two-pass queue (audio pass vs transcript pass); a sharded/scoped run
+> uses the H11b hooks `push_state(only_prefixes=…)` + `reconcile_state(full_run=False)` to push back
+> only owned records and skip the orphan sweep. **Per the maintainer's 2026-06-14 decision, `asr.yml`
+> runs transcribe-only for now** — the `align` lane (stable-ts, preloads the alignment model, never
+> loads faster-whisper, processes only episodes with a source transcript) is implemented and unit-
+> tested but **not scheduled**; caption-bearing feeds get fresh transcription until forced alignment
+> is re-enabled as its own lane (the "Alignment re-enable criteria" below + a future claim/lease). The
+> "Step 2" and "record-write race" design below is the frozen record this implemented. Competitive
+> leases stay reserved for the **external** backend (H14).
 
 **Problem.** Both audio encoding and ASR transcription compete with each other and with the Pages deploy
 inside the single enrich job, serializing through the `pages` concurrency group. An enrich kill marks
