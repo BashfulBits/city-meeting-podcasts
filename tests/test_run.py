@@ -1036,3 +1036,18 @@ def test_no_refresh_empty_store_is_not_an_error(tmp_path, fake_provider):
     )
     assert fake_provider.fetches == 0  # never touched the provider
     assert [r.status for r in results] != ["error"]
+
+
+def test_render_phase_default_still_refreshes_from_provider(tmp_path, fake_provider):
+    """Production deploy path (`--phase render`, no `--no-refresh`) is unchanged: it still does a
+    live provider refresh. Guards against no_refresh accidentally leaking to deploy."""
+    cities = _setup(tmp_path)
+    results = run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        phase="render",  # no_refresh defaults False — exactly what deploy.yml runs
+    )
+    assert fake_provider.fetches >= 1  # fetched live, as production does
+    assert [r.status for r in results] == ["built"]
