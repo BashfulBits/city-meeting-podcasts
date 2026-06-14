@@ -28,13 +28,14 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from citypods.http import HOST_LIMITER
 from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
 from citypods.records import audio_object_key, audio_spec_hash, source_key
@@ -51,6 +52,16 @@ CONTENT_TYPE = "audio/mp4"
 BACKOFF_BASE = timedelta(days=1)
 BACKOFF_MAX = timedelta(days=30)
 
+# Truncation guard (issue #39). A throttled/rate-limited provider can return a short response that
+# ffmpeg ``-c:a copy`` copies and exits 0 on — hosting a ~5-second clip of a multi-hour meeting that
+# passes a naive "file size > 0" check (the H6b sharding regression: every sharded fetch "succeeded"
+# in ~5s, zero real audio). When the source's duration is declared (Granicus itunes:duration,
+# CivicClerk durationHrs/Min) we reject an encode shorter than this fraction of it — silence-trim +
+# loudnorm never remove that much, so real meetings pass while a truncated stub is failed into the
+# #120 backoff and retried (with the per-host cap now keeping the next fetch from being throttled).
+# Swagit declares no duration, so this can't gate it — the concurrency cap is its primary fix.
+_TRUNCATION_MIN_RATIO = 0.5
+
 # ffmpeg/ffprobe read the (remote) source directly, so a server that accepts the connection then
 # stalls would block a worker forever — and the shared ``stop()`` can't preempt a thread parked in
 # ``subprocess.run``, so one stalled source pins the whole build until GitHub's 6h job cap. Bound it
@@ -59,7 +70,11 @@ BACKOFF_MAX = timedelta(days=30)
 # materialization failure → the #120 backoff, so a chronically-stalling source stops being retried.
 _STALL_TIMEOUT_US = 120_000_000  # ffmpeg aborts after 120s with zero I/O progress (microseconds)
 _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
-_FFMPEG_GUARD_POLL_SECONDS = 5.0
+# How often the guard wakes to poll the child + sample memory. Kept short so reported ``seconds``
+# reflects the child's *real* runtime: at 5s a fast/throttled fetch that exits in 0.3s was logged as
+# "done seconds=5.0", which masked the H6b truncation regression (every fetch looked like ~5s). The
+# per-iteration /proc reads are cheap (a couple per wake), so a fine cadence costs nothing.
+_FFMPEG_GUARD_POLL_SECONDS = 0.5
 
 
 def _log_ffmpeg_event(log: Callable[[str], None] | None, message: str) -> None:
@@ -116,12 +131,35 @@ class FfmpegMemoryLimitExceeded(OSError):
         )
 
 
+class TruncatedAudioError(ProviderError):
+    """Encoded audio is implausibly short vs. the feed-declared duration (a throttled/truncated
+    source fetch, issue #39). A ``ProviderError`` so the encode loop's existing handler records the
+    failed attempt and backs the episode off (#120) instead of hosting the stub."""
+
+    code = "truncated"
+
+
+def _guard_against_truncated_audio(ep: Episode, probed: float | None) -> None:
+    """Raise :class:`TruncatedAudioError` if the encoded duration is implausibly short vs. the
+    feed-declared source duration (see :data:`_TRUNCATION_MIN_RATIO`). No-op when the duration is
+    unknown (e.g. Swagit) or the probe failed."""
+    expected = ep.duration
+    if not expected or expected <= 0 or probed is None:
+        return
+    if probed < _TRUNCATION_MIN_RATIO * expected:
+        raise TruncatedAudioError(
+            f"encoded audio {probed:.0f}s is under {_TRUNCATION_MIN_RATIO:.0%} of the declared "
+            f"{expected}s — source fetch likely throttled/truncated; backing off"
+        )
+
+
 def _run_ffmpeg_guarded(
     cmd: list[str],
     *,
     phase: str,
     timeout: float | None = None,
     memory_floor_bytes: int | None = None,
+    rate_limit_urls: Sequence[str] = (),
     poll_seconds: float = _FFMPEG_GUARD_POLL_SECONDS,
     snapshot: Callable[[], ResourceSnapshot] = current_snapshot,
     sleep: Callable[[float], None] = time.sleep,
@@ -134,11 +172,17 @@ def _run_ffmpeg_guarded(
     ``subprocess.run(timeout=...)`` can only bound elapsed time. The Actions failure mode we are
     seeing is available memory collapsing while a child ffmpeg process is still active, so poll the
     whole-runner ``MemAvailable`` and terminate ffmpeg before the runner agent is killed.
+
+    ``rate_limit_urls`` are the *remote* sources this invocation reads; the per-host concurrency cap
+    (issue #39, :data:`citypods.http.HOST_LIMITER`) is held for the whole subprocess so a sharded
+    burst of workers never opens more than the configured number of simultaneous connections to one
+    provider tenant. Local-file inputs need not be passed (they resolve to no host → no-op).
     """
     if not memory_floor_bytes:
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
         try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+            with HOST_LIMITER.slots(rate_limit_urls):
+                subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
         except subprocess.CalledProcessError as exc:
             stderr = _stderr_tail(exc.stderr)
             detail = f" stderr={stderr}" if stderr else ""
@@ -155,6 +199,38 @@ def _run_ffmpeg_guarded(
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
         return
 
+    # Memory-floor path: hold the per-host rate-limit slot (#39) for the whole monitored run so a
+    # sharded burst can't open more than the configured number of simultaneous connections per host.
+    with HOST_LIMITER.slots(rate_limit_urls):
+        _run_ffmpeg_popen_monitored(
+            cmd,
+            phase=phase,
+            timeout=timeout,
+            memory_floor_bytes=memory_floor_bytes,
+            poll_seconds=poll_seconds,
+            snapshot=snapshot,
+            sleep=sleep,
+            log=log,
+            popen=popen,
+            child_rss=child_rss,
+        )
+
+
+def _run_ffmpeg_popen_monitored(
+    cmd: list[str],
+    *,
+    phase: str,
+    timeout: float | None,
+    memory_floor_bytes: int | None,
+    poll_seconds: float,
+    snapshot: Callable[[], ResourceSnapshot],
+    sleep: Callable[[float], None],
+    log: Callable[[str], None] | None,
+    popen: Callable[..., subprocess.Popen],
+    child_rss: Callable[[int], int | None],
+) -> None:
+    """Popen + poll/sample loop for :func:`_run_ffmpeg_guarded` (memory-floor path). The caller
+    holds the per-host rate-limit slot for the whole monitored run."""
     started = time.monotonic()
     proc = popen(  # noqa: S603 - command is assembled by this module from validated URLs/paths.
         cmd,
@@ -294,6 +370,7 @@ def _download_audio(
             phase="source-cache",
             timeout=timeout,
             memory_floor_bytes=memory_floor_bytes,
+            rate_limit_urls=(url,),  # the remote source — cap concurrent hits per provider (#39)
         )
         return dest.exists() and dest.stat().st_size > 0
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
@@ -646,6 +723,7 @@ class CommandFfmpeg:
                 phase="identity-render",
                 timeout=self.timeout_seconds,
                 memory_floor_bytes=self.memory_floor_bytes,
+                rate_limit_urls=(source_url,),  # no-op if it's a local cached copy (#39)
             )
 
     def _thread_args(self, codec_args: list[str]) -> list[str]:
@@ -750,6 +828,9 @@ class CommandFfmpeg:
                 phase="filter-render",
                 timeout=self.timeout_seconds,
                 memory_floor_bytes=self.memory_floor_bytes,
+                # Cap concurrent hits per provider for any remote source inputs (#39); local
+                # cached copies / insert assets resolve to no host → no-op.
+                rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
             )
 
 
@@ -1062,12 +1143,16 @@ def materialize_audio(
                     ep.chapters or None,
                     loudness_profile=loudness_profile or None,
                 )
+                probed: float | None = None
                 try:
                     probed = _probe_duration_secs(dest, ffmpeg_binary)
                     if probed is not None:
                         ep.audio_duration_served = probed
                 except Exception:  # noqa: BLE001
                     pass
+                # Don't host audio that's implausibly shorter than the meeting (#39): a throttled
+                # fetch yields a truncated stub that "encodes" fine. Raise → #120 backoff + retry.
+                _guard_against_truncated_audio(ep, probed)
                 url = storage.put_file(key, dest, CONTENT_TYPE)
                 try:
                     size = dest.stat().st_size

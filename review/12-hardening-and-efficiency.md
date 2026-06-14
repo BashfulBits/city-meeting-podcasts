@@ -1035,23 +1035,43 @@ ever blocked; a killed remote worker's lease expires and the item re-queues.
 
 ## #39 — Per-provider rate limiting (sequence with H6b)
 
-**Maturity: L2→L3.** Sharded `audio.yml`/`asr.yml` (H6b) multiply concurrent hits on shared provider
-tenants — the three Granicus `403` fixes in two days (PRs #245/#250/#251) are the warning shot. The
-**Retry-After clamp is already shipped** (`_ClampedRetry.MAX_RETRY_AFTER_SECONDS = 120`,
-`citypods/http.py`); #39 generalizes the bespoke Granicus 403 backoff (`providers/granicus.py`) into a
-shared **per-host concurrency cap** so every shard stays polite.
+**Maturity: Implemented** ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274),
+2026-06-14). Sharded `audio.yml`/`asr.yml` (H6b) multiply concurrent hits on shared provider tenants —
+the three Granicus `403` fixes in two days (PRs #245/#250/#251) were the warning shot, and the **first**
+sharded Audio run then confirmed it at scale (vs. the last pre-sharding Enrich run, source fetches
+collapsed from a 5–135 s spread to **all ~5 s** with **zero** encodes). The **Retry-After clamp was
+already shipped** (`_ClampedRetry.MAX_RETRY_AFTER_SECONDS = 120`); #39 generalizes the bespoke Granicus
+403 backoff into a shared **per-host concurrency cap** so every shard stays polite.
 
-**Design.** A per-registrable-domain semaphore (or token bucket) in `GuardedHTTPAdapter.send`
-(`citypods/http.py`), configured by `provider_rate_limits: {granicus: 2, swagit: 3, ...}` in
-`site_config.yml`; lift the Granicus ad-hoc retry into the shared layer (keep the 403-as-rate-limit
-special case).
+**Design correction made during implementation.** The original design placed the cap in
+`GuardedHTTPAdapter.send` only. But the `403`/truncation traffic is **ffmpeg subprocesses**, not the
+`requests` session — a cap only in the adapter would not touch the offending traffic. The shipped cap is
+a shared primitive (`HostRateLimiter`) acquired by **both** `GuardedHTTPAdapter.send` *and* the ffmpeg
+fetch paths (`media.py`: `_download_audio`, `_render_identity`, `_render_filter` via a `rate_limit_urls`
+arg on `_run_ffmpeg_guarded`).
 
-**Files.** `citypods/http.py`, `citypods/providers/granicus.py`, `citypods/config.py` +
-`config/site_config.yml` (`provider_rate_limits`), `tests/test_http.py` (concurrent requests to one host
-serialize to the cap; Retry-After still clamps).
+**As built.**
+- `HostRateLimiter` (`citypods/http.py`): process-global, per-**registrable-domain** `BoundedSemaphore`,
+  configured by `provider_rate_limits` (keyed by registrable domain — `granicus.com: 2`, `swagit.com: 2`,
+  `civicclerk.com: 4` — not provider short-names, so the Granicus-owned Swagit CDN `*.granicus.com` is
+  matched by the host the tenant sees). `slots(urls)` dedupes by domain + acquires in sorted order (no
+  self-deadlock on multi-source renders). Configured once in `run.build()` before any fetching.
+- 403-as-rate-limit lifted into the shared retry (`403` in `_ClampedRetry.status_forcelist`); the bespoke
+  `(0, 0.5, 1.5, 3.0)` loop in `GranicusProvider.resolve_media_url` removed.
+- **Beyond the original scope** (the regressions the run surfaced): truncation guard
+  (`_guard_against_truncated_audio` — encode < 50 % of feed-declared duration → #120 backoff, not
+  hosted), balanced `records.shard_assignment` (round-robin over sorted source_keys; replaces hash-mod
+  `shard_index`, which left `audio (0)` empty), and a responsive 0.5 s ffmpeg guard poll (was 5 s, which
+  made every sub-5 s fetch read `seconds=5.0` and hid the truncation).
 
-**Acceptance.** Under a simulated N-shard burst, per-host in-flight requests never exceed the configured
-cap; no provider 403/429 storm; the Retry-After clamp regression test passes.
+**Files.** `citypods/http.py`, `citypods/media.py`, `citypods/providers/granicus.py`,
+`citypods/records.py`, `citypods/run.py`, `config/site_config.yml` (`provider_rate_limits`),
+`tests/test_http.py` + `tests/test_media.py` + `tests/test_records.py` + `tests/test_run.py`.
+
+**Acceptance (met).** An N-thread burst to one host serializes to the configured cap
+(`tests/test_http.py`, `tests/test_media.py`); 403 is retried as a rate-limit; the Retry-After clamp
+regression passes; `shard_assignment` is disjoint/exhaustive **and** never empty until `#sources < N`;
+a truncated encode backs off instead of hosting.
 
 ---
 

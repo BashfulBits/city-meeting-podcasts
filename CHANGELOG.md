@@ -15,6 +15,34 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Changed
+- **Per-provider (per-host) rate limiting + sharding-regression fixes (#39)** —
+  ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274)). The first sharded Audio
+  run after H6b regressed: comparing it to the last pre-sharding Enrich run, source fetches collapsed
+  from a real 5–135 s spread to **all ~5 s** and produced **zero** encodes, with Granicus `403`s and
+  no logged error. Root cause: 4 parallel shard jobs each concentrate their workers on a few sources
+  sharing one provider CDN, and that burst throttles the tenant (Granicus answers `403`; Swagit
+  returns short responses ffmpeg copies and exits 0 on — a truncated "5-second" episode that passed
+  the old `size > 0` check). Fixes:
+  - **`HostRateLimiter`** (`citypods/http.py`) — a process-global per-**registrable-domain**
+    concurrency cap, configured by `provider_rate_limits` in `config/site_config.yml`
+    (`granicus.com: 2`, `swagit.com: 2`, `civicclerk.com: 4`). Acquired by **both**
+    `GuardedHTTPAdapter.send` *and* the ffmpeg fetch paths (`citypods/media.py`), so one cap bounds
+    requests *and* the media downloads that actually caused the storm. Keyed by registrable domain so
+    the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the tenant sees.
+  - **403-as-rate-limit lifted into the shared layer** — `403` joins the `_ClampedRetry`
+    `status_forcelist` (provider throttle, never auth, since media bytes never go through `requests`);
+    the bespoke backoff loop in `GranicusProvider.resolve_media_url` is removed. The Retry-After clamp
+    is preserved.
+  - **Truncation safety net** — an encode that probes shorter than 50 % of the feed-declared duration
+    (Granicus/CivicClerk) is failed into the existing #120 backoff instead of being hosted, so a
+    throttled fetch never ships a 5-second meeting.
+  - **Balanced shard assignment** — `records.shard_index` (hash-mod, which left `audio (0)` empty with
+    few sources) is replaced by `records.shard_assignment`, a round-robin over the sorted source_keys:
+    every shard gets `floor`/`ceil(total/N)` sources, never empty until `#sources < N`. Still
+    deterministic, disjoint, and exhaustive.
+  - **Accurate ffmpeg timing** — the guard's poll cadence drops from 5 s to 0.5 s so the logged
+    `seconds=` reflects a child's real runtime (the 5 s cadence had made every sub-5 s fetch read as
+    `seconds=5.0`, masking the truncation).
 - **Sharded `audio.yml` + `asr.yml` workflows, lane-pinned (H6b)** —
   ([#273](https://github.com/BashfulBits/city-meeting-podcasts/issues/273)). The combined
   `enrich.yml` (H11b) is replaced by two dedicated workflows, each on its own concurrency group
