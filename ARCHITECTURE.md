@@ -43,8 +43,13 @@ render / feeds / site               ── feed_content_hash skip → RSS + city
 docs/  ──► GitHub Pages              ;   audio + transcripts + state ──► B2 (Cloudflare CDN)
 ```
 
-The production deploy **splits render from enrich** (separate CLI commands, see below): Pages publishes
-quickly from already-known state, then heavy enrichment runs best-effort and resumable. The heavy
+The production deploy **splits render from enrich** into **separate workflows** (separate CLI commands,
+see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state and never
+runs ffmpeg/ASR — while `enrich.yml` runs the heavy, best-effort, resumable backfill under its own
+concurrency group, so encoding/transcription can never block or redden the Pages deploy (H11b). The
+render phase writes **only `docs/`**: it persists no records, leaving `enrich.yml` as the sole record
+writer so a stale render push can't clobber what enrich wrote (the record-write race; `statesync.py`'s
+`only_prefixes=`/`full_run=` scope hooks ready the per-shard split). The heavy
 `enrich` phase processes its backlog as a **global, policy-ordered two-pass queue** (`ops/workqueue.py` +
 `run.py`): prepare every source, then run an on-runner **audio pass** (`chapters→timeline→remap→audio`,
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
@@ -97,8 +102,10 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
 - **Object storage** → Backblaze B2 (S3 API) fronted by a Cloudflare Worker/CDN (free egress) for
   audio + transcripts + durable state.
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
-  downloadable site preview), `deploy.yml` (render+deploy Pages on `main` push + 4h cron, then enrich),
-  `audit.yml` (daily feed-health → GitHub issues), `contracts.yml` (weekly live endpoint contracts).
+  downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron),
+  `enrich.yml` (the heavy, time-bounded chapters+audio+ASR backfill on a 4h cron; own `enrich`
+  concurrency group, sole record writer), `audit.yml` (daily feed-health → GitHub issues),
+  `contracts.yml` (weekly live endpoint contracts), `asr-bench.yml` (manual ASR benchmark harness).
 - **Tests** run fully offline against recorded fixtures; feeds have byte-for-byte snapshot tests.
 
 ## Provider notes & gotchas

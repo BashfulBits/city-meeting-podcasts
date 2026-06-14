@@ -744,7 +744,7 @@ an injected align failure falls back to transcribe instead of producing nothing;
 
 ---
 
-## H11 — Deploy resilience — H11a **Implemented** (PRs #239/241/242/243/244/246/247); H11b pending after H5
+## H11 — Deploy resilience — H11a **Implemented** (PRs #239/241/242/243/244/246/247); H11b **Implemented** ([#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272))
 
 **H11a status.** Native work gate, one-slot audio lane, ffmpeg filter-thread cap, per-child RSS/memory
 logging, ASR teardown hardening, concurrency tuning, and Retry-After fix implemented across
@@ -768,8 +768,17 @@ below is preserved as the implementation record.
 > breach → drop to last-known-green (`1`) immediately, then retry `2` *with* the child-RSS metrics before
 > attempting `4` again.
 
-**H11b status.** Isolating enrich into its own workflow depends on H5's manifest/lease (not yet
-started); the "Durable follow-up" paragraph below remains the active design.
+**H11b status — Implemented in [#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272).**
+`deploy.yml` is now render-only (checkout → install → restore state → render → validate → upload →
+deploy; no ffmpeg, no Whisper model, `actions: read` dropped) and the heavy phase moved to a new
+combined **`.github/workflows/enrich.yml`** (own `enrich` concurrency group, the graceful-yield
+`actions: read` + `GITHUB_TOKEN` wiring, `cron: "30 */4 * * *"` + `workflow_dispatch`). The
+record-write race is closed at its root: `build()` gates `save_records`/`push_state`/`reconcile_state`
+off `--phase render` (render writes only `docs/`), so `enrich.yml` is the sole record writer, and
+`statesync.push_state(only_prefixes=)` + `reconcile_state(full_run=)` add the per-shard scope hooks
+H6b needs. **H6b** still splits the combined `enrich.yml` into source-sharded `audio.yml` + `asr.yml`
+and wires those hooks. The "Durable follow-up" and "record-write race" paragraphs below are the
+frozen design this implemented.
 
 **Problem (H-C, confirmed + H-F).** `continue-on-error: true` on the enrich step (`deploy.yml:163–193`)
 plus the graceful-yield/“warn-if-killed” machinery was designed to keep the job green when enrich exits

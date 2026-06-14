@@ -668,6 +668,56 @@ def test_render_phase_renders_without_encoding(tmp_path, fake_provider):
     assert (tmp_path / "docs" / "fake-city" / "index.html").exists()
 
 
+def test_render_phase_persists_no_records(tmp_path, fake_provider, monkeypatch):
+    """H11b: render writes ONLY docs/. It must not call ``save_records`` / ``push_state`` /
+    ``reconcile_state`` — the separate enrich workflow is the sole record writer, so a stale
+    render push can't clobber audio/transcripts it wrote (the record-write race, review/12 §H6)."""
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    calls = {"save_records": 0, "push_state": 0, "reconcile_state": 0}
+
+    def _spy(name, retval=None):
+        def _f(*_a, **_k):
+            calls[name] += 1
+            return retval
+
+        return _f
+
+    monkeypatch.setattr(run, "save_records", _spy("save_records"))
+    monkeypatch.setattr(run, "push_state", _spy("push_state", 0))
+    monkeypatch.setattr(run, "reconcile_state", _spy("reconcile_state", 0))
+
+    _build_phase(tmp_path, cities, "render", ff)
+
+    assert calls == {"save_records": 0, "push_state": 0, "reconcile_state": 0}
+    # No record store is written to disk either (only docs/ is produced).
+    assert not (tmp_path / "state" / "sources").exists()
+    assert (tmp_path / "docs" / "index.html").exists()
+
+
+def test_enrich_phase_persists_records(tmp_path, fake_provider, monkeypatch):
+    """The counterpart to the render gate: the heavy phase IS the record writer, so it must still
+    call ``save_records`` + ``push_state`` (guards the gate against over-broad suppression)."""
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    calls = {"save_records": 0, "push_state": 0}
+
+    def _bump(name, retval=None):
+        def _f(*_a, **_k):
+            calls[name] += 1
+            return retval
+
+        return _f
+
+    monkeypatch.setattr(run, "save_records", _bump("save_records"))
+    monkeypatch.setattr(run, "push_state", _bump("push_state", 0))
+
+    _build_phase(tmp_path, cities, "enrich", ff)
+
+    assert calls["save_records"] >= 1
+    assert calls["push_state"] >= 1
+
+
 def test_enrich_phase_encodes_without_rendering(tmp_path, fake_provider):
     for ep in fake_provider.episodes:
         ep.media_kind = "hls"
@@ -712,14 +762,14 @@ def test_render_phase_uses_persisted_archive_when_provider_fetch_fails(tmp_path,
     cities = _setup(tmp_path)
     ff = _CountingFfmpeg()
 
-    first = _build_phase(tmp_path, cities, "render", ff)
-    assert [r.status for r in first] == ["built"]
+    # Seed the record store via the enrich phase (post-H11b the enrich workflow is the sole record
+    # writer; render no longer persists). In production these records are restored from the bucket.
+    enriched = _build_phase(tmp_path, cities, "enrich", ff)
+    assert [r.status for r in enriched] == ["built"]
+    assert (tmp_path / "state" / "sources").exists()  # records persisted by enrich
 
-    # Simulate a clean checkout with restored state but no rendered docs, then a transient
-    # provider outage during the fast render phase.
-    import shutil
-
-    shutil.rmtree(tmp_path / "docs")
+    # A transient provider outage during the fast render phase: render must publish the last
+    # known-good archive from the record store instead of failing the whole Pages deploy.
     fake_provider.error = ProviderError("GET https://x failed: timed out")
 
     second = _build_phase(tmp_path, cities, "render", ff)

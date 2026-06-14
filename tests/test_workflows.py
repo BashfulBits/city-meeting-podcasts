@@ -39,41 +39,66 @@ def _step_index(job: dict, needle: str) -> int:
     return -1
 
 
-def test_deploy_workflow_wires_graceful_yield():
+def test_enrich_workflow_wires_graceful_yield():
     """Graceful yield needs the Actions API: ``actions: read`` AND ``GITHUB_TOKEN`` available to the
     time-bounded **enrich** phase (Actions does not auto-export it). Missing either makes
     ``_newer_run_queued`` fail open — enrich ignores a queued run and only stops at the wall-clock
-    window — so assert the wiring statically (running it can't catch it)."""
-    wf, job = _job("deploy.yml")
+    window — so assert the wiring statically (running it can't catch it). Lives in enrich.yml since
+    H11b split the heavy phase out of the render-only deploy."""
+    wf, job = _job("enrich.yml")
     assert wf.get("permissions", {}).get("actions") == "read", (
-        "deploy.yml must grant `actions: read`, or graceful yield silently no-ops"
+        "enrich.yml must grant `actions: read`, or graceful yield silently no-ops"
     )
     enrich = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
-    # The token may be on the job (shared by both phases) or the enrich step itself.
+    # The token may be on the job (shared by all steps) or the enrich step itself.
     token_sources = {**(job.get("env") or {}), **(enrich.get("env") or {})}
     assert "GITHUB_TOKEN" in token_sources, (
-        "deploy.yml must pass GITHUB_TOKEN to the enrich phase; Actions does not auto-export it"
+        "enrich.yml must pass GITHUB_TOKEN to the enrich phase; Actions does not auto-export it"
     )
 
 
-def test_deploy_renders_and_deploys_before_enriching():
-    """The whole point of the split: publish the fast render BEFORE the heavy enrich runs. Guard
-    the order — render → deploy → enrich — so a reorder that reintroduces "deploy waits for the
-    audio window" (issue #63) fails the PR's test job."""
-    _wf, job = _job("deploy.yml")
+def test_deploy_is_render_only():
+    """H11b: deploy.yml is a render-only job — it publishes feeds/pages and never runs the heavy
+    phase, so encoding/transcription can't block or redden the Pages deploy. Guard that the enrich
+    step (and the ffmpeg/Whisper machinery + graceful-yield token it needed) is GONE, and that
+    render still precedes deploy."""
+    wf, job = _job("deploy.yml")
+    runs = " ".join(str(s.get("run", "")) for s in job["steps"])
+    uses = " ".join(str(s.get("uses", "")) for s in job["steps"])
+    assert "citypods enrich" not in runs, "deploy.yml must not run the heavy enrich phase (H11b)"
+    assert "apt-get install -y ffmpeg" not in runs, "render-only deploy needs no ffmpeg"
+    assert "prepare_whisper" not in runs, "render-only deploy needs no Whisper model"
+    # The graceful-yield token is only for the time-bounded enrich phase, which moved out.
+    assert "actions" not in (wf.get("permissions") or {}), (
+        "deploy.yml must drop `actions: read` once enrich (the only Actions-API caller) moves out"
+    )
     render = _step_index(job, "citypods build --phase render")
     deploy = _step_index(job, "actions/deploy-pages")
-    enrich = _step_index(job, "citypods enrich")
-    assert render >= 0 and deploy >= 0 and enrich >= 0, "render, deploy, and enrich steps required"
-    assert render < deploy < enrich, (
-        "deploy.yml must render → deploy → enrich (deploy the fast outputs before the heavy phase)"
-    )
+    assert render >= 0 and deploy >= 0, "render and deploy steps required"
+    assert render < deploy, "deploy.yml must render before deploying"
+    # The Pages plumbing stays on deploy, not enrich.
+    assert "actions/upload-pages-artifact" in uses and "actions/deploy-pages" in uses
 
 
-def test_deploy_enrich_treats_graceful_yield_as_success():
-    """A superseded enrich run exits 143 after ``StopSignal`` fires. That is an expected yield,
-    not a failed Pages deployment, because deploy already happened before enrich."""
-    _wf, job = _job("deploy.yml")
+def test_enrich_workflow_is_isolated_from_pages():
+    """The heavy phase runs in its own workflow with a concurrency group distinct from `pages`, so
+    an in-flight/queued enrich never holds up or reddens a deploy. It must not deploy to Pages."""
+    wf, job = _job("enrich.yml")
+    triggers = _on(wf)
+    assert set(triggers) >= {"schedule", "workflow_dispatch"}
+    assert "push" not in triggers, "enrich is scheduled/manual, not run on every push to main"
+    assert wf.get("concurrency", {}).get("group") == "enrich"
+    assert wf.get("concurrency", {}).get("group") != "pages"
+    assert wf.get("concurrency", {}).get("cancel-in-progress") is False
+    uses = " ".join(str(s.get("uses", "")) for s in job["steps"])
+    assert "deploy-pages" not in uses and "upload-pages-artifact" not in uses
+    assert _step_index(job, "citypods enrich") >= 0
+
+
+def test_enrich_treats_graceful_yield_as_success():
+    """A superseded enrich run exits 143 after ``StopSignal`` fires. That is an expected yield, not
+    a failure — and (post-H11b) it never touched the Pages deploy, which is a separate workflow."""
+    _wf, job = _job("enrich.yml")
     enrich = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
     run = str(enrich.get("run", ""))
     assert 'if [ "$code" -eq 143 ] &&' in run

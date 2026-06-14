@@ -27,12 +27,12 @@ global newest-everywhere-first enrich queue (PRs #263/#264/#265).
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
-> **Remaining tail (2026-06-12).** With H1–H5/H6a/H7/H8/H10/H11a/H12 shipped, six interlocking items
-> remain, in order: **H13** GPU/ASR execution-backend interface (the pre-1.0 compute lock) → **H11b**
-> render-only `deploy.yml` → **H6b** split audio + ASR into `audio.yml` + `asr.yml`, sharded → **#39**
-> per-provider rate limits → **H14** the first real external workers (**Modal + Beam**, free-tier-bounded)
-> → **H9** combined-throughput eval. The maintainer pulled the external-worker *build* into Phase H so
-> "compute is pluggable" ships proven by two live GPU adapters before 1.0.
+> **Remaining tail (2026-06-12, updated 2026-06-14).** With H1–H5/H6a/H7/H8/H10/H11a/H11b/H12/H13
+> shipped, four interlocking items remain, in order: **H6b** split audio + ASR into `audio.yml` +
+> `asr.yml`, sharded → **#39** per-provider rate limits → **H14** the first real external workers
+> (**Modal + Beam**, free-tier-bounded) → **H9** combined-throughput eval. The maintainer pulled the
+> external-worker *build* into Phase H so "compute is pluggable" ships proven by two live GPU adapters
+> before 1.0.
 
 > **Reprioritized 2026-06-08** after a build-log root-cause review: **H10 shipped in PR #232** and
 > **H8 shipped in PR #235**; the remaining do-now reliability item **H11a** runs **ahead of H1–H5**.
@@ -54,7 +54,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H9** | **Combined-throughput evaluation** — measure local-sharded (H6b) + Modal + Beam (H14) free-tier transcript ceiling + diarization $/speaker-hour; decide the first paid/self-hosted step if the free tiers don't clear backlog |
 | **H10** | ✓ Shipped — ASR alignment fix (PR #232): caption-bearing feeds use a stable-ts align model and fall back to fresh transcription on align errors |
 | **H11a** | ✓ Shipped — **Deploy resilience**: native work gate + one-slot audio lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247) |
-| **H11b** | Strip `deploy.yml` to render-only (audio/ASR move to their own workflows) **+ make render stop persisting records** (the lost-update fix); precedes H6b |
+| **H11b** | ✓ Shipped — Render-only `deploy.yml` (no ffmpeg/ASR; `actions: read` dropped) + heavy phase → new `enrich.yml` (own `enrich` concurrency group) **+ render stops persisting records** — `build()` gates `save_records`/`push_state`/`reconcile_state` off `--phase render` so the enrich workflow is the sole record writer (closes the lost-update race); `statesync` `only_prefixes=`/`full_run=` scope hooks ready for H6b ([#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272)) |
 | **H12** | ✓ Shipped — transcript artifact rework (PR #253): clean segment-cue VTT for players + a word-level JSON sidecar for search/clips/diarization + version-aware gradual re-transcribe (fixes #249's word-per-cue regression) |
 | **H13** | **GPU/ASR execution-backend interface** (+ `local` adapter) — the pre-1.0 "compute is pluggable" lock; `citypods/compute/` mirrors `storage/`. Do **first** (seam for H6b lanes + H14 adapters). LLM-API half of the interface lands with R3/R4 |
 | **H14** | **External transcription workers — Modal + Beam** (free-tier-bounded async dispatch behind H13; `asr.yml` dispatches). Budget ledger guarantees $0; H5 leases go live; `diarize` reserved for Phase R. Mac-mini/AWS stay post-1.0 |

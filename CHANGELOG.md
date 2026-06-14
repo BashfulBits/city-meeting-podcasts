@@ -14,6 +14,21 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Changed
+- **Render-only deploy; the enrich workflow is the sole record writer (H11b)** —
+  ([#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272)). `deploy.yml` is stripped
+  to render-only (checkout → install → restore state → render → validate → upload → deploy): no
+  ffmpeg, no Whisper model, no encodes, and the `actions: read` graceful-yield token is dropped (only
+  the time-bounded heavy phase polls the Actions API). The heavy phase moves to a new
+  **`.github/workflows/enrich.yml`** with its own `enrich` concurrency group, so audio/ASR work can
+  never block or redden the Pages deploy. Critically, **the render phase now writes only `docs/`**:
+  `build()` gates `save_records` / `push_state` / `reconcile_state` off `--phase render`, so a stale
+  render push can no longer silently erase a transcript/hosted-audio that the enrich workflow wrote
+  (the lost-update "record-write race" — review/12 §H6/H11b). No pipeline-version bump and no record
+  migration: existing artifacts are untouched; this only changes *which workflow* persists them.
+  `statesync.push_state(..., only_prefixes=)` and `reconcile_state(..., full_run=)` add the
+  scope hooks H6b's source-sharded jobs will use (no behavior change at the single-writer default).
+
 ### Added
 - **GPU/ASR execution-backend interface + `local` adapter (H13)** — the pre-1.0 "compute is
   pluggable" lock ([#271](https://github.com/BashfulBits/city-meeting-podcasts/issues/271)). New

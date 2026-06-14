@@ -53,26 +53,37 @@ def pull_state(storage, state_dir: Path) -> int:
     return restored
 
 
-def push_state(storage, state_dir: Path) -> int:
-    """Upload every state file under ``state_dir`` to the bucket's ``state/`` prefix.
-    Returns the number of files pushed. No-op for backends without sync support."""
+def push_state(storage, state_dir: Path, *, only_prefixes=None) -> int:
+    """Upload state files under ``state_dir`` to the bucket's ``state/`` prefix.
+    Returns the number of files pushed. No-op for backends without sync support.
+
+    ``only_prefixes`` (the scope hook the H6b shards use): when given, push **only** files whose
+    path relative to ``state_dir`` (POSIX form) starts with one of the prefixes. A source-sharded
+    ``audio``/``asr`` job pulls the whole prefix for render context but owns only a subset of
+    sources, so it must push back **only** the ``source_key``s it owns — e.g.
+    ``only_prefixes=["sources/<key>/"]`` — or it would re-upload its now-stale copy of a sibling
+    shard's record (the cross-shard clobber, review/12 §H6). ``None`` (default) pushes the whole
+    snapshot, which is correct for the single-writer (unsharded enrich) case."""
     if not _supported(storage) or not hasattr(storage, "put_file"):
         return 0
     state_dir = Path(state_dir)
     if not state_dir.exists():
         return 0
+    prefixes = tuple(only_prefixes) if only_prefixes is not None else None
     pushed = 0
     for path in sorted(state_dir.rglob("*")):
         if not path.is_file() or path.suffix not in _SUFFIXES:
             continue
         rel = path.relative_to(state_dir).as_posix()
+        if prefixes is not None and not rel.startswith(prefixes):
+            continue
         storage.put_file(f"{STATE_PREFIX}/{rel}", path, "application/json")
         pushed += 1
     return pushed
 
 
 def reconcile_state(
-    storage, state_dir: Path, *, min_age_days: float = RECONCILE_MIN_AGE_DAYS
+    storage, state_dir: Path, *, min_age_days: float = RECONCILE_MIN_AGE_DAYS, full_run: bool = True
 ) -> int:
     """Delete remote ``state/`` objects that no longer have a local counterpart (age-guarded).
 
@@ -81,7 +92,15 @@ def reconcile_state(
     would otherwise linger in the bucket forever — growing without bound and, via
     ``referenced_audio_keys``, pinning now-orphaned audio so ``gc_audio`` can't reclaim it.
     Run after ``push_state`` to sweep those stale records. Returns the number deleted. No-op
-    for backends without ``list_objects``/``delete``."""
+    for backends without ``list_objects``/``delete``.
+
+    Only safe on a **full, unsharded run** (``full_run=True``, the default): it reaps *every*
+    remote object lacking a local counterpart, so a source-sharded ``audio``/``asr`` job — which
+    pulls the whole prefix for render context but owns only a subset of sources — would delete its
+    siblings' records. ``full_run=False`` (a shard) makes it a no-op; the periodic full enrich run
+    does the sweep (H6b)."""
+    if not full_run:
+        return 0
     if not _supported(storage) or not hasattr(storage, "delete"):
         return 0
     state_dir = Path(state_dir)

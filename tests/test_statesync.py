@@ -70,6 +70,53 @@ def test_reconcile_age_guard_keeps_young_orphans(tmp_path):
     assert not bucket.exists(f"{STATE_PREFIX}/sources/fresh/episodes.json")
 
 
+def test_push_state_only_prefixes_scopes_to_owned_sources(tmp_path):
+    """H6b scope hook: a source-sharded job pulls the whole prefix for render context but must push
+    back ONLY the source_keys it owns, or it re-uploads its stale copy of a sibling shard's record
+    (the cross-shard clobber). ``only_prefixes`` restricts the push to the owned paths."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    for key in ("mine", "theirs"):
+        (state_dir / "sources" / key).mkdir(parents=True)
+        (state_dir / "sources" / key / "episodes.json").write_text("{}")
+    # A non-source state file (run history) must also be excluded by a sources-only scope.
+    (state_dir / "run_summary.json").write_text("{}")
+
+    pushed = push_state(bucket, state_dir, only_prefixes=["sources/mine/"])
+
+    assert pushed == 1
+    assert bucket.exists(f"{STATE_PREFIX}/sources/mine/episodes.json")
+    assert not bucket.exists(f"{STATE_PREFIX}/sources/theirs/episodes.json")
+    assert not bucket.exists(f"{STATE_PREFIX}/run_summary.json")
+
+    # The default (no scope) still pushes everything — the single-writer / full-run case.
+    assert push_state(bucket, state_dir) == 3
+    assert bucket.exists(f"{STATE_PREFIX}/sources/theirs/episodes.json")
+
+
+def test_reconcile_state_full_run_guard(tmp_path):
+    """A source-sharded job owns only a subset, so reconcile (which reaps every remote object with
+    no local counterpart) would delete its siblings' records. ``full_run=False`` makes it a no-op;
+    the periodic full run does the sweep."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    bucket.put_file(
+        f"{STATE_PREFIX}/sources/stale/episodes.json",
+        _tmpfile(tmp_path, "{}"),
+        "application/json",
+    )
+    _age(bucket, f"{STATE_PREFIX}/sources/stale/episodes.json", days=30)
+
+    # A shard must not sweep — the orphan survives.
+    assert reconcile_state(bucket, state_dir, full_run=False) == 0
+    assert bucket.exists(f"{STATE_PREFIX}/sources/stale/episodes.json")
+
+    # The full run reaps it as before.
+    assert reconcile_state(bucket, state_dir, full_run=True) == 1
+    assert not bucket.exists(f"{STATE_PREFIX}/sources/stale/episodes.json")
+
+
 def _tmpfile(tmp_path, text: str):
     p = tmp_path / "_payload.json"
     p.write_text(text)
