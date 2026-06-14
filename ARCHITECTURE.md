@@ -126,6 +126,10 @@ Hard-won facts that bite anyone adding/debugging providers:
 - **Swagit `/videos/{id}/download` is broken for older meetings** (returns a keyless presigned S3 URL
   that 403s); the real media for old meetings is the per-segment files on the video page. Newer meetings
   are fine. See `.claude` history / `swagit.py`.
+- **Swagit's `/play/{id}/{t}` deep-link is a client-side SPA route** — the server `404`s it on a direct
+  `HEAD`/`GET` (even the real chapter-anchor timestamps the watch page links), though it works in a
+  browser. It's the correct user-facing format (the watch page's own anchors use it); just don't expect
+  a 2xx when probing it. The endpoint-contract deep-link check handles this (`_is_spa_seek_url`).
 - **CLI console-script can fail to import the editable package from a script dir** — prefer
   `python -m citypods.cli …` (and `PYTHONPATH=. python scripts/…`).
 - **Granicus `DownloadFile.php` 302-redirects to a real MP4** even when the RSS `type` says WMV — that
