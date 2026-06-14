@@ -646,7 +646,7 @@ class _CountingFfmpeg:
         dest.write_bytes(b"fake-m4a")
 
 
-def _build_phase(tmp_path, cities, phase, ffmpeg):
+def _build_phase(tmp_path, cities, phase, ffmpeg, **kw):
     return run.build(
         site_config_path=tmp_path / "site_config.yml",
         config_dir=cities,
@@ -654,7 +654,27 @@ def _build_phase(tmp_path, cities, phase, ffmpeg):
         base_url="https://example.test",
         ffmpeg=ffmpeg,
         phase=phase,
+        **kw,
     )
+
+
+def _setup_multi(tmp_path):
+    """Two feeds with distinct sources (so distinct ``source_key``s / shards), one provider."""
+    config_dir = tmp_path / "config"
+    feeds = config_dir / "feeds"
+    feeds.mkdir(parents=True)
+    for slug, url in (("feed-a", "https://a"), ("feed-b", "https://b")):
+        (feeds / f"{slug}.yml").write_text(
+            f"slug: {slug}\n"
+            "provider: faketest\n"
+            f"source: {{feed_url: '{url}'}}\n"
+            f'podcast_title: "{slug}"\n'
+            'podcast_author: "City of Fake"\n'
+            'podcast_email: ""\n'
+            'podcast_description: "desc"\n'
+        )
+    (tmp_path / "site_config.yml").write_text(f"state_dir: {tmp_path / 'state'}\n")
+    return config_dir
 
 
 def test_render_phase_renders_without_encoding(tmp_path, fake_provider):
@@ -779,6 +799,120 @@ def test_render_phase_uses_persisted_archive_when_provider_fetch_fails(tmp_path,
     assert (tmp_path / "docs" / "fake-city" / "index.html").exists()
     feed = (tmp_path / "docs" / "fake-city" / "video_feed.xml").read_text()
     assert "City Council" in feed
+
+
+# --- H6b: sharded / lane-pinned enrich -------------------------------------------------
+
+
+def test_enrich_shards_partition_sources_disjoint_and_exhaustive(tmp_path, fake_provider):
+    """The acceptance: across shards each configured source is enriched by exactly one shard, so
+    two concurrent shards never touch the same record file."""
+    from citypods.records import shard_index, source_key
+
+    cities_dir = _setup_multi(tmp_path)
+    ff = _CountingFfmpeg()
+    n = 2
+    by_shard = {}
+    for k in range(n):
+        results = _build_phase(tmp_path, cities_dir, "enrich", ff, shard=(k, n))
+        by_shard[k] = sorted(r.slug for r in results)
+    # Every slug appears in exactly one shard (disjoint + exhaustive).
+    flat = [slug for slugs in by_shard.values() for slug in slugs]
+    assert sorted(flat) == ["feed-a", "feed-b"]
+    assert len(flat) == len(set(flat))
+    # And the partition matches the pure shard function.
+    from citypods.config import load_city_configs
+
+    for c in load_city_configs(cities_dir, {}):
+        assert c.slug in by_shard[shard_index(source_key(c), n)]
+
+
+def test_enrich_source_scopes_to_one_source(tmp_path, fake_provider):
+    from citypods.config import load_city_configs
+    from citypods.records import source_key
+
+    cities_dir = _setup_multi(tmp_path)
+    key_a = next(source_key(c) for c in load_city_configs(cities_dir, {}) if c.slug == "feed-a")
+    results = _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), source=key_a)
+    assert [r.slug for r in results] == ["feed-a"]
+
+
+def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provider, monkeypatch):
+    """A sharded run pushes back ONLY its owned ``sources/<key>/`` records and does not reconcile —
+    the H11b scope hooks, so concurrent shards never clobber a sibling's records."""
+    from citypods.config import load_city_configs
+    from citypods.records import shard_index, source_key
+
+    cities_dir = _setup_multi(tmp_path)
+    captured = {}
+
+    def _push(_storage, _state_dir, *, only_prefixes=None):
+        captured["only_prefixes"] = only_prefixes
+        return 0
+
+    def _reconcile(_storage, _state_dir, *, full_run=True, **_k):
+        captured["full_run"] = full_run
+        return 0
+
+    monkeypatch.setattr(run, "push_state", _push)
+    monkeypatch.setattr(run, "reconcile_state", _reconcile)
+
+    _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2))
+
+    assert captured["full_run"] is False  # a shard never sweeps siblings' records
+    owned = {
+        f"sources/{source_key(c)}/"
+        for c in load_city_configs(cities_dir, {})
+        if shard_index(source_key(c), 2) == 0
+    }
+    assert set(captured["only_prefixes"]) == owned
+
+
+def test_unsharded_enrich_pushes_everything_and_reconciles(tmp_path, fake_provider, monkeypatch):
+    """The full (unsharded) run keeps the whole-snapshot push + the reconcile sweep."""
+    cities_dir = _setup_multi(tmp_path)
+    captured = {}
+
+    def _push(*_a, only_prefixes=None, **_k):
+        captured["op"] = only_prefixes
+        return 0
+
+    def _reconcile(*_a, full_run=True, **_k):
+        captured["fr"] = full_run
+        return 0
+
+    monkeypatch.setattr(run, "push_state", _push)
+    monkeypatch.setattr(run, "reconcile_state", _reconcile)
+    _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg())
+    assert captured["op"] is None  # whole-snapshot push
+    assert captured["fr"] is True  # full reconcile sweep
+
+
+def test_lane_audio_runs_audio_pass_only(tmp_path, fake_provider):
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    _build_phase(tmp_path, cities, "enrich", ff, lane="audio")
+    assert ff.calls == 2  # the audio lane encodes
+
+
+@pytest.mark.parametrize("lane", ["transcribe", "align"])
+def test_transcript_lanes_skip_the_audio_pass(tmp_path, fake_provider, lane):
+    """``--lane transcribe``/``align`` run ONLY the transcript pass — the audio pass is skipped, so
+    no encoding happens (the acceptance's '--lane align runs only the transcript pass')."""
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    _build_phase(tmp_path, cities, "enrich", ff, lane=lane)
+    assert ff.calls == 0  # audio pass skipped; only the transcript pass would run
+
+
+def test_build_rejects_unknown_lane(tmp_path, fake_provider):
+    cities = _setup(tmp_path)
+    with pytest.raises(ValueError, match="unknown lane"):
+        _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="bogus")
 
 
 # --- H5 PR3: global two-pass enrich queue ----------------------------------------------

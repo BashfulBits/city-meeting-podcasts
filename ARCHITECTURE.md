@@ -45,11 +45,16 @@ docs/  ──► GitHub Pages              ;   audio + transcripts + state ─�
 
 The production deploy **splits render from enrich** into **separate workflows** (separate CLI commands,
 see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state and never
-runs ffmpeg/ASR — while `enrich.yml` runs the heavy, best-effort, resumable backfill under its own
-concurrency group, so encoding/transcription can never block or redden the Pages deploy (H11b). The
-render phase writes **only `docs/`**: it persists no records, leaving `enrich.yml` as the sole record
-writer so a stale render push can't clobber what enrich wrote (the record-write race; `statesync.py`'s
-`only_prefixes=`/`full_run=` scope hooks ready the per-shard split). The heavy
+runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two dedicated workflows,
+`audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription), each on its
+own concurrency group **sharded by `source_key`** (`strategy.matrix.shard`), so encoding/transcription
+can never block or redden the Pages deploy (H11b) and concurrent shards clear the backlog without
+clobbering records (H6b). The render phase writes **only `docs/`**: it persists no records, leaving the
+audio/ASR workflows as the sole record writers; a sharded run pushes back only the `source_key`s it owns
+(`statesync.py`'s `push_state(only_prefixes=)`) and skips the reconcile sweep (`full_run=False`), so a
+stale or partial push can't clobber a sibling shard's records (the record-write race). Each `citypods
+enrich` job pins one **lane** — `audio`, `transcribe`, or `align` — so the two ASR models never co-load
+on one runner. The heavy
 `enrich` phase processes its backlog as a **global, policy-ordered two-pass queue** (`ops/workqueue.py` +
 `run.py`): prepare every source, then run an on-runner **audio pass** (`chapters→timeline→remap→audio`,
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
@@ -103,9 +108,10 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
   audio + transcripts + durable state.
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
   downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron),
-  `enrich.yml` (the heavy, time-bounded chapters+audio+ASR backfill on a 4h cron; own `enrich`
-  concurrency group, sole record writer), `audit.yml` (daily feed-health → GitHub issues),
-  `contracts.yml` (weekly live endpoint contracts), `asr-bench.yml` (manual ASR benchmark harness).
+  `audio.yml` (sharded audio materialization, 4h cron; own `audio` concurrency group),
+  `asr.yml` (sharded faster-whisper transcription, daily; own `asr` concurrency group) — the two heavy
+  record-writers, each a `--shard K/N` × `--lane` matrix, `audit.yml` (daily feed-health → GitHub
+  issues), `contracts.yml` (weekly live endpoint contracts), `asr-bench.yml` (manual ASR benchmark).
 - **Tests** run fully offline against recorded fixtures; feeds have byte-for-byte snapshot tests.
 
 ## Provider notes & gotchas

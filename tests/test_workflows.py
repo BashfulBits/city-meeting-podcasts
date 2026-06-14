@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
@@ -39,22 +40,84 @@ def _step_index(job: dict, needle: str) -> int:
     return -1
 
 
-def test_enrich_workflow_wires_graceful_yield():
-    """Graceful yield needs the Actions API: ``actions: read`` AND ``GITHUB_TOKEN`` available to the
-    time-bounded **enrich** phase (Actions does not auto-export it). Missing either makes
-    ``_newer_run_queued`` fail open — enrich ignores a queued run and only stops at the wall-clock
-    window — so assert the wiring statically (running it can't catch it). Lives in enrich.yml since
-    H11b split the heavy phase out of the render-only deploy."""
-    wf, job = _job("enrich.yml")
+# H6b split the combined enrich into two sharded, lane-pinned workflows.
+HEAVY_WORKFLOWS = [("audio.yml", "audio"), ("asr.yml", "transcribe")]
+
+
+@pytest.mark.parametrize("workflow,lane", HEAVY_WORKFLOWS)
+def test_heavy_workflow_wires_graceful_yield(workflow, lane):
+    """Graceful yield needs the Actions API: ``actions: read`` AND ``GITHUB_TOKEN`` for the
+    time-bounded heavy phase (Actions does not auto-export it). Missing either makes
+    ``_newer_run_queued`` fail open — the shard ignores a queued run and only stops at the
+    wall-clock window — so assert the wiring statically (running it can't catch it)."""
+    wf, job = _job(workflow)
     assert wf.get("permissions", {}).get("actions") == "read", (
-        "enrich.yml must grant `actions: read`, or graceful yield silently no-ops"
+        f"{workflow} must grant `actions: read`, or graceful yield silently no-ops"
     )
-    enrich = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
-    # The token may be on the job (shared by all steps) or the enrich step itself.
-    token_sources = {**(job.get("env") or {}), **(enrich.get("env") or {})}
+    step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    token_sources = {**(job.get("env") or {}), **(step.get("env") or {})}
     assert "GITHUB_TOKEN" in token_sources, (
-        "enrich.yml must pass GITHUB_TOKEN to the enrich phase; Actions does not auto-export it"
+        f"{workflow} must pass GITHUB_TOKEN to the heavy phase; Actions does not auto-export it"
     )
+
+
+@pytest.mark.parametrize("workflow,lane", HEAVY_WORKFLOWS)
+def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane):
+    """Each heavy workflow runs a source-sharded matrix pinned to one lane, so concurrent shards own
+    disjoint record files (scoped push_state) and the two ASR models never co-load."""
+    wf, job = _job(workflow)
+    shards = job.get("strategy", {}).get("matrix", {}).get("shard")
+    assert shards == [0, 1, 2, 3], f"{workflow} must shard by source_key (matrix.shard)"
+    step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    run = str(step["run"])
+    n = len(shards)
+    assert f"--lane {lane}" in run, f"{workflow} must pin --lane {lane}"
+    assert f"--shard ${{{{ matrix.shard }}}}/{n}" in run, (
+        f"{workflow} must pass --shard <matrix.shard>/{n} matching the matrix size"
+    )
+
+
+@pytest.mark.parametrize("workflow,group", [("audio.yml", "audio"), ("asr.yml", "asr")])
+def test_heavy_workflow_is_isolated_from_pages(workflow, group):
+    """Each heavy workflow has its own concurrency group (distinct from `pages` and each other), is
+    scheduled/manual (not on every push), and never deploys to Pages — so a deploy is never canceled
+    by audio/ASR work."""
+    wf, job = _job(workflow)
+    triggers = _on(wf)
+    assert set(triggers) >= {"schedule", "workflow_dispatch"}
+    assert "push" not in triggers, f"{workflow} is scheduled/manual, not run on every push"
+    assert wf.get("concurrency", {}).get("group") == group
+    assert wf.get("concurrency", {}).get("group") != "pages"
+    assert wf.get("concurrency", {}).get("cancel-in-progress") is False
+    uses = " ".join(str(s.get("uses", "")) for s in job["steps"])
+    assert "deploy-pages" not in uses and "upload-pages-artifact" not in uses
+
+
+@pytest.mark.parametrize("workflow,_lane", HEAVY_WORKFLOWS)
+def test_heavy_workflow_treats_graceful_yield_as_success(workflow, _lane):
+    """A superseded shard exits 143 after ``StopSignal`` fires. That is an expected yield, not a
+    failure — and it never touched the Pages deploy, which is a separate workflow."""
+    _wf, job = _job(workflow)
+    step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    run = str(step.get("run", ""))
+    assert 'if [ "$code" -eq 143 ] &&' in run
+    assert 'grep -q "stop: newer build queued behind this run"' in run
+    assert "yielded to newer run" in run
+
+
+def test_no_combined_enrich_workflow():
+    """H6b removed the combined enrich.yml — audio.yml + asr.yml replace it. A lingering enrich.yml
+    would re-add a third full record writer and reopen the cross-writer clobber."""
+    assert not (WORKFLOWS / "enrich.yml").exists()
+
+
+def test_audio_lane_needs_no_whisper():
+    """The audio lane never runs ASR, so it must not install the asr extra or download Whisper —
+    that's wasted runner time and memory."""
+    _wf, job = _job("audio.yml")
+    runs = " ".join(str(s.get("run", "")) for s in job["steps"])
+    assert "prepare_whisper" not in runs
+    assert '".[asr' not in runs and "[asr,storage]" not in runs
 
 
 def test_deploy_is_render_only():
@@ -78,32 +141,6 @@ def test_deploy_is_render_only():
     assert render < deploy, "deploy.yml must render before deploying"
     # The Pages plumbing stays on deploy, not enrich.
     assert "actions/upload-pages-artifact" in uses and "actions/deploy-pages" in uses
-
-
-def test_enrich_workflow_is_isolated_from_pages():
-    """The heavy phase runs in its own workflow with a concurrency group distinct from `pages`, so
-    an in-flight/queued enrich never holds up or reddens a deploy. It must not deploy to Pages."""
-    wf, job = _job("enrich.yml")
-    triggers = _on(wf)
-    assert set(triggers) >= {"schedule", "workflow_dispatch"}
-    assert "push" not in triggers, "enrich is scheduled/manual, not run on every push to main"
-    assert wf.get("concurrency", {}).get("group") == "enrich"
-    assert wf.get("concurrency", {}).get("group") != "pages"
-    assert wf.get("concurrency", {}).get("cancel-in-progress") is False
-    uses = " ".join(str(s.get("uses", "")) for s in job["steps"])
-    assert "deploy-pages" not in uses and "upload-pages-artifact" not in uses
-    assert _step_index(job, "citypods enrich") >= 0
-
-
-def test_enrich_treats_graceful_yield_as_success():
-    """A superseded enrich run exits 143 after ``StopSignal`` fires. That is an expected yield, not
-    a failure — and (post-H11b) it never touched the Pages deploy, which is a separate workflow."""
-    _wf, job = _job("enrich.yml")
-    enrich = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
-    run = str(enrich.get("run", ""))
-    assert 'if [ "$code" -eq 143 ] &&' in run
-    assert 'grep -q "stop: newer build queued behind this run"' in run
-    assert "Enrich yielded to newer run" in run
 
 
 def test_deploy_skips_docs_only_pushes_but_not_deploy_inputs():

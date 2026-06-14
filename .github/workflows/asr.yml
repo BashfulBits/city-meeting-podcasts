@@ -1,0 +1,107 @@
+name: ASR
+
+# Transcription lane (H6b): faster-whisper ASR over episodes that already have hosted audio,
+# sharded by source_key (scoped push_state, no cross-shard clobber). Runs `--lane transcribe`, so
+# only the fresh-transcription model loads — stable-ts alignment is a separate, currently-unscheduled
+# `--lane align` job, kept apart so the two ASR models never co-load on one runner (review/12 §H6).
+
+on:
+  schedule:
+    # Daily: transcription is the heaviest work class; the audio lane runs more often to keep the
+    # hosted-audio backlog (this lane's input) fed.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+# Own concurrency group, distinct from `pages` and `audio`: a deploy is never canceled by ASR, and
+# a running ASR run finishes (its shards yield gracefully when a newer run is queued behind them).
+concurrency:
+  group: asr
+  cancel-in-progress: false
+
+# `actions: read` lets each shard poll the Actions API for a newer queued ASR run and yield
+# gracefully (issue #63). Asserted statically in tests/test_workflows.py.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  asr:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
+        shard: [0, 1, 2, 3]
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Lets the shard poll the Actions API and yield gracefully when a newer run is queued behind
+      # it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
+      GITHUB_TOKEN: ${{ github.token }}
+      # huggingface_hub < 0.18 reads HUGGINGFACE_HUB_TOKEN; >= 0.18 prefers HF_TOKEN.
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Restore build state
+        uses: actions/cache@v4
+        with:
+          path: .citypods-state
+          key: build-state-asr-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: |
+            build-state-
+
+      - name: Install
+        run: pip install -e ".[asr,storage]"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # Restore + download the large-v3-turbo weights (4-step cascade in the script). The transcribe
+      # lane only loads faster-whisper, never stable-ts.
+      - name: Cache Whisper model (large-v3-turbo)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/faster-whisper-large-v3-turbo
+          key: whisper-large-v3-turbo-v2
+          restore-keys: whisper-large-v3-turbo-
+
+      - name: Prepare Whisper model
+        continue-on-error: true
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        run: python scripts/prepare_whisper.py
+
+      # Transcribe this shard's sources only. Bounded by the wall-clock window; yields gracefully
+      # (exit 143 after the stop signal) when a newer ASR run is queued behind it.
+      - name: ASR (shard ${{ matrix.shard }}/4)
+        id: asr
+        run: |
+          set +e
+          log="${RUNNER_TEMP:-/tmp}/citypods-asr.log"
+          citypods enrich --lane transcribe --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then
+            echo "::warning title=ASR yielded to newer run::Shard ${{ matrix.shard }} exited 143 after the graceful-yield stop signal. The queued run will resume."
+            exit 0
+          fi
+          exit "$code"

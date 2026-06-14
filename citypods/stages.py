@@ -197,6 +197,13 @@ class StageContext:
     # supersession or wall-clock budget stops: those should finish/persist as much completed work
     # as possible.
     fast_yield_exit: Callable[[], None] | None = None
+    # Work-class lane for the sharded H6b workflows. None ⇒ the combined behavior (audio pass +
+    # auto align/transcribe per episode). ``"audio"`` runs only the audio pass; ``"transcribe"``
+    # runs the transcript pass forcing fresh faster-whisper transcription (never loads stable-ts);
+    # ``"align"`` runs the transcript pass align-only (stable-ts, episodes with a source transcript)
+    # so the two ASR models never co-load in one runner. The pass selection lives in run.py; this
+    # field tells TranscriptStage which ASR model path to take.
+    lane: str | None = None
 
 
 @dataclass
@@ -990,6 +997,21 @@ class TranscriptStage:
                 stats.skipped += 1
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
+                    flush=True,
+                )
+                continue
+
+            # Lane gating (H6b): the sharded asr.yml runs a single-model lane so faster-whisper and
+            # stable-ts never co-load in one runner. ``transcribe`` forces fresh transcription (drop
+            # the alignment hint → never load stable-ts); ``align`` only handles episodes with a
+            # source transcript (others defer to a transcribe lane). The default (None) lane keeps
+            # the auto per-episode behavior for a direct ``citypods enrich``.
+            if ctx.lane == "transcribe":
+                align_text = None
+            elif ctx.lane == "align" and align_text is None:
+                stats.skipped += 1
+                print(
+                    f"[enrich] transcript asr skipped {ep_ref} reason=align-lane-no-source-text",
                     flush=True,
                 )
                 continue

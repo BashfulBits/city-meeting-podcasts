@@ -57,6 +57,23 @@ def main(argv: list[str] | None = None) -> int:
         help="max chapter pages scraped per source this run (unset = bounded only by the "
         "wall-clock window, as in production)",
     )
+    e.add_argument("--dry-run", action="store_true", help="enrich but write nothing (no uploads)")
+    e.add_argument(
+        "--source", metavar="KEY", help="enrich only this source_key (H6b shard scoping)"
+    )
+    e.add_argument(
+        "--shard",
+        metavar="K/N",
+        help="enrich only the sources in shard K of N (0-based), partitioned by "
+        "stable_hash(source_key) %% N — the H6b sharded audio.yml/asr.yml workflows",
+    )
+    e.add_argument(
+        "--lane",
+        choices=["audio", "transcribe", "align"],
+        help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
+        "only; 'align' runs forced-alignment only. Default runs the full enrich (audio + "
+        "transcript). The sharded workflows pin one lane so the two ASR models never co-load.",
+    )
 
     d = sub.add_parser("bodies", help="list the meeting bodies in a city's source")
     d.add_argument("slug", help="city slug to inspect")
@@ -187,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run_build(args, phase=args.phase, dry_run=args.dry_run)
 
     if args.command == "enrich":
-        return _run_build(args, phase="enrich", dry_run=False)
+        return _run_build(args, phase="enrich", dry_run=args.dry_run)
 
     if args.command == "rebuild-audio":
         return _rebuild_audio(args)
@@ -201,6 +218,20 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _parse_shard(spec: str | None) -> tuple[int, int] | None:
+    """Parse a ``--shard K/N`` spec into ``(k, n)``; ``None`` for no sharding."""
+    if not spec:
+        return None
+    try:
+        k_str, n_str = spec.split("/", 1)
+        k, n = int(k_str), int(n_str)
+    except ValueError as exc:
+        raise SystemExit(f"--shard must be K/N (e.g. 0/4), got {spec!r}") from exc
+    if not (n >= 1 and 0 <= k < n):
+        raise SystemExit(f"--shard {spec} out of range: need N>=1 and 0<=K<N")
+    return (k, n)
+
+
 def _run_build(args, *, phase: str, dry_run: bool) -> int:
     results = build(
         site_config_path=args.site_config,
@@ -211,6 +242,9 @@ def _run_build(args, *, phase: str, dry_run: bool) -> int:
         dry_run=dry_run,
         chapters_cap=args.chapters_cap,
         phase=phase,
+        shard=_parse_shard(getattr(args, "shard", None)),
+        source=getattr(args, "source", None),
+        lane=getattr(args, "lane", None),
     )
     built = sum(r.status == "built" for r in results)
     skipped = sum(r.status == "skipped" for r in results)

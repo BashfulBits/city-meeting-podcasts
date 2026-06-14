@@ -33,7 +33,7 @@ concurrency:
 
 # Render-only deploy (H11b): no `actions: read` graceful-yield token — render is not time-bounded
 # (it always finishes in minutes), so it never polls the Actions API or yields. The heavy phase
-# that needed that token lives in enrich.yml now.
+# that needed that token lives in the audio.yml / asr.yml workflows now.
 permissions:
   contents: read
   pages: write
@@ -47,7 +47,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     # Render-only: it reads the durable record store (restored from object storage by
     # citypods/statesync.py) to publish feeds/pages, so it needs the storage creds — but no
-    # ffmpeg, no Whisper model, and no audio/ASR encodes. All heavy work moved to enrich.yml.
+    # ffmpeg, no Whisper model, and no audio/ASR encodes. All heavy work runs in audio.yml/asr.yml.
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # Audio hosting (CivicPlus + extract_audio). Set the secrets for whichever backend
@@ -98,7 +98,7 @@ jobs:
       # Render feeds/pages from the record store + apply any code/template/config changes, using
       # audio & chapters already hosted by the enrich workflow. No encoding, so this finishes in
       # minutes — the whole point is to publish merge fixes + new meetings ASAP, never blocked by
-      # or marked red by audio/ASR work (which runs in enrich.yml).
+      # or marked red by audio/ASR work (which runs in audio.yml/asr.yml).
       - name: Render feeds
         env:
           PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}

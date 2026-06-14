@@ -48,6 +48,18 @@ def source_key(city: City) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
+def shard_index(src_key: str, num_shards: int) -> int:
+    """Stable shard assignment for a ``source_key``: ``stable_hash(source_key) % N`` (H6b).
+
+    Deterministic across processes/runs (uses SHA-1, not Python's salted ``hash()``), so a
+    source always lands in the same shard — two concurrent ``audio``/``asr`` shards then own
+    disjoint, exhaustive sets of sources and never write the same ``state/sources/<key>`` file.
+    ``num_shards`` must be ≥ 1."""
+    if num_shards < 1:
+        raise ValueError(f"num_shards must be >= 1, got {num_shards}")
+    return int(hashlib.sha1(src_key.encode()).hexdigest(), 16) % num_shards
+
+
 def _author_key(city: City) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", (city.podcast_author or city.slug or "").lower())
     return re.sub(r"-+", "-", slug).strip("-")

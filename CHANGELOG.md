@@ -15,6 +15,21 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Changed
+- **Sharded `audio.yml` + `asr.yml` workflows, lane-pinned (H6b)** —
+  ([#273](https://github.com/BashfulBits/city-meeting-podcasts/issues/273)). The combined
+  `enrich.yml` (H11b) is replaced by two dedicated workflows, each on its own concurrency group
+  (`audio` / `asr`, both distinct from `pages`) and a `strategy.matrix.shard` of 4 source-shards, so
+  a deploy is never canceled by heavy work and concurrent shards clear the backlog without clobbering
+  records. New `citypods enrich` flags: `--shard K/N` (keep only sources with
+  `shard_index(source_key) == K`; disjoint + exhaustive across `K`), `--source KEY`, and
+  `--lane {audio,transcribe,align}`. `run.py` filters cities to the shard and threads the lane into
+  the two-pass queue (`audio` → audio pass only; `transcribe`/`align` → transcript pass only), and a
+  sharded/scoped run uses the H11b hooks — `push_state(only_prefixes=…owned sources…)` +
+  `reconcile_state(full_run=False)` — so it pushes back only the records it owns and never sweeps a
+  sibling's. `audio.yml` runs `--lane audio` (no `[asr]` extra, no Whisper); `asr.yml` runs
+  `--lane transcribe` (fresh faster-whisper only). The `align` lane (stable-ts forced alignment) is
+  implemented but **not scheduled** — forced alignment is deferred to a later issue, so caption-bearing
+  feeds get fresh transcription for now. A direct `citypods enrich` (no lane/shard) is unchanged.
 - **Render-only deploy; the enrich workflow is the sole record writer (H11b)** —
   ([#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272)). `deploy.yml` is stripped
   to render-only (checkout → install → restore state → render → validate → upload → deploy): no

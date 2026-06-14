@@ -42,6 +42,7 @@ from citypods.records import (
     prune_archive,
     record_to_episode,
     save_records,
+    shard_index,
     source_key,
 )
 from citypods.resources import NativeWorkGate, ResourceAdmission, current_snapshot, snapshot_string
@@ -416,7 +417,7 @@ def _process_city(
     )
 
 
-def _try_preload_asr_model(defaults: dict) -> None:
+def _try_preload_asr_model(defaults: dict, *, lane: str | None = None) -> None:
     """Pre-load the Whisper model into the process-level cache before workers start.
 
     Loading the float16 model peaks at ~5.5 GB RAM (float16 → float32 intermediate
@@ -424,6 +425,10 @@ def _try_preload_asr_model(defaults: dict) -> None:
     that peak resolves to the int8 steady-state (~800 MB) before any ffmpeg subprocesses
     are spawned — preventing OOM when high audio-encode concurrency coincides with model
     loading.
+
+    ``lane`` selects which single model to warm so the two never co-load on a sharded runner
+    (H6b): ``"align"`` pre-loads the stable-ts alignment model; ``"transcribe"`` / ``None`` (the
+    combined enrich) pre-load the faster-whisper transcription model.
     """
     if not defaults.get("asr_enabled", True):
         return
@@ -436,8 +441,12 @@ def _try_preload_asr_model(defaults: dict) -> None:
         compute_type = str(defaults.get("asr_compute_type", "int8"))
         asr_workers = int(defaults.get("asr_workers", 1))
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / asr_workers))
-        print(f"[asr] pre-loading {model} ({compute_type}, {cpu_threads} threads)…", flush=True)
-        asr_mod.load_model(model, compute_type, cpu_threads)
+        if lane == "align":
+            print(f"[asr] pre-loading stable-ts align model {model} ({cpu_threads}t)…", flush=True)
+            asr_mod._load_alignment_model(model, compute_type, cpu_threads)
+        else:
+            print(f"[asr] pre-loading {model} ({compute_type}, {cpu_threads} threads)…", flush=True)
+            asr_mod.load_model(model, compute_type, cpu_threads)
         print("[asr] model ready — worker pool starting", flush=True)
     except Exception as exc:  # noqa: BLE001
         # Non-fatal: TranscriptStage will attempt load again per-source and record the error.
@@ -592,6 +601,14 @@ def _run_enrich_global_queue(
     ctx = pipeline.ctx
     audio_stages = [s for s in pipeline.stages if s.name != "transcript"]
     transcript_stages = [s for s in pipeline.stages if s.name == "transcript"]
+    # H6b lanes: the sharded workflows run one work class per job so the two ASR models never
+    # co-load and audio encodes never share a runner with ASR. ``audio`` → audio pass only;
+    # ``transcribe``/``align`` → transcript pass only (the per-episode model choice is gated inside
+    # TranscriptStage by ``ctx.lane``). ``None`` (combined enrich) runs both passes, as before.
+    if ctx.lane == "audio":
+        transcript_stages = []
+    elif ctx.lane in ("transcribe", "align"):
+        audio_stages = []
 
     # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
     #    double-count). ProviderError is captured per source and surfaces as that city's result.
@@ -691,6 +708,9 @@ def build(
     ffmpeg: FfmpegRunner | None = None,
     chapters_cap: int | None = None,
     phase: str = "all",
+    shard: tuple[int, int] | None = None,
+    source: str | None = None,
+    lane: str | None = None,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
 
@@ -704,15 +724,35 @@ def build(
       by the next run's ``"render"`` (graceful, like a not-yet-hosted episode).
 
     Splitting render from enrich is what lets a merge publish feeds/pages in ~minutes instead of
-    waiting out the whole audio window (issue #63 follow-up)."""
+    waiting out the whole audio window (issue #63 follow-up).
+
+    ``shard``/``source``/``lane`` drive the H6b sharded ``audio``/``asr`` workflows (enrich phase):
+    ``shard=(k, n)`` keeps only sources with ``shard_index(source_key) == k`` (disjoint, exhaustive
+    across ``k in range(n)``); ``source`` keeps only that one ``source_key``; ``lane`` selects the
+    work class (``audio`` / ``transcribe`` / ``align``). A sharded or source-scoped run pushes back
+    **only** the records it owns (scoped ``push_state``) and does not reconcile (H11b hooks)."""
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
+    if lane is not None and lane not in ("audio", "transcribe", "align"):
+        raise ValueError(f"unknown lane {lane!r}")
     site_config = load_site_config(site_config_path)
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
     if only_slug:
         cities = [c for c in cities if c.slug == only_slug]
         if not cities:
             raise ValueError(f"no city with slug {only_slug!r}")
+    # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
+    # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
+    scoped = bool(source or shard)
+    if source:
+        cities = [c for c in cities if source_key(c) == source]
+        if not cities:
+            raise ValueError(f"no source with key {source!r}")
+    if shard is not None:
+        k, n = shard
+        if not (0 <= k < n):
+            raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
+        cities = [c for c in cities if shard_index(source_key(c), n) == k]
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -870,6 +910,7 @@ def build(
         fast_yield_exit=(
             _fast_yield_exit if phase == "enrich" and os.environ.get("GITHUB_ACTIONS") else None
         ),
+        lane=lane,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
@@ -908,8 +949,11 @@ def build(
         root=output_dir,
         interval_seconds=heartbeat_interval,
     ) as _hb:
-        if time_bounded and not dry_run and storage is not None:
-            _try_preload_asr_model(defaults)
+        # Pre-load only the ASR model the active lane will use, so a transcribe shard never pulls
+        # in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio lane loads
+        # nothing. ``lane=None`` (combined enrich) keeps the faster-whisper preload as before.
+        if time_bounded and not dry_run and storage is not None and lane != "audio":
+            _try_preload_asr_model(defaults, lane=lane)
 
         if phase == "enrich":
             # H5 PR3: the heavy production phase uses the global two-pass queue for true
@@ -1060,12 +1104,24 @@ def build(
         # (persist_records is False): it produced no new records, and pushing its stale view would
         # clobber what the concurrent enrich workflow wrote (review/12 §H6/H11b).
         if persist_records:
-            pushed = push_state(storage, state_dir)
+            # H6b: a sharded/source-scoped run owns only a subset of sources. It pulled the whole
+            # prefix for context but must push back ONLY its own ``sources/<key>/`` records, or it
+            # would re-upload its now-stale copy of a sibling shard's record (cross-shard clobber).
+            # It also must NOT reconcile — that reaps every remote object without a local
+            # counterpart, which from a partial run means a sibling's records. The full unsharded
+            # run does the sweep.
+            if scoped:
+                owned = sorted({source_key(c) for c in cities})
+                pushed = push_state(
+                    storage, state_dir, only_prefixes=[f"sources/{sk}/" for sk in owned]
+                )
+            else:
+                pushed = push_state(storage, state_dir)
             if pushed:
                 print(f"state: pushed {pushed} file(s) to durable storage")
             # Reap remote state objects with no local counterpart (e.g. records orphaned by a
             # source edit that changed source_key) so they don't leak or pin orphaned audio.
-            reclaimed = reconcile_state(storage, state_dir)
+            reclaimed = reconcile_state(storage, state_dir, full_run=not scoped)
             if reclaimed:
                 print(f"state: reclaimed {reclaimed} stale remote file(s)")
         if (
