@@ -1111,3 +1111,73 @@ def test_materialize_backs_off_a_truncated_encode_instead_of_hosting_it(tmp_path
     assert ep.materialize_attempts == 1  # backed off (will retry next run)
     assert ep.materialize_error == "truncated"
     assert len(stats.errors) == 1
+
+
+# --------------------------------------------------------------------------------------------------
+# Browser-compatible User-Agent for ffmpeg/ffprobe fetches (Granicus CDN 403s non-browser UAs)
+# --------------------------------------------------------------------------------------------------
+
+
+def test_user_agent_is_browser_compatible():
+    from citypods.http import USER_AGENT
+
+    # The Granicus media CDN 403s a non-Mozilla UA; the prefix is load-bearing, not vanity.
+    assert USER_AGENT.startswith("Mozilla/5.0")
+    assert "citypods" in USER_AGENT  # …but still honestly identifies us
+
+
+def test_download_audio_cmd_sends_browser_user_agent(monkeypatch):
+    import citypods.media as media
+    from citypods.http import USER_AGENT
+
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+    media._download_audio("https://archive-video.granicus.com/x.mp4", Path("/tmp/nope.m4a"))
+    cmd = cmds[0]
+    assert "-user_agent" in cmd
+    assert cmd[cmd.index("-user_agent") + 1] == USER_AGENT
+
+
+def test_download_audio_max_seconds_truncates_else_omits_t(monkeypatch):
+    import citypods.media as media
+
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+    media._download_audio("https://x/y.mp4", Path("/tmp/nope.m4a"), max_seconds=3)
+    media._download_audio("https://x/y.mp4", Path("/tmp/nope.m4a"))
+    assert "-t" in cmds[0] and cmds[0][cmds[0].index("-t") + 1] == "3"  # truncated fetch
+    assert "-t" not in cmds[1]  # full fetch by default
+
+
+def test_probe_audio_bitrate_sends_browser_user_agent(monkeypatch):
+    import citypods.media as media
+    from citypods.http import USER_AGENT
+
+    captured: dict = {}
+
+    class _Out:
+        stdout = "128000"
+
+    def _fake_run(argv, **kw):
+        captured["argv"] = argv
+        return _Out()
+
+    monkeypatch.setattr(media.subprocess, "run", _fake_run)
+    media._probe_audio_bitrate("https://archive-video.granicus.com/x.mp4")
+    argv = captured["argv"]
+    assert "-user_agent" in argv and argv[argv.index("-user_agent") + 1] == USER_AGENT
+
+
+def test_identity_render_cmd_sends_browser_user_agent(monkeypatch):
+    import citypods.media as media
+    from citypods.http import USER_AGENT
+
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+    monkeypatch.setattr(media, "_probe_audio_bitrate", lambda *a, **k: 96_000)
+    runner = media.CommandFfmpeg(max_kbps=MAX_KBPS)
+    runner.extract_audio(
+        None, {"s0": "https://archive-video.granicus.com/x.mp4"}, Path("/tmp/o.m4a")
+    )
+    cmd = cmds[0]
+    assert "-user_agent" in cmd and cmd[cmd.index("-user_agent") + 1] == USER_AGENT

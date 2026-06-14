@@ -14,6 +14,20 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Fixed
+- **Granicus audio now downloads — the CDN `403` was a User-Agent block, not signing/rate-limiting.**
+  `archive-video.granicus.com` `403`s non-browser User-Agents; our bare `citypods/0.1` UA (and
+  ffmpeg's default `Lavf/…`) were blocked, so Granicus audio had **never** materialized (every run
+  encoded only swagit). `USER_AGENT` (`http.py`) is now browser-compatible
+  (`Mozilla/5.0 (compatible; citypods/0.1; +…)`, verified `206` live), and `media.py` passes it to
+  ffmpeg/ffprobe via `-user_agent` on every remote fetch (`_download_audio`, `_render_identity`,
+  `_render_filter`, `_probe_audio_bitrate`). PRs #245/#250/#251 had misdiagnosed this as a
+  signing/rate-limit issue and only tested against a **mocked signed redirect**, so it passed CI while
+  failing live. To prevent a recurrence, `citypods/contracts.py` gains a **media-fetch** check that
+  truncated-downloads each provider's newest clip through the production fetch path (UA + protocol
+  whitelist + timeout); it runs in the `-m live` suite and `scripts/check_endpoints.py` (ffmpeg added
+  to `contracts.yml`), so a silent "audio never downloads" regression now fails loudly.
+
 ### Changed
 - **Per-provider (per-host) rate limiting + sharding-regression fixes (#39)** —
   ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274)). The first sharded Audio

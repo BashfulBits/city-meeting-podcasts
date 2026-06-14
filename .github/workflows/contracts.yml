@@ -35,6 +35,10 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e .
+      # The media-fetch contract check truncated-downloads each provider's newest clip via ffmpeg
+      # (catches a CDN that 403s our User-Agent). Without ffmpeg that sub-check self-skips.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Probe endpoints + reconcile issues
         env:
           GH_TOKEN: ${{ github.token }}

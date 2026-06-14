@@ -35,7 +35,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
-from citypods.http import HOST_LIMITER
+from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
 from citypods.records import audio_object_key, audio_spec_hash, source_key
@@ -354,16 +354,23 @@ def _download_audio(
     ffmpeg_binary: str = "ffmpeg",
     timeout: float | None = None,
     memory_floor_bytes: int | None = None,
+    max_seconds: float | None = None,
 ) -> bool:
     """Copy the audio stream from *url* to *dest* (.m4a) without re-encoding.
 
-    Returns True on success; callers fall back to streaming *url* directly on False.
+    Returns True on success; callers fall back to streaming *url* directly on False. ``max_seconds``
+    bounds the copy to the first N seconds (a *truncated* fetch) — used by the live media-fetch
+    contract check to verify an endpoint is reachable without pulling a whole meeting.
     """
     cmd = [
         ffmpeg_binary,
         "-y",
         "-loglevel",
         "error",
+        # The Granicus CDN 403s non-browser User-Agents; pass the same browser-compatible UA as the
+        # requests layer so ffmpeg's fetch isn't blocked (see citypods/http.USER_AGENT).
+        "-user_agent",
+        USER_AGENT,
         "-protocol_whitelist",
         "file,crypto,data,http,https,tcp,tls",
         "-rw_timeout",
@@ -373,6 +380,7 @@ def _download_audio(
         "-vn",
         "-c:a",
         "copy",
+        *(["-t", str(max_seconds)] if max_seconds else []),
         "-movflags",
         "+faststart",
         str(dest),
@@ -708,7 +716,15 @@ class CommandFfmpeg:
         )
         thread_args = self._thread_args(codec_args)
         with tempfile.TemporaryDirectory() as tmp:
-            inputs = ["-rw_timeout", str(_STALL_TIMEOUT_US), "-i", source_url]
+            # -user_agent: the Granicus CDN 403s non-browser UAs (see http.USER_AGENT).
+            inputs = [
+                "-user_agent",
+                USER_AGENT,
+                "-rw_timeout",
+                str(_STALL_TIMEOUT_US),
+                "-i",
+                source_url,
+            ]
             chapter_args: list[str] = []
             if chapters:
                 meta = Path(tmp) / "chapters.ffmeta"
@@ -790,10 +806,18 @@ class CommandFfmpeg:
                     next_idx += 1
 
         with tempfile.TemporaryDirectory() as tmp:
-            # Build input flags
+            # Build input flags. -user_agent per remote source: the Granicus CDN 403s non-browser
+            # UAs (see http.USER_AGENT); local insert assets below ignore it (file protocol).
             inputs: list[str] = []
             for sid in source_ids:
-                inputs += ["-rw_timeout", str(_STALL_TIMEOUT_US), "-i", sources_by_id[sid]]
+                inputs += [
+                    "-user_agent",
+                    USER_AGENT,
+                    "-rw_timeout",
+                    str(_STALL_TIMEOUT_US),
+                    "-i",
+                    sources_by_id[sid],
+                ]
             for asset_id, asset_version in asset_keys:
                 asset_path = asset_resolver(asset_id, asset_version)  # type: ignore[misc]
                 inputs += ["-i", str(asset_path)]
@@ -866,6 +890,10 @@ def _probe_audio_bitrate(
                 ffprobe,
                 "-v",
                 "error",
+                # Same browser-compatible UA as the fetch — else the Granicus CDN 403s the probe
+                # and we'd misread the source bitrate (see http.USER_AGENT).
+                "-user_agent",
+                USER_AGENT,
                 "-select_streams",
                 "a:0",
                 "-show_entries",
