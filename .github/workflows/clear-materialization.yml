@@ -1,0 +1,71 @@
+name: Clear materialization
+
+# Manual cleanup (#39): undo a bad `Audio` run wholesale. Given an Actions run ID, it parses that
+# run's `audio encode done` lines and resets those records (and optionally deletes the B2 objects) so
+# the next `audio.yml` re-encodes them correctly. Use it to nuke the truncated/empty audio the first
+# sharded run hosted before the per-host cap + truncation guard landed.
+#
+# Dispatch from the Actions tab → "Clear materialization" → Run workflow → enter the run ID. Leave
+# `apply` unchecked first for a dry-run (it prints exactly what it would clear), then run with
+# `apply` checked to make the change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Actions run ID whose materializations to clear (e.g. 27497034389)"
+        required: true
+        type: string
+      apply:
+        description: "Actually mutate state (unchecked = dry-run)"
+        required: false
+        type: boolean
+        default: false
+      delete_objects:
+        description: "Also delete the B2 audio objects (re-encode overwrites them either way)"
+        required: false
+        type: boolean
+        default: true
+
+# Share the `audio` concurrency group so this never runs while an Audio run is materializing into the
+# same records (which would race the state push). One at a time.
+concurrency:
+  group: audio
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read # `gh run view --log` reads the target run's logs
+
+jobs:
+  clear:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }} # lets `gh run view --log` fetch the target run
+      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]"
+
+      - name: Clear run materializations
+        run: |
+          PYTHONPATH=. python scripts/clear_run_materializations.py \
+            "${{ inputs.run_id }}" \
+            ${{ inputs.apply && '--apply' || '' }} \
+            ${{ inputs.delete_objects && '--delete-objects' || '' }}

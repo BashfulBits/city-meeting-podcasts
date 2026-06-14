@@ -34,8 +34,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
     the bespoke backoff loop in `GranicusProvider.resolve_media_url` is removed. The Retry-After clamp
     is preserved.
   - **Truncation safety net** — an encode that probes shorter than 50 % of the feed-declared duration
-    (Granicus/CivicClerk) is failed into the existing #120 backoff instead of being hosted, so a
-    throttled fetch never ships a 5-second meeting.
+    (Granicus/CivicClerk) **or** is empty/near-empty (under a small absolute byte floor — catches
+    duration-less Swagit, whose throttled `/download` produced 258-byte stubs) is failed into the
+    existing #120 backoff instead of being hosted, so a throttled fetch never ships a 5-second meeting.
+  - **Cleanup tool for the already-hosted bad audio** — `scripts/clear_run_materializations.py`
+    (+ a `workflow_dispatch` **Clear materialization** workflow) takes an Actions run ID, parses its
+    `audio encode done` lines, and resets those records (optionally deleting the B2 objects) so the
+    next `audio.yml` re-encodes them. Dry-run by default. Undoes the first sharded run's truncated
+    output wholesale.
   - **Balanced shard assignment** — `records.shard_index` (hash-mod, which left `audio (0)` empty with
     few sources) is replaced by `records.shard_assignment`, a round-robin over the sorted source_keys:
     every shard gets `floor`/`ceil(total/N)` sources, never empty until `#sources < N`. Still

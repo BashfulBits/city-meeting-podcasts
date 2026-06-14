@@ -44,7 +44,9 @@ class FakeFfmpeg:
         self.loudness_profiles.append(loudness_profile)
         if self.fail:
             raise subprocess.CalledProcessError(1, "ffmpeg")
-        dest.write_bytes(b"fake-m4a")
+        # Write a realistic, non-empty stub: the #39 truncation guard rejects an encode under
+        # _MIN_PLAUSIBLE_AUDIO_BYTES (an empty/throttled fetch), so a few marker bytes won't do.
+        dest.write_bytes(b"fake-m4a" * 1024)
 
 
 def _city(slug="x-tx", extract_audio=False):
@@ -497,7 +499,7 @@ class _FailUrls:
         self.calls.append(first_url)
         if self.marker in first_url:
             raise subprocess.CalledProcessError(1, "ffmpeg")
-        dest.write_bytes(b"fake-m4a")
+        dest.write_bytes(b"fake-m4a" * 1024)
 
 
 def test_stale_record_cleared_when_stopped(tmp_path):
@@ -1064,6 +1066,24 @@ def test_truncation_guard_is_noop_without_a_declared_duration_or_probe():
     media._guard_against_truncated_audio(_ep_with_duration(None), probed=5.0)  # e.g. Swagit
     media._guard_against_truncated_audio(_ep_with_duration(0), probed=5.0)
     media._guard_against_truncated_audio(_ep_with_duration(7200), probed=None)  # probe failed
+
+
+def test_truncation_guard_rejects_empty_output_even_without_a_declared_duration():
+    """The 258-byte Swagit stubs: no declared duration (ratio check can't see them), so the absolute
+    byte floor is what catches them."""
+    import citypods.media as media
+
+    ep = _ep_with_duration(None)  # Swagit declares none
+    with pytest.raises(media.TruncatedAudioError):
+        media._guard_against_truncated_audio(ep, probed=None, size_bytes=258)
+
+
+def test_truncation_guard_passes_a_realistic_size_with_no_duration():
+    import citypods.media as media
+
+    media._guard_against_truncated_audio(
+        _ep_with_duration(None), probed=None, size_bytes=media._MIN_PLAUSIBLE_AUDIO_BYTES + 1
+    )
 
 
 def test_truncated_audio_error_carries_backoff_code():

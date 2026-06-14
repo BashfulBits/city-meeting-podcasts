@@ -326,7 +326,9 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
             loudness_profile=None,
             asset_resolver=None,
         ):
-            dest.write_bytes(b"fake-m4a")
+            dest.write_bytes(
+                b"fake-m4a" * 1024
+            )  # >_MIN_PLAUSIBLE_AUDIO_BYTES (#39 truncation guard)
 
     for ep in fake_provider.episodes:
         ep.media_kind = "hls"
@@ -643,7 +645,7 @@ class _CountingFfmpeg:
         asset_resolver=None,
     ):
         self.calls += 1
-        dest.write_bytes(b"fake-m4a")
+        dest.write_bytes(b"fake-m4a" * 1024)  # >_MIN_PLAUSIBLE_AUDIO_BYTES (#39 truncation guard)
 
 
 def _build_phase(tmp_path, cities, phase, ffmpeg, **kw):

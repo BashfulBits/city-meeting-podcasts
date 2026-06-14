@@ -59,8 +59,13 @@ BACKOFF_MAX = timedelta(days=30)
 # CivicClerk durationHrs/Min) we reject an encode shorter than this fraction of it — silence-trim +
 # loudnorm never remove that much, so real meetings pass while a truncated stub is failed into the
 # #120 backoff and retried (with the per-host cap now keeping the next fetch from being throttled).
-# Swagit declares no duration, so this can't gate it — the concurrency cap is its primary fix.
+# The ratio check needs a declared duration (Granicus itunes:duration, CivicClerk durationHrs/Min);
+# the absolute byte floor below catches an empty/near-empty encode for ANY provider — including
+# Swagit, which declares no duration (the first sharded cron run hosted 27 such 258-byte stubs).
 _TRUNCATION_MIN_RATIO = 0.5
+# No real meeting encodes to fewer than this many bytes (a 1-minute 96kbps mono AAC is ~700 KB; the
+# observed empties were 258 B). A floor this low can only ever reject a broken/empty container.
+_MIN_PLAUSIBLE_AUDIO_BYTES = 4096
 
 # ffmpeg/ffprobe read the (remote) source directly, so a server that accepts the connection then
 # stalls would block a worker forever — and the shared ``stop()`` can't preempt a thread parked in
@@ -139,10 +144,18 @@ class TruncatedAudioError(ProviderError):
     code = "truncated"
 
 
-def _guard_against_truncated_audio(ep: Episode, probed: float | None) -> None:
-    """Raise :class:`TruncatedAudioError` if the encoded duration is implausibly short vs. the
-    feed-declared source duration (see :data:`_TRUNCATION_MIN_RATIO`). No-op when the duration is
-    unknown (e.g. Swagit) or the probe failed."""
+def _guard_against_truncated_audio(
+    ep: Episode, probed: float | None, *, size_bytes: int | None = None
+) -> None:
+    """Raise :class:`TruncatedAudioError` if the encode looks like a throttled/truncated fetch
+    rather than the real meeting: either an empty/near-empty output (``size_bytes`` below
+    :data:`_MIN_PLAUSIBLE_AUDIO_BYTES` — works for any provider, incl. duration-less Swagit) or,
+    when the feed declares a duration, an output under :data:`_TRUNCATION_MIN_RATIO` of it."""
+    if size_bytes is not None and size_bytes < _MIN_PLAUSIBLE_AUDIO_BYTES:
+        raise TruncatedAudioError(
+            f"encoded audio is {size_bytes}B (empty/near-empty) — source fetch likely "
+            f"throttled/truncated; backing off"
+        )
     expected = ep.duration
     if not expected or expected <= 0 or probed is None:
         return
@@ -1150,15 +1163,16 @@ def materialize_audio(
                         ep.audio_duration_served = probed
                 except Exception:  # noqa: BLE001
                     pass
-                # Don't host audio that's implausibly shorter than the meeting (#39): a throttled
-                # fetch yields a truncated stub that "encodes" fine. Raise → #120 backoff + retry.
-                _guard_against_truncated_audio(ep, probed)
-                url = storage.put_file(key, dest, CONTENT_TYPE)
                 try:
                     size = dest.stat().st_size
-                    ep.audio_bytes = size
                 except OSError:
                     size = 0
+                # Don't host audio that's empty or implausibly shorter than the meeting (#39): a
+                # throttled fetch yields a truncated stub that "encodes" fine (e.g. a 258-byte
+                # Swagit container). Raise → #120 backoff + retry (now with the per-host cap).
+                _guard_against_truncated_audio(ep, probed, size_bytes=size)
+                url = storage.put_file(key, dest, CONTENT_TYPE)
+                ep.audio_bytes = size
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
