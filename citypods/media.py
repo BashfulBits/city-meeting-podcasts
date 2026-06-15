@@ -82,6 +82,15 @@ _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
 _FFMPEG_GUARD_POLL_SECONDS = 0.5
 
 
+def _ua_args(url: str) -> list[str]:
+    """ffmpeg/ffprobe ``-user_agent`` flag — but ONLY for remote inputs. It's an HTTP(S) protocol
+    option, so ffmpeg errors ``Option user_agent not found`` if it's passed for a local-file input
+    — and the source-cache hands the encode pass a *local* copy (`/tmp/citypods_src_*`). So gate it
+    on the scheme: remote sources need the browser-compatible UA (Granicus CDN blocks others, see
+    http.USER_AGENT); local files must not get it."""
+    return ["-user_agent", USER_AGENT] if url.startswith(("http://", "https://")) else []
+
+
 def _log_ffmpeg_event(log: Callable[[str], None] | None, message: str) -> None:
     if log is None:
         return
@@ -367,10 +376,9 @@ def _download_audio(
         "-y",
         "-loglevel",
         "error",
-        # The Granicus CDN 403s non-browser User-Agents; pass the same browser-compatible UA as the
-        # requests layer so ffmpeg's fetch isn't blocked (see citypods/http.USER_AGENT).
-        "-user_agent",
-        USER_AGENT,
+        # Browser-compatible UA for remote fetches (Granicus CDN blocks others); omitted for a local
+        # input, where ffmpeg would reject the http-only option (see _ua_args).
+        *_ua_args(url),
         "-protocol_whitelist",
         "file,crypto,data,http,https,tcp,tls",
         "-rw_timeout",
@@ -716,10 +724,10 @@ class CommandFfmpeg:
         )
         thread_args = self._thread_args(codec_args)
         with tempfile.TemporaryDirectory() as tmp:
-            # -user_agent: the Granicus CDN 403s non-browser UAs (see http.USER_AGENT).
+            # -user_agent only for a remote source (the source-cache may hand us a local file, where
+            # ffmpeg rejects the http-only option — see _ua_args).
             inputs = [
-                "-user_agent",
-                USER_AGENT,
+                *_ua_args(source_url),
                 "-rw_timeout",
                 str(_STALL_TIMEOUT_US),
                 "-i",
@@ -806,13 +814,12 @@ class CommandFfmpeg:
                     next_idx += 1
 
         with tempfile.TemporaryDirectory() as tmp:
-            # Build input flags. -user_agent per remote source: the Granicus CDN 403s non-browser
-            # UAs (see http.USER_AGENT); local insert assets below ignore it (file protocol).
+            # Build input flags. -user_agent only for remote sources (Granicus CDN blocks others);
+            # a cached/local source — or the insert assets below — must not get it (_ua_args).
             inputs: list[str] = []
             for sid in source_ids:
                 inputs += [
-                    "-user_agent",
-                    USER_AGENT,
+                    *_ua_args(sources_by_id[sid]),
                     "-rw_timeout",
                     str(_STALL_TIMEOUT_US),
                     "-i",
@@ -890,10 +897,9 @@ def _probe_audio_bitrate(
                 ffprobe,
                 "-v",
                 "error",
-                # Same browser-compatible UA as the fetch — else the Granicus CDN 403s the probe
-                # and we'd misread the source bitrate (see http.USER_AGENT).
-                "-user_agent",
-                USER_AGENT,
+                # Browser-compatible UA for a remote probe (else the Granicus CDN 403s it and we'd
+                # misread the bitrate); omitted for a local cached file (invalid there) — _ua_args.
+                *_ua_args(url),
                 "-select_streams",
                 "a:0",
                 "-show_entries",

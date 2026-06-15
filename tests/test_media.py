@@ -1181,3 +1181,44 @@ def test_identity_render_cmd_sends_browser_user_agent(monkeypatch):
     )
     cmd = cmds[0]
     assert "-user_agent" in cmd and cmd[cmd.index("-user_agent") + 1] == USER_AGENT
+
+
+def test_ua_args_only_for_remote_inputs():
+    import citypods.media as media
+    from citypods.http import USER_AGENT
+
+    assert media._ua_args("https://archive-video.granicus.com/x.mp4") == ["-user_agent", USER_AGENT]
+    assert media._ua_args("http://x/y.mp4") == ["-user_agent", USER_AGENT]
+    # Local cached copies (the source-cache hands these to the encode) must NOT get -user_agent —
+    # ffmpeg errors "Option user_agent not found" on a file: input (the #293 regression).
+    assert media._ua_args("/tmp/citypods_src_abc/deadbeef.m4a") == []
+    assert media._ua_args("file:///tmp/x.m4a") == []
+
+
+def test_identity_render_local_source_omits_user_agent(monkeypatch):
+    """The encode of a source-cache LOCAL copy must not carry -user_agent (else returncode=8)."""
+    import citypods.media as media
+
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+    monkeypatch.setattr(media, "_probe_audio_bitrate", lambda *a, **k: 96_000)
+    runner = media.CommandFfmpeg(max_kbps=MAX_KBPS)
+    runner.extract_audio(None, {"s0": "/tmp/citypods_src_x/cached.m4a"}, Path("/tmp/o.m4a"))
+    assert "-user_agent" not in cmds[0]
+
+
+def test_probe_audio_bitrate_local_file_omits_user_agent(monkeypatch):
+    import citypods.media as media
+
+    captured: dict = {}
+
+    class _Out:
+        stdout = "128000"
+
+    def _fake_run(argv, **kw):
+        captured["argv"] = argv
+        return _Out()
+
+    monkeypatch.setattr(media.subprocess, "run", _fake_run)
+    media._probe_audio_bitrate("/tmp/citypods_src_x/cached.m4a")
+    assert "-user_agent" not in captured["argv"]
