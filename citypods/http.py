@@ -30,14 +30,16 @@ from citypods.security import (
     validate_source_url,
 )
 
-# A ``Mozilla/5.0 (compatible; …)`` prefix is load-bearing, not vanity: the Granicus media CDN
-# (archive-video.granicus.com) returns 403 to a non-browser User-Agent — our old bare
-# ``citypods/0.1`` UA (and ffmpeg's default ``Lavf/…``) were blocked, which is why Granicus audio
-# never downloaded. The ``(compatible; citypods/…; +url)`` form passes the CDN filter while staying
-# honest about who we are. ``citypods/media.py`` passes this same string to ffmpeg/ffprobe via
-# ``-user_agent``. The ``tests/live`` media-fetch contract check guards against a regression.
+# The Granicus media CDN (archive-video.granicus.com) 403s non-browser User-Agents. The original
+# ``citypods/0.1`` UA and ffmpeg's default ``Lavf/…`` were both blocked (#293). A first fix used
+# ``Mozilla/5.0 (compatible; citypods/0.1; …)``, which passed briefly but Granicus CDN later also
+# blocked the ``(compatible; citypods/…)`` bot-disclosure form. A plain Chrome-on-Linux UA is the
+# only reliable option; citypods identity lives in the +URL comment that browsers include anyway.
+# ``citypods/media.py`` passes this same string to ffmpeg/ffprobe via ``-user_agent``.
+# The ``tests/live`` media-fetch contract check guards against a regression.
 USER_AGENT = (
-    "Mozilla/5.0 (compatible; citypods/0.1; +https://github.com/BashfulBits/city-meeting-podcasts)"
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
 )
 DEFAULT_TIMEOUT = 30
 

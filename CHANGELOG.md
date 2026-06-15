@@ -49,12 +49,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   The check now, on a 4xx for an SPA-style path-timestamp deeplink, confirms the scheme is still
   current by finding the deeplink's path on the live watch page (`citypods/contracts.py`,
   `_is_spa_seek_url`). The deeplink *generation* was always correct (it matches the page's anchors).
+- **Granicus CDN UA block round 2: drop bot-disclosure form from `USER_AGENT`.** After the initial
+  Granicus UA fix landed (`Mozilla/5.0 (compatible; citypods/0.1; …)`), Granicus CDN updated its
+  bot-detection to also block the `(compatible; citypods/…)` disclosure form — the Monday contracts
+  check failed the next day (`arlington-tx` `media-fetch`, issue #300). `USER_AGENT` is now a plain
+  Chrome-on-Linux string (`Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 … Chrome/124.0.0.0
+  Safari/537.36`) with no citypods identifier; this is the only form that reliably passes CDN
+  bot-detection. Also fixed: `_download_audio_file` in `stages.py` was using its own bare
+  `citypods/0.1` session instead of the shared `USER_AGENT` constant — same 403 risk, now unified.
 - **Granicus audio now downloads — the CDN `403` was a User-Agent block, not signing/rate-limiting.**
   `archive-video.granicus.com` `403`s non-browser User-Agents; our bare `citypods/0.1` UA (and
   ffmpeg's default `Lavf/…`) were blocked, so Granicus audio had **never** materialized (every run
-  encoded only swagit). `USER_AGENT` (`http.py`) is now browser-compatible
-  (`Mozilla/5.0 (compatible; citypods/0.1; +…)`, verified `206` live), and `media.py` passes it to
-  ffmpeg/ffprobe via `-user_agent` on every remote fetch (`_download_audio`, `_render_identity`,
+  encoded only swagit). `USER_AGENT` (`http.py`) is now browser-compatible, and `media.py` passes it
+  to ffmpeg/ffprobe via `-user_agent` on every remote fetch (`_download_audio`, `_render_identity`,
   `_render_filter`, `_probe_audio_bitrate`). PRs #245/#250/#251 had misdiagnosed this as a
   signing/rate-limit issue and only tested against a **mocked signed redirect**, so it passed CI while
   failing live. To prevent a recurrence, `citypods/contracts.py` gains a **media-fetch** check that
