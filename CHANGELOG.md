@@ -17,13 +17,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 ### Fixed
 - **Audio #10 encode-failure follow-up: Granicus storms are now cross-shard capped and classified.**
   `provider_rate_limits.granicus.com: 2` is still the per-process cap, but audio has four shard jobs;
-  the new `provider_distributed_leases` layer creates storage-backed provider slot objects so every
-  shard shares one aggregate Granicus limit. Live probes on 2026-06-15 showed 1–8 concurrent short
-  Granicus ffprobe/ffmpeg reads succeed from this client, while Audio run #10 failed under sustained
-  8-way Actions overlap, so production starts at 6 aggregate Granicus slots rather than dropping to a
-  conservative 3–4. ffmpeg/ffprobe 403/429 stderr is now classified as `rate_limited`, source-cache
-  throttles no longer immediately fall through into a second direct render attempt, and a run-local
-  circuit breaker pauses new Granicus media work after repeated throttles.
+  the new `provider_distributed_leases` layer uses B2-compatible soft lease candidate objects so
+  shards share one aggregate Granicus limit for ffprobe/ffmpeg media reads. Live probes on 2026-06-15
+  showed 1–8 concurrent short Granicus ffprobe/ffmpeg reads succeed from this client, while Audio run
+  #10 failed under sustained 8-way Actions overlap, so production starts at 6 aggregate Granicus slots
+  rather than dropping to a conservative 3–4. ffmpeg/ffprobe 403/429 stderr is now classified as
+  `rate_limited`, source-cache throttles no longer immediately fall through into a second direct render
+  attempt, and a run-local circuit breaker pauses new Granicus media work after repeated throttles.
+- **B2-compatible provider leases.** The first cross-shard lease implementation used S3 conditional
+  `PutObject` (`IfNoneMatch="*"`), which Backblaze B2 rejects with `NotImplemented` and broke
+  post-merge `Build & Deploy` while fetching Granicus feeds. Leases now use only ordinary
+  upload/list/delete operations and are scoped to ffprobe/ffmpeg media reads, not the shared
+  `requests` adapter.
 - **Swagit legacy concat probes now use the same browser UA and provider slots as other media reads.**
   The Addison 55844 failure was reproduced: the page parser finds three legacy segments and the
   concat planner is registered before silence planning, but the first segment's MP4 is unreadable

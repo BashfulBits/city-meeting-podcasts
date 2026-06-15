@@ -28,15 +28,17 @@ provider_rate_limits:
 
 # Cross-shard provider leases. The process-local cap above is still needed inside each shard, but
 # audio.yml has four shard jobs, so Granicus could still see 4×2 concurrent media fetches. These
-# storage-backed leases cap the aggregate overlap across all shard processes. Local probes on
-# 2026-06-15 passed 1–8 concurrent short Granicus ffprobe/ffmpeg reads with the browser UA; the
-# failed Actions run still showed sustained 8-way runner overlap producing 403s, so start at 6
+# storage-backed soft leases cap aggregate ffprobe/ffmpeg media overlap across all shard processes
+# using ordinary B2-compatible object upload/list/delete operations (no conditional PUT). Local
+# probes on 2026-06-15 passed 1–8 concurrent short Granicus ffprobe/ffmpeg reads with the browser UA;
+# the failed Actions run still showed sustained 8-way runner overlap producing 403s, so start at 6
 # aggregate slots rather than falling all the way to 4/3.
 provider_distributed_leases:
   granicus.com:
     slots: 6
     ttl_seconds: 3600
     poll_seconds: 2
+    settle_seconds: 0.25
 
 # Run-local storm brake for media throttling. If ffmpeg gets repeated 403/429s for a configured
 # domain, the active run stops starting new work for that domain during the cooldown. This prevents

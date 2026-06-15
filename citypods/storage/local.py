@@ -8,7 +8,6 @@ build this lands inside ``docs/`` so the generated feeds resolve against the sam
 
 from __future__ import annotations
 
-import os
 import shutil
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -59,17 +58,3 @@ class LocalStorage:
 
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)
-
-    def put_text_if_absent(
-        self, key: str, text: str, content_type: str = "text/plain; charset=utf-8"
-    ) -> bool:
-        dest = self._path(key)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        data = text.encode("utf-8")
-        try:
-            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-        except FileExistsError:
-            return False
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-        return True
