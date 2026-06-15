@@ -23,7 +23,6 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.security import (
     MAX_REDIRECTS,
     MAX_RESPONSE_BYTES,
@@ -88,8 +87,8 @@ class HostRateLimiter:
     sources that share one provider CDN — which throttles the burst (Granicus ``403``; Swagit short
     responses ffmpeg copies and "succeeds" on). This bounds the number of *simultaneous* in-flight
     requests to each provider host across all worker threads in the process, so the burst stays
-    polite inside the process. Cross-shard coordination is handled separately by
-    ``provider_distributed_leases`` / :mod:`citypods.provider_leases`.
+    polite inside the process. Cross-shard media coordination is handled separately by
+    ``provider_distributed_leases`` in the ffmpeg/ffprobe media paths.
 
     Keyed by **registrable domain** (e.g. ``granicus.com``), not a provider short-name, because
     Swagit is Granicus-owned and serves media from ``*.granicus.com`` — keying by the host the
@@ -193,7 +192,7 @@ class GuardedHTTPAdapter(HTTPAdapter):
     def send(self, request, **kwargs):
         validate_source_url(request.url, resolve=True)
         # Per-host concurrency cap (#39): hold the provider's slot only for the network round-trip.
-        with DISTRIBUTED_PROVIDER_LEASES.slots([request.url]), HOST_LIMITER.slot(request.url):
+        with HOST_LIMITER.slot(request.url):
             response = super().send(request, **kwargs)
         length = response.headers.get("Content-Length")
         if length is not None and length.isdigit() and int(length) > MAX_RESPONSE_BYTES:

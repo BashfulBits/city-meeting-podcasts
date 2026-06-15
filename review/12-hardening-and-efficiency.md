@@ -1072,11 +1072,16 @@ arg on `_run_ffmpeg_guarded`).
   `civicclerk.com: 4` — not provider short-names, so the Granicus-owned Swagit CDN `*.granicus.com` is
   matched by the host the tenant sees). `slots(urls)` dedupes by domain + acquires in sorted order (no
   self-deadlock on multi-source renders). Configured once in `run.build()` before any fetching.
-- `DistributedProviderLeasePool` (`citypods/provider_leases.py`): storage-backed aggregate provider
-  slots for shard processes that cannot share the in-process semaphore. The first targeted use is
-  Granicus media (`provider_distributed_leases.granicus.com.slots: 6`): local 2026-06-15 probes passed
-  1–8 concurrent short reads, but Audio run #10 failed under sustained 8-way Actions overlap, so the
-  cap backs off only to the lowest useful level instead of serializing the whole provider.
+- `DistributedProviderLeasePool` (`citypods/provider_leases.py`): B2-compatible soft provider leases
+  for shard processes that cannot share the in-process semaphore. The protocol writes a unique
+  candidate object, lists active candidates, and proceeds only if the candidate sorts into the first
+  N entries; it uses ordinary object upload/list/delete operations, not S3 conditional PUT headers.
+  The first targeted use is Granicus ffprobe/ffmpeg media
+  (`provider_distributed_leases.granicus.com.slots: 6`): local 2026-06-15 probes passed 1–8 concurrent
+  short reads, but Audio run #10 failed under sustained 8-way Actions overlap, so the cap backs off
+  only to the lowest useful level instead of serializing the whole provider. The distributed lease is
+  intentionally not acquired by `GuardedHTTPAdapter.send`; ordinary RSS/page fetches keep only the
+  per-process `HostRateLimiter`.
 - 403-as-rate-limit lifted into the shared retry (`403` in `_ClampedRetry.status_forcelist`); the bespoke
   `(0, 0.5, 1.5, 3.0)` loop in `GranicusProvider.resolve_media_url` removed.
 - ffmpeg/ffprobe 403/429 stderr is classified as `rate_limited`; source-cache throttles no longer

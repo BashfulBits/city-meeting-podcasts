@@ -2,8 +2,8 @@
 
 The in-process ``HostRateLimiter`` is still useful for threads inside one Python process, but
 GitHub Actions audio shards are separate processes and cannot see each other's semaphores.  This
-module adds a tiny object-storage lease: a worker atomically creates one slot object before hitting
-a configured provider and deletes it when the network work finishes.
+module adds a tiny object-storage soft lease: a worker writes a unique candidate object, lists the
+active candidates, and proceeds only when its candidate sorts into the configured winner set.
 """
 
 from __future__ import annotations
@@ -11,12 +11,14 @@ from __future__ import annotations
 import json
 import os
 import socket
+import tempfile
 import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from citypods.storage.base import StorageBackend
@@ -27,6 +29,7 @@ class ProviderLeaseRule:
     slots: int
     ttl_seconds: float = 3600.0
     poll_seconds: float = 2.0
+    settle_seconds: float = 0.25
 
 
 class DistributedProviderLeasePool:
@@ -52,7 +55,8 @@ class DistributedProviderLeasePool:
 
         ``config`` accepts either ``{"granicus.com": 6}`` or
         ``{"granicus.com": {"slots": 6, "ttl_seconds": 3600, "poll_seconds": 2}}``. Missing
-        storage or a backend without the required optional methods disables the pool.
+        storage or a backend without the required methods disables the pool. The protocol uses only
+        ordinary object upload/list/delete operations so it works with B2's S3-compatible API.
         """
         rules: dict[str, ProviderLeaseRule] = {}
         for domain, raw in (config or {}).items():
@@ -60,7 +64,7 @@ class DistributedProviderLeasePool:
             if rule is not None:
                 rules[str(domain).strip().lower()] = rule
 
-        required = ("put_text_if_absent", "list_objects", "delete")
+        required = ("put_file", "list_objects", "delete")
         usable_storage = (
             storage if storage is not None and all(hasattr(storage, m) for m in required) else None
         )
@@ -93,6 +97,7 @@ class DistributedProviderLeasePool:
         return best
 
     def _acquire(self, domain: str) -> str:
+        key: str | None = None
         while True:
             with self._guard:
                 storage = self._storage
@@ -101,12 +106,16 @@ class DistributedProviderLeasePool:
             if storage is None:
                 return ""
 
+            if key is None:
+                key = self._candidate_key(domain)
+                self._write_candidate(storage, key, self._payload(domain, rule))
+                if rule.settle_seconds > 0:
+                    time.sleep(rule.settle_seconds)
+
             self._drop_stale(storage, domain, rule)
-            for slot in range(rule.slots):
-                key = self._slot_key(domain, slot)
-                payload = self._payload(domain, slot, rule)
-                if storage.put_text_if_absent(key, payload, "application/json; charset=utf-8"):
-                    return key
+            winners = self._winners(storage, domain, rule)
+            if key in winners:
+                return key
 
             with self._guard:
                 first_wait = domain not in self._wait_logged
@@ -117,6 +126,12 @@ class DistributedProviderLeasePool:
                     f"[enrich] provider lease wait domain={domain} slots={rule.slots}",
                 )
             time.sleep(max(0.1, rule.poll_seconds))
+
+    def _write_candidate(self, storage: StorageBackend, key: str, payload: str) -> None:
+        with tempfile.TemporaryDirectory(prefix="citypods_lease_") as tmp:
+            path = Path(tmp) / "lease.json"
+            path.write_text(payload, encoding="utf-8")
+            storage.put_file(key, path, "application/json; charset=utf-8")
 
     def _release(self, key: str) -> None:
         if not key:
@@ -143,13 +158,25 @@ class DistributedProviderLeasePool:
             if modified < cutoff:
                 storage.delete(key)
 
-    def _payload(self, domain: str, slot: int, rule: ProviderLeaseRule) -> str:
+    def _winners(self, storage: StorageBackend, domain: str, rule: ProviderLeaseRule) -> set[str]:
+        prefix = self._domain_prefix(domain)
+        now = datetime.now(UTC)
+        candidates: list[tuple[datetime, str]] = []
+        for key, modified in storage.list_objects(prefix):
+            if modified is None:
+                modified = now
+            elif modified.tzinfo is None:
+                modified = modified.replace(tzinfo=UTC)
+            candidates.append((modified, key))
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        return {key for _, key in candidates[: rule.slots]}
+
+    def _payload(self, domain: str, rule: ProviderLeaseRule) -> str:
         now = datetime.now(UTC)
         return json.dumps(
             {
                 "owner": self._owner,
                 "domain": domain,
-                "slot": slot,
                 "acquired_at": now.isoformat(),
                 "expires_at": (now + timedelta(seconds=rule.ttl_seconds)).isoformat(),
             },
@@ -159,8 +186,9 @@ class DistributedProviderLeasePool:
     def _domain_prefix(self, domain: str) -> str:
         return f"{self._prefix}/{quote(domain, safe='')}/"
 
-    def _slot_key(self, domain: str, slot: int) -> str:
-        return f"{self._domain_prefix(domain)}slot-{slot}.json"
+    def _candidate_key(self, domain: str) -> str:
+        token = quote(f"{time.time_ns()}:{self._owner}:{uuid.uuid4().hex}", safe="")
+        return f"{self._domain_prefix(domain)}{token}.json"
 
 
 class _DistributedSlots:
@@ -171,8 +199,14 @@ class _DistributedSlots:
 
     def __enter__(self) -> None:
         self._keys = []
-        for domain in self._domains:
-            self._keys.append(self._pool._acquire(domain))
+        try:
+            for domain in self._domains:
+                self._keys.append(self._pool._acquire(domain))
+        except Exception:
+            for key in reversed(self._keys):
+                self._pool._release(key)
+            self._keys = []
+            raise
 
     def __exit__(self, *_exc: object) -> None:
         for key in reversed(self._keys):
@@ -191,6 +225,7 @@ def _parse_rule(raw: object) -> ProviderLeaseRule | None:
             slots=slots,
             ttl_seconds=float(raw.get("ttl_seconds", 3600.0)),
             poll_seconds=float(raw.get("poll_seconds", 2.0)),
+            settle_seconds=float(raw.get("settle_seconds", 0.25)),
         )
     try:
         slots = int(raw)  # type: ignore[arg-type]

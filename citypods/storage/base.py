@@ -26,9 +26,8 @@ class StorageBackend(Protocol):
         ...
 
     # --- optional capabilities -------------------------------------------------------
-    # ``get_file`` / ``list_objects`` / ``delete`` back durable state sync and orphan GC.
-    # ``put_text_if_absent`` backs cross-run lease objects. Not every backend implements them;
-    # callers must feature-detect via ``hasattr``.
+    # ``get_file`` / ``list_objects`` / ``delete`` back durable state sync, lease cleanup, and
+    # orphan GC. Not every backend implements them; callers must feature-detect via ``hasattr``.
 
     def get_file(self, key: str, local_path: Path) -> bool:
         """Download ``key`` into ``local_path``. Return False if the object is absent."""
@@ -40,10 +39,4 @@ class StorageBackend(Protocol):
 
     def delete(self, key: str) -> None:
         """Delete the object at ``key``."""
-        ...
-
-    def put_text_if_absent(
-        self, key: str, text: str, content_type: str = "text/plain; charset=utf-8"
-    ) -> bool:
-        """Create ``key`` with ``text`` only when absent. Return False if it already exists."""
         ...

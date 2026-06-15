@@ -21,15 +21,6 @@ def test_local_put_exists_url(tmp_path):
     assert (tmp_path / "out" / key).read_bytes() == b"audio-bytes"
 
 
-def test_local_put_text_if_absent_is_atomic_create(tmp_path):
-    store = LocalStorage(root=tmp_path / "out", url_prefix="https://x/audio")
-    key = "leases/granicus.com/slot-0.json"
-
-    assert store.put_text_if_absent(key, "first")
-    assert not store.put_text_if_absent(key, "second")
-    assert (tmp_path / "out" / key).read_text() == "first"
-
-
 def test_make_storage_local(tmp_path):
     cfg = {"defaults": {"audio_storage_backend": "local"}}
     store = make_storage(cfg, "https://site", tmp_path)

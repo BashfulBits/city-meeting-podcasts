@@ -155,17 +155,18 @@ Hard-won facts that bite anyone adding/debugging providers:
   real fetch path, so a UA/endpoint regression fails loudly instead of silently.)* `resolve_media_url`
   still pre-follows `DownloadFile.php` (one redirect resolved in Python, not per ffmpeg process), and
   resolution stays at **fetch time**, never persisted.
-- **Per-host concurrency cap — `requests`, ffprobe, and ffmpeg share local + distributed guards**
+- **Per-host concurrency cap — `requests`, ffprobe, and ffmpeg share the local guard; media reads also
+  use distributed leases**
   (`HostRateLimiter` in `http.py`; `DistributedProviderLeasePool` in `provider_leases.py`, issue #39
   follow-up). Sharded `audio.yml`/`asr.yml` (H6b) concentrate many workers on a few sources sharing one
   provider CDN; that burst throttles the tenant (Granicus `403`; Swagit short/truncated responses).
   `HostRateLimiter` caps simultaneous in-flight requests **per registrable domain** inside one process
   (`provider_rate_limits` in `site_config.yml`, e.g. `granicus.com: 2`) and is acquired by
-  `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The
-  storage-backed `provider_distributed_leases` layer caps aggregate Granicus overlap across the four
-  audio shard processes (currently 6 total slots, based on 2026-06-15 probes plus Audio #10 telemetry).
-  Keys are registrable domains so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the
-  host the tenant sees.
+  `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The B2-compatible
+  `provider_distributed_leases` layer adds soft candidate-election leases around ffprobe/ffmpeg media
+  reads, capping aggregate Granicus overlap across the four audio shard processes (currently 6 total
+  slots, based on 2026-06-15 probes plus Audio #10 telemetry). Keys are registrable domains so the
+  Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the tenant sees.
 - **`403` is retried as a rate-limit signal** by the shared session (`403` in `_ClampedRetry`'s
   `status_forcelist`): media bytes never go through `requests`, so a `403` a `requests` call sees is a
   provider throttle, not auth — retrying with backoff generalizes the old bespoke Granicus loop.
