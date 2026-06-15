@@ -12,6 +12,7 @@ from citypods.media import _probe_duration_secs, encode_args, materialize_audio
 from citypods.models import City, Episode
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.local import LocalStorage
+from citypods.timeline import Segment, Timeline
 
 MAX_KBPS = 96
 
@@ -70,6 +71,30 @@ def _ep(guid, kind="hls", url="https://src/manifest.m3u8"):
         published=datetime(2026, 5, 20, tzinfo=UTC),
         video_url=url,
         media_kind=kind,
+    )
+
+
+def _edited_timeline():
+    return Timeline(
+        version="test-concat:1",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=1200.0,
+                kind="source",
+                source_id="part-1",
+                source_start=30.0,
+                source_end=1230.0,
+            ),
+            Segment(
+                served_start=1200.0,
+                served_end=3300.0,
+                kind="source",
+                source_id="part-2",
+                source_start=0.0,
+                source_end=2100.0,
+            ),
+        ),
     )
 
 
@@ -427,6 +452,25 @@ def test_matching_spec_reuses_without_ffmpeg(tmp_path):
     assert ep.audio_duration_served == pytest.approx(3600.0)
 
 
+def test_matching_spec_corrects_edited_timeline_served_duration(tmp_path):
+    ep = _ep("g1")
+    ep.timeline = _edited_timeline()
+    ep.audio_duration_served = 3300.8
+    city = _city()
+    store = _store(tmp_path)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, spec)
+    _seed_object(store, key)
+    ep.audio_key = key
+    ep.hosted_audio_url = store.public_url(key)
+    ep.audio_spec_hash = spec
+
+    stats = _materialize(city, [ep], store, FakeFfmpeg())
+
+    assert stats.reused == 1
+    assert ep.audio_duration_served == pytest.approx(3300.0)
+
+
 def test_zero_source_duration_does_not_backfill_served_duration(tmp_path):
     ep = _ep("g1")
     ep.duration = 0
@@ -711,6 +755,20 @@ def test_audio_duration_served_set_from_probe(tmp_path):
 
     assert probed_values == [7200.5]
     assert eps[0].audio_duration_served == pytest.approx(7200.5)
+
+
+def test_audio_duration_served_uses_edited_timeline_total(monkeypatch, tmp_path):
+    """Edited timelines store the EDL total, not ffprobe's rounded container duration."""
+    import citypods.media as media
+
+    ep = _ep("g1")
+    ep.timeline = _edited_timeline()
+    monkeypatch.setattr(media, "_probe_duration_secs", lambda *args, **kwargs: 3300.8)
+
+    stats = _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg())
+
+    assert stats.encoded == 1
+    assert ep.audio_duration_served == pytest.approx(3300.0)
 
 
 def test_audio_duration_served_fallback_when_probe_fails(tmp_path):

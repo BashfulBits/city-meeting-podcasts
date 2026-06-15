@@ -15,6 +15,13 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Fixed
+- **Feed-health fixes for Dallas meeting links and edited-timeline audio duration metadata.** Dallas'
+  `meetings_url` now points at the live Swagit archive URL instead of the old `dallascityhall.com`
+  page whose TLS certificate fails Python Requests verification. Edited/non-identity timelines now
+  record `audio_duration_served` from the EDL's served-length total even when ffprobe reports a
+  slightly rounded container duration or an existing record carries that stale rounded value. No
+  pipeline version was bumped: already-hosted audio is not re-encoded, and affected records self-heal
+  as the audio lane revisits them through reuse, credit, or encode paths.
 - **`-user_agent` is now passed only for remote ffmpeg/ffprobe inputs (regression from the granicus
   UA fix).** The browser-compatible `-user_agent` was added to *every* ffmpeg/ffprobe invocation, but
   the encode pass reads the **local cached copy** from the source-cache (`/tmp/citypods_src_*`), and
