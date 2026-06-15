@@ -56,6 +56,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   to `contracts.yml`), so a silent "audio never downloads" regression now fails loudly.
 
 ### Changed
+- **Source shards are now weighted by configured feed/body count instead of raw source count.**
+  `records.shard_assignment` still assigns each `source_key` to exactly one shard (so scoped state
+  pushes remain safe), but it now greedily packs heavier sources onto the lightest shard. `run.py`
+  passes a stable config-derived weight — the number of configured feeds sharing the source — so
+  every matrix job computes the same partition while large multi-body sources like Dallas/Fort Worth
+  are no longer bundled with extra small sources merely because source counts balanced.
 - **Per-provider (per-host) rate limiting + sharding-regression fixes (#39)** —
   ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274)). The first sharded Audio
   run after H6b regressed: comparing it to the last pre-sharding Enrich run, source fetches collapsed
@@ -84,9 +90,9 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
     next `audio.yml` re-encodes them. Dry-run by default. Undoes the first sharded run's truncated
     output wholesale.
   - **Balanced shard assignment** — `records.shard_index` (hash-mod, which left `audio (0)` empty with
-    few sources) is replaced by `records.shard_assignment`, a round-robin over the sorted source_keys:
-    every shard gets `floor`/`ceil(total/N)` sources, never empty until `#sources < N`. Still
-    deterministic, disjoint, and exhaustive.
+    few sources) is replaced by `records.shard_assignment`: initially round-robin over sorted
+    source_keys, later upgraded to weighted greedy packing by configured feed/body count. It remains
+    deterministic, source-atomic, disjoint, and exhaustive.
   - **Accurate ffmpeg timing** — the guard's poll cadence drops from 5 s to 0.5 s so the logged
     `seconds=` reflects a child's real runtime (the 5 s cadence had made every sub-5 s fetch read as
     `seconds=5.0`, masking the truncation).
@@ -95,8 +101,8 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `enrich.yml` (H11b) is replaced by two dedicated workflows, each on its own concurrency group
   (`audio` / `asr`, both distinct from `pages`) and a `strategy.matrix.shard` of 4 source-shards, so
   a deploy is never canceled by heavy work and concurrent shards clear the backlog without clobbering
-  records. New `citypods enrich` flags: `--shard K/N` (keep only sources with
-  `shard_index(source_key) == K`; disjoint + exhaustive across `K`), `--source KEY`, and
+  records. New `citypods enrich` flags: `--shard K/N` (keep only sources assigned to shard `K`;
+  source-atomic, disjoint + exhaustive across `K`), `--source KEY`, and
   `--lane {audio,transcribe,align}`. `run.py` filters cities to the shard and threads the lane into
   the two-pass queue (`audio` → audio pass only; `transcribe`/`align` → transcript pass only), and a
   sharded/scoped run uses the H11b hooks — `push_state(only_prefixes=…owned sources…)` +

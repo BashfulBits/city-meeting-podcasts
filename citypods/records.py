@@ -27,7 +27,7 @@ import dataclasses
 import hashlib
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -49,25 +49,53 @@ def source_key(city: City) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
-def shard_assignment(source_keys: Iterable[str], num_shards: int) -> dict[str, int]:
-    """Balanced, deterministic shard assignment for a set of source_keys (H6b, #39 follow-up).
+def shard_assignment(
+    source_keys: Iterable[str], num_shards: int, *, weights: Mapping[str, float] | None = None
+) -> dict[str, int]:
+    """Deterministic, source-atomic shard assignment for H6b audio/ASR workflows.
 
-    Round-robin over the **sorted distinct** keys, so each shard gets ``floor``/``ceil(total/N)``
-    sources — never empty until ``total < N``. This replaces the earlier ``stable_hash(key) % N``,
-    which left shards empty when the catalog had few distinct sources (the first sharded Audio run
-    spun up ``audio (0)`` with zero work — a wasted runner).
+    The unit of ownership is still the distinct ``source_key``: a source goes to exactly one shard,
+    so concurrent shards never write the same ``state/sources/<key>/episodes.json`` file. Within
+    that constraint, assign heavier sources first to the currently-lightest shard. When all weights
+    are equal or omitted this naturally falls back to balanced source counts, so no shard is empty
+    until ``#sources < num_shards``.
 
-    Still deterministic (sorted order, not Python's salted ``hash()``), disjoint, and exhaustive, so
-    two concurrent ``audio``/``asr`` shards own non-overlapping source sets and never write the same
-    ``state/sources/<key>`` file. ``num_shards`` must be ≥ 1.
+    ``weights`` are advisory estimates of source work, not durable identity. ``run.py`` currently
+    passes a stable config-derived weight (number of configured feeds sharing the source) so every
+    matrix job computes the same partition even if a sibling shard pushes state while this workflow
+    is still running.
 
-    Tradeoff vs. hash-mod: adding a source shifts the sorted order and can move some keys to a
-    different shard. Harmless — records are keyed by ``source_key`` (not by shard) and the push is
-    scoped per ``sources/<key>/``, so a reshuffle only changes which shard refreshes a record next
-    run; no record is lost or clobbered."""
+    Tradeoff vs. hash-mod: adding a source or changing weights can move keys to different shards.
+    Harmless — records are keyed by ``source_key`` (not by shard) and the push is scoped per
+    ``sources/<key>/``, so a reshuffle only changes which shard refreshes a record next run; no
+    record is lost or clobbered."""
     if num_shards < 1:
         raise ValueError(f"num_shards must be >= 1, got {num_shards}")
-    return {key: i % num_shards for i, key in enumerate(sorted(set(source_keys)))}
+
+    distinct = sorted(set(source_keys))
+    if not distinct:
+        return {}
+
+    def _weight(key: str) -> float:
+        raw = 1.0 if weights is None else weights.get(key, 1.0)
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"shard weight for {key!r} must be numeric, got {raw!r}") from exc
+        if value < 0:
+            raise ValueError(f"shard weight for {key!r} must be >= 0, got {value}")
+        return value
+
+    ordered = sorted(distinct, key=lambda key: (-_weight(key), key))
+    loads = [0.0] * num_shards
+    counts = [0] * num_shards
+    assignment: dict[str, int] = {}
+    for key in ordered:
+        shard = min(range(num_shards), key=lambda i: (loads[i], counts[i], i))
+        assignment[key] = shard
+        loads[shard] += _weight(key)
+        counts[shard] += 1
+    return assignment
 
 
 def _author_key(city: City) -> str:

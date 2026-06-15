@@ -500,8 +500,9 @@ no render) is preserved; `all`/`render` are untouched.
 > The combined `enrich.yml` (H11b) is replaced by `audio.yml` (`--lane audio`) and `asr.yml`
 > (`--lane transcribe`), each a `strategy.matrix.shard`=4 job on its own concurrency group
 > (`audio`/`asr`, distinct from `pages`). `citypods enrich` gained `--shard K/N` / `--source KEY` /
-> `--lane {audio,transcribe,align}`; `run.py` filters cities by `records.shard_index(source_key) % N`
-> and threads the lane into the two-pass queue (audio pass vs transcript pass); a sharded/scoped run
+> `--lane {audio,transcribe,align}`; `run.py` filters cities by source-atomic
+> `records.shard_assignment(source_key)` and threads the lane into the two-pass queue (audio pass vs
+> transcript pass); a sharded/scoped run
 > uses the H11b hooks `push_state(only_prefixes=…)` + `reconcile_state(full_run=False)` to push back
 > only owned records and skip the orphan sweep. **Per the maintainer's 2026-06-14 decision, `asr.yml`
 > runs transcribe-only for now** — the `align` lane (stable-ts, preloads the alignment model, never
@@ -601,7 +602,8 @@ stacked with ffmpeg work and GitHub terminated the runner with exit 143.
 `citypods/asr.py` (global throttle already added — verify under matrix; add explicit preload entrypoints
 for the selected lane only — transcription runs through the **H13 `local` adapter**);
 `citypods/ops/workqueue.py` (lease/claim for shards); `citypods/run.py` (filter `cities` to the shard via
-`stable_hash(source_key) % N`; gate record-persistence off the render phase); `citypods/statesync.py`
+weighted source-atomic `records.shard_assignment`; gate record-persistence off the render phase);
+`citypods/statesync.py`
 (`push_state(..., only_prefixes=)` + scope-guard `reconcile_state` to full runs); `deploy.yml` (strip
 to render-only — remove enrich step); `tests/test_statesync.py` (scoped push leaves unowned sources
 untouched); `tests/test_run.py` (render persists no records; disjoint+exhaustive shard partition); docs
@@ -1060,9 +1062,10 @@ arg on `_run_ffmpeg_guarded`).
   `(0, 0.5, 1.5, 3.0)` loop in `GranicusProvider.resolve_media_url` removed.
 - **Beyond the original scope** (the regressions the run surfaced): truncation guard
   (`_guard_against_truncated_audio` — encode < 50 % of feed-declared duration → #120 backoff, not
-  hosted), balanced `records.shard_assignment` (round-robin over sorted source_keys; replaces hash-mod
-  `shard_index`, which left `audio (0)` empty), and a responsive 0.5 s ffmpeg guard poll (was 5 s, which
-  made every sub-5 s fetch read `seconds=5.0` and hid the truncation).
+  hosted), balanced `records.shard_assignment` (source-atomic greedy packing; replaces hash-mod
+  `shard_index`, which left `audio (0)` empty; `run.py` weights sources by configured feed/body count
+  so large multi-body sources are not bundled with extra small sources), and a responsive 0.5 s ffmpeg
+  guard poll (was 5 s, which made every sub-5 s fetch read `seconds=5.0` and hid the truncation).
 
 **Files.** `citypods/http.py`, `citypods/media.py`, `citypods/providers/granicus.py`,
 `citypods/records.py`, `citypods/run.py`, `config/site_config.yml` (`provider_rate_limits`),
@@ -1070,8 +1073,8 @@ arg on `_run_ffmpeg_guarded`).
 
 **Acceptance (met).** An N-thread burst to one host serializes to the configured cap
 (`tests/test_http.py`, `tests/test_media.py`); 403 is retried as a rate-limit; the Retry-After clamp
-regression passes; `shard_assignment` is disjoint/exhaustive **and** never empty until `#sources < N`;
-a truncated encode backs off instead of hosting.
+regression passes; `shard_assignment` is disjoint/exhaustive, source-atomic, and balances equal-weight
+sources by count; a truncated encode backs off instead of hosting.
 
 ---
 
