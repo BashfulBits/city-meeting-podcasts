@@ -867,7 +867,11 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     cfg = load_city_configs(cities_dir, {})
     assignment = shard_assignment((source_key(c) for c in cfg), 2)
     owned = {f"sources/{source_key(c)}/" for c in cfg if assignment[source_key(c)] == 0}
+    owned.add("run_events/")
     assert set(captured["only_prefixes"]) == owned
+    events = list((tmp_path / "state" / "run_events").glob("*.json"))
+    assert len(events) == 1
+    assert json.loads(events[0].read_text())["scoped"] is True
 
 
 def test_unsharded_enrich_pushes_everything_and_reconciles(tmp_path, fake_provider, monkeypatch):

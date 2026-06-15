@@ -146,9 +146,11 @@ function renderKpis(){
   const lbTs  = lb.ts ? new Date(lb.ts).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short',hour12:false}) : '—';
   const lbCls = lb.status==='errors'?'err':lb.status==='built'?'ok':'muted';
   const lbLabel = lb.status==='errors'?'⚠ errors':lb.status==='built'?'✓ built':'— skipped';
+  const lbKind = lb.lane || lb.phase || 'build';
   const lbLink  = lb.github_run_url ? `<a href="${esc(lb.github_run_url)}">→ Actions</a>` : '';
   const gbLabel = K.gb_exact ? fmtGb(K.gb_stored) : '~'+fmtGb(K.gb_stored);
   const gbSub   = K.gb_exact ? 'exact (audio.bytes)' : '~estimated (some records missing bytes)';
+  const txPct = K.transcript_coverage_pct==null ? '—' : K.transcript_coverage_pct+'%';
 
   document.getElementById('kpis').innerHTML = `
 <h2>At-a-glance</h2>
@@ -156,14 +158,15 @@ function renderKpis(){
   ${card('FEEDS', fmtNum(K.feeds), 'configured feed slugs')}
   ${card('MEETINGS ARCHIVED', fmtNum(K.meetings_archived), 'all states · all sources')}
   ${card('HOSTED AUDIO', fmtNum(K.hosted_audio), 'audio we serve from B2')}
+  ${card('TRANSCRIPTS', fmtNum(K.transcripts_synced||0), `${txPct} hosted coverage · ${fmtNum(K.transcripts_missing||0)} missing`)}
   ${card('LINKED VIDEO', fmtNum(K.linked_video), 'direct MP4 links, not stored')}
   ${card('HOSTED HOURS', fmtHrs(K.hours_hosted), K.hours_linked>0?`+${fmtHrs(K.hours_linked)} linked video`:'hosted audio only')}
   ${card('STORED', gbLabel, gbSub)}
   ${card('EST. B2/MO', fmtCost(K.monthly_cost_usd), 'first 10 GB free')}
   <div class="card">
-    <div class="card-label">LAST BUILD</div>
+    <div class="card-label">LAST RUN</div>
     <div class="card-val ${lbCls}">${lbLabel}</div>
-    <div class="card-sub">${lbTs}${lbLink?' · '+lbLink:''}</div>
+    <div class="card-sub">${esc(lbKind)} · ${lbTs}${lbLink?' · '+lbLink:''}</div>
   </div>
 </div>
 <div class="legend">
@@ -188,6 +191,7 @@ function card(label, val, sub=''){
 
 function renderBacklog(){
   const B = S.backlog;
+  const TX = B.transcript_backlog||{};
   const staleNote = B.stale>0
     ? `<div class="muted" style="margin:.3rem 0 0 1em">
         Stale episodes ARE currently serving (healthy degraded state).
@@ -232,6 +236,11 @@ function renderBacklog(){
   <div style="margin-bottom:.6rem;font-size:.85rem">
     <div>⏳ <strong>First-time pending</strong> (HLS, no enclosure, never attempted): <strong>${B.pending}</strong> ep(s)</div>
     <div>↻ <strong>Stale / re-encode queued</strong> (served, spec changed): <strong>${B.stale}</strong> ep(s)</div>
+    <div>📝 <strong>Synced transcripts</strong>: <strong>${fmtNum(TX.synced||0)}</strong> ·
+      text-only/provider: <strong>${fmtNum(TX.text_only||0)}</strong> ·
+      missing on hosted audio: <strong>${fmtNum(TX.total_pending||0)}</strong>
+      <span class="muted">(${TX.coverage_pct==null?'—':TX.coverage_pct+'%'} hosted coverage)</span>
+    </div>
     ${staleNote}
   </div>
   <div class="bl-row hdr">
@@ -561,25 +570,33 @@ function renderHistory(){
   const rows = (S.run_history||[]).map(r=>{
     const ts = r.ts?new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false}):'—';
     const audio = (r.stages||{}).audio||{};
+    const tx = (r.stages||{}).transcript||{};
     const sCls = r.errors>0?'run-err':r.built>0?'run-ok':'run-skip';
     const sLabel = r.errors>0?'⚠ errors':r.built>0?'✓ built':'— skipped';
+    const kind = r.lane || r.phase || 'build';
     const runLink = r.github_run_url
       ? `<a href="${esc(r.github_run_url)}">→ Actions${r.github_run_id?' #'+r.github_run_id:''}</a>`
       : '';
     const bytes = audio.bytes>0?fmtMb(audio.bytes):'0 B';
+    const txNew = (tx.transcribed||0) + (tx.aligned||0);
     return `<tr>
-      <td>${esc(ts)} ${runLink?'<span class="muted">'+runLink+'</span>':''}</td>
+      <td>${esc(ts)} <span class="muted">${esc(kind)}</span> ${runLink?'<span class="muted">'+runLink+'</span>':''}</td>
       <td class="${sCls}">${sLabel}</td>
       <td>${audio.ran??0}</td>
+      <td>${txNew || tx.ran || 0}</td>
       <td>${audio.reused??0}</td>
       <td>${audio.backlog??0}</td>
       <td>${r.materialize_seconds!=null?r.materialize_seconds.toFixed(0)+'s':'—'}</td>
       <td>${bytes}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" class="muted">No run history yet.</td></tr>';
+  }).join('') || '<tr><td colspan="8" class="muted">No run history yet.</td></tr>';
 
   const hist = S.run_history||[];
   const totNew   = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).ran||0, 0);
+  const totTxNew = hist.reduce((s,r)=>{
+    const tx = ((r.stages||{}).transcript||{});
+    return s + ((tx.transcribed||0) + (tx.aligned||0) || tx.ran || 0);
+  }, 0);
   const totBytes = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).bytes||0, 0);
   const totQueue = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).backlog||0, 0);
 
@@ -588,17 +605,17 @@ function renderHistory(){
 <div class="tbl-wrap">
 <table>
 <thead><tr>
-  <th>Timestamp (UTC)</th><th>Status</th><th>New</th><th>Current</th><th>Queued</th><th>Seconds</th><th>Bytes added</th>
+  <th>Timestamp (UTC)</th><th>Status</th><th>Audio New</th><th>Tx New</th><th>Audio Current</th><th>Audio Queued</th><th>Seconds</th><th>Bytes added</th>
 </tr></thead>
 <tbody>${rows}</tbody>
 <tfoot><tr style="font-size:.78rem;color:#9db2c8">
   <td colspan="2"><strong>${hist.length}-run totals</strong></td>
-  <td>${totNew}</td><td>—</td><td>${totQueue}</td><td>—</td><td>${fmtMb(totBytes)}</td>
+  <td>${totNew}</td><td>${totTxNew}</td><td>—</td><td>${totQueue}</td><td>—</td><td>${fmtMb(totBytes)}</td>
 </tr></tfoot>
 </table>
 </div>
 <div class="muted" style="font-size:.75rem;margin:.4rem 0">
-  New/Current/Queued = audio stage totals.
+  Audio New/Current/Queued = audio stage totals. Tx New = transcribed + aligned transcript work.
   Status row colors: <span class="run-ok">built</span> ·
   <span class="run-err">errors</span> ·
   <span class="run-skip">skipped</span>.

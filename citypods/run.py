@@ -1162,6 +1162,13 @@ def build(
                     else None
                 ),
                 provider_errors=provider_errors or None,
+                scope={
+                    "phase": phase,
+                    "lane": lane,
+                    "shard": f"{shard[0]}/{shard[1]}" if shard is not None else None,
+                    "source": source,
+                    "scoped": scoped,
+                },
             )
             # Persist the derived work manifest (H5) for the status surface + as the H6b lease
             # substrate. Derived fresh from the just-updated records (hybrid model); ordered by
@@ -1188,7 +1195,9 @@ def build(
             if scoped:
                 owned = sorted({source_key(c) for c in cities})
                 pushed = push_state(
-                    storage, state_dir, only_prefixes=[f"sources/{sk}/" for sk in owned]
+                    storage,
+                    state_dir,
+                    only_prefixes=[f"sources/{sk}/" for sk in owned] + [f"{RUN_EVENTS_DIR_NAME}/"],
                 )
             else:
                 pushed = push_state(storage, state_dir)
@@ -1284,6 +1293,7 @@ def _write_chapter_sidecars(
 
 RUN_HISTORY_NAME = "run_history.jsonl"
 RUN_SUMMARY_NAME = "run_summary.json"
+RUN_EVENTS_DIR_NAME = "run_events"
 _RUN_HISTORY_KEEP = 1000  # cap the rolling log so the synced state stays small
 
 
@@ -1297,6 +1307,7 @@ def _record_run_history(
     window_used_pct: float | None = None,
     gate_wait_seconds: float | None = None,
     provider_errors: dict[str, int] | None = None,
+    scope: dict | None = None,
 ) -> None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
@@ -1306,6 +1317,7 @@ def _record_run_history(
 
     import citypods.records as _records  # avoid import cycle at module load
 
+    scope = dict(scope or {})
     github_run_id = os.environ.get("GITHUB_RUN_ID")
     github_repository = os.environ.get("GITHUB_REPOSITORY")
     github_run_url = (
@@ -1333,6 +1345,11 @@ def _record_run_history(
     summary = {
         "ts": datetime.now(UTC).isoformat(),
         "schema_version": _records.SCHEMA_VERSION,
+        "phase": scope.get("phase"),
+        "lane": scope.get("lane"),
+        "shard": scope.get("shard"),
+        "source": scope.get("source"),
+        "scoped": bool(scope.get("scoped", False)),
         "cities": len(results),
         "built": sum(r.status == "built" for r in results),
         "skipped": sum(r.status == "skipped" for r in results),
@@ -1359,6 +1376,28 @@ def _record_run_history(
     lines = path.read_text().splitlines() if path.exists() else []
     lines.append(json.dumps(summary))
     path.write_text("\n".join(lines[-_RUN_HISTORY_KEEP:]) + "\n")
+
+    if summary["scoped"]:
+        event_dir = state_dir / RUN_EVENTS_DIR_NAME
+        event_dir.mkdir(parents=True, exist_ok=True)
+        ts_token = (
+            summary["ts"].replace("-", "").replace(":", "").replace(".", "").replace("+", "p")
+        )
+        scope_parts = [
+            str(summary.get("phase") or "phase"),
+            str(summary.get("lane") or "lane"),
+            str(summary.get("shard") or summary.get("source") or "scope"),
+        ]
+        scope_token = "-".join(
+            "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in part)
+            for part in scope_parts
+        )
+        run_token = "".join(
+            ch if ch.isalnum() or ch in "._-" else "_" for ch in str(github_run_id or "local")
+        )
+        (event_dir / f"{ts_token}-{run_token}-{scope_token}.json").write_text(
+            json.dumps(summary, indent=2) + "\n"
+        )
 
 
 class StopSignal:

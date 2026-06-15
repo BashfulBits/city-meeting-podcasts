@@ -313,6 +313,34 @@ def test_build_status_backlog_by_work_class(tmp_path):
     assert bl["deep_archive_items"] == 0
 
 
+def test_build_status_transcript_coverage_from_records(tmp_path):
+    """Transcript KPI/backlog counts are derived from source records, not run summaries."""
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("tx-city")
+    synced = _rec("synced", media_kind="hls", hosted_url="http://cdn/synced.m4a")
+    synced["transcript"] = {"key": "transcripts/synced.vtt", "synced": True}
+    text = _rec("text", media_kind="hls", hosted_url="http://cdn/text.m4a")
+    text["transcript"] = {"key": "transcripts/text.txt", "synced": False}
+    missing = _rec("missing", media_kind="hls", hosted_url="http://cdn/missing.m4a")
+    no_audio = _rec("no-audio", media_kind="hls", hosted_url=None)
+    save_records(
+        tmp_path,
+        source_key(city),
+        {"synced": synced, "text": text, "missing": missing, "no-audio": no_audio},
+    )
+
+    status = build_status([city], site_config=SITE, state_dir=tmp_path)
+    assert status["kpis"]["transcripts_synced"] == 1
+    assert status["kpis"]["transcripts_text"] == 1
+    assert status["kpis"]["transcripts_missing"] == 1
+    assert status["kpis"]["transcripts_hosted"] == 3
+    assert status["kpis"]["transcript_coverage_pct"] == pytest.approx(33.3)
+    assert status["backlog"]["transcript_backlog"]["synced"] == 1
+    assert status["backlog"]["transcript_backlog"]["text_only"] == 1
+    assert status["backlog"]["transcript_backlog"]["total_pending"] == 1
+
+
 def test_build_status_stale_detection(tmp_path):
     """Stale = hosted audio whose stored spec hash differs from the current desired spec."""
     from citypods.records import audio_spec_hash, record_to_episode, save_records, source_key
@@ -622,6 +650,57 @@ def test_github_run_url_in_run_history(tmp_path):
     assert status["run_history"][0]["github_run_url"] == entry["github_run_url"]
     assert status["run_history"][0]["github_run_id"] == "99999"
     # Also surfaced in kpis.last_build via run_summary (separate file; not tested here)
+
+
+def test_build_status_merges_scoped_run_events(tmp_path):
+    """Scoped ASR shards publish unique run_events; status aggregates sibling shards."""
+    import json
+
+    events = tmp_path / "run_events"
+    events.mkdir()
+    for shard, transcribed in (("0/4", 5), ("1/4", 7)):
+        payload = {
+            "ts": f"2026-06-15T12:0{shard[0]}:00+00:00",
+            "schema_version": 2,
+            "phase": "enrich",
+            "lane": "transcribe",
+            "shard": shard,
+            "scoped": True,
+            "cities": 1,
+            "built": 1,
+            "skipped": 0,
+            "errors": 0,
+            "materialized": 0,
+            "materialize_encoded": 0,
+            "materialize_seconds": 0.0,
+            "stages": {
+                "transcript": {
+                    "ran": transcribed,
+                    "encoded": 0,
+                    "credited": 0,
+                    "aligned": 0,
+                    "transcribed": transcribed,
+                    "reused": 2,
+                    "backlog": 10,
+                    "seconds": 120.0,
+                    "bytes": 0,
+                    "errors": 0,
+                }
+            },
+            "github_run_id": "12345",
+            "github_run_url": "https://github.com/example/repo/actions/runs/12345",
+        }
+        (events / f"event-{shard.replace('/', '-')}.json").write_text(json.dumps(payload))
+
+    status = build_status([], site_config=SITE, state_dir=tmp_path)
+    latest = status["kpis"]["last_build"]
+    assert latest["lane"] == "transcribe"
+    assert latest["shards"] == ["0/4", "1/4"]
+    tx = status["backlog"]["stage_totals"]["transcript"]
+    assert tx["transcribed"] == 12
+    assert tx["ran"] == 12
+    assert tx["reused"] == 4
+    assert tx["backlog"] == 20
 
 
 def test_audio_bytes_set_on_encode(tmp_path):

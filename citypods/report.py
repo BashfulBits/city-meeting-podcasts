@@ -143,17 +143,32 @@ def _measured_archive_items(cities: list, state_dir: Path | None) -> int | None:
 
 def _load_run_history(state_dir: Path) -> list[dict]:
     path = Path(state_dir) / "run_history.jsonl"
-    if not path.exists():
-        return []
     rows = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if line:
-            try:
-                rows.append(json.loads(line))
-            except ValueError:
-                continue
-    return rows
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    continue
+    # Sharded H6b audio/ASR jobs cannot safely push shared run_history.jsonl: each shard starts
+    # from the same pulled snapshot and would overwrite sibling appends. They instead push unique
+    # JSON event files under run_events/, which are safe to merge here for status/projection.
+    for event in sorted((Path(state_dir) / "run_events").glob("*.json")):
+        try:
+            rows.append(json.loads(event.read_text()))
+        except (OSError, ValueError):
+            continue
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for row in sorted(rows, key=lambda r: str(r.get("ts") or "")):
+        sig = json.dumps(row, sort_keys=True, separators=(",", ":"))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        unique.append(row)
+    return unique
 
 
 def build_report(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
@@ -483,6 +498,104 @@ def _load_run_summary(state_dir: Path) -> dict:
         return {}
 
 
+def _run_sort_value(row: dict) -> str:
+    return str(row.get("ts") or "")
+
+
+def _same_logical_run(a: dict, b: dict) -> bool:
+    """True for shard events belonging to the same workflow/lane run."""
+    if not a.get("scoped") or not b.get("scoped"):
+        return False
+    if not a.get("github_run_id") or not b.get("github_run_id"):
+        return False
+    return (
+        a.get("github_run_id") == b.get("github_run_id")
+        and a.get("phase") == b.get("phase")
+        and a.get("lane") == b.get("lane")
+    )
+
+
+def _sum_stage_totals(rows: list[dict]) -> dict:
+    totals: dict[str, dict] = {}
+    keys = (
+        "ran",
+        "encoded",
+        "credited",
+        "aligned",
+        "transcribed",
+        "reused",
+        "backlog",
+        "seconds",
+        "bytes",
+        "errors",
+    )
+    for row in rows:
+        for name, stage in (row.get("stages") or {}).items():
+            out = totals.setdefault(name, {k: 0 for k in keys})
+            for k in keys:
+                out[k] += stage.get(k, 0) or 0
+    for stage in totals.values():
+        if "seconds" in stage:
+            stage["seconds"] = round(stage["seconds"], 1)
+    return totals
+
+
+def _latest_run_summary(run_summary: dict, history: list[dict]) -> dict:
+    """Return the newest run summary, aggregating sibling shard events when possible."""
+    candidates = list(history)
+    if run_summary:
+        candidates.append(run_summary)
+    if not candidates:
+        return {}
+    # De-duplicate the run_summary row when it is also present in run_history.jsonl.
+    unique: list[dict] = []
+    seen: set[str] = set()
+    for row in candidates:
+        sig = json.dumps(row, sort_keys=True, separators=(",", ":"))
+        if sig not in seen:
+            seen.add(sig)
+            unique.append(row)
+
+    latest = max(unique, key=_run_sort_value)
+    group = [row for row in unique if _same_logical_run(row, latest)] or [latest]
+    if len(group) == 1:
+        return latest
+
+    group = sorted(group, key=_run_sort_value)
+    merged = dict(group[-1])
+    for key in ("cities", "built", "skipped", "errors", "materialized", "materialize_encoded"):
+        merged[key] = sum(row.get(key, 0) or 0 for row in group)
+    merged["materialize_seconds"] = round(
+        sum(row.get("materialize_seconds", 0.0) or 0.0 for row in group), 1
+    )
+    merged["stages"] = _sum_stage_totals(group)
+    merged["shards"] = sorted(row.get("shard") for row in group if row.get("shard"))
+    provider_errors: dict[str, int] = {}
+    for row in group:
+        for provider, n in (row.get("provider_errors") or {}).items():
+            provider_errors[provider] = provider_errors.get(provider, 0) + int(n or 0)
+    merged["provider_errors"] = provider_errors
+    peaks = [
+        row.get("peak_load_per_cpu") for row in group if row.get("peak_load_per_cpu") is not None
+    ]
+    mems = [row.get("min_mem_avail_mb") for row in group if row.get("min_mem_avail_mb") is not None]
+    waits = [
+        row.get("gate_wait_seconds") for row in group if row.get("gate_wait_seconds") is not None
+    ]
+    windows = [
+        row.get("window_used_pct") for row in group if row.get("window_used_pct") is not None
+    ]
+    if peaks:
+        merged["peak_load_per_cpu"] = max(peaks)
+    if mems:
+        merged["min_mem_avail_mb"] = min(mems)
+    if waits:
+        merged["gate_wait_seconds"] = round(sum(waits), 1)
+    if windows:
+        merged["window_used_pct"] = max(windows)
+    return merged
+
+
 def build_status(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
     """Build the operational status snapshot for the /admin/status/ dashboard (issue #124).
 
@@ -544,8 +657,9 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         return [[r["slug"], r[field]] for r in rows if r[field] > 0][:n]
 
     # Backlog & projection
-    run_summary = _load_run_summary(Path(state_dir)) if state_dir else {}
+    shared_run_summary = _load_run_summary(Path(state_dir)) if state_dir else {}
     history = _load_run_history(Path(state_dir)) if state_dir else []
+    run_summary = _latest_run_summary(shared_run_summary, history)
     history_tail = list(reversed(history[-10:])) if history else []
 
     cap_raw = defaults.get("materialize_budget_per_run")
@@ -571,15 +685,25 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         round(stale_drain_runs * (inputs.cycle_hours / 24), 2) if stale_drain_runs else None
     )
 
-    # Transcript backlog: hosted episodes that have no ASR transcript artifact yet.
-    tx_pending = 0
+    # Transcript coverage/backlog from canonical records. This is the durable source of truth for
+    # ASR progress; run summaries are only telemetry and sharded runs may complete out of order.
+    tx_synced_total = tx_text_total = tx_pending = tx_hosted_total = 0
     for recs in records_cache.values():
         for rec in recs.values():
             audio = rec.get("audio") or {}
+            tx = rec.get("transcript") or {}
+            if tx.get("synced"):
+                tx_synced_total += 1
+            elif tx.get("key"):
+                tx_text_total += 1
             if audio.get("url"):
-                tx = rec.get("transcript") or {}
+                tx_hosted_total += 1
                 if not tx.get("key"):
                     tx_pending += 1
+    tx_known_total = tx_synced_total + tx_text_total
+    tx_coverage_pct = (
+        round(100.0 * tx_synced_total / tx_hosted_total, 1) if tx_hosted_total else None
+    )
     tx_per_run_hist = [
         (r.get("stages") or {}).get("transcript", {}).get("transcribed", 0)
         + (r.get("stages") or {}).get("transcript", {}).get("aligned", 0)
@@ -643,6 +767,11 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "gb_stored": gb_stored,
             "gb_exact": gb_exact,
             "monthly_cost_usd": monthly_cost,
+            "transcripts_synced": tx_synced_total,
+            "transcripts_text": tx_text_total,
+            "transcripts_missing": tx_pending,
+            "transcripts_hosted": tx_hosted_total,
+            "transcript_coverage_pct": tx_coverage_pct,
             "last_build": {
                 "ts": run_summary.get("ts"),
                 "status": (
@@ -657,6 +786,11 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
                 "errors": run_summary.get("errors", 0),
                 "github_run_url": run_summary.get("github_run_url"),
                 "github_run_id": run_summary.get("github_run_id"),
+                "phase": run_summary.get("phase"),
+                "lane": run_summary.get("lane"),
+                "shard": run_summary.get("shard"),
+                "shards": run_summary.get("shards"),
+                "scoped": run_summary.get("scoped"),
             },
         },
         "backlog": {
@@ -677,6 +811,11 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             },
             "transcript_backlog": {
                 "total_pending": tx_pending,
+                "synced": tx_synced_total,
+                "text_only": tx_text_total,
+                "known": tx_known_total,
+                "hosted_eligible": tx_hosted_total,
+                "coverage_pct": tx_coverage_pct,
                 "tx_per_run": tx_per_run,
                 "estimated_runs": tx_drain_runs,
                 "estimated_days": tx_drain_days,
