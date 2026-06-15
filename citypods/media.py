@@ -1019,10 +1019,21 @@ def _served_duration(ep: Episode) -> float | None:
     return duration if duration > 0 else None
 
 
+def _has_non_identity_timeline(ep: Episode) -> bool:
+    return ep.timeline is not None and timeline_digest(ep.timeline) != ""
+
+
 def _backfill_served_duration(ep: Episode) -> str:
+    served = _served_duration(ep)
+    if _has_non_identity_timeline(ep):
+        if served is None:
+            return "existing" if ep.audio_duration_served else "unknown"
+        if ep.audio_duration_served is None or abs(ep.audio_duration_served - served) > 0.001:
+            ep.audio_duration_served = served
+            return "metadata"
+        return "existing"
     if ep.audio_duration_served is not None and ep.audio_duration_served > 0:
         return "existing"
-    served = _served_duration(ep)
     if served is not None:
         ep.audio_duration_served = served
         return "metadata"
