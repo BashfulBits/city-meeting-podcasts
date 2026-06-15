@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Fixed
+- **`-user_agent` is now passed only for remote ffmpeg/ffprobe inputs (regression from the granicus
+  UA fix).** The browser-compatible `-user_agent` was added to *every* ffmpeg/ffprobe invocation, but
+  the encode pass reads the **local cached copy** from the source-cache (`/tmp/citypods_src_*`), and
+  `-user_agent` is an HTTP-only option — ffmpeg errors `Option user_agent not found` on a `file:`
+  input. The first post-fix Audio run (#6) hit this on ~1,300 cache-hit encodes (`returncode=8`,
+  zero hosted). New `_ua_args(url)` emits `-user_agent` only when the input is `http(s)://`; local
+  files (and insert assets) omit it. Verified end-to-end with real ffmpeg (remote → UA sent + works;
+  local → no UA + encodes). `_download_audio`, `_render_identity`, `_render_filter`,
+  `_probe_audio_bitrate` all route through it.
 - **PR preview no longer depends on live providers (was failing/ballooning on provider outages).**
   The preview ran `citypods build --phase render` with **no record store**, so it fetched all ~84
   feeds live just to have something to render — slow, and the *only* thing that could fail it (a
