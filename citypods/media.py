@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import collections
 import hashlib
+import json
 import re
 import subprocess
 import tempfile
@@ -491,11 +492,14 @@ def _download_audio(
     memory_floor_bytes: int | None = None,
     max_seconds: float | None = None,
 ) -> bool:
-    """Copy the audio stream from *url* to *dest* (.m4a) without re-encoding.
+    """Copy the source audio stream from *url* to *dest* without re-encoding.
 
     Returns True on success; callers fall back to streaming *url* directly on False. ``max_seconds``
     bounds the copy to the first N seconds (a *truncated* fetch) — used by the live media-fetch
     contract check to verify an endpoint is reachable without pulling a whole meeting.
+
+    The source cache uses a Matroska audio container so it can preserve common provider codecs
+    (AAC, MP3, MP2, PCM, AC-3, etc.) without pretending they are already podcast-ready M4A files.
     """
     cmd = [
         ffmpeg_binary,
@@ -515,8 +519,8 @@ def _download_audio(
         "-c:a",
         "copy",
         *(["-t", str(max_seconds)] if max_seconds else []),
-        "-movflags",
-        "+faststart",
+        "-f",
+        "matroska",
         str(dest),
     ]
     try:
@@ -584,7 +588,7 @@ class SourceCache:
         with lock:
             if uid in self._paths:
                 return self._paths[uid]
-            dest = Path(self._tmpdir.name) / f"{hashlib.md5(uid.encode()).hexdigest()}.m4a"
+            dest = Path(self._tmpdir.name) / f"{hashlib.md5(uid.encode()).hexdigest()}.mka"
             if _download_audio(
                 url,
                 dest,
@@ -671,10 +675,24 @@ def _ffmetadata(chapters: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def encode_args(source_bitrate: int | None, max_kbps: int) -> list[str]:
-    """ffmpeg audio codec args: copy if the source is already <= the cap, else re-encode
-    to ``max_kbps`` mono AAC. Unknown source bitrate -> re-encode (safe upper bound)."""
-    if source_bitrate is not None and source_bitrate <= max_kbps * 1000:
+_M4A_COPY_CODECS = {"aac"}
+
+
+def encode_args(
+    source_bitrate: int | None, max_kbps: int, source_codec: str | None = "aac"
+) -> list[str]:
+    """ffmpeg audio codec args for the podcast M4A output.
+
+    Copy only when the source is already AAC and under the bitrate cap. Non-AAC sources may be
+    cheap enough by bitrate, but stream-copying them into the iPod/M4A muxer can fail with
+    incompatible-tag errors; transcode those to the normalized AAC output.
+    """
+    codec = source_codec.lower() if source_codec else None
+    if (
+        codec in _M4A_COPY_CODECS
+        and source_bitrate is not None
+        and source_bitrate <= max_kbps * 1000
+    ):
         return ["-c:a", "copy"]
     return ["-c:a", "aac", "-b:a", f"{max_kbps}k", "-ac", "1"]
 
@@ -848,8 +866,9 @@ class CommandFfmpeg:
         probe_timeout = (
             None if self.timeout_seconds is None else min(self.timeout_seconds, _PROBE_TIMEOUT_S)
         )
+        stream_info = _probe_audio_stream(source_url, self.binary, timeout=probe_timeout)
         codec_args = encode_args(
-            _probe_audio_bitrate(source_url, self.binary, timeout=probe_timeout), self.max_kbps
+            stream_info.bit_rate, self.max_kbps, source_codec=stream_info.codec_name
         )
         thread_args = self._thread_args(codec_args)
         with tempfile.TemporaryDirectory() as tmp:
@@ -1012,13 +1031,23 @@ class CommandFfmpeg:
 # ---------------------------------------------------------------------------
 
 
-def _probe_audio_bitrate(
-    url: str, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
-) -> int | None:
-    """Return the source's audio bitrate in bits/sec via ffprobe, or None if unknown.
+@dataclass(frozen=True)
+class AudioStreamInfo:
+    codec_name: str | None = None
+    bit_rate: int | None = None
 
-    ``timeout`` (seconds) bounds the probe so a stalled source can't hang it; on timeout (or any
-    other probe failure) we return None, which encode_args treats as "unknown" → safe re-encode."""
+
+def _parse_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return int(text) if text.isdigit() else None
+
+
+def _probe_audio_stream(
+    url: str, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
+) -> AudioStreamInfo:
+    """Return source audio codec/bitrate via ffprobe, or unknown fields on failure."""
     ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
     try:
         with DISTRIBUTED_PROVIDER_LEASES.slots([url]), HOST_LIMITER.slot(url):
@@ -1027,16 +1056,15 @@ def _probe_audio_bitrate(
                     ffprobe,
                     "-v",
                     "error",
-                    # Browser-compatible UA for a remote probe (else the Granicus CDN 403s it and
-                    # we'd misread the bitrate); omitted for a local cached file (invalid there) —
-                    # _ua_args.
+                    # Browser-compatible UA for a remote probe (else the Granicus CDN 403s it);
+                    # omitted for a local cached file (invalid there) — _ua_args.
                     *_ua_args(url),
                     "-select_streams",
                     "a:0",
                     "-show_entries",
-                    "stream=bit_rate",
+                    "stream=codec_name,bit_rate",
                     "-of",
-                    "default=nw=1:nk=1",
+                    "json",
                     url,
                 ],
                 check=True,
@@ -1044,9 +1072,32 @@ def _probe_audio_bitrate(
                 text=True,
                 timeout=timeout,
             ).stdout.strip()
-        return int(out) if out.isdigit() else None
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
-        return None
+        data = json.loads(out or "{}")
+        streams = data.get("streams")
+        stream = streams[0] if isinstance(streams, list) and streams else {}
+        codec_raw = stream.get("codec_name") if isinstance(stream, dict) else None
+        codec = str(codec_raw).strip().lower() if codec_raw else None
+        bit_rate = _parse_optional_int(stream.get("bit_rate") if isinstance(stream, dict) else None)
+        return AudioStreamInfo(codec_name=codec or None, bit_rate=bit_rate)
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+        OSError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ):
+        return AudioStreamInfo()
+
+
+def _probe_audio_bitrate(
+    url: str, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
+) -> int | None:
+    """Return the source's audio bitrate in bits/sec via ffprobe, or None if unknown.
+
+    ``timeout`` (seconds) bounds the probe so a stalled source can't hang it; on timeout (or any
+    other probe failure) we return None, which encode_args treats as "unknown" → safe re-encode."""
+    return _probe_audio_stream(url, ffmpeg_binary, timeout=timeout).bit_rate
 
 
 def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | None:

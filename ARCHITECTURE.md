@@ -155,6 +155,10 @@ Hard-won facts that bite anyone adding/debugging providers:
   real fetch path, so a UA/endpoint regression fails loudly instead of silently.)* `resolve_media_url`
   still pre-follows `DownloadFile.php` (one redirect resolved in Python, not per ffmpeg process), and
   resolution stays at **fetch time**, never persisted.
+- **Source-cache files are not podcast M4As.** The per-run cache stores provider audio as local
+  Matroska audio (`.mka`) via stream-copy, preserving source codecs without re-fetching the CDN.
+  Final materialization is the M4A boundary: only under-cap AAC is copied into the podcast file; other
+  codecs are transcoded to AAC so the iPod/M4A muxer never sees incompatible source streams.
 - **Per-host concurrency cap — `requests`, ffprobe, and ffmpeg share the local guard; media reads also
   use distributed leases**
   (`HostRateLimiter` in `http.py`; `DistributedProviderLeasePool` in `provider_leases.py`, issue #39
