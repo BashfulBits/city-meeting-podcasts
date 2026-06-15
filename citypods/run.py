@@ -751,10 +751,10 @@ def build(
     waiting out the whole audio window (issue #63 follow-up).
 
     ``shard``/``source``/``lane`` drive the H6b sharded ``audio``/``asr`` workflows (enrich phase):
-    ``shard=(k, n)`` keeps only the sources ``shard_assignment`` maps to shard ``k`` (a balanced
-    round-robin over the sorted source_keys — disjoint, exhaustive, and never empty until
-    ``#sources < n``); ``source`` keeps only that one ``source_key``; ``lane`` selects the work
-    class (``audio`` / ``transcribe`` / ``align``). A sharded or source-scoped run pushes back
+    ``shard=(k, n)`` keeps only the sources ``shard_assignment`` maps to shard ``k`` (a weighted,
+    source-atomic partition over the sorted source_keys — disjoint, exhaustive, and never empty
+    until ``#sources < n``); ``source`` keeps only that one ``source_key``; ``lane`` selects the
+    work class (``audio`` / ``transcribe`` / ``align``). A sharded or source-scoped run pushes back
     **only** the records it owns (scoped ``push_state``) and does not reconcile (H11b hooks).
 
     ``no_refresh`` (render phase) renders each city purely from the record store and makes **no
@@ -788,9 +788,12 @@ def build(
         k, n = shard
         if not (0 <= k < n):
             raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
-        # Balanced round-robin over the sorted distinct source_keys (computed over the full catalog,
-        # so every shard process derives the same partition) → no empty shard until #sources < n.
-        assignment = shard_assignment((source_key(c) for c in cities), n)
+        # Source-atomic weighted assignment (computed from config only, so every shard process in
+        # one workflow derives the same partition even if a sibling pushes state mid-run). Weight by
+        # the number of configured feeds/bodies sharing the source: a big multi-body source such as
+        # Dallas should stand alone before small single-feed sources get packed around it.
+        source_weights = collections.Counter(source_key(c) for c in cities)
+        assignment = shard_assignment((source_key(c) for c in cities), n, weights=source_weights)
         cities = [c for c in cities if assignment.get(source_key(c)) == k]
 
     output_dir = Path(output_dir)

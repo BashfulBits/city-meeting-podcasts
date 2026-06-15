@@ -822,7 +822,7 @@ def test_enrich_shards_partition_sources_disjoint_and_exhaustive(tmp_path, fake_
     flat = [slug for slugs in by_shard.values() for slug in slugs]
     assert sorted(flat) == ["feed-a", "feed-b"]
     assert len(flat) == len(set(flat))
-    # And the partition matches the balanced shard assignment.
+    # And the partition matches the source-atomic shard assignment.
     from citypods.config import load_city_configs
 
     cfg = load_city_configs(cities_dir, {})

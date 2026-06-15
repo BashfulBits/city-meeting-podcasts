@@ -47,9 +47,12 @@ The production deploy **splits render from enrich** into **separate workflows** 
 see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state and never
 runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two dedicated workflows,
 `audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription), each on its
-own concurrency group **sharded by `source_key`** (`strategy.matrix.shard`), so encoding/transcription
-can never block or redden the Pages deploy (H11b) and concurrent shards clear the backlog without
-clobbering records (H6b). The render phase writes **only `docs/`**: it persists no records, leaving the
+own concurrency group **sharded by `source_key`** (`strategy.matrix.shard`). Assignment is
+source-atomic and weighted by the number of configured feeds/bodies sharing a source, so large sources
+are not casually bundled with small ones while concurrent shards still never write the same record file.
+Encoding/transcription can never block or redden the Pages deploy (H11b), and concurrent shards clear
+the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
+records, leaving the
 audio/ASR workflows as the sole record writers; a sharded run pushes back only the `source_key`s it owns
 (`statesync.py`'s `push_state(only_prefixes=)`) and skips the reconcile sweep (`full_run=False`), so a
 stale or partial push can't clobber a sibling shard's records (the record-write race). Each `citypods

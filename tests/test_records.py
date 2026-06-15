@@ -89,9 +89,9 @@ def test_shard_assignment_is_disjoint_and_exhaustive():
     assert len(flat) == len(set(flat)) == len(keys)  # disjoint (each source in exactly one shard)
 
 
-def test_shard_assignment_is_balanced_and_never_empty():
-    """#39 follow-up: round-robin keeps every shard non-empty (within ±1) until #sources < N —
-    fixing the wasted empty ``audio (0)`` runner the hash-mod assignment produced."""
+def test_shard_assignment_fallback_is_balanced_and_never_empty():
+    """With omitted/equal weights, assignment keeps every shard non-empty (within +/-1) until
+    #sources < N, fixing the wasted empty ``audio (0)`` runner hash-mod produced."""
     # 10 distinct sources, N=4 (the catalog shape that left shards empty under hash-mod).
     keys = [source_key(_city(source={"feed_url": f"F{i}"})) for i in range(10)]
     n = 4
@@ -100,6 +100,17 @@ def test_shard_assignment_is_balanced_and_never_empty():
     assert min(sizes) >= 1  # no empty shard
     assert max(sizes) - min(sizes) <= 1  # balanced (10 over 4 → 3,3,2,2)
     assert sorted(sizes, reverse=True) == [3, 3, 2, 2]
+
+
+def test_shard_assignment_balances_weighted_sources():
+    """Weighted assignment keeps source ownership atomic while packing heavy sources first."""
+    keys = ["heavy", "mid", "small-a", "small-b"]
+    weights = {"heavy": 8, "mid": 7, "small-a": 6, "small-b": 5}
+    a = shard_assignment(reversed(keys), 2, weights=weights)
+    loads = [sum(weights[k] for k, shard in a.items() if shard == i) for i in range(2)]
+    assert sorted(loads) == [13, 13]
+    assert a["heavy"] != a["mid"]
+    assert shard_assignment(keys, 2, weights=weights) == a  # input-order independent
 
 
 def test_audio_spec_hash_and_key_track_only_audio_inputs():

@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         "--shard",
         metavar="K/N",
         help="enrich only the sources in shard K of N (0-based), partitioned by "
-        "stable_hash(source_key) %% N — the H6b sharded audio.yml/asr.yml workflows",
+        "weighted source_key assignment — the H6b sharded audio.yml/asr.yml workflows",
     )
     e.add_argument(
         "--lane",
