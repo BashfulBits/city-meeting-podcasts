@@ -986,6 +986,16 @@ documented as the pre-1.0-locked shape.
 
 ## H14 — External transcription adapters: Modal + Beam (free-tier-bounded async dispatch)
 
+> **H14a substrate — Implemented in [#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275).**
+> The dispatch half of the H13 interface (`base.DispatchBackend` + `JobHandle`), the free-tier budget
+> ledger (`compute/budget.py` → `state/compute_budget.json`), the router + thread-safe
+> `DispatchCoordinator` + `reconcile_compute` (`compute/dispatch.py`), the live `work.json` lease
+> (`lease_owner="modal:<job_id>"`), the `compute_backend: auto` routing wired into `TranscriptStage`
+> (overflow-to-`local`), the `citypods compute reconcile` CLI + `asr.yml` reconcile job, and a
+> `FakeDispatchBackend` covering it all (`tests/test_compute_dispatch.py`) are **shipped**. Still open:
+> **H14b/H14c** — the real `compute/{modal,beam}_backend.py` adapters + `scripts/compute/{modal,beam}_app.py`
+> remote workers (the design below), which register into the coordinator with no stage change.
+
 **Maturity: L3.** The first real non-`local` GPU backends — pulled into Phase H on 2026-06-12 so the
 "compute is pluggable" lock is proven by **two live adapters** before 1.0 (overriding the earlier
 "GPU backends post-1.0" framing for these two specifically). Builds on **H13** (interface), **H5 PR3**

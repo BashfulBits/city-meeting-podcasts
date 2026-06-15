@@ -14,6 +14,22 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Added
+- **H14a — external-dispatch substrate + free-tier budget ledger, wired into the live ASR flow
+  ([#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275)).** The dispatch half of the
+  H13 compute seam now routes the transcribe/align path. New `citypods/compute/budget.py`
+  (statesync-backed `state/compute_budget.json`) enforces each backend's `monthly_gpu_seconds` /
+  `max_inflight` as a **hard cap — the $0 guarantee** (decrement-on-dispatch, settle actuals on done,
+  reap on expiry, monthly reset). New `citypods/compute/dispatch.py` adds the router (fill free tiers,
+  then **overflow to `local`**), a thread-safe `DispatchCoordinator` that records a live `work.json`
+  lease (`lease_owner="modal:<job_id>"` — the first competitive use of the H5 lease API) and decrements
+  budget, and `reconcile_compute` (reap a dead worker's expired lease → re-queue; settle completed
+  jobs). `compute_backend: auto` (now the default) routes inference through the coordinator; with no
+  external adapter registered yet (Modal/Beam land in H14b/H14c) every job **overflows to `local`** —
+  behavior-identical to before. A new `citypods compute reconcile` CLI runs at `asr.yml` start (a
+  dedicated job the sharded `asr` job `needs`), and a `FakeDispatchBackend` exercises the whole path in
+  `tests/test_compute_dispatch.py`.
+
 ### Fixed
 - **Audio #11 source-cache no longer forces non-AAC audio into an M4A container.** The per-run source
   cache now remuxes provider audio into a local Matroska audio copy (`.mka`) instead of writing

@@ -172,9 +172,18 @@ defaults:
   asr_timeout_per_audio_hour_minutes: 30
   asr_timeout_budget_reserve_minutes: 1
   # GPU/ASR execution backend (H13 — the pre-1.0 "compute is pluggable" lock). Selects where
-  # transcribe/align inference runs; "local" runs faster-whisper/stable-ts in-process on the
-  # runner. The Modal/Beam off-runner dispatch adapters (H14) plug in here with no stage change.
-  compute_backend: "local"               # "local"  (override: COMPUTE_BACKEND=local)
+  # transcribe/align inference runs. "local" runs faster-whisper/stable-ts in-process on the runner;
+  # "auto" (H14a) routes through the dispatcher below — filling each external free-tier GPU budget
+  # first, then overflowing to "local". Override: COMPUTE_BACKEND=local (a hard bypass of the seam).
+  compute_backend: "auto"                # "local" | "auto"
+  # Free-tier GPU dispatch budgets (H14). The dispatcher fills these in config order, then overflows
+  # to "local". `monthly_gpu_seconds` is a HARD per-backend cap — structurally never exceeded (the $0
+  # guarantee); `max_inflight` bounds concurrent in-flight jobs. No external adapter is registered yet
+  # (the Modal/Beam adapters land in H14b/H14c), so today every job overflows to "local" — behavior-
+  # identical to "local", but with the dispatch/lease/budget machinery live and reconciled each run.
+  compute_backends:
+    modal: { monthly_gpu_seconds: 108000, max_inflight: 8 }   # ≈ free credits — pin to the live plan
+    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8 }
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

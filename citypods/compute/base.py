@@ -82,6 +82,13 @@ class JobHandle:
     ref: str
 
 
+def lease_owner_for(handle: JobHandle) -> str:
+    """The H5 ``work.json`` lease owner string for an in-flight dispatch job: ``"<backend>:<ref>"``
+    (e.g. ``"modal:job-123"``). The first competitive use of the lease API (H14a) — the inverse,
+    ``"<backend>:<ref>".split(":", 1)``, recovers the backend name at reconcile time."""
+    return f"{handle.backend}:{handle.ref}"
+
+
 @runtime_checkable
 class Backend(Protocol):
     """Runs an :class:`InferenceJob`. Mirrors ``storage.StorageBackend``'s Protocol shape.
@@ -93,3 +100,31 @@ class Backend(Protocol):
     name: str
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle: ...
+
+
+@runtime_checkable
+class DispatchBackend(Protocol):
+    """A **dispatch** backend (H14): submits a job to an external worker and returns a
+    :class:`JobHandle` without awaiting it (the Modal/Beam adapters land in H14b/H14c; a
+    fake stands in for tests). It is a :class:`Backend` whose ``run_inference`` always returns a
+    :class:`JobHandle`, plus the two hooks the dispatcher's budget ledger needs.
+
+    **The result-write contract.** The remote worker reads the audio from its public URL, runs the
+    task, and writes the *content-addressed* artifact to the **same object bucket** the synchronous
+    path uses — the existing ``transcripts/<src>/<uid>-asr-<recipe>.vtt`` (+ ``.words.json``) keys
+    (``citypods.stages._asr_vtt_key`` / ``_asr_words_key``). It then marks its ``work.json``
+    :class:`~citypods.ops.workqueue.WorkItem` ``done`` and records the actual GPU seconds in
+    ``observed_seconds``. The **next** render reconciles the artifact onto the feed exactly as a
+    not-yet-hosted episode is handled today; content-addressing on ``recipe_hash`` makes a
+    re-dispatch idempotent (the artifact is already present ⇒ no-op).
+
+    * ``estimate_gpu_seconds`` — the **decrement-on-dispatch** estimate the budget ledger reserves
+      before submitting (reconciled to ``observed_seconds`` actuals when the item completes). It
+      must not under-report, or the free-tier cap could be breached between dispatch and reconcile.
+    """
+
+    name: str
+
+    def run_inference(self, job: InferenceJob) -> JobHandle: ...
+
+    def estimate_gpu_seconds(self, job: InferenceJob) -> float: ...
