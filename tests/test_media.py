@@ -1187,9 +1187,9 @@ def test_materialize_backs_off_a_truncated_encode_instead_of_hosting_it(tmp_path
 def test_user_agent_is_browser_compatible():
     from citypods.http import USER_AGENT
 
-    # The Granicus media CDN 403s a non-Mozilla UA; the prefix is load-bearing, not vanity.
+    # The Granicus media CDN 403s non-browser UAs; the prefix and platform token are load-bearing.
     assert USER_AGENT.startswith("Mozilla/5.0")
-    assert "citypods" in USER_AGENT  # …but still honestly identifies us
+    assert "Chrome" in USER_AGENT  # must look like a real browser to pass CDN bot-detection
 
 
 def test_download_audio_cmd_sends_browser_user_agent(monkeypatch):

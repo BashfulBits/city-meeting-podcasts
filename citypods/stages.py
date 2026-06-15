@@ -757,8 +757,10 @@ def _download_audio(url: str):
 def _download_audio_file(url: str, dest: Path) -> None:
     import requests as _req
 
+    from citypods.http import USER_AGENT
+
     with _req.Session() as sess:
-        sess.headers["User-Agent"] = "citypods/0.1 (+https://github.com/)"
+        sess.headers["User-Agent"] = USER_AGENT
         r = sess.get(url, timeout=300, stream=True)
         r.raise_for_status()
         with open(dest, "wb") as f:
