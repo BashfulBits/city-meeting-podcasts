@@ -23,7 +23,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 
+from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
+from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.timeline import Segment, SourceMedia, Timeline
 
 
@@ -32,22 +34,25 @@ def _probe_duration_url(
 ) -> float | None:
     """Return a remote URL's container duration in seconds via ffprobe, or ``None`` on failure."""
     try:
-        out = subprocess.run(
-            [
-                ffprobe,
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=nw=1:nk=1",
-                url,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        ).stdout.strip()
+        with DISTRIBUTED_PROVIDER_LEASES.slots([url]), HOST_LIMITER.slot(url):
+            out = subprocess.run(
+                [
+                    ffprobe,
+                    "-v",
+                    "error",
+                    "-user_agent",
+                    USER_AGENT,
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=nw=1:nk=1",
+                    url,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            ).stdout.strip()
         return float(out) if out else None
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
         return None

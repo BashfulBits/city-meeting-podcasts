@@ -84,7 +84,13 @@ from citypods import asr as asr_mod
 from citypods.bodies import body_key, canonical_body
 from citypods.compute import InferenceJob
 from citypods.compute.local import LocalBackend
-from citypods.media import MaterializeStats, SourceCache, _probe_duration_secs, materialize_audio
+from citypods.media import (
+    MaterializeStats,
+    MediaRateLimitCircuitBreaker,
+    SourceCache,
+    _probe_duration_secs,
+    materialize_audio,
+)
 from citypods.models import City, Episode
 from citypods.ops.workqueue import BacklogPolicy, sort_key_for, workitem_from_episode
 from citypods.records import AUDIO_PIPELINE_VERSION
@@ -173,6 +179,9 @@ class StageContext:
     # new encode begins only with real budget headroom (supersedes the instantaneous mem_available
     # gate for audio). See ``citypods/resources.py:MemoryReservation``.
     memory_reservation: MemoryReservation | None = None
+    # Run-local provider throttle circuit. When Granicus starts returning ffmpeg 403/429 errors,
+    # AudioStage stops starting more work for that domain for a cooldown instead of amplifying it.
+    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None
     # Global semaphore that caps concurrent ASR inference calls across ALL sources in the run.
     # ASR is CPU-bound and uses all cpu_threads — running N sources' alignment/transcription
     # simultaneously divides effective CPU by N, making each job N× slower.  With max_workers=20
@@ -303,6 +312,7 @@ class AudioStage:
             resource_admission=ctx.resource_admission,
             native_work_gate=ctx.native_work_gate,
             memory_reservation=ctx.memory_reservation,
+            rate_limit_circuit=ctx.rate_limit_circuit,
         )
         return StageStats(
             self.name,

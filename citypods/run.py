@@ -27,9 +27,10 @@ from citypods.compute import make_compute
 from citypods.config import load_backlog_policy, load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.http import HOST_LIMITER
-from citypods.media import CommandFfmpeg, FfmpegRunner, SourceCache
+from citypods.media import CommandFfmpeg, FfmpegRunner, MediaRateLimitCircuitBreaker, SourceCache
 from citypods.models import City, Episode
 from citypods.ops.workqueue import build_manifest, order_cities_by_policy, save_manifest
+from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
 from citypods.records import (
@@ -818,6 +819,11 @@ def build(
     # evaluated against a single ``now``. Empty/absent ⇒ behavior-preserving identity order.
     backlog_policy = load_backlog_policy(site_config)
     storage = make_storage(site_config, base_url, output_dir)
+    DISTRIBUTED_PROVIDER_LEASES.configure(
+        storage if not dry_run else None,
+        site_config.get("provider_distributed_leases", {}),
+        log=lambda msg: print(msg, flush=True),
+    )
     # GPU/ASR execution backend (H13). ``local`` (in-process) by default; the seam H14's Modal/Beam
     # dispatch adapters swap into with no stage change.
     compute_backend = make_compute(site_config)
@@ -921,6 +927,11 @@ def build(
         if time_bounded and not dry_run and _memory_budget_mb > 0
         else None
     )
+    _rate_limit_circuit: MediaRateLimitCircuitBreaker | None = MediaRateLimitCircuitBreaker(
+        site_config.get("provider_rate_limit_circuit_breakers", {})
+    )
+    if not _rate_limit_circuit.has_rules():
+        _rate_limit_circuit = None
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -949,6 +960,7 @@ def build(
         ),
         native_work_gate=_native_work_gate,
         memory_reservation=_memory_reservation,
+        rate_limit_circuit=_rate_limit_circuit,
         # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;
         # N simultaneous inference calls each get 1/N of available CPU, making each
         # N× slower. asr_workers=1 (default) serialises all ASR, giving each call full

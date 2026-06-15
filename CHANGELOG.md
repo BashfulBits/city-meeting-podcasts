@@ -15,6 +15,21 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Fixed
+- **Audio #10 encode-failure follow-up: Granicus storms are now cross-shard capped and classified.**
+  `provider_rate_limits.granicus.com: 2` is still the per-process cap, but audio has four shard jobs;
+  the new `provider_distributed_leases` layer creates storage-backed provider slot objects so every
+  shard shares one aggregate Granicus limit. Live probes on 2026-06-15 showed 1–8 concurrent short
+  Granicus ffprobe/ffmpeg reads succeed from this client, while Audio run #10 failed under sustained
+  8-way Actions overlap, so production starts at 6 aggregate Granicus slots rather than dropping to a
+  conservative 3–4. ffmpeg/ffprobe 403/429 stderr is now classified as `rate_limited`, source-cache
+  throttles no longer immediately fall through into a second direct render attempt, and a run-local
+  circuit breaker pauses new Granicus media work after repeated throttles.
+- **Swagit legacy concat probes now use the same browser UA and provider slots as other media reads.**
+  The Addison 55844 failure was reproduced: the page parser finds three legacy segments and the
+  concat planner is registered before silence planning, but the first segment's MP4 is unreadable
+  (`moov atom not found`) and its HLS playlist returns 404, so publishing partial audio would be
+  unsafe. The planner still defers that episode, but healthy legacy segments are no longer falsely
+  deferred by bare ffprobe calls without the Granicus-compatible UA or rate-limit guards.
 - **Feed-health fixes for Dallas meeting links and edited-timeline audio duration metadata.** Dallas'
   `meetings_url` now points at the live Swagit archive URL instead of the old `dallascityhall.com`
   page whose TLS certificate fails Python Requests verification. Edited/non-identity timelines now
@@ -70,6 +85,11 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   to `contracts.yml`), so a silent "audio never downloads" regression now fails loudly.
 
 ### Changed
+- **Audio memory admission recalibrated from Audio run #10 telemetry.** Long loudnorm/filter encodes
+  in the run peaked around 9–13 GiB, beyond the old 6.5 GiB clamp. `estimate_encode_rss_bytes` now
+  uses a 64 MiB/min served-duration coefficient with a 12,000 MiB max/unknown reservation, so very
+  long or unknown-length filter jobs run alone against the 12 GiB budget instead of being admitted
+  beside another large encode and then hitting the 1.5 GiB memory floor.
 - **Audio encodes are admitted by *predicted* memory, not instantaneous free memory (stops mid-flight
   ffmpeg terminations).** The first clean Audio runs (#8/#9) hosted real audio but terminated ~46% of
   the large filter-render (loudnorm) encodes of multi-hour meetings with `ffmpeg filter-render stopped:
