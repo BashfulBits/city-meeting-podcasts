@@ -39,7 +39,13 @@ from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
 from citypods.providers.base import ProviderError
 from citypods.records import audio_object_key, audio_spec_hash, source_key
-from citypods.resources import NativeWorkGate, ResourceSnapshot, current_snapshot, format_bytes
+from citypods.resources import (
+    MemoryReservation,
+    NativeWorkGate,
+    ResourceSnapshot,
+    current_snapshot,
+    format_bytes,
+)
 from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, Timeline, timeline_digest
 
@@ -1023,6 +1029,39 @@ def _has_non_identity_timeline(ep: Episode) -> bool:
     return ep.timeline is not None and timeline_digest(ep.timeline) != ""
 
 
+# Encode peak-RSS cost model (H8 reservation admission). Filter-render (loudnorm/trim/concat)
+# encodes of long meetings dominate runner memory — observed 0.18–5.9 GiB on the 15.6 GiB runner,
+# growing across the *whole* encode (memory-floor kills fired 220–1080 s in). The reservation
+# accountant (``citypods/resources.py:MemoryReservation``) admits by this *predicted* footprint
+# instead of the trailing ``mem_available`` signal. Coefficients are a first heuristic keyed on
+# served length — known ahead from the EDL the TimelineStage already built, or the feed duration —
+# and are meant to be calibrated from the per-encode ``peak_rss`` we log.
+_ENCODE_RSS_COPY_BYTES = 300 * 1024 * 1024  # copy path (no filter): tiny, bounded
+_ENCODE_RSS_BASE_BYTES = 350 * 1024 * 1024  # filtergraph + AAC encoder baseline
+_ENCODE_RSS_PER_MINUTE_BYTES = 32 * 1024 * 1024  # ~growth per served minute (loudnorm/concat)
+_ENCODE_RSS_UNKNOWN_BYTES = 5500 * 1024 * 1024  # no length known: reserve ~p90 (assume large)
+_ENCODE_RSS_MAX_BYTES = 6500 * 1024 * 1024  # clamp (observed peak ~5.9 GiB)
+
+
+def estimate_encode_rss_bytes(ep: Episode, *, loudness_profile: str = "") -> int:
+    """Predict an encode's peak RSS so the reservation accountant can admit by future load.
+
+    Copy-path (no filter) encodes are cheap. Filter encodes scale with the *served* length — known
+    ahead from the EDL the preceding ``TimelineStage`` built, or the feed duration — clamped to the
+    observed ceiling. When neither is known (a single-source episode with silence-trim disabled and
+    no declared duration) we assume a large job and reserve conservatively, so an unknown encode
+    runs alone rather than colliding; the mid-flight memory floor is the backstop for a wrong guess.
+    """
+    use_filter = _has_non_identity_timeline(ep) or bool(loudness_profile)
+    if not use_filter:
+        return _ENCODE_RSS_COPY_BYTES
+    served = _served_duration(ep)
+    if served is None or served <= 0:
+        return _ENCODE_RSS_UNKNOWN_BYTES
+    est = _ENCODE_RSS_BASE_BYTES + int(_ENCODE_RSS_PER_MINUTE_BYTES * (served / 60.0))
+    return min(est, _ENCODE_RSS_MAX_BYTES)
+
+
 def _backfill_served_duration(ep: Episode) -> str:
     served = _served_duration(ep)
     if _has_non_identity_timeline(ep):
@@ -1054,6 +1093,7 @@ def materialize_audio(
     max_workers: int = 1,
     resource_admission: object | None = None,
     native_work_gate: NativeWorkGate | None = None,
+    memory_reservation: MemoryReservation | None = None,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -1162,9 +1202,19 @@ def materialize_audio(
                 stats.skipped_budget += 1
             return
         label = ep.uid or ep.guid
-        if resource_admission is not None:
-            admitted = resource_admission.wait(kind="audio", label=str(label), stop=stop)
-            if not admitted:
+        # Admission: reserve the encode's predicted peak RSS so it starts only with real budget
+        # headroom — a *leading* signal. The reservation supersedes the instantaneous mem_available
+        # gate for audio; that gate (resource_admission) is the fallback when no budget is set and
+        # still governs ASR elsewhere. native_work_gate is the hard concurrency ceiling on top.
+        reserved_bytes = 0
+        if memory_reservation is not None:
+            reserved_bytes = estimate_encode_rss_bytes(ep, loudness_profile=loudness_profile)
+            if not memory_reservation.reserve(reserved_bytes, label=str(label), stop=stop):
+                with lock:
+                    stats.skipped_budget += 1
+                return
+        elif resource_admission is not None:
+            if not resource_admission.wait(kind="audio", label=str(label), stop=stop):
                 with lock:
                     stats.skipped_budget += 1
                 return
@@ -1174,6 +1224,8 @@ def materialize_audio(
             if not gate_acquired:
                 with lock:
                     stats.skipped_budget += 1
+                if memory_reservation is not None and reserved_bytes:
+                    memory_reservation.release(reserved_bytes)
                 return
         t0 = time.perf_counter()
         print(
@@ -1267,6 +1319,8 @@ def materialize_audio(
         finally:
             if gate_acquired and native_work_gate is not None:
                 native_work_gate.release(kind="audio")
+            if memory_reservation is not None and reserved_bytes:
+                memory_reservation.release(reserved_bytes)
 
     if max_workers > 1:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:

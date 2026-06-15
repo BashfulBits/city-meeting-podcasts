@@ -342,3 +342,92 @@ class NativeWorkGate:
     def _emit(self, message: str) -> None:
         if self._log is not None:
             self._log(message)
+
+
+class MemoryReservation:
+    """Admit expensive encodes by *predicted* peak memory rather than instantaneous free memory.
+
+    Each encode reserves an estimate of its peak RSS before it starts; a new encode is admitted only
+    when ``reserved + estimate <= budget``. Because the estimate reflects the job's *eventual*
+    footprint (derived from the known-ahead served duration), this gates on **future** load — unlike
+    a ``mem_available`` check, which is a *trailing* signal that still looks healthy in the minutes
+    before a long loudnorm encode grows into the memory floor (observed: memory-floor kills fired
+    220–1080 s into encodes that peaked at up to ~5.9 GiB). The mid-flight floor stays the backstop
+    for estimate misses; ``native_audio_max_active`` stays a hard concurrency ceiling on top.
+
+    An estimate larger than the whole budget is clamped to the budget so it can still run — alone —
+    instead of deadlocking. Thread-safe; ``reserve`` blocks until headroom exists or ``stop`` fires.
+    """
+
+    def __init__(
+        self,
+        *,
+        budget_bytes: int,
+        poll_seconds: float = 2.0,
+        log: Callable[[str], None] | None = None,
+    ):
+        self._cond = threading.Condition()
+        self._budget = max(1, int(budget_bytes))
+        self._reserved = 0
+        self._poll_seconds = max(0.1, poll_seconds)
+        self._log = log
+        self._total_wait_seconds = 0.0
+        self._wait_lock = threading.Lock()
+
+    def _clamp(self, estimate_bytes: int) -> int:
+        # Never reserve more than the whole budget (a single huge estimate must still run, alone).
+        return max(0, min(int(estimate_bytes), self._budget))
+
+    def reserve(
+        self, estimate_bytes: int, *, label: str, stop: Callable[[], bool] | None = None
+    ) -> bool:
+        """Block until ``estimate_bytes`` fits the budget; return False if ``stop`` fires."""
+        need = self._clamp(estimate_bytes)
+        announced = False
+        wait_start: float | None = None
+        while True:
+            if stop is not None and stop():
+                if wait_start is not None:
+                    with self._wait_lock:
+                        self._total_wait_seconds += time.monotonic() - wait_start
+                return False
+            with self._cond:
+                if self._reserved + need <= self._budget:
+                    self._reserved += need
+                    if announced:
+                        with self._wait_lock:
+                            self._total_wait_seconds += time.monotonic() - (wait_start or 0.0)
+                        self._emit(
+                            f"[enrich] memory reserved label={label} "
+                            f"need={format_bytes(need)} "
+                            f"reserved={format_bytes(self._reserved)}/{format_bytes(self._budget)}"
+                        )
+                    return True
+                if not announced:
+                    self._emit(
+                        f"[enrich] memory wait label={label} need={format_bytes(need)} "
+                        f"reserved={format_bytes(self._reserved)}/{format_bytes(self._budget)}"
+                    )
+                    announced = True
+                    wait_start = time.monotonic()
+                self._cond.wait(timeout=self._poll_seconds)
+
+    def release(self, estimate_bytes: int) -> None:
+        need = self._clamp(estimate_bytes)
+        with self._cond:
+            self._reserved = max(0, self._reserved - need)
+            self._cond.notify_all()
+
+    @property
+    def reserved_bytes(self) -> int:
+        with self._cond:
+            return self._reserved
+
+    @property
+    def total_wait_seconds(self) -> float:
+        with self._wait_lock:
+            return self._total_wait_seconds
+
+    def _emit(self, message: str) -> None:
+        if self._log is not None:
+            self._log(message)

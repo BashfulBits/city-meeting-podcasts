@@ -46,7 +46,13 @@ from citypods.records import (
     shard_assignment,
     source_key,
 )
-from citypods.resources import NativeWorkGate, ResourceAdmission, current_snapshot, snapshot_string
+from citypods.resources import (
+    MemoryReservation,
+    NativeWorkGate,
+    ResourceAdmission,
+    current_snapshot,
+    snapshot_string,
+)
 from citypods.security import SecurityError
 from citypods.site import (
     render_city_page,
@@ -902,6 +908,19 @@ def build(
         if time_bounded and not dry_run
         else None
     )
+    # Predicted-memory admission for audio encodes (H8): reserve each encode's estimated peak RSS
+    # against a budget so a new encode begins only with real headroom — a leading signal the
+    # instantaneous mem_available gate lacks (a long loudnorm encode grows for minutes before it
+    # nears the floor). 0/blank budget disables it (falls back to the resource_admission gate).
+    _memory_budget_mb = float(defaults.get("audio_memory_budget_mb", 0) or 0)
+    _memory_reservation: MemoryReservation | None = (
+        MemoryReservation(
+            budget_bytes=int(_memory_budget_mb * 1024 * 1024),
+            log=lambda msg: print(msg, flush=True),
+        )
+        if time_bounded and not dry_run and _memory_budget_mb > 0
+        else None
+    )
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -929,6 +948,7 @@ def build(
             dry_run=dry_run,
         ),
         native_work_gate=_native_work_gate,
+        memory_reservation=_memory_reservation,
         # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;
         # N simultaneous inference calls each get 1/N of available CPU, making each
         # N× slower. asr_workers=1 (default) serialises all ASR, giving each call full

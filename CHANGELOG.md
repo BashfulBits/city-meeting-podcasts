@@ -63,16 +63,23 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   to `contracts.yml`), so a silent "audio never downloads" regression now fails loudly.
 
 ### Changed
-- **Encode admission decoupled from the kill floor to stop mid-flight ffmpeg terminations.** The first
-  clean Audio runs (#8/#9) hosted real audio but terminated ~46% of the large filter-render (loudnorm)
-  encodes of multi-hour meetings with `ffmpeg filter-render stopped: mem_avail … below floor` — four
-  concurrent big encodes collided into the 1.5 GiB memory floor (retried, but wasted work). The
-  admission gate (`resource_guard_min_available_mb`, the check before *starting* an encode) was equal
-  to the mid-flight kill floor (`audio_ffmpeg_memory_floor_mb`), so new encodes piled on with no
-  headroom. The two are now decoupled on the 15.6 GiB runner: the **start gate rises to 10 GiB** (a new
-  encode begins only with real headroom) while the **kill floor stays 1.5 GiB** (an already-running
-  large encode is never terminated), and `native_audio_max_active` drops `4 → 3`. Net: ≤3 small encodes
-  overlap when pressure is low; a big loudnorm job runs alone and to completion. Config-only.
+- **Audio encodes are admitted by *predicted* memory, not instantaneous free memory (stops mid-flight
+  ffmpeg terminations).** The first clean Audio runs (#8/#9) hosted real audio but terminated ~46% of
+  the large filter-render (loudnorm) encodes of multi-hour meetings with `ffmpeg filter-render stopped:
+  mem_avail … below floor`. Root cause: admission was an *instantaneous* `mem_available` check, which is
+  a **trailing** signal — a long loudnorm encode grows for minutes (memory-floor kills fired **220–1080 s**
+  into encodes that peaked at up to **5.9 GiB**), so free memory still looks healthy when a *second* big
+  encode starts, and the two then collide. New `MemoryReservation` (`citypods/resources.py`) admits each
+  encode against a **budget** (`audio_memory_budget_mb`, ~12 GiB of the 15.6 GiB runner): each encode
+  reserves its **estimated peak RSS** — `media.estimate_encode_rss_bytes`, keyed on the known-ahead
+  served length (the EDL the `TimelineStage` already built, or the feed duration; a conservative default
+  when neither is known) — and a new encode begins only when `reserved + estimate ≤ budget`. That gates
+  on the job's *future* footprint, so ≈2 big encodes (or many small ones) overlap with headroom and a
+  third big job waits instead of colliding. `native_audio_max_active` drops `4 → 3` (the hard
+  concurrency ceiling); the 1.5 GiB `audio_ffmpeg_memory_floor_mb` stays as the backstop for estimate
+  misses. The reservation supersedes the old `resource_guard_min_available_mb` gate for audio (that gate
+  now governs only ASR). The cost-model coefficients are a first heuristic, calibratable from the
+  per-encode `peak_rss` already logged.
 - **Source shards are now weighted by configured feed/body count instead of raw source count.**
   `records.shard_assignment` still assigns each `source_key` to exactly one shard (so scoped state
   pushes remain safe), but it now greedily packs heavier sources onto the lightest shard. `run.py`

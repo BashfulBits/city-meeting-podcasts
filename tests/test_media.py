@@ -8,7 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from citypods.media import _probe_duration_secs, encode_args, materialize_audio
+from citypods.media import (
+    _ENCODE_RSS_COPY_BYTES,
+    _ENCODE_RSS_MAX_BYTES,
+    _ENCODE_RSS_UNKNOWN_BYTES,
+    _probe_duration_secs,
+    encode_args,
+    estimate_encode_rss_bytes,
+    materialize_audio,
+)
 from citypods.models import City, Episode
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.local import LocalStorage
@@ -1280,3 +1288,34 @@ def test_probe_audio_bitrate_local_file_omits_user_agent(monkeypatch):
     monkeypatch.setattr(media.subprocess, "run", _fake_run)
     media._probe_audio_bitrate("/tmp/citypods_src_x/cached.m4a")
     assert "-user_agent" not in captured["argv"]
+
+
+def test_estimate_rss_copy_path_is_cheap():
+    ep = _ep_with_duration(3600)  # no timeline, no loudnorm → copy path
+    assert estimate_encode_rss_bytes(ep, loudness_profile="") == _ENCODE_RSS_COPY_BYTES
+
+
+def test_estimate_rss_filter_scales_with_duration_and_clamps():
+    ep = _ep_with_duration(3600)  # 60 min, loudnorm on → filter path
+    one_hour = estimate_encode_rss_bytes(ep, loudness_profile="ebuR128:-16LUFS")
+    assert _ENCODE_RSS_COPY_BYTES < one_hour < _ENCODE_RSS_MAX_BYTES
+
+    ep.duration = 1800  # 30 min → smaller estimate (monotonic in served length)
+    assert estimate_encode_rss_bytes(ep, loudness_profile="ebuR128:-16LUFS") < one_hour
+
+    ep.duration = 100_000  # absurdly long → clamped to the observed ceiling
+    clamped = estimate_encode_rss_bytes(ep, loudness_profile="ebuR128:-16LUFS")
+    assert clamped == _ENCODE_RSS_MAX_BYTES
+
+
+def test_estimate_rss_uses_edited_timeline_served_length():
+    ep = _ep("e")  # no declared duration; the non-identity timeline supplies served length
+    ep.timeline = _edited_timeline()
+    est = estimate_encode_rss_bytes(ep, loudness_profile="")  # filter via non-identity timeline
+    assert _ENCODE_RSS_COPY_BYTES < est < _ENCODE_RSS_MAX_BYTES
+
+
+def test_estimate_rss_unknown_length_reserves_conservatively():
+    ep = _ep("u")  # no timeline, no duration, but loudnorm on → filter path, length unknown
+    est = estimate_encode_rss_bytes(ep, loudness_profile="ebuR128:-16LUFS")
+    assert est == _ENCODE_RSS_UNKNOWN_BYTES

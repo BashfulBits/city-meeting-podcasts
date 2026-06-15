@@ -88,7 +88,7 @@ from citypods.media import MaterializeStats, SourceCache, _probe_duration_secs, 
 from citypods.models import City, Episode
 from citypods.ops.workqueue import BacklogPolicy, sort_key_for, workitem_from_episode
 from citypods.records import AUDIO_PIPELINE_VERSION
-from citypods.resources import NativeWorkGate, ResourceAdmission
+from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.timeline import Timeline, remap, timeline_digest
 
 
@@ -169,6 +169,10 @@ class StageContext:
     # Resource-class gate for native work. Audio encodes may overlap audio, but ASR is exclusive
     # and must not overlap ffmpeg encodes on the small GitHub-hosted runner.
     native_work_gate: NativeWorkGate | None = None
+    # Predicted-memory admission for audio encodes: reserves each encode's estimated peak RSS so a
+    # new encode begins only with real budget headroom (supersedes the instantaneous mem_available
+    # gate for audio). See ``citypods/resources.py:MemoryReservation``.
+    memory_reservation: MemoryReservation | None = None
     # Global semaphore that caps concurrent ASR inference calls across ALL sources in the run.
     # ASR is CPU-bound and uses all cpu_threads — running N sources' alignment/transcription
     # simultaneously divides effective CPU by N, making each job N× slower.  With max_workers=20
@@ -298,6 +302,7 @@ class AudioStage:
             max_workers=ctx.max_encodes_per_source,
             resource_admission=ctx.resource_admission,
             native_work_gate=ctx.native_work_gate,
+            memory_reservation=ctx.memory_reservation,
         )
         return StageStats(
             self.name,
