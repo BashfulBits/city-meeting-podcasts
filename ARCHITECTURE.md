@@ -96,7 +96,10 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
   queues; cheap idempotent bookkeeping always finishes (see `stages.py` "stop convention").
 - **Resource admission for expensive native work** — ffmpeg/ASR starts can wait for memory/load
   headroom, and abandoned ASR inference continues to occupy its worker slot until the native thread
-  exits, so a stopped item does not stack unbounded CPU/RAM work.
+  exits, so a stopped item does not stack unbounded CPU/RAM work. The **start gate**
+  (`resource_guard_min_available_mb`) is set well above the **mid-flight kill floor**
+  (`audio_ffmpeg_memory_floor_mb`): a new encode begins only with real headroom, while an
+  already-running large encode is never terminated for transient pressure.
 - **Backlog prioritization + async-ready dispatch** — the enrich phase orders work
   *newest-everywhere-first* across all sources by a configurable `backlog_priority` policy; audio
   re-hosting runs on the runner while transcribe/diarize are modeled as **dispatch-not-await** work
