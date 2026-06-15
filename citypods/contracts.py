@@ -88,7 +88,7 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
 
             try:
                 with tempfile.TemporaryDirectory() as td:
-                    dest = Path(td) / "probe.m4a"
+                    dest = Path(td) / "probe.mka"
                     ok = _download_audio(resolved_url, dest, max_seconds=_MEDIA_FETCH_SECONDS)
                     size = dest.stat().st_size if dest.exists() else 0
                     out.append(

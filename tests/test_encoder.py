@@ -247,7 +247,9 @@ class TestFiltergraphLoudness:
 class TestCommandFfmpegIdentityPath:
     """The identity path must produce the same ffmpeg args as pre-INFRA-3."""
 
-    def _run_identity(self, monkeypatch, tmp_path, source_url, bitrate_str="128000"):
+    def _run_identity(
+        self, monkeypatch, tmp_path, source_url, bitrate_str="128000", codec_name="aac"
+    ):
         import citypods.media as media
 
         calls: list[tuple[list, dict]] = []
@@ -256,7 +258,9 @@ class TestCommandFfmpegIdentityPath:
             calls.append((cmd, kw))
 
             class _R:
-                stdout = bitrate_str
+                stdout = (
+                    f'{{"streams":[{{"codec_name":"{codec_name}","bit_rate":"{bitrate_str}"}}]}}'
+                )
 
             return _R()
 
@@ -285,6 +289,19 @@ class TestCommandFfmpegIdentityPath:
     def test_reencode_when_bitrate_over_cap(self, monkeypatch, tmp_path):
         calls = self._run_identity(
             monkeypatch, tmp_path, "https://src/vid.mp4", bitrate_str="192000"
+        )
+        _, (enc_cmd, _) = calls[0], calls[1]
+        assert "-c:a" in enc_cmd
+        idx = enc_cmd.index("-c:a")
+        assert enc_cmd[idx + 1] == "aac"
+
+    def test_reencode_when_codec_not_m4a_copy_safe(self, monkeypatch, tmp_path):
+        calls = self._run_identity(
+            monkeypatch,
+            tmp_path,
+            "https://src/vid.mp4",
+            bitrate_str="64000",
+            codec_name="mp2",
         )
         _, (enc_cmd, _) = calls[0], calls[1]
         assert "-c:a" in enc_cmd
@@ -347,7 +364,7 @@ class TestCommandFfmpegIdentityPath:
             calls.append(cmd)
 
             class _R:
-                stdout = "64000"
+                stdout = '{"streams":[{"codec_name":"aac","bit_rate":"64000"}]}'
 
             return _R()
 

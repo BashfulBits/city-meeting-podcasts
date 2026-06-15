@@ -15,6 +15,12 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Fixed
+- **Audio #11 source-cache no longer forces non-AAC audio into an M4A container.** The per-run source
+  cache now remuxes provider audio into a local Matroska audio copy (`.mka`) instead of writing
+  `*.m4a` with the iPod muxer during download. Final materialization still writes podcast M4A, but the
+  identity path now probes both codec and bitrate: only under-cap AAC is stream-copied, while MP2/MP3/
+  PCM/other source codecs are transcoded to AAC. No pipeline version was bumped: already-hosted audio
+  is left as-is, and deferred/failed source-cache items retry naturally through the normal audio lane.
 - **Audio #10 encode-failure follow-up: Granicus storms are now cross-shard capped and classified.**
   `provider_rate_limits.granicus.com: 2` is still the per-process cap, but audio has four shard jobs;
   the new `provider_distributed_leases` layer uses B2-compatible soft lease candidate objects so

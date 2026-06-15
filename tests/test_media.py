@@ -151,6 +151,22 @@ def test_encode_args_copies_or_reencodes_by_cap():
     assert encode_args(96_000, 96) == ["-c:a", "copy"]
     assert encode_args(128_000, 96) == ["-c:a", "aac", "-b:a", "96k", "-ac", "1"]
     assert encode_args(None, 96) == ["-c:a", "aac", "-b:a", "96k", "-ac", "1"]
+    assert encode_args(64_000, 96, source_codec="mp2") == [
+        "-c:a",
+        "aac",
+        "-b:a",
+        "96k",
+        "-ac",
+        "1",
+    ]
+    assert encode_args(64_000, 96, source_codec=None) == [
+        "-c:a",
+        "aac",
+        "-b:a",
+        "96k",
+        "-ac",
+        "1",
+    ]
 
 
 def test_loudness_profile_passed_to_ffmpeg(tmp_path):
@@ -1217,10 +1233,12 @@ def test_download_audio_cmd_sends_browser_user_agent(monkeypatch):
 
     cmds: list[list[str]] = []
     monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
-    media._download_audio("https://archive-video.granicus.com/x.mp4", Path("/tmp/nope.m4a"))
+    media._download_audio("https://archive-video.granicus.com/x.mp4", Path("/tmp/nope.mka"))
     cmd = cmds[0]
     assert "-user_agent" in cmd
     assert cmd[cmd.index("-user_agent") + 1] == USER_AGENT
+    assert "-f" in cmd and cmd[cmd.index("-f") + 1] == "matroska"
+    assert "-movflags" not in cmd
 
 
 def test_download_audio_max_seconds_truncates_else_omits_t(monkeypatch):
@@ -1228,8 +1246,8 @@ def test_download_audio_max_seconds_truncates_else_omits_t(monkeypatch):
 
     cmds: list[list[str]] = []
     monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
-    media._download_audio("https://x/y.mp4", Path("/tmp/nope.m4a"), max_seconds=3)
-    media._download_audio("https://x/y.mp4", Path("/tmp/nope.m4a"))
+    media._download_audio("https://x/y.mp4", Path("/tmp/nope.mka"), max_seconds=3)
+    media._download_audio("https://x/y.mp4", Path("/tmp/nope.mka"))
     assert "-t" in cmds[0] and cmds[0][cmds[0].index("-t") + 1] == "3"  # truncated fetch
     assert "-t" not in cmds[1]  # full fetch by default
 
@@ -1300,7 +1318,7 @@ def test_probe_audio_bitrate_sends_browser_user_agent(monkeypatch):
     captured: dict = {}
 
     class _Out:
-        stdout = "128000"
+        stdout = '{"streams":[{"codec_name":"aac","bit_rate":"128000"}]}'
 
     def _fake_run(argv, **kw):
         captured["argv"] = argv
@@ -1318,7 +1336,11 @@ def test_identity_render_cmd_sends_browser_user_agent(monkeypatch):
 
     cmds: list[list[str]] = []
     monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
-    monkeypatch.setattr(media, "_probe_audio_bitrate", lambda *a, **k: 96_000)
+    monkeypatch.setattr(
+        media,
+        "_probe_audio_stream",
+        lambda *a, **k: media.AudioStreamInfo("aac", 96_000),
+    )
     runner = media.CommandFfmpeg(max_kbps=MAX_KBPS)
     runner.extract_audio(
         None, {"s0": "https://archive-video.granicus.com/x.mp4"}, Path("/tmp/o.m4a")
@@ -1335,8 +1357,8 @@ def test_ua_args_only_for_remote_inputs():
     assert media._ua_args("http://x/y.mp4") == ["-user_agent", USER_AGENT]
     # Local cached copies (the source-cache hands these to the encode) must NOT get -user_agent —
     # ffmpeg errors "Option user_agent not found" on a file: input (the #293 regression).
-    assert media._ua_args("/tmp/citypods_src_abc/deadbeef.m4a") == []
-    assert media._ua_args("file:///tmp/x.m4a") == []
+    assert media._ua_args("/tmp/citypods_src_abc/deadbeef.mka") == []
+    assert media._ua_args("file:///tmp/x.mka") == []
 
 
 def test_identity_render_local_source_omits_user_agent(monkeypatch):
@@ -1345,9 +1367,13 @@ def test_identity_render_local_source_omits_user_agent(monkeypatch):
 
     cmds: list[list[str]] = []
     monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
-    monkeypatch.setattr(media, "_probe_audio_bitrate", lambda *a, **k: 96_000)
+    monkeypatch.setattr(
+        media,
+        "_probe_audio_stream",
+        lambda *a, **k: media.AudioStreamInfo("aac", 96_000),
+    )
     runner = media.CommandFfmpeg(max_kbps=MAX_KBPS)
-    runner.extract_audio(None, {"s0": "/tmp/citypods_src_x/cached.m4a"}, Path("/tmp/o.m4a"))
+    runner.extract_audio(None, {"s0": "/tmp/citypods_src_x/cached.mka"}, Path("/tmp/o.m4a"))
     assert "-user_agent" not in cmds[0]
 
 
@@ -1357,14 +1383,14 @@ def test_probe_audio_bitrate_local_file_omits_user_agent(monkeypatch):
     captured: dict = {}
 
     class _Out:
-        stdout = "128000"
+        stdout = '{"streams":[{"codec_name":"aac","bit_rate":"128000"}]}'
 
     def _fake_run(argv, **kw):
         captured["argv"] = argv
         return _Out()
 
     monkeypatch.setattr(media.subprocess, "run", _fake_run)
-    media._probe_audio_bitrate("/tmp/citypods_src_x/cached.m4a")
+    media._probe_audio_bitrate("/tmp/citypods_src_x/cached.mka")
     assert "-user_agent" not in captured["argv"]
 
 
