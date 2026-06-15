@@ -63,6 +63,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   to `contracts.yml`), so a silent "audio never downloads" regression now fails loudly.
 
 ### Changed
+- **Encode admission decoupled from the kill floor to stop mid-flight ffmpeg terminations.** The first
+  clean Audio runs (#8/#9) hosted real audio but terminated ~46% of the large filter-render (loudnorm)
+  encodes of multi-hour meetings with `ffmpeg filter-render stopped: mem_avail … below floor` — four
+  concurrent big encodes collided into the 1.5 GiB memory floor (retried, but wasted work). The
+  admission gate (`resource_guard_min_available_mb`, the check before *starting* an encode) was equal
+  to the mid-flight kill floor (`audio_ffmpeg_memory_floor_mb`), so new encodes piled on with no
+  headroom. The two are now decoupled on the 15.6 GiB runner: the **start gate rises to 10 GiB** (a new
+  encode begins only with real headroom) while the **kill floor stays 1.5 GiB** (an already-running
+  large encode is never terminated), and `native_audio_max_active` drops `4 → 3`. Net: ≤3 small encodes
+  overlap when pressure is low; a big loudnorm job runs alone and to completion. Config-only.
 - **Source shards are now weighted by configured feed/body count instead of raw source count.**
   `records.shard_assignment` still assigns each `source_key` to exactly one shard (so scoped state
   pushes remain safe), but it now greedily packs heavier sources onto the lightest shard. `run.py`
@@ -133,6 +143,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   scope hooks H6b's source-sharded jobs will use (no behavior change at the single-writer default).
 
 ### Added
+- **`reset-backoff` recovery tool + workflow — drain the #120 backoff after a fixed encode bug.** When
+  a now-fixed bug made encodes fail (Granicus UA 403s #293/#297, Swagit truncation #274), each failure
+  incremented the record's `materialize_attempts`, so those episodes are skipped for up to 30 days even
+  though the bug is gone. Granicus never hosted at all, so `clear-materialization.yml` (which keys on
+  `audio encode done`) can't reach its records. New `scripts/reset_materialize_backoff.py` scans the
+  durable record store and clears the backoff fields (`attempts`/`last_attempt`/`error`) of every
+  record that is **un-hosted *and* in backoff** — never touching a hosted record, the transcript block,
+  or the durable `state/` snapshot. Optional `--provider`/`--source` filters (verify one provider
+  end-to-end first); dry-run unless `--apply`; pushes back only the affected `sources/<key>/` prefixes.
+  Dispatch via the new **Reset materialization backoff** workflow (shares the `audio` concurrency group
+  so it never races an Audio run's state push).
 - **GPU/ASR execution-backend interface + `local` adapter (H13)** — the pre-1.0 "compute is
   pluggable" lock ([#271](https://github.com/BashfulBits/city-meeting-podcasts/issues/271)). New
   `citypods/compute/` module, peer of `storage/`: `base.py` defines `InferenceJob(task, inputs,
