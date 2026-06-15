@@ -28,15 +28,17 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
+from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers.base import ProviderError
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.resources import (
@@ -159,6 +161,119 @@ class TruncatedAudioError(ProviderError):
     code = "truncated"
 
 
+class RateLimitedMediaFetchError(ProviderError):
+    """ffmpeg/ffprobe saw an HTTP throttling response while reading provider media."""
+
+    code = "rate_limited"
+
+
+@dataclass(frozen=True)
+class RateLimitCircuitRule:
+    threshold: int = 3
+    cooldown_seconds: float = 1800.0
+
+
+class MediaRateLimitCircuitBreaker:
+    """Run-local provider circuit breaker for repeated media throttling failures."""
+
+    def __init__(self, config: Mapping[str, object] | None = None) -> None:
+        self._rules: dict[str, RateLimitCircuitRule] = {}
+        for domain, raw in (config or {}).items():
+            rule = _parse_circuit_rule(raw)
+            if rule is not None:
+                self._rules[str(domain).strip().lower()] = rule
+        self._failures: dict[str, int] = {}
+        self._open_until: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def has_rules(self) -> bool:
+        return bool(self._rules)
+
+    def open_for(self, urls: Sequence[str]) -> str | None:
+        now = time.monotonic()
+        with self._lock:
+            for domain in self._domains_for(urls):
+                until = self._open_until.get(domain)
+                if until is None:
+                    continue
+                if now < until:
+                    return domain
+                self._open_until.pop(domain, None)
+                self._failures[domain] = 0
+        return None
+
+    def record_success(self, urls: Sequence[str]) -> None:
+        with self._lock:
+            for domain in self._domains_for(urls):
+                self._failures[domain] = 0
+
+    def record_rate_limited(self, urls: Sequence[str]) -> str | None:
+        now = time.monotonic()
+        opened: str | None = None
+        with self._lock:
+            for domain in self._domains_for(urls):
+                rule = self._rules[domain]
+                count = self._failures.get(domain, 0) + 1
+                self._failures[domain] = count
+                if count >= rule.threshold:
+                    self._open_until[domain] = now + rule.cooldown_seconds
+                    opened = domain
+        return opened
+
+    def _domains_for(self, urls: Sequence[str]) -> list[str]:
+        domains: set[str] = set()
+        for url in urls:
+            host = (urlsplit(url).hostname or "").lower()
+            domain = self._domain_for(host)
+            if domain is not None:
+                domains.add(domain)
+        return sorted(domains)
+
+    def _domain_for(self, host: str) -> str | None:
+        best: str | None = None
+        for domain in self._rules:
+            if host == domain or host.endswith("." + domain):
+                if best is None or len(domain) > len(best):
+                    best = domain
+        return best
+
+
+def _parse_circuit_rule(raw: object) -> RateLimitCircuitRule | None:
+    if isinstance(raw, Mapping):
+        try:
+            threshold = int(raw.get("threshold", 0))
+        except (TypeError, ValueError):
+            return None
+        if threshold <= 0:
+            return None
+        return RateLimitCircuitRule(
+            threshold=threshold,
+            cooldown_seconds=float(raw.get("cooldown_seconds", 1800.0)),
+        )
+    try:
+        threshold = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return RateLimitCircuitRule(threshold=threshold) if threshold > 0 else None
+
+
+def _rate_limited_status(stderr: bytes | str | None) -> str | None:
+    text = _stderr_tail(stderr).lower()
+    if not text:
+        return None
+    if "403 forbidden" in text or "http error 403" in text or "server returned 403" in text:
+        return "HTTP 403"
+    if "429 too many" in text or "http error 429" in text or "server returned 429" in text:
+        return "HTTP 429"
+    return None
+
+
+def _raise_if_rate_limited(*, phase: str, stderr: bytes | str | None) -> None:
+    status = _rate_limited_status(stderr)
+    if status is not None:
+        raise RateLimitedMediaFetchError(f"ffmpeg {phase} hit provider throttle ({status})")
+
+
 def _guard_against_truncated_audio(
     ep: Episode, probed: float | None, *, size_bytes: int | None = None
 ) -> None:
@@ -209,7 +324,10 @@ def _run_ffmpeg_guarded(
     if not memory_floor_bytes:
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
         try:
-            with HOST_LIMITER.slots(rate_limit_urls):
+            with (
+                DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
+                HOST_LIMITER.slots(rate_limit_urls),
+            ):
                 subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
         except subprocess.CalledProcessError as exc:
             stderr = _stderr_tail(exc.stderr)
@@ -218,6 +336,7 @@ def _run_ffmpeg_guarded(
                 log,
                 f"[enrich] ffmpeg {phase} error returncode={exc.returncode}{detail}",
             )
+            _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
             raise
         except subprocess.TimeoutExpired as exc:
             stderr = _stderr_tail(exc.stderr)
@@ -229,7 +348,7 @@ def _run_ffmpeg_guarded(
 
     # Memory-floor path: hold the per-host rate-limit slot (#39) for the whole monitored run so a
     # sharded burst can't open more than the configured number of simultaneous connections per host.
-    with HOST_LIMITER.slots(rate_limit_urls):
+    with DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls), HOST_LIMITER.slots(rate_limit_urls):
         _run_ffmpeg_popen_monitored(
             cmd,
             phase=phase,
@@ -299,6 +418,7 @@ def _run_ffmpeg_popen_monitored(
                     f"min_mem_avail={_format_optional_bytes(min_mem_available)} "
                     f"samples={samples}{detail}",
                 )
+                _raise_if_rate_limited(phase=phase, stderr=stderr)
                 raise subprocess.CalledProcessError(
                     returncode,
                     cmd,
@@ -408,6 +528,8 @@ def _download_audio(
             rate_limit_urls=(url,),  # the remote source — cap concurrent hits per provider (#39)
         )
         return dest.exists() and dest.stat().st_size > 0
+    except RateLimitedMediaFetchError:
+        raise
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
         return False
 
@@ -453,8 +575,9 @@ class SourceCache:
         """Return a local audio copy keyed by *uid*, downloading *url* on first call.
 
         Thread-safe: concurrent callers for the same *uid* block until the first
-        download completes, then all receive the same path. Returns None on failure
-        (caller should fall back to streaming *url* directly).
+        download completes, then all receive the same path. Returns None on generic failure
+        (caller may fall back to streaming *url* directly); provider throttling propagates as
+        ``RateLimitedMediaFetchError`` so the caller does not immediately retry the same URL.
         """
         with self._guard:
             lock = self._locks[uid]
@@ -898,27 +1021,29 @@ def _probe_audio_bitrate(
     other probe failure) we return None, which encode_args treats as "unknown" → safe re-encode."""
     ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
     try:
-        out = subprocess.run(
-            [
-                ffprobe,
-                "-v",
-                "error",
-                # Browser-compatible UA for a remote probe (else the Granicus CDN 403s it and we'd
-                # misread the bitrate); omitted for a local cached file (invalid there) — _ua_args.
-                *_ua_args(url),
-                "-select_streams",
-                "a:0",
-                "-show_entries",
-                "stream=bit_rate",
-                "-of",
-                "default=nw=1:nk=1",
-                url,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        ).stdout.strip()
+        with DISTRIBUTED_PROVIDER_LEASES.slots([url]), HOST_LIMITER.slot(url):
+            out = subprocess.run(
+                [
+                    ffprobe,
+                    "-v",
+                    "error",
+                    # Browser-compatible UA for a remote probe (else the Granicus CDN 403s it and
+                    # we'd misread the bitrate); omitted for a local cached file (invalid there) —
+                    # _ua_args.
+                    *_ua_args(url),
+                    "-select_streams",
+                    "a:0",
+                    "-show_entries",
+                    "stream=bit_rate",
+                    "-of",
+                    "default=nw=1:nk=1",
+                    url,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            ).stdout.strip()
         return int(out) if out.isdigit() else None
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
         return None
@@ -1038,9 +1163,11 @@ def _has_non_identity_timeline(ep: Episode) -> bool:
 # and are meant to be calibrated from the per-encode ``peak_rss`` we log.
 _ENCODE_RSS_COPY_BYTES = 300 * 1024 * 1024  # copy path (no filter): tiny, bounded
 _ENCODE_RSS_BASE_BYTES = 350 * 1024 * 1024  # filtergraph + AAC encoder baseline
-_ENCODE_RSS_PER_MINUTE_BYTES = 32 * 1024 * 1024  # ~growth per served minute (loudnorm/concat)
-_ENCODE_RSS_UNKNOWN_BYTES = 5500 * 1024 * 1024  # no length known: reserve ~p90 (assume large)
-_ENCODE_RSS_MAX_BYTES = 6500 * 1024 * 1024  # clamp (observed peak ~5.9 GiB)
+# 2026-06-15 telemetry from audio run #10 showed long loudnorm/filter jobs peaking around
+# 9-13 GiB; the prior 32 MiB/min coefficient and 6.5 GiB clamp admitted too many long jobs.
+_ENCODE_RSS_PER_MINUTE_BYTES = 64 * 1024 * 1024
+_ENCODE_RSS_UNKNOWN_BYTES = 12_000 * 1024 * 1024
+_ENCODE_RSS_MAX_BYTES = 12_000 * 1024 * 1024
 
 
 def estimate_encode_rss_bytes(ep: Episode, *, loudness_profile: str = "") -> int:
@@ -1094,6 +1221,7 @@ def materialize_audio(
     resource_admission: object | None = None,
     native_work_gate: NativeWorkGate | None = None,
     memory_reservation: MemoryReservation | None = None,
+    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -1233,10 +1361,27 @@ def materialize_audio(
             f"source={src_key} uid={label} guid={ep.guid}",
             flush=True,
         )
+        source_urls: list[str] = []
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
                 source_url = resolve_media_url(ep)
+                source_urls = [source_url]
+                if ep.sources:
+                    source_urls.extend(src.ref for src in ep.sources if src.ref not in source_urls)
+                if rate_limit_circuit is not None:
+                    open_domain = rate_limit_circuit.open_for(source_urls)
+                    if open_domain is not None:
+                        with lock:
+                            stats.skipped_budget += 1
+                        print(
+                            f"[enrich] audio encode skipped slug={city.slug} "
+                            f"provider={city.provider} source={src_key} uid={label} "
+                            f"guid={ep.guid}: provider throttle circuit open "
+                            f"domain={open_domain}",
+                            flush=True,
+                        )
+                        return
                 # For single-source episodes, use a locally cached copy when available so the
                 # encode pass reads from disk rather than re-streaming the rate-limited source.
                 # Multi-source concat episodes use stable .ref URLs from the concat planner and
@@ -1270,6 +1415,8 @@ def materialize_audio(
                 _guard_against_truncated_audio(ep, probed, size_bytes=size)
                 url = storage.put_file(key, dest, CONTENT_TYPE)
                 ep.audio_bytes = size
+            if rate_limit_circuit is not None:
+                rate_limit_circuit.record_success(source_urls)
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
@@ -1295,6 +1442,13 @@ def materialize_audio(
             OSError,
             ProviderError,
         ) as exc:
+            if isinstance(exc, RateLimitedMediaFetchError) and rate_limit_circuit is not None:
+                opened = rate_limit_circuit.record_rate_limited(source_urls)
+                if opened is not None:
+                    print(
+                        f"[enrich] provider throttle circuit opened domain={opened}",
+                        flush=True,
+                    )
             # Record the failed attempt so this episode backs off (exponentially) instead of being
             # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
             # A timeout is transient (the source may recover), so like a generic ``error`` it backs

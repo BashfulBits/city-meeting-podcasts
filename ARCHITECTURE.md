@@ -102,7 +102,8 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
   so a new encode begins only when its *future* footprint fits — a leading signal the instantaneous
   `mem_available` check (which still governs ASR) lacks. The mid-flight kill floor
   (`audio_ffmpeg_memory_floor_mb`) stays as the backstop, and `native_audio_max_active` is the hard
-  concurrency ceiling.
+  concurrency ceiling. Audio run #10 recalibrated the filter/loudnorm model to a 64 MiB/min served
+  coefficient with a 12,000 MiB max/unknown reservation after real jobs peaked around 9–13 GiB.
 - **Backlog prioritization + async-ready dispatch** — the enrich phase orders work
   *newest-everywhere-first* across all sources by a configurable `backlog_priority` policy; audio
   re-hosting runs on the runner while transcribe/diarize are modeled as **dispatch-not-await** work
@@ -154,15 +155,17 @@ Hard-won facts that bite anyone adding/debugging providers:
   real fetch path, so a UA/endpoint regression fails loudly instead of silently.)* `resolve_media_url`
   still pre-follows `DownloadFile.php` (one redirect resolved in Python, not per ffmpeg process), and
   resolution stays at **fetch time**, never persisted.
-- **Per-host concurrency cap — the same limiter governs `requests` *and* ffmpeg** (`HostRateLimiter` in
-  `http.py`, issue #39). Sharded `audio.yml`/`asr.yml` (H6b) concentrate many workers on a few sources
-  sharing one provider CDN; that burst throttles the tenant (Granicus `403`; Swagit short/truncated
-  responses). `HostRateLimiter` caps simultaneous in-flight requests **per registrable domain**
-  (`provider_rate_limits` in `site_config.yml`, e.g. `granicus.com: 2`) and is acquired by both
-  `GuardedHTTPAdapter.send` and the ffmpeg fetch paths (`media.py`) — capping only the `requests`
-  adapter would miss the media downloads, which is where the storm actually was. Keyed by registrable
-  domain so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the tenant sees.
-  Per-process (each shard is its own runner); cross-shard coordination is H14's lease territory.
+- **Per-host concurrency cap — `requests`, ffprobe, and ffmpeg share local + distributed guards**
+  (`HostRateLimiter` in `http.py`; `DistributedProviderLeasePool` in `provider_leases.py`, issue #39
+  follow-up). Sharded `audio.yml`/`asr.yml` (H6b) concentrate many workers on a few sources sharing one
+  provider CDN; that burst throttles the tenant (Granicus `403`; Swagit short/truncated responses).
+  `HostRateLimiter` caps simultaneous in-flight requests **per registrable domain** inside one process
+  (`provider_rate_limits` in `site_config.yml`, e.g. `granicus.com: 2`) and is acquired by
+  `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The
+  storage-backed `provider_distributed_leases` layer caps aggregate Granicus overlap across the four
+  audio shard processes (currently 6 total slots, based on 2026-06-15 probes plus Audio #10 telemetry).
+  Keys are registrable domains so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the
+  host the tenant sees.
 - **`403` is retried as a rate-limit signal** by the shared session (`403` in `_ClampedRetry`'s
   `status_forcelist`): media bytes never go through `requests`, so a `403` a `requests` call sees is a
   provider throttle, not auth — retrying with backoff generalizes the old bespoke Granicus loop.

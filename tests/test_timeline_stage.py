@@ -323,11 +323,27 @@ class TestStageOrdering:
         tl_stage = next(s for s in default_stages() if s.name == "timeline")
         assert any(isinstance(p, SilencePlanner) for p in tl_stage.planners)
 
+    def test_swagit_concat_planner_registered_before_silence_in_default_stages(self):
+        from citypods.concat import SwagitConcatPlanner
+        from citypods.silence import SilencePlanner
+
+        tl_stage = next(s for s in default_stages() if s.name == "timeline")
+        planner_types = [type(p) for p in tl_stage.planners]
+        assert planner_types.index(SwagitConcatPlanner) < planner_types.index(SilencePlanner)
+
     def test_silence_planner_registered_in_enrich_stages(self):
         from citypods.silence import SilencePlanner
 
         tl_stage = next(s for s in enrich_stages() if s.name == "timeline")
         assert any(isinstance(p, SilencePlanner) for p in tl_stage.planners)
+
+    def test_swagit_concat_planner_registered_before_silence_in_enrich_stages(self):
+        from citypods.concat import SwagitConcatPlanner
+        from citypods.silence import SilencePlanner
+
+        tl_stage = next(s for s in enrich_stages() if s.name == "timeline")
+        planner_types = [type(p) for p in tl_stage.planners]
+        assert planner_types.index(SwagitConcatPlanner) < planner_types.index(SilencePlanner)
 
 
 # ---------------------------------------------------------------------------

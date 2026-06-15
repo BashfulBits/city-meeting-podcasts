@@ -79,6 +79,32 @@ class S3CompatibleStorage:
     def delete(self, key: str) -> None:
         self._client.delete_object(Bucket=self.bucket, Key=key)
 
+    def put_text_if_absent(
+        self, key: str, text: str, content_type: str = "text/plain; charset=utf-8"
+    ) -> bool:
+        from botocore.exceptions import ClientError
+
+        try:
+            self._client.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=text.encode("utf-8"),
+                ContentType=content_type,
+                IfNoneMatch="*",
+            )
+            return True
+        except ClientError as exc:
+            response = getattr(exc, "response", {}) or {}
+            error = response.get("Error", {}) or {}
+            status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            code = error.get("Code")
+            if status in (409, 412) or code in {
+                "ConditionalRequestConflict",
+                "PreconditionFailed",
+            }:
+                return False
+            raise
+
 
 def r2_from_env() -> S3CompatibleStorage | None:
     """Cloudflare R2. Env: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID,

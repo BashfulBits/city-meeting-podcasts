@@ -247,6 +247,17 @@ class TestProbeDurationUrl:
             result = _probe_duration_url("http://example.com/file.mp4")
         assert result == pytest.approx(3600.123456)
 
+    def test_probe_sends_browser_user_agent(self):
+        from citypods.http import USER_AGENT
+
+        with patch("citypods.concat.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = "3600\n"
+            _probe_duration_url("https://swagit-video.granicus.com/archive/x.mp4")
+
+        argv = mock_run.call_args.args[0]
+        assert "-user_agent" in argv
+        assert argv[argv.index("-user_agent") + 1] == USER_AGENT
+
     def test_returns_none_on_empty_output(self):
         with patch("citypods.concat.subprocess.run") as mock_run:
             mock_run.return_value.stdout = ""

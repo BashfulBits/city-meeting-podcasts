@@ -1062,6 +1062,25 @@ def test_run_ffmpeg_guarded_serializes_remote_fetches_per_host_to_the_cap():
         HOST_LIMITER.configure({})  # reset the process-global singleton
 
 
+def test_run_ffmpeg_guarded_classifies_provider_throttle(monkeypatch):
+    import citypods.media as media
+
+    err = subprocess.CalledProcessError(
+        1,
+        ["ffmpeg"],
+        stderr=b"https://archive-video.granicus.com/x.mp4: Server returned 403 Forbidden",
+    )
+    monkeypatch.setattr(media.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(err))
+
+    with pytest.raises(media.RateLimitedMediaFetchError, match="HTTP 403"):
+        media._run_ffmpeg_guarded(
+            ["ffmpeg"],
+            phase="source-cache",
+            rate_limit_urls=("https://archive-video.granicus.com/x.mp4",),
+            log=lambda *a, **k: None,
+        )
+
+
 def test_run_ffmpeg_guarded_poll_interval_is_responsive():
     """Regression guard: a 5s poll cadence logged every sub-5s fetch as ``seconds=5.0``, masking the
     truncation bug. Keep the cadence small so reported timings reflect real runtime."""
@@ -1213,6 +1232,65 @@ def test_download_audio_max_seconds_truncates_else_omits_t(monkeypatch):
     media._download_audio("https://x/y.mp4", Path("/tmp/nope.m4a"))
     assert "-t" in cmds[0] and cmds[0][cmds[0].index("-t") + 1] == "3"  # truncated fetch
     assert "-t" not in cmds[1]  # full fetch by default
+
+
+def test_source_cache_rate_limit_does_not_immediately_retry_direct_render(tmp_path):
+    import citypods.media as media
+
+    class _RateLimitedCache:
+        def get_or_fetch(self, uid, url):
+            raise media.RateLimitedMediaFetchError("ffmpeg source-cache hit provider throttle")
+
+    ep = _ep("g1", kind="direct", url="https://archive-video.granicus.com/x.mp4")
+    city = _city(extract_audio=True)
+    ff = FakeFfmpeg()
+
+    stats = materialize_audio(
+        city,
+        [ep],
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        source_cache=_RateLimitedCache(),
+    )
+
+    assert ff.calls == []
+    assert ep.materialize_error == "rate_limited"
+    assert len(stats.errors) == 1
+
+
+def test_rate_limit_circuit_skips_later_same_domain_after_threshold(tmp_path):
+    import citypods.media as media
+
+    class _RateLimitFfmpeg(FakeFfmpeg):
+        def extract_audio(self, *args, **kwargs):
+            super().extract_audio(*args, **kwargs)
+            raise media.RateLimitedMediaFetchError("ffmpeg filter-render hit provider throttle")
+
+    eps = [
+        _ep("g1", kind="direct", url="https://archive-video.granicus.com/one.mp4"),
+        _ep("g2", kind="direct", url="https://archive-video.granicus.com/two.mp4"),
+    ]
+    city = _city(extract_audio=True)
+    ff = _RateLimitFfmpeg()
+
+    stats = materialize_audio(
+        city,
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        rate_limit_circuit=media.MediaRateLimitCircuitBreaker(
+            {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+        ),
+    )
+
+    assert len(ff.calls) == 1
+    assert eps[0].materialize_error == "rate_limited"
+    assert eps[1].materialize_attempts == 0
+    assert stats.skipped_budget == 1
 
 
 def test_probe_audio_bitrate_sends_browser_user_agent(monkeypatch):

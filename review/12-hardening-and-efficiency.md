@@ -1072,8 +1072,16 @@ arg on `_run_ffmpeg_guarded`).
   `civicclerk.com: 4` — not provider short-names, so the Granicus-owned Swagit CDN `*.granicus.com` is
   matched by the host the tenant sees). `slots(urls)` dedupes by domain + acquires in sorted order (no
   self-deadlock on multi-source renders). Configured once in `run.build()` before any fetching.
+- `DistributedProviderLeasePool` (`citypods/provider_leases.py`): storage-backed aggregate provider
+  slots for shard processes that cannot share the in-process semaphore. The first targeted use is
+  Granicus media (`provider_distributed_leases.granicus.com.slots: 6`): local 2026-06-15 probes passed
+  1–8 concurrent short reads, but Audio run #10 failed under sustained 8-way Actions overlap, so the
+  cap backs off only to the lowest useful level instead of serializing the whole provider.
 - 403-as-rate-limit lifted into the shared retry (`403` in `_ClampedRetry.status_forcelist`); the bespoke
   `(0, 0.5, 1.5, 3.0)` loop in `GranicusProvider.resolve_media_url` removed.
+- ffmpeg/ffprobe 403/429 stderr is classified as `rate_limited`; source-cache throttles no longer
+  immediately retry the same URL through the direct render fallback, and a run-local circuit breaker
+  pauses new work for a repeatedly throttled provider domain.
 - **Beyond the original scope** (the regressions the run surfaced): truncation guard
   (`_guard_against_truncated_audio` — encode < 50 % of feed-declared duration → #120 backoff, not
   hosted), balanced `records.shard_assignment` (source-atomic greedy packing; replaces hash-mod
@@ -1081,9 +1089,11 @@ arg on `_run_ffmpeg_guarded`).
   so large multi-body sources are not bundled with extra small sources), and a responsive 0.5 s ffmpeg
   guard poll (was 5 s, which made every sub-5 s fetch read `seconds=5.0` and hid the truncation).
 
-**Files.** `citypods/http.py`, `citypods/media.py`, `citypods/providers/granicus.py`,
+**Files.** `citypods/http.py`, `citypods/media.py`, `citypods/provider_leases.py`,
+`citypods/providers/granicus.py`, `citypods/concat.py`,
 `citypods/records.py`, `citypods/run.py`, `config/site_config.yml` (`provider_rate_limits`),
-`tests/test_http.py` + `tests/test_media.py` + `tests/test_records.py` + `tests/test_run.py`.
+`tests/test_http.py` + `tests/test_media.py` + `tests/test_provider_leases.py` +
+`tests/test_records.py` + `tests/test_run.py`.
 
 **Acceptance (met).** An N-thread burst to one host serializes to the configured cap
 (`tests/test_http.py`, `tests/test_media.py`); 403 is retried as a rate-limit; the Retry-After clamp
