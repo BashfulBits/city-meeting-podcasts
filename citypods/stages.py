@@ -82,7 +82,7 @@ from typing import Protocol
 
 from citypods import asr as asr_mod
 from citypods.bodies import body_key, canonical_body
-from citypods.compute import InferenceJob
+from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
 from citypods.media import (
     MaterializeStats,
@@ -92,7 +92,7 @@ from citypods.media import (
     materialize_audio,
 )
 from citypods.models import City, Episode
-from citypods.ops.workqueue import BacklogPolicy, sort_key_for, workitem_from_episode
+from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workitem_from_episode
 from citypods.records import AUDIO_PIPELINE_VERSION
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.timeline import Timeline, remap, timeline_digest
@@ -237,6 +237,7 @@ class StageStats:
     # (Path B). Shown in the status dashboard as ``Naln·Nasr`` alongside the stage row.
     aligned: int = 0  # Path A: stable-ts forced alignment from source text
     transcribed: int = 0  # Path B: fresh faster-whisper transcription
+    dispatched: int = 0  # H14a: handed to an external GPU backend (off-runner); pending next render
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -873,6 +874,13 @@ class TranscriptStage:
         # bound to this module's ``asr_mod`` so the path is behavior-preserving (and stays patchable
         # in tests); production injects the configured backend via ``ctx.compute_backend``.
         backend = ctx.compute_backend or LocalBackend(asr_mod)
+        # H14a: under ``compute_backend: auto`` the injected backend is a DispatchCoordinator. Off-
+        # runner dispatch is attempted in the ASR slot below (a cheap submit, before the on-runner
+        # semaphore); the synchronous fallback runs on the coordinator's ``local`` backend, so the
+        # on-runner path is identical whether or not a dispatcher is present.
+        dispatcher = backend if isinstance(backend, DispatchCoordinator) else None
+        if dispatcher is not None:
+            backend = dispatcher.local_backend
 
         for ep in _materialize_set(
             episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
@@ -1053,6 +1061,54 @@ class TranscriptStage:
                 ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
                 stats.reused += 1
                 continue
+
+            # 3b. External dispatch (H14a): under ``compute_backend: auto`` with an external GPU
+            #     backend configured, hand transcription off-runner instead of running
+            #     faster-whisper here. It's a cheap submit — the worker reads the audio from its
+            #     public URL and writes the content-addressed artifact back, which the reuse check
+            #     above reconciles on a later run — so it skips the on-runner ASR semaphore / native
+            #     gate / audio download. ``try_dispatch`` returns ``None`` when it would overflow to
+            #     ``local``, and the synchronous on-runner path below then runs unchanged.
+            if dispatcher is not None and dispatcher.dispatch_enabled:
+                work_class = "transcript-align" if align_text else "transcript-asr"
+                disp_uid = ep.uid or ep.guid
+                if dispatcher.is_inflight(src_key, disp_uid, work_class):
+                    stats.skipped += 1
+                    print(
+                        f"[enrich] transcript asr in-flight {ep_ref} reason=dispatched-prior-run",
+                        flush=True,
+                    )
+                    continue
+                handle = dispatcher.try_dispatch(
+                    WorkItem(
+                        source_key=src_key,
+                        episode_uid=disp_uid,
+                        work_class=work_class,
+                        published=ep.published,
+                        city_slug=city.slug,
+                        body=ep.body or "",
+                    ),
+                    InferenceJob(
+                        task="align" if align_text else "transcribe",
+                        inputs={
+                            "audio_url": ep.hosted_audio_url,
+                            "audio_key": ep.audio_key,
+                            "language": city.asr_language or None,
+                            "model": city.asr_model,
+                            "text": align_text,
+                        },
+                        recipe_hash=recipe,
+                    ),
+                )
+                if handle is not None:
+                    stats.dispatched += 1
+                    print(
+                        f"[enrich] transcript asr dispatched {ep_ref} "
+                        f"backend={handle.backend} ref={handle.ref}",
+                        flush=True,
+                    )
+                    continue
+                # overflow to local — fall through to the on-runner synchronous path below.
 
             if ctx.stop is not None and ctx.stop():
                 stats.skipped += 1

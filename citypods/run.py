@@ -23,13 +23,19 @@ from pathlib import Path
 
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
-from citypods.compute import make_compute
+from citypods.compute import DispatchCoordinator, make_compute
 from citypods.config import load_backlog_policy, load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.http import HOST_LIMITER
 from citypods.media import CommandFfmpeg, FfmpegRunner, MediaRateLimitCircuitBreaker, SourceCache
 from citypods.models import City, Episode
-from citypods.ops.workqueue import build_manifest, order_cities_by_policy, save_manifest
+from citypods.ops.workqueue import (
+    build_manifest,
+    load_manifest,
+    order_cities_by_policy,
+    overlay_leases,
+    save_manifest,
+)
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
@@ -824,9 +830,9 @@ def build(
         site_config.get("provider_distributed_leases", {}),
         log=lambda msg: print(msg, flush=True),
     )
-    # GPU/ASR execution backend (H13). ``local`` (in-process) by default; the seam H14's Modal/Beam
-    # dispatch adapters swap into with no stage change.
-    compute_backend = make_compute(site_config)
+    # GPU/ASR execution backend (H13). ``local`` (in-process) by default; ``auto`` (H14a) returns a
+    # DispatchCoordinator filling external free-tier GPU budgets first, overflowing to ``local``.
+    compute_backend = make_compute(site_config, state_dir=state_dir)
 
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
     # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
@@ -834,6 +840,10 @@ def build(
         restored = pull_state(storage, state_dir)
         if restored:
             print(f"state: restored {restored} file(s) from durable storage")
+    # H14a: adopt the unexpired dispatch leases from the restored manifest, so a transcript a prior
+    # run handed to an external worker (still in flight) isn't dispatched again this run.
+    if isinstance(compute_backend, DispatchCoordinator):
+        compute_backend.seed_leases(load_manifest(state_dir))
     cache = load_etag_cache(state_dir)
 
     # Phase wiring: which stages run, whether we render docs/, and whether the run is time-bounded.
@@ -1180,7 +1190,13 @@ def build(
                 _manifest_sources = [
                     (sk, c, load_records(state_dir, sk)) for sk, c in _city_by_source.items()
                 ]
-                save_manifest(state_dir, build_manifest(_manifest_sources, policy=backlog_policy))
+                _manifest = build_manifest(_manifest_sources, policy=backlog_policy)
+                # H14a: keep in-flight dispatch leases across the rebuild (build_manifest would
+                # reset them to ``queued``), and flush the budget ledger as the run's final write.
+                if isinstance(compute_backend, DispatchCoordinator):
+                    _manifest = overlay_leases(_manifest, compute_backend.live_leases())
+                    compute_backend.flush()
+                save_manifest(state_dir, _manifest)
         # Persist the updated record store + cache back to durable storage. The bucket — not
         # actions/cache — is the source of truth for derived artifacts. Render is gated out
         # (persist_records is False): it produced no new records, and pushing its stale view would

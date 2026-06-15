@@ -549,3 +549,28 @@ def is_leased(wi: WorkItem, *, now: datetime | None = None) -> bool:
     """True if *wi* holds an unexpired lease."""
     now = now or datetime.now(UTC)
     return bool(wi.lease_owner) and wi.lease_expires is not None and wi.lease_expires > now
+
+
+def overlay_leases(
+    items: Sequence[WorkItem],
+    leases: dict[tuple[str, str, str], tuple[str, datetime | None]],
+) -> list[WorkItem]:
+    """Re-apply live dispatch leases onto a freshly :func:`build_manifest`-ed list (H14a).
+
+    ``build_manifest`` rebuilds the manifest from records each run, which would reset an in-flight
+    item back to ``queued``. The dispatcher hands its live leases here — keyed by
+    ``(source_key, episode_uid, work_class)`` → ``(lease_owner, lease_expires)`` — so those items
+    keep ``state="running"`` with their lease across the rebuild, and the next ``compute reconcile``
+    can settle or reap them. A ``done`` item (its artifact already landed) is never overlaid:
+    completion wins over an in-flight lease."""
+    if not leases:
+        return list(items)
+    for wi in items:
+        if wi.state == "done":
+            continue
+        entry = leases.get((wi.source_key, wi.episode_uid, wi.work_class))
+        if entry is None:
+            continue
+        wi.lease_owner, wi.lease_expires = entry
+        wi.state = "running"
+    return list(items)

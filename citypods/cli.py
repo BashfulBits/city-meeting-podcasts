@@ -196,6 +196,23 @@ def main(argv: list[str] | None = None) -> int:
     vb.add_argument("--site-config", default="config/site_config.yml")
     vb.add_argument("--config-dir", default="config")
 
+    cp = sub.add_parser(
+        "compute", help="external-dispatch maintenance (H14): reconcile leases + free-tier budget"
+    )
+    cp_sub = cp.add_subparsers(dest="compute_command", required=True)
+    cr = cp_sub.add_parser(
+        "reconcile",
+        help="reap expired dispatch leases (dead worker → re-queue), settle completed jobs, and "
+        "roll the monthly free-tier budget — run at asr.yml start",
+    )
+    cr.add_argument("--site-config", default="config/site_config.yml")
+    cr.add_argument("--config-dir", default="config")
+    cr.add_argument("--output-dir", default="docs")
+    cr.add_argument("--base-url", help="base URL (for resolving cloud storage)")
+    cr.add_argument(
+        "--dry-run", action="store_true", help="report leased/expired counts; write nothing"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
@@ -221,6 +238,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "validate-build":
         return _validate_build(args)
+
+    if args.command == "compute":
+        return _compute_reconcile(args)
 
     return 0
 
@@ -519,6 +539,51 @@ def _rebuild_audio(args) -> int:
 
     suffix = " (dry run)" if args.dry_run else ""
     print(f"\n{total_matched} episode(s) across {total_sources} source(s) updated{suffix}")
+    return 0
+
+
+def _compute_reconcile(args) -> int:
+    """Reap expired dispatch leases (dead worker → re-queue), settle completed jobs, and roll the
+    monthly free-tier budget. Run at ``asr.yml`` start so a crashed worker's slot/budget is
+    reclaimed before the run dispatches more work (H14a)."""
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    from citypods.compute import reconcile_compute
+    from citypods.compute.budget import load_budget
+    from citypods.ops.workqueue import is_leased, load_manifest
+    from citypods.state import resolve_state_dir
+
+    site_config = load_site_config(args.site_config)
+    output_dir = Path(args.output_dir)
+    state_dir = resolve_state_dir(site_config, output_dir)
+
+    if args.dry_run:
+        # Read-only: no storage, no mutation. Report what a real run would reap.
+        now = datetime.now(UTC)
+        leased = [wi for wi in load_manifest(state_dir) if wi.lease_owner]
+        expired = sum(1 for wi in leased if not is_leased(wi, now=now))
+        reservations = sum(led.inflight_count for led in load_budget(state_dir).backends.values())
+        print(
+            f"compute reconcile (dry run): {len(leased)} leased "
+            f"({expired} expired → would reap), {reservations} budget reservation(s)"
+        )
+        return 0
+
+    from citypods.statesync import pull_state, push_state
+    from citypods.storage import make_storage
+
+    base_url = getattr(args, "base_url", None) or site_config.get("base_url", "")
+    storage = make_storage(site_config, base_url, output_dir)
+    # Operate on the durable (bucket) state: pull the snapshot, reconcile, push back only the two
+    # files reconcile owns (so it never clobbers records). No-ops for a sync-less local backend.
+    pull_state(storage, state_dir)
+    summary = reconcile_compute(state_dir, storage)
+    push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
+    print(
+        f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
+        f"{summary['in_flight']} in-flight"
+    )
     return 0
 
 
