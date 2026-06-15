@@ -680,6 +680,20 @@ core count and `mem_avail` never approaching the OOM floor, **no exit-143 / lost
 and enrich consistently uses most of its 204-min window; transcript-minutes/runner-hour improves
 measurably vs the H6 Step-1 baseline; documented recommended settings.
 
+**2026-06-15 follow-up — predicted-memory encode admission.** The first sharded Audio runs after the
+#274 fixes (Audio #8/#9) hosted real audio but terminated **~46%** of the large filter-render (loudnorm)
+encodes of multi-hour meetings (`ffmpeg filter-render stopped: mem_avail … below floor`). Log analysis
+showed single encodes peaking **0.18–5.9 GiB** and the floor kills firing **220–1080 s into** the
+encode — i.e. RSS grows across the whole job, so the H8 *instantaneous* `mem_avail` admission gate is a
+**trailing** signal: it still looks healthy when a second big encode starts, and the two then collide.
+Fix (PR on `feat/encode-memory-reservation`): a `MemoryReservation` accountant
+(`citypods/resources.py`) admits each encode against `audio_memory_budget_mb` (~12 GiB of 15.6) by its
+**predicted** peak RSS — `media.estimate_encode_rss_bytes`, keyed on the known-ahead served length from
+the `TimelineStage` EDL / feed duration (conservative default when neither is known). The reservation
+supersedes `resource_guard_min_available_mb` for audio (that gate now governs only ASR);
+`native_audio_max_active` is the hard ceiling (4→3) and the 1.5 GiB floor stays the backstop. Cost-model
+coefficients are a first heuristic, calibratable from the per-encode `peak_rss` already logged.
+
 ---
 
 ## H9 — Combined-throughput evaluation across execution homes

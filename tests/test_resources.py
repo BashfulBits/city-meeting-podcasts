@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import threading
 
-from citypods.resources import NativeWorkGate, ResourceAdmission, ResourceSnapshot
+from citypods.resources import (
+    MemoryReservation,
+    NativeWorkGate,
+    ResourceAdmission,
+    ResourceSnapshot,
+)
 
 
 def _snap(mem_available: int, load1: float) -> ResourceSnapshot:
@@ -193,3 +198,58 @@ def test_native_work_gate_total_wait_seconds_accumulates():
 
     assert acquired.is_set()
     assert gate.total_wait_seconds > 0.0
+
+
+def test_memory_reservation_admits_within_budget():
+    r = MemoryReservation(budget_bytes=100, poll_seconds=0.01)
+    assert r.reserve(60, label="a") is True
+    assert r.reserve(40, label="b") is True  # 60+40=100 fits exactly
+    assert r.reserved_bytes == 100
+
+
+def test_memory_reservation_blocks_until_release():
+    """A second big encode waits until the first releases enough budget (leading-signal gate)."""
+    logs: list[str] = []
+    r = MemoryReservation(budget_bytes=100, poll_seconds=0.01, log=logs.append)
+    assert r.reserve(70, label="big-a") is True
+
+    proceeded = threading.Event()
+
+    def _second():
+        assert r.reserve(70, label="big-b") is True  # 70+70=140 > 100 → must wait
+        proceeded.set()
+        r.release(70)
+
+    t = threading.Thread(target=_second)
+    t.start()
+    assert any("memory wait" in line for line in _wait_for_logs(logs, "memory wait"))
+    assert proceeded.is_set() is False
+
+    r.release(70)  # frees the budget → the waiter proceeds
+    t.join(timeout=2)
+    assert proceeded.is_set() is True
+
+
+def test_memory_reservation_clamps_oversized_estimate_to_run_alone():
+    # An estimate larger than the whole budget is clamped so it still runs (alone), not deadlocks.
+    r = MemoryReservation(budget_bytes=100, poll_seconds=0.01)
+    assert r.reserve(500, label="huge") is True
+    assert r.reserved_bytes == 100
+    r.release(500)  # release clamps identically
+    assert r.reserved_bytes == 0
+
+
+def test_memory_reservation_returns_false_when_stop_fires():
+    r = MemoryReservation(budget_bytes=100, poll_seconds=0.01)
+    assert r.reserve(80, label="a") is True
+    # A second 80 can't fit (80+80 > 100); stop fires so it bails instead of blocking forever.
+    assert r.reserve(80, label="b", stop=lambda: True) is False
+    assert r.reserved_bytes == 80  # unchanged
+
+
+def test_memory_reservation_release_frees_budget():
+    r = MemoryReservation(budget_bytes=100, poll_seconds=0.01)
+    assert r.reserve(90, label="a") is True
+    r.release(90)
+    assert r.reserved_bytes == 0
+    assert r.reserve(90, label="b") is True  # fits again after release
