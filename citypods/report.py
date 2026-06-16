@@ -443,6 +443,80 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
     }
 
 
+def _source_actuals(
+    records_cache: dict[str, dict], *, max_kbps: int, loudness_profile: str = ""
+) -> dict:
+    """Aggregate source-record actuals exactly once per ``source_key``.
+
+    The status page has feed/body rows for diagnostics, but headline operational numbers should
+    come from the canonical source records. Summing feed rows can miss unconfigured bodies and can
+    double-count combined feeds plus per-board feeds that share one record store.
+    """
+    totals = {
+        "meetings_archived": 0,
+        "hosted_audio": 0,
+        "linked_video": 0,
+        "served": 0,
+        "stale": 0,
+        "pending": 0,
+        "deferred": 0,
+        "dead": 0,
+        "transient_errors": 0,
+        "hours_hosted": 0.0,
+        "hours_linked": 0.0,
+        "gb_stored": 0.0,
+        "gb_exact": True,
+        "tx_synced": 0,
+        "tx_text": 0,
+        "tx_hosted": 0,
+        "tx_pending": 0,
+    }
+    for recs in records_cache.values():
+        for rec in recs.values():
+            totals["meetings_archived"] += 1
+            audio = rec.get("audio") or {}
+            duration_s = rec.get("duration") or audio.get("duration_served") or 0
+            if not duration_s and audio.get("bytes"):
+                duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
+            state = _classify_record(rec, max_kbps, loudness_profile=loudness_profile)
+
+            if state in ("served", "stale"):
+                totals["hosted_audio"] += 1
+                totals["hours_hosted"] += duration_s / 3600
+                raw_bytes = audio.get("bytes")
+                if raw_bytes is not None:
+                    totals["gb_stored"] += raw_bytes / 1e9
+                else:
+                    totals["gb_exact"] = False
+                totals[state] += 1
+            elif state == "linked_video":
+                totals["linked_video"] += 1
+                totals["hours_linked"] += duration_s / 3600
+            elif state == "deferred":
+                totals["deferred"] += 1
+            elif state == "dead":
+                totals["dead"] += 1
+            elif state == "transient_error":
+                totals["transient_errors"] += 1
+            else:
+                totals["pending"] += 1
+
+            tx = rec.get("transcript") or {}
+            if tx.get("synced"):
+                totals["tx_synced"] += 1
+            elif tx.get("key"):
+                totals["tx_text"] += 1
+            if audio.get("url"):
+                totals["tx_hosted"] += 1
+                if not tx.get("key"):
+                    totals["tx_pending"] += 1
+
+    totals["hours_hosted"] = round(totals["hours_hosted"], 2)
+    totals["hours_linked"] = round(totals["hours_linked"], 2)
+    totals["gb_stored"] = round(totals["gb_stored"], 4)
+    return totals
+
+
 def _city_rows(feed_rows: list[dict]) -> list[dict]:
     """Roll up per-feed rows by ``podcast_author`` (the city grouping key)."""
     from collections import defaultdict
@@ -596,6 +670,60 @@ def _latest_run_summary(run_summary: dict, history: list[dict]) -> dict:
     return merged
 
 
+def _manifest_for_status(
+    cities: list, records_cache: dict[str, dict], state_dir: Path | None
+) -> tuple[dict, dict]:
+    """Return work-list counts plus small provenance metadata for the status page.
+
+    ``work.json`` can contain live async/shard state such as leases, but it is a derived sidecar
+    and may lag records after source edits or scoped shard pushes. Build a fresh manifest from the
+    canonical records, then overlay only the non-derivable live state from persisted work items.
+    """
+    if not state_dir:
+        return {}, {"source": "none", "items": 0, "persisted_items": 0, "overlaid_items": 0}
+
+    from citypods.ops.workqueue import build_manifest, load_manifest, manifest_counts
+    from citypods.records import source_key
+
+    city_by_source: dict = {}
+    for city in cities:
+        city_by_source.setdefault(source_key(city), city)
+    manifest_sources = [
+        (k, city_by_source[k], recs) for k, recs in records_cache.items() if k in city_by_source
+    ]
+    items = build_manifest(manifest_sources)
+
+    persisted = load_manifest(state_dir)
+    persisted_by_key = {
+        (it.source_key, it.episode_uid, it.work_class): it
+        for it in persisted
+        if it.source_key in city_by_source
+    }
+    overlaid = 0
+    for item in items:
+        prev = persisted_by_key.get((item.source_key, item.episode_uid, item.work_class))
+        if prev is None or item.state == "done":
+            continue
+        # Preserve sidecar-only operational state. Completion is still derived from records, so a
+        # stale persisted ``queued`` item cannot undo a record that now has its artifact.
+        if prev.lease_owner or prev.state in {"running", "backoff", "dead"}:
+            item.state = prev.state
+            item.lease_owner = prev.lease_owner
+            item.lease_expires = prev.lease_expires
+            item.last_error = prev.last_error
+            item.next_retry = prev.next_retry
+            item.observed_seconds = prev.observed_seconds
+            item.est_seconds = prev.est_seconds
+            overlaid += 1
+
+    return manifest_counts(items), {
+        "source": "derived+work.json" if persisted else "derived",
+        "items": len(items),
+        "persisted_items": len(persisted),
+        "overlaid_items": overlaid,
+    }
+
+
 def build_status(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
     """Build the operational status snapshot for the /admin/status/ dashboard (issue #124).
 
@@ -640,15 +768,16 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         )
 
     city_rows = _city_rows(feed_rows)
+    actuals = _source_actuals(records_cache, max_kbps=max_kbps, loudness_profile=loudness_profile)
 
     # KPI totals
-    meetings_archived = sum(r["episodes"] for r in feed_rows)
-    hosted_audio = sum(r["hosted"] for r in feed_rows)
-    linked_video = sum(r["linked_video"] for r in feed_rows)
-    hours_hosted = round(sum(r["hours_hosted"] for r in feed_rows), 2)
-    hours_linked = round(sum(r["hours_linked"] for r in feed_rows), 2)
-    gb_stored = round(sum(r["gb_stored"] for r in feed_rows), 4)
-    gb_exact = all(r["gb_exact"] for r in feed_rows)
+    meetings_archived = actuals["meetings_archived"]
+    hosted_audio = actuals["hosted_audio"]
+    linked_video = actuals["linked_video"]
+    hours_hosted = actuals["hours_hosted"]
+    hours_linked = actuals["hours_linked"]
+    gb_stored = actuals["gb_stored"]
+    gb_exact = actuals["gb_exact"]
     monthly_cost = round(max(0.0, gb_stored - B2_FREE_GB) * B2_USD_PER_GB_MONTH, 4)
 
     # Issue tallies and top-N sources
@@ -671,13 +800,15 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     inputs = measured_inputs(
         cities,
         run_history=history,
-        hosted_feeds=hosted_audio or None,
+        hosted_feeds=round(_hosted_fraction(cities) * len(cities)) if cities else None,
         archive_items=_measured_archive_items(cities, state_dir),
         base=base,
     )
     proj = project(inputs)
 
-    stale_total = sum(r["stale"] for r in feed_rows)
+    # Use source-record actuals for stale/issue counts; feed rows are diagnostic and can overlap
+    # when one source backs both combined and per-board feeds.
+    stale_total = actuals["stale"]
     stale_drain_runs = (
         round(stale_total / proj.per_run_throughput, 2) if proj.per_run_throughput else None
     )
@@ -687,19 +818,10 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
 
     # Transcript coverage/backlog from canonical records. This is the durable source of truth for
     # ASR progress; run summaries are only telemetry and sharded runs may complete out of order.
-    tx_synced_total = tx_text_total = tx_pending = tx_hosted_total = 0
-    for recs in records_cache.values():
-        for rec in recs.values():
-            audio = rec.get("audio") or {}
-            tx = rec.get("transcript") or {}
-            if tx.get("synced"):
-                tx_synced_total += 1
-            elif tx.get("key"):
-                tx_text_total += 1
-            if audio.get("url"):
-                tx_hosted_total += 1
-                if not tx.get("key"):
-                    tx_pending += 1
+    tx_synced_total = actuals["tx_synced"]
+    tx_text_total = actuals["tx_text"]
+    tx_pending = actuals["tx_pending"]
+    tx_hosted_total = actuals["tx_hosted"]
     tx_known_total = tx_synced_total + tx_text_total
     tx_coverage_pct = (
         round(100.0 * tx_synced_total / tx_hosted_total, 1) if tx_hosted_total else None
@@ -717,17 +839,28 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     # Backlog by work-class (H5): derive the work manifest and bucket the *actionable*
     # (feed_visible) backlog by audio / transcript-asr / transcript-align, surfacing the
     # alignment-disabled and deep-archive counts. Derived fresh from records (hybrid model).
-    wc_counts: dict = {}
-    if state_dir:
-        from citypods.ops.workqueue import build_manifest, manifest_counts
-
-        city_by_source: dict = {}
-        for city in cities:
-            city_by_source.setdefault(source_key(city), city)
-        manifest_sources = [
-            (k, city_by_source[k], recs) for k, recs in records_cache.items() if k in city_by_source
-        ]
-        wc_counts = manifest_counts(build_manifest(manifest_sources))
+    wc_counts, manifest_meta = _manifest_for_status(
+        cities, records_cache, Path(state_dir) if state_dir else None
+    )
+    by_work_class = wc_counts.get("by_work_class", {})
+    audio_work = by_work_class.get("audio", {})
+    audio_open = sum(
+        n for state, n in audio_work.items() if state not in {"done", "alignment-disabled"}
+    )
+    transcript_open = sum(
+        n
+        for cls, states in by_work_class.items()
+        if cls.startswith("transcript-")
+        for state, n in states.items()
+        if state not in {"done", "alignment-disabled"}
+    )
+    audio_pending = audio_open if by_work_class else actuals["pending"]
+    transcript_pending = transcript_open if by_work_class else tx_pending
+    audio_capacity_per_day = proj.capacity_per_day
+    audio_backlog_total = audio_pending + stale_total
+    audio_backlog_days = (
+        round(audio_backlog_total / audio_capacity_per_day, 1) if audio_capacity_per_day else None
+    )
 
     # Storage detail
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
@@ -794,7 +927,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             },
         },
         "backlog": {
-            "pending": sum(r["pending"] for r in feed_rows),
+            "pending": audio_pending,
             "stale": stale_total,
             "stale_drain_runs": stale_drain_runs,
             "stale_drain_days": stale_drain_days,
@@ -804,13 +937,13 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "keeps_up": proj.keeps_up,
             "full_backfill_days": round(proj.full_backfill_days, 2),
             "audio_backlog": {
-                "total": sum(r["pending"] for r in feed_rows) + stale_total,
-                "pending": sum(r["pending"] for r in feed_rows),
+                "total": audio_backlog_total,
+                "pending": audio_pending,
                 "stale": stale_total,
-                "estimated_days": round(proj.full_backfill_days, 1),
+                "estimated_days": audio_backlog_days,
             },
             "transcript_backlog": {
-                "total_pending": tx_pending,
+                "total_pending": transcript_pending,
                 "synced": tx_synced_total,
                 "text_only": tx_text_total,
                 "known": tx_known_total,
@@ -822,15 +955,16 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             },
             # H5: actionable backlog bucketed by output artifact (audio / transcript-asr /
             # transcript-align), plus alignment-disabled + inert deep-archive counts.
-            "by_work_class": wc_counts.get("by_work_class", {}),
+            "by_work_class": by_work_class,
             "work_pending": wc_counts.get("feed_visible_pending", 0),
             "alignment_disabled": wc_counts.get("alignment_disabled", 0),
             "deep_archive_items": wc_counts.get("deep_archive_items", 0),
+            "work_manifest": manifest_meta,
         },
         "issues": {
-            "deferred": sum(r["deferred"] for r in feed_rows),
-            "dead": sum(r["dead"] for r in feed_rows),
-            "transient_errors": sum(r["transient_errors"] for r in feed_rows),
+            "deferred": actuals["deferred"],
+            "dead": actuals["dead"],
+            "transient_errors": actuals["transient_errors"],
             "top_deferred": _top("deferred"),
             "top_dead": _top("dead"),
             "top_errors": _top("transient_errors"),
@@ -846,7 +980,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
             "retained_per_feed": retained,
             "gb_per_ep": round(g_per_ep, 5),
-            "hosted_feeds": sum(1 for r in feed_rows if r["hosted"] > 0),
+            "hosted_feeds": round(inputs.feeds * inputs.host_frac),
             "oldest_publication_year": oldest_pub_year,
             "top_by_city": [
                 {"city": r["city"], "gb_stored": r["gb_stored"]} for r in top_city_storage

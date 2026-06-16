@@ -291,6 +291,39 @@ def test_build_status_episode_taxonomy(tmp_path):
     assert issues["transient_errors"] == 1
 
 
+def test_build_status_kpis_use_unique_source_actuals(tmp_path):
+    """Headline actuals are source-record counts, not sums of overlapping feed/body rows."""
+    from citypods.records import save_records, source_key
+
+    combined = _hls_city("shared-combined", author="City of Shared, TX")
+    board = _hls_city("shared-board", author="City of Shared, TX")
+    board.source["body"] = "Planning Commission"
+    assert source_key(combined) == source_key(board)
+
+    planning = _rec(
+        "planning",
+        hosted_url="http://cdn/planning.m4a",
+        spec_hash="legacy",
+        bytes_val=10_000_000,
+    )
+    planning["body"] = "Planning Commission"
+    council = _rec(
+        "council",
+        hosted_url="http://cdn/council.m4a",
+        spec_hash="legacy",
+        bytes_val=20_000_000,
+    )
+    council["body"] = "City Council"
+    save_records(tmp_path, source_key(combined), {"planning": planning, "council": council})
+
+    status = build_status([combined, board], site_config=SITE, state_dir=tmp_path)
+    assert status["feeds_by_feed"][0]["episodes"] == 2
+    assert status["feeds_by_feed"][1]["episodes"] == 1
+    assert status["kpis"]["meetings_archived"] == 2
+    assert status["kpis"]["hosted_audio"] == 2
+    assert status["kpis"]["gb_stored"] == pytest.approx(0.03)
+
+
 def test_build_status_backlog_by_work_class(tmp_path):
     """H5: the actionable backlog is bucketed by output artifact + alignment-disabled split out."""
     from citypods.records import save_records, source_key
@@ -311,6 +344,38 @@ def test_build_status_backlog_by_work_class(tmp_path):
     assert bl["alignment_disabled"] == 1
     assert bl["work_pending"] == 2  # audio a1 + transcript-asr a2 (alignment-disabled NOT counted)
     assert bl["deep_archive_items"] == 0
+
+
+def test_build_status_overlays_persisted_work_manifest_state(tmp_path):
+    """Live work-list sidecar state (leases/backoff) survives the derived status manifest."""
+    from datetime import UTC, datetime, timedelta
+
+    from citypods.ops.workqueue import WorkItem, save_manifest
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("lease-city")
+    rec = _rec("needs-tx", media_kind="hls", hosted_url="http://cdn/needs-tx.m4a")
+    save_records(tmp_path, source_key(city), {"needs-tx": rec})
+    save_manifest(
+        tmp_path,
+        [
+            WorkItem(
+                source_key(city),
+                "needs-tx",
+                "transcript-asr",
+                state="running",
+                lease_owner="modal:job-1",
+                lease_expires=datetime.now(UTC) + timedelta(hours=1),
+            )
+        ],
+    )
+
+    bl = build_status([city], site_config=SITE, state_dir=tmp_path)["backlog"]
+    assert bl["by_work_class"]["transcript-asr"]["running"] == 1
+    assert "queued" not in bl["by_work_class"]["transcript-asr"]
+    assert bl["transcript_backlog"]["total_pending"] == 1
+    assert bl["work_manifest"]["source"] == "derived+work.json"
+    assert bl["work_manifest"]["overlaid_items"] == 1
 
 
 def test_build_status_transcript_coverage_from_records(tmp_path):

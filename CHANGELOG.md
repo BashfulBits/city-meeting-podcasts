@@ -31,6 +31,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Admin status actuals now use source records and the work manifest instead of overlapping feed
+  rows.** `/admin/status` headline totals for archived meetings, hosted audio, linked video, storage,
+  stale items, and issue counts are now aggregated once per canonical `source_key`, so combined feeds
+  and per-board feeds no longer hide or double-count source records. The backlog block derives a fresh
+  work manifest from records and overlays live `work.json` sidecar state such as shard/dispatch leases,
+  while shard `run_events/` continue to drive last-run telemetry.
 - **Audio #11 source-cache no longer forces non-AAC audio into an M4A container.** The per-run source
   cache now remuxes provider audio into a local Matroska audio copy (`.mka`) instead of writing
   `*.m4a` with the iPod muxer during download. Final materialization still writes podcast M4A, but the
