@@ -35,7 +35,7 @@ a{color:#58a6ff;text-decoration:none} a:hover{text-decoration:underline}
 /* section card */
 .section-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 14px;margin-bottom:12px}
 /* backlog table */
-.bl-row{display:grid;grid-template-columns:120px 56px 60px 60px 60px 80px 80px;gap:0;font-size:.82rem;border-bottom:1px solid #21262d;padding:4px 0}
+.bl-row{display:grid;grid-template-columns:130px 56px 68px 68px 60px 80px 80px;gap:0;font-size:.82rem;border-bottom:1px solid #21262d;padding:4px 0}
 .bl-row.hdr{font-size:.72rem;color:#9db2c8;border-bottom:2px solid #30363d;padding-bottom:5px}
 .bl-row div{padding:0 4px}
 /* resource table */
@@ -158,7 +158,7 @@ function renderKpis(){
   ${card('FEEDS', fmtNum(K.feeds), 'configured feed slugs')}
   ${card('MEETINGS ARCHIVED', fmtNum(K.meetings_archived), 'unique source records')}
   ${card('HOSTED AUDIO', fmtNum(K.hosted_audio), 'unique records we serve from B2')}
-  ${card('TRANSCRIPTS', fmtNum(K.transcripts_synced||0), `${txPct} hosted coverage · ${fmtNum(K.transcripts_missing||0)} missing`)}
+  ${card('TRANSCRIPTS', fmtNum(K.transcripts_synced||0), `${txPct} all hosted coverage · ${fmtNum(K.transcripts_missing||0)} catalog missing`)}
   ${card('LINKED VIDEO', fmtNum(K.linked_video), 'direct MP4 links, not stored')}
   ${card('HOSTED HOURS', fmtHrs(K.hours_hosted), K.hours_linked>0?`+${fmtHrs(K.hours_linked)} linked video`:'hosted audio only')}
   ${card('STORED', gbLabel, gbSub)}
@@ -201,8 +201,22 @@ function renderBacklog(){
        </div>` : '';
   const stages = B.stage_totals||{};
   const stageKeys = Object.keys(stages).sort();
-  const stageRows = stageKeys.length ? stageKeys.map(name=>{
+  const stageDisplayKeys = stageKeys.length
+    ? Array.from(new Set([...stageKeys, 'audio', 'transcript'])).sort()
+    : [];
+  const stageRows = stageDisplayKeys.length ? stageDisplayKeys.map(name=>{
     const t = stages[name];
+    if(!t){
+      return `<div class="bl-row">
+        <div>${esc(name)}</div>
+        <div class="muted">not run</div>
+        <div class="muted">—</div>
+        <div class="muted">—</div>
+        <div class="muted">—</div>
+        <div class="muted">—</div>
+        <div class="muted">—</div>
+      </div>`;
+    }
     const newVal = name==='audio' && (t.encoded||t.credited)
       ? `${t.ran} <span class="muted">(${t.encoded}enc·${t.credited}crd)</span>`
       : name==='transcript' && (t.aligned||t.transcribed)
@@ -240,16 +254,22 @@ function renderBacklog(){
     <div>📝 <strong>Synced transcripts</strong>: <strong>${fmtNum(TX.synced||0)}</strong> ·
       text-only/provider: <strong>${fmtNum(TX.text_only||0)}</strong> ·
       missing on hosted audio: <strong>${fmtNum(TX.total_pending||0)}</strong>
-      <span class="muted">(${TX.coverage_pct==null?'—':TX.coverage_pct+'%'} hosted coverage)</span>
+      <span class="muted">(feed-visible/actionable · ${TX.coverage_pct==null?'—':TX.coverage_pct+'%'} all-hosted coverage)</span>
     </div>
     ${staleNote}
   </div>
+  <div style="font-size:.85rem;margin-bottom:.25rem">
+    <strong>Latest run stage activity</strong>
+    <span class="muted"> — telemetry from the last audio/ASR shard group, not current catalog totals.</span>
+  </div>
   <div class="bl-row hdr">
-    <div>Stage</div><div>New</div><div>Current</div><div>Queued</div><div>Errors</div><div>Seconds</div><div>Bytes</div>
+    <div>Stage</div><div>New</div><div>Reused</div><div>Deferred</div><div>Errors</div><div>Seconds</div><div>Bytes</div>
   </div>
   ${stageRows}
   <div class="muted" style="font-size:.75rem;margin:.4rem 0">
-    New = newly produced this run · Current = already up-to-date · Queued = deferred (budget/wall-clock).
+    Reused = already up-to-date when the latest run checked it · Deferred = left for a later run
+    because of budget, wall-clock, lane, or source scope. "not run" means that stage was not part
+    of the latest lane.
     Linked Video episodes (direct MP4, not hosted) excluded from all stage counts.
   </div>
   <div style="margin-top:.6rem;font-size:.85rem">
@@ -258,7 +278,7 @@ function renderBacklog(){
     <div>Audio backlog estimate: ${B.audio_backlog?.total??B.pending} ep(s) → ${B.audio_backlog?.estimated_days??'—'} day(s) at current budget</div>
   </div>
   <div style="margin-top:.6rem;font-size:.85rem">
-    <div><strong>Backlog by work-class</strong> (feed-visible, actionable): <strong>${B.work_pending??0}</strong> queued</div>
+    <div><strong>Current actionable work-list by artifact</strong> (feed-visible): <strong>${B.work_pending??0}</strong> queued</div>
     ${wcRows}
     <div class="muted" style="font-size:.75rem;margin-top:.3rem">
       Alignment-disabled: ${B.alignment_disabled??0} · Deep-archive (inert, not worked today): ${B.deep_archive_items??0}
@@ -607,7 +627,7 @@ function renderHistory(){
 <div class="tbl-wrap">
 <table>
 <thead><tr>
-  <th>Timestamp (UTC)</th><th>Status</th><th>Audio New</th><th>Tx New</th><th>Audio Current</th><th>Audio Queued</th><th>Seconds</th><th>Bytes added</th>
+  <th>Timestamp (UTC)</th><th>Status</th><th>Audio New</th><th>Tx New</th><th>Audio Reused</th><th>Audio Deferred</th><th>Seconds</th><th>Bytes added</th>
 </tr></thead>
 <tbody>${rows}</tbody>
 <tfoot><tr style="font-size:.78rem;color:#9db2c8">
@@ -617,7 +637,7 @@ function renderHistory(){
 </table>
 </div>
 <div class="muted" style="font-size:.75rem;margin:.4rem 0">
-  Audio New/Current/Queued = audio stage totals. Tx New = transcribed + aligned transcript work.
+  Audio New/Reused/Deferred = audio stage totals. Tx New = transcribed + aligned transcript work.
   Status row colors: <span class="run-ok">built</span> ·
   <span class="run-err">errors</span> ·
   <span class="run-skip">skipped</span>.
