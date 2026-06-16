@@ -24,11 +24,24 @@ def _finding(slug="testcity", check="test-check", sev=WARN, msg="something is wr
     return Finding(slug, check, sev, msg)
 
 
-def _existing_issue(finding: Finding, *, number: int = 1, body_override: str | None = None):
+def _existing_issue(
+    finding: Finding,
+    *,
+    number: int = 1,
+    body_override: str | None = None,
+    labels: list[str] | None = None,
+):
     f = finding
     title = _title(f.slug, f.check)
     body = body_override if body_override is not None else _body(f.message, f.severity, f.check)
-    return {title: {"number": number, "title": title, "body": body}}
+    return {
+        title: {
+            "number": number,
+            "title": title,
+            "body": body,
+            "labels": [{"name": label} for label in (labels or [])],
+        }
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -123,14 +136,43 @@ def test_reconcile_closes_resolved_issue():
     assert "99" in close_calls[0]
 
 
-def test_reconcile_does_not_autoclose_needs_human_verification():
+def test_reconcile_does_not_autoclose_meetings_url_with_needs_human_verification():
     existing = {
         "[feed-health] somecity: meetings-url-dead": {
             "number": 77,
             "title": "[feed-health] somecity: meetings-url-dead",
             "body": "x",
+            "labels": [{"name": "needs-human-verification"}],
         }
     }
     calls = _run_reconcile(findings=[], existing_issues=existing)
     close_calls = [a for a in calls if len(a) >= 2 and a[1] == "close"]
-    assert not close_calls, "meetings-url issues must not auto-close"
+    assert not close_calls, "meetings-url issues awaiting human verification must not auto-close"
+
+
+def test_reconcile_closes_meetings_url_after_human_verification_label_removed():
+    existing = {
+        "[feed-health] somecity: meetings-url-dead": {
+            "number": 77,
+            "title": "[feed-health] somecity: meetings-url-dead",
+            "body": "x",
+            "labels": [],
+        }
+    }
+    calls = _run_reconcile(findings=[], existing_issues=existing)
+    close_calls = [a for a in calls if len(a) >= 2 and a[1] == "close"]
+    assert close_calls, "verified resolved meetings-url issues should close"
+
+
+def test_reconcile_closes_obsolete_inconclusive_meetings_url_issue():
+    existing = {
+        "[feed-health] somecity: meetings-url-dead": {
+            "number": 77,
+            "title": "[feed-health] somecity: meetings-url-dead",
+            "body": "meetings_url returned HTTP 403: https://x.gov/meetings",
+            "labels": [{"name": "needs-human-verification"}],
+        }
+    }
+    calls = _run_reconcile(findings=[], existing_issues=existing)
+    close_calls = [a for a in calls if len(a) >= 2 and a[1] == "close"]
+    assert close_calls, "legacy 403 meetings-url issues should close under the current policy"
