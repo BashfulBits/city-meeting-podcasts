@@ -20,7 +20,7 @@ import subprocess
 import sys
 
 from citypods.config import load_city_configs, load_site_config
-from citypods.contracts import check_city, representative_cities
+from citypods.contracts import CheckResult, check_city, representative_cities
 
 TITLE_PREFIX = "[endpoint]"
 MARKER = "<!-- citypods:endpoint-contract -->"
@@ -49,6 +49,56 @@ def _open_issues() -> dict[str, dict]:
     return {i["title"]: i for i in json.loads(out or "[]") if i["title"].startswith(TITLE_PREFIX)}
 
 
+def _failure_explanation(result: CheckResult) -> str:
+    if result.endpoint == "list":
+        return (
+            "The provider listing step failed before usable episodes were available. This usually "
+            "means the upstream feed/API/page shape changed, the configured source URL is wrong, "
+            "or the provider blocked the list request."
+        )
+    if result.endpoint == "media":
+        return (
+            "The provider returned episodes, but the code could not resolve the newest episode to "
+            "a concrete HTTP media URL for ffmpeg. This points at provider URL-signing, "
+            "player-page, or media-resolution logic."
+        )
+    if result.endpoint == "media-fetch":
+        return (
+            "The provider returned episodes and media resolution produced a URL, but the "
+            "production ffmpeg download path could not copy even a short audio sample. This is "
+            "usually a CDN access problem such as HTTP 403/429, an expired/unsigned URL, "
+            "User-Agent blocking, or a stalled media response."
+        )
+    if result.endpoint == "chapters":
+        return (
+            "The episode list and media URL resolved, but the provider-specific "
+            "chapters/transcript endpoint raised while fetching or parsing markers."
+        )
+    if result.endpoint == "view_counts":
+        return (
+            "The provider-specific view-count probe failed. For Granicus this is the RSS view "
+            "count used to detect the 100-item cap."
+        )
+    if result.endpoint == "deeplink":
+        return (
+            "The provider returned an episode, but the generated human watch-page/deeplink no "
+            "longer looked reachable or did not match the provider's current player route."
+        )
+    return "The provider contract check failed for this endpoint."
+
+
+def _issue_body(result: CheckResult) -> str:
+    return (
+        f"{MARKER}\n\n"
+        f"**Provider:** `{result.provider}`\n"
+        f"**Endpoint:** `{result.endpoint}`\n"
+        f"**Representative city/feed:** `{result.slug}`\n\n"
+        f"**What this means**\n\n{_failure_explanation(result)}\n\n"
+        f"**Observed detail**\n\n```\n{result.detail}\n```\n\n"
+        "_Filed by check_endpoints.py; auto-closes when it passes._"
+    )
+
+
 def _reconcile_issues(failures: list) -> None:
     _gh(
         "label",
@@ -61,13 +111,7 @@ def _reconcile_issues(failures: list) -> None:
         "--force",
         check=False,
     )
-    wanted = {
-        f"{TITLE_PREFIX} {r.provider}: {r.endpoint}": (
-            f"{MARKER}\n\n**{r.provider}** endpoint `{r.endpoint}` failed on `{r.slug}`:\n\n"
-            f"```\n{r.detail}\n```\n\n_Filed by check_endpoints.py; auto-closes when it passes._"
-        )
-        for r in failures
-    }
+    wanted = {f"{TITLE_PREFIX} {r.provider}: {r.endpoint}": _issue_body(r) for r in failures}
     existing = _open_issues()
     for title, body in wanted.items():
         if title in existing:

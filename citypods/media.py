@@ -491,6 +491,7 @@ def _download_audio(
     timeout: float | None = None,
     memory_floor_bytes: int | None = None,
     max_seconds: float | None = None,
+    log: Callable[[str], None] | None = print,
 ) -> bool:
     """Copy the source audio stream from *url* to *dest* without re-encoding.
 
@@ -530,6 +531,7 @@ def _download_audio(
             timeout=timeout,
             memory_floor_bytes=memory_floor_bytes,
             rate_limit_urls=(url,),  # the remote source — cap concurrent hits per provider (#39)
+            log=log,
         )
         return dest.exists() and dest.stat().st_size > 0
     except RateLimitedMediaFetchError:

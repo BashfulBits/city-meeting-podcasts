@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 
@@ -40,6 +41,7 @@ def _title(slug: str, check: str) -> str:
 
 
 _MEETINGS_URL_CHECKS = frozenset({"meetings-url-dead", "meetings-url-changed"})
+_DEAD_MEETINGS_URL_STATUSES = frozenset({404, 410, 451})
 
 
 def _state_comment(finding: Finding) -> str:
@@ -57,8 +59,9 @@ def _state_comment(finding: Finding) -> str:
 def _body(message: str, severity: str, check: str = "") -> str:
     footer = (
         "**Action required:** verify the city's current meeting archive page and update "
-        "`meetings_url` in the city YAML. This issue will NOT auto-close — remove the "
-        "`needs-human-verification` label once the YAML has been updated and verified."
+        "`meetings_url` in the city YAML. This issue will NOT auto-close while it has "
+        "the `needs-human-verification` label — remove the label once the YAML has "
+        "been updated and verified."
         if check in _MEETINGS_URL_CHECKS
         else "_Filed automatically by the feed-health audit. It auto-closes when the check "
         "passes again. See `citypods doctor` to reproduce locally._"
@@ -89,12 +92,33 @@ def _open_issues() -> dict[str, dict]:
         "--state",
         "open",
         "--json",
-        "number,title,body",
+        "number,title,body,labels",
         "--limit",
         "1000",
     )
     issues = json.loads(out or "[]")
     return {i["title"]: i for i in issues if i["title"].startswith(TITLE_PREFIX)}
+
+
+def _label_names(issue: dict) -> set[str]:
+    names: set[str] = set()
+    for label in issue.get("labels") or []:
+        if isinstance(label, dict):
+            name = label.get("name")
+        else:
+            name = str(label)
+        if name:
+            names.add(name)
+    return names
+
+
+def _is_obsolete_meetings_url_issue(issue: dict, check_name: str) -> bool:
+    if check_name != "meetings-url-dead":
+        return False
+    match = re.search(r"meetings_url returned HTTP (\d{3}):", issue.get("body") or "")
+    if not match:
+        return False
+    return int(match.group(1)) not in _DEAD_MEETINGS_URL_STATUSES
 
 
 def reconcile(findings, *, dry_run: bool) -> int:
@@ -133,9 +157,15 @@ def reconcile(findings, *, dry_run: bool) -> int:
             # meetings-url issues require human verification — don't auto-close even when the
             # probe passes again (the URL may have come back up without the right content).
             # A human removes the needs-human-verification label when they've verified the YAML.
+            # Legacy 403/429/5xx issues are not valid findings under the current browser-visible
+            # meetings_url policy, so let the next reconcile sweep them.
             suffix = title.removeprefix(TITLE_PREFIX)
             check_name = suffix.split(":", 1)[-1].strip() if ":" in suffix else ""
-            if check_name in _MEETINGS_URL_CHECKS:
+            if (
+                check_name in _MEETINGS_URL_CHECKS
+                and "needs-human-verification" in _label_names(issue)
+                and not _is_obsolete_meetings_url_issue(issue, check_name)
+            ):
                 if dry_run:
                     print(f"SKIP-CLOSE (needs-human-verification)  {title}")
                 continue

@@ -48,6 +48,33 @@ def _is_spa_seek_url(url: str) -> bool:
     return len(seg) == 2 and seg[1].isdigit() and not parts.query
 
 
+def _tail(text: str, *, limit: int = 700) -> str:
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return "..." + text[-limit:]
+
+
+def _media_fetch_detail(
+    *,
+    resolved_url: str,
+    size: int,
+    seconds: float,
+    ok: bool,
+    logs: list[str],
+) -> str:
+    base = f"{size}B from first {seconds:g}s"
+    if ok:
+        return base
+
+    details = [base, f"url={resolved_url}"]
+    if logs:
+        details.append(f"ffmpeg={_tail(logs[-1])}")
+    else:
+        details.append("ffmpeg=no diagnostic log captured")
+    return "\n".join(details)
+
+
 def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]:
     """Run the contract checks applicable to one city's provider. Each check is isolated so one
     broken endpoint doesn't mask the others."""
@@ -89,15 +116,28 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
             try:
                 with tempfile.TemporaryDirectory() as td:
                     dest = Path(td) / "probe.mka"
-                    ok = _download_audio(resolved_url, dest, max_seconds=_MEDIA_FETCH_SECONDS)
+                    logs: list[str] = []
+                    ok = _download_audio(
+                        resolved_url,
+                        dest,
+                        max_seconds=_MEDIA_FETCH_SECONDS,
+                        log=logs.append,
+                    )
                     size = dest.stat().st_size if dest.exists() else 0
+                    media_ok = bool(ok) and size > 0
                     out.append(
                         _r(
                             provider_name,
                             slug,
                             "media-fetch",
-                            bool(ok) and size > 0,
-                            f"{size}B from first {_MEDIA_FETCH_SECONDS:g}s",
+                            media_ok,
+                            _media_fetch_detail(
+                                resolved_url=resolved_url,
+                                size=size,
+                                seconds=_MEDIA_FETCH_SECONDS,
+                                ok=media_ok,
+                                logs=logs,
+                            ),
                         )
                     )
             except Exception as exc:  # noqa: BLE001
