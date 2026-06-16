@@ -1,19 +1,20 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-12**
+last updated 2026-06-16 (H tail: Granicus follow-up, H9, H14b/c detailed)**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
 
-> **2026-06-12 — Phase H tail.** With H1–H5/H6a/H7/H8/H10/H11a/H12 shipped, six interlocking items remain,
+> **2026-06-16 — Phase H tail.** With H1–H5/H6a/H7/H8/H10/H11a/H12/#39 shipped, seven interlocking items remain,
 > designed below, in order: **H13** GPU/ASR execution-backend interface (+ `local` adapter — the pre-1.0
 > lock) → **H11b** render-only `deploy.yml` (render stops persisting records) → **H6b** split audio + ASR
-> into `audio.yml` + `asr.yml`, sharded + scoped state-push + lanes → **#39** per-provider rate limits →
-> **H14** Modal + Beam free-tier transcription adapters (async dispatch from `asr.yml`) → **H9** combined-
-> throughput evaluation. The maintainer pulled the external-worker *build* (Modal + Beam) into Phase H so
-> "compute is pluggable" ships proven by two live GPU adapters before 1.0; the first **LLM-API** adapter
-> (the other half of the §5.5 interface) lands with R3/R4.
+> into `audio.yml` + `asr.yml`, sharded + scoped state-push + lanes → **Granicus media reliability follow-up**
+> (aggregate concurrency reduction + endpoint coordination) → **H14** Modal + Beam free-tier transcription
+> adapters (H14b/H14c, async dispatch from `asr.yml`) → **H9** combined-throughput evaluation (diarization
+> $/speaker-hour, 80-feed backlog 1-month gate). The maintainer pulled the external-worker *build* (Modal
+> + Beam) into Phase H so "compute is pluggable" ships proven by two live GPU adapters before 1.0; the
+> first **LLM-API** adapter (the other half of the §5.5 interface) lands with R3/R4.
 
 ## Purpose & context
 
@@ -1117,25 +1118,244 @@ sources by count; a truncated encode backs off instead of hosting.
 
 ---
 
+## Granicus media reliability follow-up (GH#300 / #39 follow-up)
+
+**Maturity: L1→L3** (detailed sequence below). The endpoint contract test GH#300 reproduces as
+`RateLimitedMediaFetchError` from `archive-video.granicus.com` during concurrent `audio.yml` runs, while
+local serial contracts pass. Diagnosis: **aggregate GitHub-runner Granicus concurrency** (not a dead URL
+or parser bug). Solution: reduce distributed/process-local Granicus caps, coordinate endpoint contracts
+with the Audio lane, and only test request-shape alternatives if low/no-overlap fetches still fail.
+
+**Three-phase sequence (addresses the likely cause before expensive experiments):**
+
+### Phase 1: Aggregate Granicus concurrency reduction
+
+Test a matrix of `provider_distributed_leases.granicus.com.slots` (2, 3, 4, 5) and
+`provider_rate_limits.granicus.com` (keep at 2, tested independently) to measure **backlog drain time
+vs 403 prevalence**. Requirement: **zero audio files consistently abandoned or stuck in backoff.**
+Acceptance: a test period confirms the optimal cap without audio throughput regression.
+
+**Config changes:**
+```yaml
+provider_distributed_leases:
+  granicus.com:
+    slots: [test 2, 3, 4, 5]      # currently 6; start conservative
+    
+provider_rate_limits:
+  granicus.com: 2                  # test independently (keep vs reduce to 1)
+```
+
+**Monitoring:** Track in build logs and admin/status dashboard:
+- Audio backlog drain rate (materialized minutes/hour)
+- Granicus 403 response count per run (success % of media fetches)
+- Timeout/retry patterns (are retries eventually succeeding or being abandoned?)
+
+**Rollback:** Run a test period (≥3 scheduled builds) at each cap level before committing; revert
+immediately if audio drain rate drops >20%.
+
+### Phase 2: Endpoint contract coordination with Audio lane
+
+`contracts.yml` currently runs in its own concurrency group and does **not** acquire Audio's
+storage-backed provider leases, making it an uncoordinated Granicus fetcher that can trip CDN throttling.
+
+**Solution:** Pause Granicus media-fetch in `contracts.yml` when `audio.yml` is active; resume once
+`audio.yml` completes. Avoids concurrent uncoordinated load.
+
+**Failure mode:** If a contract's Granicus media-fetch fails after retry, auto-retry once at the end of
+the `audio.yml` job. If it still fails, mark as a contract failure (the failure is visible in the status
+dashboard / contract report, informing the maintainer of ongoing Granicus issues).
+
+**Test plan:** Run contracts **alongside** active `audio.yml` to validate the pause/resume mechanism.
+
+### Phase 3: Request-shape alternatives (only if phases 1–2 don't resolve)
+
+If low/no-overlap Granicus media fetches still return 403 after phases 1–2, test request-shape changes
+in priority order (most to least networking-friendly):
+1. Add Granicus-specific HTTP headers (`Referer: https://granicus.com`, `Origin`).
+2. Fetch `DownloadFile.php` directly instead of following the pre-resolved `archive-video` URL.
+3. Discover and test an HLS/streaming URL that Granicus serves more consistently to Actions runners.
+
+**Abort & escalation condition:** If a single audio file is **attempted across 8+ materialize runs
+without completing**, flag it as a high-priority GH issue (stuck download, needs investigation). Do
+**not** prototype off-GitHub-Actions solutions at this phase.
+
+**Files.** `config/site_config.yml` (`provider_distributed_leases`, `provider_rate_limits`);
+`.github/workflows/audio.yml` + `contracts.yml` (coordination gates); `citypods/provider_leases.py`
+(metrics); `citypods/report/status.py` (dashboard flags + budget-remaining visuals).
+
+**Acceptance.** Phase 1: backlog drain rate stable, 403 rate <5% (success ≥95%). Phase 2: contracts
+auto-pause/resume without manual intervention, auto-retry closes transient failures. Phase 3 (if needed):
+one request-shape change resolves 403s without breaking other providers.
+
+---
+
+## H9 — Combined-throughput evaluation (Diarization $/speaker-hour)
+
+**Maturity: L2→L3** (finalized benchmark scope below). Measures the three built execution homes
+(local-sharded H6b + Modal H14b + Beam H14c) for combined free-tier transcript ceiling and diarization
+cost, guiding the decision to adopt paid backends for 1.0 launch.
+
+**Benchmark scope (fixed, reproducible):**
+
+### Audio mix
+- 5 short meetings (15–20 min)
+- 5 medium meetings (40–60 min)
+- 5 long meetings (120+ min)
+Total: 15 meetings, representative of the 80-feed catalog's typical distribution.
+
+### Transcription comparison
+Test **two pipelines:**
+1. **Independent:** transcribe first, then diarize in a separate subsequent run.
+2. **Pipelined:** transcribe + diarize in the same Modal/Beam job (if supported; reveals platform-specific tradeoffs).
+
+Measure per-backend (local, Modal, Beam):
+- **Throughput:** transcript-minutes/runner-hour (or /wall-week for external backends)
+- **Failure rate:** unsuccessful jobs (crash, timeout, quota) as % of total
+- **$/transcript-hour:** computed cost (free tier → $0; overage → actual billing)
+- **Diarization:** pyannote v3 on GPU vs CPU backends (wespeaker/speechbrain ECAPA-TDNN);
+  report **$/speaker-hour** for each.
+
+### Decision gate
+**1.0 launch requirement:** The 80-feed catalog must complete its initial backlog **within one
+calendar month** using free-tier combined capacity (local + Modal + Beam). Monitor backlog burn-down
+in `admin/status` after launch using burndown charts per audio step (transcribe, diarize, encode, etc.).
+If 80-feed backlog cannot clear in <1 month, a paid backend is required; post-1.0, continue monitoring
+to decide Beam/Modal credit refresh or self-hosted GPU migration.
+
+**Files.** `citypods/bench.py` (extended with per-backend throughput, $/transcript-hour);
+`tests/test_compute_throughput.py` (fixed meeting mix, pipelined vs independent runs);
+`review/12` (findings + recommendation), `ARCHITECTURE.md` (measured capability),
+`admin/status` dashboard (burndown charts per stage, free-tier budget remaining).
+
+**Acceptance.** For each backend + pipeline: throughput, failure rate, and $/transcript-hour reported
+with 95 % CI. Diarization $/speaker-hour measured for pyannote v3 (GPU) vs CPU backends. Written
+recommendation in `review/12 §H9` + ARCHITECTURE.md naming the first paid/self-hosted step if free
+tiers don't clear the 80-feed backlog.
+
+---
+
+## H14b — Modal transcription adapter (Async dispatch backend)
+
+**Maturity: L3** (finalized implementation details below). Implements the H13 `Backend` protocol for
+Modal serverless GPU, dispatching transcription (and future diarization) jobs asynchronously.
+
+**Job lifecycle & error handling:**
+
+- **Spurious failures** (Modal container crash, timeout, network hiccup): automatically retry **once**
+  on the same backend. If the retry fails, fail the job hard (mark in `work.json` manifest with error
+  reason, no fallback to `local`). Do not waste compute time on a persistently broken job.
+- **Hard limits** (monthly GPU quota exhausted): fail hard immediately; do **not** attempt fallback to
+  Beam or `local`. User must address quota (wait for monthly reset, upgrade, or reduce load).
+- **Graceful cancellation:** If workflow is cancelled or runner dies mid-dispatch, allow Modal jobs to
+  complete silently. The next deploy's `render` phase reconciles any completed artifacts onto the feed.
+  No cancellation API call needed (jobs are content-addressed; re-dispatch is idempotent).
+
+**Secrets & configuration:**
+
+- Modal API token: `secrets.MODAL_TOKEN` in GitHub Actions environment.
+- Config (per `compute_backends.modal` in `site_config.yml`): `monthly_gpu_seconds` (pin to Modal's
+  current free tier), `max_inflight` (concurrent job limit).
+
+**Job serialization:** Uses the shared H13 `InferenceJob` format (job `task`, `inputs` audio URL,
+`recipe_hash`, etc.). No Modal-specific serialization needed; the `modal_backend.py` adapter translates
+to Modal's API at dispatch time.
+
+**Testing:** (1) Mock Modal backend for unit tests (cheap, catches serialization/logic bugs). (2) One
+minimal live integration test on CI (short 5-min audio dispatch) **only when Modal code changes**
+(path filter on `citypods/compute/modal*` + `scripts/compute/modal_app.py`). (3) Production canary:
+after merge, test on 1–2 real backlog files before enabling on full catalog.
+
+**Dispatch priority & budget:** Round-robin between Modal and Beam; when one backend's budget is
+nearly exhausted (e.g., <30 min GPU-seconds remaining), batch remaining jobs to that backend to
+maximize free-tier usage before fallback to `local`.
+
+**Files.** `citypods/compute/modal_backend.py`, `scripts/compute/modal_app.py`,
+`citypods/compute/budget.py` (Modal budget ledger), `.github/workflows/asr.yml` (dispatch + compute
+reconcile), `tests/test_compute_dispatch.py` (mock dispatch, budget tracking), `SECURITY.md` (free-tier
+ToS, external-worker trust boundary).
+
+**Acceptance.** A Modal job is dispatched successfully; artifact (`<uid>-<recipe>.vtt` +
+`.words.json`) is written to the object bucket by the worker; the next `render` reconciles it onto the
+feed. Budget tracking prevents overage; spurious failures retry once then fail hard; workflow cancellation
+gracefully orphans in-flight jobs.
+
+---
+
+## H14c — Beam transcription adapter (Async dispatch backend, parallel with H14b)
+
+**Maturity: L3** (finalized implementation details below). Implements the H13 `Backend` protocol for
+Beam Cloud serverless GPU, dispatching transcription and future diarization jobs asynchronously.
+**Fully parallelizable with H14b** — both are thin wrappers on the same dispatch infrastructure.
+
+**Job lifecycle & error handling:** Identical to H14b (retry spurious failures once, fail hard on hard
+limits, graceful orphaning on cancellation).
+
+**Budget tracking:** Separate from Modal. `compute_budget.json` tracks `beam_budget` separately so
+differing credit periods and free-tier allotments can be managed independently. Each provider has its
+own `monthly_gpu_seconds` and `max_inflight`.
+
+**Dispatch & routing:** Round-robin between Modal and Beam (try Modal first, then Beam, then Modal
+again). When a provider's monthly budget is exhausted, **do not fallback to the other provider**; instead,
+fall back to `local` (on-runner ASR). Only fail hard when **both** Modal and Beam budgets are spent.
+When approaching a backend's credit cutoff (e.g., <30 min GPU-seconds remaining), batch remaining jobs
+to that backend to maximize free-tier usage.
+
+**Secrets & configuration:** Beam API token as `secrets.BEAM_TOKEN` in GitHub Actions. Config per
+`compute_backends.beam` in `site_config.yml`: `monthly_gpu_seconds`, `max_inflight`.
+
+**Job serialization:** Shares the same H13 `InferenceJob` format as Modal (no conversion logic in
+H14c; serialization happens in the `beam_backend.py` adapter at dispatch time).
+
+**Testing:** (1) Mock Beam backend for unit tests. (2) One minimal live integration test on CI (short
+5-min audio dispatch) **only when Beam code changes** (path filter on `citypods/compute/beam*` +
+`scripts/compute/beam_app.py`). (3) Production canary: after merge, test on 1–2 real backlog files.
+
+**Files.** `citypods/compute/beam_backend.py`, `scripts/compute/beam_app.py`, `citypods/compute/budget.py`
+(Beam budget ledger), `.github/workflows/asr.yml` (dispatch + compute reconcile), `tests/test_compute_dispatch.py`
+(mock dispatch, budget tracking), `SECURITY.md` (free-tier ToS).
+
+**Acceptance.** A Beam job is dispatched successfully; artifact is written to the object bucket by the
+worker; the next `render` reconciles it. Budget tracking is separate from Modal; both backends' budgets
+can be managed independently. Dispatch falls back to the other backend or `local` based on budget
+availability (not provider-specific failures).
+
+**Admin dashboard:** Add a prominent **"Free-tier budget remaining"** visual showing:
+- Modal: % of monthly GPU-seconds used
+- Beam: % of monthly GPU-seconds used
+- Local: estimated capacity (cores × available concurrency slots)
+
+This allows the maintainer to see at a glance whether free tiers are near exhaustion, and plan upgrades
+or load reduction accordingly. **No automatic ticket generation on quota exhaustion**—it is expected
+operational behavior, not a code bug.
+
+---
+
 ## Module-split note (Codex maintainability, opportunistic)
 
 While touching these areas, extract along natural seams (do **not** refactor for size alone): H5 creates
 `citypods/ops/workqueue.py`; if ASR/transcript logic grows, split `citypods/stages/transcript.py`; if
 admin grows, `citypods/report/{status,projection}.py`; issue reconciliation → `citypods/audit/issues.py`.
 
-## Post-review code queue (recap)
+## Post-review code queue (recap · updated 2026-06-16)
 
 Implement in order (**reprioritized 2026-06-08** per the build-log analysis — do-now reliability fires
 first): **H10 (align fix, shipped PR #232)** → **H8 (resource guard, shipped PR #235)** → H11a (native
 audio/ASR gate + one-slot audio lane + green-run acceptance, **shipped**; cap now at `4`) → **H12
 (transcript artifact rework, shipped PR #253)** + **H6a (ASR benchmark, shipped PR #256)** → confirm
 `native_audio_max_active: 4` against the A2 criterion (else revert toward `1`/`2`) → H1 (issues) →
-H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 (all **shipped**).
-**Remaining tail (this plan):** **H13** (GPU/ASR execution-backend interface + `local` adapter — the
-pre-1.0 lock, do first) → **H11b** (strip `deploy.yml` to render-only; render stops persisting records)
-→ **H6b** (`audio.yml` + `asr.yml`, sharded by `source_key` + scoped `push_state` + align/transcribe
-lanes) → **#39** (per-provider rate limits) → **H14** (Modal + Beam free-tier transcription adapters;
-`asr.yml` dispatches; leases go live) → **H9** (combined local-sharded + Modal + Beam throughput eval,
-incl. diarization $/speaker-hour). Each lands as its own PR with tests; on merge, follow the lifecycle
-contract (flip review/11, add CHANGELOG, stamp this doc per item). Self-hosted Mac-mini + AWS remain
-post-1.0 adapters; the first **LLM API adapter** lands with R3/R4.
+H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates) → H5 (all **shipped**) →
+**#39** (per-provider rate limits, **shipped**).
+
+**Remaining tail (this plan, detailed §5.5+):**
+
+1. **H13** (GPU/ASR execution-backend interface + `local` adapter — the pre-1.0 lock, do first)
+2. **H11b** (strip `deploy.yml` to render-only; render stops persisting records)
+3. **H6b** (`audio.yml` + `asr.yml`, sharded by `source_key` + scoped `push_state` + align/transcribe lanes)
+4. **Granicus media reliability follow-up** (GH#300; three phases: concurrency caps, endpoint coordination, request-shape experiments)
+5. **H14b** (Modal free-tier GPU adapter — can parallelize with H14c)
+6. **H14c** (Beam free-tier GPU adapter — can parallelize with H14b)
+7. **H9** (combined local-sharded + Modal + Beam throughput evaluation, diarization $/speaker-hour, 80-feed 1-month gate)
+
+Each lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11 catalog
+entry + add timestamp, add CHANGELOG, stamp this doc "Implemented in PR #N" per item). Self-hosted
+Mac-mini + AWS GPU remain post-1.0 adapters; the first **LLM API adapter** lands with R3/R4.
