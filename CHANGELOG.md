@@ -31,6 +31,23 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Cross-lane record clobber in the sharded enrich workers (the `hosted_audio −16` regression).** The
+  `audio` and `asr` workflows shard over the same `source_key` partition but run on different schedules,
+  so both write the *same* `state/sources/<key>/episodes.json` at overlapping read→write windows. Each
+  run pulled state once at start, held it for its whole multi-hour run, then pushed back the **whole**
+  record file — so an ASR run that started before an audio run hosted new audio re-uploaded its
+  start-of-run `audio` block on finish, silently erasing the freshly hosted URLs (and, symmetrically, a
+  late audio run could erase transcripts). The scoped push prevented cross-*shard* clobber but not this
+  cross-*lane* lost update. Now a scoped run owns only its lane's artifact block
+  (`records.protected_blocks_for_lane`: `audio` vs `transcript`) and, on push, re-reads the freshest
+  remote per owned source and preserves the block it doesn't own (`records.merge_preserving_foreign`,
+  `statesync.push_records_merged`/`fetch_remote_records`); a present-but-unreadable remote skips that
+  source's push rather than clobber. `stages.LANE_STAGES` (one source of truth, enforced in `run_stages`
+  and the global queue) keeps each lane to its own work-class stages so it never re-derives a foreign
+  block. Because the status KPIs read straight from the record store, this also stops the periodic
+  `/admin/status` `hosted_audio`/`transcripts_synced` numbers from bouncing backwards after an ASR-only
+  update. The block/lane registries are designed to extend to the near-term `diarize` lane (review/12
+  §H5/§H6).
 - **Admin status now reports latest telemetry per pipeline stage.** `/admin/status` keeps the existing
   newest-lane `stage_totals` for compatibility, but now also exposes `backlog.stage_runs` keyed by
   stage (`audio`, `transcript`, and future stages such as `diarize`). Each entry points at the latest
