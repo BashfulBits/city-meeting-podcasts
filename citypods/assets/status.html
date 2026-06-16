@@ -142,11 +142,14 @@ function healthBadge(h){
 // ── Section 1: KPI Cards ────────────────────────────────────────────────────
 
 function renderKpis(){
-  const lb = K.last_build||{};
+  // LAST RUN reports the Build & Deploy action that rendered this page (deploy.yml). Its metadata
+  // comes from the GitHub env captured in build_status — not run history, which only the enrich
+  // (audio/ASR) workflows record.
+  const lb = K.last_deploy||{};
   const lbTs  = lb.ts ? new Date(lb.ts).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short',hour12:false}) : '—';
-  const lbCls = lb.status==='errors'?'err':lb.status==='built'?'ok':'muted';
-  const lbLabel = lb.status==='errors'?'⚠ errors':lb.status==='built'?'✓ built':'— skipped';
-  const lbKind = lb.lane || lb.phase || 'build';
+  const lbCls = lb.status==='deployed'?'ok':'muted';
+  const lbLabel = lb.status==='deployed'?'✓ deployed':'— local';
+  const lbKind = lb.workflow || 'Build & Deploy';
   const lbLink  = lb.github_run_url ? `<a href="${esc(lb.github_run_url)}">→ Actions</a>` : '';
   const gbLabel = K.gb_exact ? fmtGb(K.gb_stored) : '~'+fmtGb(K.gb_stored);
   const gbSub   = K.gb_exact ? 'exact (audio.bytes)' : '~estimated (some records missing bytes)';
