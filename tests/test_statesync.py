@@ -94,6 +94,24 @@ def test_push_state_only_prefixes_scopes_to_owned_sources(tmp_path):
     assert bucket.exists(f"{STATE_PREFIX}/sources/theirs/episodes.json")
 
 
+def test_scoped_run_event_push_does_not_delete_prior_events(tmp_path):
+    """Scoped shard pushes are upload-only, so later ASR events do not erase audio events."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    events = state_dir / "run_events"
+    events.mkdir(parents=True)
+
+    old_event = _tmpfile(tmp_path, '{"lane":"audio"}')
+    bucket.put_file(f"{STATE_PREFIX}/run_events/audio.json", old_event, "application/json")
+
+    (events / "asr.json").write_text('{"lane":"transcribe"}')
+    pushed = push_state(bucket, state_dir, only_prefixes=["run_events/"])
+
+    assert pushed == 1
+    assert bucket.exists(f"{STATE_PREFIX}/run_events/audio.json")
+    assert bucket.exists(f"{STATE_PREFIX}/run_events/asr.json")
+
+
 def test_reconcile_state_full_run_guard(tmp_path):
     """A source-sharded job owns only a subset, so reconcile (which reaps every remote object with
     no local counterpart) would delete its siblings' records. ``full_run=False`` makes it a no-op;

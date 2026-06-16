@@ -35,7 +35,7 @@ a{color:#58a6ff;text-decoration:none} a:hover{text-decoration:underline}
 /* section card */
 .section-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 14px;margin-bottom:12px}
 /* backlog table */
-.bl-row{display:grid;grid-template-columns:130px 56px 68px 68px 60px 80px 80px;gap:0;font-size:.82rem;border-bottom:1px solid #21262d;padding:4px 0}
+.bl-row{display:grid;grid-template-columns:110px minmax(180px,1fr) 56px 68px 68px 60px 80px 80px;gap:0;font-size:.82rem;border-bottom:1px solid #21262d;padding:4px 0}
 .bl-row.hdr{font-size:.72rem;color:#9db2c8;border-bottom:2px solid #30363d;padding-bottom:5px}
 .bl-row div{padding:0 4px}
 /* resource table */
@@ -150,15 +150,19 @@ function renderKpis(){
   const lbLink  = lb.github_run_url ? `<a href="${esc(lb.github_run_url)}">→ Actions</a>` : '';
   const gbLabel = K.gb_exact ? fmtGb(K.gb_stored) : '~'+fmtGb(K.gb_stored);
   const gbSub   = K.gb_exact ? 'exact (audio.bytes)' : '~estimated (some records missing bytes)';
+  const audioPct = K.audio_coverage_pct==null ? '—' : K.audio_coverage_pct+'%';
+  const audioScope = K.audio_coverage_scope==='feed_visible' ? 'feed-visible' : 'eligible';
+  const audioStale = K.audio_stale ? ` · ${fmtNum(K.audio_stale)} stale` : '';
   const txPct = K.transcript_coverage_pct==null ? '—' : K.transcript_coverage_pct+'%';
+  const txText = K.transcripts_text ? ` · ${fmtNum(K.transcripts_text)} text-only` : '';
 
   document.getElementById('kpis').innerHTML = `
 <h2>At-a-glance</h2>
 <div class="kpi-grid">
   ${card('FEEDS', fmtNum(K.feeds), 'configured feed slugs')}
   ${card('MEETINGS ARCHIVED', fmtNum(K.meetings_archived), 'unique source records')}
-  ${card('HOSTED AUDIO', fmtNum(K.hosted_audio), 'unique records we serve from B2')}
-  ${card('TRANSCRIPTS', fmtNum(K.transcripts_synced||0), `${txPct} all hosted coverage · ${fmtNum(K.transcripts_missing||0)} catalog missing`)}
+  ${card('HOSTED AUDIO', fmtNum(K.hosted_audio), `${audioPct} ${audioScope} coverage · ${fmtNum(K.audio_missing||0)} not hosted${audioStale}`)}
+  ${card('TRANSCRIPTS', fmtNum(K.transcripts_synced||0), `${txPct} synced coverage${txText} · ${fmtNum(K.transcripts_missing||0)} missing`)}
   ${card('LINKED VIDEO', fmtNum(K.linked_video), 'direct MP4 links, not stored')}
   ${card('HOSTED HOURS', fmtHrs(K.hours_hosted), K.hours_linked>0?`+${fmtHrs(K.hours_linked)} linked video`:'hosted audio only')}
   ${card('STORED', gbLabel, gbSub)}
@@ -199,17 +203,26 @@ function renderBacklog(){
         Drain estimate: ~${B.stale_drain_runs??'?'} run(s) · ~${B.stale_drain_days??'?'} day(s) at current budget.
         Old + new objects coexist until orphan GC.
        </div>` : '';
-  const stages = B.stage_totals||{};
-  const stageKeys = Object.keys(stages).sort();
+  const stageRuns = B.stage_runs||{};
+  const legacyStages = B.stage_totals||{};
+  const hasStageRuns = Object.keys(stageRuns).length > 0;
+  const stageSource = hasStageRuns ? stageRuns : Object.fromEntries(
+    Object.entries(legacyStages).map(([name, totals])=>[name, {totals}])
+  );
+  const order = {audio:0, transcript:1, diarize:2};
+  const stageKeys = Object.keys(stageSource).sort((a,b)=>(order[a]??99)-(order[b]??99) || a.localeCompare(b));
+  const baselineStages = hasStageRuns ? ['audio', 'transcript'] : [];
   const stageDisplayKeys = stageKeys.length
-    ? Array.from(new Set([...stageKeys, 'audio', 'transcript'])).sort()
+    ? Array.from(new Set([...baselineStages, ...stageKeys])).sort((a,b)=>(order[a]??99)-(order[b]??99) || a.localeCompare(b))
     : [];
   const stageRows = stageDisplayKeys.length ? stageDisplayKeys.map(name=>{
-    const t = stages[name];
+    const run = stageSource[name];
+    const t = run?.totals;
     if(!t){
       return `<div class="bl-row">
         <div>${esc(name)}</div>
         <div class="muted">not run</div>
+        <div class="muted">—</div>
         <div class="muted">—</div>
         <div class="muted">—</div>
         <div class="muted">—</div>
@@ -223,8 +236,14 @@ function renderBacklog(){
       ? `${t.ran} <span class="muted">(${t.aligned}aln·${t.transcribed}asr)</span>`
       : t.ran;
     const bytes = t.bytes>0 ? fmtMb(t.bytes) : '—';
+    const runTs = run.ts ? new Date(run.ts).toLocaleString('en-US',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'})+' UTC' : '—';
+    const runKind = run.lane || run.phase || 'run';
+    const shardCount = Array.isArray(run.shards) && run.shards.length ? ` · ${run.shards.length} shards` : run.shard ? ` · shard ${esc(run.shard)}` : '';
+    const runLink = run.github_run_url ? ` · <a href="${esc(run.github_run_url)}">Actions</a>` : '';
+    const runMeta = hasStageRuns ? `${esc(runKind)} · ${esc(runTs)}${shardCount}${runLink}` : '<span class="muted">latest lane</span>';
     return `<div class="bl-row">
       <div>${esc(name)}</div>
+      <div>${runMeta}</div>
       <div>${newVal}</div>
       <div>${t.reused}</div>
       <div>${t.backlog}</div>
@@ -260,16 +279,16 @@ function renderBacklog(){
   </div>
   <div style="font-size:.85rem;margin-bottom:.25rem">
     <strong>Latest run stage activity</strong>
-    <span class="muted"> — telemetry from the last audio/ASR shard group, not current catalog totals.</span>
+    <span class="muted"> — latest completed run per stage, not current catalog totals.</span>
   </div>
   <div class="bl-row hdr">
-    <div>Stage</div><div>New</div><div>Reused</div><div>Deferred</div><div>Errors</div><div>Seconds</div><div>Bytes</div>
+    <div>Stage</div><div>Last run</div><div>New</div><div>Reused</div><div>Deferred</div><div>Errors</div><div>Seconds</div><div>Bytes</div>
   </div>
   ${stageRows}
   <div class="muted" style="font-size:.75rem;margin:.4rem 0">
     Reused = already up-to-date when the latest run checked it · Deferred = left for a later run
-    because of budget, wall-clock, lane, or source scope. "not run" means that stage was not part
-    of the latest lane.
+    because of budget, wall-clock, lane, or source scope. Each row shows the latest completed
+    logical run that reported that stage; rows may come from different workflows.
     Linked Video episodes (direct MP4, not hosted) excluded from all stage counts.
   </div>
   <div style="margin-top:.6rem;font-size:.85rem">
