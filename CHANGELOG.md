@@ -42,6 +42,10 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   text-only/provider bucket that sits between synced transcripts and missing ones. Linked Video counts
   are now config-aware: direct-provider records are counted as linked only when `extract_audio` is
   false; with the production default `extract_audio: true`, unhosted direct records are audio backlog.
+  The run-status cards now render warning-level alerts in yellow separately from run-level errors in
+  red. Workflow cache steps were updated to Node 24-compatible `actions/cache@v5` / restore `@v5`,
+  and the temporary `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` runner override was removed now that GitHub
+  runners default to Node 24. No pipeline version changed and no artifact backfill is triggered.
 - **Admin status actuals now use source records and the work manifest instead of overlapping feed
   rows.** `/admin/status` headline totals for archived meetings, hosted audio, linked video, storage,
   stale items, and issue counts are now aggregated once per canonical `source_key`, so combined feeds

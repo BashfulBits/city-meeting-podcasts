@@ -35,7 +35,6 @@ jobs:
         # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
         shard: [0, 1, 2, 3]
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # Lets the shard poll the Actions API and yield gracefully when a newer run is queued behind
       # it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
       GITHUB_TOKEN: ${{ github.token }}
@@ -61,7 +60,7 @@ jobs:
           cache: pip
 
       - name: Restore build state
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .citypods-state
           key: build-state-asr-${{ matrix.shard }}-${{ github.run_id }}
@@ -77,7 +76,7 @@ jobs:
       # Restore + download the large-v3-turbo weights (4-step cascade in the script). The transcribe
       # lane only loads faster-whisper, never stable-ts.
       - name: Cache Whisper model (large-v3-turbo)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/faster-whisper-large-v3-turbo
           key: whisper-large-v3-turbo-v2

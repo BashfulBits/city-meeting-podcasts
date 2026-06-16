@@ -537,6 +537,10 @@ def test_to_status_html_substitution():
     html = to_status_html(status)
     assert "__STATUS_JSON__" not in html
     assert "AUDIO RUN" in html and "TRANSCRIBE RUN" in html and "DIARIZE RUN" in html
+    assert "runSeverity(run, totals)" in html
+    assert "action_alert_level" in html
+    assert "⚠ warnings" in html
+    assert "✗ errors" in html
     m = re.search(r'<script id="status-data" type="application/json">(.*?)</script>', html, re.S)
     assert m, "status-data script tag not found"
     parsed = json.loads(m.group(1))

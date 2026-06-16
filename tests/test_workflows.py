@@ -44,6 +44,15 @@ def _step_index(job: dict, needle: str) -> int:
 HEAVY_WORKFLOWS = [("audio.yml", "audio"), ("asr.yml", "transcribe")]
 
 
+def test_workflows_use_node24_cache_actions_without_force_flag():
+    """actions/cache v5 runs on Node 24; the old force flag should not linger."""
+    workflow_text = "\n".join(path.read_text() for path in WORKFLOWS.glob("*.yml"))
+    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24" not in workflow_text
+    assert "actions/cache@v4" not in workflow_text
+    assert "actions/cache/restore@v4" not in workflow_text
+    assert "actions/cache@v5" in workflow_text
+
+
 @pytest.mark.parametrize("workflow,lane", HEAVY_WORKFLOWS)
 def test_heavy_workflow_wires_graceful_yield(workflow, lane):
     """Graceful yield needs the Actions API: ``actions: read`` AND ``GITHUB_TOKEN`` for the

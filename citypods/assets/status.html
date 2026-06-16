@@ -195,6 +195,29 @@ function card(label, val, sub=''){
   return `<div class="card"><div class="card-label">${esc(label)}</div><div class="card-val">${esc(val)}</div>${sub?`<div class="card-sub">${esc(sub)}</div>`:''}</div>`;
 }
 
+function n(v){ return Number(v||0) || 0; }
+
+function runSeverity(run, totals={}){
+  const actionLevel = String(
+    run.github_alert_level || run.action_alert_level || run.annotation_level || ''
+  ).toLowerCase();
+  const failedConclusion = ['failure','failed','cancelled','timed_out'].includes(
+    String(run.conclusion||'').toLowerCase()
+  );
+  const hasRunError = n(run.errors) > 0 || n(run.error_count) > 0 || n(run.action_errors) > 0;
+  const hasWarning =
+    actionLevel === 'warning' ||
+    actionLevel === 'warn' ||
+    n(run.warnings) > 0 ||
+    n(run.warning_count) > 0 ||
+    n(run.action_warnings) > 0 ||
+    n(totals.warnings) > 0 ||
+    n(totals.errors) > 0;
+  if(actionLevel === 'error' || failedConclusion || hasRunError) return 'error';
+  if(hasWarning) return 'warning';
+  return n(run.built) > 0 ? 'built' : 'skipped';
+}
+
 function runCard(label, run, fallbackKind){
   if(!run){
     return `<div class="card">
@@ -204,9 +227,9 @@ function runCard(label, run, fallbackKind){
     </div>`;
   }
   const totals = run.totals || {};
-  const hasErrors = (run.errors||0) > 0 || (totals.errors||0) > 0;
-  const cls = hasErrors ? 'err' : (run.built||0) > 0 ? 'ok' : 'muted';
-  const labelText = hasErrors ? '⚠ errors' : (run.built||0) > 0 ? '✓ built' : '— skipped';
+  const severity = runSeverity(run, totals);
+  const cls = severity === 'error' ? 'err' : severity === 'warning' ? 'warn' : severity === 'built' ? 'ok' : 'muted';
+  const labelText = severity === 'error' ? '✗ errors' : severity === 'warning' ? '⚠ warnings' : severity === 'built' ? '✓ built' : '— skipped';
   const ts = run.ts ? new Date(run.ts).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short',hour12:false}) : '—';
   const kind = run.lane || run.phase || fallbackKind;
   const shards = Array.isArray(run.shards) && run.shards.length ? ` · ${run.shards.length} shards` : run.shard ? ` · shard ${esc(run.shard)}` : '';
