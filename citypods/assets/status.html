@@ -156,8 +156,8 @@ function renderKpis(){
 <h2>At-a-glance</h2>
 <div class="kpi-grid">
   ${card('FEEDS', fmtNum(K.feeds), 'configured feed slugs')}
-  ${card('MEETINGS ARCHIVED', fmtNum(K.meetings_archived), 'all states · all sources')}
-  ${card('HOSTED AUDIO', fmtNum(K.hosted_audio), 'audio we serve from B2')}
+  ${card('MEETINGS ARCHIVED', fmtNum(K.meetings_archived), 'unique source records')}
+  ${card('HOSTED AUDIO', fmtNum(K.hosted_audio), 'unique records we serve from B2')}
   ${card('TRANSCRIPTS', fmtNum(K.transcripts_synced||0), `${txPct} hosted coverage · ${fmtNum(K.transcripts_missing||0)} missing`)}
   ${card('LINKED VIDEO', fmtNum(K.linked_video), 'direct MP4 links, not stored')}
   ${card('HOSTED HOURS', fmtHrs(K.hours_hosted), K.hours_linked>0?`+${fmtHrs(K.hours_linked)} linked video`:'hosted audio only')}
@@ -192,6 +192,7 @@ function card(label, val, sub=''){
 function renderBacklog(){
   const B = S.backlog;
   const TX = B.transcript_backlog||{};
+  const WM = B.work_manifest||{};
   const staleNote = B.stale>0
     ? `<div class="muted" style="margin:.3rem 0 0 1em">
         Stale episodes ARE currently serving (healthy degraded state).
@@ -254,13 +255,14 @@ function renderBacklog(){
   <div style="margin-top:.6rem;font-size:.85rem">
     <div>Capacity vs. inflow: <strong>${B.capacity_per_day}</strong>/day capacity · <strong>${B.inflow_per_day}</strong>/day inflow — ${keepIcon}
       <span class="muted"> &nbsp;|&nbsp; <a href="/admin/">→ /admin/ for full projection</a></span></div>
-    <div>Full backfill estimate: ${B.pending} pending ep(s) → ${B.full_backfill_days} day(s) at current budget</div>
+    <div>Audio backlog estimate: ${B.audio_backlog?.total??B.pending} ep(s) → ${B.audio_backlog?.estimated_days??'—'} day(s) at current budget</div>
   </div>
   <div style="margin-top:.6rem;font-size:.85rem">
     <div><strong>Backlog by work-class</strong> (feed-visible, actionable): <strong>${B.work_pending??0}</strong> queued</div>
     ${wcRows}
     <div class="muted" style="font-size:.75rem;margin-top:.3rem">
       Alignment-disabled: ${B.alignment_disabled??0} · Deep-archive (inert, not worked today): ${B.deep_archive_items??0}
+      · Manifest: ${esc(WM.source||'unknown')} (${fmtNum(WM.items||0)} items${WM.overlaid_items?`, ${fmtNum(WM.overlaid_items)} overlaid`:''})
     </div>
   </div>
 </div>`;
