@@ -291,6 +291,23 @@ def test_build_status_episode_taxonomy(tmp_path):
     assert issues["transient_errors"] == 1
 
 
+def test_build_status_direct_extract_audio_counts_as_pending_not_linked(tmp_path):
+    """Direct providers become audio backlog when extract_audio is enabled."""
+    from citypods.records import save_records, source_key
+
+    city = _city2("direct-hosted", extract=True)
+    save_records(tmp_path, source_key(city), {"d1": _rec("d1", media_kind="direct")})
+
+    status = build_status([city], site_config=SITE, state_dir=tmp_path)
+
+    assert status["kpis"]["linked_video"] == 0
+    assert status["kpis"]["audio_missing"] == 1
+    assert status["backlog"]["by_work_class"]["audio"]["queued"] == 1
+    row = status["feeds_by_feed"][0]
+    assert row["linked_video"] == 0
+    assert row["pending"] == 1
+
+
 def test_build_status_kpis_use_unique_source_actuals(tmp_path):
     """Headline actuals are source-record counts, not sums of overlapping feed/body rows."""
     from citypods.records import save_records, source_key
@@ -335,10 +352,14 @@ def test_build_status_backlog_by_work_class(tmp_path):
     a3["links"] = {"transcript": "http://cdn/a3.vtt"}  # provider text + alignment off → disabled
     save_records(tmp_path, source_key(city), {"a1": a1, "a2": a2, "a3": a3})
 
-    bl = build_status([city], site_config=SITE, state_dir=tmp_path)["backlog"]
+    status = build_status([city], site_config=SITE, state_dir=tmp_path)
+    bl = status["backlog"]
     wc = bl["by_work_class"]
     assert wc["audio"]["queued"] == 1
     assert wc["audio"]["done"] == 2
+    assert status["kpis"]["audio_missing"] == 1
+    assert status["kpis"]["audio_coverage_pct"] == pytest.approx(66.7)
+    assert status["kpis"]["audio_coverage_scope"] == "feed_visible"
     assert wc["transcript-asr"]["queued"] == 1
     assert wc["transcript-align"]["alignment-disabled"] == 1
     assert bl["alignment_disabled"] == 1
@@ -766,6 +787,118 @@ def test_build_status_merges_scoped_run_events(tmp_path):
     assert tx["ran"] == 12
     assert tx["reused"] == 4
     assert tx["backlog"] == 20
+
+
+def test_build_status_reports_latest_run_per_stage(tmp_path):
+    """A later ASR-only run must not hide the latest audio-lane telemetry."""
+    events = tmp_path / "run_events"
+    events.mkdir()
+
+    def write_event(
+        name: str, *, ts: str, run_id: str, lane: str, shard: str, stages: dict
+    ) -> None:
+        payload = {
+            "ts": ts,
+            "schema_version": 2,
+            "phase": "enrich",
+            "lane": lane,
+            "shard": shard,
+            "scoped": True,
+            "cities": 1,
+            "built": 1,
+            "skipped": 0,
+            "errors": 0,
+            "materialized": stages.get("audio", {}).get("ran", 0),
+            "materialize_encoded": stages.get("audio", {}).get("encoded", 0),
+            "materialize_seconds": stages.get("audio", {}).get("seconds", 0.0),
+            "stages": stages,
+            "github_run_id": run_id,
+            "github_run_url": f"https://github.com/example/repo/actions/runs/{run_id}",
+        }
+        (events / name).write_text(json.dumps(payload))
+
+    write_event(
+        "audio-0.json",
+        ts="2026-06-15T10:00:00+00:00",
+        run_id="audio1",
+        lane="audio",
+        shard="0/2",
+        stages={
+            "audio": {
+                "ran": 2,
+                "encoded": 1,
+                "credited": 1,
+                "aligned": 0,
+                "transcribed": 0,
+                "reused": 3,
+                "backlog": 4,
+                "seconds": 50.0,
+                "bytes": 100,
+                "errors": 0,
+            }
+        },
+    )
+    write_event(
+        "audio-1.json",
+        ts="2026-06-15T10:05:00+00:00",
+        run_id="audio1",
+        lane="audio",
+        shard="1/2",
+        stages={
+            "audio": {
+                "ran": 5,
+                "encoded": 5,
+                "credited": 0,
+                "aligned": 0,
+                "transcribed": 0,
+                "reused": 7,
+                "backlog": 8,
+                "seconds": 70.0,
+                "bytes": 200,
+                "errors": 1,
+            }
+        },
+    )
+    write_event(
+        "asr-0.json",
+        ts="2026-06-15T12:00:00+00:00",
+        run_id="asr1",
+        lane="transcribe",
+        shard="0/2",
+        stages={
+            "transcript": {
+                "ran": 11,
+                "encoded": 0,
+                "credited": 0,
+                "aligned": 0,
+                "transcribed": 11,
+                "reused": 13,
+                "backlog": 17,
+                "seconds": 90.0,
+                "bytes": 0,
+                "errors": 0,
+            }
+        },
+    )
+
+    status = build_status([], site_config=SITE, state_dir=tmp_path)
+
+    # Backwards-compatible latest-overall telemetry remains ASR-shaped.
+    assert status["kpis"]["last_build"]["lane"] == "transcribe"
+    assert set(status["backlog"]["stage_totals"]) == {"transcript"}
+
+    # The new per-stage telemetry keeps the older audio lane visible and aggregates its shards.
+    audio_run = status["backlog"]["stage_runs"]["audio"]
+    assert audio_run["lane"] == "audio"
+    assert audio_run["shards"] == ["0/2", "1/2"]
+    assert audio_run["totals"]["ran"] == 7
+    assert audio_run["totals"]["encoded"] == 6
+    assert audio_run["totals"]["bytes"] == 300
+    assert audio_run["totals"]["errors"] == 1
+
+    tx_run = status["backlog"]["stage_runs"]["transcript"]
+    assert tx_run["lane"] == "transcribe"
+    assert tx_run["totals"]["transcribed"] == 11
 
 
 def test_audio_bytes_set_on_encode(tmp_path):

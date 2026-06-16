@@ -31,6 +31,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Admin status now reports latest telemetry per pipeline stage.** `/admin/status` keeps the existing
+  newest-lane `stage_totals` for compatibility, but now also exposes `backlog.stage_runs` keyed by
+  stage (`audio`, `transcript`, and future stages such as `diarize`). Each entry points at the latest
+  completed logical run that actually reported that stage, with sibling shard totals aggregated, so a
+  later ASR-only run no longer makes the audio row look like "not run." Scoped `run_events/` remain
+  upload-only and are not deleted by later lane pushes. The At-a-glance Hosted Audio card now also
+  shows feed-visible audio coverage, not-hosted count, and stale re-encode count, while the Transcripts
+  card surfaces the text-only/provider bucket that sits between synced transcripts and missing ones.
+  Linked Video counts are now config-aware: direct-provider records are counted as linked only when
+  `extract_audio` is false; with the production default `extract_audio: true`, unhosted direct records
+  are audio backlog.
 - **Admin status actuals now use source records and the work manifest instead of overlapping feed
   rows.** `/admin/status` headline totals for archived meetings, hosted audio, linked video, storage,
   stale items, and issue counts are now aggregated once per canonical `source_key`, so combined feeds

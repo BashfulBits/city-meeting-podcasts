@@ -299,13 +299,15 @@ def to_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
-def _classify_record(rec: dict, max_kbps: int, loudness_profile: str = "") -> str:
+def _classify_record(
+    rec: dict, max_kbps: int, loudness_profile: str = "", *, host_direct: bool = False
+) -> str:
     """Return the pipeline state for one record (mutually exclusive taxonomy from issue #124).
 
     States (in order of precedence):
       served         — hosted audio exists and spec matches current desired spec (or "legacy")
       stale          — hosted audio exists but spec no longer matches (re-encode queued)
-      linked_video   — direct provider MP4 link; we never host this episode's audio
+      linked_video   — direct provider MP4 link; config says not to host this episode's audio
       deferred       — MEDIA_DEFERRED (in materialization backoff, will retry)
       dead           — no usable media (#120)
       transient_error— last attempt failed for an uncategorized reason (in exponential backoff)
@@ -330,7 +332,8 @@ def _classify_record(rec: dict, max_kbps: int, loudness_profile: str = "") -> st
             else "stale"
         )
 
-    if media_kind == "direct":
+    should_host = media_kind == "hls" or (media_kind == "direct" and host_direct)
+    if not should_host and media_kind == "direct":
         return "linked_video"
     if error == "deferred":
         return "deferred"
@@ -375,7 +378,12 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
         # whose reuse path skips the ffprobe that would set duration_served.
         if not duration_s and audio.get("bytes"):
             duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
-        state = _classify_record(rec, max_kbps, loudness_profile=loudness_profile)
+        state = _classify_record(
+            rec,
+            max_kbps,
+            loudness_profile=loudness_profile,
+            host_direct=bool(city.extract_audio),
+        )
 
         if state in ("served", "stale"):
             hosted += 1
@@ -444,7 +452,11 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
 
 
 def _source_actuals(
-    records_cache: dict[str, dict], *, max_kbps: int, loudness_profile: str = ""
+    records_cache: dict[str, dict],
+    *,
+    max_kbps: int,
+    loudness_profile: str = "",
+    host_direct_by_source: dict[str, bool] | None = None,
 ) -> dict:
     """Aggregate source-record actuals exactly once per ``source_key``.
 
@@ -471,14 +483,21 @@ def _source_actuals(
         "tx_hosted": 0,
         "tx_pending": 0,
     }
-    for recs in records_cache.values():
+    host_direct_by_source = host_direct_by_source or {}
+    for key, recs in records_cache.items():
+        host_direct = host_direct_by_source.get(key, False)
         for rec in recs.values():
             totals["meetings_archived"] += 1
             audio = rec.get("audio") or {}
             duration_s = rec.get("duration") or audio.get("duration_served") or 0
             if not duration_s and audio.get("bytes"):
                 duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
-            state = _classify_record(rec, max_kbps, loudness_profile=loudness_profile)
+            state = _classify_record(
+                rec,
+                max_kbps,
+                loudness_profile=loudness_profile,
+                host_direct=host_direct,
+            )
 
             if state in ("served", "stale"):
                 totals["hosted_audio"] += 1
@@ -589,6 +608,25 @@ def _same_logical_run(a: dict, b: dict) -> bool:
     )
 
 
+def _run_candidates(run_summary: dict, history: list[dict]) -> list[dict]:
+    candidates = list(history)
+    if run_summary:
+        candidates.append(run_summary)
+    if not candidates:
+        return []
+
+    # De-duplicate the run_summary row when it is also present in run_history.jsonl.
+    unique: list[dict] = []
+    seen: set[str] = set()
+    for row in candidates:
+        sig = json.dumps(row, sort_keys=True, separators=(",", ":"))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        unique.append(row)
+    return sorted(unique, key=_run_sort_value)
+
+
 def _sum_stage_totals(rows: list[dict]) -> dict:
     totals: dict[str, dict] = {}
     keys = (
@@ -614,26 +652,12 @@ def _sum_stage_totals(rows: list[dict]) -> dict:
     return totals
 
 
-def _latest_run_summary(run_summary: dict, history: list[dict]) -> dict:
-    """Return the newest run summary, aggregating sibling shard events when possible."""
-    candidates = list(history)
-    if run_summary:
-        candidates.append(run_summary)
-    if not candidates:
+def _merge_logical_run_group(group: list[dict]) -> dict:
+    """Merge one sharded logical run into the same summary shape as one event row."""
+    if not group:
         return {}
-    # De-duplicate the run_summary row when it is also present in run_history.jsonl.
-    unique: list[dict] = []
-    seen: set[str] = set()
-    for row in candidates:
-        sig = json.dumps(row, sort_keys=True, separators=(",", ":"))
-        if sig not in seen:
-            seen.add(sig)
-            unique.append(row)
-
-    latest = max(unique, key=_run_sort_value)
-    group = [row for row in unique if _same_logical_run(row, latest)] or [latest]
     if len(group) == 1:
-        return latest
+        return dict(group[0])
 
     group = sorted(group, key=_run_sort_value)
     merged = dict(group[-1])
@@ -668,6 +692,64 @@ def _latest_run_summary(run_summary: dict, history: list[dict]) -> dict:
     if windows:
         merged["window_used_pct"] = max(windows)
     return merged
+
+
+def _logical_run_groups(run_summary: dict, history: list[dict]) -> list[dict]:
+    """Return run summaries with scoped sibling shards aggregated."""
+    rows = _run_candidates(run_summary, history)
+    groups: dict[tuple, list[dict]] = {}
+    for idx, row in enumerate(rows):
+        if row.get("scoped") and row.get("github_run_id"):
+            key = ("scoped", row.get("github_run_id"), row.get("phase"), row.get("lane"))
+        else:
+            key = ("single", idx)
+        groups.setdefault(key, []).append(row)
+    return [_merge_logical_run_group(group) for group in groups.values()]
+
+
+def _latest_run_summary(run_summary: dict, history: list[dict]) -> dict:
+    """Return the newest run summary, aggregating sibling shard events when possible."""
+    unique = _run_candidates(run_summary, history)
+    if not unique:
+        return {}
+
+    latest = max(unique, key=_run_sort_value)
+    group = [row for row in unique if _same_logical_run(row, latest)] or [latest]
+    return _merge_logical_run_group(group)
+
+
+def _latest_stage_runs(run_summary: dict, history: list[dict]) -> dict[str, dict]:
+    """Latest completed logical run per reported stage.
+
+    ``_latest_run_summary`` intentionally answers "what was the newest lane?" For the status page's
+    pipeline table we need a different question: "what was the newest run that actually reported
+    each stage?" That lets audio remain visible after a later ASR-only run, and generalizes to
+    future transcript/diarization workers that may report multiple output stages from one event.
+    """
+    latest: dict[str, dict] = {}
+    for group in _logical_run_groups(run_summary, history):
+        stages = group.get("stages") or {}
+        if not stages:
+            continue
+        for name, totals in stages.items():
+            prev = latest.get(name)
+            if prev and _run_sort_value(prev) >= _run_sort_value(group):
+                continue
+            latest[name] = {
+                "ts": group.get("ts"),
+                "phase": group.get("phase"),
+                "lane": group.get("lane"),
+                "shard": group.get("shard"),
+                "shards": group.get("shards"),
+                "scoped": group.get("scoped"),
+                "github_run_id": group.get("github_run_id"),
+                "github_run_url": group.get("github_run_url"),
+                "built": group.get("built", 0),
+                "skipped": group.get("skipped", 0),
+                "errors": group.get("errors", 0),
+                "totals": totals,
+            }
+    return latest
 
 
 def _manifest_for_status(
@@ -750,10 +832,14 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     avg_duration_h = 2.0
 
     records_cache: dict[str, dict] = {}
+    host_direct_by_source: dict[str, bool] = {}
     if state_dir:
         seen: set[str] = set()
         for city in cities:
             key = source_key(city)
+            host_direct_by_source[key] = host_direct_by_source.get(key, False) or bool(
+                city.extract_audio
+            )
             if key not in seen:
                 seen.add(key)
                 records_cache[key] = load_records(Path(state_dir), key)
@@ -768,7 +854,12 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         )
 
     city_rows = _city_rows(feed_rows)
-    actuals = _source_actuals(records_cache, max_kbps=max_kbps, loudness_profile=loudness_profile)
+    actuals = _source_actuals(
+        records_cache,
+        max_kbps=max_kbps,
+        loudness_profile=loudness_profile,
+        host_direct_by_source=host_direct_by_source,
+    )
 
     # KPI totals
     meetings_archived = actuals["meetings_archived"]
@@ -789,6 +880,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     shared_run_summary = _load_run_summary(Path(state_dir)) if state_dir else {}
     history = _load_run_history(Path(state_dir)) if state_dir else []
     run_summary = _latest_run_summary(shared_run_summary, history)
+    stage_runs = _latest_stage_runs(shared_run_summary, history)
     history_tail = list(reversed(history[-10:])) if history else []
 
     cap_raw = defaults.get("materialize_budget_per_run")
@@ -856,6 +948,13 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     )
     audio_pending = audio_open if by_work_class else actuals["pending"]
     transcript_pending = transcript_open if by_work_class else tx_pending
+    audio_done_for_coverage = audio_work.get("done", 0) if by_work_class else hosted_audio
+    audio_coverage_den = audio_done_for_coverage + audio_pending
+    audio_coverage_pct = (
+        round(100.0 * audio_done_for_coverage / audio_coverage_den, 1)
+        if audio_coverage_den
+        else None
+    )
     audio_capacity_per_day = proj.capacity_per_day
     audio_backlog_total = audio_pending + stale_total
     audio_backlog_days = (
@@ -894,6 +993,10 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "feeds": len(cities),
             "meetings_archived": meetings_archived,
             "hosted_audio": hosted_audio,
+            "audio_missing": audio_pending,
+            "audio_stale": stale_total,
+            "audio_coverage_pct": audio_coverage_pct,
+            "audio_coverage_scope": "feed_visible" if by_work_class else "source_records",
             "linked_video": linked_video,
             "hours_hosted": hours_hosted,
             "hours_linked": hours_linked,
@@ -932,6 +1035,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "stale_drain_runs": stale_drain_runs,
             "stale_drain_days": stale_drain_days,
             "stage_totals": run_summary.get("stages", {}),
+            "stage_runs": stage_runs,
             "capacity_per_day": proj.capacity_per_day,
             "inflow_per_day": round(proj.inflow_per_day, 2),
             "keeps_up": proj.keeps_up,
