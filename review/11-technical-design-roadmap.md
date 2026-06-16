@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-13**
+**Status: LIVING · last updated 2026-06-16**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -107,6 +107,7 @@ sync · #20 video enclosures (partial).
 | H11b deploy resilience — render-only deploy | new | L3 | **Shipped** ([#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272)) · `deploy.yml` stripped to render-only (no ffmpeg/ASR, `actions: read` dropped); heavy phase → new `enrich.yml` (own `enrich` concurrency group); **render writes only `docs/`** — `build()` gates `save_records`/`push_state`/`reconcile_state` off `--phase render` so the enrich workflow is the sole record writer (closes the lost-update record-write race); `statesync.push_state(only_prefixes=)` + `reconcile_state(full_run=)` scope hooks ready for H6b sharding. Precedes H6b. |
 | H12 transcript artifact rework (segment VTT + word-JSON + version-aware re-transcribe) | #249 regression, R2/#7 | L3 | **Shipped** ([PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253)) |
 | #39 per-provider rate limiting (incl. Retry-After clamp) | #39 | L2→L3 | **Shipped** ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274)) · process-global `HostRateLimiter` (per-registrable-domain cap from `provider_rate_limits`) acquired by **both** `GuardedHTTPAdapter.send` **and** the ffmpeg/ffprobe fetch paths (`media.py`, `concat.py`) — the H6b storm was ffmpeg, not `requests`, so capping only the adapter would have missed it; Granicus follow-up adds B2-compatible soft `provider_distributed_leases` around media reads across the four audio shards (`granicus.com: 6` after 2026-06-15 overlap probes) plus `rate_limited` classification and a run-local circuit breaker; Granicus 403 backoff lifted into the shared retry (403 in `status_forcelist`, Retry-After clamp kept); also fixed the H6b regressions it surfaced: truncation guard (encode < 50 % of declared duration → #120 backoff, not hosted), source-atomic weighted `shard_assignment` (no empty `audio (0)`, large sources packed first), responsive 0.5 s ffmpeg poll (honest `seconds=`). Design: [review/12 §#39](12-hardening-and-efficiency.md#39--per-provider-rate-limiting-sequence-with-h6b) |
+| Granicus media reliability follow-up | GH#300/#39 | L1 | **Committed** · endpoint-contract reruns can still hit `RateLimitedMediaFetchError(... HTTP 403)` from `archive-video.granicus.com` when they overlap active `audio.yml` work, while local serial contracts pass. Treat first as aggregate GitHub-runner Granicus concurrency: lower distributed/process-local Granicus media caps, make endpoint contracts share/defer against Audio's coordination, then test browser-fidelity/off-Actions alternatives only if low/no-overlap fetches still 403. Sketch: [§5.5](#granicus-media-reliability-follow-up-30039). |
 | **H13 GPU/ASR execution-backend interface (+ `local` adapter)** | §5.5, [#271](https://github.com/BashfulBits/city-meeting-podcasts/issues/271) | L3 | **Shipped** (#271) · **pre-1.0 lock** · `citypods/compute/{base,local}.py` mirrors `storage/`; `base.py` types all task verbs (ASR + the reserved R3/R4 LLM verbs) + `InferenceJob`/`JobResult`/`JobHandle` + `runtime_checkable` `Backend`; the `local` adapter wraps in-process faster-whisper/stable-ts (byte-identical); `TranscriptStage` routes through `backend.run_inference(...)`; `compute_backend: local` default. Design: [review/12 §H13](12-hardening-and-efficiency.md#h13--gpuasr-execution-backend-interface--local-adapter--the-pre-10-lock) |
 | **H14 external transcription adapters — Modal + Beam** | new, #7-adjacent | L3 | **H14a substrate Shipped** ([#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275)) · `base.DispatchBackend`/`JobHandle` + budget ledger (`compute/budget.py` → `state/compute_budget.json`, **$0 guarantee**) + router/`DispatchCoordinator`/`reconcile_compute` (`compute/dispatch.py`); `compute_backend: auto` routes `TranscriptStage` through the coordinator (overflow-to-`local`); H5 leases go **live** (`lease_owner="modal:<job_id>"`); `citypods compute reconcile` CLI + `asr.yml` reconcile job; `FakeDispatchBackend` in `tests/test_compute_dispatch.py`. **H14b/H14c remain:** real Modal/Beam `compute/{modal,beam}_backend.py` + `scripts/compute/{modal,beam}_app.py`; `diarize` reserved for Phase R; Mac-mini/AWS post-1.0. Design: [review/12 §H14](12-hardening-and-efficiency.md#h14--external-transcription-adapters-modal--beam-free-tier-bounded-async-dispatch) |
 
@@ -300,6 +301,40 @@ gated on revenue; the untrusted-output rule applies to all generated narration. 
 works.
 
 ### §5.5 Cross-cutting / ongoing
+
+### Granicus media reliability follow-up (#300/#39)
+
+*Problem:* after PR #316 made endpoint issues more descriptive, endpoint issue #300 still reproduces on
+GitHub-hosted runners as `RateLimitedMediaFetchError('ffmpeg source-cache hit provider throttle (HTTP
+403)')` for Arlington's Granicus `media-fetch`. The representative RSS, media-resolution, chapters,
+view-count, and deeplink checks pass; the failure is the ffmpeg byte fetch from
+`archive-video.granicus.com`. A local serial contracts run on 2026-06-16 passed (`51943B from first 3s`),
+and the failed workflow-dispatch contracts run overlapped an active sharded `audio.yml` run. So the
+leading hypothesis is **aggregate GitHub-runner Granicus concurrency**, not a dead meeting URL or a
+bad provider parser.
+
+*Recommended sequence:*
+
+1. **Reduce the actual disease first: aggregate Granicus media concurrency.** Lower
+   `provider_distributed_leases.granicus.com.slots` from 6 toward 2, and consider lowering the
+   process-local `provider_rate_limits.granicus.com` cap from 2 to 1. Watch Audio throughput/backlog
+   against endpoint #300 closure before tuning back upward.
+2. **Put endpoint contracts inside the same coordination envelope.** `contracts.yml` currently runs in
+   its own concurrency group and calls the same low-level ffmpeg helper, but it does not configure or
+   acquire the Audio lane's storage-backed provider leases. Either wire contracts into the shared
+   Granicus lease pool for `media-fetch`, or skip/defer Granicus `media-fetch` while an Audio run is
+   active. This prevents the monitor itself from becoming the extra uncoordinated fetch that trips CDN
+   throttling.
+3. **Only if low/no-overlap Actions-runner fetches still 403, test request-shape alternatives.** Candidate
+   experiments: add Granicus-specific `Referer`/`Origin` headers to ffmpeg, let ffmpeg fetch
+   `DownloadFile.php` directly rather than the pre-followed `archive-video` URL, discover a playback/HLS
+   URL that Granicus serves more consistently to Actions, or move Granicus media fetching off
+   GitHub-hosted runners.
+
+*Tradeoff:* lower concurrency slows the Granicus audio backfill but attacks the likely cause. Request-shape
+changes are higher risk because prior fixes misdiagnosed Granicus media 403s as signing/URL issues; keep
+those experiments behind live endpoint checks and only after the low-concurrency/no-overlap case still
+fails.
 
 **Strong Towns-focused discovery (#27/#32, rescoped).** *Problem:* grow toward where it helps most.
 *Approach:* seed discovery from cities with active **Strong Towns Local Conversations**

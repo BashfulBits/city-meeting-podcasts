@@ -27,13 +27,24 @@ global newest-everywhere-first enrich queue (PRs #263/#264/#265).
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
-> **Remaining tail (2026-06-12, updated 2026-06-14).** With
+> **Remaining tail (2026-06-12, updated 2026-06-16).** With
 > H1–H5/H6a/H6b/H7/H8/H10/H11a/H11b/H12/H13/**#39** shipped, two interlocking items remain, in order:
 > **H14** the first real external workers (**Modal + Beam**, free-tier-bounded) → **H9**
 > combined-throughput eval. The maintainer pulled the external-worker *build* into Phase H so "compute
 > is pluggable" ships proven by two live GPU adapters before 1.0. (**#39** per-provider rate limiting
 > shipped in [#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274) — it fixed the
 > Granicus 403 / truncated-fetch storm the first sharded Audio run hit.)
+>
+> **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
+> `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but
+> ffmpeg receives HTTP 403 from `archive-video.granicus.com` on the GitHub-hosted runner. A local serial
+> contracts run passes, so treat this first as aggregate Actions-runner Granicus concurrency rather than
+> a broken URL. Recommended sequence: (1) lower `provider_distributed_leases.granicus.com.slots` from 6
+> toward 2 and consider lowering `provider_rate_limits.granicus.com` from 2 to 1; (2) make endpoint
+> `media-fetch` participate in the same coordination envelope (shared leases or skip/defer while Audio
+> is active); (3) only if low/no-overlap runner fetches still 403, test browser-fidelity alternatives
+> (`Referer`/`Origin`, direct `DownloadFile.php`, Granicus playback/HLS URLs) or move Granicus media
+> fetching off GitHub-hosted runners.
 
 > **Reprioritized 2026-06-08** after a build-log root-cause review: **H10 shipped in PR #232** and
 > **H8 shipped in PR #235**; the remaining do-now reliability item **H11a** runs **ahead of H1–H5**.
@@ -59,6 +70,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H12** | ✓ Shipped — transcript artifact rework (PR #253): clean segment-cue VTT for players + a word-level JSON sidecar for search/clips/diarization + version-aware gradual re-transcribe (fixes #249's word-per-cue regression) |
 | **H13** | **GPU/ASR execution-backend interface** (+ `local` adapter) — the pre-1.0 "compute is pluggable" lock; `citypods/compute/` mirrors `storage/`. Do **first** (seam for H6b lanes + H14 adapters). LLM-API half of the interface lands with R3/R4 |
 | **H14** | **External transcription workers — Modal + Beam** (free-tier-bounded async dispatch behind H13; `asr.yml` dispatches). _H14a substrate **shipped** ([#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275)): budget ledger ($0 guarantee), router + `DispatchCoordinator`, live H5 leases, `compute reconcile`, `compute_backend: auto` (overflow-to-`local`)._ **H14b/H14c next:** the real Modal + Beam adapters + remote workers. `diarize` reserved for Phase R; Mac-mini/AWS stay post-1.0 |
+| **#300/#39 follow-up** | **Granicus media reliability** — eliminate remaining Actions-runner `archive-video.granicus.com` HTTP 403s by reducing aggregate Granicus media concurrency, coordinating endpoint contracts with Audio's provider leases, then testing request-shape/off-Actions alternatives only if low/no-overlap fetches still fail. Tracked in [`review/11`](review/11-technical-design-roadmap.md#granicus-media-reliability-follow-up-30039). |
 
 **Phase H exit criteria ("green").** Phase H is done — and Phase R may start — when, measured off
 `run_history.jsonl` + the status page (instruments built in H2/H4):
