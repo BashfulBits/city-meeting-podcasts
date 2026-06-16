@@ -49,7 +49,6 @@ jobs:
     # citypods/statesync.py) to publish feeds/pages, so it needs the storage creds — but no
     # ffmpeg, no Whisper model, and no audio/ASR encodes. All heavy work runs in audio.yml/asr.yml.
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # Audio hosting (CivicPlus + extract_audio). Set the secrets for whichever backend
       # site_config.defaults.audio_storage_backend selects; if unset, HLS feeds stay empty.
       # Backblaze B2 (+ Cloudflare CDN for free egress):
@@ -79,7 +78,7 @@ jobs:
       # restore-keys pulls the most recent previous cache. Render never pushes records back to the
       # bucket (H11b) — the enrich workflow is the sole record writer.
       - name: Restore build state
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .citypods-state

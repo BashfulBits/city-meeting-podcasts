@@ -33,7 +33,6 @@ jobs:
         # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
         shard: [0, 1, 2, 3]
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # Lets the shard poll the Actions API and yield gracefully when a newer run is queued behind
       # it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
       GITHUB_TOKEN: ${{ github.token }}
@@ -61,7 +60,7 @@ jobs:
       # (citypods/statesync.py pulls it at start, scoped-pushes owned records at the end), so an
       # evicted cache self-heals from the bucket. Per-shard key so shards don't fight over one entry.
       - name: Restore build state
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .citypods-state
           key: build-state-audio-${{ matrix.shard }}-${{ github.run_id }}

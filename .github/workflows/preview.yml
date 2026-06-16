@@ -31,7 +31,7 @@ jobs:
       # Actions caches. This gives `--no-refresh` real records to render; on a cache miss (first run
       # / eviction) the render is empty-but-valid (it still verifies the build/render flow).
       - name: Restore build state
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           # Match the path set deploy.yml caches under, so a restore-keys hit extracts cleanly.
           # (docs/ is harmless here — the render below overwrites it.)
