@@ -117,6 +117,44 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
     assert eps[0].links.get("canonical_video")
 
 
+def test_transcribe_lane_skips_the_audio_chain(tmp_path):
+    # H6b lane isolation (review/12 §H6): the ASR lane must NOT run AudioStage, or it would write an
+    # audio block from its start-of-run snapshot and (via the whole-record push) clobber the audio a
+    # concurrent audio run just hosted. It runs only its own work-class stage.
+    import dataclasses
+
+    eps = [_ep("g1")]
+    ctx = dataclasses.replace(_ctx(tmp_path), lane="transcribe")
+    stats = run_stages(FakeProvider(), _city(), eps, default_stages(), ctx)
+    assert [s.name for s in stats] == ["transcript"]
+    assert eps[0].hosted_audio_url is None  # audio was not (re-)materialized in the ASR lane
+
+
+def test_audio_lane_skips_transcript(tmp_path):
+    import dataclasses
+
+    eps = [_ep("g1")]
+    ctx = dataclasses.replace(_ctx(tmp_path), lane="audio")
+    stats = run_stages(FakeProvider(), _city(), eps, default_stages(), ctx)
+    names = [s.name for s in stats]
+    assert "audio" in names and "chapters" in names  # the audio work-class chain runs
+    assert "transcript" not in names  # but not transcription
+
+
+def test_default_lane_none_runs_every_stage(tmp_path):
+    # A full enrich / manual single-source run (lane=None) owns everything → no stage is skipped.
+    eps = [_ep("g1")]
+    stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
+    assert [s.name for s in stats] == [
+        "chapters",
+        "timeline",
+        "remap",
+        "audio",
+        "transcript",
+        "links",
+    ]
+
+
 def test_links_stage_defaults_canonical_video_and_is_idempotent(tmp_path):
     eps = [_ep("g1")]
     s1 = LinksStage().process(FakeProvider(), _city(), eps, _ctx(tmp_path))

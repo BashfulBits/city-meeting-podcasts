@@ -21,6 +21,8 @@ local dev backend simply no-op, keeping their on-disk ``.citypods-state``.
 
 from __future__ import annotations
 
+import json
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -78,6 +80,95 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None) -> int:
         if prefixes is not None and not rel.startswith(prefixes):
             continue
         storage.put_file(f"{STATE_PREFIX}/{rel}", path, "application/json")
+        pushed += 1
+    return pushed
+
+
+def fetch_remote_records(storage, src_key: str) -> dict | None:
+    """Fetch + parse the CURRENT remote ``sources/<src_key>/episodes.json`` episodes dict — the
+    freshest durable copy, which a sibling lane may have written since this run's ``pull_state``.
+
+    Returns ``{}`` when the remote file does not exist yet (this run is the first to write the
+    source — no clobber is possible), the parsed ``{uid: record}`` mapping on success, or ``None``
+    when the object exists but cannot be read/parsed. The caller treats ``None`` as "skip this
+    source's push": a transient read failure must never license pushing a possibly-stale whole
+    record over a sibling's newer one. A backend *listing* error propagates to the caller (also
+    treated as skip). No-op (``None``) for backends without sync support."""
+    if not _supported(storage):
+        return None
+    key = f"{STATE_PREFIX}/sources/{src_key}/episodes.json"
+    # Existence via list_objects (not get_file): get_file swallows backend errors as "absent",
+    # which would let a transient failure masquerade as a first write and clobber the remote.
+    present = any(k == key for k, _ in storage.list_objects(f"{STATE_PREFIX}/sources/{src_key}/"))
+    if not present:
+        return {}
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / "episodes.json"
+        if not storage.get_file(key, dest):
+            return None  # listed but unreadable → transient; skip rather than clobber
+        try:
+            data = json.loads(dest.read_text())
+        except (OSError, ValueError):
+            return None
+    return data.get("episodes", {}) if isinstance(data, dict) else {}
+
+
+def push_records_merged(
+    storage,
+    state_dir: Path,
+    source_keys,
+    *,
+    protected_blocks,
+    log=None,
+) -> int:
+    """Foreign-block-preserving scoped push of owned ``sources/<key>/episodes.json`` files.
+
+    A scoped lane run (audio / transcribe / align) owns only its own derived-artifact block, but a
+    *different* lane's run touching the SAME source file at an overlapping read→write window must
+    not regress the block it doesn't own (the cross-lane lost update: an ASR run finishing after an
+    audio run re-uploads its start-of-run audio block, erasing freshly hosted audio — review/12
+    §H6). For each owned source this re-reads the CURRENT remote record, preserves
+    ``protected_blocks`` from it over the local copy (``records.merge_preserving_foreign``), writes
+    the merge back to ``state_dir`` (so the on-disk and pushed copies match), then uploads it.
+    Returns the number of source files pushed.
+
+    Fail-safe: if a source's remote record exists but cannot be re-read (transient backend error),
+    that source is SKIPPED — never push a possibly-stale whole record over a sibling's newer one.
+    The owned artifact is re-pushed next run; because artifacts are content-addressed, the re-credit
+    is cheap (review/12 §H6 recovery note). No-op for backends without sync support.
+
+    ``protected_blocks`` empty (a full/unknown lane that owns every artifact) degrades to a plain
+    per-source push that still preserves remote-only uids — never less safe than the legacy push."""
+    from citypods.records import (
+        load_records,
+        merge_preserving_foreign,
+        records_path,
+        save_records,
+    )
+
+    if not _supported(storage) or not hasattr(storage, "put_file"):
+        return 0
+    state_dir = Path(state_dir)
+    protected = frozenset(protected_blocks)
+    emit = log or (lambda msg: print(msg, flush=True))
+    pushed = 0
+    for sk in sorted(set(source_keys)):
+        try:
+            remote = fetch_remote_records(storage, sk)
+        except Exception as exc:  # noqa: BLE001 — any backend listing error → fail safe (skip)
+            emit(f"state: WARNING remote read failed for source {sk}: {exc}; skipping push")
+            continue
+        if remote is None:
+            emit(f"state: WARNING remote record for source {sk} unreadable; skipping push")
+            continue
+        local = load_records(state_dir, sk)
+        merged = merge_preserving_foreign(remote, local, protected)
+        save_records(state_dir, sk, merged)
+        storage.put_file(
+            f"{STATE_PREFIX}/sources/{sk}/episodes.json",
+            records_path(state_dir, sk),
+            "application/json",
+        )
         pushed += 1
     return pushed
 

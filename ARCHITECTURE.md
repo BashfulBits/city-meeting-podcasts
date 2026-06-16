@@ -54,10 +54,15 @@ Encoding/transcription can never block or redden the Pages deploy (H11b), and co
 the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
 records, leaving the
 audio/ASR workflows as the sole record writers; a sharded run pushes back only the `source_key`s it owns
-(`statesync.py`'s `push_state(only_prefixes=)`) and skips the reconcile sweep (`full_run=False`), so a
+(`statesync.py`'s `push_records_merged`) and skips the reconcile sweep (`full_run=False`), so a
 stale or partial push can't clobber a sibling shard's records (the record-write race). Each `citypods
 enrich` job pins one **lane** — `audio`, `transcribe`, or `align` — so the two ASR models never co-load
-on one runner. The heavy
+on one runner. Because the audio and ASR workflows write the *same* `source_key`'s `episodes.json` at
+overlapping times, the scoped push is also **foreign-block-preserving**: a lane owns only its derived
+artifact (`audio` vs `transcript`, per `records.protected_blocks_for_lane`), so on push it re-reads the
+freshest remote and keeps the block it doesn't own — closing the cross-*lane* lost update the per-shard
+scope alone does not (`records.merge_preserving_foreign`; `stages.LANE_STAGES` keeps each lane to its own
+work-class stages so it never re-derives a foreign block — review/12 §H6). The heavy
 `enrich` phase processes its backlog as a **global, policy-ordered two-pass queue** (`ops/workqueue.py` +
 `run.py`): prepare every source, then run an on-runner **audio pass** (`chapters→timeline→remap→audio`,
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript

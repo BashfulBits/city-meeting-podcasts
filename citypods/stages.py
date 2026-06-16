@@ -1496,6 +1496,20 @@ def enrich_stages() -> list[EnrichmentStage]:
     ]
 
 
+# Which stages each H6b lane runs (review/12 §H6). A lane runs ONLY its own work-class stages so it
+# never re-derives — and so, via the whole-record state push, never regresses — a sibling lane's
+# artifact: the ``transcribe`` lane must not re-run ``audio`` (which would write an audio block from
+# its start-of-run snapshot), and the ``audio`` lane must not run ``transcript``. The default/None
+# lane (full ``enrich``/``all``, manual single-source) runs every stage. This pairs with
+# ``records.protected_blocks_for_lane`` — owned-stages and owned-blocks must stay consistent; extend
+# both together when a lane lands (e.g. ``"diarize": frozenset({"diarize"})`` — review/12 §H5).
+LANE_STAGES: dict[str, frozenset[str]] = {
+    "audio": frozenset({"chapters", "timeline", "remap", "audio"}),
+    "transcribe": frozenset({"transcript"}),
+    "align": frozenset({"transcript"}),
+}
+
+
 def run_stages(
     provider,
     city: City,
@@ -1507,9 +1521,16 @@ def run_stages(
 ) -> list[StageStats]:
     """Run ``stages`` over ``episodes`` in order, timing each. ``quiet`` suppresses the
     per-stage log lines — used by the PR3 global queue, which dispatches per *episode* and
-    would otherwise emit thousands of per-stage lines; it logs its own per-item summary."""
+    would otherwise emit thousands of per-stage lines; it logs its own per-item summary.
+
+    When ``ctx.lane`` selects an H6b work-class lane, stages outside that lane are skipped
+    (``LANE_STAGES``) so the lane computes only its own artifact — the second half of the
+    cross-lane write-isolation fix (review/12 §H6)."""
+    allowed = LANE_STAGES.get(ctx.lane) if ctx.lane is not None else None
     out: list[StageStats] = []
     for stage in stages:
+        if allowed is not None and stage.name not in allowed:
+            continue
         if not quiet:
             print(
                 f"[enrich] stage start slug={city.slug} provider={city.provider} "

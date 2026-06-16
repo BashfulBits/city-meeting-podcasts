@@ -842,22 +842,29 @@ def test_enrich_source_scopes_to_one_source(tmp_path, fake_provider):
 
 
 def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provider, monkeypatch):
-    """A sharded run pushes back ONLY its owned ``sources/<key>/`` records and does not reconcile —
-    the H11b scope hooks, so concurrent shards never clobber a sibling's records."""
+    """A sharded run pushes back ONLY its owned ``sources/<key>/`` records (via the foreign-block-
+    preserving ``push_records_merged``) and does not reconcile — the H6b/H11b scope hooks, so
+    concurrent shards (and lanes) never clobber a sibling's records."""
     from citypods.config import load_city_configs
     from citypods.records import shard_assignment, source_key
 
     cities_dir = _setup_multi(tmp_path)
     captured = {}
 
+    def _push_merged(_storage, _state_dir, source_keys, *, protected_blocks, log=None):
+        captured["owned"] = sorted(set(source_keys))
+        captured["protected"] = protected_blocks
+        return len(captured["owned"])
+
     def _push(_storage, _state_dir, *, only_prefixes=None):
-        captured["only_prefixes"] = only_prefixes
+        captured["only_prefixes"] = only_prefixes  # the run_events-only push
         return 0
 
     def _reconcile(_storage, _state_dir, *, full_run=True, **_k):
         captured["full_run"] = full_run
         return 0
 
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
     monkeypatch.setattr(run, "push_state", _push)
     monkeypatch.setattr(run, "reconcile_state", _reconcile)
 
@@ -866,12 +873,34 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     assert captured["full_run"] is False  # a shard never sweeps siblings' records
     cfg = load_city_configs(cities_dir, {})
     assignment = shard_assignment((source_key(c) for c in cfg), 2)
-    owned = {f"sources/{source_key(c)}/" for c in cfg if assignment[source_key(c)] == 0}
-    owned.add("run_events/")
-    assert set(captured["only_prefixes"]) == owned
+    owned = sorted({source_key(c) for c in cfg if assignment[source_key(c)] == 0})
+    assert captured["owned"] == owned  # records pushed only for owned sources
+    assert captured["only_prefixes"] == ["run_events/"]  # run_events pushed separately, upload-only
     events = list((tmp_path / "state" / "run_events").glob("*.json"))
     assert len(events) == 1
     assert json.loads(events[0].read_text())["scoped"] is True
+
+
+def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider, monkeypatch):
+    """A transcribe-lane shard must hand ``push_records_merged`` the ``audio`` block to preserve, so
+    a late-finishing ASR run can't erase a concurrent audio run's hosted audio (review/12 §H6)."""
+    from citypods.records import protected_blocks_for_lane
+
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities_dir = _setup_multi(tmp_path)
+    captured = {}
+
+    def _push_merged(_storage, _state_dir, source_keys, *, protected_blocks, log=None):
+        captured["protected"] = protected_blocks
+        return 0
+
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
+    monkeypatch.setattr(run, "push_state", lambda *a, **k: 0)
+    monkeypatch.setattr(run, "reconcile_state", lambda *a, **k: 0)
+
+    _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2), lane="transcribe")
+    assert captured["protected"] == protected_blocks_for_lane("transcribe") == frozenset({"audio"})
 
 
 def test_unsharded_enrich_pushes_everything_and_reconciles(tmp_path, fake_provider, monkeypatch):

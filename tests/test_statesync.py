@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 
+from citypods.records import load_records, protected_blocks_for_lane, save_records
 from citypods.statesync import (
     STATE_PREFIX,
+    fetch_remote_records,
     pull_state,
+    push_records_merged,
     push_state,
     reconcile_state,
 )
@@ -133,6 +137,89 @@ def test_reconcile_state_full_run_guard(tmp_path):
     # The full run reaps it as before.
     assert reconcile_state(bucket, state_dir, full_run=True) == 1
     assert not bucket.exists(f"{STATE_PREFIX}/sources/stale/episodes.json")
+
+
+# --- cross-lane write isolation: foreign-block-preserving push (review/12 §H6) ----------
+
+
+def _seed_remote(bucket: LocalStorage, src_key: str, episodes: dict) -> None:
+    """Write a source's records straight into the bucket's ``state/`` layout (the 'remote')."""
+    path = bucket.root / STATE_PREFIX / "sources" / src_key / "episodes.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema_version": 2, "episodes": episodes}))
+
+
+def test_fetch_remote_records_absent_returns_empty_not_none(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    # No remote file yet → {} (first writer, no clobber possible), distinct from None (read error).
+    assert fetch_remote_records(bucket, "nope") == {}
+
+
+def test_fetch_remote_records_reads_existing(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    _seed_remote(bucket, "s", {"u": {"uid": "u", "audio": {"url": "R"}}})
+    assert fetch_remote_records(bucket, "s") == {"u": {"uid": "u", "audio": {"url": "R"}}}
+
+
+def test_push_records_merged_preserves_concurrent_audio(tmp_path):
+    """The reported regression: an ASR (transcribe) shard pulled state before an audio run wrote a
+    new hosted-audio URL. On push it must preserve the remote's newer audio block while writing its
+    own fresh transcript — not re-upload its stale start-of-run audio (cross-lane lost update)."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    # Remote (freshest): an audio run hosted audio AFTER this ASR run's pull_state.
+    _seed_remote(bucket, sk, {"u1": {"uid": "u1", "audio": {"url": "NEW", "key": "kNEW"}}})
+    # Local (this ASR shard): stale audio from its start-of-run snapshot + a fresh transcript.
+    save_records(
+        state_dir,
+        sk,
+        {"u1": {"uid": "u1", "audio": {"url": None}, "transcript": {"key": "t1", "synced": True}}},
+    )
+
+    pushed = push_records_merged(
+        bucket, state_dir, [sk], protected_blocks=protected_blocks_for_lane("transcribe")
+    )
+    assert pushed == 1
+
+    # What landed in the bucket: audio preserved (not clobbered), transcript written.
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)["u1"]
+    assert final["audio"] == {"url": "NEW", "key": "kNEW"}
+    assert final["transcript"]["synced"] is True
+    # The local on-disk copy is rewritten to match what was pushed (so a later reuse sees the URL).
+    assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
+
+
+def test_push_records_merged_first_write_when_remote_absent(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    save_records(state_dir, "fresh", {"u": {"uid": "u", "audio": {"url": "A"}}})
+    # No remote yet → push the local record whole (no clobber risk).
+    assert push_records_merged(bucket, state_dir, ["fresh"], protected_blocks=frozenset()) == 1
+    assert bucket.exists(f"{STATE_PREFIX}/sources/fresh/episodes.json")
+
+
+class _UnreadableBucket(LocalStorage):
+    """A backend whose objects list as present but fail to download — a transient read error."""
+
+    def get_file(self, key, local_path) -> bool:
+        return False
+
+
+def test_push_records_merged_skips_unreadable_remote_rather_than_clobber(tmp_path):
+    bucket = _UnreadableBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(bucket, sk, {"u1": {"uid": "u1", "audio": {"url": "NEW"}}})
+    save_records(state_dir, sk, {"u1": {"uid": "u1", "audio": {"url": None}}})
+
+    # Remote is present but unreadable → fail safe: skip the push, never clobber the newer remote.
+    pushed = push_records_merged(bucket, state_dir, [sk], protected_blocks=frozenset({"audio"}))
+    assert pushed == 0
+    remote_file = bucket.root / STATE_PREFIX / "sources" / sk / "episodes.json"
+    assert json.loads(remote_file.read_text())["episodes"]["u1"]["audio"]["url"] == "NEW"
 
 
 def _tmpfile(tmp_path, text: str):

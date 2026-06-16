@@ -334,6 +334,22 @@ into its own workflow (H6).
   (decode audio once, both models resident); a self-hosted Mac Mini may run pyannote/MPS +
   faster-whisper/CoreML separately. `speakers.json` will be the content-addressed, version-stamped,
   orphan-GC-protected peer of H12's `words.json`. H5 writes no diarization logic.
+  - **Cross-lane write isolation is already lane/block-registry-driven (added with the 2026-06-16
+    clobber fix — §H6).** When the `diarize` lane lands, wire it through the same three registries and
+    nothing else changes in the merge/push/gating machinery:
+      1. `records.ARTIFACT_BLOCKS` — add `"speakers"` (the new independently-owned record block).
+      2. `records._LANE_OWNED_BLOCKS` — add `"diarize": frozenset({"speakers"})`. `protected_blocks_for_lane`
+         then automatically makes every *other* lane preserve a concurrently-written `speakers` block, and
+         makes the `diarize` lane preserve the `audio`/`transcript` blocks it doesn't own.
+      3. `stages.LANE_STAGES` — add `"diarize": frozenset({"diarize"})` (the global-queue pass split and
+         `run_stages` both read this) so the diarize lane runs only its own stage.
+    Also extend `episode_to_record` / `record_to_episode` / `referenced_audio_keys` with the `speakers`
+    block (so its content-addressed object is GC-protected like `audio`/`transcript`). **Keep owned-stages
+    and owned-blocks consistent** — a lane that runs a stage writing a block must own that block, or the
+    foreign-block merge will discard its output. The async transcribe→diarize *ordering* and the
+    fuse-vs-separate execution decision remain H9/H6b dispatch concerns (see the async-dispatch bullet); the
+    registries above only govern *who may overwrite which block* on the shared `episodes.json` (until the
+    per-stage-file split in §H6 removes the shared file entirely).
 - **PR split (revised 2026-06-12 → three PRs).** **PR1** (shipped, [#263](https://github.com/BashfulBits/city-meeting-podcasts/pull/263)) =
   `ops/workqueue.py` + comparator registry + config parsing + stages wiring — pure within-source
   ordering, *no new persisted state*, behavior-preserving. **PR2** = the derived **work manifest**
@@ -589,6 +605,42 @@ Today only one job writes `state/sources/*.json`, so the whole-directory `push_s
    **only on a full, unsharded run**. With these two fixes, option (1) source-sharding is genuinely safe;
    competitive leases stay reserved for the **external** backend (H14), where a worker holds an item
    across runs.
+
+**The third hazard — cross-LANE clobber on a shared source file (validated + fixed 2026-06-16).** The
+analysis above is necessary but **not sufficient**: it assumed "source-sharding ⇒ no two writers touch one
+record file." That holds only *within* one workflow. The `audio` and `asr` workflows shard over the **same**
+deterministic `shard_assignment` partition but run on **different schedules** (audio every 4h, ASR daily),
+so the *same* `source_key`'s `state/sources/<key>/episodes.json` is written by **both** — at temporally
+overlapping read→write windows. Because each run pulls state once at start, holds it for its whole (multi-hour)
+run, then pushes back the **whole** record file, an ASR run that started *before* an audio run wrote a new
+hosted-audio URL re-uploads its start-of-run `audio` block on finish — silently erasing freshly hosted audio.
+Observed 2026-06-16: `hosted_audio −16` (concentrated in Fort Worth) on a deploy whose only real change was an
+ASR transcript update. The regression is **bidirectional** (a late `audio` run can equally erase a transcript).
+
+*Fix (two parts, [#322]-era `fix/cross-lane-record-clobber`):*
+- **Foreign-block-preserving push.** A lane owns only its derived-artifact block — `audio` for the audio
+  lane, `transcript` for `transcribe`/`align` (`records.protected_blocks_for_lane`). On push a scoped run
+  re-reads the **current** remote per owned source and preserves the blocks it does *not* own
+  (`records.merge_preserving_foreign`), then writes the merge locally and uploads it
+  (`statesync.push_records_merged` / `fetch_remote_records`, called from `run.py`'s scoped branch). Provider/
+  render fields stay last-writer-wins (they converge to provider truth); only the expensive cross-lane
+  artifacts are protected. **Fail-safe:** a present-but-unreadable remote *skips* that source's push rather
+  than risk a stale whole-record overwrite — the owned artifact is re-pushed next run (content-addressed, so
+  a cheap re-credit). **Recovery is cheap:** a clobbered `audio`/`transcript` URL re-credits via the
+  `_present(key)` reuse check on the next lane run with **no** re-encode/re-transcription, *provided the
+  content-addressed object still exists* — it does, because `gc_audio.py` is a manual script (no cron) and
+  the foreign-block fix means the key never transiently drops out of `referenced_audio_keys` to begin with.
+- **Lane-stage gating.** `stages.LANE_STAGES` (one source of truth, enforced in `run_stages` and the global
+  queue's pass split) runs only a lane's own work-class stages, so the ASR lane never re-derives an `audio`
+  block (matching `asr.yml`'s "ASR over episodes that already have hosted audio") and the audio lane never
+  runs transcription. This makes "preserve the remote's foreign block" strictly safe — the running lane can
+  no longer produce a *fresher* local copy of a block it doesn't own.
+
+*Residual (follow-up, not this fix):* a tiny TOCTOU window remains between the re-read and the upload. The
+durable elimination is **per-stage object files** — `sources/<key>/audio.json` + `transcript.json` (+
+`speakers.json` when diarization lands), each written by exactly one lane so no shared file is ever
+read-modify-written. File that as its own item; keep the merge fix surgical. See §H5 for the
+diarization-forward block/lane registry the per-stage split and this merge already key off.
 
 **Alignment re-enable criteria.** Reintroduce stable-ts only as an **align-only** workflow lane:
 pre-load the stable-ts model, do not load/run the fresh transcription model in that job, and do not run
