@@ -31,7 +31,7 @@ Counts and the inferred cause appear in every filed finding's message.
 from __future__ import annotations
 
 import statistics
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -222,6 +222,47 @@ def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Find
     return None
 
 
+def aggregate_view_cap_findings(
+    findings: list[Finding],
+    contexts: Mapping[str, tuple[str, str]],
+) -> list[Finding]:
+    """Collapse per-feed ``view-cap`` findings into one issue per provider.
+
+    ``contexts`` maps feed slug -> ``(provider, city/entity slug)``. The raw check is still
+    per-feed because the saturated view counts are source-specific, but GitHub issue noise is
+    provider-shaped: "Granicus RSS is capped" with the affected feeds listed.
+    """
+    grouped: dict[str, list[tuple[str, str, str]]] = {}
+    kept: list[Finding] = []
+    for finding in findings:
+        if finding.check != "view-cap":
+            kept.append(finding)
+            continue
+        context = contexts.get(finding.slug)
+        if context is None:
+            kept.append(finding)
+            continue
+        provider, city_slug = context
+        grouped.setdefault(provider, []).append((city_slug, finding.slug, finding.message))
+
+    for provider, hits in sorted(grouped.items()):
+        rows = "\n".join(
+            f"- `{city_slug}` / `{feed_slug}` — {message}"
+            for city_slug, feed_slug, message in sorted(hits)
+        )
+        kept.append(
+            Finding(
+                provider,
+                "view-cap",
+                WARN,
+                f"{provider} has {len(hits)} feed(s) with provider views at the 100-item "
+                "cap; provider windows may be truncated until the affected feeds move to a "
+                f"full-history source.\n\nAffected feeds:\n{rows}",
+            )
+        )
+    return kept
+
+
 def count_audio_failures(records: dict) -> tuple[int, int]:
     """Count records currently failing materialization, as ``(deferred, dead)`` (issue #120).
 
@@ -264,15 +305,18 @@ def check_meetings_url(
     url: str,
     probe: Callable[[str], tuple[int, str]],
 ) -> Finding | None:
-    """HEAD the city's configured ``meetings_url`` and flag if it's dead or quietly moved.
+    """Probe the city's configured ``meetings_url`` and flag browser-visible breakage.
 
     ``probe(url)`` returns ``(status_code, final_url)`` — the final URL after any redirects.
 
     Two failure modes:
-      * ``meetings-url-dead``    (ERROR) — 4xx/5xx; the page is gone.
+      * ``meetings-url-dead``    (ERROR) — hard browser-visible dead statuses.
       * ``meetings-url-changed`` (WARN)  — the server redirected to a dramatically different
         path (e.g. the configured deep link now bounces to the site root), which is a strong
         signal the city reorganised its meeting pages and the YAML needs a human update.
+
+    Browser/WAF/rate-limit responses (403/429) and probe-layer exceptions are inconclusive for
+    this check: the page may still be the correct public URL for humans, so do not file.
 
     "Dramatically different" is judged by path depth: if the configured URL has ≥ 3 path
     segments and the final URL has ≤ 1, it has almost certainly been redirected to the
@@ -282,10 +326,10 @@ def check_meetings_url(
 
     try:
         status, final_url = probe(url)
-    except Exception as exc:
-        return Finding(slug, "meetings-url-dead", ERROR, f"meetings_url probe failed: {exc}")
+    except Exception:
+        return None
 
-    if status >= 400:
+    if status in {404, 410, 451}:
         return Finding(
             slug,
             "meetings-url-dead",
@@ -664,9 +708,10 @@ def audit_city(
     ``resolve`` is the provider's media-URL re-resolver for dead-enclosure self-healing.
     """
     from citypods.records import assign_uids, merge_persisted
+    from citypods.seeds import merge_seed_episodes
 
     try:
-        episodes = provider.fetch_episodes(city.source)
+        episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
     except ProviderError as exc:
         return [Finding(city.slug, "unreachable", ERROR, str(exc))]
 
@@ -747,6 +792,13 @@ def _net_probe() -> Callable[[str], tuple[int, str]]:
     from citypods.http import DEFAULT_TIMEOUT, make_session
 
     session = make_session()
+    session.headers.update(
+        {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Upgrade-Insecure-Requests": "1",
+        }
+    )
 
     def probe(url: str) -> tuple[int, str]:
         resp = session.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
@@ -804,8 +856,10 @@ def audit_all(
     # source labels the prevalence examples.
     failures_by_source: dict[str, tuple[int, int]] = {}
     slug_by_source: dict[str, str] = {}
+    view_cap_contexts: dict[str, tuple[str, str]] = {}
     for city in cities:
         provider = get_provider(city.provider)
+        view_cap_contexts[city.slug] = (city.provider, city.city_entity or city.slug)
 
         # Build the re-resolve callable for dead-enclosure self-healing (issue #109, former #45).
         # Only active when we're also HEAD-probing enclosures; keeps the audit read-only otherwise.
@@ -837,6 +891,8 @@ def audit_all(
                 run_history=run_history,
             )
         )
+
+    findings = aggregate_view_cap_findings(findings, view_cap_contexts)
 
     deferred_total = sum(d for d, _ in failures_by_source.values())
     dead_total = sum(d for _, d in failures_by_source.values())

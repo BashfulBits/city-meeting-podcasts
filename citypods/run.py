@@ -61,6 +61,7 @@ from citypods.resources import (
     snapshot_string,
 )
 from citypods.security import SecurityError
+from citypods.seeds import merge_seed_episodes
 from citypods.site import (
     render_city_page,
     render_index,
@@ -145,7 +146,7 @@ class SourcePipeline:
         prepare step shared by ``enrich`` (per-source) and the global orchestrator (PR3).
         Returns ``(provider, episodes, persisted, seeded)``. ``ProviderError`` propagates."""
         provider = get_provider(city.provider)
-        episodes = provider.fetch_episodes(city.source)
+        episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
         print(
             f"[enrich] source fetched slug={city.slug} provider={city.provider} "
             f"source={key} episodes={len(episodes)}",

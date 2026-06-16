@@ -4,6 +4,65 @@ provider: civicplus
 source:
   # CivicMedia per-channel RSS (ModID=92 is the CivicMedia module).
   feed_url: https://www.gainesville.tx.us/RSSFeed.aspx?ModID=92&CID=City-Council-1
+seed_episodes:
+  # The CivicMedia RSS currently exposes only the newest item, while the public video page
+  # lists these older City Council recordings. Seed them once; future RSS items will be
+  # merged normally and the append-only record store will retain this back catalog.
+  - title: "May 5, 2026 Regular City Council Meeting"
+    published: "2026-05-05"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=284
+    body: "City Council"
+    media_kind: hls
+  - title: "April 21, 2026 Regular City Council Meeting"
+    published: "2026-04-21"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=283
+    body: "City Council"
+    media_kind: hls
+  - title: "April 7, 2026 Regular City Council Meeting"
+    published: "2026-04-07"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=282
+    body: "City Council"
+    media_kind: hls
+  - title: "March 17, 2026 Regular City Council Meeting"
+    published: "2026-03-17"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=281
+    body: "City Council"
+    media_kind: hls
+  - title: "March 3, 2026 Regular City Council Meeting"
+    published: "2026-03-03"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=280
+    body: "City Council"
+    media_kind: hls
+  - title: "February 17, 2026 Regular City Council Meeting"
+    published: "2026-02-17"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=279
+    body: "City Council"
+    media_kind: hls
+  - title: "February 03, 2026 Regular City Council Meeting"
+    published: "2026-02-03"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=278
+    body: "City Council"
+    media_kind: hls
+  - title: "January 20, 2026 Regular City Council Meeting"
+    published: "2026-01-20"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=277
+    body: "City Council"
+    media_kind: hls
+  - title: "January 06, 2026 Regular City Council Meeting"
+    published: "2026-01-06"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=276
+    body: "City Council"
+    media_kind: hls
+  - title: "December 12, 2025 City Council Meeting"
+    published: "2025-12-12"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=275
+    body: "City Council"
+    media_kind: hls
+  - title: "December 2, 2025 City Council Meeting"
+    published: "2025-12-02"
+    video_url: https://www.gainesville.tx.us/CivicMedia?VID=274
+    body: "City Council"
+    media_kind: hls
 podcast_title: "Gainesville City Council Meetings"
 podcast_author: "City of Gainesville, TX"
 podcast_email: ""
