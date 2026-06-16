@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from citypods.audit import (
     WARN,
     ArchiveDiff,
+    Finding,
+    aggregate_view_cap_findings,
     audit_city,
     check_dead_audio_aggregate,
     check_deferred_audio_aggregate,
@@ -134,6 +136,29 @@ def test_check_view_cap():
     assert check_view_cap("s", [100]).check == "view-cap"
     assert check_view_cap("s", [42, 100, 7]).check == "view-cap"
     assert check_view_cap("s", [42, 7]) is None
+
+
+def test_aggregate_view_cap_findings_groups_by_provider():
+    findings = [
+        Finding("fort-worth-tx-city-council", "view-cap", WARN, "5 view(s) at the 100-item cap"),
+        Finding("arlington-tx-council", "view-cap", WARN, "1 view(s) at the 100-item cap"),
+        Finding("gainesville-tx", "empty", WARN, "only 1 episode"),
+    ]
+
+    aggregated = aggregate_view_cap_findings(
+        findings,
+        {
+            "fort-worth-tx-city-council": ("granicus", "fort-worth-tx"),
+            "arlington-tx-council": ("granicus", "arlington-tx"),
+        },
+    )
+
+    assert [f.check for f in aggregated] == ["empty", "view-cap"]
+    view_cap = aggregated[1]
+    assert view_cap.slug == "granicus"
+    assert view_cap.severity == WARN
+    assert "`fort-worth-tx` / `fort-worth-tx-city-council`" in view_cap.message
+    assert "`arlington-tx` / `arlington-tx-council`" in view_cap.message
 
 
 def _run_history(n_active: int, n_idle: int = 0) -> list[dict]:
