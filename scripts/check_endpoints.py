@@ -111,10 +111,7 @@ def _reconcile_issues(failures: list) -> None:
         "--force",
         check=False,
     )
-    wanted = {
-        f"{TITLE_PREFIX} {r.provider}: {r.endpoint}": _issue_body(r)
-        for r in failures
-    }
+    wanted = {f"{TITLE_PREFIX} {r.provider}: {r.endpoint}": _issue_body(r) for r in failures}
     existing = _open_issues()
     for title, body in wanted.items():
         if title in existing:
