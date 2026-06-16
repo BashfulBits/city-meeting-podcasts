@@ -403,6 +403,68 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
     return {**persisted, **fresh}
 
 
+# --- cross-lane write isolation (review/12 §H6) ----------------------------------------
+#
+# The expensive, independently-owned, content-addressed derived artifacts that live as their own
+# block inside an episode record. Each block is produced by exactly one enrich *lane* (the H6b
+# sharded ``audio`` / ``transcribe`` / ``align`` workflows). Two lanes can touch the SAME
+# ``state/sources/<key>/episodes.json`` at overlapping read→write windows (the audio cron and the
+# ASR cron run on different schedules), so a lane that pulled state before a sibling lane's write
+# would, on its own whole-record push, silently regress the sibling's block (an ASR run finishing
+# after an audio run re-uploads its start-of-run audio block, erasing freshly hosted audio). The
+# foreign-block-preserving push (``statesync.push_records_merged``) prevents that by re-reading the
+# freshest remote and keeping the blocks the running lane does not own.
+#
+# **Extensibility (diarization — review/12 §H5 diarization-forward schema).** When the reserved
+# ``diarization`` lane lands and writes a ``speakers`` block, add it to ``ARTIFACT_BLOCKS`` and map
+# ``"diarize": frozenset({"speakers"})`` in ``_LANE_OWNED_BLOCKS``. The merge/push logic is
+# block-set-driven and needs no other change; ``episode_to_record`` / ``record_to_episode`` /
+# ``referenced_audio_keys`` gain the new block alongside the existing ``audio`` / ``transcript``.
+ARTIFACT_BLOCKS: frozenset[str] = frozenset({"audio", "transcript"})
+
+# Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
+# full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
+# it preserves nothing (behaves like the legacy whole-record push).
+_LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
+    "audio": frozenset({"audio"}),
+    "transcribe": frozenset({"transcript"}),
+    "align": frozenset({"transcript"}),
+}
+
+
+def protected_blocks_for_lane(lane: str | None) -> frozenset[str]:
+    """Artifact blocks a scoped ``lane`` run must PRESERVE from the freshest remote because it does
+    not own them — everything else (its owned artifact plus the re-fetched provider/render fields)
+    is written fresh. ``None``/unknown lane owns every artifact, so nothing is protected."""
+    owned = _LANE_OWNED_BLOCKS.get(lane, ARTIFACT_BLOCKS) if lane is not None else ARTIFACT_BLOCKS
+    return ARTIFACT_BLOCKS - owned
+
+
+def merge_preserving_foreign(remote: dict, local: dict, protected: frozenset[str]) -> dict:
+    """Merge a scoped lane run's ``local`` records to push against the freshest ``remote`` snapshot,
+    preserving the ``protected`` artifact blocks (the ones this lane does not own) from ``remote``.
+
+    Rules, per uid:
+      * uid only in ``remote`` (a sibling lane discovered/owns it) — kept as-is.
+      * uid only in ``local`` (this run discovered it) — taken whole.
+      * uid in both — take ``local`` (fresh provider/render fields + this lane's artifact), but for
+        each ``protected`` block keep ``remote``'s value **when remote has one** (a sibling lane may
+        have just written it). When remote lacks the block, local's is kept so a block is never
+        dropped. This makes the running lane authoritative only for its own artifact and provider
+        fields, and never regresses a concurrently-written foreign artifact (review/12 §H6).
+    """
+    merged = {uid: dict(rec) for uid, rec in remote.items()}
+    for uid, local_rec in local.items():
+        rec = dict(local_rec)
+        remote_rec = remote.get(uid)
+        if remote_rec:
+            for block in protected:
+                if remote_rec.get(block):
+                    rec[block] = remote_rec[block]
+        merged[uid] = rec
+    return merged
+
+
 def prune_archive(records: dict, *, max_items: int, max_age_years: float, now=None) -> dict:
     """Bound the otherwise append-only archive: keep the newest ``max_items`` records and drop
     any older than ``max_age_years``. Defaults are set arbitrarily high (see build()), so this

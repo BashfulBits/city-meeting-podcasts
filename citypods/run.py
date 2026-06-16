@@ -47,6 +47,7 @@ from citypods.records import (
     merge_persisted,
     merge_records,
     migrate_legacy_manifests,
+    protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
     save_records,
@@ -69,6 +70,7 @@ from citypods.site import (
     render_redirect_page,
 )
 from citypods.stages import (
+    LANE_STAGES,
     StageContext,
     _materialize_set,
     default_stages,
@@ -82,7 +84,7 @@ from citypods.state import (
     resolve_state_dir,
     save_etag_cache,
 )
-from citypods.statesync import pull_state, push_state, reconcile_state
+from citypods.statesync import pull_state, push_records_merged, push_state, reconcile_state
 from citypods.storage import make_storage
 
 # Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
@@ -636,16 +638,23 @@ def _run_enrich_global_queue(
     never loses an encode — the object stays in storage and is re-credited next run.
     """
     ctx = pipeline.ctx
-    audio_stages = [s for s in pipeline.stages if s.name != "transcript"]
-    transcript_stages = [s for s in pipeline.stages if s.name == "transcript"]
     # H6b lanes: the sharded workflows run one work class per job so the two ASR models never
-    # co-load and audio encodes never share a runner with ASR. ``audio`` → audio pass only;
-    # ``transcribe``/``align`` → transcript pass only (the per-episode model choice is gated inside
-    # TranscriptStage by ``ctx.lane``). ``None`` (combined enrich) runs both passes, as before.
-    if ctx.lane == "audio":
-        transcript_stages = []
-    elif ctx.lane in ("transcribe", "align"):
-        audio_stages = []
+    # co-load and audio encodes never share a runner with ASR. ``LANE_STAGES`` (the single source of
+    # truth, also enforced inside ``run_stages``) decides which stages a lane runs: ``audio`` → the
+    # audio chain only; ``transcribe``/``align`` → ``transcript`` only (the per-episode model choice
+    # is gated inside TranscriptStage by ``ctx.lane``). ``None`` (combined enrich) runs both passes.
+    # When a new lane lands (e.g. diarization — review/12 §H5) it gains an entry there, not here.
+    allowed = LANE_STAGES.get(ctx.lane) if ctx.lane is not None else None
+    audio_stages = [
+        s
+        for s in pipeline.stages
+        if s.name != "transcript" and (allowed is None or s.name in allowed)
+    ]
+    transcript_stages = [
+        s
+        for s in pipeline.stages
+        if s.name == "transcript" and (allowed is None or s.name in allowed)
+    ]
 
     # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
     #    double-count). ProviderError is captured per source and surfaces as that city's result.
@@ -1211,11 +1220,20 @@ def build(
             # run does the sweep.
             if scoped:
                 owned = sorted({source_key(c) for c in cities})
-                pushed = push_state(
+                # Foreign-block-preserving push: a scoped run owns only its lane's artifact block,
+                # so it re-reads the freshest remote and preserves the blocks it does NOT own (audio
+                # vs transcript) — closing the cross-LANE lost update that the cross-shard scope
+                # alone does not (an ASR run finishing after an audio run would otherwise erase
+                # freshly hosted audio — review/12 §H6). run_events are append-only per-run files
+                # (no shared-field clobber), so a plain scoped push is correct for them.
+                pushed = push_records_merged(
                     storage,
                     state_dir,
-                    only_prefixes=[f"sources/{sk}/" for sk in owned] + [f"{RUN_EVENTS_DIR_NAME}/"],
+                    owned,
+                    protected_blocks=protected_blocks_for_lane(lane),
+                    log=lambda msg: print(msg, flush=True),
                 )
+                pushed += push_state(storage, state_dir, only_prefixes=[f"{RUN_EVENTS_DIR_NAME}/"])
             else:
                 pushed = push_state(storage, state_dir)
             if pushed:

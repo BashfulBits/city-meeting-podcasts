@@ -14,8 +14,10 @@ from citypods.records import (
     feed_content_hash,
     load_records,
     merge_persisted,
+    merge_preserving_foreign,
     merge_records,
     migrate_legacy_manifests,
+    protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
     save_records,
@@ -251,6 +253,65 @@ def test_prune_archive_keeps_undated_records():
     records = {"dated": _rec("dated", 5), "undated": {"uid": "undated"}}
     kept = prune_archive(records, max_items=5000, max_age_years=1.0)
     assert "undated" in kept  # fail-safe: never drop content we can't date
+
+
+# --- cross-lane write isolation (review/12 §H6) ----------------------------------------
+
+
+def test_protected_blocks_for_lane():
+    # A lane preserves the artifact block(s) it does NOT own from the freshest remote.
+    assert protected_blocks_for_lane("audio") == frozenset({"transcript"})
+    assert protected_blocks_for_lane("transcribe") == frozenset({"audio"})
+    assert protected_blocks_for_lane("align") == frozenset({"audio"})
+    # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
+    assert protected_blocks_for_lane(None) == frozenset()
+    assert protected_blocks_for_lane("mystery") == frozenset()
+
+
+def test_merge_preserving_foreign_asr_lane_keeps_remote_audio():
+    # The reported regression: an ASR (transcribe) shard pulled state before an audio run wrote a
+    # new hosted-audio URL, so its local audio block is the stale start-of-run snapshot. On push it
+    # must keep the remote's newer audio and write only its own fresh transcript.
+    remote = {"u1": {"uid": "u1", "title": "old", "audio": {"url": "NEW", "key": "kNEW"}}}
+    local = {
+        "u1": {
+            "uid": "u1",
+            "title": "fresh",
+            "audio": {"url": None, "key": None},
+            "transcript": {"key": "t1", "url": "T", "synced": True},
+        }
+    }
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("transcribe"))
+    assert merged["u1"]["audio"] == {"url": "NEW", "key": "kNEW"}  # remote audio preserved
+    assert merged["u1"]["transcript"]["synced"] is True  # local transcript written
+    assert merged["u1"]["title"] == "fresh"  # provider/render fields are fresh (local wins)
+
+
+def test_merge_preserving_foreign_audio_lane_keeps_remote_transcript():
+    # Symmetric: an audio run finishing after an ASR run must not erase the fresh transcript.
+    remote = {"u1": {"uid": "u1", "audio": {"url": "OLD"}, "transcript": {"key": "tNEW"}}}
+    local = {"u1": {"uid": "u1", "audio": {"url": "NEW"}, "transcript": None}}
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+    assert merged["u1"]["transcript"] == {"key": "tNEW"}  # remote transcript preserved
+    assert merged["u1"]["audio"]["url"] == "NEW"  # local audio written (this lane owns it)
+
+
+def test_merge_preserving_foreign_unions_new_and_remote_only_uids():
+    remote = {"r": {"uid": "r", "audio": {"url": "R"}}}
+    local = {"newbie": {"uid": "newbie", "audio": {"url": "L"}}}
+    merged = merge_preserving_foreign(remote, local, frozenset({"audio"}))
+    assert set(merged) == {"r", "newbie"}  # remote-only uid kept; new local uid added
+    assert merged["r"]["audio"]["url"] == "R"
+    assert merged["newbie"]["audio"]["url"] == "L"  # taken whole (no remote counterpart to protect)
+
+
+def test_merge_preserving_foreign_never_drops_a_block_remote_lacks():
+    # Protected block, but remote lacks it → keep local's so an artifact is never lost.
+    remote = {"u1": {"uid": "u1", "audio": {"url": "NEW"}}}  # no transcript on remote
+    local = {"u1": {"uid": "u1", "audio": {"url": "OLD"}, "transcript": {"key": "t1"}}}
+    merged = merge_preserving_foreign(remote, local, frozenset({"transcript"}))
+    assert merged["u1"]["transcript"] == {"key": "t1"}  # local transcript kept (remote had none)
+    assert merged["u1"]["audio"]["url"] == "OLD"  # audio not protected here → local value
 
 
 def test_legacy_manifest_carryover(tmp_path):
