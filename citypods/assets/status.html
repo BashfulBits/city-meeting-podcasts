@@ -155,6 +155,7 @@ function renderKpis(){
   const audioStale = K.audio_stale ? ` · ${fmtNum(K.audio_stale)} stale` : '';
   const txPct = K.transcript_coverage_pct==null ? '—' : K.transcript_coverage_pct+'%';
   const txText = K.transcripts_text ? ` · ${fmtNum(K.transcripts_text)} text-only` : '';
+  const stageRuns = S.backlog?.stage_runs || {};
 
   document.getElementById('kpis').innerHTML = `
 <h2>At-a-glance</h2>
@@ -172,6 +173,9 @@ function renderKpis(){
     <div class="card-val ${lbCls}">${lbLabel}</div>
     <div class="card-sub">${esc(lbKind)} · ${lbTs}${lbLink?' · '+lbLink:''}</div>
   </div>
+  ${runCard('AUDIO RUN', stageRuns.audio, 'audio')}
+  ${runCard('TRANSCRIBE RUN', stageRuns.transcript, 'transcribe')}
+  ${runCard('DIARIZE RUN', stageRuns.diarize || stageRuns.diarization, 'diarize')}
 </div>
 <div class="legend">
   <span><span class="ok">✓</span> Served/current</span>
@@ -189,6 +193,29 @@ function renderKpis(){
 
 function card(label, val, sub=''){
   return `<div class="card"><div class="card-label">${esc(label)}</div><div class="card-val">${esc(val)}</div>${sub?`<div class="card-sub">${esc(sub)}</div>`:''}</div>`;
+}
+
+function runCard(label, run, fallbackKind){
+  if(!run){
+    return `<div class="card">
+      <div class="card-label">${esc(label)}</div>
+      <div class="card-val muted">— not run</div>
+      <div class="card-sub">${esc(fallbackKind)}</div>
+    </div>`;
+  }
+  const totals = run.totals || {};
+  const hasErrors = (run.errors||0) > 0 || (totals.errors||0) > 0;
+  const cls = hasErrors ? 'err' : (run.built||0) > 0 ? 'ok' : 'muted';
+  const labelText = hasErrors ? '⚠ errors' : (run.built||0) > 0 ? '✓ built' : '— skipped';
+  const ts = run.ts ? new Date(run.ts).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short',hour12:false}) : '—';
+  const kind = run.lane || run.phase || fallbackKind;
+  const shards = Array.isArray(run.shards) && run.shards.length ? ` · ${run.shards.length} shards` : run.shard ? ` · shard ${esc(run.shard)}` : '';
+  const action = run.github_run_url ? ` · <a href="${esc(run.github_run_url)}">→ Actions</a>` : '';
+  return `<div class="card">
+    <div class="card-label">${esc(label)}</div>
+    <div class="card-val ${cls}">${labelText}</div>
+    <div class="card-sub">${esc(kind)} · ${esc(ts)}${shards}${action}</div>
+  </div>`;
 }
 
 // ── Section 2: Backlog & Pipeline Health ────────────────────────────────────

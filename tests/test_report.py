@@ -536,6 +536,7 @@ def test_to_status_html_substitution():
     status = build_status([], site_config=SITE)
     html = to_status_html(status)
     assert "__STATUS_JSON__" not in html
+    assert "AUDIO RUN" in html and "TRANSCRIBE RUN" in html and "DIARIZE RUN" in html
     m = re.search(r'<script id="status-data" type="application/json">(.*?)</script>', html, re.S)
     assert m, "status-data script tag not found"
     parsed = json.loads(m.group(1))
