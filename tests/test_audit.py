@@ -363,6 +363,30 @@ def test_audit_city_aggregates_multiple_findings():
     assert "stale" in checks and "view-cap" in checks
 
 
+def test_audit_city_counts_seed_episodes_against_empty_threshold():
+    city = _city()
+    city.extra = {
+        "seed_episodes": [
+            {
+                "title": "Seed 1",
+                "published": (NOW - timedelta(days=8)).isoformat(),
+                "video_url": "https://x/seed1",
+                "body": "City Council",
+            },
+            {
+                "title": "Seed 2",
+                "published": (NOW - timedelta(days=15)).isoformat(),
+                "video_url": "https://x/seed2",
+                "body": "City Council",
+            },
+        ]
+    }
+
+    findings = audit_city(city, provider=_FakeProvider([_ep(1)]), now=NOW, min_meetings=3)
+
+    assert not any(f.check == "empty" for f in findings)
+
+
 def test_audit_city_triage_a_pending_backlog_suppresses_empty():
     # (a) Provider returns 0 but archive shows materialized episodes → suppress drift.
     records = {"u1": {"audio": {"url": "https://cdn/u1.m4a", "key": "k", "spec_hash": "s"}}}
@@ -454,10 +478,14 @@ def test_check_meetings_url_dead():
     assert "404" in f.message
 
 
-def test_check_meetings_url_server_error():
+def test_check_meetings_url_forbidden_is_inconclusive():
+    probe = lambda url: (403, url)  # noqa: E731
+    assert check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe) is None
+
+
+def test_check_meetings_url_server_error_is_inconclusive():
     probe = lambda url: (503, url)  # noqa: E731
-    f = check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe)
-    assert f is not None and f.check == "meetings-url-dead"
+    assert check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe) is None
 
 
 def test_check_meetings_url_redirected_to_homepage():
@@ -478,8 +506,7 @@ def test_check_meetings_url_probe_exception():
     def probe(url):
         raise ConnectionError("timeout")
 
-    f = check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe)
-    assert f is not None and f.check == "meetings-url-dead" and "timeout" in f.message
+    assert check_meetings_url("x-tx", "https://x.gov/government/meetings/watch", probe) is None
 
 
 # ---------------------------------------------------------------------------

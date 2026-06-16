@@ -264,15 +264,18 @@ def check_meetings_url(
     url: str,
     probe: Callable[[str], tuple[int, str]],
 ) -> Finding | None:
-    """HEAD the city's configured ``meetings_url`` and flag if it's dead or quietly moved.
+    """Probe the city's configured ``meetings_url`` and flag browser-visible breakage.
 
     ``probe(url)`` returns ``(status_code, final_url)`` — the final URL after any redirects.
 
     Two failure modes:
-      * ``meetings-url-dead``    (ERROR) — 4xx/5xx; the page is gone.
+      * ``meetings-url-dead``    (ERROR) — hard browser-visible dead statuses.
       * ``meetings-url-changed`` (WARN)  — the server redirected to a dramatically different
         path (e.g. the configured deep link now bounces to the site root), which is a strong
         signal the city reorganised its meeting pages and the YAML needs a human update.
+
+    Browser/WAF/rate-limit responses (403/429) and probe-layer exceptions are inconclusive for
+    this check: the page may still be the correct public URL for humans, so do not file.
 
     "Dramatically different" is judged by path depth: if the configured URL has ≥ 3 path
     segments and the final URL has ≤ 1, it has almost certainly been redirected to the
@@ -282,10 +285,10 @@ def check_meetings_url(
 
     try:
         status, final_url = probe(url)
-    except Exception as exc:
-        return Finding(slug, "meetings-url-dead", ERROR, f"meetings_url probe failed: {exc}")
+    except Exception:
+        return None
 
-    if status >= 400:
+    if status in {404, 410, 451}:
         return Finding(
             slug,
             "meetings-url-dead",
@@ -664,9 +667,10 @@ def audit_city(
     ``resolve`` is the provider's media-URL re-resolver for dead-enclosure self-healing.
     """
     from citypods.records import assign_uids, merge_persisted
+    from citypods.seeds import merge_seed_episodes
 
     try:
-        episodes = provider.fetch_episodes(city.source)
+        episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
     except ProviderError as exc:
         return [Finding(city.slug, "unreachable", ERROR, str(exc))]
 
@@ -747,6 +751,13 @@ def _net_probe() -> Callable[[str], tuple[int, str]]:
     from citypods.http import DEFAULT_TIMEOUT, make_session
 
     session = make_session()
+    session.headers.update(
+        {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Upgrade-Insecure-Requests": "1",
+        }
+    )
 
     def probe(url: str) -> tuple[int, str]:
         resp = session.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
