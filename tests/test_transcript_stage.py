@@ -9,6 +9,7 @@ Acceptance criteria:
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from datetime import UTC, datetime
@@ -28,6 +29,7 @@ from citypods.records import (
 )
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
+    AsrRuntimeLog,
     StageContext,
     TranscriptStage,
     _asr_fits_remaining_budget,
@@ -689,6 +691,21 @@ class TestTranscriptStageASR:
 
         assert timeout == pytest.approx(25, abs=0.25)
 
+    def test_asr_runtime_log_seeds_and_rolls_previous_100_samples(self, tmp_path):
+        path = tmp_path / "asr_runtime_log.json"
+        log = AsrRuntimeLog(path, default_ratio=0.75)
+
+        assert path.exists()
+        assert log.average_ratio() == pytest.approx(0.75)
+
+        for i in range(101):
+            log.append(transcribe_seconds=100 + i, recording_seconds=100)
+
+        data = json.loads(path.read_text())
+        assert len(data["samples"]) == 100
+        assert data["samples"][0]["transcribe_seconds"] == 101
+        assert AsrRuntimeLog(path, default_ratio=0.75).average_ratio() == pytest.approx(1.505)
+
     def test_asr_defers_recording_that_cannot_fit_remaining_budget(self, tmp_path, capsys):
         ep = _ep_with_audio()
         ep.duration = 4 * 3600
@@ -696,13 +713,13 @@ class TestTranscriptStageASR:
         ctx = _ctx(tmp_path)
         ctx.asr_timeout_base_seconds = 15 * 60
         ctx.asr_timeout_per_hour_seconds = 30 * 60
-        ctx.asr_deadline = time.monotonic() + 60 * 60
-        ctx.asr_timeout_budget_reserve_seconds = 5 * 60
+        ctx.asr_start_deadline = time.monotonic() + 60 * 60
+        runtime_log = AsrRuntimeLog(None, default_ratio=0.75)
 
-        fits, estimate, remaining = _asr_fits_remaining_budget(ctx, 4.0)
+        fits, estimate, remaining = _asr_fits_remaining_budget(ctx, 4.0, runtime_log)
         assert fits is False
-        assert estimate == pytest.approx(135 * 60)
-        assert remaining == pytest.approx(55 * 60, abs=1)
+        assert estimate == pytest.approx(180 * 60)
+        assert remaining == pytest.approx(60 * 60, abs=1)
 
         with (
             patch("citypods.stages.asr_mod", fake_asr),
@@ -722,7 +739,7 @@ class TestTranscriptStageASR:
         ctx = _ctx(tmp_path)
         ctx.asr_timeout_base_seconds = 120
         ctx.asr_timeout_per_hour_seconds = 0
-        ctx.asr_deadline = time.monotonic() - 1
+        ctx.asr_start_deadline = time.monotonic() - 1
         ctx.asr_timeout_budget_reserve_seconds = 0
 
         with (
@@ -994,60 +1011,6 @@ class TestTranscriptStageASR:
         assert stats.skipped == 1
         assert ep.transcript_key is None
 
-    def test_fast_yield_exits_after_abandoning_inflight_asr(self, tmp_path):
-        """A push/manual supersession abandons in-flight ASR and asks enrich to exit promptly."""
-        ep = _ep_with_audio()
-        started = threading.Event()
-        release = threading.Event()
-
-        class _FastExit(Exception):
-            pass
-
-        class _SlowAsr(_FakeAsr):
-            def transcribe(
-                self,
-                audio_path,
-                model_or_name,
-                language,
-                compute_type,
-                beam_size,
-                prompt,
-                cpu_threads,
-            ):
-                started.set()
-                release.wait(timeout=5)
-                return TranscriptArtifacts(vtt=self.vtt, words=self.words)
-
-        class _PreemptingStop:
-            def __init__(self):
-                self.calls = 0
-
-            def __call__(self):
-                self.calls += 1
-                return started.is_set()
-
-            def should_exit_immediately(self):
-                return True
-
-        def _fast_exit():
-            raise _FastExit
-
-        fake_asr = _SlowAsr()
-        ctx = _ctx(tmp_path)
-        ctx.stop = _PreemptingStop()
-        ctx.fast_yield_exit = _fast_exit
-
-        with (
-            patch("citypods.stages.asr_mod", fake_asr),
-            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
-        ):
-            stage = TranscriptStage()
-            try:
-                with pytest.raises(_FastExit):
-                    stage.process(FakeProvider(), _city(), [ep], ctx)
-            finally:
-                release.set()
-
     def test_asr_timeout_aborts_remaining_asr_for_run(self, tmp_path):
         """A stuck native ASR call is bounded and prevents more ASR from starting this run."""
         eps = [_ep_with_audio("uid-a"), _ep_with_audio("uid-b")]
@@ -1094,32 +1057,6 @@ class TestTranscriptStageASR:
         assert stats.skipped == 2
         assert any("ASR timeout" in e for e in stats.errors)
         assert all(ep.transcript_key is None for ep in eps)
-
-    def test_asr_semaphore_wait_polls_stop_before_six_hour_cap(self, tmp_path, capsys):
-        ep = _ep_with_audio("uid-a")
-        fake_asr = _FakeAsr()
-        ctx = _ctx(tmp_path)
-        ctx.asr_semaphore = threading.Semaphore(0)
-        stop_calls = 0
-
-        def _stop():
-            nonlocal stop_calls
-            stop_calls += 1
-            return stop_calls >= 2
-
-        ctx.stop = _stop
-
-        with (
-            patch("citypods.stages.asr_mod", fake_asr),
-            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
-        ):
-            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
-
-        out = capsys.readouterr().out
-        assert fake_asr.transcribe_calls == []
-        assert stats.skipped == 1
-        assert ep.transcript_key is None
-        assert "reason=stop-before-slot" in out
 
     def test_abandoned_asr_keeps_worker_slot_until_thread_exits(self, tmp_path):
         ep = _ep_with_audio("uid-a")

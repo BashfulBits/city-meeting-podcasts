@@ -7,9 +7,9 @@ name: ASR
 
 on:
   schedule:
-    # Daily: transcription is the heaviest work class; the audio lane runs more often to keep the
-    # hosted-audio backlog (this lane's input) fed.
-    - cron: "0 6 * * *"
+    # Every 5 hours: transcription uses a 285m start cutoff and 350m backstop, so a run may
+    # intentionally make the next scheduled run wait briefly while the current transcript finishes.
+    - cron: "0 */5 * * *"
   workflow_dispatch:
 
 # Own concurrency group, distinct from `pages` and `audio`: a deploy is never canceled by ASR, and

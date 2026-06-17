@@ -82,11 +82,11 @@ defaults:
   # run_time_budget_minutes == the cron interval and let budget_safety reserve the tail.
   run_time_budget_minutes: 240           # == schedule_cron interval (4h); 0 = no time cap (yield only)
   budget_safety: 0.85                    # window = 204m; leaves ~36m of the 240m cron tick for the tail
-  # ASR runs daily rather than every 4h, so it may use most of the Actions job while still leaving
-  # a 30m tail before GitHub's 6h hard cap. Before starting a recording, TranscriptStage compares
-  # its conservative ASR runtime estimate with the remaining window and defers items that do not fit.
-  asr_run_time_budget_minutes: 330       # 5.5h ASR lane window; leaves ~30m for state push/cache tail
-  asr_budget_safety: 1.0                 # use the full ASR lane window; per-item fit check guards starts
+  # ASR runs every 5h. Stop starting new local ASR at 285m, then let any in-flight transcript
+  # continue until the 350m backstop. TranscriptStage estimates fit from the rolling
+  # state/asr_runtime_log.json ratio log (seeded from the conservative timeout formula).
+  asr_start_cutoff_minutes: 285
+  asr_backstop_minutes: 350
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC

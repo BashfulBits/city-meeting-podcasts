@@ -120,6 +120,12 @@ def test_no_combined_enrich_workflow():
     assert not (WORKFLOWS / "enrich.yml").exists()
 
 
+def test_asr_workflow_runs_every_five_hours():
+    wf, _ = _job("asr.yml")
+    schedules = _on(wf).get("schedule", [])
+    assert {item.get("cron") for item in schedules} == {"0 */5 * * *"}
+
+
 def test_audio_lane_needs_no_whisper():
     """The audio lane never runs ASR, so it must not install the asr extra or download Whisper —
     that's wasted runner time and memory."""

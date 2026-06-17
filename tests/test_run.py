@@ -600,14 +600,16 @@ def test_build_wires_a_stop_signal_when_time_bounded(tmp_path, fake_provider, mo
     assert captured["stop"]() is False  # window not yet spent, not superseded
 
 
-def test_asr_lane_uses_asr_specific_wall_clock_budget(tmp_path, fake_provider, monkeypatch):
+def test_asr_lane_uses_start_cutoff_and_backstop(tmp_path, fake_provider, monkeypatch):
     import citypods.run as run_mod
 
     captured = {}
     real_ctx = run_mod.StageContext
 
     def spy_ctx(*a, **kw):
+        captured["asr_start_deadline"] = kw.get("asr_start_deadline")
         captured["asr_deadline"] = kw.get("asr_deadline")
+        captured["asr_runtime_log_path"] = kw.get("asr_runtime_log_path")
         return real_ctx(*a, **kw)
 
     monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
@@ -620,8 +622,8 @@ def test_asr_lane_uses_asr_specific_wall_clock_budget(tmp_path, fake_provider, m
         "  asr_enabled: false\n"
         "  run_time_budget_minutes: 240\n"
         "  budget_safety: 0.85\n"
-        "  asr_run_time_budget_minutes: 330\n"
-        "  asr_budget_safety: 1.0\n"
+        "  asr_start_cutoff_minutes: 285\n"
+        "  asr_backstop_minutes: 350\n"
     )
 
     run.build(
@@ -633,7 +635,9 @@ def test_asr_lane_uses_asr_specific_wall_clock_budget(tmp_path, fake_provider, m
         lane="transcribe",
     )
 
-    assert captured["asr_deadline"] == pytest.approx(1000 + 330 * 60)
+    assert captured["asr_start_deadline"] == pytest.approx(1000 + 285 * 60)
+    assert captured["asr_deadline"] == pytest.approx(1000 + 350 * 60)
+    assert captured["asr_runtime_log_path"].name == "asr_runtime_log.json"
 
 
 def test_chapters_cap_defaults_unbounded_and_is_overridable(tmp_path, fake_provider, monkeypatch):
@@ -911,7 +915,10 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     assignment = shard_assignment((source_key(c) for c in cfg), 2)
     owned = sorted({source_key(c) for c in cfg if assignment[source_key(c)] == 0})
     assert captured["owned"] == owned  # records pushed only for owned sources
-    assert captured["only_prefixes"] == ["run_events/"]  # run_events pushed separately, upload-only
+    assert captured["only_prefixes"] == [
+        "run_events/",
+        "asr_runtime_log.json",
+    ]  # run_events + ASR runtime telemetry pushed separately
     events = list((tmp_path / "state" / "run_events").glob("*.json"))
     assert len(events) == 1
     assert json.loads(events[0].read_text())["scoped"] is True
