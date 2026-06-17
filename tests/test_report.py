@@ -245,6 +245,32 @@ def test_build_status_empty():
     assert status["issues"]["dead"] == 0
 
 
+def test_build_status_last_deploy_uses_github_env(monkeypatch):
+    """LAST RUN block reports the Build & Deploy action that rendered the page, from the env."""
+    monkeypatch.setenv("GITHUB_REPOSITORY", "example/repo")
+    monkeypatch.setenv("GITHUB_RUN_ID", "424242")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Build & Deploy")
+
+    deploy = build_status([], site_config=SITE)["kpis"]["last_deploy"]
+    assert deploy["status"] == "deployed"
+    assert deploy["workflow"] == "Build & Deploy"
+    assert deploy["github_run_id"] == "424242"
+    assert deploy["github_run_url"] == "https://github.com/example/repo/actions/runs/424242"
+    assert deploy["ts"]
+
+
+def test_build_status_last_deploy_off_ci(monkeypatch):
+    """Off-CI (no run id) the deploy block degrades to a local, link-less status."""
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.delenv("GITHUB_WORKFLOW", raising=False)
+
+    deploy = build_status([], site_config=SITE)["kpis"]["last_deploy"]
+    assert deploy["status"] == "local"
+    assert deploy["github_run_url"] is None
+    assert deploy["workflow"] == "Build & Deploy"
+
+
 def test_build_status_episode_taxonomy(tmp_path):
     """Classify records into the correct states from the issue taxonomy."""
     from citypods.records import audio_spec_hash, record_to_episode, save_records, source_key
