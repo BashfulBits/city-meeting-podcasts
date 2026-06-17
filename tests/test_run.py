@@ -990,6 +990,49 @@ def test_transcript_lanes_skip_the_audio_pass(tmp_path, fake_provider, lane):
     assert ff.calls == 0  # audio pass skipped; only the transcript pass would run
 
 
+def test_transcript_lane_provider_fetch_errors_use_persisted_archive(
+    tmp_path, fake_provider, capsys
+):
+    """ASR shard workers should use already-hosted audio when provider refresh fails."""
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    first = _build_phase(tmp_path, cities, "enrich", ff, lane="audio")
+    assert [r.status for r in first] == ["built"]
+    assert ff.calls == 2
+
+    fake_provider.error = ProviderError("GET https://x failed: timed out")
+
+    results = _build_phase(tmp_path, cities, "enrich", ff, lane="transcribe")
+
+    out = capsys.readouterr().out
+    assert [r.status for r in results] == ["built"]
+    assert "[enrich] source stale" in out
+    assert "[enrich] transcript pass: 2 item(s) with audio" in out
+
+
+def test_transcript_lane_provider_fetch_errors_defer_without_archive(tmp_path, fake_provider):
+    """A first-ever ASR run with no records still completes cleanly and defers the source."""
+    cities = _setup(tmp_path)
+    fake_provider.error = ProviderError("GET https://x failed: timed out")
+
+    results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="transcribe")
+
+    assert [r.status for r in results] == ["skipped"]
+    assert "transcript lane deferred" in results[0].detail
+
+
+def test_audio_lane_provider_fetch_errors_remain_failed(tmp_path, fake_provider):
+    """The audio/full enrich lanes still surface provider fetch failures as run errors."""
+    cities = _setup(tmp_path)
+    fake_provider.error = ProviderError("GET https://x failed: timed out")
+
+    results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="audio")
+
+    assert [r.status for r in results] == ["error"]
+
+
 def test_build_rejects_unknown_lane(tmp_path, fake_provider):
     cities = _setup(tmp_path)
     with pytest.raises(ValueError, match="unknown lane"):

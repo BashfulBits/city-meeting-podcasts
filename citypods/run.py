@@ -166,6 +166,28 @@ class SourcePipeline:
         seeded = migrate_legacy_manifests(self.state_dir, episodes)
         return provider, episodes, persisted, seeded
 
+    def fetch_merge_from_records(
+        self, city: City, key: str, reason: Exception
+    ) -> tuple[object, list[Episode], dict, int]:
+        """Prepare a source from the persisted archive after a transient fetch failure.
+
+        Transcript-only ASR lanes operate on already-hosted audio recorded in ``episodes.json``;
+        they do not need fresh provider metadata to transcribe existing audio.  If the provider
+        refresh fails, load the last-known archive and let the transcript pass continue.
+        """
+        provider = get_provider(city.provider)
+        persisted = load_records(self.state_dir, key)
+        if not persisted:
+            raise ProviderError(str(reason)) from reason
+        episodes = [record_to_episode(rec) for rec in persisted.values()]
+        self._notes[key] = f"stale provider fetch failed: {reason}"
+        print(
+            f"[enrich] source stale slug={city.slug} provider={city.provider} "
+            f"source={key} archive={len(episodes)} reason={reason}",
+            flush=True,
+        )
+        return provider, episodes, persisted, 0
+
     def accumulate_stats(self, stats: list) -> None:
         """Fold a ``run_stages`` result into the run-wide per-stage totals (thread-safe)."""
         with self._guard:
@@ -678,8 +700,17 @@ def _run_enrich_global_queue(
             try:
                 provider, episodes, persisted, seeded = fut.result()
             except ProviderError as exc:
-                errors[key] = str(exc)
-                continue
+                if ctx.lane in {"transcribe", "align"}:
+                    try:
+                        provider, episodes, persisted, seeded = pipeline.fetch_merge_from_records(
+                            rep_city[key], key, exc
+                        )
+                    except ProviderError:
+                        errors[key] = str(exc)
+                        continue
+                else:
+                    errors[key] = str(exc)
+                    continue
             notes: list[str] = [f"{seeded} legacy"] if seeded else []
             prepared[key] = {
                 "city": rep_city[key],
@@ -737,12 +768,23 @@ def _run_enrich_global_queue(
     for key, st in prepared.items():
         pipeline.persist_source(key, st["episodes"], st["persisted"], notes=st["notes"])
 
-    # 5) One CityResult per configured city, mirroring its source's outcome.
+    # 5) One CityResult per configured city, mirroring its source's outcome.  Transcript lanes are
+    # best-effort backfill workers: a transient provider refresh failure for one shard means that
+    # source simply has no ASR candidates this run.  Treat it as skipped/deferred so the worker can
+    # persist sibling progress and the scheduled ASR lane completes cleanly instead of reddening on
+    # an outage it cannot repair.  Audio/full enrich still report source-fetch errors as errors,
+    # because those lanes own provider materialization work and should surface provider drift.
+    transcript_only_lane = ctx.lane in {"transcribe", "align"}
     results: list[CityResult] = []
     for c in cities:
         key = source_key(c)
         if key in errors:
-            results.append(CityResult(c.slug, "error", detail=errors[key]))
+            if transcript_only_lane:
+                results.append(
+                    CityResult(c.slug, "skipped", detail=f"transcript lane deferred: {errors[key]}")
+                )
+            else:
+                results.append(CityResult(c.slug, "error", detail=errors[key]))
         else:
             episodes = prepared.get(key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
