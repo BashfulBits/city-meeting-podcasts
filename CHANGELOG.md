@@ -31,6 +31,15 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **`/admin/status` "Last Run" block now reports the Build & Deploy action, not the latest enrich run.**
+  Run history (`run_summary.json`) is recorded only by the time-bounded enrich (audio/ASR) workflows, so
+  the at-a-glance "Last Run" card was surfacing the newest audio/ASR lane — duplicating the adjacent
+  Audio/Transcribe/Diarize run cards and never reflecting the deploy that actually rendered the page.
+  `build_status` now reads the GitHub env it runs under (it executes *inside* `deploy.yml`) into a new
+  `kpis.last_deploy` block (`status`, `workflow`, `github_run_id`, `github_run_url`, `ts`); the status
+  page renders that block, so the card shows the Build & Deploy workflow, the render timestamp, and a
+  link to that Actions run. Off-CI it degrades to a link-less `local` status. No pipeline version
+  changed and no artifact backfill is triggered.
 - **Cross-lane record clobber in the sharded enrich workers (the `hosted_audio −16` regression).** The
   `audio` and `asr` workflows shard over the same `source_key` partition but run on different schedules,
   so both write the *same* `state/sources/<key>/episodes.json` at overlapping read→write windows. Each

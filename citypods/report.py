@@ -987,6 +987,19 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         f"https://{site_config['custom_domain']}" if site_config.get("custom_domain") else None
     )
 
+    # The Build & Deploy workflow (deploy.yml) is what renders this very page, so the GitHub env
+    # here identifies that action — unlike ``last_build``/run history, which is recorded only by the
+    # time-bounded enrich (audio/ASR) workflows. Surface it so the "LAST RUN" KPI block reports the
+    # deploy action that produced the page (its run link + timestamp), not the latest enrich run.
+    # Any reader of the *published* status.json is necessarily seeing a deploy that succeeded (Pages
+    # publishes only on a green job), so the status is "deployed" in CI and "local" off-CI.
+    deploy_run_id = os.environ.get("GITHUB_RUN_ID")
+    deploy_run_url = (
+        f"https://github.com/{github_repo}/actions/runs/{deploy_run_id}"
+        if deploy_run_id and github_repo
+        else None
+    )
+
     return {
         "snapshot_ts": now.isoformat(),
         "kpis": {
@@ -1027,6 +1040,13 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
                 "shard": run_summary.get("shard"),
                 "shards": run_summary.get("shards"),
                 "scoped": run_summary.get("scoped"),
+            },
+            "last_deploy": {
+                "ts": now.isoformat(),
+                "status": "deployed" if deploy_run_id else "local",
+                "workflow": os.environ.get("GITHUB_WORKFLOW") or "Build & Deploy",
+                "github_run_url": deploy_run_url,
+                "github_run_id": deploy_run_id,
             },
         },
         "backlog": {
