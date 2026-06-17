@@ -694,8 +694,45 @@ def _merge_logical_run_group(group: list[dict]) -> dict:
     return merged
 
 
+def _parse_shard_token(shard: str | None) -> tuple[int, int] | None:
+    """Parse a ``"N/M"`` shard token into ``(index, total)``; ``None`` if absent/malformed."""
+    if not shard or "/" not in shard:
+        return None
+    idx_s, _, total_s = shard.partition("/")
+    try:
+        return int(idx_s), int(total_s)
+    except ValueError:
+        return None
+
+
+def _group_is_complete(rows: list[dict]) -> bool:
+    """True once every shard a sharded logical run expects has reported.
+
+    Matrix shards (e.g. the audio lane's 4-way split) each push their own ``run_events`` file
+    independently, and the slow shards can trail the fast ones by hours (#H6b). A status build
+    that runs in that window would otherwise only see the fast shards' events and silently
+    report their small partial totals as if they were the run's final tally. The shard token
+    itself carries the expected count (``"1/4"`` -> 4 shards), so completeness is checked
+    against indices ``0..total-1`` actually present in the group — no external config needed.
+    Unsharded rows (no ``shard`` token) have nothing to wait on and are always complete.
+    """
+    parsed = [_parse_shard_token(r.get("shard")) for r in rows if r.get("shard")]
+    if not parsed:
+        return True
+    totals = {p[1] for p in parsed}
+    if len(totals) != 1:
+        return True  # inconsistent/malformed tokens; don't block on something we can't verify
+    (total,) = totals
+    return {p[0] for p in parsed} == set(range(total))
+
+
 def _logical_run_groups(run_summary: dict, history: list[dict]) -> list[dict]:
-    """Return run summaries with scoped sibling shards aggregated."""
+    """Return run summaries with scoped sibling shards aggregated.
+
+    Each merged group carries a ``complete`` flag (see ``_group_is_complete``) so callers that
+    need a run's *final* tally — rather than whatever subset of shards happens to have reported
+    so far — can skip groups that are still mid-flight.
+    """
     rows = _run_candidates(run_summary, history)
     groups: dict[tuple, list[dict]] = {}
     for idx, row in enumerate(rows):
@@ -704,7 +741,12 @@ def _logical_run_groups(run_summary: dict, history: list[dict]) -> list[dict]:
         else:
             key = ("single", idx)
         groups.setdefault(key, []).append(row)
-    return [_merge_logical_run_group(group) for group in groups.values()]
+    merged_groups = []
+    for group_rows in groups.values():
+        merged = _merge_logical_run_group(group_rows)
+        merged["complete"] = _group_is_complete(group_rows)
+        merged_groups.append(merged)
+    return merged_groups
 
 
 def _latest_run_summary(run_summary: dict, history: list[dict]) -> dict:
@@ -725,9 +767,16 @@ def _latest_stage_runs(run_summary: dict, history: list[dict]) -> dict[str, dict
     pipeline table we need a different question: "what was the newest run that actually reported
     each stage?" That lets audio remain visible after a later ASR-only run, and generalizes to
     future transcript/diarization workers that may report multiple output stages from one event.
+
+    Skips logical runs still missing sibling shards (``complete`` is False): a sharded lane's
+    slow shards can trail the fast ones by hours, and a status build that lands in that window
+    must keep showing the previous fully-reported run rather than the fast shards' partial
+    totals passed off as the run's final tally.
     """
     latest: dict[str, dict] = {}
     for group in _logical_run_groups(run_summary, history):
+        if not group.get("complete", True):
+            continue
         stages = group.get("stages") or {}
         if not stages:
             continue

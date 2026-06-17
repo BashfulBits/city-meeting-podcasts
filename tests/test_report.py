@@ -895,7 +895,7 @@ def test_build_status_reports_latest_run_per_stage(tmp_path):
         ts="2026-06-15T12:00:00+00:00",
         run_id="asr1",
         lane="transcribe",
-        shard="0/2",
+        shard=None,
         stages={
             "transcript": {
                 "ran": 11,
@@ -930,6 +930,158 @@ def test_build_status_reports_latest_run_per_stage(tmp_path):
     tx_run = status["backlog"]["stage_runs"]["transcript"]
     assert tx_run["lane"] == "transcribe"
     assert tx_run["totals"]["transcribed"] == 11
+
+
+def test_build_status_skips_partially_reported_shard_run(tmp_path):
+    """A sharded run whose slow shards haven't pushed yet must not show as the audio tally.
+
+    The audio lane shards by source_key (4-way). Fast shards (little/no new work) can push
+    their run_events within minutes while slow shards (heavy encoding) take hours (#H6b). A
+    status build landing in that window must keep reporting the previous *fully* reported run
+    rather than passing off the fast shards' partial totals as the latest run's final tally.
+    """
+    events = tmp_path / "run_events"
+    events.mkdir()
+
+    def write_event(name: str, *, ts: str, run_id: str, shard: str, audio: dict) -> None:
+        payload = {
+            "ts": ts,
+            "schema_version": 2,
+            "phase": "enrich",
+            "lane": "audio",
+            "shard": shard,
+            "scoped": True,
+            "cities": 1,
+            "built": 1,
+            "skipped": 0,
+            "errors": 0,
+            "stages": {"audio": audio},
+            "github_run_id": run_id,
+            "github_run_url": f"https://github.com/example/repo/actions/runs/{run_id}",
+        }
+        (events / name).write_text(json.dumps(payload))
+
+    def audio_totals(*, ran, encoded, credited, reused, backlog, errors) -> dict:
+        return {
+            "ran": ran,
+            "encoded": encoded,
+            "credited": credited,
+            "aligned": 0,
+            "transcribed": 0,
+            "reused": reused,
+            "backlog": backlog,
+            "seconds": 0.0,
+            "bytes": 0,
+            "errors": errors,
+        }
+
+    # An earlier run where all 4 shards reported in.
+    for shard, totals in (
+        ("0/4", audio_totals(ran=132, encoded=7, credited=125, reused=1934, backlog=715, errors=7)),
+        ("1/4", audio_totals(ran=1, encoded=0, credited=1, reused=81, backlog=238, errors=4)),
+        ("2/4", audio_totals(ran=0, encoded=0, credited=0, reused=107, backlog=111, errors=3)),
+        ("3/4", audio_totals(ran=56, encoded=56, credited=0, reused=887, backlog=598, errors=6)),
+    ):
+        write_event(
+            f"complete-{shard.replace('/', '-')}.json",
+            ts=f"2026-06-17T05:3{shard[0]}:00+00:00",
+            run_id="run-complete",
+            shard=shard,
+            audio=totals,
+        )
+
+    # A later run whose two fast shards have reported but whose two slow shards (still
+    # encoding) have not pushed their run_events yet.
+    for shard, totals in (
+        ("1/4", audio_totals(ran=1, encoded=0, credited=1, reused=81, backlog=238, errors=4)),
+        ("2/4", audio_totals(ran=0, encoded=0, credited=0, reused=107, backlog=111, errors=3)),
+    ):
+        write_event(
+            f"partial-{shard.replace('/', '-')}.json",
+            ts=f"2026-06-17T12:3{shard[0]}:00+00:00",
+            run_id="run-partial",
+            shard=shard,
+            audio=totals,
+        )
+
+    status = build_status([], site_config=SITE, state_dir=tmp_path)
+
+    audio_run = status["backlog"]["stage_runs"]["audio"]
+    assert audio_run["shards"] == ["0/4", "1/4", "2/4", "3/4"]
+    assert audio_run["totals"]["credited"] == 126
+    assert audio_run["totals"]["reused"] == 3009
+    assert audio_run["totals"]["backlog"] == 1662
+    assert audio_run["totals"]["errors"] == 20
+
+
+def test_build_status_skips_partial_shard_run_for_every_stage_row(tmp_path):
+    """The completeness gate covers every stage name a shard reports, not just ``audio``.
+
+    A single enrich shard event reports several stages at once (audio, transcript, chapters,
+    links, remap, timeline). The "Latest run stage activity" table renders one row per stage
+    name, all sourced from the same ``backlog.stage_runs`` dict, so a partially-reported run
+    must be skipped identically for every one of those rows.
+    """
+    events = tmp_path / "run_events"
+    events.mkdir()
+    stage_names = ("audio", "transcript", "chapters", "links", "remap", "timeline")
+
+    def write_event(name: str, *, ts: str, run_id: str, shard: str, credited: int) -> None:
+        stage_totals = {
+            "ran": 1,
+            "encoded": 0,
+            "credited": credited,
+            "aligned": 0,
+            "transcribed": 0,
+            "reused": 1,
+            "backlog": 1,
+            "seconds": 0.0,
+            "bytes": 0,
+            "errors": 0,
+        }
+        payload = {
+            "ts": ts,
+            "schema_version": 2,
+            "phase": "enrich",
+            "lane": "audio",
+            "shard": shard,
+            "scoped": True,
+            "cities": 1,
+            "built": 1,
+            "skipped": 0,
+            "errors": 0,
+            "stages": {stage: dict(stage_totals) for stage in stage_names},
+            "github_run_id": run_id,
+            "github_run_url": f"https://github.com/example/repo/actions/runs/{run_id}",
+        }
+        (events / name).write_text(json.dumps(payload))
+
+    for shard in ("0/4", "1/4", "2/4", "3/4"):
+        write_event(
+            f"complete-{shard.replace('/', '-')}.json",
+            ts=f"2026-06-17T05:3{shard[0]}:00+00:00",
+            run_id="run-complete",
+            shard=shard,
+            credited=1,
+        )
+
+    # A later run whose two fast shards have reported but two slow shards have not.
+    for shard in ("1/4", "2/4"):
+        write_event(
+            f"partial-{shard.replace('/', '-')}.json",
+            ts=f"2026-06-17T12:3{shard[0]}:00+00:00",
+            run_id="run-partial",
+            shard=shard,
+            credited=99,
+        )
+
+    status = build_status([], site_config=SITE, state_dir=tmp_path)
+    stage_runs = status["backlog"]["stage_runs"]
+
+    for stage in stage_names:
+        run = stage_runs[stage]
+        assert run["shards"] == ["0/4", "1/4", "2/4", "3/4"], stage
+        assert run["totals"]["credited"] == 4, stage
 
 
 def test_audio_bytes_set_on_encode(tmp_path):
