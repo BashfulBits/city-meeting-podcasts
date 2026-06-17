@@ -100,8 +100,11 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
 - **Wall-clock budget + graceful yield** — heavy work runs until a time window closes or a newer run
   queues; cheap idempotent bookkeeping always finishes (see `stages.py` "stop convention").
 - **Resource admission for expensive native work** — ffmpeg/ASR starts can wait for memory/load
-  headroom, and abandoned ASR inference continues to occupy its worker slot until the native thread
-  exits, so a stopped item does not stack unbounded CPU/RAM work. Audio encodes are admitted by a
+  headroom; ASR lanes have a 285m start cutoff and 350m backstop, and use a rolling
+  `state/asr_runtime_log.json` ratio buffer to estimate whether a recording can finish before the
+  cutoff before starting native transcription; abandoned ASR inference continues to occupy its worker
+  slot until the native thread exits, so a stopped item does not stack unbounded CPU/RAM work or wait
+  past the Actions hard cap. Audio encodes are admitted by a
   **memory reservation** (`MemoryReservation`): each encode reserves its *predicted* peak RSS
   (`estimate_encode_rss_bytes`, from the known-ahead served length) against `audio_memory_budget_mb`,
   so a new encode begins only when its *future* footprint fits — a leading signal the instantaneous

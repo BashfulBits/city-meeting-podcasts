@@ -7,9 +7,9 @@ name: ASR
 
 on:
   schedule:
-    # Daily: transcription is the heaviest work class; the audio lane runs more often to keep the
-    # hosted-audio backlog (this lane's input) fed.
-    - cron: "0 6 * * *"
+    # Every 5 hours: transcription uses a 285m start cutoff and 350m backstop, so a run may
+    # intentionally make the next scheduled run wait briefly while the current transcript finishes.
+    - cron: "0 */5 * * *"
   workflow_dispatch:
 
 # Own concurrency group, distinct from `pages` and `audio`: a deploy is never canceled by ASR, and
@@ -91,8 +91,12 @@ jobs:
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
         run: python scripts/prepare_whisper.py
 
-      # Transcribe this shard's sources only. Bounded by the wall-clock window; yields gracefully
-      # (exit 143 after the stop signal) when a newer ASR run is queued behind it.
+      # Transcribe this shard's sources only. On a newer queued run (or the 285m start cutoff) the
+      # shard stops starting new ASR, lets any in-flight transcript finish (or hit the 350m
+      # backstop), pushes state, and exits 0 — the graceful yield is exit 0, not 143. The 143
+      # branch below is a fallback: a genuine SIGTERM (Actions 6h hard cap / manual cancel) arriving
+      # after the stop signal, which we treat as a benign yield since the next run resumes from
+      # persisted state.
       - name: ASR (shard ${{ matrix.shard }}/4)
         id: asr
         run: |
@@ -102,7 +106,7 @@ jobs:
           code=${PIPESTATUS[0]}
           set -e
           if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then
-            echo "::warning title=ASR yielded to newer run::Shard ${{ matrix.shard }} exited 143 after the graceful-yield stop signal. The queued run will resume."
+            echo "::warning title=ASR yielded to newer run::Shard ${{ matrix.shard }} hit exit 143 (SIGTERM) after the stop signal — the designed yield is exit 0, so this is the Actions hard cap landing mid-yield. The queued run resumes from persisted state."
             exit 0
           fi
           exit "$code"

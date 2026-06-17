@@ -173,6 +173,94 @@ def push_records_merged(
     return pushed
 
 
+def _fetch_remote_json(storage, rel: str) -> dict | None:
+    key = f"{STATE_PREFIX}/{rel}"
+    present = any(k == key for k, _ in storage.list_objects(f"{STATE_PREFIX}/"))
+    if not present:
+        return {}
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / Path(rel).name
+        if not storage.get_file(key, dest):
+            return None
+        try:
+            data = json.loads(dest.read_text())
+        except (OSError, ValueError):
+            return None
+    return data if isinstance(data, dict) else {}
+
+
+def _normalize_asr_runtime_samples(samples: list[dict], *, max_samples: int) -> list[dict]:
+    by_id: dict[str, tuple[int, dict]] = {}
+    for idx, sample in enumerate(samples):
+        transcribe_seconds = float(sample.get("transcribe_seconds", 0) or 0)
+        recording_seconds = float(sample.get("recording_seconds", 0) or 0)
+        if transcribe_seconds <= 0 or recording_seconds <= 0:
+            continue
+        finished_at = float(sample.get("finished_at", sample.get("ts", 0)) or 0)
+        sample_id = str(sample.get("id") or sample.get("sample_id") or f"legacy-{idx}")
+        by_id[sample_id] = (
+            idx,
+            {
+                "id": sample_id,
+                "finished_at": finished_at,
+                "transcribe_seconds": transcribe_seconds,
+                "recording_seconds": recording_seconds,
+            },
+        )
+    ordered = [
+        sample
+        for _idx, sample in sorted(
+            by_id.values(),
+            key=lambda item: (float(item[1].get("finished_at", 0) or 0), item[0]),
+        )
+    ]
+    return ordered[-max_samples:]
+
+
+def push_asr_runtime_log_merged(
+    storage,
+    state_dir: Path,
+    *,
+    rel_path: str = "asr_runtime_log.json",
+    max_samples: int = 100,
+    log=None,
+) -> int:
+    """Merge-upload the shared ASR runtime telemetry log.
+
+    Scoped ASR shards all update this single file, so a plain ``push_state`` would reintroduce a
+    last-writer-wins shared-state race. This fetches the current remote log, unions samples by id,
+    keeps the newest ``max_samples``, writes the merged file locally, and uploads it.
+    """
+    if not _supported(storage) or not hasattr(storage, "put_file"):
+        return 0
+    state_dir = Path(state_dir)
+    local_path = state_dir / rel_path
+    if not local_path.exists():
+        return 0
+    emit = log or (lambda msg: print(msg, flush=True))
+    try:
+        remote_data = _fetch_remote_json(storage, rel_path)
+    except Exception as exc:  # noqa: BLE001 - listing/read errors must not clobber remote telemetry
+        emit(f"state: WARNING remote ASR runtime log read failed: {exc}; skipping push")
+        return 0
+    if remote_data is None:
+        emit("state: WARNING remote ASR runtime log unreadable; skipping push")
+        return 0
+    try:
+        local_data = json.loads(local_path.read_text())
+    except (OSError, ValueError) as exc:
+        emit(f"state: WARNING local ASR runtime log unreadable: {exc}; skipping push")
+        return 0
+    samples = _normalize_asr_runtime_samples(
+        list(remote_data.get("samples", [])) + list(local_data.get("samples", [])),
+        max_samples=max_samples,
+    )
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(json.dumps({"version": 1, "samples": samples}, indent=2) + "\n")
+    storage.put_file(f"{STATE_PREFIX}/{rel_path}", local_path, "application/json")
+    return 1
+
+
 def reconcile_state(
     storage, state_dir: Path, *, min_age_days: float = RECONCILE_MIN_AGE_DAYS, full_run: bool = True
 ) -> int:

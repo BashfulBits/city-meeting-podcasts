@@ -194,10 +194,17 @@ class StageContext:
     # to SIGTERM the whole process. The timeout is base + per-audio-hour; <=0 disables it.
     asr_timeout_base_seconds: float = 15 * 60
     asr_timeout_per_hour_seconds: float = 30 * 60
-    # Monotonic deadline for the whole enrich/all phase. ASR timeouts are capped to the remaining
-    # budget before this deadline so a single item cannot outlive the planned wrap-up window.
+    # Monotonic deadline after which no new ASR item should start (285m in production). Active
+    # inference is allowed to continue past this cutoff so completed work is not thrown away.
+    asr_start_deadline: float | None = None
+    # Monotonic hard backstop for one ASR item (350m in production). A recording that ran past this
+    # can be abandoned; the next scheduled ASR run will resume from persisted state.
     asr_deadline: float | None = None
-    asr_timeout_budget_reserve_seconds: float = 60
+    asr_timeout_budget_reserve_seconds: float = 0
+    # Rolling state-backed runtime log used to estimate whether a recording can fit before the start
+    # cutoff. Stores the previous 100 successful ASR runtime/recording-duration ratios, seeded
+    # with a conservative estimate until real samples replace it.
+    asr_runtime_log_path: Path | None = None
     # Set after an ASR timeout so other source workers skip starting more ASR in this run. The
     # timed-out daemon thread may still be burning CPU until process exit, so don't pile on.
     asr_abort_event: threading.Event | None = None
@@ -265,17 +272,205 @@ def _requests_fast_yield_exit(stop: Callable[[], bool] | None) -> bool:
     return bool(stop is not None and getattr(stop, "should_exit_immediately", lambda: False)())
 
 
-def _asr_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | None:
+def _asr_configured_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | None:
     configured = ctx.asr_timeout_base_seconds + max(0.0, duration_hours) * (
         ctx.asr_timeout_per_hour_seconds
     )
-    timeout = configured if configured > 0 else None
+    return configured if configured > 0 else None
+
+
+def _asr_remaining_backstop_seconds(ctx: StageContext) -> float | None:
     if ctx.asr_deadline is None:
+        return None
+    return ctx.asr_deadline - time.monotonic() - ctx.asr_timeout_budget_reserve_seconds
+
+
+def _asr_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | None:
+    timeout = _asr_configured_timeout_seconds(ctx, duration_hours)
+    remaining = _asr_remaining_backstop_seconds(ctx)
+    if remaining is None:
         return timeout
-    remaining = ctx.asr_deadline - time.monotonic() - ctx.asr_timeout_budget_reserve_seconds
     if remaining <= 0:
         return 0.0
     return min(timeout, remaining) if timeout is not None else remaining
+
+
+def _asr_default_ratio(ctx: StageContext) -> float:
+    one_hour = _asr_configured_timeout_seconds(ctx, 1.0)
+    return max(0.001, (one_hour if one_hour is not None else 3600.0) / 3600.0)
+
+
+_ASR_RUNTIME_LOG_LOCK_GUARD = threading.Lock()
+_ASR_RUNTIME_LOG_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _asr_runtime_log_path_lock(path: Path | None) -> threading.Lock:
+    if path is None:
+        return threading.Lock()
+    key = str(path)
+    with _ASR_RUNTIME_LOG_LOCK_GUARD:
+        return _ASR_RUNTIME_LOG_LOCKS.setdefault(key, threading.Lock())
+
+
+class AsrRuntimeLog:
+    """Rolling ASR runtime/recording-duration ratio log persisted in state."""
+
+    max_samples = 100
+
+    def __init__(self, path: Path | None, *, default_ratio: float):
+        self.path = path
+        self.default_ratio = max(0.001, float(default_ratio))
+        self._lock = threading.Lock()
+        self._path_lock = _asr_runtime_log_path_lock(path)
+        self._samples: collections.deque[dict[str, float | str]] = collections.deque(
+            maxlen=self.max_samples
+        )
+        self._load()
+
+    @staticmethod
+    def _coerce_sample(sample: dict, *, fallback_id: str) -> dict[str, float | str] | None:
+        transcribe_seconds = float(sample.get("transcribe_seconds", 0) or 0)
+        recording_seconds = float(sample.get("recording_seconds", 0) or 0)
+        if transcribe_seconds <= 0 or recording_seconds <= 0:
+            return None
+        finished_at = float(sample.get("finished_at", sample.get("ts", 0)) or 0)
+        sample_id = str(sample.get("id") or sample.get("sample_id") or fallback_id)
+        return {
+            "id": sample_id,
+            "finished_at": finished_at,
+            "transcribe_seconds": transcribe_seconds,
+            "recording_seconds": recording_seconds,
+        }
+
+    @classmethod
+    def _normalize_samples(
+        cls, raw: list[dict], *, max_samples: int | None = None
+    ) -> list[dict[str, float | str]]:
+        limit = cls.max_samples if max_samples is None else max_samples
+        by_id: dict[str, tuple[int, dict[str, float | str]]] = {}
+        for idx, sample in enumerate(raw):
+            coerced = cls._coerce_sample(sample, fallback_id=f"legacy-{idx}")
+            if coerced is None:
+                continue
+            by_id[str(coerced["id"])] = (idx, coerced)
+        ordered = [
+            sample
+            for _idx, sample in sorted(
+                by_id.values(),
+                key=lambda item: (float(item[1].get("finished_at", 0) or 0), item[0]),
+            )
+        ]
+        return ordered[-limit:]
+
+    def _read_samples_from_path_unlocked(self) -> list[dict[str, float | str]]:
+        if self.path is not None and self.path.exists():
+            try:
+                data = json.loads(self.path.read_text())
+                return self._normalize_samples(list(data.get("samples", [])))
+            except Exception:  # noqa: BLE001 - corrupt telemetry should not stop ASR
+                return []
+        return []
+
+    def _replace_samples(self, samples: list[dict[str, float | str]]) -> None:
+        with self._lock:
+            self._samples.clear()
+            self._samples.extend(samples[-self.max_samples :])
+
+    def _load(self) -> None:
+        with self._path_lock:
+            self._replace_samples(self._read_samples_from_path_unlocked())
+
+    def average_ratio(self) -> float:
+        with self._lock:
+            ratios = [
+                s["transcribe_seconds"] / s["recording_seconds"]
+                for s in self._samples
+                if s.get("recording_seconds", 0) > 0
+            ]
+        if not ratios:
+            return self.default_ratio
+        return max(0.001, sum(ratios) / len(ratios))
+
+    def estimate_seconds(self, recording_seconds: float) -> float:
+        return max(0.0, recording_seconds) * self.average_ratio()
+
+    def append(self, *, transcribe_seconds: float, recording_seconds: float) -> None:
+        if transcribe_seconds <= 0 or recording_seconds <= 0:
+            return
+        sample = {
+            "id": f"{time.time_ns()}-{threading.get_ident()}",
+            "finished_at": time.time(),
+            "transcribe_seconds": float(transcribe_seconds),
+            "recording_seconds": float(recording_seconds),
+        }
+        if self.path is None:
+            with self._lock:
+                self._samples.append(sample)
+            return
+        with self._path_lock:
+            samples = self._read_samples_from_path_unlocked()
+            samples.append(sample)
+            samples = self._normalize_samples(samples)
+            self._replace_samples(samples)
+            self._persist_unlocked()
+
+    def _persist_unlocked(self) -> None:
+        if self.path is None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"version": 1, "samples": list(self._samples)}
+        self.path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def _asr_remaining_start_seconds(ctx: StageContext) -> float | None:
+    if ctx.asr_start_deadline is None:
+        return None
+    return ctx.asr_start_deadline - time.monotonic()
+
+
+def _asr_fits_remaining_budget(
+    ctx: StageContext, duration_hours: float, runtime_log: AsrRuntimeLog | None = None
+) -> tuple[bool, float | None, float | None]:
+    """Whether a new ASR item should start before the ASR start cutoff.
+
+    Returns ``(fits, estimate, remaining)``. ``estimate`` is based on the rolling average of
+    successful ASR runtime / recording duration samples; ``remaining`` is time until the start
+    cutoff. Active inference may continue until the separate backstop.
+    """
+    remaining = _asr_remaining_start_seconds(ctx)
+    if remaining is not None and remaining <= 0:
+        return False, 0.0, remaining
+    if runtime_log is None:
+        runtime_log = AsrRuntimeLog(None, default_ratio=_asr_default_ratio(ctx))
+    estimate = runtime_log.estimate_seconds(max(0.0, duration_hours) * 3600.0)
+    if remaining is not None and estimate > remaining:
+        return False, estimate, remaining
+    return True, estimate, remaining
+
+
+def _acquire_asr_semaphore(ctx: StageContext, sem: threading.Semaphore, ep_ref: str) -> bool:
+    while True:
+        if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+            print(
+                f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
+                flush=True,
+            )
+            return False
+        if ctx.stop is not None and ctx.stop():
+            return False
+        if not sem.acquire(timeout=2):
+            continue
+        if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+            sem.release()
+            print(
+                f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
+                flush=True,
+            )
+            return False
+        if ctx.stop is not None and ctx.stop():
+            sem.release()
+            return False
+        return True
 
 
 def _episode_duration_hours(ep: Episode) -> tuple[float, str]:
@@ -853,6 +1048,7 @@ class TranscriptStage:
             return k in hosted_keys if hosted_keys is not None else ctx.storage.exists(k)
 
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
+        runtime_log = AsrRuntimeLog(ctx.asr_runtime_log_path, default_ratio=_asr_default_ratio(ctx))
 
         # Load the Whisper model — uses the process-level cache so the actual load only
         # happens once per process (pre-loaded by run.py before workers start).  The log
@@ -1110,6 +1306,33 @@ class TranscriptStage:
                     continue
                 # overflow to local — fall through to the on-runner synchronous path below.
 
+            # Preflight with the known episode duration before taking the scarce ASR slot or
+            # downloading audio. A later probe of the hosted audio may refine this, but if the
+            # metadata duration already cannot fit in the remaining lane budget, defer this
+            # recording and let the worker try another candidate.
+            preflight_dur_h, preflight_duration_source = _episode_duration_hours(ep)
+            if preflight_duration_source != "unknown":
+                fits_budget, estimate_s, remaining_s = _asr_fits_remaining_budget(
+                    ctx, preflight_dur_h, runtime_log
+                )
+                if not fits_budget:
+                    stats.skipped += 1
+                    estimate_label = (
+                        f"{estimate_s / 60:.1f}" if estimate_s is not None else "unknown"
+                    )
+                    remaining_label = (
+                        f"{max(0.0, remaining_s) / 60:.1f}"
+                        if remaining_s is not None
+                        else "unknown"
+                    )
+                    print(
+                        f"[enrich] transcript asr skipped {ep_ref} "
+                        "reason=insufficient-budget "
+                        f"estimate_m={estimate_label} remaining_m={remaining_label}",
+                        flush=True,
+                    )
+                    continue
+
             if ctx.stop is not None and ctx.stop():
                 stats.skipped += 1
                 continue
@@ -1133,23 +1356,13 @@ class TranscriptStage:
                     f"[enrich] transcript asr wait {ep_ref}",
                     flush=True,
                 )
-                sem.acquire()
+                if not _acquire_asr_semaphore(ctx, sem, ep_ref):
+                    stats.skipped += 1
+                    continue
                 print(
                     f"[enrich] transcript asr acquired {ep_ref}",
                     flush=True,
                 )
-                if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
-                    sem.release()
-                    stats.skipped += 1
-                    print(
-                        f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
-                        flush=True,
-                    )
-                    continue
-                if ctx.stop is not None and ctx.stop():
-                    sem.release()
-                    stats.skipped += 1
-                    continue
 
             native_gate_acquired = False
             if ctx.native_work_gate is not None:
@@ -1199,8 +1412,10 @@ class TranscriptStage:
                 duration_source = "hosted"
             duration_label = f"{dur_h:.1f}" if duration_source != "unknown" else "unknown"
             mode = "align" if align_text else "transcribe"
-            timeout_s = _asr_timeout_seconds(ctx, dur_h)
-            if timeout_s is not None and timeout_s <= 0:
+            fits_budget, estimate_s, remaining_s = _asr_fits_remaining_budget(
+                ctx, dur_h, runtime_log
+            )
+            if not fits_budget:
                 audio_tmp.cleanup()
                 if native_gate_acquired and ctx.native_work_gate is not None:
                     ctx.native_work_gate.release(kind="asr")
@@ -1209,12 +1424,18 @@ class TranscriptStage:
                     sem.release()
                     sem = None
                 stats.skipped += 1
+                estimate_label = f"{estimate_s / 60:.1f}" if estimate_s is not None else "unknown"
+                remaining_label = (
+                    f"{max(0.0, remaining_s) / 60:.1f}" if remaining_s is not None else "unknown"
+                )
                 print(
-                    f"[enrich] transcript asr skipped {ep_ref} reason=budget-exhausted",
+                    f"[enrich] transcript asr skipped {ep_ref} reason=insufficient-budget "
+                    f"estimate_m={estimate_label} remaining_m={remaining_label}",
                     flush=True,
                 )
                 continue
 
+            timeout_s = _asr_timeout_seconds(ctx, dur_h)
             timeout_label = f"{timeout_s / 60:.1f}" if timeout_s is not None else "disabled"
             print(
                 f"[enrich] transcript asr start {ep_ref} mode={mode} duration_h={duration_label} "
@@ -1324,28 +1545,15 @@ class TranscriptStage:
                     _audio_tmp.cleanup()
 
             _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{ep.uid[:8]}")
+            _asr_started_at = time.monotonic()
             _t.start()
 
             _abandoned = False
             _timeout_at = time.monotonic() + timeout_s if timeout_s else None
             while _t.is_alive():
-                if ctx.stop is not None and ctx.stop():
-                    _abandoned = True
-                    print(
-                        f"[enrich] transcript stop {ep_ref}"
-                        f" (inference continues in background, result discarded)",
-                        flush=True,
-                    )
-                    if sem is not None:
-                        _release_abandoned_asr_slot.set()
-                        sem = None  # daemon thread releases the slot when native work exits
-                    if native_gate_acquired and ctx.native_work_gate is not None:
-                        _release_abandoned_native_gate.set()
-                        native_gate_acquired = False
-                    if ctx.asr_abandoned_event is not None:
-                        ctx.asr_abandoned_event.set()
-                    stats.skipped += 1
-                    break
+                # Do not abandon active ASR merely because a newer scheduled ASR run is queued or
+                # the start cutoff has passed. Once native transcription starts, let it finish
+                # unless the separate backstop timeout below fires.
                 if _timeout_at is not None and time.monotonic() >= _timeout_at:
                     _abandoned = True
                     message = f"{label}: ASR timeout after {timeout_s / 60:.1f}m"
@@ -1371,6 +1579,10 @@ class TranscriptStage:
                 time.sleep(2)
 
             if _abandoned:
+                # Only the combined-enrich (lane=None) path sets fast_yield_exit; the transcribe/
+                # align lanes pass None, so this is a no-op there. When it is set, a backstop
+                # timeout that coincides with a code/human supersession fast-exits so the queued
+                # build can deploy without waiting on native ASR teardown.
                 if ctx.fast_yield_exit is not None and _requests_fast_yield_exit(ctx.stop):
                     ctx.fast_yield_exit()
                 continue
@@ -1420,6 +1632,11 @@ class TranscriptStage:
                 ep.transcript_format = "vtt"
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True
+                asr_elapsed = time.monotonic() - _asr_started_at
+                runtime_log.append(
+                    transcribe_seconds=asr_elapsed,
+                    recording_seconds=max(0.0, dur_h) * 3600.0,
+                )
                 if _aligned[0]:
                     stats.aligned += 1
                     outcome = "aligned"
@@ -1427,7 +1644,13 @@ class TranscriptStage:
                     stats.transcribed += 1
                     outcome = "transcribed"
                 stats.ran += 1
-                print(f"[enrich] transcript asr done {ep_ref} method={outcome}", flush=True)
+                print(
+                    f"[enrich] transcript asr done {ep_ref} method={outcome} "
+                    f"asr_seconds={asr_elapsed:.1f} "
+                    f"recording_seconds={max(0.0, dur_h) * 3600.0:.1f} "
+                    f"ratio={runtime_log.average_ratio():.3f}",
+                    flush=True,
+                )
             except Exception as exc:  # noqa: BLE001
                 stats.errors.append(f"{ep.uid}: ASR store: {exc}")
                 print(

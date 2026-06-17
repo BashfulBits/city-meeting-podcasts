@@ -31,6 +31,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **ASR shards now run every 5h with a 285m start cutoff, 350m backstop, and rolling runtime
+  estimates.** The `transcribe`/`align` lanes stop starting new local ASR after
+  `asr_start_cutoff_minutes` (285m), but an already-started transcript may continue until
+  `asr_backstop_minutes` (350m), even if the next scheduled ASR run is queued. `TranscriptStage` keeps
+  a fixed-size `state/asr_runtime_log.json` buffer of the previous 100 successful ASR runtime /
+  recording-duration samples, falling back to the conservative timeout formula until real samples exist,
+  and starts a recording only when `recording_duration × average_ratio` fits before the start cutoff. The
+  ASR semaphore remains as the single-transcript gate; waiters poll `stop()` / abort so a timed-out
+  native ASR call cannot pin sibling workers, and the shared runtime log is merge-pushed so ASR shards do
+  not overwrite each other's samples. No pipeline version changed and no artifact backfill is triggered.
 - **`/admin/status` "Last Run" block now reports the Build & Deploy action, not the latest enrich run.**
   Run history (`run_summary.json`) is recorded only by the time-bounded enrich (audio/ASR) workflows, so
   the at-a-glance "Last Run" card was surfacing the newest audio/ASR lane — duplicating the adjacent

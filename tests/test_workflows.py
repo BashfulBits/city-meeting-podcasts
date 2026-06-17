@@ -104,8 +104,10 @@ def test_heavy_workflow_is_isolated_from_pages(workflow, group):
 
 @pytest.mark.parametrize("workflow,_lane", HEAVY_WORKFLOWS)
 def test_heavy_workflow_treats_graceful_yield_as_success(workflow, _lane):
-    """A superseded shard exits 143 after ``StopSignal`` fires. That is an expected yield, not a
-    failure — and it never touched the Pages deploy, which is a separate workflow."""
+    """The designed graceful yield is exit 0 (the shard stops starting new work after ``StopSignal``
+    fires, finishes in-flight work, then exits). A 143 (SIGTERM) after the stop signal is the
+    Actions hard cap landing mid-yield — still an expected yield, not a failure — and it never
+    touched the Pages deploy, which is a separate workflow."""
     _wf, job = _job(workflow)
     step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
     run = str(step.get("run", ""))
@@ -118,6 +120,12 @@ def test_no_combined_enrich_workflow():
     """H6b removed the combined enrich.yml — audio.yml + asr.yml replace it. A lingering enrich.yml
     would re-add a third full record writer and reopen the cross-writer clobber."""
     assert not (WORKFLOWS / "enrich.yml").exists()
+
+
+def test_asr_workflow_runs_every_five_hours():
+    wf, _ = _job("asr.yml")
+    schedules = _on(wf).get("schedule", [])
+    assert {item.get("cron") for item in schedules} == {"0 */5 * * *"}
 
 
 def test_audio_lane_needs_no_whisper():

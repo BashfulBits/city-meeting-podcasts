@@ -84,7 +84,13 @@ from citypods.state import (
     resolve_state_dir,
     save_etag_cache,
 )
-from citypods.statesync import pull_state, push_records_merged, push_state, reconcile_state
+from citypods.statesync import (
+    pull_state,
+    push_asr_runtime_log_merged,
+    push_records_merged,
+    push_state,
+    reconcile_state,
+)
 from citypods.storage import make_storage
 
 # Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
@@ -874,16 +880,34 @@ def build(
     # in-flight deploy). No count budget: with variable per-recording cost, wall-clock is the bound.
     stop: StopSignal | None = None
     deadline: float | None = None
+    asr_start_deadline: float | None = None
+    asr_backstop_deadline: float | None = None
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
-        deadline = (time.monotonic() + window_min * 60 * safety) if window_min > 0 else None
-        stop = StopSignal(
-            deadline=deadline,
-            superseded=_newer_run_queued,
-        )
-        if window_min > 0:
-            print(f"budget: wall-clock window {window_min:.0f}m × {safety} (+ yield if superseded)")
+        if lane in {"transcribe", "align"}:
+            start_cutoff_min = float(defaults.get("asr_start_cutoff_minutes", 285))
+            backstop_min = float(defaults.get("asr_backstop_minutes", 350))
+            now = time.monotonic()
+            asr_start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            asr_backstop_deadline = now + backstop_min * 60 if backstop_min > 0 else None
+            deadline = asr_start_deadline
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            print(
+                f"budget: {lane} start cutoff {start_cutoff_min:.0f}m, "
+                f"backstop {backstop_min:.0f}m (+ yield before new starts if superseded)"
+            )
+        else:
+            deadline = (time.monotonic() + window_min * 60 * safety) if window_min > 0 else None
+            stop = StopSignal(
+                deadline=deadline,
+                superseded=_newer_run_queued,
+            )
+            if window_min > 0:
+                print(
+                    f"budget: wall-clock window {window_min:.0f}m × {safety} "
+                    "(+ yield if superseded)"
+                )
         # Loud, once-per-run signal if graceful yield can't work (token dropped, e.g. via repo
         # settings rather than the workflow YAML the contract test guards). Without it the run is
         # bounded only by the wall-clock window — easy to miss, since the check fails open silently.
@@ -992,17 +1016,23 @@ def build(
         asr_timeout_base_seconds=float(defaults.get("asr_timeout_base_minutes", 15)) * 60,
         asr_timeout_per_hour_seconds=float(defaults.get("asr_timeout_per_audio_hour_minutes", 30))
         * 60,
-        asr_deadline=deadline,
+        asr_start_deadline=asr_start_deadline if lane in {"transcribe", "align"} else deadline,
+        asr_deadline=asr_backstop_deadline if lane in {"transcribe", "align"} else deadline,
         asr_timeout_budget_reserve_seconds=float(
-            defaults.get("asr_timeout_budget_reserve_minutes", 1)
+            defaults.get("asr_timeout_budget_reserve_minutes", 0)
         )
         * 60,
+        asr_runtime_log_path=state_dir / ASR_RUNTIME_LOG_NAME,
         asr_abort_event=threading.Event()
         if not dry_run and defaults.get("asr_enabled", True)
         else None,
         asr_abandoned_event=asr_abandoned_event,
         fast_yield_exit=(
-            _fast_yield_exit if phase == "enrich" and os.environ.get("GITHUB_ACTIONS") else None
+            _fast_yield_exit
+            if phase == "enrich"
+            and lane not in {"transcribe", "align"}
+            and os.environ.get("GITHUB_ACTIONS")
+            else None
         ),
         lane=lane,
     )
@@ -1160,11 +1190,12 @@ def build(
         # the phase that does that work (enrich/all) — a near-zero-cost render run would dilute it.
         if time_bounded:
             _elapsed = time.monotonic() - build_start
-            _window = (
-                float(defaults.get("run_time_budget_minutes", 0))
-                * 60
-                * float(defaults.get("budget_safety", 0.8))
-            )
+            _history_window_min = float(defaults.get("run_time_budget_minutes", 0))
+            _history_safety = float(defaults.get("budget_safety", 0.8))
+            if lane in {"transcribe", "align"}:
+                _history_window_min = float(defaults.get("asr_backstop_minutes", 350))
+                _history_safety = 1.0
+            _window = _history_window_min * 60 * _history_safety
             _record_run_history(
                 state_dir,
                 results,
@@ -1233,7 +1264,17 @@ def build(
                     protected_blocks=protected_blocks_for_lane(lane),
                     log=lambda msg: print(msg, flush=True),
                 )
-                pushed += push_state(storage, state_dir, only_prefixes=[f"{RUN_EVENTS_DIR_NAME}/"])
+                pushed += push_state(
+                    storage,
+                    state_dir,
+                    only_prefixes=[f"{RUN_EVENTS_DIR_NAME}/"],
+                )
+                pushed += push_asr_runtime_log_merged(
+                    storage,
+                    state_dir,
+                    rel_path=ASR_RUNTIME_LOG_NAME,
+                    log=lambda msg: print(msg, flush=True),
+                )
             else:
                 pushed = push_state(storage, state_dir)
             if pushed:
@@ -1329,6 +1370,7 @@ def _write_chapter_sidecars(
 RUN_HISTORY_NAME = "run_history.jsonl"
 RUN_SUMMARY_NAME = "run_summary.json"
 RUN_EVENTS_DIR_NAME = "run_events"
+ASR_RUNTIME_LOG_NAME = "asr_runtime_log.json"
 _RUN_HISTORY_KEEP = 1000  # cap the rolling log so the synced state stays small
 
 

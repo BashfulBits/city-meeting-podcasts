@@ -11,6 +11,7 @@ from citypods.statesync import (
     STATE_PREFIX,
     fetch_remote_records,
     pull_state,
+    push_asr_runtime_log_merged,
     push_records_merged,
     push_state,
     reconcile_state,
@@ -220,6 +221,74 @@ def test_push_records_merged_skips_unreadable_remote_rather_than_clobber(tmp_pat
     assert pushed == 0
     remote_file = bucket.root / STATE_PREFIX / "sources" / sk / "episodes.json"
     assert json.loads(remote_file.read_text())["episodes"]["u1"]["audio"]["url"] == "NEW"
+
+
+def _runtime_log(samples):
+    return {"version": 1, "samples": samples}
+
+
+def _runtime_sample(sample_id, finished_at, transcribe_seconds):
+    return {
+        "id": sample_id,
+        "finished_at": finished_at,
+        "transcribe_seconds": transcribe_seconds,
+        "recording_seconds": 100,
+    }
+
+
+def test_push_asr_runtime_log_merged_unions_remote_and_local_samples(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    remote_file = _tmpfile(
+        tmp_path,
+        json.dumps(_runtime_log([_runtime_sample("remote", 10, 10)])),
+    )
+    bucket.put_file(f"{STATE_PREFIX}/asr_runtime_log.json", remote_file, "application/json")
+    (state_dir / "asr_runtime_log.json").write_text(
+        json.dumps(_runtime_log([_runtime_sample("local", 20, 20)]))
+    )
+
+    assert push_asr_runtime_log_merged(bucket, state_dir) == 1
+
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    samples = json.loads((restored / "asr_runtime_log.json").read_text())["samples"]
+    assert {s["id"] for s in samples} == {"remote", "local"}
+
+
+def test_push_asr_runtime_log_merged_keeps_newest_100(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    samples = [_runtime_sample(f"s{i}", i, i + 1) for i in range(101)]
+    (state_dir / "asr_runtime_log.json").write_text(json.dumps(_runtime_log(samples)))
+
+    assert push_asr_runtime_log_merged(bucket, state_dir) == 1
+
+    data = json.loads((state_dir / "asr_runtime_log.json").read_text())
+    assert len(data["samples"]) == 100
+    assert data["samples"][0]["id"] == "s1"
+
+
+def test_push_asr_runtime_log_merged_skips_unreadable_remote(tmp_path):
+    bucket = _UnreadableBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    remote_file = _tmpfile(
+        tmp_path,
+        json.dumps(_runtime_log([_runtime_sample("remote", 10, 10)])),
+    )
+    bucket.put_file(f"{STATE_PREFIX}/asr_runtime_log.json", remote_file, "application/json")
+    (state_dir / "asr_runtime_log.json").write_text(
+        json.dumps(_runtime_log([_runtime_sample("local", 20, 20)]))
+    )
+
+    assert push_asr_runtime_log_merged(bucket, state_dir) == 0
+
+    remote_path = bucket.root / STATE_PREFIX / "asr_runtime_log.json"
+    samples = json.loads(remote_path.read_text())["samples"]
+    assert {s["id"] for s in samples} == {"remote"}
 
 
 def _tmpfile(tmp_path, text: str):
