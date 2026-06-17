@@ -1112,6 +1112,115 @@ ever blocked; a killed remote worker's lease expires and the item re-queues.
 
 ---
 
+## H15 — Transcript-quality metric (periodic caption-trust scoring)
+
+> **New 2026-06-16.** Spun out of the PR #324 review discussion. H6b shipped the `align` lane
+> "implemented but unscheduled" because we **assume** served (caption-derived) transcripts are faithful
+> enough to align against rather than transcribe fresh — but we never measured that assumption. H15
+> turns it into a **periodic, per-source, computed metric** that decides, per source, whether `align` is
+> safe or fresh `transcribe` is required.
+
+**Problem.** Forced alignment (`align` lane) is far cheaper than fresh transcription and preserves
+official wording, but it is only correct if the served captions match what was actually spoken. Some
+served captions are human CART / court-reporter output (likely *better* than our Whisper pass); others
+are a platform's cheap auto-ASR (likely worse). We have **no signal** telling the two apart, so the
+align lane stays globally off and every caption-bearing feed pays for fresh transcription. We also have
+no standing measure of transcription quality itself.
+
+**Why a metric, not a one-time eval.** A one-time WER study goes stale the moment a city changes its
+captioning vendor or we bump the Whisper model. The same alignment/scoring calls we already make can
+emit a quality number **every run, for free** — so the right artifact is a rolling per-source metric,
+not a paper.
+
+**The correctness trap (design constraint).** WER and CER are **asymmetric, reference-required** metrics
+— word/character-level edit distance over a reference *assumed correct*. Computing WER *between* served
+text and an ASR hypothesis measures **disagreement, not correctness**: neither is ground truth, and
+provenance means the caption may well be the better one. So the design keeps three things separate:
+(1) a **cheap reference-free fit signal** computed every run that grounds each transcript in the audio;
+(2) a **fair adjudicator** independent of both generators, used periodically; (3) a **small human-gold
+sample** that anchors the absolute scale. (Normalize text — lowercase, strip punctuation, expand
+numbers, à la Whisper's `EnglishTextNormalizer` — before any WER/CER, or you measure formatting, not
+errors.)
+
+**The scaffold (three layers, increasing cost/fidelity).**
+
+*Layer 1 — free, in-tree, every run (single-transcript audio-fit).*
+- `citypods/asr.py::align()` already runs `stable_whisper.align(audio, text)` and already computes
+  **coverage** = `timed_words / total_words` (the `_MIN_ALIGN_COVERAGE = 0.60` gate). Today we only
+  *branch* on it; H15 **records** it.
+- Add the finer signal already present on the returned object: aggregate the per-word `.probability`
+  stable-ts populates on `result.segments[*].words` (mean and p10 word-logprob). Coverage answers "did
+  the words land in the audio at all?"; word-logprob answers "how confidently?".
+- Caveat baked into the metric: **stable-ts is Whisper**, so its `P(text|audio)` is a decoder posterior
+  that gives Whisper-shaped text home-field advantage. Layer 1 is therefore a **triage signal for one
+  transcript's audio-fit**, never a fair served-vs-ASR comparison. When a source has both a served and a
+  fresh ASR transcript on hand (e.g. after an `align`→`transcribe` fallback), record both Layer-1 scores
+  but label them `same-generator-biased`.
+
+*Layer 2 — periodic, independent adjudicator (fair served-vs-ASR).*
+- For a rotating sample of sources, run a CTC forced aligner that is **not Whisper** —
+  `torchaudio.functional.forced_align` (wav2vec2 emissions) or WhisperX's wav2vec2 alignment — against
+  **both** the served captions and a fresh Whisper transcript, and compare their acoustic-fit. Because
+  the judge is independent of both generators, this is the fair "which transcript does the audio
+  actually support?" measurement.
+- Output per sampled source: `served_fit`, `asr_fit`, and the sign/margin → a **caption-trust verdict**
+  (`high | low | unknown`).
+- Cost-bounded: rides the H13 execution-backend interface as a scoring task; runs over a rotating subset
+  (e.g. N sources/run, oldest-checked first), not every meeting.
+
+*Layer 3 — human-gold anchor (occasional, calibration only).*
+- A tiny stratified human-gold set (≈20–50 segments across vendors/audio conditions), transcribed or
+  corrected once, used to attach an **absolute** WER/CER to the Layer-2 fit scores so the trust
+  thresholds mean something. Refreshed only when the model or a vendor changes. The only layer needing
+  human effort — and only a sample.
+
+**Data model.** A new state-backed rolling log mirroring `state/asr_runtime_log.json` (the merge-pushed,
+capped-deque pattern from PR #324):
+- `state/transcript_quality_log.json` — append-only, capped, **per `source_key`**:
+  `{source_key, sampled_at, layer, served_coverage, served_word_logprob_mean,
+  asr_word_logprob_mean (L2), verdict, model_id, caption_provenance}`.
+- Merge-push via a new `push_transcript_quality_log_merged` (same union-by-id + keep-newest as
+  `push_asr_runtime_log_merged`) so the 4 ASR shards don't clobber each other.
+- A derived per-source **`caption_trust`** the lane router reads.
+
+**Wiring.**
+- `TranscriptStage` (L1): record coverage + word-logprob whenever `align()` runs — near-zero cost.
+- A periodic `asr-quality.yml` job (or a slice of `asr-bench.yml`) drives L2 over the rotating sample via
+  the H13 backend, scoring with the independent aligner.
+- **Routing payoff (the unblock):** the lane router consults `caption_trust` per source — `high` ⇒
+  schedule the cheap `align` lane; `low`/`unknown` ⇒ stay on fresh `transcribe`. This is the concrete
+  resolution of H6b's "align lane implemented but unscheduled."
+- **Admin surface:** a transcript-quality panel on `/admin/status` (per-source trust distribution,
+  sources flagged `low`, last-sampled age) — the glanceable view a one-time eval can't give.
+
+**Provenance first.** Before trusting any score, capture **where the captions come from** (human CART vs
+platform auto-ASR) from the source/provider config where known — that's the prior the fit scores then
+confirm or override.
+
+**Open decisions (why this is L2, not yet L3).**
+- Independent aligner: `torchaudio.functional.forced_align` (lean; may ride torch we already pull) vs
+  WhisperX (heavier, batteries-included).
+- L2 sampling cadence + sample size (cost vs freshness).
+- Trust thresholds — set only after the L3 human-gold anchor exists.
+- Whether L2 reuses `asr-bench.yml` or gets its own scheduled workflow.
+
+**Relationship to neighbors.** Distinct from **H6a** (runtime benchmark) and **H9** (throughput, $/hr
+across execution homes) — those measure *speed/cost*; H15 measures *correctness*. It reuses H9's "fixed
+mix + report WER / alignment-failure" machinery and the **H13** backend interface, and the per-source
+`caption_trust` is diarization-adjacent metadata (Phase R #7).
+
+**Acceptance.**
+- L1 recorded every run: `state/transcript_quality_log.json` accrues per-source coverage + word-logprob,
+  merge-pushed without cross-shard clobber (test mirrors `test_push_asr_runtime_log_merged_*`).
+- L2 produces a per-source `caption_trust` verdict from an aligner independent of both generators, over a
+  rotating sample, within a bounded GPU/runtime budget.
+- The lane router reads `caption_trust` to gate the `align` lane per source (replacing the global
+  "unscheduled").
+- `/admin/status` shows the trust distribution + stale-sample ages.
+- A documented human-gold sample anchors the thresholds to an absolute WER/CER.
+
+---
+
 ## #39 — Per-provider rate limiting (sequence with H6b)
 
 **Maturity: Implemented** ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274),
