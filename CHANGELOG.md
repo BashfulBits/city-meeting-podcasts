@@ -31,6 +31,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **ASR shard provider-fetch outages now fall back to the persisted archive.** The `transcribe` and
+  `align` lanes are best-effort transcript backfill over already-hosted audio in `episodes.json`, so a
+  transient source refresh failure now loads the last-known record archive and continues ASR instead of
+  returning a run error. If no archive exists, the source is skipped/deferred for that ASR run. Audio and
+  full enrich lanes still surface provider fetch failures as errors. No pipeline version changed and no
+  artifact backfill is triggered.
 - **ASR shards now run every 5h with a 285m start cutoff, 350m backstop, and rolling runtime
   estimates.** The `transcribe`/`align` lanes stop starting new local ASR after
   `asr_start_cutoff_minutes` (285m), but an already-started transcript may continue until
