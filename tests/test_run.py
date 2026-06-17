@@ -900,12 +900,17 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
         captured["only_prefixes"] = only_prefixes  # the run_events-only push
         return 0
 
+    def _push_asr_log(_storage, _state_dir, *, rel_path, log=None):
+        captured["asr_runtime_log"] = rel_path
+        return 0
+
     def _reconcile(_storage, _state_dir, *, full_run=True, **_k):
         captured["full_run"] = full_run
         return 0
 
     monkeypatch.setattr(run, "push_records_merged", _push_merged)
     monkeypatch.setattr(run, "push_state", _push)
+    monkeypatch.setattr(run, "push_asr_runtime_log_merged", _push_asr_log)
     monkeypatch.setattr(run, "reconcile_state", _reconcile)
 
     _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2))
@@ -915,10 +920,8 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     assignment = shard_assignment((source_key(c) for c in cfg), 2)
     owned = sorted({source_key(c) for c in cfg if assignment[source_key(c)] == 0})
     assert captured["owned"] == owned  # records pushed only for owned sources
-    assert captured["only_prefixes"] == [
-        "run_events/",
-        "asr_runtime_log.json",
-    ]  # run_events + ASR runtime telemetry pushed separately
+    assert captured["only_prefixes"] == ["run_events/"]  # append-only events pushed separately
+    assert captured["asr_runtime_log"] == "asr_runtime_log.json"
     events = list((tmp_path / "state" / "run_events").glob("*.json"))
     assert len(events) == 1
     assert json.loads(events[0].read_text())["scoped"] is True

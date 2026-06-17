@@ -84,7 +84,13 @@ from citypods.state import (
     resolve_state_dir,
     save_etag_cache,
 )
-from citypods.statesync import pull_state, push_records_merged, push_state, reconcile_state
+from citypods.statesync import (
+    pull_state,
+    push_asr_runtime_log_merged,
+    push_records_merged,
+    push_state,
+    reconcile_state,
+)
 from citypods.storage import make_storage
 
 # Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
@@ -1261,7 +1267,13 @@ def build(
                 pushed += push_state(
                     storage,
                     state_dir,
-                    only_prefixes=[f"{RUN_EVENTS_DIR_NAME}/", ASR_RUNTIME_LOG_NAME],
+                    only_prefixes=[f"{RUN_EVENTS_DIR_NAME}/"],
+                )
+                pushed += push_asr_runtime_log_merged(
+                    storage,
+                    state_dir,
+                    rel_path=ASR_RUNTIME_LOG_NAME,
+                    log=lambda msg: print(msg, flush=True),
                 )
             else:
                 pushed = push_state(storage, state_dir)

@@ -691,11 +691,11 @@ class TestTranscriptStageASR:
 
         assert timeout == pytest.approx(25, abs=0.25)
 
-    def test_asr_runtime_log_seeds_and_rolls_previous_100_samples(self, tmp_path):
+    def test_asr_runtime_log_uses_default_until_real_samples_and_rolls_previous_100(self, tmp_path):
         path = tmp_path / "asr_runtime_log.json"
         log = AsrRuntimeLog(path, default_ratio=0.75)
 
-        assert path.exists()
+        assert not path.exists()
         assert log.average_ratio() == pytest.approx(0.75)
 
         for i in range(101):
@@ -704,7 +704,21 @@ class TestTranscriptStageASR:
         data = json.loads(path.read_text())
         assert len(data["samples"]) == 100
         assert data["samples"][0]["transcribe_seconds"] == 101
+        assert data["samples"][0]["id"]
         assert AsrRuntimeLog(path, default_ratio=0.75).average_ratio() == pytest.approx(1.505)
+
+    def test_asr_runtime_log_preserves_parallel_local_writers(self, tmp_path):
+        path = tmp_path / "asr_runtime_log.json"
+        log_a = AsrRuntimeLog(path, default_ratio=0.75)
+        log_b = AsrRuntimeLog(path, default_ratio=0.75)
+
+        log_a.append(transcribe_seconds=10, recording_seconds=100)
+        log_b.append(transcribe_seconds=20, recording_seconds=100)
+
+        samples = json.loads(path.read_text())["samples"]
+        assert any(s["transcribe_seconds"] == 10 for s in samples)
+        assert any(s["transcribe_seconds"] == 20 for s in samples)
+        assert AsrRuntimeLog(path, default_ratio=0.75).average_ratio() == pytest.approx(0.15)
 
     def test_asr_defers_recording_that_cannot_fit_remaining_budget(self, tmp_path, capsys):
         ep = _ep_with_audio()
@@ -1100,6 +1114,29 @@ class TestTranscriptStageASR:
         release.set()
         assert ctx.asr_semaphore.acquire(timeout=2) is True
         ctx.asr_semaphore.release()
+
+    def test_waiting_asr_slot_polls_abort_event(self, tmp_path):
+        ep = _ep_with_audio("uid-a")
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_abort_event = threading.Event()
+        ctx.asr_semaphore = threading.Semaphore(0)
+        result = {}
+
+        def _run():
+            result["stats"] = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        with patch("citypods.stages.asr_mod", fake_asr):
+            worker = threading.Thread(target=_run)
+            worker.start()
+            time.sleep(0.2)
+            ctx.asr_abort_event.set()
+            worker.join(timeout=4)
+
+        assert not worker.is_alive()
+        assert fake_asr.transcribe_calls == []
+        assert result["stats"].skipped == 1
+        assert ep.transcript_key is None
 
     def test_asr_waits_for_resource_admission(self, tmp_path):
         ep = _ep_with_audio()

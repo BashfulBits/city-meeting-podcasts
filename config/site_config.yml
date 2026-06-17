@@ -84,7 +84,8 @@ defaults:
   budget_safety: 0.85                    # window = 204m; leaves ~36m of the 240m cron tick for the tail
   # ASR runs every 5h. Stop starting new local ASR at 285m, then let any in-flight transcript
   # continue until the 350m backstop. TranscriptStage estimates fit from the rolling
-  # state/asr_runtime_log.json ratio log (seeded from the conservative timeout formula).
+  # state/asr_runtime_log.json ratio log (falling back to the conservative timeout formula
+  # until real samples exist).
   asr_start_cutoff_minutes: 285
   asr_backstop_minutes: 350
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes

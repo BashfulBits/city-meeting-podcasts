@@ -300,6 +300,18 @@ def _asr_default_ratio(ctx: StageContext) -> float:
     return max(0.001, (one_hour if one_hour is not None else 3600.0) / 3600.0)
 
 
+_ASR_RUNTIME_LOG_LOCK_GUARD = threading.Lock()
+_ASR_RUNTIME_LOG_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _asr_runtime_log_path_lock(path: Path | None) -> threading.Lock:
+    if path is None:
+        return threading.Lock()
+    key = str(path)
+    with _ASR_RUNTIME_LOG_LOCK_GUARD:
+        return _ASR_RUNTIME_LOG_LOCKS.setdefault(key, threading.Lock())
+
+
 class AsrRuntimeLog:
     """Rolling ASR runtime/recording-duration ratio log persisted in state."""
 
@@ -309,37 +321,64 @@ class AsrRuntimeLog:
         self.path = path
         self.default_ratio = max(0.001, float(default_ratio))
         self._lock = threading.Lock()
-        self._samples: collections.deque[dict[str, float]] = collections.deque(
+        self._path_lock = _asr_runtime_log_path_lock(path)
+        self._samples: collections.deque[dict[str, float | str]] = collections.deque(
             maxlen=self.max_samples
         )
-        self._load_or_seed()
+        self._load()
 
-    def _load_or_seed(self) -> None:
-        raw: list[dict[str, float]] = []
+    @staticmethod
+    def _coerce_sample(sample: dict, *, fallback_id: str) -> dict[str, float | str] | None:
+        transcribe_seconds = float(sample.get("transcribe_seconds", 0) or 0)
+        recording_seconds = float(sample.get("recording_seconds", 0) or 0)
+        if transcribe_seconds <= 0 or recording_seconds <= 0:
+            return None
+        finished_at = float(sample.get("finished_at", sample.get("ts", 0)) or 0)
+        sample_id = str(sample.get("id") or sample.get("sample_id") or fallback_id)
+        return {
+            "id": sample_id,
+            "finished_at": finished_at,
+            "transcribe_seconds": transcribe_seconds,
+            "recording_seconds": recording_seconds,
+        }
+
+    @classmethod
+    def _normalize_samples(
+        cls, raw: list[dict], *, max_samples: int | None = None
+    ) -> list[dict[str, float | str]]:
+        limit = cls.max_samples if max_samples is None else max_samples
+        by_id: dict[str, tuple[int, dict[str, float | str]]] = {}
+        for idx, sample in enumerate(raw):
+            coerced = cls._coerce_sample(sample, fallback_id=f"legacy-{idx}")
+            if coerced is None:
+                continue
+            by_id[str(coerced["id"])] = (idx, coerced)
+        ordered = [
+            sample
+            for _idx, sample in sorted(
+                by_id.values(),
+                key=lambda item: (float(item[1].get("finished_at", 0) or 0), item[0]),
+            )
+        ]
+        return ordered[-limit:]
+
+    def _read_samples_from_path_unlocked(self) -> list[dict[str, float | str]]:
         if self.path is not None and self.path.exists():
             try:
                 data = json.loads(self.path.read_text())
-                raw = list(data.get("samples", []))
+                return self._normalize_samples(list(data.get("samples", [])))
             except Exception:  # noqa: BLE001 - corrupt telemetry should not stop ASR
-                raw = []
-        for sample in raw[-self.max_samples :]:
-            transcribe_seconds = float(sample.get("transcribe_seconds", 0) or 0)
-            recording_seconds = float(sample.get("recording_seconds", 0) or 0)
-            if transcribe_seconds > 0 and recording_seconds > 0:
-                self._samples.append(
-                    {
-                        "transcribe_seconds": transcribe_seconds,
-                        "recording_seconds": recording_seconds,
-                    }
-                )
-        if not self._samples:
-            synthetic = {
-                "transcribe_seconds": self.default_ratio * 3600.0,
-                "recording_seconds": 3600.0,
-            }
-            for _ in range(self.max_samples):
-                self._samples.append(dict(synthetic))
-            self._persist_unlocked()
+                return []
+        return []
+
+    def _replace_samples(self, samples: list[dict[str, float | str]]) -> None:
+        with self._lock:
+            self._samples.clear()
+            self._samples.extend(samples[-self.max_samples :])
+
+    def _load(self) -> None:
+        with self._path_lock:
+            self._replace_samples(self._read_samples_from_path_unlocked())
 
     def average_ratio(self) -> float:
         with self._lock:
@@ -358,13 +397,21 @@ class AsrRuntimeLog:
     def append(self, *, transcribe_seconds: float, recording_seconds: float) -> None:
         if transcribe_seconds <= 0 or recording_seconds <= 0:
             return
-        with self._lock:
-            self._samples.append(
-                {
-                    "transcribe_seconds": float(transcribe_seconds),
-                    "recording_seconds": float(recording_seconds),
-                }
-            )
+        sample = {
+            "id": f"{time.time_ns()}-{threading.get_ident()}",
+            "finished_at": time.time(),
+            "transcribe_seconds": float(transcribe_seconds),
+            "recording_seconds": float(recording_seconds),
+        }
+        if self.path is None:
+            with self._lock:
+                self._samples.append(sample)
+            return
+        with self._path_lock:
+            samples = self._read_samples_from_path_unlocked()
+            samples.append(sample)
+            samples = self._normalize_samples(samples)
+            self._replace_samples(samples)
             self._persist_unlocked()
 
     def _persist_unlocked(self) -> None:
@@ -399,6 +446,31 @@ def _asr_fits_remaining_budget(
     if remaining is not None and estimate > remaining:
         return False, estimate, remaining
     return True, estimate, remaining
+
+
+def _acquire_asr_semaphore(ctx: StageContext, sem: threading.Semaphore, ep_ref: str) -> bool:
+    while True:
+        if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+            print(
+                f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
+                flush=True,
+            )
+            return False
+        if ctx.stop is not None and ctx.stop():
+            return False
+        if not sem.acquire(timeout=2):
+            continue
+        if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+            sem.release()
+            print(
+                f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
+                flush=True,
+            )
+            return False
+        if ctx.stop is not None and ctx.stop():
+            sem.release()
+            return False
+        return True
 
 
 def _episode_duration_hours(ep: Episode) -> tuple[float, str]:
@@ -1284,23 +1356,13 @@ class TranscriptStage:
                     f"[enrich] transcript asr wait {ep_ref}",
                     flush=True,
                 )
-                sem.acquire()
+                if not _acquire_asr_semaphore(ctx, sem, ep_ref):
+                    stats.skipped += 1
+                    continue
                 print(
                     f"[enrich] transcript asr acquired {ep_ref}",
                     flush=True,
                 )
-                if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
-                    sem.release()
-                    stats.skipped += 1
-                    print(
-                        f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
-                        flush=True,
-                    )
-                    continue
-                if ctx.stop is not None and ctx.stop():
-                    sem.release()
-                    stats.skipped += 1
-                    continue
 
             native_gate_acquired = False
             if ctx.native_work_gate is not None:
