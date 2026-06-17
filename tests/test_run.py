@@ -600,6 +600,42 @@ def test_build_wires_a_stop_signal_when_time_bounded(tmp_path, fake_provider, mo
     assert captured["stop"]() is False  # window not yet spent, not superseded
 
 
+def test_asr_lane_uses_asr_specific_wall_clock_budget(tmp_path, fake_provider, monkeypatch):
+    import citypods.run as run_mod
+
+    captured = {}
+    real_ctx = run_mod.StageContext
+
+    def spy_ctx(*a, **kw):
+        captured["asr_deadline"] = kw.get("asr_deadline")
+        return real_ctx(*a, **kw)
+
+    monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
+    monkeypatch.setattr(run_mod.time, "monotonic", lambda: 1000.0)
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\n"
+        "defaults:\n"
+        "  audio_storage_backend: local\n"
+        "  asr_enabled: false\n"
+        "  run_time_budget_minutes: 240\n"
+        "  budget_safety: 0.85\n"
+        "  asr_run_time_budget_minutes: 330\n"
+        "  asr_budget_safety: 1.0\n"
+    )
+
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        phase="enrich",
+        lane="transcribe",
+    )
+
+    assert captured["asr_deadline"] == pytest.approx(1000 + 330 * 60)
+
+
 def test_chapters_cap_defaults_unbounded_and_is_overridable(tmp_path, fake_provider, monkeypatch):
     import citypods.run as run_mod
 

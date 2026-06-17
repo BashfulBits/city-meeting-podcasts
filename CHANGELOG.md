@@ -31,6 +31,15 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **ASR shards now use a 5.5h lane budget plus per-recording fit checks before starting native
+  transcription.** The daily `transcribe`/`align` lanes no longer inherit the audio lane's 204-minute
+  window; they may run until `asr_run_time_budget_minutes` (330m) while still leaving a 30-minute tail
+  before GitHub Actions' 6-hour hard limit. Before starting a recording, `TranscriptStage` compares
+  the conservative ASR runtime estimate (`asr_timeout_base_minutes + duration ×
+  asr_timeout_per_audio_hour_minutes`) with the remaining budget and defers recordings that do not fit,
+  so already-started transcription is not thrown away merely because the older 204-minute budget fired.
+  Waiters also poll `ctx.stop()`/abort while waiting for the global ASR slot instead of blocking in
+  `Semaphore.acquire()`. No pipeline version changed and no artifact backfill is triggered.
 - **Cross-lane record clobber in the sharded enrich workers (the `hosted_audio −16` regression).** The
   `audio` and `asr` workflows shard over the same `source_key` partition but run on different schedules,
   so both write the *same* `state/sources/<key>/episodes.json` at overlapping read→write windows. Each

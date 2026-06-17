@@ -196,6 +196,9 @@ class StageContext:
     asr_timeout_per_hour_seconds: float = 30 * 60
     # Monotonic deadline for the whole enrich/all phase. ASR timeouts are capped to the remaining
     # budget before this deadline so a single item cannot outlive the planned wrap-up window.
+    # Before starting a new ASR item, the stage also compares the estimated item runtime with the
+    # remaining time so it can defer too-long recordings instead of starting work it expects to
+    # abandon near the Actions hard cap.
     asr_deadline: float | None = None
     asr_timeout_budget_reserve_seconds: float = 60
     # Set after an ASR timeout so other source workers skip starting more ASR in this run. The
@@ -265,17 +268,45 @@ def _requests_fast_yield_exit(stop: Callable[[], bool] | None) -> bool:
     return bool(stop is not None and getattr(stop, "should_exit_immediately", lambda: False)())
 
 
-def _asr_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | None:
+def _asr_configured_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | None:
     configured = ctx.asr_timeout_base_seconds + max(0.0, duration_hours) * (
         ctx.asr_timeout_per_hour_seconds
     )
-    timeout = configured if configured > 0 else None
+    return configured if configured > 0 else None
+
+
+def _asr_remaining_budget_seconds(ctx: StageContext) -> float | None:
     if ctx.asr_deadline is None:
+        return None
+    return ctx.asr_deadline - time.monotonic() - ctx.asr_timeout_budget_reserve_seconds
+
+
+def _asr_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | None:
+    timeout = _asr_configured_timeout_seconds(ctx, duration_hours)
+    remaining = _asr_remaining_budget_seconds(ctx)
+    if remaining is None:
         return timeout
-    remaining = ctx.asr_deadline - time.monotonic() - ctx.asr_timeout_budget_reserve_seconds
     if remaining <= 0:
         return 0.0
     return min(timeout, remaining) if timeout is not None else remaining
+
+
+def _asr_fits_remaining_budget(
+    ctx: StageContext, duration_hours: float
+) -> tuple[bool, float | None, float | None]:
+    """Whether a new ASR item should start with the remaining wall-clock budget.
+
+    Returns ``(fits, estimate, remaining)``. ``estimate`` is the same conservative per-item cap used
+    for ASR timeout sizing; ``remaining`` already subtracts the configured tail reserve for state
+    persistence. When either value is unknown/unbounded, the item is allowed to start.
+    """
+    estimate = _asr_configured_timeout_seconds(ctx, duration_hours)
+    remaining = _asr_remaining_budget_seconds(ctx)
+    if remaining is not None and remaining <= 0:
+        return False, estimate, remaining
+    if estimate is not None and remaining is not None and estimate > remaining:
+        return False, estimate, remaining
+    return True, estimate, remaining
 
 
 def _episode_duration_hours(ep: Episode) -> tuple[float, str]:
@@ -1110,6 +1141,33 @@ class TranscriptStage:
                     continue
                 # overflow to local — fall through to the on-runner synchronous path below.
 
+            # Preflight with the known episode duration before taking the scarce ASR slot or
+            # downloading audio. A later probe of the hosted audio may refine this, but if the
+            # metadata duration already cannot fit in the remaining lane budget, defer this
+            # recording and let the worker try another candidate.
+            preflight_dur_h, preflight_duration_source = _episode_duration_hours(ep)
+            if preflight_duration_source != "unknown":
+                fits_budget, estimate_s, remaining_s = _asr_fits_remaining_budget(
+                    ctx, preflight_dur_h
+                )
+                if not fits_budget:
+                    stats.skipped += 1
+                    estimate_label = (
+                        f"{estimate_s / 60:.1f}" if estimate_s is not None else "unknown"
+                    )
+                    remaining_label = (
+                        f"{max(0.0, remaining_s) / 60:.1f}"
+                        if remaining_s is not None
+                        else "unknown"
+                    )
+                    print(
+                        f"[enrich] transcript asr skipped {ep_ref} "
+                        "reason=insufficient-budget "
+                        f"estimate_m={estimate_label} remaining_m={remaining_label}",
+                        flush=True,
+                    )
+                    continue
+
             if ctx.stop is not None and ctx.stop():
                 stats.skipped += 1
                 continue
@@ -1133,7 +1191,25 @@ class TranscriptStage:
                     f"[enrich] transcript asr wait {ep_ref}",
                     flush=True,
                 )
-                sem.acquire()
+                acquired = False
+                while not acquired:
+                    if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+                        stats.skipped += 1
+                        print(
+                            f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
+                            flush=True,
+                        )
+                        break
+                    if ctx.stop is not None and ctx.stop():
+                        stats.skipped += 1
+                        print(
+                            f"[enrich] transcript asr skipped {ep_ref} reason=stop-before-slot",
+                            flush=True,
+                        )
+                        break
+                    acquired = sem.acquire(timeout=2)
+                if not acquired:
+                    continue
                 print(
                     f"[enrich] transcript asr acquired {ep_ref}",
                     flush=True,
@@ -1149,6 +1225,10 @@ class TranscriptStage:
                 if ctx.stop is not None and ctx.stop():
                     sem.release()
                     stats.skipped += 1
+                    print(
+                        f"[enrich] transcript asr skipped {ep_ref} reason=stop-before-slot",
+                        flush=True,
+                    )
                     continue
 
             native_gate_acquired = False
@@ -1199,8 +1279,8 @@ class TranscriptStage:
                 duration_source = "hosted"
             duration_label = f"{dur_h:.1f}" if duration_source != "unknown" else "unknown"
             mode = "align" if align_text else "transcribe"
-            timeout_s = _asr_timeout_seconds(ctx, dur_h)
-            if timeout_s is not None and timeout_s <= 0:
+            fits_budget, estimate_s, remaining_s = _asr_fits_remaining_budget(ctx, dur_h)
+            if not fits_budget:
                 audio_tmp.cleanup()
                 if native_gate_acquired and ctx.native_work_gate is not None:
                     ctx.native_work_gate.release(kind="asr")
@@ -1209,12 +1289,18 @@ class TranscriptStage:
                     sem.release()
                     sem = None
                 stats.skipped += 1
+                estimate_label = f"{estimate_s / 60:.1f}" if estimate_s is not None else "unknown"
+                remaining_label = (
+                    f"{max(0.0, remaining_s) / 60:.1f}" if remaining_s is not None else "unknown"
+                )
                 print(
-                    f"[enrich] transcript asr skipped {ep_ref} reason=budget-exhausted",
+                    f"[enrich] transcript asr skipped {ep_ref} reason=insufficient-budget "
+                    f"estimate_m={estimate_label} remaining_m={remaining_label}",
                     flush=True,
                 )
                 continue
 
+            timeout_s = _asr_timeout_seconds(ctx, dur_h)
             timeout_label = f"{timeout_s / 60:.1f}" if timeout_s is not None else "disabled"
             print(
                 f"[enrich] transcript asr start {ep_ref} mode={mode} duration_h={duration_label} "

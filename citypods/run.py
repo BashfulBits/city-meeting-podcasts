@@ -877,13 +877,20 @@ def build(
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
+        if lane in {"transcribe", "align"}:
+            window_min = float(defaults.get("asr_run_time_budget_minutes", window_min))
+            safety = float(defaults.get("asr_budget_safety", safety))
         deadline = (time.monotonic() + window_min * 60 * safety) if window_min > 0 else None
         stop = StopSignal(
             deadline=deadline,
             superseded=_newer_run_queued,
         )
         if window_min > 0:
-            print(f"budget: wall-clock window {window_min:.0f}m × {safety} (+ yield if superseded)")
+            lane_label = f" {lane}" if lane else ""
+            print(
+                f"budget:{lane_label} wall-clock window {window_min:.0f}m × {safety} "
+                "(+ yield if superseded)"
+            )
         # Loud, once-per-run signal if graceful yield can't work (token dropped, e.g. via repo
         # settings rather than the workflow YAML the contract test guards). Without it the run is
         # bounded only by the wall-clock window — easy to miss, since the check fails open silently.
@@ -1160,11 +1167,14 @@ def build(
         # the phase that does that work (enrich/all) — a near-zero-cost render run would dilute it.
         if time_bounded:
             _elapsed = time.monotonic() - build_start
-            _window = (
-                float(defaults.get("run_time_budget_minutes", 0))
-                * 60
-                * float(defaults.get("budget_safety", 0.8))
-            )
+            _history_window_min = float(defaults.get("run_time_budget_minutes", 0))
+            _history_safety = float(defaults.get("budget_safety", 0.8))
+            if lane in {"transcribe", "align"}:
+                _history_window_min = float(
+                    defaults.get("asr_run_time_budget_minutes", _history_window_min)
+                )
+                _history_safety = float(defaults.get("asr_budget_safety", _history_safety))
+            _window = _history_window_min * 60 * _history_safety
             _record_run_history(
                 state_dir,
                 results,
