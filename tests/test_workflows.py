@@ -104,8 +104,10 @@ def test_heavy_workflow_is_isolated_from_pages(workflow, group):
 
 @pytest.mark.parametrize("workflow,_lane", HEAVY_WORKFLOWS)
 def test_heavy_workflow_treats_graceful_yield_as_success(workflow, _lane):
-    """A superseded shard exits 143 after ``StopSignal`` fires. That is an expected yield, not a
-    failure — and it never touched the Pages deploy, which is a separate workflow."""
+    """The designed graceful yield is exit 0 (the shard stops starting new work after ``StopSignal``
+    fires, finishes in-flight work, then exits). A 143 (SIGTERM) after the stop signal is the
+    Actions hard cap landing mid-yield — still an expected yield, not a failure — and it never
+    touched the Pages deploy, which is a separate workflow."""
     _wf, job = _job(workflow)
     step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
     run = str(step.get("run", ""))

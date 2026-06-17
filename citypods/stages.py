@@ -1579,6 +1579,10 @@ class TranscriptStage:
                 time.sleep(2)
 
             if _abandoned:
+                # Only the combined-enrich (lane=None) path sets fast_yield_exit; the transcribe/
+                # align lanes pass None, so this is a no-op there. When it is set, a backstop
+                # timeout that coincides with a code/human supersession fast-exits so the queued
+                # build can deploy without waiting on native ASR teardown.
                 if ctx.fast_yield_exit is not None and _requests_fast_yield_exit(ctx.stop):
                     ctx.fast_yield_exit()
                 continue
