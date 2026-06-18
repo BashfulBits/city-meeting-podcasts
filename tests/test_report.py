@@ -491,7 +491,7 @@ def test_status_marks_legacy_audio_stale_when_processing_profile_enabled(tmp_pat
         "defaults": {
             "audio_max_kbps": 96,
             "audio_loudness_profile": "ebuR128:-16LUFS",
-            "audio_processing_profile": "podcast-speech-v1",
+            "audio_processing_profile": "podcast-speech-v2",
         }
     }
 

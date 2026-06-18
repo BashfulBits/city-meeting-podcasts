@@ -10,16 +10,22 @@ correctness, and test ``CommandFfmpeg`` via subprocess mocking for arg wiring.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from datetime import UTC, datetime
+
+import pytest
 
 from citypods.media import (
     PODCAST_SPEECH_PROFILE,
     CommandFfmpeg,
     LoudnessMeasurements,
     UnusableAudioError,
+    _build_streaming_single_source_filter,
     _linear_loudnorm_filter,
     _parse_ebur128_summary,
     _parse_lufs,
+    _peak_limited_linear_filter,
     _served_duration,
     build_filter_complex,
     materialize_audio,
@@ -162,6 +168,102 @@ class TestFiltergraphTrim:
         assert "concat=n=2" in fc
 
 
+class TestStreamingSingleSourceFilter:
+    def test_monotonic_keep_spans_use_sample_accurate_one_pass_aselect(self):
+        segs = (
+            _seg_src(0, 300, 0, 300),
+            _seg_src(300, 3300, 600, 3600),
+        )
+
+        result = _build_streaming_single_source_filter(segs, {"s0": 0})
+
+        assert result is not None
+        graph, output = result
+        assert graph.startswith("[0:a]aresample=48000")
+        assert "asettb=1/48000" in graph
+        assert "asendcmd=" in graph
+        assert "asetnsamples@timeline_cut_frames n 1" in graph
+        assert "asetnsamples@timeline_cut_frames=n=1024" in graph
+        assert "gte(pts\\,0)*lt(pts\\,14400000)" in graph
+        assert "gte(pts\\,28800000)*lt(pts\\,172800000)" in graph
+        assert "asetpts=N/SR/TB,asetnsamples=n=1024:p=0[program]" in graph
+        assert "atrim" not in graph
+        assert "concat" not in graph
+        assert output == "[program]"
+
+    def test_fractional_boundaries_are_rounded_to_nearest_sample(self):
+        segs = (
+            _seg_src(0, 0.5, 0.000354, 0.513729),
+            _seg_src(0.5, 1.1, 1.117146, 1.731521),
+        )
+
+        result = _build_streaming_single_source_filter(segs, {"s0": 0})
+
+        assert result is not None
+        graph, _ = result
+        assert "gte(pts\\,17)*lt(pts\\,24659)" in graph
+        assert "gte(pts\\,53623)*lt(pts\\,83113)" in graph
+
+    def test_real_ffmpeg_emits_exact_selected_sample_count(self, tmp_path):
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg is required for the audio filter integration check")
+        segs = (
+            _seg_src(0, 0.5, 0.000354, 0.513729),
+            _seg_src(0.5, 1.1, 1.117146, 1.731521),
+            _seg_src(1.1, 1.5, 2.000271, 2.401188),
+        )
+        result = _build_streaming_single_source_filter(segs, {"s0": 0})
+        assert result is not None
+        graph, output = result
+        raw = tmp_path / "selected.s16le"
+
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:sample_rate=48000:duration=3",
+                "-filter_complex",
+                graph,
+                "-map",
+                output,
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                str(raw),
+            ],
+            check=True,
+        )
+
+        expected_samples = sum(
+            round(segment.source_end * 48_000) - round(segment.source_start * 48_000)
+            for segment in segs
+        )
+        assert raw.stat().st_size == expected_samples * 2
+
+    def test_reordered_spans_fall_back_to_generic_graph(self):
+        segs = (
+            _seg_src(0, 100, 600, 700),
+            _seg_src(100, 200, 0, 100),
+        )
+
+        assert _build_streaming_single_source_filter(segs, {"s0": 0}) is None
+
+    def test_multi_source_spans_fall_back_to_generic_graph(self):
+        segs = (
+            _seg_src(0, 100, 0, 100, "s0"),
+            _seg_src(100, 200, 0, 100, "s1"),
+        )
+
+        assert _build_streaming_single_source_filter(segs, {"s0": 0, "s1": 1}) is None
+
+
 # ---------------------------------------------------------------------------
 # build_filter_complex — multi-source concat
 # ---------------------------------------------------------------------------
@@ -267,6 +369,22 @@ class TestFiltergraphLoudness:
         )
         assert "LRA=14.5" in filt
         assert "linear=true" in filt
+
+    def test_peak_limited_linear_filter_uses_constant_gain_and_streaming_limiter(self):
+        measured = LoudnessMeasurements(
+            integrated=-25.0,
+            threshold=-35.0,
+            loudness_range=8.0,
+            true_peak=-1.0,
+        )
+
+        result = _peak_limited_linear_filter("ebuR128:-16LUFS", measured)
+
+        assert result.startswith("volume=9dB:precision=double")
+        assert "aresample=192000" in result
+        assert "alimiter=limit=0.749894209:level=false:latency=true" in result
+        assert result.endswith("aresample=48000")
+        assert "loudnorm" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -598,10 +716,148 @@ class TestCommandFfmpegFilterPath:
         assert "acompressor=threshold=0.125:ratio=2.5" in measure_graph
         assert "ebur128=framelog=quiet:peak=true" in measure_graph
         assert "loudnorm" not in measure_graph
+        assert "aselect=" in measure_graph
+        assert "atrim" not in measure_graph
+        assert "concat" not in measure_graph
         final_graph = calls[1][0][calls[1][0].index("-filter_complex") + 1]
         assert "measured_I=-20" in final_graph
         assert "linear=true" in final_graph
         assert "speech-leveled.flac" in " ".join(calls[1][0])
+
+    def test_podcast_speech_profile_limits_peak_when_linear_loudnorm_is_impossible(
+        self, monkeypatch, tmp_path
+    ):
+        import citypods.media as media
+
+        calls: list[tuple[list[str], str]] = []
+        summary = b"""
+        Summary:
+          Integrated loudness:
+            I:         -25.0 LUFS
+            Threshold: -35.0 LUFS
+          Loudness range:
+            LRA:         8.0 LU
+            Threshold: -45.0 LUFS
+          True peak:
+            Peak:       -1.0 dBFS
+        """
+
+        def _fake_guard(cmd, *, phase, **kwargs):
+            calls.append((cmd, phase))
+            return b"", summary if phase == "speech-measure" else b""
+
+        monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fake_guard)
+        media.CommandFfmpeg(max_kbps=96, threads=1).extract_audio(
+            timeline=self._trim_timeline(),
+            sources_by_id={"s0": "https://s/v.mp4"},
+            dest=tmp_path / "out.m4a",
+            loudness_profile="ebuR128:-16LUFS",
+            processing_profile=PODCAST_SPEECH_PROFILE,
+        )
+
+        assert [phase for _, phase in calls] == ["speech-measure", "loudness-limit-render"]
+        final_graph = calls[1][0][calls[1][0].index("-filter_complex") + 1]
+        assert "volume=9dB:precision=double" in final_graph
+        assert "aresample=192000" in final_graph
+        assert "alimiter=" in final_graph
+        assert "level=false:latency=true" in final_graph
+        assert "loudnorm" not in final_graph
+
+    def test_podcast_speech_finalization_runs_on_dedicated_worker(self, monkeypatch, tmp_path):
+        import threading
+
+        import citypods.media as media
+
+        phases: list[tuple[str, str]] = []
+        summary = b"""
+        Summary:
+          Integrated loudness:
+            I:         -20.0 LUFS
+            Threshold: -30.0 LUFS
+          Loudness range:
+            LRA:         8.0 LU
+            Threshold: -40.0 LUFS
+          True peak:
+            Peak:       -8.0 dBFS
+        """
+
+        def _fake_guard(cmd, *, phase, **kwargs):
+            phases.append((phase, threading.current_thread().name))
+            return b"", summary if phase == "speech-measure" else b""
+
+        monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fake_guard)
+        runner = media.CommandFfmpeg(max_kbps=96, threads=1, finalize_workers=1)
+        try:
+            runner.extract_audio(
+                timeline=self._trim_timeline(),
+                sources_by_id={"s0": "https://s/v.mp4"},
+                dest=tmp_path / "out.m4a",
+                loudness_profile="ebuR128:-16LUFS",
+                processing_profile=PODCAST_SPEECH_PROFILE,
+            )
+        finally:
+            runner.close()
+
+        assert phases[0][0] == "speech-measure"
+        assert not phases[0][1].startswith("audio-finalize")
+        assert phases[1][0] == "loudness-render"
+        assert phases[1][1].startswith("audio-finalize")
+
+    def test_podcast_speech_uses_phase_specific_native_gate(self, monkeypatch, tmp_path):
+        import citypods.media as media
+
+        gate_events: list[tuple[str, str]] = []
+        summary = b"""
+        Summary:
+          Integrated loudness:
+            I:         -20.0 LUFS
+            Threshold: -30.0 LUFS
+          Loudness range:
+            LRA:         8.0 LU
+            Threshold: -40.0 LUFS
+          True peak:
+            Peak:       -8.0 dBFS
+        """
+
+        class _Gate:
+            def acquire(self, *, kind, label, stop=None):
+                gate_events.append(("acquire", kind))
+                return True
+
+            def release(self, *, kind):
+                gate_events.append(("release", kind))
+
+        monkeypatch.setattr(
+            media,
+            "_run_ffmpeg_guarded",
+            lambda cmd, *, phase, **kwargs: (
+                b"",
+                summary if phase == "speech-measure" else b"",
+            ),
+        )
+        runner = media.CommandFfmpeg(
+            max_kbps=96,
+            threads=1,
+            phase_gate=_Gate(),
+            finalize_workers=1,
+        )
+        try:
+            runner.extract_audio(
+                timeline=self._trim_timeline(),
+                sources_by_id={"s0": "https://s/v.mp4"},
+                dest=tmp_path / "out.m4a",
+                loudness_profile="ebuR128:-16LUFS",
+                processing_profile=PODCAST_SPEECH_PROFILE,
+            )
+        finally:
+            runner.close()
+
+        assert gate_events == [
+            ("acquire", "audio"),
+            ("release", "audio"),
+            ("acquire", "audio-finalize"),
+            ("release", "audio-finalize"),
+        ]
 
     def test_podcast_speech_profile_rejects_subsecond_timeline(self, tmp_path):
         import pytest

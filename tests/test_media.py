@@ -245,6 +245,39 @@ def test_audio_encode_waits_for_resource_admission(tmp_path):
     assert ff.calls == ["https://src/manifest.m3u8"]
 
 
+def test_source_cache_fetch_happens_before_native_cpu_admission(tmp_path):
+    events: list[str] = []
+    cached = tmp_path / "cached.mka"
+    cached.write_bytes(b"source")
+
+    class _Cache:
+        def get_or_fetch(self, uid, url):
+            events.append("fetch")
+            return cached
+
+    class _Gate:
+        def acquire(self, *, kind, label, stop=None):
+            events.append("gate")
+            return True
+
+        def release(self, *, kind):
+            events.append("release")
+
+    stats = materialize_audio(
+        _city(),
+        [_ep("g1")],
+        storage=_store(tmp_path),
+        ffmpeg=FakeFfmpeg(),
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        source_cache=_Cache(),
+        native_work_gate=_Gate(),
+    )
+
+    assert stats.encoded == 1
+    assert events == ["fetch", "gate", "release"]
+
+
 def test_audio_encode_defers_when_resource_admission_stops(tmp_path):
     eps = [_ep("g1")]
     ff = FakeFfmpeg()
@@ -712,6 +745,32 @@ def test_episode_in_backoff_is_skipped_without_consuming_budget(tmp_path):
     stats = _materialize(_city(), [ep], _store(tmp_path), ff)
     assert stats.skipped_backoff == 1 and stats.errors == []
     assert ff.calls == []  # never attempted
+
+
+def test_old_loudness_error_retries_immediately_under_peak_fallback(tmp_path):
+    from citypods.media import PODCAST_SPEECH_PROFILE
+
+    ep = _ep("peak-constrained")
+    ep.materialize_attempts = 4
+    ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+    ep.materialize_error = "loudness"
+    ff = FakeFfmpeg()
+
+    stats = materialize_audio(
+        _city(),
+        [ep],
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        loudness_profile="ebuR128:-16LUFS",
+        processing_profile=PODCAST_SPEECH_PROFILE,
+        resolve_media_url=lambda e: e.video_url,
+    )
+
+    assert stats.encoded == 1
+    assert stats.skipped_backoff == 0
+    assert ep.materialize_attempts == 0
+    assert ep.materialize_error is None
 
 
 def test_backoff_window_elapsed_re_attempts(tmp_path):

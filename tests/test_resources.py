@@ -155,6 +155,41 @@ def test_native_work_gate_waiting_asr_blocks_new_audio():
     assert order == ["asr", "audio"]
 
 
+def test_native_work_gate_prioritizes_audio_finalize_over_new_first_pass():
+    gate = NativeWorkGate(max_audio_active=1, poll_seconds=0.01)
+    assert gate.acquire(kind="audio", label="measure-a") is True
+
+    order: list[str] = []
+    finalize_started = threading.Event()
+    first_pass_started = threading.Event()
+
+    def _finalize():
+        assert gate.acquire(kind="audio-finalize", label="finalize-a") is True
+        order.append("finalize")
+        finalize_started.set()
+        gate.release(kind="audio-finalize")
+
+    def _first_pass():
+        assert gate.acquire(kind="audio", label="measure-b") is True
+        order.append("measure")
+        first_pass_started.set()
+        gate.release(kind="audio")
+
+    finalize_thread = threading.Thread(target=_finalize)
+    first_pass_thread = threading.Thread(target=_first_pass)
+    finalize_thread.start()
+    assert _wait_for(lambda: gate._audio_finalize_waiting == 1)
+    first_pass_thread.start()
+
+    gate.release(kind="audio")
+    assert finalize_started.wait(timeout=2)
+    finalize_thread.join(timeout=2)
+    first_pass_thread.join(timeout=2)
+
+    assert first_pass_started.is_set()
+    assert order == ["finalize", "measure"]
+
+
 def _wait_for_logs(logs: list[str], pattern: str) -> list[str]:
     assert _wait_for(lambda: any(pattern in line for line in logs))
     return logs

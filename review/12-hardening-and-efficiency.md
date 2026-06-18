@@ -751,7 +751,7 @@ coefficients are a first heuristic, calibratable from the per-encode `peak_rss` 
 The next successful Audio runs still showed the underlying failure: one-pass dynamic `loudnorm` retains
 length-proportional state on multi-hour meetings, with observed peaks around **9–13 GiB**. Reservation
 admission prevented collisions but necessarily serialized the longest work and could not make one
-encode fit comfortably. The production recipe is now the versioned `podcast-speech-v1` chain:
+encode fit comfortably. The production recipe is now the versioned `podcast-speech-v2` chain:
 
 1. render the served timeline once through an 80 Hz high-pass, moderately smoothed `dynaudnorm`
    (`f=500:g=21:p=.80:m=6:r=.08:t=.015:o=.5`), and a gentle 2.5:1 compressor;
@@ -762,16 +762,40 @@ Provider media is read only in pass 1. Every filter is streaming, so RSS is inde
 duration and admission uses a fixed 768 MiB reservation; the temporary FLAC moves the unavoidable
 whole-program state to disk. The final loudnorm target LRA is never set below the measured LRA, and
 peak feasibility is checked before launch, preventing ffmpeg from silently falling back to dynamic
-mode. Sub-second post-edit timelines are classified `dead` before ffmpeg. Backfill uses the existing
-content-addressed contract: `audio_processing_profile` participates in `audio_spec_hash`, so no
-`AUDIO_PIPELINE_VERSION` bump is needed; prior hashed and legacy objects become stale and are remastered
-gradually under the normal wall-clock queue.
+mode. Monotonic single-source timelines use one streaming `aselect` path rather than parallel `atrim`
+branches. To avoid `aselect`'s whole-frame boundary drift, the graph fixes the stream at 48 kHz,
+switches to one-sample frames only in short windows around each cut, selects by integer sample PTS,
+then coalesces normal frames. Sub-second post-edit timelines are classified `dead` before ffmpeg.
+Provider fetch, speech-measure, and final AAC/limiter passes have separate native admission; the final
+pass uses a bounded executor with priority over new measure work while sharing the same total FFmpeg
+ceiling. Backfill uses the existing content-addressed contract: `audio_processing_profile` participates
+in `audio_spec_hash`, so no `AUDIO_PIPELINE_VERSION` bump is needed; changing v1 → v2 makes prior v1
+objects stale and remasters them gradually under the normal wall-clock queue.
 
 Local FFmpeg verification on 2026-06-18 processed a synthetic two-hour, four-level recording in
 152.5 seconds (**47× realtime**) with exact 7,200-second output and **-16.0 LUFS** integrated
 loudness. A shorter realistic multi-level fixture moved from **12.3 LU LRA → 1.8 LU LRA**, confirming
 that quiet microphone sections are brought close to louder ones while the final pass remains a global
-linear gain.
+linear gain. The sample-accurate timeline follow-up processed the same two-hour source with 120 keep
+spans in 123.6 seconds, emitted exactly **6,000.000 seconds**, and measured **-16.0 LUFS**.
+
+**2026-06-18 peak-headroom follow-up.** Fort Worth recordings exposed the remaining mathematical edge
+case: a low integrated level plus isolated high transients can require +20 dB or more of constant gain,
+predicting +7–8 dBTP. FFmpeg documents that linear `loudnorm` reverts to dynamic mode when that gain
+would exceed the TP target; the explicit guard prevented the memory regression but failed the episode.
+The normal linear path remains unchanged. Peak-constrained items now use a pass-2 fallback of:
+
+`constant volume gain → 192 kHz resample → alimiter (-2.5 dB, auto-level off, latency compensated)
+→ 48 kHz → AAC`.
+
+The limiter retains only millisecond lookahead and resampler state, so memory remains constant with
+duration. Its -2.5 dB ceiling leaves reconstruction headroom for AAC (a pathological transient fixture
+measured -2.1 dBTP after encoding). Because exact -16 LUFS and -1.5 dBTP are not simultaneously
+attainable for every crest factor without changing dynamics, safety wins: heavily limited material may
+finish slightly below -16 LUFS rather than clip, invoke dynamic loudnorm, or be dropped. Old
+`loudness` failures bypass backoff once after deployment; subsequent real meter failures use the
+`loudness_measurement` code. The fallback itself affects only previously failed items; the accompanying
+v2 timeline/phase recipe change triggers the gradual content-addressed remaster described above.
 
 ---
 

@@ -207,10 +207,12 @@ class ResourceAdmission:
 class NativeWorkGate:
     """Coordinate expensive native workloads so ASR does not overlap ffmpeg encodes.
 
-    Audio work is bounded by ``max_audio_active``. ASR is exclusive: once an ASR caller is waiting,
-    new audio work waits until ASR has acquired and released the gate. This prevents a steady stream
-    of audio encodes from starving ASR while also preventing runner-killing mixes of ffmpeg children
-    plus CTranslate2/Whisper native work.
+    Audio work is bounded by ``max_audio_active``. Finalization passes have priority over new
+    first-pass work so a bounded staged audio pipeline drains local intermediates instead of filling
+    every upstream worker with completed FLACs. ASR is exclusive and remains highest priority: once
+    an ASR caller is waiting, all new audio work waits until ASR has acquired and released the gate.
+    This prevents a steady stream of audio encodes from starving ASR while also preventing
+    runner-killing mixes of ffmpeg children plus CTranslate2/Whisper native work.
     """
 
     def __init__(
@@ -224,6 +226,7 @@ class NativeWorkGate:
         self._cond = threading.Condition()
         self._max_audio_active = max(1, max_audio_active)
         self._audio_active = 0
+        self._audio_finalize_waiting = 0
         self._asr_active = False
         self._asr_waiting = 0
         self._sleep = sleep
@@ -239,14 +242,18 @@ class NativeWorkGate:
         label: str,
         stop: Callable[[], bool] | None = None,
     ) -> bool:
-        if kind == "audio":
-            return self._acquire_audio(label=label, stop=stop)
+        if kind in {"audio", "audio-finalize"}:
+            return self._acquire_audio(
+                label=label,
+                stop=stop,
+                finalize=kind == "audio-finalize",
+            )
         if kind == "asr":
             return self._acquire_asr(label=label, stop=stop)
         raise ValueError(f"unknown native work kind {kind!r}")
 
     def release(self, *, kind: str) -> None:
-        if kind == "audio":
+        if kind in {"audio", "audio-finalize"}:
             with self._cond:
                 if self._audio_active <= 0:
                     raise RuntimeError("native audio release without acquire")
@@ -262,40 +269,64 @@ class NativeWorkGate:
             return
         raise ValueError(f"unknown native work kind {kind!r}")
 
-    def _acquire_audio(self, *, label: str, stop: Callable[[], bool] | None) -> bool:
+    def _acquire_audio(
+        self,
+        *,
+        label: str,
+        stop: Callable[[], bool] | None,
+        finalize: bool,
+    ) -> bool:
         announced = False
+        waiting = finalize
         wait_start: float | None = None
-        while True:
-            if stop is not None and stop():
-                if wait_start is not None:
-                    with self._wait_lock:
-                        self._total_wait_seconds += time.monotonic() - wait_start
-                return False
+        kind = "audio-finalize" if finalize else "audio"
+        if finalize:
             with self._cond:
-                if (
-                    not self._asr_active
-                    and self._asr_waiting == 0
-                    and self._audio_active < self._max_audio_active
-                ):
-                    self._audio_active += 1
-                    if announced:
-                        self._emit(f"[enrich] native gate acquired kind=audio label={label}")
+                self._audio_finalize_waiting += 1
+        try:
+            while True:
+                if stop is not None and stop():
+                    if wait_start is not None:
                         with self._wait_lock:
-                            self._total_wait_seconds += time.monotonic() - (wait_start or 0.0)
-                    return True
-                if not announced:
-                    reason = (
-                        "audio-cap"
-                        if self._audio_active >= self._max_audio_active
-                        else "asr-active-or-waiting"
-                    )
-                    self._emit(
-                        f"[enrich] native gate wait kind=audio label={label} reason={reason} "
-                        f"active_audio={self._audio_active} max_audio={self._max_audio_active}"
-                    )
-                    announced = True
-                    wait_start = time.monotonic()
-                self._cond.wait(timeout=self._poll_seconds)
+                            self._total_wait_seconds += time.monotonic() - wait_start
+                    return False
+                with self._cond:
+                    finalize_block = not finalize and self._audio_finalize_waiting > 0
+                    if (
+                        not self._asr_active
+                        and self._asr_waiting == 0
+                        and not finalize_block
+                        and self._audio_active < self._max_audio_active
+                    ):
+                        self._audio_active += 1
+                        if finalize:
+                            self._audio_finalize_waiting -= 1
+                            waiting = False
+                        if announced:
+                            self._emit(f"[enrich] native gate acquired kind={kind} label={label}")
+                            with self._wait_lock:
+                                self._total_wait_seconds += time.monotonic() - (wait_start or 0.0)
+                        return True
+                    if not announced:
+                        if self._asr_active or self._asr_waiting:
+                            reason = "asr-active-or-waiting"
+                        elif self._audio_active >= self._max_audio_active:
+                            reason = "audio-cap"
+                        else:
+                            reason = "audio-finalize-waiting"
+                        self._emit(
+                            f"[enrich] native gate wait kind={kind} label={label} reason={reason} "
+                            f"active_audio={self._audio_active} "
+                            f"max_audio={self._max_audio_active}"
+                        )
+                        announced = True
+                        wait_start = time.monotonic()
+                    self._cond.wait(timeout=self._poll_seconds)
+        finally:
+            if waiting:
+                with self._cond:
+                    self._audio_finalize_waiting = max(0, self._audio_finalize_waiting - 1)
+                    self._cond.notify_all()
 
     def _acquire_asr(self, *, label: str, stop: Callable[[], bool] | None) -> bool:
         announced = False

@@ -32,7 +32,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -95,7 +95,7 @@ _FFMPEG_GUARD_POLL_SECONDS = 0.5
 # Production speech-mastering recipe. Keep the profile name/version in config and
 # ``audio_spec_hash``: changing any value here requires a new profile id so existing objects are
 # gradually re-encoded instead of silently claiming to match a different byte recipe.
-PODCAST_SPEECH_PROFILE = "podcast-speech-v1"
+PODCAST_SPEECH_PROFILE = "podcast-speech-v2"
 _PODCAST_SPEECH_FILTERS = (
     "aresample=48000,aformat=channel_layouts=mono",
     "highpass=f=80",
@@ -104,6 +104,11 @@ _PODCAST_SPEECH_FILTERS = (
 )
 _LOUDNORM_LRA = 11.0
 _LOUDNORM_TRUE_PEAK = -1.5
+_LIMITER_CEILING_DB = -2.5
+_TRUE_PEAK_SAMPLE_RATE = 192_000
+_TIMELINE_SAMPLE_RATE = 48_000
+_TIMELINE_FRAME_SAMPLES = 1024
+_TIMELINE_BOUNDARY_GUARD_SECONDS = 0.05
 _MIN_PROCESSABLE_AUDIO_SECONDS = 1.0
 
 
@@ -187,7 +192,7 @@ class UnusableAudioError(ProviderError):
 class LoudnessMeasurementError(ProviderError):
     """The bounded speech-mastering pass could not produce usable EBU R128 measurements."""
 
-    code = "loudness"
+    code = "loudness_measurement"
 
 
 class RateLimitedMediaFetchError(ProviderError):
@@ -696,7 +701,7 @@ class FfmpegRunner(Protocol):
             chapters: Served-time chapter markers embedded as M4A chapter atoms.
             loudness_profile: e.g. ``"ebuR128:-16LUFS"``; ``None`` = no loudnorm.
             processing_profile: Named pre-mastering recipe, currently
-                ``"podcast-speech-v1"`` for bounded multi-mic speech leveling.
+                ``"podcast-speech-v2"`` for bounded multi-mic speech leveling.
             asset_resolver: Required when ``timeline`` contains insert segments; maps
                 ``(asset_id, asset_version)`` to a local file path.
         """
@@ -831,6 +836,30 @@ def _linear_loudnorm_filter(profile: str, measured: LoudnessMeasurements) -> str
     )
 
 
+def _peak_limited_linear_filter(profile: str, measured: LoudnessMeasurements) -> str:
+    """Build the bounded fallback for peak-constrained linear normalization.
+
+    The loudness gain remains one constant multiplier. A short-lookahead limiter follows it only
+    to catch peaks that would otherwise exceed the true-peak ceiling. Running the limiter at
+    192 kHz approximates true-peak detection without the whole-recording state of dynamic
+    ``loudnorm``; its memory is bounded by the resampler and millisecond lookahead buffers.
+
+    Peak limiting can leave unusually high-crest-factor material a little quieter than the
+    integrated target. That is preferable to clipping, dynamic-loudnorm memory growth, or dropping
+    the episode entirely.
+    """
+    target_i = float(_parse_lufs(profile))
+    required_gain = target_i - measured.integrated
+    # Leave 1 dB beyond the -1.5 dBTP program target for AAC reconstruction overshoot.
+    limit = 10 ** (_LIMITER_CEILING_DB / 20.0)
+    return (
+        f"volume={required_gain:g}dB:precision=double,"
+        f"aresample={_TRUE_PEAK_SAMPLE_RATE},"
+        f"alimiter=limit={limit:.9f}:level=false:latency=true,"
+        "aresample=48000"
+    )
+
+
 def _append_audio_filters(
     filtergraph: str, output_label: str, filters: Sequence[str]
 ) -> tuple[str, str]:
@@ -842,6 +871,96 @@ def _append_audio_filters(
         parts.append(f"{current}{audio_filter}[{label}]")
         current = f"[{label}]"
     return ";".join(parts), current
+
+
+def _build_streaming_single_source_filter(
+    segments: tuple[Segment, ...],
+    source_input_idx: dict[str, int],
+) -> tuple[str, str] | None:
+    """Build a sample-accurate bounded-memory filter for monotonic cuts from one source.
+
+    The generic trim graph fans one input into N parallel ``atrim`` branches and concatenates them.
+    FFmpeg can retain decoded frames for branches whose source span starts far in the future, making
+    RSS grow with recording duration and cut count. Silence timelines are simpler: one source,
+    monotonic non-overlapping keep spans, no inserts or reordering.
+
+    ``aselect`` normally keeps or rejects whole decoder frames, which accumulated visible duration
+    drift across many cuts. This graph first fixes the stream at 48 kHz, then changes the frame size
+    to one sample only in short windows around each cut boundary. The selector compares integer
+    sample PTS values, ``asetpts`` packs retained samples onto the served clock, and a final
+    ``asetnsamples`` coalesces them back into normal frames. Work and memory outside the boundary
+    windows remain independent of meeting duration and cut count.
+
+    Return ``None`` for timelines that need the generic graph (multi-source concat, inserts,
+    reordering, open-ended non-final spans).
+    """
+    if not segments or any(segment.kind != "source" for segment in segments):
+        return None
+    source_ids = {segment.source_id for segment in segments}
+    if len(source_ids) != 1 or None in source_ids:
+        return None
+    source_id = next(iter(source_ids))
+    previous_end_sample = -1
+    terms: list[str] = []
+    boundaries: set[int] = set()
+    for index, segment in enumerate(segments):
+        start = segment.source_start
+        end = segment.source_end
+        if start is None:
+            return None
+        start_sample = round(start * _TIMELINE_SAMPLE_RATE)
+        if start_sample < previous_end_sample:
+            return None
+        boundaries.add(start_sample)
+        if end is None:
+            if index != len(segments) - 1:
+                return None
+            terms.append(f"gte(pts\\,{start_sample})")
+            previous_end_sample = start_sample
+        else:
+            end_sample = round(end * _TIMELINE_SAMPLE_RATE)
+            if end_sample <= start_sample:
+                return None
+            terms.append(f"gte(pts\\,{start_sample})*lt(pts\\,{end_sample})")
+            boundaries.add(end_sample)
+            previous_end_sample = end_sample
+
+    # ``asendcmd`` sees the fixed 1024-sample frames immediately upstream. Enter fine framing far
+    # enough before each boundary that the next command-check frame still precedes it, and merge
+    # overlapping windows so nearby cuts do not thrash the runtime option.
+    guard_samples = round(_TIMELINE_BOUNDARY_GUARD_SECONDS * _TIMELINE_SAMPLE_RATE)
+    windows: list[list[int]] = []
+    for boundary in sorted(boundaries):
+        start = max(0, boundary - guard_samples)
+        end = boundary + guard_samples
+        if windows and start <= windows[-1][1]:
+            windows[-1][1] = max(windows[-1][1], end)
+        else:
+            windows.append([start, end])
+    commands = ";".join(
+        command
+        for start, end in windows
+        for command in (
+            f"{start / _TIMELINE_SAMPLE_RATE:.6f} asetnsamples@timeline_cut_frames n 1",
+            f"{end / _TIMELINE_SAMPLE_RATE:.6f} "
+            f"asetnsamples@timeline_cut_frames n {_TIMELINE_FRAME_SAMPLES}",
+        )
+    )
+    input_idx = source_input_idx[source_id]
+    expression = "+".join(terms)
+    return (
+        f"[{input_idx}:a]"
+        f"aresample={_TIMELINE_SAMPLE_RATE},"
+        "aformat=channel_layouts=mono,"
+        f"asetnsamples=n={_TIMELINE_FRAME_SAMPLES}:p=0,"
+        f"asettb=1/{_TIMELINE_SAMPLE_RATE},"
+        f"asendcmd=c='{commands}',"
+        f"asetnsamples@timeline_cut_frames=n={_TIMELINE_FRAME_SAMPLES}:p=0,"
+        f"aselect='{expression}',"
+        "asetpts=N/SR/TB,"
+        f"asetnsamples=n={_TIMELINE_FRAME_SAMPLES}:p=0[program]",
+        "[program]",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -945,6 +1064,8 @@ class CommandFfmpeg:
         timeout_seconds: float | None = None,
         threads: int | None = None,
         memory_floor_bytes: int | None = None,
+        phase_gate: NativeWorkGate | None = None,
+        finalize_workers: int = 0,
     ):
         self.binary = binary
         self.max_kbps = max_kbps
@@ -955,6 +1076,46 @@ class CommandFfmpeg:
         # multiply into CPU oversubscription on the 4-core Actions runner.
         self.threads = max(1, int(threads)) if threads is not None else None
         self.memory_floor_bytes = memory_floor_bytes
+        self.phase_gate = phase_gate
+        self.manages_audio_phases = phase_gate is not None
+        self._finalize_executor = (
+            ThreadPoolExecutor(
+                max_workers=max(1, int(finalize_workers)),
+                thread_name_prefix="audio-finalize",
+            )
+            if finalize_workers > 0
+            else None
+        )
+
+    def close(self) -> None:
+        """Drain and stop the optional local-finalization executor."""
+        if self._finalize_executor is not None:
+            self._finalize_executor.shutdown(wait=True)
+            self._finalize_executor = None
+
+    def _run_audio_phase(
+        self,
+        *,
+        kind: str,
+        label: str,
+        stop: Callable[[], bool] | None,
+        run: Callable[[], tuple[bytes, bytes]],
+    ) -> tuple[bytes, bytes]:
+        acquired = False
+        if self.phase_gate is not None:
+            acquired = self.phase_gate.acquire(kind=kind, label=label, stop=stop)
+            if not acquired:
+                raise subprocess.TimeoutExpired(["ffmpeg", label], self.timeout_seconds)
+        try:
+            return run()
+        finally:
+            if acquired and self.phase_gate is not None:
+                self.phase_gate.release(kind=kind)
+
+    def _submit_finalize(self, run: Callable[[], tuple[bytes, bytes]]) -> Future | None:
+        if self._finalize_executor is None:
+            return None
+        return self._finalize_executor.submit(run)
 
     # ------------------------------------------------------------------
     # Public interface
@@ -1039,12 +1200,17 @@ class CommandFfmpeg:
                 "+faststart",
                 str(dest),
             ]
-            _run_ffmpeg_guarded(
-                cmd,
-                phase="identity-render",
-                timeout=self.timeout_seconds,
-                memory_floor_bytes=self.memory_floor_bytes,
-                rate_limit_urls=(source_url,),  # no-op if it's a local cached copy (#39)
+            self._run_audio_phase(
+                kind="audio",
+                label="identity-render",
+                stop=None,
+                run=lambda: _run_ffmpeg_guarded(
+                    cmd,
+                    phase="identity-render",
+                    timeout=self.timeout_seconds,
+                    memory_floor_bytes=self.memory_floor_bytes,
+                    rate_limit_urls=(source_url,),  # no-op if it's a local cached copy (#39)
+                ),
             )
 
     def _thread_args(self, codec_args: list[str]) -> list[str]:
@@ -1125,7 +1291,12 @@ class CommandFfmpeg:
                 inputs += ["-i", str(asset_path)]
 
             if segs:
-                filter_str, out_label = build_filter_complex(
+                streaming_filter = (
+                    _build_streaming_single_source_filter(segs, source_input_idx)
+                    if processing_profile == PODCAST_SPEECH_PROFILE
+                    else None
+                )
+                filter_str, out_label = streaming_filter or build_filter_complex(
                     segs,
                     source_input_idx,
                     asset_input_idx,
@@ -1181,14 +1352,19 @@ class CommandFfmpeg:
                 "+faststart",
                 str(dest),
             ]
-            _run_ffmpeg_guarded(
-                cmd,
-                phase="filter-render",
-                timeout=self.timeout_seconds,
-                memory_floor_bytes=self.memory_floor_bytes,
-                # Cap concurrent hits per provider for any remote source inputs (#39); local
-                # cached copies / insert assets resolve to no host → no-op.
-                rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
+            self._run_audio_phase(
+                kind="audio",
+                label="filter-render",
+                stop=None,
+                run=lambda: _run_ffmpeg_guarded(
+                    cmd,
+                    phase="filter-render",
+                    timeout=self.timeout_seconds,
+                    memory_floor_bytes=self.memory_floor_bytes,
+                    # Cap concurrent hits per provider for any remote source inputs (#39); local
+                    # cached copies / insert assets resolve to no host → no-op.
+                    rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
+                ),
             )
 
     def _render_speech_profile(
@@ -1245,18 +1421,29 @@ class CommandFfmpeg:
             *self._thread_args(["-c:a", "flac"]),
             str(measured_audio),
         ]
-        _, measure_stderr = _run_ffmpeg_guarded(
-            measure_cmd,
-            phase="speech-measure",
-            timeout=_remaining_timeout(),
-            memory_floor_bytes=self.memory_floor_bytes,
-            rate_limit_urls=rate_limit_urls,
+        _, measure_stderr = self._run_audio_phase(
+            kind="audio",
+            label="speech-measure",
+            stop=None,
+            run=lambda: _run_ffmpeg_guarded(
+                measure_cmd,
+                phase="speech-measure",
+                timeout=_remaining_timeout(),
+                memory_floor_bytes=self.memory_floor_bytes,
+                rate_limit_urls=rate_limit_urls,
+            ),
         )
         measured = _parse_ebur128_summary(measure_stderr)
 
-        final_filter = (
-            _linear_loudnorm_filter(loudness_profile, measured) if loudness_profile else "anull"
-        )
+        final_phase = "loudness-render"
+        if loudness_profile:
+            try:
+                final_filter = _linear_loudnorm_filter(loudness_profile, measured)
+            except LoudnessMeasurementError:
+                final_filter = _peak_limited_linear_filter(loudness_profile, measured)
+                final_phase = "loudness-limit-render"
+        else:
+            final_filter = "anull"
         final_inputs = ["-i", str(measured_audio)]
         chapter_args: list[str] = []
         if chapters:
@@ -1291,12 +1478,25 @@ class CommandFfmpeg:
             "+faststart",
             str(dest),
         ]
-        _run_ffmpeg_guarded(
-            final_cmd,
-            phase="loudness-render",
-            timeout=_remaining_timeout(),
-            memory_floor_bytes=self.memory_floor_bytes,
-        )
+
+        def _finalize() -> tuple[bytes, bytes]:
+            return self._run_audio_phase(
+                kind="audio-finalize",
+                label=final_phase,
+                stop=None,
+                run=lambda: _run_ffmpeg_guarded(
+                    final_cmd,
+                    phase=final_phase,
+                    timeout=_remaining_timeout(),
+                    memory_floor_bytes=self.memory_floor_bytes,
+                ),
+            )
+
+        future = self._submit_finalize(_finalize)
+        if future is None:
+            _finalize()
+        else:
+            future.result()
 
 
 # ---------------------------------------------------------------------------
@@ -1482,7 +1682,7 @@ def _has_non_identity_timeline(ep: Episode) -> bool:
 
 # Encode peak-RSS cost model (H8 reservation admission). The legacy one-pass dynamic loudnorm path
 # grows with recording length (observed 9–13 GiB on long meetings), so its conservative
-# duration-scaled model remains for compatibility. ``podcast-speech-v1`` uses only streaming
+# duration-scaled model remains for compatibility. ``podcast-speech-v2`` uses only streaming
 # filters, a local FLAC intermediate, and measured *linear* loudnorm; its memory reservation is
 # fixed instead of duration-scaled. The mid-flight floor remains the backstop for either path.
 _ENCODE_RSS_COPY_BYTES = 300 * 1024 * 1024  # copy path (no filter): tiny, bounded
@@ -1600,6 +1800,15 @@ def materialize_audio(
         if not _should_host(ep, city):
             continue
 
+        # ``loudness`` was the pre-fallback error code used by peak-headroom failures. Retry those
+        # immediately once under the fixed profile instead of preserving up to 30 days of stale
+        # exponential backoff. New measurement/parsing failures use ``loudness_measurement`` and
+        # retain normal backoff behavior.
+        if processing_profile == PODCAST_SPEECH_PROFILE and ep.materialize_error == "loudness":
+            ep.materialize_attempts = 0
+            ep.materialize_last_attempt = None
+            ep.materialize_error = None
+
         spec = audio_spec_hash(
             ep,
             max_kbps=max_kbps,
@@ -1690,14 +1899,7 @@ def materialize_audio(
                     stats.skipped_budget += 1
                 return
         gate_acquired = False
-        if native_work_gate is not None:
-            gate_acquired = native_work_gate.acquire(kind="audio", label=str(label), stop=stop)
-            if not gate_acquired:
-                with lock:
-                    stats.skipped_budget += 1
-                if memory_reservation is not None and reserved_bytes:
-                    memory_reservation.release(reserved_bytes)
-                return
+        phase_managed = bool(getattr(ffmpeg, "manages_audio_phases", False))
         t0 = time.perf_counter()
         print(
             f"[enrich] audio encode start slug={city.slug} provider={city.provider} "
@@ -1735,6 +1937,19 @@ def materialize_audio(
                     by_id = _sources_by_id(ep, str(local) if local is not None else source_url)
                 else:
                     by_id = _sources_by_id(ep, source_url)
+                # Fetch/cache the provider source before occupying a native CPU slot. Production
+                # ``CommandFfmpeg`` manages admission separately for its measure and finalize
+                # subprocesses; third-party/test runners retain the legacy whole-render gate here.
+                if native_work_gate is not None and not phase_managed:
+                    gate_acquired = native_work_gate.acquire(
+                        kind="audio",
+                        label=str(label),
+                        stop=stop,
+                    )
+                    if not gate_acquired:
+                        with lock:
+                            stats.skipped_budget += 1
+                        return
                 render_options: dict[str, str | None] = {
                     "loudness_profile": loudness_profile or None
                 }

@@ -154,7 +154,7 @@ class StageContext:
     # EBU R128 loudness normalization (#151). Empty string = disabled.
     # e.g. "ebuR128:-16LUFS" normalises to -16 LUFS (Apple Podcasts / Spotify speech standard).
     loudness_profile: str = ""
-    # Named pre-mastering recipe included in audio_spec_hash. ``podcast-speech-v1`` performs
+    # Named pre-mastering recipe included in audio_spec_hash. ``podcast-speech-v2`` performs
     # bounded-memory high-pass → dynamic leveling → compression before final linear loudnorm.
     audio_processing_profile: str = ""
     # Silence-trim planner config (#111). Config flows through ctx so SilencePlanner needs no
