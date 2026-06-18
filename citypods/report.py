@@ -664,8 +664,14 @@ def _merge_logical_run_group(group: list[dict]) -> dict:
     group = sorted(group, key=_run_sort_value)
     merged = dict(group[-1])
     for key in (
-        "cities", "built", "skipped", "errors", "materialized", "materialize_encoded",
-        "audio_rate_limited_403s", "audio_circuit_skipped",
+        "cities",
+        "built",
+        "skipped",
+        "errors",
+        "materialized",
+        "materialize_encoded",
+        "audio_rate_limited_403s",
+        "audio_circuit_skipped",
     ):
         merged[key] = sum(row.get(key, 0) or 0 for row in group)
     merged["materialize_seconds"] = round(

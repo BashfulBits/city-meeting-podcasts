@@ -240,9 +240,7 @@ class MediaRateLimitCircuitBreaker:
                 self._total_rate_limited[domain] = self._total_rate_limited.get(domain, 0) + 1
                 if count >= rule.threshold:
                     self._open_until[domain] = now + rule.cooldown_seconds
-                    self._total_circuit_trips[domain] = (
-                        self._total_circuit_trips.get(domain, 0) + 1
-                    )
+                    self._total_circuit_trips[domain] = self._total_circuit_trips.get(domain, 0) + 1
                     opened = domain
         return opened
 
