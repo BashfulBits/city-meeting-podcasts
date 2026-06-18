@@ -19,6 +19,7 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: read
 
 concurrency:
   group: endpoint-contracts
@@ -39,6 +40,26 @@ jobs:
       # (catches a CDN that 403s our User-Agent). Without ffmpeg that sub-check self-skips.
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # Wait for any active audio.yml runs to finish before probing Granicus media endpoints.
+      # audio.yml's four shards each open Granicus CDN connections; adding an uncoordinated
+      # ffmpeg fetch on top of them is the primary cause of HTTP 403 throttling (GH#300).
+      # Polls every 2 minutes for up to 2 hours; always proceeds after the timeout so a
+      # stuck audio run does not permanently block the weekly contracts check.
+      - name: Wait for active audio runs to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
+            if [ "$ACTIVE" = "[]" ]; then
+              echo "No active audio runs. Proceeding with endpoint checks."
+              exit 0
+            fi
+            echo "[$i/60] audio.yml is running. Waiting 2 minutes..."
+            sleep 120
+          done
+          echo "Timed out after 2 hours. Proceeding anyway."
+
       - name: Probe endpoints + reconcile issues
         env:
           GH_TOKEN: ${{ github.token }}

@@ -185,10 +185,30 @@ class MediaRateLimitCircuitBreaker:
                 self._rules[str(domain).strip().lower()] = rule
         self._failures: dict[str, int] = {}
         self._open_until: dict[str, float] = {}
+        self._total_rate_limited: dict[str, int] = {}
+        self._total_circuit_trips: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def has_rules(self) -> bool:
         return bool(self._rules)
+
+    def telemetry(self) -> dict[str, dict[str, int]]:
+        """Return cumulative per-domain 403 and circuit-trip counts for run_history.
+
+        ``rate_limited`` is the total number of ``record_rate_limited`` calls (one per 403 encode
+        failure); ``circuit_trips`` is the number of times the circuit actually opened (a trip
+        causes the remainder of the run's Granicus work to be circuit-skipped). Separate from
+        ``_failures`` which resets on success/reopen.
+        """
+        with self._lock:
+            return {
+                domain: {
+                    "rate_limited": self._total_rate_limited.get(domain, 0),
+                    "circuit_trips": self._total_circuit_trips.get(domain, 0),
+                }
+                for domain in self._rules
+                if self._total_rate_limited.get(domain, 0) or self._total_circuit_trips.get(domain, 0)
+            }
 
     def open_for(self, urls: Sequence[str]) -> str | None:
         now = time.monotonic()
@@ -216,8 +236,12 @@ class MediaRateLimitCircuitBreaker:
                 rule = self._rules[domain]
                 count = self._failures.get(domain, 0) + 1
                 self._failures[domain] = count
+                self._total_rate_limited[domain] = self._total_rate_limited.get(domain, 0) + 1
                 if count >= rule.threshold:
                     self._open_until[domain] = now + rule.cooldown_seconds
+                    self._total_circuit_trips[domain] = (
+                        self._total_circuit_trips.get(domain, 0) + 1
+                    )
                     opened = domain
         return opened
 
@@ -1146,6 +1170,8 @@ class MaterializeStats:
     skipped_backoff: int = 0  # deferred: still inside a post-failure backoff window (#120)
     errors: list[str] = field(default_factory=list)
     bytes_written: int = 0  # total bytes of objects uploaded this run (for cost accounting)
+    rate_limited: int = 0  # encode attempts that hit HTTP 403 / provider throttle (GH#300)
+    circuit_skipped: int = 0  # encodes skipped because the circuit breaker was open
 
 
 def _should_host(episode: Episode, city: City) -> bool:
@@ -1427,6 +1453,7 @@ def materialize_audio(
                     if open_domain is not None:
                         with lock:
                             stats.skipped_budget += 1
+                            stats.circuit_skipped += 1
                         print(
                             f"[enrich] audio encode skipped slug={city.slug} "
                             f"provider={city.provider} source={src_key} uid={label} "
@@ -1495,13 +1522,16 @@ def materialize_audio(
             OSError,
             ProviderError,
         ) as exc:
-            if isinstance(exc, RateLimitedMediaFetchError) and rate_limit_circuit is not None:
-                opened = rate_limit_circuit.record_rate_limited(source_urls)
-                if opened is not None:
-                    print(
-                        f"[enrich] provider throttle circuit opened domain={opened}",
-                        flush=True,
-                    )
+            if isinstance(exc, RateLimitedMediaFetchError):
+                with lock:
+                    stats.rate_limited += 1
+                if rate_limit_circuit is not None:
+                    opened = rate_limit_circuit.record_rate_limited(source_urls)
+                    if opened is not None:
+                        print(
+                            f"[enrich] provider throttle circuit opened domain={opened}",
+                            flush=True,
+                        )
             # Record the failed attempt so this episode backs off (exponentially) instead of being
             # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
             # A timeout is transient (the source may recover), so like a generic ``error`` it backs

@@ -17,9 +17,10 @@ import yaml
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
-def _job(workflow_file: str) -> dict:
+def _job(workflow_file: str, job_name: str | None = None) -> dict:
     wf = yaml.safe_load((WORKFLOWS / workflow_file).read_text())
-    return wf, next(iter(wf["jobs"].values()))
+    job = wf["jobs"][job_name] if job_name else next(iter(wf["jobs"].values()))
+    return wf, job
 
 
 def _on(wf: dict) -> dict:
@@ -41,7 +42,9 @@ def _step_index(job: dict, needle: str) -> int:
 
 
 # H6b split the combined enrich into two sharded, lane-pinned workflows.
-HEAVY_WORKFLOWS = [("audio.yml", "audio"), ("asr.yml", "transcribe")]
+# Third element is the job name within the workflow file (audio.yml has a wait-for-contracts
+# pre-job so the heavy job must be addressed by name, not by position).
+HEAVY_WORKFLOWS = [("audio.yml", "audio", "audio"), ("asr.yml", "transcribe", "asr")]
 
 
 def test_workflows_use_node24_cache_actions_without_force_flag():
@@ -53,13 +56,13 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
     assert "actions/cache@v5" in workflow_text
 
 
-@pytest.mark.parametrize("workflow,lane", HEAVY_WORKFLOWS)
-def test_heavy_workflow_wires_graceful_yield(workflow, lane):
+@pytest.mark.parametrize("workflow,lane,job_name", HEAVY_WORKFLOWS)
+def test_heavy_workflow_wires_graceful_yield(workflow, lane, job_name):
     """Graceful yield needs the Actions API: ``actions: read`` AND ``GITHUB_TOKEN`` for the
     time-bounded heavy phase (Actions does not auto-export it). Missing either makes
     ``_newer_run_queued`` fail open — the shard ignores a queued run and only stops at the
     wall-clock window — so assert the wiring statically (running it can't catch it)."""
-    wf, job = _job(workflow)
+    wf, job = _job(workflow, job_name)
     assert wf.get("permissions", {}).get("actions") == "read", (
         f"{workflow} must grant `actions: read`, or graceful yield silently no-ops"
     )
@@ -70,11 +73,11 @@ def test_heavy_workflow_wires_graceful_yield(workflow, lane):
     )
 
 
-@pytest.mark.parametrize("workflow,lane", HEAVY_WORKFLOWS)
-def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane):
+@pytest.mark.parametrize("workflow,lane,job_name", HEAVY_WORKFLOWS)
+def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane, job_name):
     """Each heavy workflow runs a source-sharded matrix pinned to one lane, so concurrent shards own
     disjoint record files (scoped push_state) and the two ASR models never co-load."""
-    wf, job = _job(workflow)
+    wf, job = _job(workflow, job_name)
     shards = job.get("strategy", {}).get("matrix", {}).get("shard")
     assert shards == [0, 1, 2, 3], f"{workflow} must shard by source_key (matrix.shard)"
     step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
@@ -91,7 +94,7 @@ def test_heavy_workflow_is_isolated_from_pages(workflow, group):
     """Each heavy workflow has its own concurrency group (distinct from `pages` and each other), is
     scheduled/manual (not on every push), and never deploys to Pages — so a deploy is never canceled
     by audio/ASR work."""
-    wf, job = _job(workflow)
+    wf, job = _job(workflow, job_name=group)
     triggers = _on(wf)
     assert set(triggers) >= {"schedule", "workflow_dispatch"}
     assert "push" not in triggers, f"{workflow} is scheduled/manual, not run on every push"
@@ -102,13 +105,13 @@ def test_heavy_workflow_is_isolated_from_pages(workflow, group):
     assert "deploy-pages" not in uses and "upload-pages-artifact" not in uses
 
 
-@pytest.mark.parametrize("workflow,_lane", HEAVY_WORKFLOWS)
-def test_heavy_workflow_treats_graceful_yield_as_success(workflow, _lane):
+@pytest.mark.parametrize("workflow,_lane,job_name", HEAVY_WORKFLOWS)
+def test_heavy_workflow_treats_graceful_yield_as_success(workflow, _lane, job_name):
     """The designed graceful yield is exit 0 (the shard stops starting new work after ``StopSignal``
     fires, finishes in-flight work, then exits). A 143 (SIGTERM) after the stop signal is the
     Actions hard cap landing mid-yield — still an expected yield, not a failure — and it never
     touched the Pages deploy, which is a separate workflow."""
-    _wf, job = _job(workflow)
+    _wf, job = _job(workflow, job_name)
     step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
     run = str(step.get("run", ""))
     assert 'if [ "$code" -eq 143 ] &&' in run
@@ -131,7 +134,7 @@ def test_asr_workflow_runs_every_five_hours():
 def test_audio_lane_needs_no_whisper():
     """The audio lane never runs ASR, so it must not install the asr extra or download Whisper —
     that's wasted runner time and memory."""
-    _wf, job = _job("audio.yml")
+    _wf, job = _job("audio.yml", job_name="audio")
     runs = " ".join(str(s.get("run", "")) for s in job["steps"])
     assert "prepare_whisper" not in runs
     assert '".[asr' not in runs and "[asr,storage]" not in runs
