@@ -177,12 +177,23 @@ Hard-won facts that bite anyone adding/debugging providers:
   follow-up). Sharded `audio.yml`/`asr.yml` (H6b) concentrate many workers on a few sources sharing one
   provider CDN; that burst throttles the tenant (Granicus `403`; Swagit short/truncated responses).
   `HostRateLimiter` caps simultaneous in-flight requests **per registrable domain** inside one process
-  (`provider_rate_limits` in `site_config.yml`, e.g. `granicus.com: 2`) and is acquired by
+  (`provider_rate_limits` in `site_config.yml`, currently `granicus.com: 1`) and is acquired by
   `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The B2-compatible
   `provider_distributed_leases` layer adds soft candidate-election leases around ffprobe/ffmpeg media
-  reads, capping aggregate Granicus overlap across the four audio shard processes (currently 6 total
-  slots, based on 2026-06-15 probes plus Audio #10 telemetry). Keys are registrable domains so the
-  Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the tenant sees.
+  reads, capping aggregate Granicus overlap across the four audio shard processes (currently 2 total
+  slots after the GH#300 Phase 1 reduction). Candidate keys provide immutable FIFO order; waiting and
+  acquired candidates renew payload expiry without changing their election position. Active holders
+  stop renewal before best-effort deletion, dead owners are reaped after expiry, and payload metadata
+  identifies the GitHub run/job that held a stale claim. Storage backends with `get_file` use the
+  payload expiry as authoritative; modification time plus TTL is the compatibility fallback. Keys are
+  registrable domains so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the
+  tenant sees.
+- **Provider circuit admission happens at the subprocess boundary.** Audio first checks the run-local
+  circuit before entering expensive work, then checks again after distributed and process-local
+  provider slots are acquired and immediately before ffmpeg/ffprobe starts. A circuit that opens while
+  a worker waits therefore defers that item without recording a materialization failure/backoff. The
+  closed→open transition is atomic per cooldown, and per-domain run telemetry records direct
+  throttles, trips, circuit deferrals, lease acquisition/wait/renewal, and stale-owner cleanup.
 - **`403` is retried as a rate-limit signal** by the shared session (`403` in `_ClampedRetry`'s
   `status_forcelist`): media bytes never go through `requests`, so a `403` a `requests` call sees is a
   provider throttle, not auth — retrying with backoff generalizes the old bespoke Granicus loop.

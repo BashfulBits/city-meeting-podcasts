@@ -1290,7 +1290,7 @@ arg on `_run_ffmpeg_guarded`).
 
 **As built.**
 - `HostRateLimiter` (`citypods/http.py`): process-global, per-**registrable-domain** `BoundedSemaphore`,
-  configured by `provider_rate_limits` (keyed by registrable domain — `granicus.com: 2`, `swagit.com: 2`,
+  configured by `provider_rate_limits` (keyed by registrable domain — `granicus.com: 1`, `swagit.com: 2`,
   `civicclerk.com: 4` — not provider short-names, so the Granicus-owned Swagit CDN `*.granicus.com` is
   matched by the host the tenant sees). `slots(urls)` dedupes by domain + acquires in sorted order (no
   self-deadlock on multi-source renders). Configured once in `run.build()` before any fetching.
@@ -1299,11 +1299,11 @@ arg on `_run_ffmpeg_guarded`).
   candidate object, lists active candidates, and proceeds only if the candidate sorts into the first
   N entries; it uses ordinary object upload/list/delete operations, not S3 conditional PUT headers.
   The first targeted use is Granicus ffprobe/ffmpeg media
-  (`provider_distributed_leases.granicus.com.slots: 6`): local 2026-06-15 probes passed 1–8 concurrent
-  short reads, but Audio run #10 failed under sustained 8-way Actions overlap, so the cap backs off
-  only to the lowest useful level instead of serializing the whole provider. The distributed lease is
-  intentionally not acquired by `GuardedHTTPAdapter.send`; ordinary RSS/page fetches keep only the
-  per-process `HostRateLimiter`.
+  (`provider_distributed_leases.granicus.com.slots: 2`, reduced from the initial 6 by GH#300 Phase 1).
+  Candidate-key order is stable FIFO; waiting and held candidates renew explicit payload expiry so
+  a live holder cannot expire or lose election position, while dead owners are reaped after TTL. The
+  distributed lease is intentionally not acquired by `GuardedHTTPAdapter.send`; ordinary RSS/page
+  fetches keep only the per-process `HostRateLimiter`.
 - 403-as-rate-limit lifted into the shared retry (`403` in `_ClampedRetry.status_forcelist`); the bespoke
   `(0, 0.5, 1.5, 3.0)` loop in `GranicusProvider.resolve_media_url` removed.
 - ffmpeg/ffprobe 403/429 stderr is classified as `rate_limited`; source-cache throttles no longer
@@ -1363,6 +1363,28 @@ provider_rate_limits:
 
 **Rollback:** Run a test period (≥3 scheduled builds) at each cap level before committing; revert
 immediately if audio drain rate drops >20%.
+
+**Lease/circuit correctness prerequisite — issue
+[#336](https://github.com/BashfulBits/city-meeting-podcasts/issues/336).** Audio #30 showed that
+lower caps alone were not sufficient: waiting workers remained behind one-hour soft leases, then 27
+already-admitted fetches entered ffmpeg together when those candidates expired; each process also
+logged repeated circuit-open transitions. The implementation therefore:
+
+- elects by immutable FIFO candidate-key order rather than object modification time, so renewal
+  cannot move an active winner behind queued candidates;
+- refreshes explicit expiry for both waiting and acquired candidates, stops renewal before release,
+  and reaps dead owners by payload expiry (`last_modified + TTL` remains the fallback for backends
+  without object reads);
+- records owner plus GitHub run/job metadata for stale-owner diagnosis and cleans up a candidate if
+  acquisition exits by exception;
+- rechecks the run-local provider circuit after distributed/local slots are acquired and immediately
+  before ffmpeg/ffprobe starts, treating a newly opened circuit as deferred rather than failed;
+- makes the closed→open transition atomic for one trip per cooldown and records per-domain direct
+  throttle, trip, circuit-deferral, lease acquisition, total/max wait, renewal, and stale-reap metrics.
+
+No pipeline version changes and no existing artifact is invalidated. Deferred work remains queued and
+retries through the normal Audio lane. After merge, use at least three isolated scheduled Audio runs
+to decide whether Phase 3 request-shape work is still necessary.
 
 ### Phase 2: Endpoint contract coordination with Audio lane
 

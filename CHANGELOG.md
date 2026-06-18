@@ -31,6 +31,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Distributed provider leases now renew safely, reap dead owners promptly, and stop queued media
+  work after a provider circuit opens ([#336](https://github.com/BashfulBits/city-meeting-podcasts/issues/336)).**
+  Waiting and acquired lease candidates refresh their explicit expiry while alive; winner election
+  uses immutable FIFO candidate-key order, so renewal cannot demote an active holder behind waiters.
+  Lease payloads include GitHub run/job metadata, storage reads use payload expiry when available
+  (object modification time remains the compatibility fallback), and acquisition failures clean up
+  their candidate. The ffmpeg/ffprobe boundary now rechecks the run-local circuit only after both
+  distributed and process-local provider slots are held, preventing already-queued workers from
+  starting after another worker trips the circuit. Circuit opening is atomic per cooldown instead of
+  being logged once per concurrent failure. Run telemetry now records lease acquisitions, total/max
+  wait, renewals, stale reaps, direct throttles, trips, and circuit deferrals per media domain. No
+  pipeline version changed and no stored artifact is invalidated; deferred work retries naturally.
 - **Peak-constrained recordings no longer fail bounded linear loudness normalization.** Some
   low-average/high-transient Granicus recordings required enough constant gain to predict +7–8 dBTP,
   which correctly prevented FFmpeg's linear `loudnorm` from silently reverting to dynamic mode but

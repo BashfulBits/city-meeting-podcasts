@@ -988,6 +988,11 @@ def build(
         if time_bounded and not dry_run
         else None
     )
+    _rate_limit_circuit: MediaRateLimitCircuitBreaker | None = MediaRateLimitCircuitBreaker(
+        site_config.get("provider_rate_limit_circuit_breakers", {})
+    )
+    if not _rate_limit_circuit.has_rules():
+        _rate_limit_circuit = None
     owns_ffmpeg = ffmpeg is None
     ffmpeg = ffmpeg or CommandFfmpeg(
         max_kbps=max_kbps,
@@ -996,12 +1001,14 @@ def build(
         memory_floor_bytes=ffmpeg_memory_floor_bytes,
         phase_gate=_native_work_gate,
         finalize_workers=int(defaults.get("audio_finalize_workers", 2)),
+        rate_limit_circuit=_rate_limit_circuit,
     )
     source_cache = (
         SourceCache(
             ffmpeg_binary=getattr(ffmpeg, "binary", "ffmpeg"),
             timeout_seconds=getattr(ffmpeg, "timeout_seconds", None),
             memory_floor_bytes=getattr(ffmpeg, "memory_floor_bytes", None),
+            rate_limit_circuit=_rate_limit_circuit,
         )
         if not dry_run
         else None
@@ -1020,11 +1027,6 @@ def build(
         if time_bounded and not dry_run and _memory_budget_mb > 0
         else None
     )
-    _rate_limit_circuit: MediaRateLimitCircuitBreaker | None = MediaRateLimitCircuitBreaker(
-        site_config.get("provider_rate_limit_circuit_breakers", {})
-    )
-    if not _rate_limit_circuit.has_rules():
-        _rate_limit_circuit = None
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -1190,6 +1192,11 @@ def build(
         if _res.status == "error":
             provider_errors[_city.provider] = provider_errors.get(_city.provider, 0) + 1
 
+    provider_rate_limit_telemetry = DISTRIBUTED_PROVIDER_LEASES.telemetry()
+    if _rate_limit_circuit is not None:
+        for domain, values in _rate_limit_circuit.telemetry().items():
+            provider_rate_limit_telemetry.setdefault(domain, {}).update(values)
+
     # Per-stage activity for the run, to stdout (build logs). Makes "did audio actually
     # materialize?" answerable without the step-summary report: ``ran`` is newly produced this
     # run, ``reused`` already up to date, ``queued`` deferred by budget (remaining backlog), plus
@@ -1211,8 +1218,17 @@ def build(
             print(f"    ! {msg}")
         if t.get("rate_limited") or t.get("circuit_skipped"):
             print(
-                f"    ! throttle: {t['rate_limited']} 403 errors, "
+                f"    ! throttle: {t['rate_limited']} 403/429 errors, "
                 f"{t['circuit_skipped']} circuit-skipped (GH#300)"
+            )
+    for domain, values in sorted(provider_rate_limit_telemetry.items()):
+        if values.get("lease_acquisitions"):
+            print(
+                f"provider {domain}: {values['lease_acquisitions']} lease acquisitions, "
+                f"{values.get('lease_wait_seconds', 0):.1f}s wait "
+                f"(max {values.get('lease_max_wait_seconds', 0):.1f}s), "
+                f"{values.get('stale_leases_reaped', 0)} stale reaped, "
+                f"{values.get('lease_renewals', 0)} renewals"
             )
 
     # Why the run ended (time-bounded phases only). "completed within the window" means all due
@@ -1270,9 +1286,7 @@ def build(
                     else None
                 ),
                 provider_errors=provider_errors or None,
-                rate_limit_telemetry=(
-                    _rate_limit_circuit.telemetry() if _rate_limit_circuit is not None else None
-                ),
+                rate_limit_telemetry=provider_rate_limit_telemetry or None,
                 scope={
                     "phase": phase,
                     "lane": lane,
@@ -1444,7 +1458,7 @@ def _record_run_history(
     window_used_pct: float | None = None,
     gate_wait_seconds: float | None = None,
     provider_errors: dict[str, int] | None = None,
-    rate_limit_telemetry: dict[str, dict[str, int]] | None = None,
+    rate_limit_telemetry: dict[str, dict[str, int | float]] | None = None,
     scope: dict | None = None,
 ) -> None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
@@ -1508,8 +1522,8 @@ def _record_run_history(
         "window_used_pct": window_used_pct,
         "gate_wait_seconds": gate_wait_seconds,
         "provider_errors": provider_errors or {},
-        # Per-provider throttle telemetry (GH#300). rate_limited_403s = HTTP 403 encode attempts;
-        # circuit_skipped = encodes dropped because the breaker was open.
+        # Per-provider throttle telemetry (GH#300). The legacy convenience key name says 403, but
+        # the counter covers HTTP 403/429 media attempts; circuit_skipped counts breaker deferrals.
         # work-loss % = circuit_skipped / (audio_ran + rate_limited_403s + circuit_skipped)
         "audio_rate_limited_403s": audio.get("rate_limited", 0),
         "audio_circuit_skipped": audio.get("circuit_skipped", 0),
