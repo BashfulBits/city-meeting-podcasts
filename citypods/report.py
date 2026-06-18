@@ -705,12 +705,17 @@ def _merge_logical_run_group(group: list[dict]) -> dict:
         for provider, n in (row.get("provider_errors") or {}).items():
             provider_errors[provider] = provider_errors.get(provider, 0) + int(n or 0)
     merged["provider_errors"] = provider_errors
-    rate_limit_telemetry: dict[str, dict[str, int]] = {}
+    rate_limit_telemetry: dict[str, dict[str, int | float]] = {}
     for row in group:
         for domain, counts in (row.get("provider_rate_limit_telemetry") or {}).items():
-            entry = rate_limit_telemetry.setdefault(domain, {"rate_limited": 0, "circuit_trips": 0})
-            entry["rate_limited"] += int((counts or {}).get("rate_limited", 0) or 0)
-            entry["circuit_trips"] += int((counts or {}).get("circuit_trips", 0) or 0)
+            entry = rate_limit_telemetry.setdefault(domain, {})
+            for key, value in (counts or {}).items():
+                if key == "lease_max_wait_seconds":
+                    entry[key] = max(float(entry.get(key, 0.0)), float(value or 0.0))
+                elif key.endswith("_seconds"):
+                    entry[key] = round(float(entry.get(key, 0.0)) + float(value or 0.0), 1)
+                else:
+                    entry[key] = int(entry.get(key, 0)) + int(value or 0)
     merged["provider_rate_limit_telemetry"] = rate_limit_telemetry
     peaks = [
         row.get("peak_load_per_cpu") for row in group if row.get("peak_load_per_cpu") is not None

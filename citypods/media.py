@@ -33,6 +33,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -201,6 +202,16 @@ class RateLimitedMediaFetchError(ProviderError):
     code = "rate_limited"
 
 
+class CircuitOpenMediaFetchError(ProviderError):
+    """Provider media work reached the subprocess boundary after its circuit opened."""
+
+    code = "circuit_open"
+
+    def __init__(self, domain: str):
+        self.domain = domain
+        super().__init__(f"provider throttle circuit open domain={domain}")
+
+
 @dataclass(frozen=True)
 class RateLimitCircuitRule:
     threshold: int = 3
@@ -220,6 +231,7 @@ class MediaRateLimitCircuitBreaker:
         self._open_until: dict[str, float] = {}
         self._total_rate_limited: dict[str, int] = {}
         self._total_circuit_trips: dict[str, int] = {}
+        self._total_circuit_deferred: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def has_rules(self) -> bool:
@@ -238,10 +250,12 @@ class MediaRateLimitCircuitBreaker:
                 domain: {
                     "rate_limited": self._total_rate_limited.get(domain, 0),
                     "circuit_trips": self._total_circuit_trips.get(domain, 0),
+                    "circuit_deferred": self._total_circuit_deferred.get(domain, 0),
                 }
                 for domain in self._rules
                 if self._total_rate_limited.get(domain, 0)
                 or self._total_circuit_trips.get(domain, 0)
+                or self._total_circuit_deferred.get(domain, 0)
             }
 
     def open_for(self, urls: Sequence[str]) -> str | None:
@@ -268,14 +282,29 @@ class MediaRateLimitCircuitBreaker:
         with self._lock:
             for domain in self._domains_for(urls):
                 rule = self._rules[domain]
+                self._total_rate_limited[domain] = self._total_rate_limited.get(domain, 0) + 1
+                until = self._open_until.get(domain)
+                if until is not None and now < until:
+                    continue
+                if until is not None:
+                    self._open_until.pop(domain, None)
+                    self._failures[domain] = 0
                 count = self._failures.get(domain, 0) + 1
                 self._failures[domain] = count
-                self._total_rate_limited[domain] = self._total_rate_limited.get(domain, 0) + 1
                 if count >= rule.threshold:
                     self._open_until[domain] = now + rule.cooldown_seconds
                     self._total_circuit_trips[domain] = self._total_circuit_trips.get(domain, 0) + 1
                     opened = domain
         return opened
+
+    def record_circuit_deferred(self, urls: Sequence[str]) -> str | None:
+        """Record one work item deferred because its provider circuit was open."""
+        domain = self.open_for(urls)
+        if domain is None:
+            return None
+        with self._lock:
+            self._total_circuit_deferred[domain] = self._total_circuit_deferred.get(domain, 0) + 1
+        return domain
 
     def _domains_for(self, urls: Sequence[str]) -> list[str]:
         domains: set[str] = set()
@@ -331,6 +360,19 @@ def _raise_if_rate_limited(*, phase: str, stderr: bytes | str | None) -> None:
         raise RateLimitedMediaFetchError(f"ffmpeg {phase} hit provider throttle ({status})")
 
 
+@contextmanager
+def _circuit_admission(
+    circuit: MediaRateLimitCircuitBreaker | None,
+    urls: Sequence[str],
+):
+    """Recheck the breaker after provider slots are held, immediately before subprocess start."""
+    if circuit is not None:
+        domain = circuit.open_for(urls)
+        if domain is not None:
+            raise CircuitOpenMediaFetchError(domain)
+    yield
+
+
 def _guard_against_truncated_audio(
     ep: Episode, probed: float | None, *, size_bytes: int | None = None
 ) -> None:
@@ -360,6 +402,7 @@ def _run_ffmpeg_guarded(
     timeout: float | None = None,
     memory_floor_bytes: int | None = None,
     rate_limit_urls: Sequence[str] = (),
+    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
     poll_seconds: float = _FFMPEG_GUARD_POLL_SECONDS,
     snapshot: Callable[[], ResourceSnapshot] = current_snapshot,
     sleep: Callable[[float], None] = time.sleep,
@@ -384,6 +427,7 @@ def _run_ffmpeg_guarded(
             with (
                 DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
                 HOST_LIMITER.slots(rate_limit_urls),
+                _circuit_admission(rate_limit_circuit, rate_limit_urls),
             ):
                 result = subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
         except subprocess.CalledProcessError as exc:
@@ -405,7 +449,11 @@ def _run_ffmpeg_guarded(
 
     # Memory-floor path: hold the per-host rate-limit slot (#39) for the whole monitored run so a
     # sharded burst can't open more than the configured number of simultaneous connections per host.
-    with DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls), HOST_LIMITER.slots(rate_limit_urls):
+    with (
+        DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
+        HOST_LIMITER.slots(rate_limit_urls),
+        _circuit_admission(rate_limit_circuit, rate_limit_urls),
+    ):
         return _run_ffmpeg_popen_monitored(
             cmd,
             phase=phase,
@@ -548,6 +596,7 @@ def _download_audio(
     memory_floor_bytes: int | None = None,
     max_seconds: float | None = None,
     log: Callable[[str], None] | None = print,
+    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
 ) -> bool:
     """Copy the source audio stream from *url* to *dest* without re-encoding.
 
@@ -587,6 +636,7 @@ def _download_audio(
             timeout=timeout,
             memory_floor_bytes=memory_floor_bytes,
             rate_limit_urls=(url,),  # the remote source — cap concurrent hits per provider (#39)
+            rate_limit_circuit=rate_limit_circuit,
             log=log,
         )
         return dest.exists() and dest.stat().st_size > 0
@@ -613,6 +663,7 @@ class SourceCache:
         ffmpeg_binary: str = "ffmpeg",
         timeout_seconds: float | None = None,
         memory_floor_bytes: int | None = None,
+        rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
         self._paths: dict[str, Path] = {}
@@ -621,6 +672,7 @@ class SourceCache:
         self.ffmpeg_binary = ffmpeg_binary
         self.timeout_seconds = timeout_seconds
         self.memory_floor_bytes = memory_floor_bytes
+        self.rate_limit_circuit = rate_limit_circuit
 
     def __enter__(self) -> SourceCache:
         return self
@@ -653,6 +705,7 @@ class SourceCache:
                 self.ffmpeg_binary,
                 self.timeout_seconds,
                 self.memory_floor_bytes,
+                rate_limit_circuit=self.rate_limit_circuit,
             ):
                 self._paths[uid] = dest
                 return dest
@@ -1066,6 +1119,7 @@ class CommandFfmpeg:
         memory_floor_bytes: int | None = None,
         phase_gate: NativeWorkGate | None = None,
         finalize_workers: int = 0,
+        rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
     ):
         self.binary = binary
         self.max_kbps = max_kbps
@@ -1077,6 +1131,7 @@ class CommandFfmpeg:
         self.threads = max(1, int(threads)) if threads is not None else None
         self.memory_floor_bytes = memory_floor_bytes
         self.phase_gate = phase_gate
+        self.rate_limit_circuit = rate_limit_circuit
         self.manages_audio_phases = phase_gate is not None
         self._finalize_executor = (
             ThreadPoolExecutor(
@@ -1163,7 +1218,12 @@ class CommandFfmpeg:
         probe_timeout = (
             None if self.timeout_seconds is None else min(self.timeout_seconds, _PROBE_TIMEOUT_S)
         )
-        stream_info = _probe_audio_stream(source_url, self.binary, timeout=probe_timeout)
+        stream_info = _probe_audio_stream(
+            source_url,
+            self.binary,
+            timeout=probe_timeout,
+            rate_limit_circuit=self.rate_limit_circuit,
+        )
         codec_args = encode_args(
             stream_info.bit_rate, self.max_kbps, source_codec=stream_info.codec_name
         )
@@ -1210,6 +1270,7 @@ class CommandFfmpeg:
                     timeout=self.timeout_seconds,
                     memory_floor_bytes=self.memory_floor_bytes,
                     rate_limit_urls=(source_url,),  # no-op if it's a local cached copy (#39)
+                    rate_limit_circuit=self.rate_limit_circuit,
                 ),
             )
 
@@ -1364,6 +1425,7 @@ class CommandFfmpeg:
                     # Cap concurrent hits per provider for any remote source inputs (#39); local
                     # cached copies / insert assets resolve to no host → no-op.
                     rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
+                    rate_limit_circuit=self.rate_limit_circuit,
                 ),
             )
 
@@ -1431,6 +1493,7 @@ class CommandFfmpeg:
                 timeout=_remaining_timeout(),
                 memory_floor_bytes=self.memory_floor_bytes,
                 rate_limit_urls=rate_limit_urls,
+                rate_limit_circuit=self.rate_limit_circuit,
             ),
         )
         measured = _parse_ebur128_summary(measure_stderr)
@@ -1518,12 +1581,19 @@ def _parse_optional_int(value: object) -> int | None:
 
 
 def _probe_audio_stream(
-    url: str, ffmpeg_binary: str = "ffmpeg", timeout: float | None = None
+    url: str,
+    ffmpeg_binary: str = "ffmpeg",
+    timeout: float | None = None,
+    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
 ) -> AudioStreamInfo:
     """Return source audio codec/bitrate via ffprobe, or unknown fields on failure."""
     ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
     try:
-        with DISTRIBUTED_PROVIDER_LEASES.slots([url]), HOST_LIMITER.slot(url):
+        with (
+            DISTRIBUTED_PROVIDER_LEASES.slots([url]),
+            HOST_LIMITER.slot(url),
+            _circuit_admission(rate_limit_circuit, [url]),
+        ):
             out = subprocess.run(
                 [
                     ffprobe,
@@ -1915,7 +1985,7 @@ def materialize_audio(
                 if ep.sources:
                     source_urls.extend(src.ref for src in ep.sources if src.ref not in source_urls)
                 if rate_limit_circuit is not None:
-                    open_domain = rate_limit_circuit.open_for(source_urls)
+                    open_domain = rate_limit_circuit.record_circuit_deferred(source_urls)
                     if open_domain is not None:
                         with lock:
                             stats.skipped_budget += 1
@@ -2000,6 +2070,17 @@ def materialize_audio(
                 f"[enrich] audio encode done slug={city.slug} provider={city.provider} "
                 f"source={src_key} uid={label} guid={ep.guid} "
                 f"bytes={size} seconds={elapsed:.1f}",
+                flush=True,
+            )
+        except CircuitOpenMediaFetchError as exc:
+            if rate_limit_circuit is not None:
+                rate_limit_circuit.record_circuit_deferred(source_urls)
+            with lock:
+                stats.skipped_budget += 1
+                stats.circuit_skipped += 1
+            print(
+                f"[enrich] audio encode skipped slug={city.slug} provider={city.provider} "
+                f"source={src_key} uid={label} guid={ep.guid}: {exc}",
                 flush=True,
             )
         except (

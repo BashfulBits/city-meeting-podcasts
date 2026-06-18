@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import subprocess
+import threading
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -1427,6 +1429,80 @@ def test_rate_limit_circuit_skips_later_same_domain_after_threshold(tmp_path):
     assert eps[0].materialize_error == "rate_limited"
     assert eps[1].materialize_attempts == 0
     assert stats.skipped_budget == 1
+
+
+def test_rate_limit_circuit_opens_once_under_concurrent_failures():
+    import citypods.media as media
+
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+    urls = ["https://archive-video.granicus.com/x.mp4"]
+    opened: list[str | None] = []
+    lock = threading.Lock()
+
+    def _fail():
+        result = circuit.record_rate_limited(urls)
+        with lock:
+            opened.append(result)
+
+    threads = [threading.Thread(target=_fail) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert opened.count("granicus.com") == 1
+    telemetry = circuit.telemetry()["granicus.com"]
+    assert telemetry["rate_limited"] == 8
+    assert telemetry["circuit_trips"] == 1
+
+
+def test_ffmpeg_rechecks_circuit_after_provider_lease_acquisition(monkeypatch):
+    import citypods.media as media
+
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+    urls = ("https://archive-video.granicus.com/x.mp4",)
+    subprocess_started = False
+
+    @contextmanager
+    def _lease_that_observes_failure(_urls):
+        circuit.record_rate_limited(urls)
+        yield
+
+    def _unexpected_run(*args, **kwargs):
+        nonlocal subprocess_started
+        subprocess_started = True
+        raise AssertionError("ffmpeg must not start after the circuit opens")
+
+    monkeypatch.setattr(media.DISTRIBUTED_PROVIDER_LEASES, "slots", _lease_that_observes_failure)
+    monkeypatch.setattr(media.subprocess, "run", _unexpected_run)
+
+    with pytest.raises(media.CircuitOpenMediaFetchError, match="granicus.com"):
+        media._run_ffmpeg_guarded(
+            ["ffmpeg", "-version"],
+            phase="test",
+            rate_limit_urls=urls,
+            rate_limit_circuit=circuit,
+            log=None,
+        )
+
+    assert subprocess_started is False
+
+
+def test_circuit_deferred_telemetry_is_counted_by_media_domain():
+    import citypods.media as media
+
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+    urls = ["https://swagit-video.granicus.com/archive/x.mp4"]
+    circuit.record_rate_limited(urls)
+
+    assert circuit.record_circuit_deferred(urls) == "granicus.com"
+    assert circuit.telemetry()["granicus.com"]["circuit_deferred"] == 1
 
 
 def test_probe_audio_bitrate_sends_browser_user_agent(monkeypatch):

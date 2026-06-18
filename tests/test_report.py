@@ -842,6 +842,55 @@ def test_build_status_merges_scoped_run_events(tmp_path):
     assert tx["backlog"] == 20
 
 
+def test_scoped_run_merge_aggregates_provider_lease_telemetry():
+    from citypods.report import _merge_logical_run_group
+
+    rows = [
+        {
+            "ts": "2026-06-18T12:00:00+00:00",
+            "provider_rate_limit_telemetry": {
+                "granicus.com": {
+                    "rate_limited": 3,
+                    "circuit_trips": 1,
+                    "circuit_deferred": 10,
+                    "lease_acquisitions": 4,
+                    "lease_wait_seconds": 12.5,
+                    "lease_max_wait_seconds": 8.0,
+                    "stale_leases_reaped": 1,
+                    "lease_renewals": 2,
+                }
+            },
+        },
+        {
+            "ts": "2026-06-18T12:01:00+00:00",
+            "provider_rate_limit_telemetry": {
+                "granicus.com": {
+                    "rate_limited": 2,
+                    "circuit_trips": 0,
+                    "circuit_deferred": 5,
+                    "lease_acquisitions": 3,
+                    "lease_wait_seconds": 7.5,
+                    "lease_max_wait_seconds": 9.0,
+                    "stale_leases_reaped": 2,
+                    "lease_renewals": 4,
+                }
+            },
+        },
+    ]
+
+    values = _merge_logical_run_group(rows)["provider_rate_limit_telemetry"]["granicus.com"]
+    assert values == {
+        "rate_limited": 5,
+        "circuit_trips": 1,
+        "circuit_deferred": 15,
+        "lease_acquisitions": 7,
+        "lease_wait_seconds": 20.0,
+        "lease_max_wait_seconds": 9.0,
+        "stale_leases_reaped": 3,
+        "lease_renewals": 6,
+    }
+
+
 def test_build_status_reports_latest_run_per_stage(tmp_path):
     """A later ASR-only run must not hide the latest audio-lane telemetry."""
     events = tmp_path / "run_events"
