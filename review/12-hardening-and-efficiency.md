@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-16 (H tail: Granicus follow-up, H9, H14b/c detailed)**
+last updated 2026-06-18 (H8 bounded-memory audio follow-up)**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -679,7 +679,7 @@ the numbering is continuous across `ROADMAP.md`, `review/11`, and this doc.
 ## H8 — Throughput maximization on the free 4-core runner — **Implemented in PR #235**
 
 **Status.** Implemented in [PR #235](https://github.com/BashfulBits/city-meeting-podcasts/pull/235),
-merged 2026-06-08. This section is frozen as the implementation design record.
+merged 2026-06-08. The base design is frozen; dated operational follow-ups are recorded below.
 
 **Problem (confirmed by the build-log analysis above, H-A/H-B/H-E).** The encode/ASR concurrency mix
 starves the runner: ffmpeg `-threads` is **unpinned**, so two concurrent encodes drive `load` to 6–7 on
@@ -746,6 +746,32 @@ the `TimelineStage` EDL / feed duration (conservative default when neither is kn
 supersedes `resource_guard_min_available_mb` for audio (that gate now governs only ASR);
 `native_audio_max_active` is the hard ceiling (4→3) and the 1.5 GiB floor stays the backstop. Cost-model
 coefficients are a first heuristic, calibratable from the per-encode `peak_rss` already logged.
+
+**2026-06-18 follow-up — remove the length-growing filter instead of merely scheduling around it.**
+The next successful Audio runs still showed the underlying failure: one-pass dynamic `loudnorm` retains
+length-proportional state on multi-hour meetings, with observed peaks around **9–13 GiB**. Reservation
+admission prevented collisions but necessarily serialized the longest work and could not make one
+encode fit comfortably. The production recipe is now the versioned `podcast-speech-v1` chain:
+
+1. render the served timeline once through an 80 Hz high-pass, moderately smoothed `dynaudnorm`
+   (`f=500:g=21:p=.80:m=6:r=.08:t=.015:o=.5`), and a gentle 2.5:1 compressor;
+2. write that exact mono signal to a temporary lossless FLAC while streaming `ebur128` measurements;
+3. read the local FLAC and apply measured **linear** loudnorm to -16 LUFS / -1.5 dBTP, then AAC.
+
+Provider media is read only in pass 1. Every filter is streaming, so RSS is independent of meeting
+duration and admission uses a fixed 768 MiB reservation; the temporary FLAC moves the unavoidable
+whole-program state to disk. The final loudnorm target LRA is never set below the measured LRA, and
+peak feasibility is checked before launch, preventing ffmpeg from silently falling back to dynamic
+mode. Sub-second post-edit timelines are classified `dead` before ffmpeg. Backfill uses the existing
+content-addressed contract: `audio_processing_profile` participates in `audio_spec_hash`, so no
+`AUDIO_PIPELINE_VERSION` bump is needed; prior hashed and legacy objects become stale and are remastered
+gradually under the normal wall-clock queue.
+
+Local FFmpeg verification on 2026-06-18 processed a synthetic two-hour, four-level recording in
+152.5 seconds (**47× realtime**) with exact 7,200-second output and **-16.0 LUFS** integrated
+loudness. A shorter realistic multi-level fixture moved from **12.3 LU LRA → 1.8 LU LRA**, confirming
+that quiet microphone sections are brought close to louder ones while the final pass remains a global
+linear gain.
 
 ---
 

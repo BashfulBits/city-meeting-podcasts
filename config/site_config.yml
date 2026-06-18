@@ -91,10 +91,14 @@ defaults:
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
-  audio_loudness_profile: "ebuR128:-16LUFS"  # EBU R128 loudness normalization (-16 LUFS is the
-                                              # Apple Podcasts / Spotify speech standard). Re-encodes
-                                              # the full catalog on first enable (spec hash change).
-                                              # Clear to disable / revert.
+  # Multi-mic speech master: 80 Hz high-pass → dynaudnorm speaker leveling → gentle compressor →
+  # measured linear EBU R128 normalization. The two-pass flow reads provider media once, stores a
+  # temporary FLAC, and remains bounded-memory even for all-day meetings.
+  audio_processing_profile: "podcast-speech-v1"
+  audio_loudness_profile: "ebuR128:-16LUFS"  # final integrated target (Apple/Spotify speech norm).
+                                              # The processing profile is part of audio_spec_hash:
+                                              # enabling/changing its version gradually re-encodes
+                                              # the catalog; clear it to use the legacy path.
   # Silence trimming via SilencePlanner (#111). Ships enabled; the re-encode backfill is gradual
   # (bounded by ~204 min run budget, spread across multiple cron ticks). To force a full catalog
   # re-trim after changing parameters, bump SilencePlanner.version in citypods/silence.py.
@@ -115,20 +119,14 @@ defaults:
                                          # drops below this floor; records a retryable audio error
                                          # instead of letting the Actions runner get killed.
   native_audio_max_active: 3             # global ffmpeg encode slots — the HARD concurrency ceiling.
-                                         # H11a tuning: 1 → 4 (3 green runs) → 3. The memory budget
-                                         # below is what actually prevents the ~46% mid-flight floor
-                                         # kills seen at 4×; this ceiling caps total parallelism so a
-                                         # burst of cheap copy-path encodes can't oversubscribe the
-                                         # 4-core (15.6 GiB) runner. At -threads 1 each, 3 saturate 3
-                                         # cores.
-  # Predicted-memory admission for audio encodes (H8). Each encode reserves its ESTIMATED peak RSS
-  # (from the known-ahead served length — see citypods/media.py:estimate_encode_rss_bytes) against
-  # this budget; a new encode begins only when reserved + estimate <= budget. Unlike the instantaneous
-  # `resource_guard_min_available_mb` check below, this gates on the encode's *future* footprint — a
-  # long loudnorm encode grows for minutes before it nears the floor, so a free-memory check at start
-  # still looks healthy and admits a second big job that then collides. Budget is set ~12 GiB of the
-  # 15.6 GiB runner (≈2 big encodes, or many small ones, with headroom); the kill floor above remains
-  # the backstop for estimate misses. 0/blank disables it (falls back to the gate below).
+                                         # H11a tuning: 1 → 4 → 3. The streaming profile removes
+                                         # duration-scaled memory pressure; this ceiling now primarily
+                                         # caps CPU. At -threads 1 each, 3 encodes saturate 3 cores
+                                         # while leaving one for the runner/orchestrator.
+  # Predicted-memory admission for audio encodes (H8). The production streaming speech profile has a
+  # fixed 768 MiB reservation independent of duration, so this 12 GiB budget no longer serializes long
+  # meetings. The old duration-scaled 12 GiB estimate remains only for the disabled legacy dynamic-
+  # loudnorm path. The kill floor above is still the backstop. 0/blank disables reservation admission.
   audio_memory_budget_mb: 12288
   # Resource admission guard for GitHub Actions enrich runs. It waits before starting another
   # expensive ffmpeg/ASR item when the runner is near the memory/CPU cliff, preventing exit-143 /

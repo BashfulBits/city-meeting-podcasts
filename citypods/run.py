@@ -1035,6 +1035,7 @@ def build(
         chapters_per_source=chapters_cap if chapters_cap is not None else 10_000,
         # Loudness normalization config (#151).
         loudness_profile=str(defaults.get("audio_loudness_profile", "")),
+        audio_processing_profile=str(defaults.get("audio_processing_profile", "")),
         # Silence-trim planner config (#111).
         trim_silence=bool(defaults.get("trim_silence", False)),
         silence_noise_db=float(defaults.get("silence_noise_db", -40.0)),

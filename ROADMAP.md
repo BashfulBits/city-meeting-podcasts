@@ -19,6 +19,7 @@ projection + admin page. Full history → [CHANGELOG.md](CHANGELOG.md).
 Recently shipped Phase H reliability work: **H10** ASR alignment fallback fix (PR #232), **H8**
 runner resource guard (PR #235), and **H11a** deploy resilience — native work gate + one-slot audio
 lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247). Phase H follow-up:
+bounded-memory multi-mic audio mastering (streaming speech leveling + measured linear loudnorm) and
 **H6a** manual ASR benchmark workflow (PR #256). Phase H observability/scheduling: **H1–H4** docs +
 projection + validation gate + feed-health triage; **H5** backlog manifest + prioritization policy +
 global newest-everywhere-first enrich queue (PRs #263/#264/#265).

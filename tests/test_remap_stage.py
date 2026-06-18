@@ -58,7 +58,15 @@ def _ep(chapters=None) -> Episode:
 def _ctx(tmp_path: Path) -> StageContext:
     class FakeFfmpeg:
         def extract_audio(
-            self, tl, srcs, dest, ch=None, *, loudness_profile=None, asset_resolver=None
+            self,
+            tl,
+            srcs,
+            dest,
+            ch=None,
+            *,
+            loudness_profile=None,
+            processing_profile=None,
+            asset_resolver=None,
         ):
             dest.write_bytes(b"fake")
 

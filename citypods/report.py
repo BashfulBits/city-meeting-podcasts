@@ -300,12 +300,17 @@ def to_markdown(report: dict) -> str:
 
 
 def _classify_record(
-    rec: dict, max_kbps: int, loudness_profile: str = "", *, host_direct: bool = False
+    rec: dict,
+    max_kbps: int,
+    loudness_profile: str = "",
+    processing_profile: str = "",
+    *,
+    host_direct: bool = False,
 ) -> str:
     """Return the pipeline state for one record (mutually exclusive taxonomy from issue #124).
 
     States (in order of precedence):
-      served         — hosted audio exists and spec matches current desired spec (or "legacy")
+      served         — hosted audio exists and spec matches the current desired spec
       stale          — hosted audio exists but spec no longer matches (re-encode queued)
       linked_video   — direct provider MP4 link; config says not to host this episode's audio
       deferred       — MEDIA_DEFERRED (in materialization backoff, will retry)
@@ -324,11 +329,17 @@ def _classify_record(
 
     if hosted_url:
         if spec_hash in ("legacy", None):
-            return "served"
+            return "stale" if loudness_profile or processing_profile else "served"
         ep = record_to_episode(rec)
         return (
             "served"
-            if spec_hash == _spec_hash(ep, max_kbps=max_kbps, loudness_profile=loudness_profile)
+            if spec_hash
+            == _spec_hash(
+                ep,
+                max_kbps=max_kbps,
+                loudness_profile=loudness_profile,
+                processing_profile=processing_profile,
+            )
             else "stale"
         )
 
@@ -344,7 +355,14 @@ def _classify_record(
     return "pending"
 
 
-def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "") -> dict:
+def _feed_row(
+    city,
+    records: dict,
+    *,
+    max_kbps: int,
+    loudness_profile: str = "",
+    processing_profile: str = "",
+) -> dict:
     """Aggregate per-episode stats for one feed (city config), filtered by body where applicable."""
     from citypods.bodies import matches
 
@@ -382,6 +400,7 @@ def _feed_row(city, records: dict, *, max_kbps: int, loudness_profile: str = "")
             rec,
             max_kbps,
             loudness_profile=loudness_profile,
+            processing_profile=processing_profile,
             host_direct=bool(city.extract_audio),
         )
 
@@ -456,6 +475,7 @@ def _source_actuals(
     *,
     max_kbps: int,
     loudness_profile: str = "",
+    processing_profile: str = "",
     host_direct_by_source: dict[str, bool] | None = None,
 ) -> dict:
     """Aggregate source-record actuals exactly once per ``source_key``.
@@ -496,6 +516,7 @@ def _source_actuals(
                 rec,
                 max_kbps,
                 loudness_profile=loudness_profile,
+                processing_profile=processing_profile,
                 host_direct=host_direct,
             )
 
@@ -896,6 +917,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     defaults = site_config.get("defaults", {})
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     loudness_profile = str(defaults.get("audio_loudness_profile", ""))
+    processing_profile = str(defaults.get("audio_processing_profile", ""))
     avg_duration_h = 2.0
 
     records_cache: dict[str, dict] = {}
@@ -917,7 +939,13 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         key = source_key(city) if state_dir else ""
         recs = records_cache.get(key, {})
         feed_rows.append(
-            _feed_row(city, recs, max_kbps=max_kbps, loudness_profile=loudness_profile)
+            _feed_row(
+                city,
+                recs,
+                max_kbps=max_kbps,
+                loudness_profile=loudness_profile,
+                processing_profile=processing_profile,
+            )
         )
 
     city_rows = _city_rows(feed_rows)
@@ -925,6 +953,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         records_cache,
         max_kbps=max_kbps,
         loudness_profile=loudness_profile,
+        processing_profile=processing_profile,
         host_direct_by_source=host_direct_by_source,
     )
 

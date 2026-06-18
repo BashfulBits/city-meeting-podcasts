@@ -13,6 +13,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from citypods.media import (
+    PODCAST_SPEECH_PROFILE,
+    CommandFfmpeg,
+    LoudnessMeasurements,
+    UnusableAudioError,
+    _linear_loudnorm_filter,
+    _parse_ebur128_summary,
     _parse_lufs,
     _served_duration,
     build_filter_complex,
@@ -237,6 +243,30 @@ class TestFiltergraphLoudness:
         assert _parse_lufs("ebuR128:-16LUFS") == "-16"
         assert _parse_lufs("ebuR128:-23LUFS") == "-23"
         assert _parse_lufs("unknown") == "-16"  # safe default
+
+    def test_parse_ebur128_summary(self):
+        measured = _parse_ebur128_summary(
+            """
+            Summary:
+              Integrated loudness:
+                I:         -20.2 LUFS
+                Threshold: -30.2 LUFS
+              Loudness range:
+                LRA:         7.4 LU
+                Threshold: -40.0 LUFS
+              True peak:
+                Peak:       -8.0 dBFS
+            """
+        )
+        assert measured == LoudnessMeasurements(-20.2, -30.2, 7.4, -8.0)
+
+    def test_linear_loudnorm_never_requests_lra_reduction(self):
+        filt = _linear_loudnorm_filter(
+            "ebuR128:-16LUFS",
+            LoudnessMeasurements(-20.0, -30.0, 14.5, -8.0),
+        )
+        assert "LRA=14.5" in filt
+        assert "linear=true" in filt
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +562,63 @@ class TestCommandFfmpegFilterPath:
         assert cmd.index("-filter_threads") < cmd.index("-filter_complex")
         assert cmd.index("-filter_complex_threads") < cmd.index("-filter_complex")
 
+    def test_podcast_speech_profile_uses_bounded_two_pass_flow(self, monkeypatch, tmp_path):
+        import citypods.media as media
+
+        calls: list[tuple[list[str], str]] = []
+        summary = b"""
+        Summary:
+          Integrated loudness:
+            I:         -20.0 LUFS
+            Threshold: -30.0 LUFS
+          Loudness range:
+            LRA:         8.0 LU
+            Threshold: -40.0 LUFS
+          True peak:
+            Peak:       -8.0 dBFS
+        """
+
+        def _fake_guard(cmd, *, phase, **kwargs):
+            calls.append((cmd, phase))
+            return b"", summary if phase == "speech-measure" else b""
+
+        monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fake_guard)
+        media.CommandFfmpeg(max_kbps=96, threads=1).extract_audio(
+            timeline=self._trim_timeline(),
+            sources_by_id={"s0": "https://s/v.mp4"},
+            dest=tmp_path / "out.m4a",
+            loudness_profile="ebuR128:-16LUFS",
+            processing_profile=PODCAST_SPEECH_PROFILE,
+        )
+
+        assert [phase for _, phase in calls] == ["speech-measure", "loudness-render"]
+        measure_graph = calls[0][0][calls[0][0].index("-filter_complex") + 1]
+        assert "highpass=f=80" in measure_graph
+        assert "dynaudnorm=f=500:g=21" in measure_graph
+        assert "acompressor=threshold=0.125:ratio=2.5" in measure_graph
+        assert "ebur128=framelog=quiet:peak=true" in measure_graph
+        assert "loudnorm" not in measure_graph
+        final_graph = calls[1][0][calls[1][0].index("-filter_complex") + 1]
+        assert "measured_I=-20" in final_graph
+        assert "linear=true" in final_graph
+        assert "speech-leveled.flac" in " ".join(calls[1][0])
+
+    def test_podcast_speech_profile_rejects_subsecond_timeline(self, tmp_path):
+        import pytest
+
+        tl = Timeline(
+            version="silence-v1",
+            segments=(_seg_src(0, 0.005, 0, 0.005),),
+        )
+        with pytest.raises(UnusableAudioError, match="only 0.005s"):
+            CommandFfmpeg().extract_audio(
+                timeline=tl,
+                sources_by_id={"s0": "https://s/v.mp4"},
+                dest=tmp_path / "out.m4a",
+                loudness_profile="ebuR128:-16LUFS",
+                processing_profile=PODCAST_SPEECH_PROFILE,
+            )
+
 
 # ---------------------------------------------------------------------------
 # materialize_audio integration — timeline plumbing
@@ -554,6 +641,7 @@ class TestMaterializeWithTimeline:
             chapters=None,
             *,
             loudness_profile=None,
+            processing_profile=None,
             asset_resolver=None,
         ):
             self.timelines.append(timeline)

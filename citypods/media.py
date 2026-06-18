@@ -15,8 +15,10 @@ Timeline-aware rendering (INFRA-3, #144)
 ``FfmpegRunner.extract_audio`` now accepts a ``Timeline | None`` and a ``sources_by_id``
 dict (``source_id -> resolved_url``) instead of a bare ``source_url``.  The identity
 path (``timeline is None`` or ``timeline_digest == ""``) uses the same copy/re-encode
-args as before.  Non-identity timelines are rendered via an ffmpeg ``filter_complex``
-that assembles ``atrim``/``concat``/insert segments and optionally applies ``loudnorm``.
+args as before. Non-identity timelines are rendered via an ffmpeg ``filter_complex``
+that assembles ``atrim``/``concat``/insert segments. The production speech profile
+streams that program through high-pass/dynamic leveling/compression into a measured
+FLAC, then applies final linear EBU R128 normalization in a bounded-memory second pass.
 """
 
 from __future__ import annotations
@@ -90,6 +92,20 @@ _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
 # per-iteration /proc reads are cheap (a couple per wake), so a fine cadence costs nothing.
 _FFMPEG_GUARD_POLL_SECONDS = 0.5
 
+# Production speech-mastering recipe. Keep the profile name/version in config and
+# ``audio_spec_hash``: changing any value here requires a new profile id so existing objects are
+# gradually re-encoded instead of silently claiming to match a different byte recipe.
+PODCAST_SPEECH_PROFILE = "podcast-speech-v1"
+_PODCAST_SPEECH_FILTERS = (
+    "aresample=48000,aformat=channel_layouts=mono",
+    "highpass=f=80",
+    "dynaudnorm=f=500:g=21:p=0.80:m=6:r=0.08:t=0.015:o=0.5",
+    "acompressor=threshold=0.125:ratio=2.5:attack=20:release=300:knee=4:makeup=1",
+)
+_LOUDNORM_LRA = 11.0
+_LOUDNORM_TRUE_PEAK = -1.5
+_MIN_PROCESSABLE_AUDIO_SECONDS = 1.0
+
 
 def _ua_args(url: str) -> list[str]:
     """ffmpeg/ffprobe ``-user_agent`` flag — but ONLY for remote inputs. It's an HTTP(S) protocol
@@ -160,6 +176,18 @@ class TruncatedAudioError(ProviderError):
     failed attempt and backs the episode off (#120) instead of hosting the stub."""
 
     code = "truncated"
+
+
+class UnusableAudioError(ProviderError):
+    """The planned audio contains no meaningful program material."""
+
+    code = "dead"
+
+
+class LoudnessMeasurementError(ProviderError):
+    """The bounded speech-mastering pass could not produce usable EBU R128 measurements."""
+
+    code = "loudness"
 
 
 class RateLimitedMediaFetchError(ProviderError):
@@ -333,7 +361,7 @@ def _run_ffmpeg_guarded(
     log: Callable[[str], None] | None = print,
     popen: Callable[..., subprocess.Popen] = subprocess.Popen,
     child_rss: Callable[[int], int | None] = _process_rss_bytes,
-) -> None:
+) -> tuple[bytes, bytes]:
     """Run ffmpeg with wall-clock and available-memory guardrails.
 
     ``subprocess.run(timeout=...)`` can only bound elapsed time. The Actions failure mode we are
@@ -352,7 +380,7 @@ def _run_ffmpeg_guarded(
                 DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
                 HOST_LIMITER.slots(rate_limit_urls),
             ):
-                subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+                result = subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
         except subprocess.CalledProcessError as exc:
             stderr = _stderr_tail(exc.stderr)
             detail = f" stderr={stderr}" if stderr else ""
@@ -368,12 +396,12 @@ def _run_ffmpeg_guarded(
             _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} timeout seconds={timeout}{detail}")
             raise
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
-        return
+        return getattr(result, "stdout", b"") or b"", getattr(result, "stderr", b"") or b""
 
     # Memory-floor path: hold the per-host rate-limit slot (#39) for the whole monitored run so a
     # sharded burst can't open more than the configured number of simultaneous connections per host.
     with DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls), HOST_LIMITER.slots(rate_limit_urls):
-        _run_ffmpeg_popen_monitored(
+        return _run_ffmpeg_popen_monitored(
             cmd,
             phase=phase,
             timeout=timeout,
@@ -399,7 +427,7 @@ def _run_ffmpeg_popen_monitored(
     log: Callable[[str], None] | None,
     popen: Callable[..., subprocess.Popen],
     child_rss: Callable[[int], int | None],
-) -> None:
+) -> tuple[bytes, bytes]:
     """Popen + poll/sample loop for :func:`_run_ffmpeg_guarded` (memory-floor path). The caller
     holds the per-host rate-limit slot for the whole monitored run."""
     started = time.monotonic()
@@ -455,7 +483,7 @@ def _run_ffmpeg_popen_monitored(
                 f"peak_rss={_format_optional_bytes(peak_child_rss)} "
                 f"min_mem_avail={_format_optional_bytes(min_mem_available)} samples={samples}",
             )
-            return
+            return stdout, stderr
 
         elapsed = time.monotonic() - started
         if timeout is not None and elapsed >= timeout:
@@ -655,6 +683,7 @@ class FfmpegRunner(Protocol):
         chapters: list[dict] | None = None,
         *,
         loudness_profile: str | None = None,
+        processing_profile: str | None = None,
         asset_resolver: Callable[[str, str | None], Path] | None = None,
     ) -> None:
         """Render ``timeline`` into ``dest`` (.m4a).
@@ -666,6 +695,8 @@ class FfmpegRunner(Protocol):
             dest: Output file path (will be created/overwritten).
             chapters: Served-time chapter markers embedded as M4A chapter atoms.
             loudness_profile: e.g. ``"ebuR128:-16LUFS"``; ``None`` = no loudnorm.
+            processing_profile: Named pre-mastering recipe, currently
+                ``"podcast-speech-v1"`` for bounded multi-mic speech leveling.
             asset_resolver: Required when ``timeline`` contains insert segments; maps
                 ``(asset_id, asset_version)`` to a local file path.
         """
@@ -733,6 +764,84 @@ def _parse_lufs(profile: str) -> str:
         if val:
             return val
     return "-16"
+
+
+@dataclass(frozen=True)
+class LoudnessMeasurements:
+    integrated: float
+    threshold: float
+    loudness_range: float
+    true_peak: float
+
+
+def _parse_ebur128_summary(stderr: bytes | str | None) -> LoudnessMeasurements:
+    """Parse the final ``ebur128=peak=true`` summary emitted by ffmpeg.
+
+    ``ebur128`` is a streaming meter, so it can measure arbitrarily long recordings without the
+    memory growth observed in one-pass dynamic ``loudnorm``. The measured values feed the final
+    linear loudnorm pass.
+    """
+    text = (
+        stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else str(stderr or "")
+    )
+    summary = text.rsplit("Summary:", 1)[-1]
+    patterns = {
+        "integrated": r"Integrated loudness:\s*I:\s*(-?(?:\d+(?:\.\d+)?|inf))\s+LUFS",
+        "threshold": r"Integrated loudness:.*?Threshold:\s*(-?(?:\d+(?:\.\d+)?|inf))\s+LUFS",
+        "loudness_range": r"Loudness range:\s*LRA:\s*(-?(?:\d+(?:\.\d+)?|inf))\s+LU",
+        "true_peak": r"True peak:\s*Peak:\s*(-?(?:\d+(?:\.\d+)?|inf))\s+dBFS",
+    }
+    values: dict[str, float] = {}
+    for name, pattern in patterns.items():
+        match = re.search(pattern, summary, re.DOTALL)
+        if match is None:
+            raise LoudnessMeasurementError(f"missing {name} in ebur128 summary")
+        try:
+            values[name] = float(match.group(1))
+        except ValueError as exc:
+            raise LoudnessMeasurementError(f"non-finite {name} in ebur128 summary") from exc
+    if any(value != value or value in (float("inf"), float("-inf")) for value in values.values()):
+        raise UnusableAudioError("audio has no measurable program loudness")
+    return LoudnessMeasurements(**values)
+
+
+def _linear_loudnorm_filter(profile: str, measured: LoudnessMeasurements) -> str:
+    """Build a measured linear loudnorm filter.
+
+    The speech profile's compressor leaves peak headroom so linear normalization should normally
+    be feasible. Refuse to let ffmpeg silently fall back to dynamic mode when it is not: that
+    fallback is the length-proportional memory path this flow is designed to eliminate.
+    """
+    target_i = float(_parse_lufs(profile))
+    required_gain = target_i - measured.integrated
+    # EBU linear mode requires target LRA >= measured LRA. ``dynaudnorm`` owns local speaker
+    # leveling; final loudnorm must not silently switch back to the memory-heavy dynamic mode just
+    # to squeeze an unusually broad recording into 11 LU.
+    target_lra = max(_LOUDNORM_LRA, measured.loudness_range)
+    if measured.true_peak + required_gain > _LOUDNORM_TRUE_PEAK + 0.1:
+        raise LoudnessMeasurementError(
+            "linear loudnorm lacks peak headroom "
+            f"({measured.true_peak + required_gain:.2f} dBTP predicted)"
+        )
+    return (
+        f"loudnorm=I={target_i:g}:TP={_LOUDNORM_TRUE_PEAK:g}:LRA={target_lra:g}:"
+        f"measured_I={measured.integrated:g}:measured_LRA={measured.loudness_range:g}:"
+        f"measured_TP={measured.true_peak:g}:measured_thresh={measured.threshold:g}:"
+        "offset=0:linear=true"
+    )
+
+
+def _append_audio_filters(
+    filtergraph: str, output_label: str, filters: Sequence[str]
+) -> tuple[str, str]:
+    """Append a serial filter chain to an existing labeled filtergraph."""
+    parts = [filtergraph] if filtergraph else []
+    current = output_label
+    for index, audio_filter in enumerate(filters):
+        label = f"post{index}"
+        parts.append(f"{current}{audio_filter}[{label}]")
+        current = f"[{label}]"
+    return ";".join(parts), current
 
 
 # ---------------------------------------------------------------------------
@@ -859,10 +968,11 @@ class CommandFfmpeg:
         chapters: list[dict] | None = None,
         *,
         loudness_profile: str | None = None,
+        processing_profile: str | None = None,
         asset_resolver: Callable[[str, str | None], Path] | None = None,
     ) -> None:
         use_filter = (timeline is not None and timeline_digest(timeline) != "") or bool(
-            loudness_profile
+            loudness_profile or processing_profile
         )
 
         if use_filter:
@@ -872,6 +982,7 @@ class CommandFfmpeg:
                 dest,
                 chapters=chapters,
                 loudness_profile=loudness_profile,
+                processing_profile=processing_profile,
                 asset_resolver=asset_resolver,
             )
         else:
@@ -958,15 +1069,26 @@ class CommandFfmpeg:
         dest: Path,
         chapters: list[dict] | None = None,
         loudness_profile: str | None = None,
+        processing_profile: str | None = None,
         asset_resolver: Callable[[str, str | None], Path] | None = None,
     ) -> None:
         segs: tuple[Segment, ...] = timeline.segments if timeline is not None else ()
+        if processing_profile and processing_profile != PODCAST_SPEECH_PROFILE:
+            raise ValueError(f"unknown audio processing profile: {processing_profile}")
+        if processing_profile and segs:
+            served = sum(segment.served_end - segment.served_start for segment in segs)
+            if 0 < served < _MIN_PROCESSABLE_AUDIO_SECONDS:
+                raise UnusableAudioError(
+                    f"planned audio is only {served:.3f}s after timeline edits"
+                )
 
         # --- collect ordered source inputs (in order of first appearance) ---
         source_ids: list[str] = []
         for seg in segs:
             if seg.kind == "source" and seg.source_id not in source_ids:
                 source_ids.append(seg.source_id)  # type: ignore[arg-type]
+        if not source_ids:
+            source_ids = [next(iter(sources_by_id))]
 
         source_input_idx = {sid: i for i, sid in enumerate(source_ids)}
         next_idx = len(source_ids)
@@ -1002,9 +1124,28 @@ class CommandFfmpeg:
                 asset_path = asset_resolver(asset_id, asset_version)  # type: ignore[misc]
                 inputs += ["-i", str(asset_path)]
 
-            filter_str, out_label = build_filter_complex(
-                segs, source_input_idx, asset_input_idx, loudness_profile
-            )
+            if segs:
+                filter_str, out_label = build_filter_complex(
+                    segs,
+                    source_input_idx,
+                    asset_input_idx,
+                    None if processing_profile else loudness_profile,
+                )
+            else:
+                filter_str, out_label = "[0:a]anull[program]", "[program]"
+
+            if processing_profile:
+                self._render_speech_profile(
+                    inputs=inputs,
+                    base_filter=filter_str,
+                    base_output=out_label,
+                    dest=dest,
+                    tmp=Path(tmp),
+                    chapters=chapters,
+                    loudness_profile=loudness_profile,
+                    rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
+                )
+                return
 
             # Chapter metadata (served-time; comes in as a separate input)
             chapter_args: list[str] = []
@@ -1049,6 +1190,113 @@ class CommandFfmpeg:
                 # cached copies / insert assets resolve to no host → no-op.
                 rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
             )
+
+    def _render_speech_profile(
+        self,
+        *,
+        inputs: list[str],
+        base_filter: str,
+        base_output: str,
+        dest: Path,
+        tmp: Path,
+        chapters: list[dict] | None,
+        loudness_profile: str | None,
+        rate_limit_urls: tuple[str, ...],
+    ) -> None:
+        """Bounded-memory speech mastering.
+
+        Pass 1 applies the timeline and local speech leveling once, writes a local lossless FLAC,
+        and measures that exact mono signal with streaming ``ebur128``. Pass 2 applies measured
+        *linear* loudnorm and AAC encoding. Provider media is read only in pass 1.
+        """
+        started = time.monotonic()
+
+        def _remaining_timeout() -> float | None:
+            if self.timeout_seconds is None:
+                return None
+            remaining = self.timeout_seconds - (time.monotonic() - started)
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(["ffmpeg", "speech-master"], self.timeout_seconds)
+            return remaining
+
+        measured_audio = tmp / "speech-leveled.flac"
+        measure_graph, measure_out = _append_audio_filters(
+            base_filter,
+            base_output,
+            (*_PODCAST_SPEECH_FILTERS, "ebur128=framelog=quiet:peak=true"),
+        )
+        measure_cmd = [
+            self.binary,
+            "-y",
+            "-nostats",
+            "-loglevel",
+            "info",
+            "-protocol_whitelist",
+            "file,crypto,data,http,https,tcp,tls",
+            *inputs,
+            *self._filter_thread_args(),
+            "-filter_complex",
+            measure_graph,
+            "-map",
+            measure_out,
+            "-vn",
+            "-c:a",
+            "flac",
+            *self._thread_args(["-c:a", "flac"]),
+            str(measured_audio),
+        ]
+        _, measure_stderr = _run_ffmpeg_guarded(
+            measure_cmd,
+            phase="speech-measure",
+            timeout=_remaining_timeout(),
+            memory_floor_bytes=self.memory_floor_bytes,
+            rate_limit_urls=rate_limit_urls,
+        )
+        measured = _parse_ebur128_summary(measure_stderr)
+
+        final_filter = (
+            _linear_loudnorm_filter(loudness_profile, measured) if loudness_profile else "anull"
+        )
+        final_inputs = ["-i", str(measured_audio)]
+        chapter_args: list[str] = []
+        if chapters:
+            meta = tmp / "chapters.ffmeta"
+            meta.write_text(_ffmetadata(chapters))
+            final_inputs += ["-i", str(meta)]
+            chapter_args = ["-map_chapters", "1"]
+        final_cmd = [
+            self.binary,
+            "-y",
+            "-nostats",
+            "-loglevel",
+            "error",
+            *final_inputs,
+            *self._filter_thread_args(),
+            "-filter_complex",
+            f"[0:a]{final_filter}[outa]",
+            "-map",
+            "[outa]",
+            "-vn",
+            *chapter_args,
+            "-c:a",
+            "aac",
+            "-b:a",
+            f"{self.max_kbps}k",
+            "-ac",
+            "1",
+            "-ar",
+            "48000",
+            *self._thread_args(["-c:a", "aac"]),
+            "-movflags",
+            "+faststart",
+            str(dest),
+        ]
+        _run_ffmpeg_guarded(
+            final_cmd,
+            phase="loudness-render",
+            timeout=_remaining_timeout(),
+            memory_floor_bytes=self.memory_floor_bytes,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1232,13 +1480,11 @@ def _has_non_identity_timeline(ep: Episode) -> bool:
     return ep.timeline is not None and timeline_digest(ep.timeline) != ""
 
 
-# Encode peak-RSS cost model (H8 reservation admission). Filter-render (loudnorm/trim/concat)
-# encodes of long meetings dominate runner memory — observed 0.18–5.9 GiB on the 15.6 GiB runner,
-# growing across the *whole* encode (memory-floor kills fired 220–1080 s in). The reservation
-# accountant (``citypods/resources.py:MemoryReservation``) admits by this *predicted* footprint
-# instead of the trailing ``mem_available`` signal. Coefficients are a first heuristic keyed on
-# served length — known ahead from the EDL the TimelineStage already built, or the feed duration —
-# and are meant to be calibrated from the per-encode ``peak_rss`` we log.
+# Encode peak-RSS cost model (H8 reservation admission). The legacy one-pass dynamic loudnorm path
+# grows with recording length (observed 9–13 GiB on long meetings), so its conservative
+# duration-scaled model remains for compatibility. ``podcast-speech-v1`` uses only streaming
+# filters, a local FLAC intermediate, and measured *linear* loudnorm; its memory reservation is
+# fixed instead of duration-scaled. The mid-flight floor remains the backstop for either path.
 _ENCODE_RSS_COPY_BYTES = 300 * 1024 * 1024  # copy path (no filter): tiny, bounded
 _ENCODE_RSS_BASE_BYTES = 350 * 1024 * 1024  # filtergraph + AAC encoder baseline
 # 2026-06-15 telemetry from audio run #10 showed long loudnorm/filter jobs peaking around
@@ -1246,18 +1492,22 @@ _ENCODE_RSS_BASE_BYTES = 350 * 1024 * 1024  # filtergraph + AAC encoder baseline
 _ENCODE_RSS_PER_MINUTE_BYTES = 64 * 1024 * 1024
 _ENCODE_RSS_UNKNOWN_BYTES = 12_000 * 1024 * 1024
 _ENCODE_RSS_MAX_BYTES = 12_000 * 1024 * 1024
+_ENCODE_RSS_STREAMING_BYTES = 768 * 1024 * 1024
 
 
-def estimate_encode_rss_bytes(ep: Episode, *, loudness_profile: str = "") -> int:
+def estimate_encode_rss_bytes(
+    ep: Episode, *, loudness_profile: str = "", processing_profile: str = ""
+) -> int:
     """Predict an encode's peak RSS so the reservation accountant can admit by future load.
 
-    Copy-path (no filter) encodes are cheap. Filter encodes scale with the *served* length — known
-    ahead from the EDL the preceding ``TimelineStage`` built, or the feed duration — clamped to the
-    observed ceiling. When neither is known (a single-source episode with silence-trim disabled and
-    no declared duration) we assume a large job and reserve conservatively, so an unknown encode
-    runs alone rather than colliding; the mid-flight memory floor is the backstop for a wrong guess.
+    The production speech profile has a fixed reservation because every filter in both passes is
+    streaming and the intermediate is on disk. Legacy filter encodes retain the duration-scaled
+    model: served length comes from the EDL or feed duration and is clamped to the observed ceiling.
+    Unknown-length legacy encodes reserve conservatively so they run alone.
     """
-    use_filter = _has_non_identity_timeline(ep) or bool(loudness_profile)
+    if processing_profile == PODCAST_SPEECH_PROFILE:
+        return _ENCODE_RSS_STREAMING_BYTES
+    use_filter = _has_non_identity_timeline(ep) or bool(loudness_profile or processing_profile)
     if not use_filter:
         return _ENCODE_RSS_COPY_BYTES
     served = _served_duration(ep)
@@ -1292,6 +1542,7 @@ def materialize_audio(
     ffmpeg: FfmpegRunner,
     max_kbps: int,
     loudness_profile: str = "",
+    processing_profile: str = "",
     resolve_media_url: Callable[[Episode], str],
     stop: Callable[[], bool] | None = None,
     source_cache: SourceCache | None = None,
@@ -1306,8 +1557,9 @@ def materialize_audio(
     Mutates each episode in place (``audio_key`` / ``audio_spec_hash`` / ``hosted_audio_url``);
     the caller persists these onto the record store. An episode is re-encoded only when its
     audio spec changed (e.g. chapters added, bitrate policy bumped) *or* its referenced object
-    has gone missing from storage — otherwise the existing object (matched by content-addressed
-    key, or carried over as ``"legacy"``) is reused for free.
+    has gone missing from storage — otherwise the existing object is reused for free. A
+    ``"legacy"`` artifact is reusable only while no explicit loudness/processing recipe is active;
+    named recipes invalidate it because its original byte recipe is unknown.
 
     A large backfill is spread over successive runs by ``stop()``: a shared predicate that goes
     True once the run's wall-clock window is spent *or* a newer Build & Deploy run is queued behind
@@ -1348,12 +1600,21 @@ def materialize_audio(
         if not _should_host(ep, city):
             continue
 
-        spec = audio_spec_hash(ep, max_kbps=max_kbps, loudness_profile=loudness_profile)
-        # Already hosted with a matching spec (or carried over from the legacy manifest)?
+        spec = audio_spec_hash(
+            ep,
+            max_kbps=max_kbps,
+            loudness_profile=loudness_profile,
+            processing_profile=processing_profile,
+        )
+        # Already hosted with a matching spec (or carried over from the legacy manifest while no
+        # explicit audio recipe is configured)? A named loudness/processing profile is a real byte
+        # recipe, so it intentionally invalidates legacy artifacts that cannot prove how they were
+        # encoded.
         # Trust the record only when its object is actually in storage — otherwise a stale
         # record (e.g. a Swagit episode whose presigned source expired before the object was
         # ever written) would short-circuit forever and never re-materialize (issue #116).
-        spec_ok = bool(ep.hosted_audio_url) and ep.audio_spec_hash in (spec, "legacy")
+        legacy_ok = ep.audio_spec_hash == "legacy" and not (loudness_profile or processing_profile)
+        spec_ok = bool(ep.hosted_audio_url) and (ep.audio_spec_hash == spec or legacy_ok)
         present = bool(ep.audio_key) and _present(ep.audio_key)
         if spec_ok and present:
             _backfill_served_duration(ep)
@@ -1414,7 +1675,11 @@ def materialize_audio(
         # still governs ASR elsewhere. native_work_gate is the hard concurrency ceiling on top.
         reserved_bytes = 0
         if memory_reservation is not None:
-            reserved_bytes = estimate_encode_rss_bytes(ep, loudness_profile=loudness_profile)
+            reserved_bytes = estimate_encode_rss_bytes(
+                ep,
+                loudness_profile=loudness_profile,
+                processing_profile=processing_profile,
+            )
             if not memory_reservation.reserve(reserved_bytes, label=str(label), stop=stop):
                 with lock:
                     stats.skipped_budget += 1
@@ -1470,12 +1735,19 @@ def materialize_audio(
                     by_id = _sources_by_id(ep, str(local) if local is not None else source_url)
                 else:
                     by_id = _sources_by_id(ep, source_url)
+                render_options: dict[str, str | None] = {
+                    "loudness_profile": loudness_profile or None
+                }
+                # Keep third-party/test FfmpegRunner implementations source-compatible when the
+                # new profile is disabled; production passes the new keyword explicitly.
+                if processing_profile:
+                    render_options["processing_profile"] = processing_profile
                 ffmpeg.extract_audio(
                     ep.timeline,
                     by_id,
                     dest,
                     ep.chapters or None,
-                    loudness_profile=loudness_profile or None,
+                    **render_options,
                 )
                 probed: float | None = None
                 try:
