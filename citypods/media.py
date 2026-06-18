@@ -207,7 +207,8 @@ class MediaRateLimitCircuitBreaker:
                     "circuit_trips": self._total_circuit_trips.get(domain, 0),
                 }
                 for domain in self._rules
-                if self._total_rate_limited.get(domain, 0) or self._total_circuit_trips.get(domain, 0)
+                if self._total_rate_limited.get(domain, 0)
+                or self._total_circuit_trips.get(domain, 0)
             }
 
     def open_for(self, urls: Sequence[str]) -> str | None:

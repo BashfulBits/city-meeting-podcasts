@@ -1502,9 +1502,9 @@ def _record_run_history(
         "window_used_pct": window_used_pct,
         "gate_wait_seconds": gate_wait_seconds,
         "provider_errors": provider_errors or {},
-        # Per-provider throttle telemetry (GH#300). rate_limited_403s counts HTTP 403 encode
-        # attempts; circuit_skipped counts encodes dropped because the circuit breaker was open.
-        # Together: circuit_skipped / (audio_ran + rate_limited_403s + circuit_skipped) = work-loss %.
+        # Per-provider throttle telemetry (GH#300). rate_limited_403s = HTTP 403 encode attempts;
+        # circuit_skipped = encodes dropped because the breaker was open.
+        # work-loss % = circuit_skipped / (audio_ran + rate_limited_403s + circuit_skipped)
         "audio_rate_limited_403s": audio.get("rate_limited", 0),
         "audio_circuit_skipped": audio.get("circuit_skipped", 0),
         "provider_rate_limit_telemetry": rate_limit_telemetry or {},
