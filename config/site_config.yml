@@ -22,7 +22,7 @@ max_encodes_per_source: 1                # parallel episode workers within one s
 # short-names) so the Granicus-owned Swagit CDN (*.granicus.com) is matched by the host the tenant
 # actually sees; a host with no matching key is unlimited. Per-process (each shard is its own runner).
 provider_rate_limits:
-  granicus.com: 2
+  granicus.com: 1  # Phase 1 GH#300: process-local cap 2→1; combined with slots=2 limits peak aggregate to 4 concurrent fetches
   swagit.com: 2
   civicclerk.com: 4
 
