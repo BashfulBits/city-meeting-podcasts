@@ -146,6 +146,8 @@ class SourcePipeline:
                 "bytes": 0,
                 "errors": 0,
                 "error_samples": [],
+                "rate_limited": 0,
+                "circuit_skipped": 0,
             }
         )
 
@@ -205,6 +207,8 @@ class SourcePipeline:
                 t["errors"] += len(s.errors)
                 if s.errors and len(t["error_samples"]) < 3:
                     t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
+                t["rate_limited"] += s.rate_limited
+                t["circuit_skipped"] += s.circuit_skipped
 
     def persist_source(
         self, key: str, episodes: list[Episode], persisted: dict, *, notes: list[str]
@@ -1199,6 +1203,11 @@ def build(
         )
         for msg in t["error_samples"]:
             print(f"    ! {msg}")
+        if t.get("rate_limited") or t.get("circuit_skipped"):
+            print(
+                f"    ! throttle: {t['rate_limited']} 403 errors, "
+                f"{t['circuit_skipped']} circuit-skipped (GH#300)"
+            )
 
     # Why the run ended (time-bounded phases only). "completed within the window" means all due
     # work finished; otherwise this names the trigger that wrapped it up (wall-clock vs a queued
@@ -1255,6 +1264,9 @@ def build(
                     else None
                 ),
                 provider_errors=provider_errors or None,
+                rate_limit_telemetry=(
+                    _rate_limit_circuit.telemetry() if _rate_limit_circuit is not None else None
+                ),
                 scope={
                     "phase": phase,
                     "lane": lane,
@@ -1426,6 +1438,7 @@ def _record_run_history(
     window_used_pct: float | None = None,
     gate_wait_seconds: float | None = None,
     provider_errors: dict[str, int] | None = None,
+    rate_limit_telemetry: dict[str, dict[str, int]] | None = None,
     scope: dict | None = None,
 ) -> None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
@@ -1457,6 +1470,8 @@ def _record_run_history(
             "seconds": round(t["seconds"], 1),
             "bytes": t["bytes"],
             "errors": t["errors"],
+            "rate_limited": t.get("rate_limited", 0),
+            "circuit_skipped": t.get("circuit_skipped", 0),
         }
         for name, t in stage_totals.items()
     }
@@ -1487,6 +1502,12 @@ def _record_run_history(
         "window_used_pct": window_used_pct,
         "gate_wait_seconds": gate_wait_seconds,
         "provider_errors": provider_errors or {},
+        # Per-provider throttle telemetry (GH#300). rate_limited_403s = HTTP 403 encode attempts;
+        # circuit_skipped = encodes dropped because the breaker was open.
+        # work-loss % = circuit_skipped / (audio_ran + rate_limited_403s + circuit_skipped)
+        "audio_rate_limited_403s": audio.get("rate_limited", 0),
+        "audio_circuit_skipped": audio.get("circuit_skipped", 0),
+        "provider_rate_limit_telemetry": rate_limit_telemetry or {},
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")

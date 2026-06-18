@@ -22,20 +22,20 @@ max_encodes_per_source: 1                # parallel episode workers within one s
 # short-names) so the Granicus-owned Swagit CDN (*.granicus.com) is matched by the host the tenant
 # actually sees; a host with no matching key is unlimited. Per-process (each shard is its own runner).
 provider_rate_limits:
-  granicus.com: 2
+  granicus.com: 1  # Phase 1 GH#300: process-local cap 2→1; combined with slots=2 limits peak aggregate to 4 concurrent fetches
   swagit.com: 2
   civicclerk.com: 4
 
 # Cross-shard provider leases. The process-local cap above is still needed inside each shard, but
 # audio.yml has four shard jobs, so Granicus could still see 4×2 concurrent media fetches. These
 # storage-backed soft leases cap aggregate ffprobe/ffmpeg media overlap across all shard processes
-# using ordinary B2-compatible object upload/list/delete operations (no conditional PUT). Local
-# probes on 2026-06-15 passed 1–8 concurrent short Granicus ffprobe/ffmpeg reads with the browser UA;
-# the failed Actions run still showed sustained 8-way runner overlap producing 403s, so start at 6
-# aggregate slots rather than falling all the way to 4/3.
+# using ordinary B2-compatible object upload/list/delete operations (no conditional PUT). Reduced
+# from 6 → 2 as Phase 1 of the Granicus media reliability fix (GH#300): attack the likely cause
+# (aggregate runner concurrency hitting CDN throttle) before request-shape experiments. Monitor
+# audio backlog drain rate; ratchet back up only after confirming 403 rate < 5%.
 provider_distributed_leases:
   granicus.com:
-    slots: 6
+    slots: 2
     ttl_seconds: 3600
     poll_seconds: 2
     settle_seconds: 0.25

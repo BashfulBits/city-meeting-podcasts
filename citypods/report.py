@@ -640,6 +640,8 @@ def _sum_stage_totals(rows: list[dict]) -> dict:
         "seconds",
         "bytes",
         "errors",
+        "rate_limited",
+        "circuit_skipped",
     )
     for row in rows:
         for name, stage in (row.get("stages") or {}).items():
@@ -661,7 +663,16 @@ def _merge_logical_run_group(group: list[dict]) -> dict:
 
     group = sorted(group, key=_run_sort_value)
     merged = dict(group[-1])
-    for key in ("cities", "built", "skipped", "errors", "materialized", "materialize_encoded"):
+    for key in (
+        "cities",
+        "built",
+        "skipped",
+        "errors",
+        "materialized",
+        "materialize_encoded",
+        "audio_rate_limited_403s",
+        "audio_circuit_skipped",
+    ):
         merged[key] = sum(row.get(key, 0) or 0 for row in group)
     merged["materialize_seconds"] = round(
         sum(row.get("materialize_seconds", 0.0) or 0.0 for row in group), 1
@@ -673,6 +684,13 @@ def _merge_logical_run_group(group: list[dict]) -> dict:
         for provider, n in (row.get("provider_errors") or {}).items():
             provider_errors[provider] = provider_errors.get(provider, 0) + int(n or 0)
     merged["provider_errors"] = provider_errors
+    rate_limit_telemetry: dict[str, dict[str, int]] = {}
+    for row in group:
+        for domain, counts in (row.get("provider_rate_limit_telemetry") or {}).items():
+            entry = rate_limit_telemetry.setdefault(domain, {"rate_limited": 0, "circuit_trips": 0})
+            entry["rate_limited"] += int((counts or {}).get("rate_limited", 0) or 0)
+            entry["circuit_trips"] += int((counts or {}).get("circuit_trips", 0) or 0)
+    merged["provider_rate_limit_telemetry"] = rate_limit_telemetry
     peaks = [
         row.get("peak_load_per_cpu") for row in group if row.get("peak_load_per_cpu") is not None
     ]

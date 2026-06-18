@@ -25,7 +25,32 @@ permissions:
   actions: read
 
 jobs:
+  # Ensure the weekly endpoint-contracts check (contracts.yml) is never racing an active audio
+  # run. contracts.yml already waits for audio to finish before probing; this job is the reverse
+  # guard: if contracts is mid-run when a new audio cycle starts, audio defers so contracts can
+  # complete its Granicus media-fetch without competing for CDN slots (GH#300).
+  # Polls for up to 20 minutes; always exits 0 so a stuck contracts run never permanently blocks
+  # audio. The matrix shards depend on this job so they don't start until the coast is clear.
+  wait-for-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for active endpoint contract runs to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 40); do
+            ACTIVE=$(gh run list --workflow contracts.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
+            if [ "$ACTIVE" = "[]" ]; then
+              echo "No active contracts runs. Proceeding."
+              exit 0
+            fi
+            echo "[$i/40] contracts.yml is running. Waiting 30 seconds..."
+            sleep 30
+          done
+          echo "Timed out after 20 minutes. Proceeding anyway."
+
   audio:
+    needs: wait-for-contracts
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

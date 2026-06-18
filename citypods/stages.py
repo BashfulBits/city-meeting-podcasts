@@ -245,6 +245,8 @@ class StageStats:
     aligned: int = 0  # Path A: stable-ts forced alignment from source text
     transcribed: int = 0  # Path B: fresh faster-whisper transcription
     dispatched: int = 0  # H14a: handed to an external GPU backend (off-runner); pending next render
+    rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
+    circuit_skipped: int = 0  # audio encodes skipped because the circuit breaker was open
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -519,6 +521,8 @@ class AudioStage:
             bytes_written=ms.bytes_written,
             encoded=ms.encoded,
             credited=ms.credited,
+            rate_limited=ms.rate_limited,
+            circuit_skipped=ms.circuit_skipped,
         )
 
 
