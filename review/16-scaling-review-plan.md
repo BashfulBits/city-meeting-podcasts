@@ -1,5 +1,56 @@
 # Efficiency and Scaling Review Plan: 10 to 500 Cities
 
+**Maturity: L2 planning breakout · trigger-gated cross-cutting initiative · last updated 2026-06-18**
+
+> This is not a requirement to build ten scaling PRs at the current catalog size. It defines the
+> measurements, trigger conditions, and implementation sequence to use as breadth grows. The canonical
+> phase placement lives in [`review/11`](11-technical-design-roadmap.md); an item enters the active
+> roadmap only when its trigger is reached and the documentation contract promotes it.
+
+The numbered **Phase 0–6** sections below are internal stages of this scaling program; they are not new
+peers of canonical roadmap Phases H/R/E/F/C.
+
+## What to do before 500 cities
+
+The short answer is: **reuse the scaling primitives already built, measure before broad onboarding,
+and add incrementality in tranches rather than waiting until city 500.** City counts below are planning
+guideposts, not hard gates. A measured trigger wins if it arrives earlier; unusually light catalogs may
+defer a tranche.
+
+| When | Action | Existing foundation to leverage | What is explicitly not required yet |
+|---|---|---|---|
+| **Current catalog through Phase R** | Finish the current H/R plan. During R2, run the search-size spike and ship transcript search partitioned by city/source with lazy loading and size budgets. Add request/byte/useful-time counters opportunistically where those paths are already being changed. Keep the existing per-PR artifact preview and preserve the production `github-pages` environment's `main`-only deployment policy. | H2/H4 run telemetry and status; H5 work manifest; H6b lane/source sharding; H11b render-only deploy; H13/H14 compute seam; `review/13` search design; `preview.yml`. | No scheduler rewrite, persistent media worker, hosted DB/API, catalog-wide source cache, or duplicate staging pipeline. |
+| **Before systematic breadth onboarding (roughly 25 cities, or sooner if onboarding is batched)** | Execute the measurement tranche: current-state call graph, request/byte counters, useful-work ratio, and reproducible 10/100/500-city synthetic benchmarks. Replace the guideposts below with measured source/feed/inflow thresholds. | Existing run history, backlog ETAs, provider error accounting, storage abstraction, offline fixtures. | No behavior change beyond bounded telemetry and benchmark tooling. |
+| **Before roughly 50 cities, or when artifact lanes make redundant provider-list calls** | Separate provider refresh from audio/ASR/render; add conditional/content-digest refresh metadata and conservative due intervals. Artifact lanes consume persisted records and durable work only. | Append-only records, records-only lane fallback, H5 work manifest, split lanes. | Fully adaptive polling or a new queue service. |
+| **Before roughly 100 cities, or when a shard restores materially more state than it owns / empty heavy jobs exceed 5%** | Add the root state manifest, targeted shard reads, dirty-only uploads, and a lightweight demand planner that can start zero or a variable number of workers. | Source-atomic sharding, scoped state push/reconcile, foreign-block-preserving merge, H5 work counts. | Off-Actions media or per-stage object files unless their separate correctness trigger is reached. |
+| **Before roughly 250 cities, or when repeated provider-media transfer, throttling, or browser/search budgets bind** | Add selective cross-run source-media caching for high-value providers/failures; bounded adaptive polling/concurrency/shard sizing; dirty render/search partitions; split oversized city/year search partitions. | SourceCache, truncation guard, distributed provider leases, content-addressed artifacts, R2 city/source search partitions. | Indefinite caching of every source file or automatic tuning without ceilings. |
+| **Before 500 cities** | Run the 500-city load rehearsal and require the readiness gate: provider-safe request rates, declining backlog, bounded state transfer, zero empty heavy jobs, incremental render/search, and documented storage cost. | All prior tranches. | A dedicated scheduler/media fleet if the measured Actions migration triggers remain false. |
+| **Around 1,000 cities, or when any two §14.1 triggers persist for four weeks** | Begin migration engineering for a persistent scheduler/media-worker path behind existing interfaces. | Pluggable compute/storage, durable work/leases, provider-aware planner. | Immediate cutover. |
+| **Around 1,500–2,500 cities, or earlier for provider-IP/cache-locality pressure** | Move heavy media fetching/encoding to persistent or autoscaled workers; retain Actions for CI, deploy, orchestration, audits, and recovery. | The alternative worker path proven during the transition. | A wholesale pipeline rewrite. |
+
+### Trigger rules that override city count
+
+Promote the corresponding tranche early when any of these is observed:
+
+- **Provider refresh:** more than one provider-list request per due source per schedule cycle, or any
+  audio/ASR/diarization lane polling provider lists despite sufficient persisted records.
+- **State targeting:** a shard downloads more than twice the bytes for its assigned sources, or an
+  ordinary hot path performs a bucket-wide `state/` listing.
+- **Demand planning:** empty heavy jobs exceed 5%, long-running audio useful-work ratio falls below
+  80%, or more than 25% of heavy jobs approach the six-hour cap.
+- **Source cache:** repeated downloads account for more than 10% of provider-media bytes, or retries
+  commonly fail because provider bytes must be fetched again.
+- **Search/render:** one transcript change rebuilds the catalog, a city search partition exceeds the
+  1 MB compressed target (2 MB hard warning), or the directory exceeds its client budget.
+- **Release safety:** add a live staging site when production has meaningful external users and either
+  risky frontend/feed changes need URL-level review, more than one person releases, or a production
+  regression/rollback occurs often enough that downloadable PR artifacts are no longer adequate.
+- **Off-Actions migration:** use the sustained multi-signal gate in §14.1; city count alone never
+  forces migration.
+
+The converse also matters: do not promote a later tranche merely because a round-number city count was
+crossed if measurements show the relevant resource remains comfortably within budget.
+
 ## Executive conclusion
 
 The project's architecture is fundamentally compatible with 500 cities, but the current workflow
@@ -41,9 +92,9 @@ With that design, the planning estimates are:
 - **A dedicated scheduler/media worker becomes the sensible default around 1,500 to 2,500 cities**,
   or sooner if provider throttling and GitHub egress-IP behavior dominate.
 
-These are planning ranges, not promises. The first phase of the review must replace "cities" with
-measured variables: sources, feeds, meetings per day, source-media hours, provider requests, changed
-partitions, and runner-seconds per work class.
+These are planning ranges, not promises. The measurement tranche above must replace "cities" with
+measured variables before systematic breadth onboarding: sources, feeds, meetings per day,
+source-media hours, provider requests, changed partitions, and runner-seconds per work class.
 
 ---
 
@@ -248,6 +299,11 @@ Measure separately for:
 
 ## 3. Phase 0: Instrument before optimizing
 
+**Activation:** before systematic breadth onboarding (planning guidepost: about 25 cities), or earlier
+if a batch onboarding effort is about to begin. Bounded counters may land opportunistically before
+then. This is the only scaling-specific tranche recommended before growth; it measures rather than
+rearchitects.
+
 This should be the first implementation phase. Optimizing without request-level telemetry risks moving
 costs rather than removing them.
 
@@ -356,6 +412,10 @@ Do not implement adaptive optimization until the baseline can reliably say:
 ---
 
 ## 4. Phase 1: Stop unnecessary provider contact
+
+**Activation:** before roughly 50 cities, or immediately when telemetry shows redundant provider-list
+calls across lanes. This is the first architectural optimization because it reduces provider pressure
+and lets every later worker operate from durable state.
 
 This is probably the highest-value change.
 
@@ -512,6 +572,10 @@ At 500 synthetic cities with no source changes:
 
 ## 5. Phase 2: Replace full-state synchronization with manifests and targeted reads
 
+**Activation:** before roughly 100 cities, or earlier when a shard downloads more than twice its
+assigned-source bytes, a hot path lists the broad `state/` prefix, or state restore/setup becomes a
+material share of job time.
+
 The current bucket-backed state is correct and durable, but its transfer algorithm will become
 expensive. Each worker should first download one small manifest, then retrieve only the state it needs.
 
@@ -624,6 +688,10 @@ For one audio shard owning 5% of a 500-city catalog:
 
 ## 6. Phase 3: Durable cross-run source-media reuse
 
+**Activation:** selectively before roughly 250 cities, or earlier for a provider/failure class where
+repeat transfers exceed 10% of media bytes or materially reduce reliability. Start narrow; this is not
+a mandate to cache every source file.
+
 The existing `SourceCache` avoids downloading an episode twice within one runner process. At 500
 cities, the next efficiency step is avoiding repeat downloads across failed encodes, workflow
 interruptions, recipe changes, diarization/transcript tasks, and clip generation.
@@ -732,6 +800,9 @@ For large provider downloads:
 ---
 
 ## 7. Phase 4: Demand-driven GitHub Actions topology
+
+**Activation:** pair with Phase 2 before roughly 100 cities, or earlier when empty heavy jobs exceed
+5%, useful-work ratio misses the §2 target, or fixed shards routinely have little eligible work.
 
 The current schedule starts four audio shards every four hours, four ASR shards every five hours plus
 reconciliation, a render deployment every four hours, a daily audit, and weekly endpoint contracts.
@@ -867,6 +938,10 @@ Changes to evaluate:
 
 ## 8. Phase 5: Automatic iterative resource optimization
 
+**Activation:** after Phases 1/2/4 produce trustworthy measurements, normally in the 100–250-city
+range. Do not build adaptive controls before the conservative static policy and its ceilings are
+observable.
+
 The code should become more efficient automatically through bounded control loops, not unconstrained
 self-tuning.
 
@@ -998,6 +1073,10 @@ Automatic tuning must never:
 
 ## 9. Phase 6: Monitoring, alerting, and fallback design
 
+**Activation:** monitoring fields land with the tranche that produces them; the complete dashboard and
+alert policy should be in place before the 500-city rehearsal. Reliability fallbacks remain required
+whenever their associated architecture ships, not deferred until city 500.
+
 ### 9.1 Operational dashboard additions
 
 #### Catalog freshness
@@ -1119,6 +1198,114 @@ Avoid opening an issue for expected free-tier GPU exhaustion or normal temporary
 - Keep the last-known-good search index.
 - Show index freshness.
 - Never block core feed publication on search.
+
+### 9.5 Production and staging deployment topology
+
+Environment separation is driven by **blast radius and active users**, not catalog size. At the current
+beta stage, the existing arrangement is proportionate:
+
+- `preview.yml` builds every PR from last-known production records, makes no provider calls or state
+  writes, and uploads `docs/` as a downloadable artifact.
+- `deploy.yml` is the sole live Pages publisher, runs only from `main`/schedule/manual dispatch, renders
+  from durable production records, validates feeds, and deploys through the `github-pages` environment.
+- Audio/ASR workflows own production record writes; a preview or future staging render must never push
+  state or create production artifacts.
+
+#### Current control: production is protected; do not duplicate it
+
+The `github-pages` GitHub environment already has a custom deployment-branch policy allowing only
+`main` (verified 2026-06-18). Preserve that rule. Do not require a human approval on every scheduled
+render: the four-hour feed refresh is routine publication, and the validation gate is the appropriate
+automated control. Keep branch protection/CI and the PR artifact preview as the pre-merge gate.
+
+A GitHub Actions **environment** only scopes approvals, branch rules, variables, and secrets; it does
+not create another Pages URL. GitHub's supported Pages workflow deploys the repository's Pages site,
+and its pull-request preview mode is still alpha/not publicly available. Therefore changing
+`environment.name` from `github-pages` to `staging` is not a staging-site implementation.
+
+References (recheck when implementing):
+
+- <https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site>
+- <https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments>
+- <https://github.com/actions/deploy-pages>
+
+#### When a live staging URL becomes worthwhile
+
+Create live staging before the 1.0/public launch **if** the project has meaningful external users and
+one or more of these becomes true:
+
+1. Feed URLs, routing/base-URL behavior, search JavaScript, transcript playback, custom-domain behavior,
+   or generated markup need review at a real HTTPS URL before release.
+2. A production regression or rollback has occurred, or production fixes regularly require a second
+   follow-up deploy.
+3. Multiple maintainers or contributors share release responsibility.
+4. Releases are intentionally batched rather than merged continuously.
+5. A state/artifact migration needs a canary that cannot be represented safely by the read-only PR
+   artifact.
+
+Do not create live staging merely because the catalog reaches 25, 100, or 500 cities. A lightly used
+500-city static site may need it less than a widely used 20-city site.
+
+#### Recommended GitHub Pages implementation
+
+GitHub Pages does not currently provide public per-PR preview deployments. If the project stays on
+Pages, use **one shared release-candidate site in a separate repository**, for example:
+
+```text
+city-meeting-podcasts                 production source + production Pages site
+city-meeting-podcasts-staging         staging Pages site
+staging.citypodcasts.org              optional custom domain
+```
+
+Recommended flow:
+
+1. Keep the current per-PR downloadable artifacts for every PR.
+2. On manual dispatch, a `deploy-staging` workflow sends a chosen source commit SHA to the staging
+   repository (repository dispatch or reusable workflow).
+3. The staging repository checks out that exact public source SHA, restores production durable records
+   from object storage using a distinct **read-only** key, and runs
+   `citypods build --phase render --no-refresh` with the staging base URL. Actions caches are
+   repository-scoped and are not the cross-repository transfer mechanism.
+4. It validates the generated site/feed output, adds a conspicuous staging banner and
+   `<meta name="robots" content="noindex,nofollow">` plus a restrictive `robots.txt`, then publishes its
+   own Pages site.
+5. After review, merge the reviewed tree to `main` and record the staging SHA in the release/deployment
+   summary; production rebuilds independently from the resulting `main` commit through the existing
+   validated deploy.
+
+The staging site may reference immutable production audio/transcript URLs because those are public,
+content-addressed artifacts. It must not publish discoverable podcast feeds as if they were production,
+write production state, fetch providers, enqueue audio/ASR work, or use production write credentials.
+The staging credential must be a distinct read-only key scoped to the record prefixes. An alternative
+with fewer staging secrets is to render in the source repository using its existing restored state,
+then publish only the already-public generated `docs/` tree to the staging repository with a
+fine-grained token or deploy key limited to that repository.
+
+This gives staging realistic data without doubling compute, provider traffic, or storage. It is a
+**render/release environment**, not a second civic-meeting pipeline.
+
+#### Later: isolated canary data only for write-path migrations
+
+If a future change modifies record schemas, state synchronization, artifact recipes, or storage writes,
+a render-only staging site is insufficient. At that point add a small canary environment:
+
+- a separate bucket/prefix and credentials;
+- two or three representative sources/providers;
+- no public feed discovery;
+- explicit cost ceiling and cleanup;
+- promotion only after append-only, stable-UID, hash-invalidation, and rollback checks pass.
+
+This is migration safety infrastructure, not a standing full-catalog clone.
+
+#### Acceptance criteria
+
+- Production Pages can only be deployed from `main`.
+- PRs always produce a reviewable artifact without production secrets or writes.
+- When live staging is activated, a chosen commit can be reviewed at a stable HTTPS URL using realistic
+  read-only data.
+- Staging has no path to production state writes, provider polling, or heavy-work dispatch.
+- The reviewed source SHA is recorded and traceable to the resulting production commit.
+- Production rollback remains a redeploy of a known-good commit, independent of staging availability.
 
 ---
 
@@ -1576,6 +1763,18 @@ not a recommended operating target.
 
 ## 15. Proposed execution sequence
 
+The PR numbering below is a dependency order, **not one immediate queue**. Promote only the next
+triggered tranche into `ROADMAP.md`; keep the rest here and in the trigger-gated `review/11` entry.
+
+### Independent release-safety track
+
+- **Now:** retain per-PR artifacts and preserve the verified `github-pages` `main`-only policy.
+- **Before 1.0/public launch, if the §9.5 user-risk trigger is met:** add one shared render-only staging
+  repository/site.
+- **Only before a write-path migration:** add a small isolated state/artifact canary.
+
+### Tranche S0 — measure before breadth (before systematic onboarding; about 25 cities)
+
 ### Review PR 1: Instrumentation and benchmark harness
 
 Deliver:
@@ -1594,6 +1793,8 @@ Deliver:
 - Documentation of redundant provider calls.
 - Proposed refresh-state schema.
 
+### Tranche S1 — remove redundant refresh (before about 50 cities or provider-call trigger)
+
 ### Review PR 3: Refresh-only orchestration
 
 Deliver:
@@ -1602,6 +1803,8 @@ Deliver:
 - Conditional fetch/content digests.
 - Audio/ASR lanes running from records only.
 - Adaptive polling behind conservative bounds.
+
+### Tranche S2 — incremental state and demand planning (before about 100 cities or state/job trigger)
 
 ### Review PR 4: State manifest and targeted pull
 
@@ -1620,6 +1823,8 @@ Deliver:
 - Zero-job behavior for empty backlogs.
 - Provider-aware bin packing.
 - Setup/useful-time metrics.
+
+### Tranche S3 — selective reuse and bounded adaptation (before about 250 cities or transfer trigger)
 
 ### Review PR 6: Cross-run media-cache experiment
 
@@ -1640,6 +1845,8 @@ Deliver:
 - Safety ceilings.
 - Canary deployment.
 
+### R2 integration — search scales from launch (current Phase R)
+
 ### Review PR 8: Client/search scaling spike
 
 Deliver:
@@ -1650,14 +1857,23 @@ Deliver:
 - Chosen partitioning design.
 - Explicit launch budgets.
 
+### R1/R2 launch plus S3 follow-through — incremental output
+
 ### Review PR 9: Incremental meeting pages and search
 
-Deliver:
+Deliver in current R1/R2:
 
-- Dirty-partition rendering.
 - Lazy transcript loading.
+- Existing per-meeting `feed_content_hash` skip/prune remains the incremental page-rendering baseline.
+- Source/city-partitioned search from PR 8.
+
+Add when S3 is triggered:
+
+- Dirty-partition rendering beyond the existing per-meeting skip.
 - Incremental, content-addressed search partitions.
 - Last-known-good index fallback.
+
+### Tranche S4 — readiness gate (before 500 cities)
 
 ### Review PR 10: 500-city load rehearsal
 
@@ -1690,16 +1906,19 @@ tests/test_network_budget.py
 Documentation updates should include:
 
 - `review/11-technical-design-roadmap.md`
-- A new L2/L3 breakout.
+- This L2 breakout; mature the triggered tranche to L3 before cutting implementation issues.
 - `ROADMAP.md` if this is promoted into the active phase.
 - `ARCHITECTURE.md` as each architectural change ships.
 - `CHANGELOG.md` for implementation PRs.
 - Frozen breakout stamps when completed.
 
-This plan does not itself promote deferred off-Actions media work into the active phase. If execution
-would reorder the canonical roadmap or promote deferred work, follow the repository's explicit
-deviation process: surface the deviation, explain its trade-offs, obtain maintainer confirmation, and
-record the rationale in the relevant canonical document.
+This plan and its `VISION.md`/`review/11` links do **not** promote a scaling tranche into the active
+phase. When a trigger is reached, promotion means updating `ROADMAP.md`, moving the specific tranche to
+L3 here and in `review/11`, and cutting issues in the same change. This plan also does not promote
+deferred off-Actions media work. If execution would reorder the canonical roadmap or promote deferred
+work, follow the repository's explicit deviation process: surface the deviation, explain its
+trade-offs, obtain maintainer confirmation, and record the rationale in the relevant canonical
+document.
 
 ---
 

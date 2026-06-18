@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-16**
+**Status: LIVING · last updated 2026-06-18**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -165,11 +165,13 @@ sync · #20 video enclosures (partial).
 | Auto-detect provider from a city URL | #30 | L1 |
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
 | Pluggable inference-execution backend (compute offload) | new (Infra) | L3 · **pre-1.0 lock** — GPU/ASR interface = H13; Modal+Beam GPU adapters = H14 (built in Phase H); first LLM API adapter = R3/R4 |
+| Catalog scaling readiness (10→500 cities) | new (Infra) | L2 · **trigger-gated, not active-phase work** — [`review/16`](16-scaling-review-plan.md); R2 owns the search-size spike/partitioned-search launch, while S0–S4 promote one tranche at a time only when their city/metric gates are reached |
 
 ### Deferred backlog (ongoing) — §6
 #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
-images · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 index sharding (review/02
-Change 6) · #44 structured logging · #47 map browser · #48 new-since-visit · #10 agenda-packet chapter
+images · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 **directory** index sharding
+(review/02 Change 6; trigger-gated by `review/16` client budgets, distinct from R2 transcript-search
+partitioning) · #44 structured logging · #47 map browser · #48 new-since-visit · #10 agenda-packet chapter
 descriptions · #14 `podcast:person/location` tags · #33 dead-city archival · review/02 Change 5
 DerivedArtifact refactor · review/04 B3 stale-record bucket leak · review/04 R4 per-host rate-limit (#39)
 · admin dashboard extension (#49) · full video re-hosting · hosted DB/API · off-Actions media.
@@ -303,6 +305,42 @@ works.
 
 ### §5.5 Cross-cutting / ongoing
 
+**Catalog scaling readiness (10→500 cities; [`review/16`](16-scaling-review-plan.md)).** *Problem:* the
+existing architecture can support hundreds of cities, but provider polling, full-state restoration,
+fixed shard schedules, repeated source-media downloads, and static-index rebuilds can amplify well
+before city 500. *Disposition:* this is an **L2 trigger-gated program**, not a new current phase and not
+a requirement to implement all ten proposed PRs now. Reuse H2/H4 telemetry, H5 durable work, H6b
+source/lane sharding, H11b render isolation, H13/H14 compute offload, provider leases, and
+content-addressed artifacts first.
+
+Promotion ladder:
+
+| Gate | Canonical action |
+|---|---|
+| **Current Phase R** | R2 runs the search-size spike and launches transcript search partitioned by city/source with lazy loading and byte/memory budgets. Keep per-PR artifact previews and preserve the production `github-pages` environment's verified `main`-only policy; this is release hardening, not a separate scaling tranche. |
+| **Before systematic breadth onboarding (~25 cities)** | Promote **S0 measurement** only: request/byte/useful-time telemetry, current call graph, and synthetic 10/100/500-city harness. Update `ROADMAP.md`, mature that tranche in `review/16` to L3, and cut issues at promotion time. |
+| **Before ~50 cities or redundant provider-call trigger** | Promote **S1 refresh separation**: one due/conditional provider refresh path; audio/ASR/render consume persisted records and durable work. |
+| **Before ~100 cities or state/empty-job trigger** | Promote **S2 targeted state + demand planner**: root manifest, shard-specific reads, dirty writes, zero/variable worker matrix. |
+| **Before ~250 cities or repeated-transfer/search trigger** | Promote **S3 selective source cache + bounded adaptive controls + dirty render/search partitions**. Cache only demonstrated high-value providers/failure classes. |
+| **Before 500 cities** | Promote **S4 rehearsal/readiness gate** and update the practical Actions ceiling from measurements. |
+| **~1,000 cities or two sustained migration signals** | Begin the off-Actions scheduler/media-worker adapter; expected crossover remains ~1,500–2,500 cities. This stays deferred until triggered. |
+
+Metric gates override city guideposts: any artifact lane redundantly polling provider lists; shard state
+downloads >2× assigned bytes or broad hot-path listings; empty heavy jobs >5% or useful-work ratio
+<80%; repeated media downloads >10% of provider bytes; city search partitions above the 1 MB target
+(2 MB hard warning); or the sustained multi-signal migration gate in `review/16` §14.1. Crossing a
+round-number city count without the corresponding pressure does not force promotion.
+
+**Production/staging gate.** A live staging URL is also user-risk-triggered rather than city-triggered.
+The current beta keeps `preview.yml`'s read-only downloadable PR artifact plus the sole production Pages
+deploy. Before 1.0/public launch, activate a shared render-only staging site only when meaningful users,
+risky URL/feed/frontend changes, multiple releasers, or demonstrated rollback pain make artifact review
+insufficient. Because GitHub Actions environments do not create a second Pages site and public Pages PR
+previews are unavailable, the Pages-native design is a separate staging repository/site rendering an
+exact source SHA against production records read-only. Do not duplicate audio/ASR/provider polling; add
+an isolated small canary bucket only for future state/artifact write-path migrations. Full design and
+acceptance criteria: `review/16` §9.5.
+
 ### Granicus media reliability follow-up (#300/#39)
 
 *Problem:* after PR #316 made endpoint issues more descriptive, endpoint issue #300 still reproduces on
@@ -422,8 +460,10 @@ same interface.
 ## §6. Deferred backlog (ongoing)
 
 Items intentionally not in a near-term phase; revisit as scale or demand warrants. (Enumerated in §4
-"Deferred backlog".) Notable rationale: **index sharding (#42)** is demoted because per-meeting pages
-make meetings independently crawlable; the **DerivedArtifact refactor** (review/02 Change 5) is now
+"Deferred backlog".) Notable rationale: **directory index sharding (#42)** remains deferred because
+per-meeting pages make meetings independently crawlable; promote it only if `review/16`'s directory
+payload budget is crossed. This is distinct from R2 transcript-search partitioning, which is part of
+the launch design in `review/13`. The **DerivedArtifact refactor** (review/02 Change 5) is now
 **justified** — H12 (shipped, [PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253))
 added the third derived-artifact type (audio M4A · transcript VTT · **word-JSON**), the YAGNI trigger it
 was waiting on — so it moves from deferred to "do opportunistically now that H12's storage

@@ -76,6 +76,14 @@ genuine differentiator *if and when* revenue supports the generation cost.
   at cities with active Strong Towns Local Conversations rather than raw population rank.
 - **Hardening & efficiency first.** Stabilize and maximize throughput of the (free) pipeline before
   layering on new product surface.
+- **Scale in measured tranches, not at a magic city count.** The current architecture and its existing
+  source sharding, durable work manifest, content-addressed artifacts, and pluggable compute seam are
+  the foundation through early growth. Before systematic breadth onboarding, measure provider calls,
+  state bytes, useful runner time, and synthetic 100/500-city behavior. Then add refresh separation,
+  targeted state transfer, demand-driven workers, and selective source caching only as their measured
+  triggers arrive. Plan for 500 cities on optimized standard GitHub-hosted runners; begin an
+  off-Actions media-worker path around 1,000 cities (or earlier sustained provider/queue pressure), not
+  as a precondition for growth. Detailed gates: [`review/16`](review/16-scaling-review-plan.md).
 - **AI used judiciously.** Stay near $0 cash in the near term (self-hosted transcription on free CI +
   free-tier serverless GPU); spend on high-value generation as donations/subscriptions grow with the catalog.
 - **Compute is pluggable.** Heavy inference — transcription, forced alignment, and later diarization /

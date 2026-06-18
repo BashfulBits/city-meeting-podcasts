@@ -12,7 +12,8 @@
 Today the only per-meeting artifact is a feed `<item>`. A real HTML page per meeting — player +
 transcript + chapters/agenda + official + source-time links — is the biggest SEO/sharing win, the
 natural home for transcript display, and the surface every later phase (highlights, alerts, AI audio)
-links into. It also makes meetings **independently crawlable**, which demotes index sharding (#42).
+links into. It also makes meetings **independently crawlable**, which demotes **directory-metadata**
+index sharding (#42). Transcript-search partitioning remains part of the R2 launch design below.
 
 Prerequisite that is now satisfied: transcripts exist (ASR #1 shipped), chapters/agenda links exist, the
 timeline EDL can produce **source-time deep-links** (`video_deeplink` capability, review/08), and the
