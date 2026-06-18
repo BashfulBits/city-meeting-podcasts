@@ -123,18 +123,24 @@ def assign_uids(city: City, episodes: list[Episode]) -> None:
             ep.uid = _uid(author, ep.body, date, seq)
 
 
-def audio_spec_hash(ep: Episode, *, max_kbps: int, loudness_profile: str = "") -> str:
+def audio_spec_hash(
+    ep: Episode,
+    *,
+    max_kbps: int,
+    loudness_profile: str = "",
+    processing_profile: str = "",
+) -> str:
     """Hash of everything that determines the audio bytes.
 
     **Identity path (v1-compatible):** when no timeline manipulation, rebuild nonce, or
-    loudness profile is active, and the episode has at most one source, the spec dict is
-    byte-identical to the v1 format — same JSON → same SHA1 → no re-encode storm when
-    this model first ships.  Only episodes that are *actually* manipulated (non-identity
-    timeline, nonce stamped, multi-source concat) get the new format and a new key.
+    loudness/audio-processing profile is active, and the episode has at most one source, the
+    spec dict is byte-identical to the v1 format — same JSON → same SHA1 → no re-encode storm
+    when this model first ships. Only episodes that are *actually* manipulated (non-identity
+    timeline, nonce stamped, multi-source concat, speech processing) get the new format and key.
 
-    **v2 format** (all other cases): adds ``timeline``, ``loudness``, ``sources``,
-    ``rebuild`` fields.  New fields are included at their defaults (``""``, ``[]``) so
-    future features that set them only re-encode the episodes they actually affect.
+    **v2 format** (all other cases): adds ``timeline``, ``loudness``, ``processing``,
+    ``sources``, ``rebuild`` fields. New fields are included at their defaults (``""``, ``[]``)
+    so future features that set them only re-encode the episodes they actually affect.
 
     Note: the HLS *resolved* URL is tokenized/expiring and is deliberately excluded.
     Identity-equivalence intentionally keys the v1 path on ``ep.video_url`` (the stable
@@ -144,9 +150,10 @@ def audio_spec_hash(ep: Episode, *, max_kbps: int, loudness_profile: str = "") -
     """
     tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
     loudness = loudness_profile
+    processing = processing_profile
     rebuild = ep.audio_rebuild or ""
 
-    if not tl_digest and not rebuild and not loudness and len(ep.sources) <= 1:
+    if not tl_digest and not rebuild and not loudness and not processing and len(ep.sources) <= 1:
         # v1-compatible format: byte-identical for identity episodes.
         spec = {
             "v": AUDIO_PIPELINE_VERSION,
@@ -161,6 +168,7 @@ def audio_spec_hash(ep: Episode, *, max_kbps: int, loudness_profile: str = "") -
             "max_kbps": max_kbps,
             "timeline": tl_digest,
             "loudness": loudness,
+            "processing": processing,
             "chapters": ep.chapters,
             "sources": source_refs,
             "rebuild": rebuild,

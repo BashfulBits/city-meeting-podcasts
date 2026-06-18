@@ -78,7 +78,7 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
 | **Scheduling / backlog** | `ops/workqueue.py` — the `backlog_priority` policy (comparator registry: windowed `recency`, `city_order`, `body_order`, `feed_visible_first`, …), the derived **work manifest** (`WorkItem` per episode × output `work_class`, persisted to `state/work.json`), and the `lease`/`release`/`is_leased` API — the coordination substrate for off-runner ASR/diarization workers (H6b/H9). |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
-| **Media / audio** | `media.py` — ffmpeg encode, pinned AAC encode threads, loudness (EBU R128), content-addressed upload. |
+| **Media / audio** | `media.py` — timeline-aware ffmpeg mastering, pinned threads, versioned multi-mic speech profile (high-pass → dynamic leveling → gentle compression), two-pass measured **linear** EBU R128 normalization via a temporary FLAC, and content-addressed upload. |
 | **Transcripts** | `asr.py` — forced alignment (stable-ts) / fresh transcription (faster-whisper) with align-error fallback; emits a clean **segment-cue VTT** (served via `<podcast:transcript>`) **plus a word-level JSON sidecar** (`…-asr-<recipe>.words.json`) for search/clips/diarization; version-aware re-transcribe on an `ASR_PIPELINE_VERSION` bump (provider transcripts never invalidated); both objects are content-addressed + GC-referenced. `bench.py` — `asr-bench` diagnostic. |
 | **Compute backend** | `compute/{base,local,budget,dispatch}.py` (H13 + H14a, **pre-1.0 lock**) — the pluggable GPU/ASR execution seam, peer of `storage/`. `base.py` defines `InferenceJob(task, inputs, recipe_hash)` (`task` typed for the full §5.5 verb set: ASR `transcribe`/`align`/`diarize` + reserved LLM `summarize`/`tag`/`soundbite-select`), `JobResult`/`JobHandle`, a `runtime_checkable` `Backend` protocol `run_inference(job)`, and (H14a) a `DispatchBackend` protocol (returns a `JobHandle` + `estimate_gpu_seconds`). `local.py` runs faster-whisper/stable-ts in-process (the only adapter at 1.0; **byte-identical** to the pre-refactor path). **H14a substrate:** `budget.py` is the free-tier ledger (`state/compute_budget.json`, statesync-backed) that makes exceeding a backend's `monthly_gpu_seconds`/`max_inflight` structurally impossible (the **$0 guarantee**); `dispatch.py` adds the router (fill free tiers → **overflow to `local`**), a thread-safe `DispatchCoordinator` (records a live `work.json` lease `lease_owner="modal:<job_id>"` + decrements budget — the first competitive use of the H5 lease API), and `reconcile_compute` (reap dead workers → re-queue; settle completed jobs; run at `asr.yml` start via `citypods compute reconcile`). `make_compute` selects by `compute_backend`: `local` (bypass) or `auto` (default — route `TranscriptStage` inference through the coordinator; with no external adapter registered yet, every job overflows to `local`, behavior-identical). H14b/H14c register the real Modal/Beam **dispatch** adapters into the coordinator with no stage change. |
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
@@ -105,13 +105,13 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
   cutoff before starting native transcription; abandoned ASR inference continues to occupy its worker
   slot until the native thread exits, so a stopped item does not stack unbounded CPU/RAM work or wait
   past the Actions hard cap. Audio encodes are admitted by a
-  **memory reservation** (`MemoryReservation`): each encode reserves its *predicted* peak RSS
-  (`estimate_encode_rss_bytes`, from the known-ahead served length) against `audio_memory_budget_mb`,
-  so a new encode begins only when its *future* footprint fits — a leading signal the instantaneous
-  `mem_available` check (which still governs ASR) lacks. The mid-flight kill floor
-  (`audio_ffmpeg_memory_floor_mb`) stays as the backstop, and `native_audio_max_active` is the hard
-  concurrency ceiling. Audio run #10 recalibrated the filter/loudnorm model to a 64 MiB/min served
-  coefficient with a 12,000 MiB max/unknown reservation after real jobs peaked around 9–13 GiB.
+  **memory reservation** (`MemoryReservation`): production `podcast-speech-v1` encodes reserve a fixed
+  768 MiB because both passes are streaming and the lossless intermediate lives on disk, so even an
+  all-day meeting has bounded RSS. The first pass reads provider media once and writes/measures a
+  leveled mono FLAC; the second reads that local file and applies measured linear loudnorm + AAC. The
+  old duration-scaled 64 MiB/min, 12,000 MiB max/unknown model remains only for the disabled legacy
+  dynamic-loudnorm path. The mid-flight kill floor (`audio_ffmpeg_memory_floor_mb`) stays as the
+  backstop, and `native_audio_max_active` is the hard concurrency ceiling.
 - **Backlog prioritization + async-ready dispatch** — the enrich phase orders work
   *newest-everywhere-first* across all sources by a configurable `backlog_priority` policy; audio
   re-hosting runs on the runner while transcribe/diarize are modeled as **dispatch-not-await** work

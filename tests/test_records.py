@@ -151,6 +151,19 @@ def test_audio_spec_hash_different_loudness_targets_differ():
     )
 
 
+def test_audio_spec_hash_processing_profile_changes_hash():
+    ep = _ep("g1")
+    ep.uid = "u1"
+    base = audio_spec_hash(ep, max_kbps=96, loudness_profile="ebuR128:-16LUFS")
+    processed = audio_spec_hash(
+        ep,
+        max_kbps=96,
+        loudness_profile="ebuR128:-16LUFS",
+        processing_profile="podcast-speech-v1",
+    )
+    assert base != processed
+
+
 def test_feed_hash_reacts_to_notes_but_audio_spec_does_not():
     ep = _ep("g1")
     ep.uid = "u1"

@@ -33,6 +33,7 @@ class FakeFfmpeg:
         self.chapters: list[list[dict] | None] = []
         self.timelines: list = []
         self.loudness_profiles: list[str | None] = []
+        self.processing_profiles: list[str | None] = []
         self.fail = fail
 
     def extract_audio(
@@ -43,6 +44,7 @@ class FakeFfmpeg:
         chapters=None,
         *,
         loudness_profile=None,
+        processing_profile=None,
         asset_resolver=None,
     ) -> None:
         # Expose the first source URL for backward-compat assertions
@@ -51,6 +53,7 @@ class FakeFfmpeg:
         self.chapters.append(chapters)
         self.timelines.append(timeline)
         self.loudness_profiles.append(loudness_profile)
+        self.processing_profiles.append(processing_profile)
         if self.fail:
             raise subprocess.CalledProcessError(1, "ffmpeg")
         # Write a realistic, non-empty stub: the #39 truncation guard rejects an encode under
@@ -197,6 +200,31 @@ def test_loudness_empty_string_passed_as_none_to_ffmpeg(tmp_path):
         resolve_media_url=lambda e: e.video_url,
     )
     assert ff.loudness_profiles == [None]
+
+
+def test_processing_profile_passed_to_ffmpeg_and_audio_spec(tmp_path):
+    from citypods.media import PODCAST_SPEECH_PROFILE
+
+    eps = [_ep("g1")]
+    ff = FakeFfmpeg()
+    materialize_audio(
+        _city(),
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        loudness_profile="ebuR128:-16LUFS",
+        processing_profile=PODCAST_SPEECH_PROFILE,
+        resolve_media_url=lambda e: e.video_url,
+    )
+    expected = audio_spec_hash(
+        eps[0],
+        max_kbps=MAX_KBPS,
+        loudness_profile="ebuR128:-16LUFS",
+        processing_profile=PODCAST_SPEECH_PROFILE,
+    )
+    assert ff.processing_profiles == [PODCAST_SPEECH_PROFILE]
+    assert eps[0].audio_spec_hash == expected
 
 
 def test_audio_encode_waits_for_resource_admission(tmp_path):
@@ -527,6 +555,35 @@ def test_legacy_spec_is_reused(tmp_path):
     assert stats.reused == 1 and ff.calls == []
 
 
+def test_processing_profile_invalidates_legacy_audio(tmp_path):
+    from citypods.media import PODCAST_SPEECH_PROFILE
+
+    ep = _ep("g1")
+    city = _city()
+    store = _store(tmp_path)
+    legacy_key = f"{city.provider}/{source_key(city)}/legacy.m4a"
+    _seed_object(store, legacy_key)
+    ep.audio_key = legacy_key
+    ep.hosted_audio_url = store.public_url(legacy_key)
+    ep.audio_spec_hash = "legacy"
+    ff = FakeFfmpeg()
+
+    stats = materialize_audio(
+        city,
+        [ep],
+        storage=store,
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        loudness_profile="ebuR128:-16LUFS",
+        processing_profile=PODCAST_SPEECH_PROFILE,
+        resolve_media_url=lambda e: e.video_url,
+    )
+
+    assert stats.encoded == 1
+    assert ff.processing_profiles == [PODCAST_SPEECH_PROFILE]
+    assert ep.audio_spec_hash != "legacy"
+
+
 def test_stale_record_for_missing_object_re_materializes(tmp_path):
     """Issue #116: a record claims hosted audio (matching spec) but the object isn't in storage
     — e.g. a Swagit episode whose presigned source expired. The pipeline must re-materialize,
@@ -561,6 +618,7 @@ class _FailUrls:
         chapters=None,
         *,
         loudness_profile=None,
+        processing_profile=None,
         asset_resolver=None,
     ):
         first_url = next(iter(sources_by_id.values())) if sources_by_id else ""
@@ -717,6 +775,7 @@ def test_encode_timeout_is_caught_and_tagged_timeout(tmp_path):
             chapters=None,
             *,
             loudness_profile=None,
+            processing_profile=None,
             asset_resolver=None,
         ):
             raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=2700)
@@ -1423,3 +1482,26 @@ def test_estimate_rss_unknown_length_reserves_conservatively():
     ep = _ep("u")  # no timeline, no duration, but loudnorm on → filter path, length unknown
     est = estimate_encode_rss_bytes(ep, loudness_profile="ebuR128:-16LUFS")
     assert est == _ENCODE_RSS_UNKNOWN_BYTES
+
+
+def test_estimate_rss_speech_profile_is_bounded_independent_of_duration():
+    from citypods.media import _ENCODE_RSS_STREAMING_BYTES, PODCAST_SPEECH_PROFILE
+
+    short = _ep_with_duration(60)
+    long = _ep_with_duration(20_000)
+    assert (
+        estimate_encode_rss_bytes(
+            short,
+            loudness_profile="ebuR128:-16LUFS",
+            processing_profile=PODCAST_SPEECH_PROFILE,
+        )
+        == _ENCODE_RSS_STREAMING_BYTES
+    )
+    assert (
+        estimate_encode_rss_bytes(
+            long,
+            loudness_profile="ebuR128:-16LUFS",
+            processing_profile=PODCAST_SPEECH_PROFILE,
+        )
+        == _ENCODE_RSS_STREAMING_BYTES
+    )

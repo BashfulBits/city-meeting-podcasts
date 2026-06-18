@@ -365,6 +365,7 @@ class TestDurationSemantics:
                 chapters=None,
                 *,
                 loudness_profile=None,
+                processing_profile=None,
                 asset_resolver=None,
             ):
                 dest.write_bytes(b"fake-m4a" * 1024)  # > #39 truncation-guard byte floor

@@ -154,6 +154,9 @@ class StageContext:
     # EBU R128 loudness normalization (#151). Empty string = disabled.
     # e.g. "ebuR128:-16LUFS" normalises to -16 LUFS (Apple Podcasts / Spotify speech standard).
     loudness_profile: str = ""
+    # Named pre-mastering recipe included in audio_spec_hash. ``podcast-speech-v1`` performs
+    # bounded-memory high-pass → dynamic leveling → compression before final linear loudnorm.
+    audio_processing_profile: str = ""
     # Silence-trim planner config (#111). Config flows through ctx so SilencePlanner needs no
     # constructor args and enrich_stages() needs no site_config parameter.
     trim_silence: bool = False
@@ -503,6 +506,7 @@ class AudioStage:
             ffmpeg=ctx.ffmpeg,
             max_kbps=ctx.max_kbps,
             loudness_profile=ctx.loudness_profile,
+            processing_profile=ctx.audio_processing_profile,
             resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
             stop=ctx.stop,
             source_cache=ctx.source_cache,

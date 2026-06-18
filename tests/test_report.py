@@ -478,6 +478,28 @@ def test_build_status_stale_detection(tmp_path):
     assert status["backlog"]["stale"] == 1
 
 
+def test_status_marks_legacy_audio_stale_when_processing_profile_enabled(tmp_path):
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("legacy-profile")
+    save_records(
+        tmp_path,
+        source_key(city),
+        {"a": _rec("a", hosted_url="http://cdn/a.m4a", spec_hash="legacy")},
+    )
+    site = {
+        "defaults": {
+            "audio_max_kbps": 96,
+            "audio_loudness_profile": "ebuR128:-16LUFS",
+            "audio_processing_profile": "podcast-speech-v1",
+        }
+    }
+
+    status = build_status([city], site_config=site, state_dir=tmp_path)
+
+    assert status["feeds_by_feed"][0]["stale"] == 1
+
+
 def test_build_status_audio_bytes_exact_flag(tmp_path):
     """gb_exact is False when any hosted record is missing audio.bytes."""
     from citypods.records import save_records, source_key
@@ -1119,6 +1141,7 @@ def test_audio_bytes_set_on_encode(tmp_path):
             chapters=None,
             *,
             loudness_profile=None,
+            processing_profile=None,
             asset_resolver=None,
         ):
             dest.write_bytes(b"x" * fake_size)

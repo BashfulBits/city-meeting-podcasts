@@ -295,6 +295,7 @@ def test_build_logs_audio_stage_activity_and_errors(tmp_path, fake_provider, cap
             chapters=None,
             *,
             loudness_profile=None,
+            processing_profile=None,
             asset_resolver=None,
         ):
             raise subprocess.CalledProcessError(1, "ffmpeg")
@@ -324,6 +325,7 @@ def test_build_logs_audio_hosted_count(tmp_path, fake_provider, capsys):
             chapters=None,
             *,
             loudness_profile=None,
+            processing_profile=None,
             asset_resolver=None,
         ):
             dest.write_bytes(
@@ -682,6 +684,7 @@ class _CountingFfmpeg:
         chapters=None,
         *,
         loudness_profile=None,
+        processing_profile=None,
         asset_resolver=None,
     ):
         self.calls += 1
