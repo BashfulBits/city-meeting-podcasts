@@ -159,7 +159,7 @@ def test_audio_spec_hash_processing_profile_changes_hash():
         ep,
         max_kbps=96,
         loudness_profile="ebuR128:-16LUFS",
-        processing_profile="podcast-speech-v1",
+        processing_profile="podcast-speech-v2",
     )
     assert base != processed
 

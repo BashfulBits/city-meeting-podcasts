@@ -31,19 +31,34 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
-- **Long-meeting podcast mastering is now bounded-memory while improving uneven multi-mic speech.**
-  Production audio uses the versioned `podcast-speech-v1` profile:
+- **Peak-constrained recordings no longer fail bounded linear loudness normalization.** Some
+  low-average/high-transient Granicus recordings required enough constant gain to predict +7–8 dBTP,
+  which correctly prevented FFmpeg's linear `loudnorm` from silently reverting to dynamic mode but
+  dropped the episode. The normal measured-linear path is unchanged. When peak headroom is
+  mathematically insufficient, pass 2 now applies the same constant integrated-loudness gain followed
+  by FFmpeg's short-lookahead `alimiter` at 192 kHz, then returns to 48 kHz for AAC. The limiter uses a
+  -2.5 dB ceiling to leave AAC reconstruction headroom; memory remains duration-independent because
+  only resampler and millisecond lookahead buffers are retained. Extremely high-crest-factor material
+  may land slightly below -16 LUFS rather than clip or disappear. Existing records carrying the old
+  `loudness` error code bypass their stale exponential backoff once and retry immediately; new genuine
+  measurement failures use `loudness_measurement`. This fallback changes only items that previously
+  failed, but it ships inside the `podcast-speech-v2` recipe described below.
+- **Long-meeting podcast mastering and edited timelines are now bounded-memory.** Production audio
+  uses the versioned `podcast-speech-v2` profile:
   `80 Hz high-pass → dynaudnorm → gentle compressor → final measured linear EBU R128 loudnorm
-  (-16 LUFS, -1.5 dBTP)`. Pass 1 applies the timeline and speech leveling while streaming once from
-  the provider into a temporary mono FLAC and measuring that exact signal with `ebur128`; pass 2 reads
-  the local FLAC, applies measured **linear** loudnorm, and encodes 96 kb/s AAC. This replaces the
-  one-pass dynamic `loudnorm` path whose RSS grew with recording duration and reached 9–13 GiB in Audio
-  run #10. The new path reserves a fixed 768 MiB independent of duration, retains the 1.5 GiB
-  mid-flight safety floor, and rejects sub-second edited timelines as unusable audio instead of
-  surfacing opaque ffmpeg exit 234 errors. `audio_processing_profile` is included in
-  `audio_spec_hash`; no pipeline-version constant changed, but enabling this named profile
-  automatically marks prior hashed and legacy enclosures stale and remasters them gradually through
-  the normal time-bounded audio queue.
+  (-16 LUFS, -1.5 dBTP)`. Monotonic single-source silence timelines now use one streaming selector
+  instead of parallel `atrim` branches; it switches to one-sample frames only near each boundary,
+  selects by integer 48 kHz sample PTS, and coalesces normal frames afterward. This keeps RSS bounded
+  without the cumulative frame-boundary duration drift of plain `aselect`. Pass 1 applies the timeline
+  and speech leveling while streaming once from the provider into a temporary mono FLAC and measuring
+  that exact signal with `ebur128`; pass 2 reads the local FLAC, applies measured **linear** loudnorm
+  or the bounded peak-limiter fallback, and encodes 96 kb/s AAC. Native admission is phase-specific:
+  source caching happens before a CPU slot is held, and finalization has a small dedicated executor
+  while sharing the same total FFmpeg cap. The path reserves a fixed 768 MiB independent of duration,
+  retains the 1.5 GiB mid-flight safety floor, and rejects sub-second edited timelines as unusable
+  audio. `audio_processing_profile` participates in `audio_spec_hash`; changing v1 → v2 gradually
+  invalidates and remasters already-hosted v1 artifacts through the normal wall-clock queue. No
+  separate pipeline-version constant changed.
 - **ASR shard provider-fetch outages now fall back to the persisted archive.** The `transcribe` and
   `align` lanes are best-effort transcript backfill over already-hosted audio in `episodes.json`, so a
   transient source refresh failure now loads the last-known record archive and continues ASR instead of

@@ -980,11 +980,22 @@ def build(
     ffmpeg_memory_floor_bytes = (
         int(ffmpeg_memory_floor_mb * 1024 * 1024) if ffmpeg_memory_floor_mb > 0 else None
     )
+    _native_work_gate: NativeWorkGate | None = (
+        NativeWorkGate(
+            max_audio_active=native_audio_max_active,
+            log=lambda msg: print(msg, flush=True),
+        )
+        if time_bounded and not dry_run
+        else None
+    )
+    owns_ffmpeg = ffmpeg is None
     ffmpeg = ffmpeg or CommandFfmpeg(
         max_kbps=max_kbps,
         timeout_seconds=(encode_timeout_min * 60) if encode_timeout_min > 0 else None,
         threads=ffmpeg_threads,
         memory_floor_bytes=ffmpeg_memory_floor_bytes,
+        phase_gate=_native_work_gate,
+        finalize_workers=int(defaults.get("audio_finalize_workers", 2)),
     )
     source_cache = (
         SourceCache(
@@ -996,14 +1007,6 @@ def build(
         else None
     )
     asr_abandoned_event = threading.Event() if time_bounded and not dry_run else None
-    _native_work_gate: NativeWorkGate | None = (
-        NativeWorkGate(
-            max_audio_active=native_audio_max_active,
-            log=lambda msg: print(msg, flush=True),
-        )
-        if time_bounded and not dry_run
-        else None
-    )
     # Predicted-memory admission for audio encodes (H8): reserve each encode's estimated peak RSS
     # against a budget so a new encode begins only with real headroom — a leading signal the
     # instantaneous mem_available gate lacks (a long loudnorm encode grows for minutes before it
@@ -1177,6 +1180,8 @@ def build(
                     results.append(result)
                     if entry is not None:
                         cache[result.slug] = entry
+    if owns_ffmpeg and isinstance(ffmpeg, CommandFfmpeg):
+        ffmpeg.close()
 
     # Tally source-fetch failures by provider for run_history.jsonl.  Used by
     # check_provider_error_rates in audit.py to surface provider drift before it turns deploys red.

@@ -94,7 +94,7 @@ defaults:
   # Multi-mic speech master: 80 Hz high-pass → dynaudnorm speaker leveling → gentle compressor →
   # measured linear EBU R128 normalization. The two-pass flow reads provider media once, stores a
   # temporary FLAC, and remains bounded-memory even for all-day meetings.
-  audio_processing_profile: "podcast-speech-v1"
+  audio_processing_profile: "podcast-speech-v2"
   audio_loudness_profile: "ebuR128:-16LUFS"  # final integrated target (Apple/Spotify speech norm).
                                               # The processing profile is part of audio_spec_hash:
                                               # enabling/changing its version gradually re-encodes
@@ -115,6 +115,9 @@ defaults:
                                          # Production enrich runs this as a one-core audio lane
                                          # beside ASR/resource-gated native work.
                                          # Clear to auto-calc (cpu_count // native_audio_max_active).
+  audio_finalize_workers: 2              # local pass-2 workers. Provider fetch and speech-measure
+                                         # stay on the global worker pool; completed FLACs finalize
+                                         # here, sharing native_audio_max_active's total CPU cap.
   audio_ffmpeg_memory_floor_mb: 1536     # terminate the active ffmpeg child if runner MemAvailable
                                          # drops below this floor; records a retryable audio error
                                          # instead of letting the Actions runner get killed.
