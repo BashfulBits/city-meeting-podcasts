@@ -56,6 +56,10 @@ runtime-definition changes from a digest-pinned Python base plus a checksum-pinn
 ffmpeg/ffprobe bundle. The image is pulled at step time rather than configured as a job-level
 container: if GHCR is unavailable, the job can continue on the host with the same verified static
 bundle restored through `actions/cache`; no `apt-get` or Ubuntu mirror is on the Audio critical path.
+The ASR lane reuses that checksum-pinned static ffmpeg/ffprobe cache directly on the host, while its
+multi-gigabyte Whisper weights remain outside the runtime image in the existing Actions-cache →
+Hugging Face/B2 fallback cascade. This avoids large repeated container pulls and keeps model selection
+independent from native-tool provisioning.
 Encoding/transcription can never block or redden the Pages deploy (H11b), and concurrent shards clear
 the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
 records, leaving the

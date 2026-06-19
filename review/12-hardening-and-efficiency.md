@@ -1397,6 +1397,13 @@ path, which restores/downloads and verifies the same static ffmpeg/ffprobe bundl
 runs. The scheduled/manual image workflow rebuilds and smoke-tests the runtime weekly and on definition
 changes. No pipeline version changes and no artifact backfill is triggered.
 
+The ASR workflow does not use the container image yet: recent runs showed its Python install was stable
+at roughly 75–90 seconds and cached Whisper preparation completed in seconds, while its separate Ubuntu
+ffmpeg install varied from about 1 to 40 minutes. ASR therefore restores/downloads the same
+checksum-pinned static ffmpeg bundle directly on the host and leaves Whisper weights in the established
+Actions-cache → Hugging Face/B2 cascade. This removes the demonstrated mirror dependency without
+creating a multi-gigabyte image pull per shard or coupling model changes to the runner image.
+
 ### Phase 2: Endpoint contract coordination with Audio lane
 
 `contracts.yml` currently runs in its own concurrency group and does **not** acquire Audio's

@@ -382,6 +382,10 @@ checksum-pinned static ffmpeg bundle. The image is selected at step time so a fa
 fall back to the same verified static bundle on the host; a job-level container was rejected because
 GitHub fails the job before steps run, making fallback impossible. The image build is scheduled weekly,
 also runs on runtime-definition changes, and smoke-tests Python, ffmpeg, ffprobe, boto3, and citypods.
+ASR uses the same verified static ffmpeg cache on the host, eliminating its observed 1–40 minute
+`apt-get` setup variance without embedding the multi-gigabyte Whisper model. Whisper remains in the
+existing Actions-cache/Hugging Face/B2 cascade, where cache hits prepare in seconds and model/runtime
+versions can evolve independently.
 
 **Strong Towns-focused discovery (#27/#32, rescoped).** *Problem:* grow toward where it helps most.
 *Approach:* seed discovery from cities with active **Strong Towns Local Conversations**

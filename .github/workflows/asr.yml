@@ -35,6 +35,11 @@ jobs:
         # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
         shard: [0, 1, 2, 3]
     env:
+      # ASR keeps Whisper weights in the existing Actions-cache/B2 cascade, but uses the same
+      # checksum-pinned ffmpeg runtime as Audio instead of depending on Ubuntu package mirrors.
+      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
+      FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
       # Lets the shard poll the Actions API and yield gracefully when a newer run is queued behind
       # it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
       GITHUB_TOKEN: ${{ github.token }}
@@ -70,8 +75,21 @@ jobs:
       - name: Install
         run: pip install -e ".[asr,storage]"
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Cache static ffmpeg
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-static-linux64-7.1.4-v1
+
+      - name: Install verified static ffmpeg
+        run: |
+          timeout 300 python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          "${FFMPEG_DIR}/bin/ffmpeg" -version >/dev/null
+          "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
+          echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
       # Restore + download the large-v3-turbo weights (4-step cascade in the script). The transcribe
       # lane only loads faster-whisper, never stable-ts.

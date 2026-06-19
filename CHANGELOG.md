@@ -21,8 +21,10 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   immutable FFmpeg 7.1.4 archive only after SHA-256 verification. `audio.yml` pulls that image with a
   five-minute bound and runs the current checkout inside it; if GHCR is unavailable, the shard restores
   or downloads the same checksum-pinned ffmpeg/ffprobe bundle and runs on the host. This removes
-  `apt-get update/install` and its unbounded Ubuntu-mirror failure mode from all Audio shards. No
-  pipeline version or artifact identity changes, so there is no audio backfill.
+  `apt-get update/install` and its unbounded Ubuntu-mirror failure mode from all Audio shards. ASR
+  shards reuse the same verified static ffmpeg cache directly on the host, while Whisper model weights
+  remain in their existing Actions-cache/Hugging Face/B2 cascade rather than inflating the runtime
+  image. No pipeline version or artifact identity changes, so there is no audio or transcript backfill.
 - **H14a — external-dispatch substrate + free-tier budget ledger, wired into the live ASR flow
   ([#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275)).** The dispatch half of the
   H13 compute seam now routes the transcribe/align path. New `citypods/compute/budget.py`

@@ -191,6 +191,29 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
     assert "apt-get" not in dockerfile
 
 
+def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
+    _wf, job = _job("asr.yml", job_name="asr")
+    env = job["env"]
+    image_wf, _image_job = _job("audio-runner-image.yml", job_name="build")
+
+    assert env["FFMPEG_URL"] == image_wf["env"]["FFMPEG_URL"]
+    assert env["FFMPEG_SHA256"] == image_wf["env"]["FFMPEG_SHA256"]
+    assert len(env["FFMPEG_SHA256"]) == 64
+
+    install = next(s for s in job["steps"] if s.get("name") == "Install verified static ffmpeg")
+    run = install["run"]
+    assert "timeout 300 python scripts/install_static_ffmpeg.py" in run
+    assert '--sha256 "${FFMPEG_SHA256}"' in run
+    assert '"${FFMPEG_DIR}/bin/ffmpeg" -version' in run
+    assert '"${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"' in run
+
+    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "apt-get" not in runs
+    assert "prepare_whisper.py" in runs
+    assert "docker run" not in runs
+    assert "faster-whisper-large-v3-turbo" in str(job["steps"])
+
+
 def test_deploy_is_render_only():
     """H11b: deploy.yml is a render-only job — it publishes feeds/pages and never runs the heavy
     phase, so encoding/transcription can't block or redden the Pages deploy. Guard that the enrich
