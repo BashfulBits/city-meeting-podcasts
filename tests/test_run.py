@@ -859,6 +859,11 @@ def test_enrich_shards_partition_sources_disjoint_and_exhaustive(tmp_path, fake_
     n = 2
     by_shard = {}
     for k in range(n):
+        # Each shard gets its own state dir, mirroring the real workflow where every matrix job
+        # restores the same pre-run state cache into an isolated runner — a sibling shard's
+        # mid-run writes (e.g. finishing an encode) must never be visible to another shard's
+        # weight computation within the same workflow execution.
+        (tmp_path / "site_config.yml").write_text(f"state_dir: {tmp_path / f'state-{k}'}\n")
         results = _build_phase(tmp_path, cities_dir, "enrich", ff, shard=(k, n))
         by_shard[k] = sorted(r.slug for r in results)
     # Every slug appears in exactly one shard (disjoint + exhaustive).

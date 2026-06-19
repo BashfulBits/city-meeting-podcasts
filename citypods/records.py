@@ -28,7 +28,7 @@ import hashlib
 import json
 import re
 from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.bodies import body_key, canonical_body
@@ -39,6 +39,25 @@ SCHEMA_VERSION = 2
 # Bump to force every audio file to be regenerated (e.g. a codec/loudness policy change that
 # isn't otherwise captured by the per-episode spec inputs below).
 AUDIO_PIPELINE_VERSION = "1"
+
+# Exponential backoff for repeatedly-failing materializations (issue #120): a source whose audio
+# won't resolve (e.g. a Swagit meeting with no usable media) must stop being re-tried every run,
+# or it churns the run's time + budget forever. Wait ``BACKOFF_BASE * 2**(attempts-1)``, capped at
+# ``BACKOFF_MAX``, before re-attempting. A successful host resets the counter.
+BACKOFF_BASE = timedelta(days=1)
+BACKOFF_MAX = timedelta(days=30)
+
+
+def _in_backoff(ep: Episode, now: datetime) -> bool:
+    """True if ``ep`` failed recently enough to still be inside its materialization backoff."""
+    if ep.materialize_attempts <= 0 or not ep.materialize_last_attempt:
+        return False
+    try:
+        last = datetime.fromisoformat(ep.materialize_last_attempt)
+    except ValueError:
+        return False
+    delay = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (ep.materialize_attempts - 1))
+    return now < last + delay
 
 
 def source_key(city: City) -> str:
@@ -61,9 +80,11 @@ def shard_assignment(
     until ``#sources < num_shards``.
 
     ``weights`` are advisory estimates of source work, not durable identity. ``run.py`` currently
-    passes a stable config-derived weight (number of configured feeds sharing the source) so every
-    matrix job computes the same partition even if a sibling shard pushes state while this workflow
-    is still running.
+    passes each source's *remaining* audio backlog (episodes still needing an encode under the
+    current spec, via ``pending_audio_work``), falling back to ``1.0`` for a never-crawled source
+    whose backlog is unknown — so a source that's mostly caught up doesn't keep crowding out one
+    with a real backlog, and every matrix job still computes the same partition from local state
+    even if a sibling shard pushes state while this workflow is running.
 
     Tradeoff vs. hash-mod: adding a source or changing weights can move keys to different shards.
     Harmless — records are keyed by ``source_key`` (not by shard) and the push is scoped per
@@ -236,6 +257,47 @@ def save_records(state_dir: Path, src_key: str, records: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     envelope = {"schema_version": SCHEMA_VERSION, "episodes": records}
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+
+
+def pending_audio_work(
+    state_dir: Path,
+    src_key: str,
+    *,
+    extract_audio: bool,
+    max_kbps: int,
+    loudness_profile: str,
+    processing_profile: str,
+    now: datetime | None = None,
+) -> int:
+    """Count this source's episodes that still need an audio encode, for sharding weight.
+
+    Mirrors only the local half of ``media.py``'s cheap-pass reuse check (spec match +
+    ``hosted_audio_url`` set + not backing off) — it deliberately skips that check's
+    ``storage.exists()`` probe so this stays I/O-free at shard-assignment time. An episode
+    that already has a matching, hosted spec is "finished" and shouldn't inflate the weight
+    of a source that's actually almost caught up; one that's in backoff won't be retried this
+    run either, so it's not pending work right now.
+    """
+    now = now or datetime.now(UTC)
+    pending = 0
+    for rec in load_records(state_dir, src_key).values():
+        ep = record_to_episode(rec)
+        if ep.media_kind != "hls" and not extract_audio:
+            continue
+        spec = audio_spec_hash(
+            ep,
+            max_kbps=max_kbps,
+            loudness_profile=loudness_profile,
+            processing_profile=processing_profile,
+        )
+        legacy_ok = ep.audio_spec_hash == "legacy" and not (loudness_profile or processing_profile)
+        spec_ok = bool(ep.hosted_audio_url) and (ep.audio_spec_hash == spec or legacy_ok)
+        if spec_ok:
+            continue
+        if _in_backoff(ep, now):
+            continue
+        pending += 1
+    return pending
 
 
 def referenced_audio_keys(state_dir: Path) -> set[str]:
