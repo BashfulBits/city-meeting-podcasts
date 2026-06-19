@@ -41,6 +41,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Stale-lease and release/renewal logs now name the GitHub run, job, matrix shard, and lease
+  state ([#345](https://github.com/BashfulBits/city-meeting-podcasts/issues/345)).** GH#336 already
+  stored `github_run_id`/`github_run_attempt`/`github_job` in renewable lease payloads, but
+  stale-reap logs only ever surfaced the internal `hostname:pid:uuid` owner token — Audio #33 reaped
+  two stale Granicus candidates and an operator could not tell which prior run or shard had held
+  either one. Lease payloads now also carry the writer's `K/N` matrix shard label (threaded through
+  `DistributedProviderLeasePool.configure(shard=...)` from `build()`'s existing shard tuple), and
+  stale-reap/release/renewal-failure log lines append a concise `owner=… run_id=… job=… shard=…
+  state=…` suffix built only from the fields present in the payload. Legacy or unreadable payloads
+  still reap safely via the object-modification-time fallback, with no metadata suffix. No secrets
+  are stored; payload-read caching is unchanged.
 - **The global audio queue now drains promptly after a graceful `stop()`
   ([#344](https://github.com/BashfulBits/city-meeting-podcasts/issues/344)).** The H5 PR3 global queue
   dispatches `AudioStage` once per *episode* (for true newest-everywhere-first ordering across
