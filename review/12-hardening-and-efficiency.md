@@ -1386,6 +1386,17 @@ No pipeline version changes and no existing artifact is invalidated. Deferred wo
 retries through the normal Audio lane. After merge, use at least three isolated scheduled Audio runs
 to decide whether Phase 3 request-shape work is still necessary.
 
+**Runner provisioning hardening.** Audio #33 also demonstrated that installing ffmpeg from Ubuntu
+mirrors per shard is not a bounded setup operation: three shards took 4–15 minutes and one remained in
+`apt-get update` until cancellation more than four hours later. The Audio lane now prefers a fixed GHCR
+runtime tag whose Dockerfile pins the Python base by digest and a static FFmpeg 7.1.4 archive by
+immutable release URL + SHA-256. The workflow pulls and invokes the image inside a normal runner step,
+mounting the exact checkout as `/workspace`; this deliberately avoids job-level `container:`, where an
+image-pull failure occurs before fallback steps can execute. A five-minute pull failure selects the host
+path, which restores/downloads and verifies the same static ffmpeg/ffprobe bundle and caches it for later
+runs. The scheduled/manual image workflow rebuilds and smoke-tests the runtime weekly and on definition
+changes. No pipeline version changes and no artifact backfill is triggered.
+
 ### Phase 2: Endpoint contract coordination with Audio lane
 
 `contracts.yml` currently runs in its own concurrency group and does **not** acquire Audio's

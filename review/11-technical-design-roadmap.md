@@ -375,6 +375,14 @@ changes are higher risk because prior fixes misdiagnosed Granicus media 403s as 
 those experiments behind live endpoint checks and only after the low-concurrency/no-overlap case still
 fails.
 
+**Audio runner setup hardening (implemented alongside this follow-up).** Audio #33 showed Ubuntu mirror
+fetches ranging from 4 minutes to a shard that remained in `apt-get update` for more than 4.5 hours.
+`audio.yml` therefore uses a version-pinned GHCR runtime built from a digest-pinned Python base and a
+checksum-pinned static ffmpeg bundle. The image is selected at step time so a failed registry pull can
+fall back to the same verified static bundle on the host; a job-level container was rejected because
+GitHub fails the job before steps run, making fallback impossible. The image build is scheduled weekly,
+also runs on runtime-definition changes, and smoke-tests Python, ffmpeg, ffprobe, boto3, and citypods.
+
 **Strong Towns-focused discovery (#27/#32, rescoped).** *Problem:* grow toward where it helps most.
 *Approach:* seed discovery from cities with active **Strong Towns Local Conversations**
 (<https://www.strongtowns.org/local>), prevalidate against round-one provider traps (review/02 Change 9
