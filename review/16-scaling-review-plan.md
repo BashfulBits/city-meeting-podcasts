@@ -456,6 +456,14 @@ Responsibilities:
 
 - Read only persisted records and hosted audio.
 - Dispatch/reconcile inference.
+- Treat the local ASR duration ceiling as a runner-specific admission constraint, not a catalog limit:
+  long recordings stay queued for bounded-memory external workers.
+- Prefer a combined external ASR+diarization flow when both are requested so download, decode,
+  normalization, VAD/chunk planning, timestamps, and artifact assembly are shared; the ASR and
+  diarization neural models remain distinct.
+- For chunked long audio, preserve absolute timestamps, overlap/deduplicate boundaries
+  deterministically, reconcile speaker identities meeting-wide, and publish canonical artifacts only
+  after validation.
 - Never poll provider episode lists.
 
 ##### Render workflow
@@ -1655,6 +1663,8 @@ This suggests the existing four-shard envelope could support:
 With transcription and diarization off the runner:
 
 - ASR jobs become small dispatch/reconcile jobs.
+- External workers absorb recordings beyond the local faster-whisper memory envelope and must keep
+  long-audio memory bounded through chunking where required.
 - Hosted runners stop spending hours on model inference.
 - State and provider refresh become relatively more visible.
 - Audio processing becomes the primary runner workload.

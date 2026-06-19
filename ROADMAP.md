@@ -22,7 +22,9 @@ lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247). 
 bounded-memory multi-mic audio mastering (streaming speech leveling + measured linear loudnorm) and
 **H6a** manual ASR benchmark workflow (PR #256). Phase H observability/scheduling: **H1–H4** docs +
 projection + validation gate + feed-health triage; **H5** backlog manifest + prioritization policy +
-global newest-everywhere-first enrich queue (PRs #263/#264/#265).
+global newest-everywhere-first enrich queue (PRs #263/#264/#265). The current unreleased reliability
+change adds a 4-hour local faster-whisper admission ceiling: longer recordings remain queued for H14
+external workers instead of repeatedly overflowing onto and terminating a hosted runner.
 
 ## Current phase: **H — Hardening & Efficiency** (next up)
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
@@ -37,6 +39,9 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > Granicus 403 / truncated-fetch storm the first sharded Audio run hit.)
 > Runtime/dependency update automation is tracked separately as the **1.0-M pre-release gate** below;
 > it does not reorder the H14 → H9 implementation sequence.
+> The local-ASR duration guard is a narrow H14 reliability prerequisite, not a promotion of later
+> scaling work: ship it now, then continue with Modal and Beam workers that explicitly support audio
+> longer than the local ceiling.
 >
 > **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
 > `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but

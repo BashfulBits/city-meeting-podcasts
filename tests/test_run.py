@@ -739,6 +739,7 @@ def test_asr_lane_uses_start_cutoff_and_backstop(tmp_path, fake_provider, monkey
         captured["asr_start_deadline"] = kw.get("asr_start_deadline")
         captured["asr_deadline"] = kw.get("asr_deadline")
         captured["asr_runtime_log_path"] = kw.get("asr_runtime_log_path")
+        captured["asr_local_max_duration_hours"] = kw.get("asr_local_max_duration_hours")
         return real_ctx(*a, **kw)
 
     monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
@@ -753,6 +754,7 @@ def test_asr_lane_uses_start_cutoff_and_backstop(tmp_path, fake_provider, monkey
         "  budget_safety: 0.85\n"
         "  asr_start_cutoff_minutes: 285\n"
         "  asr_backstop_minutes: 350\n"
+        "  asr_local_max_duration_hours: 3.5\n"
     )
 
     run.build(
@@ -767,6 +769,7 @@ def test_asr_lane_uses_start_cutoff_and_backstop(tmp_path, fake_provider, monkey
     assert captured["asr_start_deadline"] == pytest.approx(1000 + 285 * 60)
     assert captured["asr_deadline"] == pytest.approx(1000 + 350 * 60)
     assert captured["asr_runtime_log_path"].name == "asr_runtime_log.json"
+    assert captured["asr_local_max_duration_hours"] == 3.5
 
 
 def test_chapters_cap_defaults_unbounded_and_is_overridable(tmp_path, fake_provider, monkeypatch):

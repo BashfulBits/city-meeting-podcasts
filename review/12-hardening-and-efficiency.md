@@ -1136,15 +1136,58 @@ each provider's monthly free allotment**, which the design must *enforce*.
   The dispatcher checks remaining monthly budget + open in-flight slots, **decrements on dispatch**, and
   **reconciles actuals** on done. When an allotment is spent, that backend is skipped until the month
   resets. Exceeding the free tier is structurally impossible.
-- **Routing = fill free tiers first, overflow to `local`.** For each queued `transcript-*` item in policy
-  order: pick the first backend with budget + an open slot (Modal, then Beam); else run on-runner via
-  `local`. The in-flight claim is a **live `work.json` lease** (`lease_owner = "modal:<job_id>"`) — **this
-  is where H5's reserved leases activate.**
+- **Routing = fill free tiers first, then admit an eligible `local` fallback.** For each queued
+  `transcript-*` item in policy order: pick the first backend with budget + an open slot (Modal, then
+  Beam); only if every external backend declines does `TranscriptStage` consider on-runner `local`.
+  “Overflow to local” means “local is eligible,” not merely “no external backend accepted.” The
+  in-flight claim is a **live `work.json` lease** (`lease_owner = "modal:<job_id>"`) — **this is where
+  H5's reserved leases activate.**
+- **Local faster-whisper duration admission — implemented, unreleased.** The rolling
+  `state/asr_runtime_log.json` buffer (100 successful runtime/recording-duration ratios) protects the
+  Actions time window; it is not a peak-memory model. Consecutive exit-143 failures on approximately
+  7.2h Travis County and 6.7h Dallas recordings showed that a recording can fit the estimated
+  285m/350m window yet spike local faster-whisper memory within about 40 seconds. New
+  `asr_local_max_duration_hours` (production `4`; non-positive disables) applies only to synchronous
+  local inference. External dispatch is attempted first regardless of duration. If dispatch is
+  unavailable, out of budget/in-flight capacity, or otherwise declines, a known duration above the
+  ceiling is queued with `reason=external-required`, not failed and not entered into ASR backoff.
+  Known metadata duration is checked before the ASR semaphore/audio download; an initially unknown
+  duration is checked again after the hosted-audio probe and before inference. Genuinely unknown
+  durations preserve the prior behavior. Forks remain fully functional within their configured
+  hardware envelope; larger self-hosted machines may raise or disable the ceiling.
 - **Reconcile dead workers.** An `asr.yml`-start `compute reconcile` reaps **expired** leases (worker died
   → re-queue); a `done` item whose artifact is already present is a no-op (content-addressing makes
   re-dispatch idempotent).
 - **Diarization-ready.** The same adapters carry `task=diarize` for Phase R #7 — the workload that most
   needs the GPU (H9 measures $/speaker-hour).
+
+**Long-audio and combined external-worker requirements for H14b/H14c.**
+
+1. Modal/Beam workers must process recordings longer than the local ceiling; the local guard is not a
+   global episode limit. Long-audio processing must use bounded memory, with chunking where necessary.
+2. When ASR and diarization are both requested, prefer one external worker flow so they share one
+   download, decode/resample, temporary normalized/PCM audio, chunk/VAD plan, container/model-start
+   lifecycle, intermediate timestamps, and final word-to-speaker assembly. This is shared I/O,
+   preparation, startup, planning, and artifact coordination—not reuse of one neural model or its
+   activations; ASR and diarization generally use different models.
+3. Chunk boundaries should be speech/VAD-aware where possible, include overlap for boundary words,
+   emit absolute meeting-relative timestamps, and deduplicate overlap deterministically. Publish the
+   canonical VTT and word JSON only after full assembly and validation. Chunking/version knobs belong
+   in the transcript recipe hash. Immutable per-chunk intermediates are a later optimization only if
+   retry/parallelism economics justify them.
+4. Diarization must reconcile or cluster speaker identities meeting-wide rather than concatenating
+   independently numbered chunk speakers. Speaker assignments enrich the canonical word/segment
+   artifact. A diarization failure does not invalidate a successful transcript unless product
+   requirements explicitly change.
+5. Preserve the locked episode-level compute interface (`InferenceJob` verbs such as `transcribe` and
+   `diarize`). A worker may internally combine ASR+diarization and chunking without a breaking protocol
+   change.
+6. Future routing policy should consider external free-tier budget, backend in-flight capacity,
+   estimated local runtime, remaining Actions deadline, local duration/memory eligibility, task type
+   (especially diarization), and estimated GPU cost.
+7. Sequence: local duration guard now → Modal and Beam long-audio-compatible workers → shared external
+   ASR/diarization preparation → external chunking as required → optionally bring the bounded-memory
+   chunking engine back to `LocalBackend` later as a stronger fallback for forks.
 
 **Files.** `citypods/compute/{modal_backend,beam_backend,budget}.py`; `scripts/compute/{modal_app,beam_app}.py`;
 `citypods/compute/base.py` (the dispatch/`JobHandle` half); `citypods/stages.py` (dispatcher when
@@ -1156,9 +1199,10 @@ result-write contract round-trips an artifact onto a mock bucket); `ARCHITECTURE
 (external-worker trust boundary + secrets surface).
 
 **Acceptance.** With Modal + Beam configured, the `asr.yml` transcribe lane dispatches up to each
-free-tier budget then falls back to `local`; artifacts written by a (mocked) remote worker are reconciled
-onto the feed by the next render; `state/compute_budget.json` is never exceeded in a month; no deploy is
-ever blocked; a killed remote worker's lease expires and the item re-queues.
+free-tier budget then falls back to `local` only when locally eligible; artifacts written by a
+(mocked) remote worker are reconciled onto the feed by the next render; `state/compute_budget.json` is
+never exceeded in a month; no deploy is ever blocked; a killed remote worker's lease expires and the
+item re-queues.
 
 ---
 
