@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-18 (H8 bounded-memory audio follow-up)**
+last updated 2026-06-19 (H14 long-audio/routing design + H9 evaluation scope)**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -809,10 +809,14 @@ v2 timeline/phase recipe change triggers the gradual content-addressed remaster 
 **Problem.** After H6b shards the on-runner `local` backend and H14 adds two free-tier GPU backends, what
 is the **combined** sustainable throughput at $0, and where is the ceiling?
 
-**Design — measure the built homes against the interface (H13).** Run the H6a `bench.py` harness across
-each backend adapter and report, per option: transcript-minutes/runner-hour (or /wall-week), WER /
-alignment-failure rate, reliability (job-success %), integration/secrets surface, and **$/transcript-hour
-(target $0 inside the free tier)**.
+**Design — measure the built homes against the interface (H13).** Extend the H6a harness across each
+backend adapter and the catalog's observed duration distribution. Report throughput and reliability,
+but also local peak memory/success by duration and model, CPU/GPU real-time factor, cold start,
+download/decode, chunk overlap/stitching, retry granularity, artifact transfer/storage, free-tier
+consumption, queue/routing outcomes, transcript boundary quality, speaker consistency, and
+**$/transcript-hour** plus incremental **$/diarized speaker-hour**. Compare independent workers with
+one combined external ASR+diarization flow; do not infer shared neural-model computation from shared
+I/O/preparation.
 
 | Execution home | Adapter | Notes |
 |---|---|---|
@@ -823,7 +827,10 @@ alignment-failure rate, reliability (job-success %), integration/secrets surface
 
 **Output.** A written recommendation in this doc + ARCHITECTURE.md, with the measured numbers: the
 **combined free-tier weekly transcript ceiling** (`local`-sharded + Modal + Beam), whether it clears the
-initial backlog at the current ~80-feed catalog and at 1,000+, and the first paid/self-hosted step if not.
+initial backlog at the current ~80-feed catalog and at 1,000+, the safe local duration default, when GPU
+routing should be preferred rather than merely available, whether durable chunk intermediates are worth
+their complexity, whether combined ASR+diarization materially reduces cost, and the first paid/self-hosted
+step if free tiers do not clear inflow.
 
 **Diarization workload (Phase R #7).** Speaker diarization is the GPU-hungriest workload (pyannote v3 on
 CPU is ~3–5× slower than transcription) and rides the **same** H13 interface + H14 backends (a
@@ -833,7 +840,8 @@ transcription baseline — this is what tells Phase R whether diarization runs o
 CPU lane.
 
 **Acceptance:** a written decision with measured per-backend + combined numbers; the recommended mix
-wired (sharding via H6b, Modal/Beam via H14); diarization $/speaker-hour recorded for Phase R.
+wired (sharding via H6b, Modal/Beam via H14); local-duration/routing and chunk-persistence recommendations
+recorded; diarization $/speaker-hour and boundary/speaker-consistency results recorded for Phase R.
 
 ---
 
@@ -1117,9 +1125,12 @@ each provider's monthly free allotment**, which the design must *enforce*.
   worker writes the **content-addressed** artifact (`transcripts/<src>/<uid>-<recipe>.vtt` + `.words.json`)
   back to the **same object bucket**, then marks the manifest item `done`. The **next** deploy's `render`
   reconciles it onto the feed — exactly how a not-yet-hosted episode is handled today.
-- **`asr.yml` is the dispatcher.** With H14, the `asr.yml` workflow's transcribe lane dispatches to Modal/
-  Beam instead of running faster-whisper on-runner; the `local` adapter remains the **fallback** (budget
-  exhausted, or dispatch failure). The `audio.yml` workflow is unaffected — audio stays on-runner.
+- **`asr.yml` is the dispatcher.** With H14, the `asr.yml` workflow's transcribe lane offers work to
+  Modal/Beam before considering faster-whisper on-runner. A backend that is out of budget, at capacity,
+  missing the required task/model capability, or unable to accept the recording **declines dispatch**;
+  that is routing state, not an ASR failure. The `local` adapter is considered only after external
+  targets decline and only when both local admission guards pass. The `audio.yml` workflow is
+  unaffected — audio stays on-runner.
 - **Remote worker entrypoints** (`scripts/compute/modal_app.py`, `scripts/compute/beam_app.py`): a thin
   function running faster-whisper (transcribe) / stable-ts (align) / later pyannote (diarize), reading
   audio from the public URL and writing artifacts to the bucket via the existing storage backend (creds as
@@ -1136,12 +1147,16 @@ each provider's monthly free allotment**, which the design must *enforce*.
   The dispatcher checks remaining monthly budget + open in-flight slots, **decrements on dispatch**, and
   **reconciles actuals** on done. When an allotment is spent, that backend is skipped until the month
   resets. Exceeding the free tier is structurally impossible.
-- **Routing = fill free tiers first, then admit an eligible `local` fallback.** For each queued
-  `transcript-*` item in policy order: pick the first backend with budget + an open slot (Modal, then
-  Beam); only if every external backend declines does `TranscriptStage` consider on-runner `local`.
-  “Overflow to local” means “local is eligible,” not merely “no external backend accepted.” The
-  in-flight claim is a **live `work.json` lease** (`lease_owner = "modal:<job_id>"`) — **this is where
-  H5's reserved leases activate.**
+- **Routing = configured external policy, then admit an eligible `local` fallback.** For each queued
+  item in H5 backlog order, try configured external targets according to budget/capacity policy. The
+  policy input set must be able to include monthly/free-tier budget, in-flight capacity, backend
+  capability, recording duration, task type (especially `diarize`), estimated GPU runtime/cost,
+  backlog priority, and artifact urgency. If an external target accepts, the local duration ceiling is
+  irrelevant. If all decline, `local` is eligible only when the duration/memory ceiling **and** the
+  rolling runtime/remaining-deadline estimator both admit the job. Otherwise retain it as queued with
+  a reason such as `external-required`. Capacity/budget/capability decline must not enter transcript
+  failure backoff. The in-flight claim is a **live `work.json` lease**
+  (`lease_owner = "modal:<job_id>"`) — **this is where H5's reserved leases activate.**
 - **Local faster-whisper duration admission — implemented, unreleased.** The rolling
   `state/asr_runtime_log.json` buffer (100 successful runtime/recording-duration ratios) protects the
   Actions time window; it is not a peak-memory model. Consecutive exit-143 failures on approximately
@@ -1164,45 +1179,78 @@ each provider's monthly free allotment**, which the design must *enforce*.
 **Long-audio and combined external-worker requirements for H14b/H14c.**
 
 1. Modal/Beam workers must process recordings longer than the local ceiling; the local guard is not a
-   global episode limit. Long-audio processing must use bounded memory, with chunking where necessary.
+   global episode limit. Long-audio processing must use bounded memory, with chunking when required by
+   the model/runtime or when measurements show better throughput and retryability.
 2. When ASR and diarization are both requested, prefer one external worker flow so they share one
    download, decode/resample, temporary normalized/PCM audio, chunk/VAD plan, container/model-start
    lifecycle, intermediate timestamps, and final word-to-speaker assembly. This is shared I/O,
-   preparation, startup, planning, and artifact coordination—not reuse of one neural model or its
-   activations; ASR and diarization generally use different models.
-3. Chunk boundaries should be speech/VAD-aware where possible, include overlap for boundary words,
-   emit absolute meeting-relative timestamps, and deduplicate overlap deterministically. Publish the
-   canonical VTT and word JSON only after full assembly and validation. Chunking/version knobs belong
-   in the transcript recipe hash. Immutable per-chunk intermediates are a later optimization only if
-   retry/parallelism economics justify them.
-4. Diarization must reconcile or cluster speaker identities meeting-wide rather than concatenating
-   independently numbered chunk speakers. Speaker assignments enrich the canonical word/segment
-   artifact. A diarization failure does not invalidate a successful transcript unless product
-   requirements explicitly change.
-5. Preserve the locked episode-level compute interface (`InferenceJob` verbs such as `transcribe` and
-   `diarize`). A worker may internally combine ASR+diarization and chunking without a breaking protocol
-   change.
-6. Future routing policy should consider external free-tier budget, backend in-flight capacity,
-   estimated local runtime, remaining Actions deadline, local duration/memory eligibility, task type
-   (especially diarization), and estimated GPU cost.
-7. Sequence: local duration guard now → Modal and Beam long-audio-compatible workers → shared external
-   ASR/diarization preparation → external chunking as required → optionally bring the bounded-memory
-   chunking engine back to `LocalBackend` later as a stronger fallback for forks.
+   preparation, startup, planning, transfer avoidance, and artifact coordination—not reuse of one
+   neural model or its activations; ASR and diarization generally use different models. The transcript
+   remains independently publishable: a diarization failure cannot discard or invalidate successful
+   transcription unless a later explicit product requirement changes that contract.
+3. Use a backend/model-configurable bounded-window planner. An initial benchmark range of roughly
+   **20–30 minutes** is a starting parameter, not a fixed product contract. Prefer VAD/silence-aware
+   cuts near nominal boundaries and include overlap so speech crossing a cut is complete in at least
+   one window. No design may promise that arbitrary raw-audio cuts never intersect a word or active
+   speaker; quality comes from overlap, speech-aware boundaries, and deterministic stitching.
+4. Convert chunk-local word/segment times to the complete meeting timeline. Deduplicate overlapping
+   hypotheses deterministically using timestamps plus normalized text. Before publishing, validate
+   temporal ordering, expected coverage, duplicate density, and excessive gaps. Publish canonical VTT
+   and word JSON only after every required chunk is assembled successfully. Chunk boundaries are
+   private execution detail and must not appear in public artifact semantics.
+5. The transcript recipe hash must cover the chunk planner, target-window/overlap settings, VAD,
+   stitcher, model, and decoding versions in addition to the existing audio identity. This preserves
+   content-addressed/idempotent behavior when any long-audio semantic changes.
+6. Diarization must reconcile speaker identity across the whole meeting rather than concatenate
+   independently numbered chunk labels (`SPEAKER_00` in two chunks is not proof of identity). Use
+   overlapping diarization windows, speaker embeddings, and meeting-wide clustering/identity
+   reconciliation, then assign reconciled speaker turns to transcript words/segments. Diarization
+   enriches the canonical timing artifact; it does not require ASR text regeneration.
+7. Preserve the locked episode-level compute interface and its `transcribe`/`align`/`diarize` verbs.
+   A worker may co-lease transcript and diarization work and internally combine preparation/chunk
+   execution without adding a public task verb or breaking `InferenceJob`. Chunking remains below the
+   episode-level job boundary.
+8. Centralize audio preparation, chunk planning, timestamp rebasing, stitching, and validation so
+   Modal, Beam, future self-hosted GPU workers, and eventually `LocalBackend` can share transcript
+   semantics. Backend adapters should own transport/lifecycle, not artifact meaning.
+9. Immutable per-chunk intermediate artifacts are optional follow-up work. Do not require them for the
+   first Modal/Beam implementation if an episode-level worker is simpler; add durable chunk scheduling
+   only when H9 retry/parallelism measurements justify its storage, lease, and reconciliation cost.
 
-**Files.** `citypods/compute/{modal_backend,beam_backend,budget}.py`; `scripts/compute/{modal_app,beam_app}.py`;
+**Recommended implementation sequence (no code implied by this design update).**
+
+1. Add the configurable local-duration admission guard.
+2. Implement the first real H14 Modal and Beam adapters/workers.
+3. Require both workers to handle long audio safely.
+4. Centralize backend-independent audio preparation, chunk planning, stitching, and validation.
+5. Support combined ASR+diarization preparation when Phase R diarization lands.
+6. Add capability-, deadline-, and cost-aware routing based on H9 measurements.
+7. Add durable chunk-level intermediate artifacts only if retry/parallelism measurements justify them.
+8. Later consider reusing the bounded-memory chunking engine in `LocalBackend`, improving the fallback
+   available to forks and self-hosted installations.
+
+**Files.** `citypods/compute/{modal_backend,beam_backend,budget}.py`;
+`citypods/compute/long_audio.py` (backend-independent normalize/plan/stitch/validate contract);
+`scripts/compute/{modal_app,beam_app}.py`;
 `citypods/compute/base.py` (the dispatch/`JobHandle` half); `citypods/stages.py` (dispatcher when
 `compute_backend != local`); `citypods/ops/workqueue.py` (leases go live + reconcile-expired);
 `config/site_config.yml` (`compute_backends`); `.github/workflows/asr.yml` (dispatch + `compute reconcile`
 step; Modal/Beam tokens as secrets); `tests/test_compute_dispatch.py` (dispatch records a lease +
-decrements budget; budget-exhausted → `local` fallback; reconcile reaps an expired lease + re-queues; the
-result-write contract round-trips an artifact onto a mock bucket); `ARCHITECTURE.md` + `SECURITY.md`
+decrements budget; budget/capacity decline tries the next target and then only an eligible `local`;
+no eligible backend leaves queued work without failure backoff; reconcile reaps an expired lease +
+re-queues; the result-write contract round-trips an artifact onto a mock bucket);
+`tests/test_compute_long_audio.py` (bounded windows, absolute timestamps, overlap dedupe, validation,
+recipe invalidation, and meeting-wide speaker-reconciliation fixtures); `ARCHITECTURE.md` + `SECURITY.md`
 (external-worker trust boundary + secrets surface).
 
 **Acceptance.** With Modal + Beam configured, the `asr.yml` transcribe lane dispatches up to each
 free-tier budget then falls back to `local` only when locally eligible; artifacts written by a
 (mocked) remote worker are reconciled onto the feed by the next render; `state/compute_budget.json` is
 never exceeded in a month; no deploy is ever blocked; a killed remote worker's lease expires and the
-item re-queues.
+item re-queues. Both real workers pass a long-recording canary above the production local ceiling
+without unbounded memory; canonical transcript artifacts are published only after successful
+meeting-relative assembly/validation; dispatch unavailability remains queued and does not create an
+ASR failure/backoff record.
 
 ---
 
@@ -1541,29 +1589,44 @@ one request-shape change resolves 403s without breaking other providers.
 
 ## H9 — Combined-throughput evaluation (Diarization $/speaker-hour)
 
-**Maturity: L2→L3** (finalized benchmark scope below). Measures the three built execution homes
+**Maturity: L3** (finalized benchmark scope below). Measures the three built execution homes
 (local-sharded H6b + Modal H14b + Beam H14c) for combined free-tier transcript ceiling and diarization
 cost, guiding the decision to adopt paid backends for 1.0 launch.
 
 **Benchmark scope (fixed, reproducible):**
 
 ### Audio mix
-- 5 short meetings (15–20 min)
-- 5 medium meetings (40–60 min)
-- 5 long meetings (120+ min)
-Total: 15 meetings, representative of the 80-feed catalog's typical distribution.
+- Record the full catalog's recording-duration distribution and sample from its short, median, long,
+  and extreme-duration bands rather than treating one synthetic average as representative.
+- Keep a reproducible core set (at least 5 short, 5 medium, and 5 long meetings), and include external
+  long-audio canaries above the configured local ceiling, including the approximately 6.7h and 7.2h
+  failure class that motivated the memory guard.
+- Stratify by model and relevant audio condition so a duration conclusion is not accidentally a
+  single-source or single-codec result.
 
 ### Transcription comparison
 Test **two pipelines:**
 1. **Independent:** transcribe first, then diarize in a separate subsequent run.
-2. **Pipelined:** transcribe + diarize in the same Modal/Beam job (if supported; reveals platform-specific tradeoffs).
+2. **Combined external flow:** transcribe + diarize in one episode worker while retaining distinct
+   artifact/version state and independently publishable transcription.
 
 Measure per-backend (local, Modal, Beam):
-- **Throughput:** transcript-minutes/runner-hour (or /wall-week for external backends)
-- **Failure rate:** unsuccessful jobs (crash, timeout, quota) as % of total
-- **$/transcript-hour:** computed cost (free tier → $0; overage → actual billing)
-- **Diarization:** pyannote v3 on GPU vs CPU backends (wespeaker/speechbrain ECAPA-TDNN);
-  report **$/speaker-hour** for each.
+- **Duration envelope:** local success/failure rate and peak memory by recording duration and model.
+- **Compute throughput:** CPU and GPU real-time factor plus transcript-minutes/runner-hour or
+  sustainable wall-week.
+- **Startup and I/O:** worker cold-start, audio download, decode/resample, and temporary-storage time.
+- **Combined-flow economics:** ASR+diarization in one worker versus separate workers, including avoided
+  startup, transfer, download, and decode; do not count unrelated neural-model compute as reused.
+- **Chunking:** overlap/stitching wall time, duplicate-removal rate, excessive-gap/coverage validation,
+  and boundary transcript quality.
+- **Diarization quality:** meeting-wide speaker consistency across chunk boundaries and word/segment
+  assignment quality; pyannote v3 GPU versus CPU wespeaker/speechbrain ECAPA-TDNN.
+- **Retry economics:** cost and latency of whole-episode retry versus durable chunk-level retry.
+- **Artifact overhead:** temporary/final transfer bytes, storage requests, and storage footprint.
+- **Capacity/cost:** free-tier consumption by backend, **$/transcript-hour**, and incremental
+  **$/diarized speaker-hour**.
+- **Operations:** queue age and routing outcome by duration/task/backend, separating dispatch decline
+  (`budget`, `capacity`, `capability`, `external-required`) from accepted worker failures.
 
 ### Decision gate
 **1.0 launch requirement:** The 80-feed catalog must complete its initial backlog **within one
@@ -1572,15 +1635,24 @@ in `admin/status` after launch using burndown charts per audio step (transcribe,
 If 80-feed backlog cannot clear in <1 month, a paid backend is required; post-1.0, continue monitoring
 to decide Beam/Modal credit refresh or self-hosted GPU migration.
 
-**Files.** `citypods/bench.py` (extended with per-backend throughput, $/transcript-hour);
-`tests/test_compute_throughput.py` (fixed meeting mix, pipelined vs independent runs);
+The measured recommendation must also decide:
+
+- the default local duration ceiling by runner/model;
+- when GPU routing should be preferred rather than merely available;
+- whether chunk-level persistence repays its storage/lease/reconciliation complexity;
+- whether combined ASR+diarization materially reduces cost;
+- the first paid or self-hosted step if free tiers cannot clear ongoing inflow.
+
+**Files.** `citypods/bench.py` (extended with duration/memory, per-backend throughput, routing, and cost);
+`tests/test_compute_throughput.py` (reproducible duration-stratified mix, combined vs independent runs);
 `review/12` (findings + recommendation), `ARCHITECTURE.md` (measured capability),
 `admin/status` dashboard (burndown charts per stage, free-tier budget remaining).
 
-**Acceptance.** For each backend + pipeline: throughput, failure rate, and $/transcript-hour reported
-with 95 % CI. Diarization $/speaker-hour measured for pyannote v3 (GPU) vs CPU backends. Written
-recommendation in `review/12 §H9` + ARCHITECTURE.md naming the first paid/self-hosted step if free
-tiers don't clear the 80-feed backlog.
+**Acceptance.** For each backend + pipeline, report the measures above with sample counts and confidence
+intervals where meaningful. Record transcript boundary quality and speaker consistency, not only raw
+speed. Write the local-ceiling, preferred-routing, combined-flow, chunk-persistence, and first
+paid/self-hosted decisions in `review/12 §H9`; update ARCHITECTURE.md only with capabilities actually
+measured and shipped.
 
 ---
 
@@ -1591,14 +1663,18 @@ Modal serverless GPU, dispatching transcription (and future diarization) jobs as
 
 **Job lifecycle & error handling:**
 
-- **Spurious failures** (Modal container crash, timeout, network hiccup): automatically retry **once**
-  on the same backend. If the retry fails, fail the job hard (mark in `work.json` manifest with error
-  reason, no fallback to `local`). Do not waste compute time on a persistently broken job.
-- **Hard limits** (monthly GPU quota exhausted): fail hard immediately; do **not** attempt fallback to
-  Beam or `local`. User must address quota (wait for monthly reset, upgrade, or reduce load).
+- **Accepted-job failures** (Modal container crash, timeout, network interruption): automatically retry
+  **once** on the same backend. If the retry also fails, record an actual worker failure and release or
+  re-queue according to the existing lease/backoff policy; content addressing keeps a later retry
+  idempotent.
+- **Dispatch declines** (monthly budget unavailable, in-flight cap reached, missing capability, or
+  pre-acceptance provider unavailability): return declined without marking the transcript failed. The
+  router may try Beam, then an eligible local backend; otherwise the item remains queued.
 - **Graceful cancellation:** If workflow is cancelled or runner dies mid-dispatch, allow Modal jobs to
   complete silently. The next deploy's `render` phase reconciles any completed artifacts onto the feed.
   No cancellation API call needed (jobs are content-addressed; re-dispatch is idempotent).
+- **Long audio:** the worker uses the shared bounded-memory planner/stitcher and must pass a canary above
+  the local duration ceiling before catalog-wide enablement.
 
 **Secrets & configuration:**
 
@@ -1615,9 +1691,10 @@ minimal live integration test on CI (short 5-min audio dispatch) **only when Mod
 (path filter on `citypods/compute/modal*` + `scripts/compute/modal_app.py`). (3) Production canary:
 after merge, test on 1–2 real backlog files before enabling on full catalog.
 
-**Dispatch priority & budget:** Round-robin between Modal and Beam; when one backend's budget is
-nearly exhausted (e.g., <30 min GPU-seconds remaining), batch remaining jobs to that backend to
-maximize free-tier usage before fallback to `local`.
+**Dispatch priority & budget:** Follow the shared router policy rather than embedding transcript
+semantics in this adapter. Initial policy may prefer Modal or rotate providers, but it must preserve
+the hard monthly budget/max-inflight guarantee and expose enough estimates for later capability-,
+deadline-, and cost-aware routing.
 
 **Files.** `citypods/compute/modal_backend.py`, `scripts/compute/modal_app.py`,
 `citypods/compute/budget.py` (Modal budget ledger), `.github/workflows/asr.yml` (dispatch + compute
@@ -1626,8 +1703,9 @@ ToS, external-worker trust boundary).
 
 **Acceptance.** A Modal job is dispatched successfully; artifact (`<uid>-<recipe>.vtt` +
 `.words.json`) is written to the object bucket by the worker; the next `render` reconciles it onto the
-feed. Budget tracking prevents overage; spurious failures retry once then fail hard; workflow cancellation
-gracefully orphans in-flight jobs.
+feed. Budget tracking prevents overage; dispatch decline tries the next eligible route without failure
+backoff; accepted-job failures retry once; workflow cancellation gracefully orphans in-flight jobs;
+a recording above the local ceiling completes through bounded-memory assembly.
 
 ---
 
@@ -1637,18 +1715,18 @@ gracefully orphans in-flight jobs.
 Beam Cloud serverless GPU, dispatching transcription and future diarization jobs asynchronously.
 **Fully parallelizable with H14b** — both are thin wrappers on the same dispatch infrastructure.
 
-**Job lifecycle & error handling:** Identical to H14b (retry spurious failures once, fail hard on hard
-limits, graceful orphaning on cancellation).
+**Job lifecycle & error handling:** Identical to H14b: distinguish pre-acceptance routing declines from
+accepted-job failures, retry an accepted transient failure once, preserve leases/reconciliation, and
+support bounded-memory long audio.
 
 **Budget tracking:** Separate from Modal. `compute_budget.json` tracks `beam_budget` separately so
 differing credit periods and free-tier allotments can be managed independently. Each provider has its
 own `monthly_gpu_seconds` and `max_inflight`.
 
-**Dispatch & routing:** Round-robin between Modal and Beam (try Modal first, then Beam, then Modal
-again). When a provider's monthly budget is exhausted, **do not fallback to the other provider**; instead,
-fall back to `local` (on-runner ASR). Only fail hard when **both** Modal and Beam budgets are spent.
-When approaching a backend's credit cutoff (e.g., <30 min GPU-seconds remaining), batch remaining jobs
-to that backend to maximize free-tier usage.
+**Dispatch & routing:** Participate in the same configured target order as Modal. A Beam budget,
+capacity, or capability decline allows the router to try another external target and then only a
+locally eligible fallback. If no backend is eligible, retain the item as queued (`external-required`
+or a more specific routing reason); do not classify normal free-tier exhaustion as an ASR failure.
 
 **Secrets & configuration:** Beam API token as `secrets.BEAM_TOKEN` in GitHub Actions. Config per
 `compute_backends.beam` in `site_config.yml`: `monthly_gpu_seconds`, `max_inflight`.
@@ -1666,8 +1744,9 @@ H14c; serialization happens in the `beam_backend.py` adapter at dispatch time).
 
 **Acceptance.** A Beam job is dispatched successfully; artifact is written to the object bucket by the
 worker; the next `render` reconciles it. Budget tracking is separate from Modal; both backends' budgets
-can be managed independently. Dispatch falls back to the other backend or `local` based on budget
-availability (not provider-specific failures).
+can be managed independently. Dispatch tries the next configured external backend or an eligible
+`local` based on policy; otherwise work remains queued without transcript failure backoff. A recording
+above the local ceiling completes through the shared bounded-memory assembly path.
 
 **Admin dashboard:** Add a prominent **"Free-tier budget remaining"** visual showing:
 - Modal: % of monthly GPU-seconds used

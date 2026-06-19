@@ -1,6 +1,6 @@
 # Efficiency and Scaling Review Plan: 10 to 500 Cities
 
-**Maturity: L2 planning breakout · trigger-gated cross-cutting initiative · last updated 2026-06-18**
+**Maturity: L2 planning breakout · trigger-gated cross-cutting initiative · last updated 2026-06-19**
 
 > This is not a requirement to build ten scaling PRs at the current catalog size. It defines the
 > measurements, trigger conditions, and implementation sequence to use as breadth grows. The canonical
@@ -37,7 +37,8 @@ Promote the corresponding tranche early when any of these is observed:
 - **State targeting:** a shard downloads more than twice the bytes for its assigned sources, or an
   ordinary hot path performs a bucket-wide `state/` listing.
 - **Demand planning:** empty heavy jobs exceed 5%, long-running audio useful-work ratio falls below
-  80%, or more than 25% of heavy jobs approach the six-hour cap.
+  80%, more than 25% of heavy jobs approach the six-hour cap, or queued inference routinely has no
+  eligible backend despite unused capacity elsewhere.
 - **Source cache:** repeated downloads account for more than 10% of provider-media bytes, or retries
   commonly fail because provider bytes must be fetched again.
 - **Search/render:** one transcript change rebuilds the catalog, a city search partition exceeds the
@@ -261,6 +262,9 @@ Measure:
 - Lease recovery.
 - Staleness of last-known-good pages.
 - Number of failed workflows that result in user-visible regressions.
+- Inference routing outcomes by backend, task, duration band, and reason (`accepted`, local guard,
+  deadline guard, capacity/budget decline, retryable worker failure).
+- Queue age for local-eligible versus external-required work.
 
 #### Targets
 
@@ -269,6 +273,8 @@ Measure:
 - A killed worker loses at most its in-progress temporary transfer, not completed immutable work.
 - Backlog automatically resumes without manual state repair.
 - Each source exposes last successful refresh and data-freshness status.
+- External budget/capacity exhaustion leaves work queued without ASR failure backoff; local execution
+  occurs only when both the local duration/memory guard and runtime/deadline estimator admit it.
 
 ### 2.6 Client performance
 
@@ -824,9 +830,12 @@ A scheduled planner should:
 1. Read the catalog manifest.
 2. Refresh due providers or trigger a separate refresh matrix.
 3. Calculate ready work by class/provider/resource estimate.
-4. Determine required shard count.
-5. Emit a matrix through job outputs.
-6. Skip heavy jobs if there is no work.
+4. For inference, classify backend eligibility from task/capabilities, recording duration, external
+   budget and in-flight capacity, estimated GPU time/cost, local duration/memory safety, remaining
+   Actions time, backlog priority, and artifact urgency.
+5. Determine required shard count.
+6. Emit a matrix through job outputs.
+7. Skip heavy jobs if there is no work.
 
 Example:
 
@@ -1665,6 +1674,13 @@ With transcription and diarization off the runner:
 - ASR jobs become small dispatch/reconcile jobs.
 - External workers absorb recordings beyond the local faster-whisper memory envelope and must keep
   long-audio memory bounded through chunking where required.
+- Routing becomes a capacity-planning problem rather than a binary external/local fallback: external
+  budgets and slots, backend capabilities, task type, duration, deadline, estimated cost, queue age,
+  and artifact urgency determine placement. A temporary lack of eligible capacity is deferred work,
+  not a failed transcription.
+- A combined ASR+diarization episode worker can reduce duplicate download/decode, worker startup,
+  chunk planning, transfer, and artifact-coordination cost. H9 must measure that benefit rather than
+  assuming shared neural-model computation.
 - Hosted runners stop spending hours on model inference.
 - State and provider refresh become relatively more visible.
 - Audio processing becomes the primary runner workload.
@@ -1954,6 +1970,9 @@ document.
 18. At what point does a persistent cache save more than it costs?
 19. At what point does stable egress matter more than free runner capacity?
 20. What measured threshold should automatically recommend off-Actions media workers?
+21. What duration/model combinations are locally memory-safe, and when should GPU routing be preferred?
+22. Does combined ASR+diarization materially reduce cost after cold start, I/O, chunking, and transfer?
+23. Does chunk-level persistence save enough retry cost to justify its scheduling and storage overhead?
 
 ---
 
@@ -1972,3 +1991,5 @@ Execution of this plan should end with:
 9. Updated architecture, roadmap, design, and changelog documentation as implementation ships.
 10. A decision on whether the next scaling investment should be provider polling, state transfer,
     source-media caching, search partitioning, or external media workers.
+11. Measured inference-routing inputs: duration distribution, local memory/success envelope, external
+    cost/capacity, queue age, combined ASR+diarization economics, and chunk-persistence break-even.
