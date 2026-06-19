@@ -252,19 +252,103 @@ Grounded in the existing seams (`citypods/storage/`):
 
 ---
 
-## §7. R2-CAS spike — acceptance criteria
+## §7. R2-CAS spike — acceptance criteria & run instructions
 
-A throwaway script (not shipped) against a scratch R2 bucket via `boto3`:
+The spike lives in [`scripts/spike_r2_cas.py`](../scripts/spike_r2_cas.py) with a GHA workflow at
+[`.github/workflows/spike-r2-cas.yml`](../.github/workflows/spike-r2-cas.yml).
 
-- **Create-if-absent:** `put_object(..., IfNoneMatch="*")` succeeds when the key is absent and returns
-  **412** when it exists.
-- **CAS update:** `put_object(..., IfMatch=<etag>)` succeeds with the current ETag and returns **412** on a
-  stale ETag.
-- **Mechanism:** confirm whether botocore exposes these natively or needs a `before-send` header-injection
-  hook; capture a minimal helper signature for the `S3CompatibleStorage` CAS path.
-- **Latency:** record p50/p95 for conditional PUT / GET / HEAD from a GitHub Actions runner.
-- **Decision output (gates L3):** native CAS works ⇒ §5 uses it directly; awkward ⇒ adopt the Worker-shim
-  or lease-on-R2 fallback (§6). The spike is **independent of PR358** and can run in parallel.
+### Acceptance criteria
+
+Four tests that must all PASS before `cas_mechanism` is promoted to L3:
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | `create_if_absent_success` | `put_object(IfNoneMatch="*")` on absent key → **200** + ETag |
+| 2 | `create_if_absent_conflict` | same call on existing key → **412 PreconditionFailed** |
+| 3 | `cas_update_success` | `put_object(IfMatch=<current_etag>)` → **200** + new ETag |
+| 4 | `cas_update_stale` | `put_object(IfMatch=<stale_etag>)` → **412 PreconditionFailed** |
+
+Additionally captured:
+
+- **Mechanism:** whether boto3 accepts `IfNoneMatch`/`IfMatch` natively (boto3 ≥ 1.35) or requires a
+  `botocore` `before-send` header-injection hook (boto3 1.34). The script auto-detects and reports.
+- **Helper signature:** the recommended `put_cas()` implementation for `S3CompatibleStorage` (printed in
+  `cas_mechanism` section of the JSON report, one variant per mechanism).
+- **Latency:** p50/p95 for conditional PUT / unconditional GET / HEAD.
+
+**Decision output (gates L3):** all four tests PASS ⇒ §5 CAS extension proceeds using the reported
+mechanism. Any FAIL ⇒ adopt the Worker-shim or lease-on-R2 fallback (§6). The spike is **independent of
+PR358** and can run in parallel.
+
+### Running the spike
+
+**Prerequisites:**
+
+```
+pip install -e ".[storage]"           # boto3 included in the storage extra
+```
+
+Required env vars (same set as `r2_from_env()`):
+
+| Var | Value |
+|---|---|
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `R2_ACCESS_KEY_ID` | R2 token key ID |
+| `R2_SECRET_ACCESS_KEY` | R2 token secret |
+| `R2_BUCKET` | Target bucket (use a scratch bucket if available; spike prefixes all objects under `spike-r2-cas/<run-id>/` and deletes them on exit) |
+
+**Local run (CAS tests only, no latency):**
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET=...
+python scripts/spike_r2_cas.py --no-latency
+```
+
+**GHA run (CAS tests + GHA-runner latency — recommended for the L3 gate):**
+
+1. Ensure the four secrets are set in **repo Settings → Secrets and variables → Actions**.
+2. Go to **Actions → R2-CAS spike → Run workflow**.
+3. Leave `latency_iterations` at `20`; leave `skip_latency` unchecked.
+4. After the run completes, download the **`r2-cas-spike-results`** artifact (a JSON file).
+
+**Local run (full, with latency):**
+
+```bash
+python scripts/spike_r2_cas.py --latency-iterations 20 --output r2-cas-spike-results.json
+```
+
+### Feeding results back into this document
+
+Once you have the JSON artifact, update this section by replacing the placeholder table below with the
+actual results and bumping the doc maturity to L3:
+
+1. Open `r2-cas-spike-results.json`.
+2. Check `overall_pass` — all four tests must be `true`.
+3. Copy `cas_mechanism` (`"native"` or `"inject"`) and record it here.
+4. Copy the `helper_signature` string — this becomes the literal `put_cas()` stub in §5.
+5. Copy the latency table from `latency[*].{operation, p50_ms, p95_ms}`.
+6. Edit this document:
+   - Replace the placeholder results table (below) with real values.
+   - Update the maturity header at the top of this file: `L2 (→ L3 after the R2-CAS spike)` → `L3`.
+   - Update the status table row for "R2-CAS spike" → `L3 · Shipped (run <date>)`.
+   - In §5, replace the `put_cas` stub with the `helper_signature` from the report.
+7. Open a docs PR updating this file (no code changes required if mechanism = native).
+
+### Results (placeholder — update after running the spike)
+
+| Field | Value |
+|---|---|
+| boto3 version | _pending_ |
+| botocore version | _pending_ |
+| `cas_mechanism` | _pending_ |
+| `create_if_absent_success` | _pending_ |
+| `create_if_absent_conflict` | _pending_ |
+| `cas_update_success` | _pending_ |
+| `cas_update_stale` | _pending_ |
+| conditional PUT p50 / p95 (GHA) | _pending_ |
+| GET p50 / p95 (GHA) | _pending_ |
+| HEAD p50 / p95 (GHA) | _pending_ |
+| `overall_pass` | _pending_ |
 
 ---
 

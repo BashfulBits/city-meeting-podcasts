@@ -1,0 +1,66 @@
+name: R2-CAS spike
+
+# One-shot workflow to validate Cloudflare R2 conditional-write (CAS) support
+# via boto3/botocore and capture p50/p95 latency from a GitHub Actions runner.
+#
+# Results gate the L3 maturity of review/17 §5 (RoutingStorage + CAS extension).
+# See scripts/spike_r2_cas.py for the acceptance criteria.
+#
+# Secrets required (set in repo Settings → Secrets):
+#   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#   R2_BUCKET  — use a dedicated scratch bucket if one exists; all objects are
+#                written under spike-r2-cas/<run-id>/ and deleted on exit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      latency_iterations:
+        description: "PUT/GET/HEAD iterations for latency measurement"
+        type: number
+        default: 20
+      skip_latency:
+        description: "Skip latency measurement (faster for CAS-only debug)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install (with storage extra for boto3)
+        run: pip install -e ".[storage]"
+
+      - name: Run R2-CAS spike
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: "https://placeholder.example.com"  # not used by spike
+        run: |
+          EXTRA=""
+          if [ "${{ inputs.skip_latency }}" = "true" ]; then
+            EXTRA="--no-latency"
+          fi
+          python scripts/spike_r2_cas.py \
+            --latency-iterations "${{ inputs.latency_iterations }}" \
+            --output r2-cas-spike-results.json \
+            $EXTRA
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2-cas-spike-results
+          path: r2-cas-spike-results.json
