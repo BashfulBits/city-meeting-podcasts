@@ -53,9 +53,11 @@ from citypods.records import (
     merge_persisted,
     merge_records,
     migrate_legacy_manifests,
+    pending_audio_work,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
+    records_path,
     save_records,
     shard_assignment,
     source_key,
@@ -865,18 +867,6 @@ def build(
         cities = [c for c in cities if source_key(c) == source]
         if not cities:
             raise ValueError(f"no source with key {source!r}")
-    if shard is not None:
-        k, n = shard
-        if not (0 <= k < n):
-            raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
-        # Source-atomic weighted assignment (computed from config only, so every shard process in
-        # one workflow derives the same partition even if a sibling pushes state mid-run). Weight by
-        # the number of configured feeds/bodies sharing the source: a big multi-body source such as
-        # Dallas should stand alone before small single-feed sources get packed around it.
-        source_weights = collections.Counter(source_key(c) for c in cities)
-        assignment = shard_assignment((source_key(c) for c in cities), n, weights=source_weights)
-        cities = [c for c in cities if assignment.get(source_key(c)) == k]
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     base_url = _resolve_base_url(base_url, site_config)
@@ -889,6 +879,36 @@ def build(
     defaults = site_config.get("defaults", {})
     native_audio_max_active = int(defaults.get("native_audio_max_active", 1))
     max_kbps = int(defaults.get("audio_max_kbps", 96))
+    loudness_profile = str(defaults.get("audio_loudness_profile", ""))
+    audio_processing_profile = str(defaults.get("audio_processing_profile", ""))
+
+    if shard is not None:
+        k, n = shard
+        if not (0 <= k < n):
+            raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
+        # Source-atomic weighted assignment (computed from local state only, so every shard
+        # process in one workflow derives the same partition even if a sibling pushes state
+        # mid-run). Weight by each source's *remaining* audio work — episodes that still need an
+        # encode under the current spec, not the source's total episode count — so a source that's
+        # mostly caught up doesn't keep crowding out a source with a real backlog (#37).
+        source_city = {source_key(c): c for c in cities}
+        source_weights = {
+            key: (
+                pending_audio_work(
+                    state_dir,
+                    key,
+                    extract_audio=city.extract_audio,
+                    max_kbps=max_kbps,
+                    loudness_profile=loudness_profile,
+                    processing_profile=audio_processing_profile,
+                )
+                if records_path(state_dir, key).exists()
+                else 1.0  # never-crawled: unknown backlog, don't let it default to zero weight
+            )
+            for key, city in source_city.items()
+        }
+        assignment = shard_assignment((source_key(c) for c in cities), n, weights=source_weights)
+        cities = [c for c in cities if assignment.get(source_key(c)) == k]
     # Backlog prioritization policy (H5). Built once per run so any windowed-recency horizon is
     # evaluated against a single ``now``. Empty/absent ⇒ behavior-preserving identity order.
     backlog_policy = load_backlog_policy(site_config)
@@ -1046,8 +1066,8 @@ def build(
         # preview, whose sanity-check should finish in seconds and starts with no cached chapters.
         chapters_per_source=chapters_cap if chapters_cap is not None else 10_000,
         # Loudness normalization config (#151).
-        loudness_profile=str(defaults.get("audio_loudness_profile", "")),
-        audio_processing_profile=str(defaults.get("audio_processing_profile", "")),
+        loudness_profile=loudness_profile,
+        audio_processing_profile=audio_processing_profile,
         # Silence-trim planner config (#111).
         trim_silence=bool(defaults.get("trim_silence", False)),
         silence_noise_db=float(defaults.get("silence_noise_db", -40.0)),

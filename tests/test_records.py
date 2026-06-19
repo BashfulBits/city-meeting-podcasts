@@ -17,6 +17,7 @@ from citypods.records import (
     merge_preserving_foreign,
     merge_records,
     migrate_legacy_manifests,
+    pending_audio_work,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
@@ -191,6 +192,88 @@ def test_record_store_roundtrip(tmp_path):
     # Envelope carries a schema version for future migrations.
     raw = json.loads((tmp_path / "sources" / "src" / "episodes.json").read_text())
     assert raw["schema_version"] >= 1
+
+
+def test_pending_audio_work_counts_only_episodes_still_needing_an_encode(tmp_path):
+    done = _ep("g-done")
+    done.uid = "u-done"
+    done.hosted_audio_url = "https://cdn/u-done.m4a"
+    done.audio_spec_hash = audio_spec_hash(done, max_kbps=96)
+
+    stale_spec = _ep("g-stale")
+    stale_spec.uid = "u-stale"
+    stale_spec.hosted_audio_url = "https://cdn/u-stale.m4a"
+    stale_spec.audio_spec_hash = "an-old-spec-that-no-longer-matches"
+
+    backing_off = _ep("g-backoff")
+    backing_off.uid = "u-backoff"
+    backing_off.materialize_attempts = 1
+    backing_off.materialize_last_attempt = datetime.now(UTC).isoformat()
+
+    never_attempted = _ep("g-new")
+    never_attempted.uid = "u-new"
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-done": episode_to_record(done),
+            "u-stale": episode_to_record(stale_spec),
+            "u-backoff": episode_to_record(backing_off),
+            "u-new": episode_to_record(never_attempted),
+        },
+    )
+
+    pending = pending_audio_work(
+        tmp_path, "src", extract_audio=True, max_kbps=96, loudness_profile="", processing_profile=""
+    )
+    # Only the stale-spec and never-attempted episodes still need an encode: "done" is already
+    # hosted under the current spec, and "backoff" won't be retried this run either.
+    assert pending == 2
+
+
+def test_pending_audio_work_skips_direct_episodes_when_extraction_disabled(tmp_path):
+    direct = _ep("g-direct")
+    direct.uid = "u-direct"
+    direct.media_kind = "direct"
+    save_records(tmp_path, "src", {"u-direct": episode_to_record(direct)})
+
+    assert (
+        pending_audio_work(
+            tmp_path,
+            "src",
+            extract_audio=False,
+            max_kbps=96,
+            loudness_profile="",
+            processing_profile="",
+        )
+        == 0
+    )
+    assert (
+        pending_audio_work(
+            tmp_path,
+            "src",
+            extract_audio=True,
+            max_kbps=96,
+            loudness_profile="",
+            processing_profile="",
+        )
+        == 1
+    )
+
+
+def test_pending_audio_work_is_zero_for_unknown_source(tmp_path):
+    assert (
+        pending_audio_work(
+            tmp_path,
+            "no-such-src",
+            extract_audio=False,
+            max_kbps=96,
+            loudness_profile="",
+            processing_profile="",
+        )
+        == 0
+    )
 
 
 def test_record_to_episode_roundtrips_with_episode_to_record():

@@ -35,7 +35,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -44,7 +44,12 @@ from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers.base import ProviderError
-from citypods.records import audio_object_key, audio_spec_hash, source_key
+from citypods.records import (
+    _in_backoff,
+    audio_object_key,
+    audio_spec_hash,
+    source_key,
+)
 from citypods.resources import (
     MemoryReservation,
     NativeWorkGate,
@@ -56,13 +61,6 @@ from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, Timeline, timeline_digest
 
 CONTENT_TYPE = "audio/mp4"
-
-# Exponential backoff for repeatedly-failing materializations (issue #120): a source whose audio
-# won't resolve (e.g. a Swagit meeting with no usable media) must stop being re-tried every run,
-# or it churns the run's time + budget forever. Wait ``BACKOFF_BASE * 2**(attempts-1)``, capped at
-# ``BACKOFF_MAX``, before re-attempting. A successful host resets the counter.
-BACKOFF_BASE = timedelta(days=1)
-BACKOFF_MAX = timedelta(days=30)
 
 # Truncation guard (issue #39). A throttled/rate-limited provider can return a short response that
 # ffmpeg ``-c:a copy`` copies and exits 0 on — hosting a ~5-second clip of a multi-hour meeting that
@@ -773,18 +771,6 @@ class SourceCache:
                 self._paths[uid] = dest
                 return dest
             return None
-
-
-def _in_backoff(ep: Episode, now: datetime) -> bool:
-    """True if ``ep`` failed recently enough to still be inside its materialization backoff."""
-    if ep.materialize_attempts <= 0 or not ep.materialize_last_attempt:
-        return False
-    try:
-        last = datetime.fromisoformat(ep.materialize_last_attempt)
-    except ValueError:
-        return False
-    delay = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (ep.materialize_attempts - 1))
-    return now < last + delay
 
 
 class FfmpegRunner(Protocol):
