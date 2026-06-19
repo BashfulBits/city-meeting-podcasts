@@ -41,6 +41,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Granicus throttle circuits are now shared across Audio shards and isolated by tenant
+  ([#337](https://github.com/BashfulBits/city-meeting-podcasts/issues/337)).** The previous breaker
+  counted failures independently in each shard and opened one registrable-domain circuit, so the same
+  three provider failures could be repeated by every shard and a Fort Worth throttle could defer
+  healthy Denton or Granicus-owned Swagit work. Circuit failure/open/probe state now uses deterministic
+  ordinary storage objects protected by a separate one-slot FIFO lease. Native archive paths and
+  tenant subdomains receive stable tenant scopes; three throttles open that tenant only, while two
+  distinct tenant trips inside the cooldown window trigger a domain emergency. Exactly one shard owns
+  a half-open canary, siblings observe its recovery, and abandoned probes are reclaimable after a
+  bounded TTL. The global queue parks and releases work by tenant/domain scope. Existing Granicus caps
+  remain 1 process-local / 2 distributed, and no audio recipe, pipeline version, stored artifact, or
+  backfill changes.
 - **Granicus throttle failures no longer cause an immediate duplicate request or force every
   remaining meeting out of the run ([#337](https://github.com/BashfulBits/city-meeting-podcasts/issues/337)).**
   A 403/429 raised while `TimelineStage`/`SilencePlanner` fills the per-run source cache now records

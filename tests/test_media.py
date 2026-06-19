@@ -1785,15 +1785,17 @@ def test_circuit_deferred_telemetry_is_counted_by_media_domain():
     urls = ["https://swagit-video.granicus.com/archive/x.mp4"]
     circuit.record_rate_limited(urls)
 
-    assert circuit.record_circuit_deferred(urls) == "granicus.com"
-    assert circuit.telemetry()["granicus.com"]["circuit_deferred"] == 1
+    key = "granicus.com/tenant:swagit-video"
+    assert circuit.record_circuit_deferred(urls) == key
+    assert circuit.telemetry()[key]["circuit_deferred"] == 1
 
 
 def test_circuit_recovery_probe_success_releases_half_open_domain(monkeypatch):
     import citypods.media as media
+    import citypods.provider_circuits as circuits
 
     clock = [100.0]
-    monkeypatch.setattr(media.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(circuits.time, "monotonic", lambda: clock[0])
     circuit = media.MediaRateLimitCircuitBreaker(
         {"granicus.com": {"threshold": 1, "cooldown_seconds": 30}}
     )
@@ -1816,9 +1818,10 @@ def test_circuit_recovery_probe_success_releases_half_open_domain(monkeypatch):
 
 def test_circuit_half_open_failure_reopens_immediately(monkeypatch):
     import citypods.media as media
+    import citypods.provider_circuits as circuits
 
     clock = [100.0]
-    monkeypatch.setattr(media.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(circuits.time, "monotonic", lambda: clock[0])
     circuit = media.MediaRateLimitCircuitBreaker(
         {"granicus.com": {"threshold": 3, "cooldown_seconds": 30}}
     )
@@ -1840,8 +1843,9 @@ def test_circuit_half_open_failure_reopens_immediately(monkeypatch):
 
 def test_circuit_recovery_wait_respects_stop(monkeypatch):
     import citypods.media as media
+    import citypods.provider_circuits as circuits
 
-    monkeypatch.setattr(media.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(circuits.time, "monotonic", lambda: 100.0)
     circuit = media.MediaRateLimitCircuitBreaker(
         {"granicus.com": {"threshold": 1, "cooldown_seconds": 30}}
     )
