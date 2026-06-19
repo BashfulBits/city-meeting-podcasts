@@ -420,13 +420,19 @@ def _run_ffmpeg_guarded(
     (issue #39, :data:`citypods.http.HOST_LIMITER`) is held for the whole subprocess so a sharded
     burst of workers never opens more than the configured number of simultaneous connections to one
     provider tenant. Local-file inputs need not be passed (they resolve to no host → no-op).
+
+    The process-local :data:`citypods.http.HOST_LIMITER` slot is acquired *before* the distributed
+    lease (issue #342): a thread that's still queued behind this process's own local cap must not
+    already be holding a cross-shard slot, or one early-starting process can win every distributed
+    candidate while its other threads just wait locally, starving other shards of capacity they
+    could otherwise use.
     """
     if not memory_floor_bytes:
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
         try:
             with (
-                DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
                 HOST_LIMITER.slots(rate_limit_urls),
+                DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
                 _circuit_admission(rate_limit_circuit, rate_limit_urls),
             ):
                 result = subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
@@ -450,8 +456,8 @@ def _run_ffmpeg_guarded(
     # Memory-floor path: hold the per-host rate-limit slot (#39) for the whole monitored run so a
     # sharded burst can't open more than the configured number of simultaneous connections per host.
     with (
-        DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
         HOST_LIMITER.slots(rate_limit_urls),
+        DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
         _circuit_admission(rate_limit_circuit, rate_limit_urls),
     ):
         return _run_ffmpeg_popen_monitored(
@@ -1590,8 +1596,8 @@ def _probe_audio_stream(
     ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
     try:
         with (
-            DISTRIBUTED_PROVIDER_LEASES.slots([url]),
             HOST_LIMITER.slot(url),
+            DISTRIBUTED_PROVIDER_LEASES.slots([url]),
             _circuit_admission(rate_limit_circuit, [url]),
         ):
             out = subprocess.run(
