@@ -259,6 +259,7 @@ class StageStats:
     dispatched: int = 0  # H14a: handed to an external GPU backend (off-runner); pending next render
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     circuit_skipped: int = 0  # audio encodes skipped because the circuit breaker was open
+    circuit_keys: set[str] = field(default_factory=set)  # tenant/domain scopes for queue parking
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -537,6 +538,7 @@ class AudioStage:
             credited=ms.credited,
             rate_limited=ms.rate_limited,
             circuit_skipped=ms.circuit_skipped,
+            circuit_keys=ms.circuit_keys,
         )
 
 
@@ -658,7 +660,7 @@ class TimelineStage:
                     if result is not None:
                         current = result
                         changed = True
-            except CircuitOpenMediaFetchError:
+            except CircuitOpenMediaFetchError as exc:
                 # A planner's source-cache prefetch (e.g. SilencePlanner) found the provider
                 # circuit already open. Surface it the same way AudioStage does instead of
                 # letting it propagate to the global queue's blanket per-item catch, which would
@@ -666,6 +668,7 @@ class TimelineStage:
                 with lock:
                     stats.skipped += 1
                     stats.circuit_skipped += 1
+                    stats.circuit_keys.add(exc.circuit_key)
                 return
             except RateLimitedMediaFetchError as exc:
                 # A planner's source-cache prefetch hit a provider 403/429 (it records on the
@@ -673,7 +676,9 @@ class TimelineStage:
                 # report instead of vanishing into the global queue's blanket catch).
                 if exc.opened_domain is not None:
                     print(
-                        f"[enrich] provider throttle circuit opened domain={exc.opened_domain}",
+                        f"[enrich] provider throttle circuit opened "
+                        f"domain={exc.opened_domain.split('/', 1)[0]} "
+                        f"circuit={exc.opened_domain}",
                         flush=True,
                     )
                 with lock:

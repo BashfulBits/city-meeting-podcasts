@@ -464,7 +464,14 @@ def test_global_queue_parks_circuit_items_then_releases_after_canary(tmp_path, m
         attempts[uid] = attempts.get(uid, 0) + 1
         calls.append(uid)
         if uid in {"uid-parked-1", "uid-parked-2"} and attempts[uid] == 1:
-            return [StageStats("audio", skipped=1, circuit_skipped=1)]
+            return [
+                StageStats(
+                    "audio",
+                    skipped=1,
+                    circuit_skipped=1,
+                    circuit_keys={"granicus.com"},
+                )
+            ]
         return [StageStats("audio", ran=1, encoded=1)]
 
     monkeypatch.setattr(run, "run_stages", _run_stages)

@@ -47,6 +47,8 @@ provider_rate_limit_circuit_breakers:
   granicus.com:
     threshold: 3
     cooldown_seconds: 1800
+    emergency_tenants: 2  # tenant circuits are isolated; only 2 distinct tenant trips open domain-wide
+    probe_ttl_seconds: 900  # another shard may reclaim an abandoned half-open canary after 15 min
 
 # Backlog prioritization (H5). An ordered list of comparator keys applied to the work backlog;
 # ties fall through to the next key. With no list set, ordering is the behavior-preserving default.

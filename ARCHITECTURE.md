@@ -198,13 +198,22 @@ Hard-won facts that bite anyone adding/debugging providers:
   payload expiry as authoritative; modification time plus TTL is the compatibility fallback. Keys are
   registrable domains so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the
   tenant sees.
-- **Provider circuit admission happens at the subprocess boundary.** Audio first checks the run-local
-  circuit before entering expensive work, then checks again after distributed and process-local
-  provider slots are acquired and immediately before ffmpeg/ffprobe starts. A circuit that opens while
-  a worker waits therefore defers that item without recording a materialization failure/backoff. The
-  closed→open transition is atomic per cooldown, and per-domain run telemetry records direct
-  throttles, trips, circuit deferrals, recovery probes/recoveries, lease acquisition/wait/renewal, and
-  stale-owner cleanup.
+- **Provider circuit admission happens at the subprocess boundary and is shared across Audio
+  shards.** Audio first checks the circuit before entering expensive work, then refreshes its
+  authoritative storage marker after distributed and process-local provider slots are acquired and
+  immediately before ffmpeg/ffprobe starts. Circuit counters/open markers use deterministic ordinary
+  storage objects; a separate one-slot FIFO provider lease serializes mutations because the storage
+  API has no compare-and-swap primitive. A circuit that opens while a worker waits therefore defers
+  that item without recording a materialization failure/backoff, and all shards observe the same
+  threshold/cooldown state.
+- **Granicus circuits isolate tenants before escalating domain-wide.** Native archive paths identify
+  their tenant (`archive-video.granicus.com/<tenant>/…`); tenant subdomains and the Granicus-owned
+  Swagit media host receive stable tenant keys under the shared `granicus.com` domain. Three direct
+  throttles open only that tenant's circuit. Two distinct tenant trips within the cooldown window open
+  the emergency domain circuit. A domain marker supersedes tenant markers until one storage-claimed
+  half-open canary succeeds; an abandoned canary can be reclaimed after its probe TTL. Per-scope run
+  telemetry records direct throttles, trips, circuit deferrals, recovery probes/recoveries, while the
+  existing domain entry continues to carry lease acquisition/wait/renewal and stale-owner cleanup.
 - **Planner throttles are the materialization attempt; Audio does not immediately repeat them.**
   `TimelineStage` can fetch provider media through `SilencePlanner`/`SourceCache` before `AudioStage`.
   A typed 403/429 there records one episode materialization attempt/backoff and halts that episode's
@@ -229,7 +238,7 @@ Hard-won facts that bite anyone adding/debugging providers:
   starving other shards of capacity they could otherwise use.
 - **The circuit is recorded/opened at the subprocess boundary, before its provider lease is released
   (issue #343).** `_raise_if_rate_limited` classifies a throttled ffmpeg/ffprobe exit and updates the
-  run-local circuit breaker from inside the same `with` that still holds the `HOST_LIMITER` and
+  shared circuit breaker from inside the same `with` that still holds the `HOST_LIMITER` and
   distributed-lease slots, for both the `subprocess.run` and monitored/`Popen` paths. Recording it only
   at the higher-level materialization caller — after that `with` had already exited — left a window
   where a queued waiter could acquire the just-released lease, pass the still-closed circuit check, and

@@ -1307,8 +1307,9 @@ arg on `_run_ffmpeg_guarded`).
 - 403-as-rate-limit lifted into the shared retry (`403` in `_ClampedRetry.status_forcelist`); the bespoke
   `(0, 0.5, 1.5, 3.0)` loop in `GranicusProvider.resolve_media_url` removed.
 - ffmpeg/ffprobe 403/429 stderr is classified as `rate_limited`; source-cache throttles no longer
-  immediately retry the same URL through the direct render fallback, and a run-local circuit breaker
-  pauses new work for a repeatedly throttled provider domain.
+  immediately retry the same URL through the direct render fallback, and a circuit breaker (initially
+  run-local; storage-shared and tenant-scoped in the Granicus follow-up below) pauses new work for a
+  repeatedly throttled provider domain.
 - **Beyond the original scope** (the regressions the run surfaced): truncation guard
   (`_guard_against_truncated_audio` — encode < 50 % of feed-declared duration → #120 backoff, not
   hosted), balanced `records.shard_assignment` (source-atomic greedy packing; replaces hash-mod
@@ -1377,7 +1378,7 @@ logged repeated circuit-open transitions. The implementation therefore:
   without object reads);
 - records owner plus GitHub run/job metadata for stale-owner diagnosis and cleans up a candidate if
   acquisition exits by exception;
-- rechecks the run-local provider circuit after distributed/local slots are acquired and immediately
+- rechecks the shared provider circuit after distributed/local slots are acquired and immediately
   before ffmpeg/ffprobe starts, treating a newly opened circuit as deferred rather than failed;
 - makes the closed→open transition atomic for one trip per cooldown and records per-domain direct
   throttle, trip, circuit-deferral, lease acquisition, total/max wait, renewal, and stale-reap metrics.
@@ -1454,20 +1455,38 @@ stop signal cancels the wait, so recovery never overrides the wall-clock or supe
 Run-history convenience totals now sum throttle/deferral events across the whole audio stage chain,
 including planner-stage source-cache requests, instead of reporting only AudioStage.
 
-New breaker telemetry adds `recovery_probes` and `recoveries`. Existing `rate_limited`,
-`circuit_trips`, and `circuit_deferred` counters remain cumulative. No audio recipe, object identity,
-or pipeline version changes; existing artifacts are untouched and only future attempts use this
-recovery behavior.
+The breaker is storage-coordinated across Audio shards rather than run-local. Deterministic failure,
+open, and domain-trip JSON objects are mutated under a separate one-slot FIFO lease, preserving the
+ordinary-object/B2-compatible coordination model without assuming compare-and-swap. Native Granicus
+archive paths derive a tenant from `/<tenant>/<object>`; tenant subdomains and the Granicus-owned
+Swagit media host use the same stable tenant-scope vocabulary. The configured threshold opens only
+that tenant. Two distinct tenant trips inside one cooldown window open the emergency
+`granicus.com` circuit. The domain marker supersedes tenant state for admission and can be probed by
+an already-parked tenant item, so a late escalation does not strand earlier queue groups.
+
+Half-open ownership is also shared: one shard atomically changes the marker to `probing`, siblings
+wait for its result, and a probe abandoned by a dead shard is reclaimable after
+`probe_ttl_seconds`. A successful probe deletes the shared marker and siblings discard stale local
+open caches on their next boundary refresh; a throttled domain canary reopens the domain immediately
+without requiring two fresh tenant trips. The queue retains circuit keys in stage statistics and
+releases only the matching tenant/domain bucket, avoiding cross-tenant suppression.
+
+New breaker telemetry adds `recovery_probes` and `recoveries`, keyed by tenant/domain circuit scope.
+Existing `rate_limited`, `circuit_trips`, and `circuit_deferred` counters remain cumulative. Existing
+lease telemetry remains at the registrable-domain key. No audio recipe, object identity, or pipeline
+version changes; existing artifacts are untouched and only future attempts use this recovery behavior.
 
 **Abort & escalation condition:** If a single audio file is **attempted across 8+ materialize runs
 without completing**, flag it as a high-priority GH issue (stuck download, needs investigation). Do
 **not** prototype off-GitHub-Actions solutions at this phase.
 
-**Files.** `config/site_config.yml` (`provider_distributed_leases`, `provider_rate_limits`);
+**Files.** `config/site_config.yml` (`provider_distributed_leases`, `provider_rate_limits`,
+`provider_rate_limit_circuit_breakers`);
 `.github/workflows/audio.yml` + `contracts.yml` (coordination gates);
 `.github/workflows/granicus-probe.yml` + `scripts/probe_granicus_sustained.py` (manual sustained
-experiment); `citypods/media.py`, `stages.py`, and `run.py` (single-attempt accounting, half-open
-recovery, parked queue); `citypods/provider_leases.py` (metrics); `citypods/report/status.py`
+experiment); `citypods/provider_circuits.py`, `media.py`, `stages.py`, and `run.py` (shared
+tenant/domain state, single-attempt accounting, half-open recovery, parked queue);
+`citypods/provider_leases.py` (coordination primitive + metrics); `citypods/report/status.py`
 (dashboard flags + budget-remaining visuals).
 
 **Acceptance.** Phase 1: backlog drain rate stable, 403 rate <5% (success ≥95%). Phase 2: contracts

@@ -31,17 +31,17 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import urlsplit
 
 from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
+from citypods.provider_circuits import MediaRateLimitCircuitBreaker
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers.base import ProviderError
 from citypods.records import (
@@ -223,192 +223,12 @@ class CircuitOpenMediaFetchError(ProviderError):
 
     code = "circuit_open"
 
-    def __init__(self, domain: str):
-        self.domain = domain
-        super().__init__(f"provider throttle circuit open domain={domain}")
-
-
-@dataclass(frozen=True)
-class RateLimitCircuitRule:
-    threshold: int = 3
-    cooldown_seconds: float = 1800.0
-
-
-class MediaRateLimitCircuitBreaker:
-    """Run-local provider circuit breaker for repeated media throttling failures."""
-
-    def __init__(self, config: Mapping[str, object] | None = None) -> None:
-        self._rules: dict[str, RateLimitCircuitRule] = {}
-        for domain, raw in (config or {}).items():
-            rule = _parse_circuit_rule(raw)
-            if rule is not None:
-                self._rules[str(domain).strip().lower()] = rule
-        self._failures: dict[str, int] = {}
-        self._open_until: dict[str, float] = {}
-        self._total_rate_limited: dict[str, int] = {}
-        self._total_circuit_trips: dict[str, int] = {}
-        self._total_circuit_deferred: dict[str, int] = {}
-        self._half_open: set[str] = set()
-        self._total_recovery_probes: dict[str, int] = {}
-        self._total_recoveries: dict[str, int] = {}
-        self._lock = threading.Lock()
-
-    def has_rules(self) -> bool:
-        return bool(self._rules)
-
-    def telemetry(self) -> dict[str, dict[str, int]]:
-        """Return cumulative per-domain 403 and circuit-trip counts for run_history.
-
-        ``rate_limited`` is the total number of ``record_rate_limited`` calls (one per 403 encode
-        failure); ``circuit_trips`` is the number of times the circuit actually opened (a trip
-        causes the remainder of the run's Granicus work to be circuit-skipped). Separate from
-        ``_failures`` which resets on success/reopen.
-        """
-        with self._lock:
-            return {
-                domain: {
-                    "rate_limited": self._total_rate_limited.get(domain, 0),
-                    "circuit_trips": self._total_circuit_trips.get(domain, 0),
-                    "circuit_deferred": self._total_circuit_deferred.get(domain, 0),
-                    "recovery_probes": self._total_recovery_probes.get(domain, 0),
-                    "recoveries": self._total_recoveries.get(domain, 0),
-                }
-                for domain in self._rules
-                if self._total_rate_limited.get(domain, 0)
-                or self._total_circuit_trips.get(domain, 0)
-                or self._total_circuit_deferred.get(domain, 0)
-                or self._total_recovery_probes.get(domain, 0)
-                or self._total_recoveries.get(domain, 0)
-            }
-
-    def open_for(self, urls: Sequence[str]) -> str | None:
-        with self._lock:
-            for domain in self._domains_for(urls):
-                # Expiry makes a domain *eligible* for one explicit half-open probe; it does not
-                # silently release every queued worker. The global queue claims that probe through
-                # wait_for_recovery_probe(), preventing a post-cooldown thundering herd.
-                if domain in self._open_until:
-                    return domain
-        return None
-
-    def record_success(self, urls: Sequence[str]) -> None:
-        with self._lock:
-            for domain in self._domains_for(urls):
-                if domain in self._half_open:
-                    self._total_recoveries[domain] = self._total_recoveries.get(domain, 0) + 1
-                    self._half_open.discard(domain)
-                self._failures[domain] = 0
-
-    def record_rate_limited(self, urls: Sequence[str]) -> str | None:
-        now = time.monotonic()
-        opened: str | None = None
-        with self._lock:
-            for domain in self._domains_for(urls):
-                rule = self._rules[domain]
-                self._total_rate_limited[domain] = self._total_rate_limited.get(domain, 0) + 1
-                until = self._open_until.get(domain)
-                if until is not None and now < until:
-                    continue
-                if until is not None:
-                    self._open_until.pop(domain, None)
-                    self._failures[domain] = 0
-                half_open = domain in self._half_open
-                if half_open:
-                    self._half_open.discard(domain)
-                count = rule.threshold if half_open else self._failures.get(domain, 0) + 1
-                self._failures[domain] = count
-                if count >= rule.threshold:
-                    self._open_until[domain] = now + rule.cooldown_seconds
-                    self._total_circuit_trips[domain] = self._total_circuit_trips.get(domain, 0) + 1
-                    opened = domain
-        return opened
-
-    def record_circuit_deferred(self, urls: Sequence[str]) -> str | None:
-        """Record one work item deferred because its provider circuit was open."""
-        domain = self.open_for(urls)
-        if domain is None:
-            return None
-        with self._lock:
-            self._total_circuit_deferred[domain] = self._total_circuit_deferred.get(domain, 0) + 1
-        return domain
-
-    def wait_for_recovery_probe(
-        self,
-        *,
-        stop: Callable[[], bool] | None = None,
-        sleep: Callable[[float], None] = time.sleep,
-        poll_seconds: float = 1.0,
-    ) -> str | None:
-        """Wait until the earliest open circuit may run one half-open recovery probe.
-
-        The global work queue calls this only after ordinary provider work has drained. Returning a
-        domain claims exactly one canary opportunity: a 403/429 reopens immediately, while a
-        successful media materialization records a recovery and releases the parked work.
-        """
-        while True:
-            if stop is not None and stop():
-                return None
-            now = time.monotonic()
-            with self._lock:
-                pending = [
-                    (until, domain)
-                    for domain, until in self._open_until.items()
-                    if domain not in self._half_open
-                ]
-                if not pending:
-                    return None
-                until, domain = min(pending)
-                remaining = until - now
-                if remaining <= 0:
-                    self._open_until.pop(domain, None)
-                    self._failures[domain] = 0
-                    self._half_open.add(domain)
-                    self._total_recovery_probes[domain] = (
-                        self._total_recovery_probes.get(domain, 0) + 1
-                    )
-                    return domain
-            sleep(max(0.01, min(poll_seconds, remaining)))
-
-    def recovery_succeeded(self, domain: str) -> bool:
-        """Return whether a claimed half-open probe closed successfully."""
-        with self._lock:
-            return domain not in self._half_open and domain not in self._open_until
-
-    def _domains_for(self, urls: Sequence[str]) -> list[str]:
-        domains: set[str] = set()
-        for url in urls:
-            host = (urlsplit(url).hostname or "").lower()
-            domain = self._domain_for(host)
-            if domain is not None:
-                domains.add(domain)
-        return sorted(domains)
-
-    def _domain_for(self, host: str) -> str | None:
-        best: str | None = None
-        for domain in self._rules:
-            if host == domain or host.endswith("." + domain):
-                if best is None or len(domain) > len(best):
-                    best = domain
-        return best
-
-
-def _parse_circuit_rule(raw: object) -> RateLimitCircuitRule | None:
-    if isinstance(raw, Mapping):
-        try:
-            threshold = int(raw.get("threshold", 0))
-        except (TypeError, ValueError):
-            return None
-        if threshold <= 0:
-            return None
-        return RateLimitCircuitRule(
-            threshold=threshold,
-            cooldown_seconds=float(raw.get("cooldown_seconds", 1800.0)),
+    def __init__(self, circuit_key: str):
+        self.circuit_key = circuit_key
+        self.domain = circuit_key.split("/", 1)[0]
+        super().__init__(
+            f"provider throttle circuit open domain={self.domain} circuit={circuit_key}"
         )
-    try:
-        threshold = int(raw)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return None
-    return RateLimitCircuitRule(threshold=threshold) if threshold > 0 else None
 
 
 def record_materialize_failure(
@@ -470,9 +290,9 @@ def _circuit_admission(
 ):
     """Recheck the breaker after provider slots are held, immediately before subprocess start."""
     if circuit is not None:
-        domain = circuit.open_for(urls)
-        if domain is not None:
-            raise CircuitOpenMediaFetchError(domain)
+        circuit_key = circuit.open_for(urls, refresh=True)
+        if circuit_key is not None:
+            raise CircuitOpenMediaFetchError(circuit_key)
     yield
 
 
@@ -1807,6 +1627,7 @@ class MaterializeStats:
     bytes_written: int = 0  # total bytes of objects uploaded this run (for cost accounting)
     rate_limited: int = 0  # encode attempts that hit HTTP 403 / provider throttle (GH#300)
     circuit_skipped: int = 0  # encodes skipped because the circuit breaker was open
+    circuit_keys: set[str] = field(default_factory=set)  # tenant/domain scopes that deferred work
 
 
 def _should_host(episode: Episode, city: City) -> bool:
@@ -2140,16 +1961,17 @@ def materialize_audio(
                 if ep.sources:
                     source_urls.extend(src.ref for src in ep.sources if src.ref not in source_urls)
                 if rate_limit_circuit is not None:
-                    open_domain = rate_limit_circuit.record_circuit_deferred(source_urls)
-                    if open_domain is not None:
+                    circuit_key = rate_limit_circuit.record_circuit_deferred(source_urls)
+                    if circuit_key is not None:
                         with lock:
                             stats.skipped_budget += 1
                             stats.circuit_skipped += 1
+                            stats.circuit_keys.add(circuit_key)
                         print(
                             f"[enrich] audio encode skipped slug={city.slug} "
                             f"provider={city.provider} source={src_key} uid={label} "
                             f"guid={ep.guid}: provider throttle circuit open "
-                            f"domain={open_domain}",
+                            f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key}",
                             flush=True,
                         )
                         return
@@ -2229,10 +2051,15 @@ def materialize_audio(
             )
         except CircuitOpenMediaFetchError as exc:
             if rate_limit_circuit is not None:
-                rate_limit_circuit.record_circuit_deferred(source_urls)
+                circuit_key = (
+                    rate_limit_circuit.record_circuit_deferred(source_urls) or exc.circuit_key
+                )
+            else:
+                circuit_key = exc.circuit_key
             with lock:
                 stats.skipped_budget += 1
                 stats.circuit_skipped += 1
+                stats.circuit_keys.add(circuit_key)
             print(
                 f"[enrich] audio encode skipped slug={city.slug} provider={city.provider} "
                 f"source={src_key} uid={label} guid={ep.guid}: {exc}",
@@ -2261,7 +2088,8 @@ def materialize_audio(
                     )
                     if opened is not None:
                         print(
-                            f"[enrich] provider throttle circuit opened domain={opened}",
+                            f"[enrich] provider throttle circuit opened "
+                            f"domain={opened.split('/', 1)[0]} circuit={opened}",
                             flush=True,
                         )
             # Record the failed attempt so this episode backs off (exponentially) instead of being

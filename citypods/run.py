@@ -786,16 +786,36 @@ def _run_enrich_global_queue(
                 if any(s.circuit_skipped for s in stats)
             ]
             if parked and ctx.rate_limit_circuit is not None:
+                parked_by_key: dict[str, list[tuple[tuple[str, Episode], list]]] = (
+                    collections.defaultdict(list)
+                )
+                for entry in parked:
+                    _item, stats = entry
+                    for circuit_key in {
+                        key for stat in stats for key in getattr(stat, "circuit_keys", set())
+                    }:
+                        parked_by_key[circuit_key].append(entry)
                 print(
-                    f"[enrich] circuit parked: {len(parked)} item(s); "
+                    f"[enrich] circuit parked: {len(parked)} item(s), "
+                    f"{len(parked_by_key)} tenant/domain scope(s); "
                     "other provider work drained before recovery probe",
                     flush=True,
                 )
-                domain = ctx.rate_limit_circuit.wait_for_recovery_probe(stop=ctx.stop)
-                if domain is not None:
-                    canary_item, canary_deferred = parked[0]
+                remaining_keys = list(parked_by_key)
+                while remaining_keys:
+                    circuit_key = ctx.rate_limit_circuit.wait_for_recovery_probe(
+                        keys=remaining_keys, stop=ctx.stop
+                    )
+                    if circuit_key is None:
+                        break
+                    scoped_parked = parked_by_key.get(circuit_key, [])
+                    if not scoped_parked:
+                        remaining_keys.remove(circuit_key)
+                        continue
+                    canary_item, canary_deferred = scoped_parked[0]
                     print(
-                        f"[enrich] circuit recovery probe start domain={domain} "
+                        f"[enrich] circuit recovery probe start "
+                        f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key} "
                         f"source={canary_item[0]} uid={canary_item[1].uid}",
                         flush=True,
                     )
@@ -804,10 +824,11 @@ def _run_enrich_global_queue(
                         s.rate_limited or s.circuit_skipped for s in canary_result
                     ):
                         pipeline.resolve_parked_stats(canary_deferred)
-                    if ctx.rate_limit_circuit.recovery_succeeded(domain):
+                    if ctx.rate_limit_circuit.recovery_succeeded(circuit_key):
                         print(
-                            f"[enrich] circuit recovery probe succeeded domain={domain}; "
-                            f"releasing={len(parked) - 1}",
+                            f"[enrich] circuit recovery probe succeeded "
+                            f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key}; "
+                            f"releasing={len(scoped_parked) - 1}",
                             flush=True,
                         )
 
@@ -819,13 +840,15 @@ def _run_enrich_global_queue(
                             return retry_stats
 
                         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                            list(pool.map(_retry_parked, parked[1:]))
+                            list(pool.map(_retry_parked, scoped_parked[1:]))
                     else:
                         print(
-                            f"[enrich] circuit recovery probe failed domain={domain}; "
-                            f"remaining_parked={len(parked) - 1}",
+                            f"[enrich] circuit recovery probe failed "
+                            f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key}; "
+                            f"remaining_parked={len(scoped_parked) - 1}",
                             flush=True,
                         )
+                    remaining_keys.remove(circuit_key)
             print("[enrich] audio pass done", flush=True)
         if transcript_stages:
             # Decoupled from the audio pass: only episodes that now have hosted audio.
@@ -1077,7 +1100,10 @@ def build(
         else None
     )
     _rate_limit_circuit: MediaRateLimitCircuitBreaker | None = MediaRateLimitCircuitBreaker(
-        site_config.get("provider_rate_limit_circuit_breakers", {})
+        site_config.get("provider_rate_limit_circuit_breakers", {}),
+        storage=storage if not dry_run else None,
+        log=lambda msg: print(msg, flush=True),
+        shard=f"{shard[0]}/{shard[1]}" if shard is not None else None,
     )
     if not _rate_limit_circuit.has_rules():
         _rate_limit_circuit = None
