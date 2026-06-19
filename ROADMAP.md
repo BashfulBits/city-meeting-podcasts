@@ -35,6 +35,8 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > is pluggable" ships proven by two live GPU adapters before 1.0. (**#39** per-provider rate limiting
 > shipped in [#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274) — it fixed the
 > Granicus 403 / truncated-fetch storm the first sharded Audio run hit.)
+> Runtime/dependency update automation is tracked separately as the **1.0-M pre-release gate** below;
+> it does not reorder the H14 → H9 implementation sequence.
 >
 > **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
 > `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but
@@ -103,7 +105,21 @@ Phase **H** green (per the exit criteria above) + **#52** content permanence (sh
 validation gate (H3) + **#55** front-end design cycle + **#50** accessibility + the **execution-backend
 interface locked** (so post-1.0 compute scaling — Modal / Kaggle / self-hosted / AWS — is adapter-only;
 see VISION "Compute is pluggable" and the pluggable-compute initiative in
-[`review/11`](review/11-technical-design-roadmap.md)).
+[`review/11`](review/11-technical-design-roadmap.md)) + the **1.0-M runtime-maintenance gate**.
+
+**1.0-M — automated runtime/dependency maintenance (required before dropping beta).**
+
+- Enable Dependabot update PRs for Python dependencies, Docker base images, and GitHub Actions.
+- Build the runtime image from reproducible Python dependency constraints rather than resolving
+  floating compatible versions on every rebuild.
+- Run a monthly FFmpeg release check that opens a PR updating the immutable download URL and checksum;
+  that PR must pass the image build and FFmpeg smoke test before merge.
+- Keep the weekly scheduled GHCR rebuild as a verification/rebuild mechanism for the pinned inputs,
+  not as an implicit updater.
+
+Acceptance: routine security/version maintenance arrives as reviewable PRs with passing smoke tests;
+the maintainer does not need a separate calendar reminder to discover new base-image, package, action,
+or FFmpeg releases.
 
 ## Beyond 1.0 (the long-horizon phases)
 Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](review/11-technical-design-roadmap.md):

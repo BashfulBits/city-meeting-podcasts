@@ -112,6 +112,12 @@ sync · #20 video enclosures (partial).
 | **H14 external transcription adapters** | new, #7-adjacent | L3 | **H14a substrate Shipped** ([#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275)). **H14b (Modal)** + **H14c (Beam)** detailed for development: spurious-error retry-once then fail-hard policy; hard-limit quota → fallback to other backend then `local`; round-robin dispatch with smart batching near quota exhaustion; separate budget ledgers per provider; secrets via GitHub Actions. Testing: mock backend for unit tests, minimal live integration CI test (path-filtered to Modal/Beam code changes only), production canary post-merge. Admin dashboard: prominent free-tier budget-remaining visual (% GPU-seconds used, no auto-ticket on quota exhaustion—expected operational behavior). Design: [review/12 §H14b](12-hardening-and-efficiency.md#h14b--modal-transcription-adapter-async-dispatch-backend) + [§H14c](12-hardening-and-efficiency.md#h14c--beam-transcription-adapter-async-dispatch-backend-parallel-with-h14b). Mac-mini/AWS post-1.0. |
 | H15 transcript-quality metric (periodic caption-trust scoring) | #1-adjacent, #7 | L2 | **Committed** · turn the unmeasured "served captions are faithful enough to align against" assumption (why H6b's `align` lane is **implemented but unscheduled**) into a **periodic, per-source, computed metric** instead of a one-time WER study. Three layers: **L1** = free acoustic-fit recorded *every run* from the `stable_whisper.align()` call we already make (existing `_MIN_ALIGN_COVERAGE` coverage + mean word-logprob → new merge-pushed `state/transcript_quality_log.json`, same union-by-id pattern as `asr_runtime_log.json`); **L2** = a CTC forced aligner **independent of both generators** (`torchaudio.functional.forced_align`/WhisperX) over a rotating sample for a *fair* served-vs-ASR verdict (WER between two machine outputs measures disagreement, not correctness); **L3** = a small human-gold sample anchoring absolute WER/CER. Output: a per-source `caption_trust` (`high\|low\|unknown`) that gates `align`-vs-`transcribe` routing + an `/admin/status` panel. Distinct from **H6a** (runtime benchmark) / **H9** (throughput, $/hr) — H15 measures **correctness**; reuses the H13 backend interface. Design: [review/12 §H15](12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring). |
 
+### Cross-phase 1.0 release gate
+
+| Item | #/GH | Maturity | Status |
+|---|---|---|---|
+| **1.0-M automated runtime/dependency maintenance** | new | L1 | **Committed — required before dropping beta.** Add Dependabot coverage for Python, Docker base images, and GitHub Actions; build the GHCR runtime image from reproducible Python constraints; add a monthly FFmpeg release checker that opens an immutable URL/checksum update PR and requires the image-build smoke test. The weekly scheduled image build continues to rebuild and verify pinned inputs, but does not silently advance them. Acceptance: base-image, package, action, and FFmpeg updates arrive as reviewable, tested PRs without a separate manual discovery schedule. |
+
 ### Phase R — Research-Tool Surface (toward 1.0)
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|
@@ -553,7 +559,8 @@ pre-1.0 lock, do first) → H11b render-only `deploy.yml` (record-write stops in
 → H14 Modal + Beam free-tier transcription adapters (async dispatch from `asr.yml`; H5 leases go live)
 → H9 combined-throughput evaluation. The execution-backend **interface design** (§5.5/H13) is a
 **pre-1.0 lock**, proven in Phase H by H14's two live GPU adapters; the first **LLM API adapter** lands
-with R3/R4.
+with R3/R4. Before the beta tag is removed, complete **1.0-M** so runtime dependency and FFmpeg updates
+arrive as automated, reproducible, smoke-tested PRs rather than relying on manual version checks.
 When each step completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge
 docs PR.
 
