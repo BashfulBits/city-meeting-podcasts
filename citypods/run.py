@@ -27,7 +27,13 @@ from citypods.compute import DispatchCoordinator, make_compute
 from citypods.config import load_backlog_policy, load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.http import HOST_LIMITER
-from citypods.media import CommandFfmpeg, FfmpegRunner, MediaRateLimitCircuitBreaker, SourceCache
+from citypods.media import (
+    CommandFfmpeg,
+    FfmpegRunner,
+    HostedKeysCache,
+    MediaRateLimitCircuitBreaker,
+    SourceCache,
+)
 from citypods.models import City, Episode
 from citypods.ops.workqueue import (
     build_manifest,
@@ -1049,6 +1055,10 @@ def build(
         max_encodes_per_source=max_encodes_per_source,
         backlog_policy=backlog_policy,
         source_cache=source_cache,
+        # One list_objects listing per source for this build, shared by every AudioStage call for
+        # that source — the global queue (H5 PR3) invokes AudioStage once per episode, so without
+        # this the same source's storage prefix would be re-listed once per episode (issue #344).
+        hosted_keys_cache=HostedKeysCache(),
         resource_admission=_resource_admission_from_defaults(
             defaults,
             time_bounded=time_bounded,

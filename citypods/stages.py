@@ -85,6 +85,7 @@ from citypods.bodies import body_key, canonical_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
 from citypods.media import (
+    HostedKeysCache,
     MaterializeStats,
     MediaRateLimitCircuitBreaker,
     SourceCache,
@@ -172,6 +173,11 @@ class StageContext:
     # Per-run download cache shared across TimelineStage (SilencePlanner) and AudioStage so each
     # source is streamed at most once per episode, even when both stages need it.
     source_cache: SourceCache | None = None
+    # Per-run cache of each source's hosted-object listing (issue #344). The global queue (H5 PR3)
+    # calls AudioStage once per episode rather than once per source, so without this cache
+    # materialize_audio() would re-list the same source's storage prefix once per episode instead
+    # of once per source/pass.
+    hosted_keys_cache: HostedKeysCache | None = None
     # Admission guard for expensive native work. It waits for memory/CPU headroom before
     # starting another ffmpeg encode or ASR inference, preventing runner-level kills.
     resource_admission: ResourceAdmission | None = None
@@ -515,6 +521,7 @@ class AudioStage:
             native_work_gate=ctx.native_work_gate,
             memory_reservation=ctx.memory_reservation,
             rate_limit_circuit=ctx.rate_limit_circuit,
+            hosted_keys_cache=ctx.hosted_keys_cache,
         )
         return StageStats(
             self.name,

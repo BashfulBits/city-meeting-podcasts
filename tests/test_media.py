@@ -67,7 +67,7 @@ def _city(slug="x-tx", extract_audio=False):
     return City(
         slug=slug,
         provider="civicplus",
-        source={"feed_url": "x"},
+        source={"feed_url": f"https://src/{slug}"},
         podcast_title="X",
         podcast_author="City of X",
         podcast_email="",
@@ -512,6 +512,102 @@ def test_credits_run_even_when_stopped(tmp_path):
     stats = _materialize(city, [*credited_eps, fresh], store, ff, stop=lambda: True)
     assert stats.credited == 3 and stats.encoded == 0
     assert stats.skipped_budget == 1 and ff.calls == []  # only the encode deferred
+
+
+class CountingStorage:
+    """Wraps a real storage backend, counting ``list_objects`` calls per prefix (issue #344)."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.list_objects_calls: list[str] = []
+
+    def list_objects(self, prefix: str = ""):
+        self.list_objects_calls.append(prefix)
+        return list(self._inner.list_objects(prefix))
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def test_hosted_keys_cache_lists_once_per_source(tmp_path):
+    """``HostedKeysCache`` lists a source's storage prefix at most once, however many times
+    ``materialize_audio`` is called for that source — the fix for the global queue (H5 PR3)
+    dispatching ``AudioStage`` once per episode instead of once per source."""
+    from citypods.media import HostedKeysCache
+
+    city = _city()
+    store = CountingStorage(_store(tmp_path))
+    cache = HostedKeysCache()
+    ff = FakeFfmpeg()
+
+    # Simulate the global queue: one materialize_audio() call per episode, same source, same cache.
+    for i in range(50):
+        materialize_audio(
+            city,
+            [_ep(f"g{i}")],
+            storage=store,
+            ffmpeg=ff,
+            max_kbps=MAX_KBPS,
+            resolve_media_url=lambda e: e.video_url,
+            hosted_keys_cache=cache,
+        )
+
+    assert len(store.list_objects_calls) == 1
+
+
+def test_hosted_keys_cache_is_per_source(tmp_path):
+    """Two distinct sources each get their own listing — the cache doesn't conflate sources."""
+    from citypods.media import HostedKeysCache
+
+    store = CountingStorage(_store(tmp_path))
+    cache = HostedKeysCache()
+    ff = FakeFfmpeg()
+
+    for slug in ("city-a", "city-b"):
+        city = _city(slug=slug)
+        materialize_audio(
+            city,
+            [_ep(f"{slug}-g1")],
+            storage=store,
+            ffmpeg=ff,
+            max_kbps=MAX_KBPS,
+            resolve_media_url=lambda e: e.video_url,
+            hosted_keys_cache=cache,
+        )
+
+    assert len(store.list_objects_calls) == 2
+
+
+def test_global_queue_drain_is_bounded_by_sources_not_episodes(tmp_path):
+    """Storage listings scale with the number of sources, not the number of queued episodes —
+    the timing/operation-count contract from issue #344. Without ``hosted_keys_cache``, this same
+    loop would issue one ``list_objects`` call per episode."""
+    from citypods.media import HostedKeysCache
+
+    n_sources = 5
+    n_episodes_per_source = 400  # thousands in production; smaller here for test speed
+    store = CountingStorage(_store(tmp_path))
+    cache = HostedKeysCache()
+    ff = FakeFfmpeg()
+    cities = [_city(slug=f"city-{i}") for i in range(n_sources)]
+
+    # Global queue: episodes from every source interleaved, stop() latched from the start so
+    # every episode takes the cheap deferred path (no encodes) — exactly the drain scenario.
+    for i in range(n_episodes_per_source):
+        for city in cities:
+            materialize_audio(
+                city,
+                [_ep(f"{city.slug}-g{i}")],
+                storage=store,
+                ffmpeg=ff,
+                max_kbps=MAX_KBPS,
+                resolve_media_url=lambda e: e.video_url,
+                hosted_keys_cache=cache,
+                stop=lambda: True,
+            )
+
+    assert len(store.list_objects_calls) == n_sources
+    assert ff.calls == []
 
 
 def _seed_object(store, key):
