@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-18**
+**Status: LIVING · last updated 2026-06-19**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -132,6 +132,7 @@ sync · #20 video enclosures (partial).
 | Accessibility (WCAG) | #50 | L1 | §5.1 |
 | `<podcast:funding>` link | #16 | L1 | §5.1 |
 | Speaker diarization | #7 | L1 | §5.1 — after H6b; runs on the execution backend (H9 / §5.5) |
+| Records → managed SQL (federated query / query API / state integrity) | new (Infra) | L1 | [`review/17`](17-state-store-backend-evaluation.md) — promoted from Deferred; D1/Turso kept open; trigger-gated |
 
 ### Phase E — Engagement & Distribution (post-1.0) · sketches §5.2
 | Item | #/GH | Maturity |
@@ -172,6 +173,7 @@ sync · #20 video enclosures (partial).
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
 | Pluggable inference-execution backend (compute offload) | new (Infra) | L3 · **pre-1.0 lock** — GPU/ASR interface = H13; Modal+Beam GPU adapters = H14 (built in Phase H); first LLM API adapter = R3/R4 |
 | Catalog scaling readiness (10→500 cities) | new (Infra) | L2 · **trigger-gated, not active-phase work** — [`review/16`](16-scaling-review-plan.md); R2 owns the search-size spike/partitioned-search launch, while S0–S4 promote one tranche at a time only when their city/metric gates are reached |
+| State-store backend (coordination → R2/CAS · records per-artifact · SQL at Phase R) | new (Infra) | L2 · **trigger-gated** — [`review/17`](17-state-store-backend-evaluation.md). Do-next: R2-CAS spike → migrate the coordination control-plane (`work.json`/`compute_budget.json`, then `provider-circuits`/`provider-leases` **after PR358**) to R2 for real CAS (retires the FIFO-lease emulation B2 forces); immutable blobs + append-only logs stay on B2; `episodes.json` is a swing case (R2-CAS now vs hold-for-SQL); couple [`review/16`](16-scaling-review-plan.md) S2 to keep R2 Class A free |
 
 ### Deferred backlog (ongoing) — §6
 #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
@@ -180,7 +182,9 @@ images · #34 config-via-issue-comments · #40 B2 actual-cost dashboard · #42 *
 partitioning) · #44 structured logging · #47 map browser · #48 new-since-visit · #10 agenda-packet chapter
 descriptions · #14 `podcast:person/location` tags · #33 dead-city archival · review/02 Change 5
 DerivedArtifact refactor · review/04 B3 stale-record bucket leak · review/04 R4 per-host rate-limit (#39)
-· admin dashboard extension (#49) · full video re-hosting · hosted DB/API · off-Actions media.
+· admin dashboard extension (#49) · full video re-hosting · hosted DB/API (Phase-R records→SQL split out
+& **promoted to Phase R** — [`review/17`](17-state-store-backend-evaluation.md)) · off-Actions media ·
+coordination → dedicated KV/DO fallback (trigger-gated — [`review/17`](17-state-store-backend-evaluation.md) §8).
 **Deleted:** #5 entities/NER.
 
 ---
@@ -485,7 +489,9 @@ the launch design in `review/13`. The **DerivedArtifact refactor** (review/02 Ch
 **justified** — H12 (shipped, [PR #253](https://github.com/BashfulBits/city-meeting-podcasts/pull/253))
 added the third derived-artifact type (audio M4A · transcript VTT · **word-JSON**), the YAGNI trigger it
 was waiting on — so it moves from deferred to "do opportunistically now that H12's storage
-plumbing lands"; **full video / hosted DB / off-Actions media** are explicitly out of scope now (§8).
+plumbing lands"; **full video / off-Actions media** are explicitly out of scope now (§8); **hosted DB**
+stays deferred *except* the scoped **Phase-R records→SQL** item, now promoted via
+[`review/17`](17-state-store-backend-evaluation.md) (federated query / query API / state integrity).
 **Archive-backfill** (new, 2026-06-11) — decouple materialize depth from feed-visibility so the
 retained archive (records beyond top-`max_episodes`/body) drains audio/transcripts over many runs.
 **Opt-in**, gated on its own ASR/encode/storage cost analysis; H5 reserves the `recent_archive`/
@@ -564,7 +570,11 @@ arrive as automated, reproducible, smoke-tested PRs rather than relying on manua
 When each step completes, apply §2's Implemented-row doc updates in the same PR or immediate post-merge
 docs PR.
 
-**Explicitly out of scope (now):** move to a hosted DB/API (no); move media off GitHub Actions (keep as
+**Explicitly out of scope (now):** move to a hosted DB/API — *with one scoped exception:* the **Phase-R
+records→SQL** item (federated query / query API / state integrity) is promoted to Phase R (L1,
+trigger-gated) per [`review/17`](17-state-store-backend-evaluation.md). Note **R2 object storage is not a
+hosted DB** — the coordination/records → R2 move stays within bucket-as-truth and is *not* superseded by
+this stance. Move media off GitHub Actions (keep as
 a fallback only); full video re-hosting (deferred — storage + legal surface). **Already satisfied:** live
 endpoint contracts kept out of PR CI (separate `contracts.yml`).
 
