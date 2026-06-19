@@ -197,9 +197,27 @@ class LoudnessMeasurementError(ProviderError):
 
 
 class RateLimitedMediaFetchError(ProviderError):
-    """ffmpeg/ffprobe saw an HTTP throttling response while reading provider media."""
+    """ffmpeg/ffprobe saw an HTTP throttling response while reading provider media.
+
+    ``circuit_recorded`` is True when the subprocess boundary already updated the circuit breaker
+    (while the provider lease was still held, issue #343) — the higher-level materialization caller
+    must not call ``record_rate_limited`` again for those, or a single failure double-counts.
+    ``opened_domain`` carries the just-opened domain (if any) so the caller can still log the
+    transition without re-deriving it.
+    """
 
     code = "rate_limited"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        circuit_recorded: bool = False,
+        opened_domain: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.circuit_recorded = circuit_recorded
+        self.opened_domain = opened_domain
 
 
 class CircuitOpenMediaFetchError(ProviderError):
@@ -354,10 +372,28 @@ def _rate_limited_status(stderr: bytes | str | None) -> str | None:
     return None
 
 
-def _raise_if_rate_limited(*, phase: str, stderr: bytes | str | None) -> None:
+def _raise_if_rate_limited(
+    *,
+    phase: str,
+    stderr: bytes | str | None,
+    rate_limit_urls: Sequence[str] = (),
+    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+) -> None:
+    """Classify a failed ffmpeg/ffprobe run as provider throttling and, if so, record it on the
+    circuit breaker *here* — the caller still holds the provider lease at this point, so the circuit
+    opens (if the threshold is crossed) before that lease is released to another waiter (#343)."""
     status = _rate_limited_status(stderr)
-    if status is not None:
-        raise RateLimitedMediaFetchError(f"ffmpeg {phase} hit provider throttle ({status})")
+    if status is None:
+        return
+    opened = None
+    recorded = rate_limit_circuit is not None
+    if rate_limit_circuit is not None:
+        opened = rate_limit_circuit.record_rate_limited(rate_limit_urls)
+    raise RateLimitedMediaFetchError(
+        f"ffmpeg {phase} hit provider throttle ({status})",
+        circuit_recorded=recorded,
+        opened_domain=opened,
+    )
 
 
 @contextmanager
@@ -429,27 +465,37 @@ def _run_ffmpeg_guarded(
     """
     if not memory_floor_bytes:
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
-        try:
-            with (
-                HOST_LIMITER.slots(rate_limit_urls),
-                DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
-                _circuit_admission(rate_limit_circuit, rate_limit_urls),
-            ):
+        # The rate-limit classification/circuit-update must happen *inside* this ``with`` — both
+        # provider slots are still held here. Doing it after the block exits (as a separate
+        # ``except`` below the ``with``) would release the lease before the circuit opens, letting
+        # a queued waiter acquire it, pass the still-closed circuit check, and start ffmpeg anyway
+        # (#343).
+        with (
+            HOST_LIMITER.slots(rate_limit_urls),
+            DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
+            _circuit_admission(rate_limit_circuit, rate_limit_urls),
+        ):
+            try:
                 result = subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
-        except subprocess.CalledProcessError as exc:
-            stderr = _stderr_tail(exc.stderr)
-            detail = f" stderr={stderr}" if stderr else ""
-            _log_ffmpeg_event(
-                log,
-                f"[enrich] ffmpeg {phase} error returncode={exc.returncode}{detail}",
-            )
-            _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
-            raise
-        except subprocess.TimeoutExpired as exc:
-            stderr = _stderr_tail(exc.stderr)
-            detail = f" stderr={stderr}" if stderr else ""
-            _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} timeout seconds={timeout}{detail}")
-            raise
+            except subprocess.CalledProcessError as exc:
+                stderr = _stderr_tail(exc.stderr)
+                detail = f" stderr={stderr}" if stderr else ""
+                _log_ffmpeg_event(
+                    log,
+                    f"[enrich] ffmpeg {phase} error returncode={exc.returncode}{detail}",
+                )
+                _raise_if_rate_limited(
+                    phase=phase,
+                    stderr=exc.stderr,
+                    rate_limit_urls=rate_limit_urls,
+                    rate_limit_circuit=rate_limit_circuit,
+                )
+                raise
+            except subprocess.TimeoutExpired as exc:
+                stderr = _stderr_tail(exc.stderr)
+                detail = f" stderr={stderr}" if stderr else ""
+                _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} timeout seconds={timeout}{detail}")
+                raise
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
         return getattr(result, "stdout", b"") or b"", getattr(result, "stderr", b"") or b""
 
@@ -471,6 +517,8 @@ def _run_ffmpeg_guarded(
             log=log,
             popen=popen,
             child_rss=child_rss,
+            rate_limit_urls=rate_limit_urls,
+            rate_limit_circuit=rate_limit_circuit,
         )
 
 
@@ -486,9 +534,13 @@ def _run_ffmpeg_popen_monitored(
     log: Callable[[str], None] | None,
     popen: Callable[..., subprocess.Popen],
     child_rss: Callable[[int], int | None],
+    rate_limit_urls: Sequence[str] = (),
+    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
 ) -> tuple[bytes, bytes]:
     """Popen + poll/sample loop for :func:`_run_ffmpeg_guarded` (memory-floor path). The caller
-    holds the per-host rate-limit slot for the whole monitored run."""
+    holds the per-host rate-limit slot — and the distributed provider lease — for the whole
+    monitored run, so the rate-limit classification below (which updates the circuit breaker) also
+    runs before that lease is released (#343)."""
     started = time.monotonic()
     proc = popen(  # noqa: S603 - command is assembled by this module from validated URLs/paths.
         cmd,
@@ -529,7 +581,12 @@ def _run_ffmpeg_popen_monitored(
                     f"min_mem_avail={_format_optional_bytes(min_mem_available)} "
                     f"samples={samples}{detail}",
                 )
-                _raise_if_rate_limited(phase=phase, stderr=stderr)
+                _raise_if_rate_limited(
+                    phase=phase,
+                    stderr=stderr,
+                    rate_limit_urls=rate_limit_urls,
+                    rate_limit_circuit=rate_limit_circuit,
+                )
                 raise subprocess.CalledProcessError(
                     returncode,
                     cmd,
@@ -2099,7 +2156,17 @@ def materialize_audio(
                 with lock:
                     stats.rate_limited += 1
                 if rate_limit_circuit is not None:
-                    opened = rate_limit_circuit.record_rate_limited(source_urls)
+                    # The subprocess boundary already recorded this failure on the circuit (while
+                    # the provider lease was still held, #343) when ``circuit_recorded`` is set;
+                    # recording it again here would double-count the failure and could re-open an
+                    # already-open circuit's cooldown. Only record here for exceptions raised
+                    # directly by an ``FfmpegRunner`` that bypassed that boundary (e.g. a test
+                    # double, or a future runner implementation).
+                    opened = (
+                        exc.opened_domain
+                        if getattr(exc, "circuit_recorded", False)
+                        else rate_limit_circuit.record_rate_limited(source_urls)
+                    )
                     if opened is not None:
                         print(
                             f"[enrich] provider throttle circuit opened domain={opened}",

@@ -1604,6 +1604,82 @@ def test_ffmpeg_rechecks_circuit_after_provider_lease_acquisition(monkeypatch):
     assert subprocess_started is False
 
 
+def test_run_ffmpeg_guarded_opens_circuit_before_releasing_lease(monkeypatch):
+    """#343: a threshold-crossing 403 must open the circuit *before* the distributed lease this
+    failing attempt held is released. Recording it only at the higher-level caller (after the
+    ``with`` that holds the lease has already exited) leaves a window where a queued waiter can
+    acquire the just-released lease, see a still-closed circuit, and start ffmpeg anyway."""
+    import citypods.media as media
+
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+    urls = ("https://archive-video.granicus.com/x.mp4",)
+    observed_open_before_release: list[bool] = []
+
+    @contextmanager
+    def _observing_slots(_urls):
+        try:
+            yield
+        finally:
+            # The lease releases here (on context exit) — even when the body raised — so the
+            # circuit must already be open by now.
+            observed_open_before_release.append(circuit.open_for(urls) is not None)
+
+    monkeypatch.setattr(media.DISTRIBUTED_PROVIDER_LEASES, "slots", _observing_slots)
+    err = subprocess.CalledProcessError(1, ["ffmpeg"], stderr=b"Server returned 403 Forbidden")
+    monkeypatch.setattr(media.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(err))
+
+    with pytest.raises(media.RateLimitedMediaFetchError) as excinfo:
+        media._run_ffmpeg_guarded(
+            ["ffmpeg"],
+            phase="source-cache",
+            rate_limit_urls=urls,
+            rate_limit_circuit=circuit,
+            log=lambda *a, **k: None,
+        )
+
+    assert observed_open_before_release == [True]
+    assert excinfo.value.circuit_recorded is True
+    assert excinfo.value.opened_domain == "granicus.com"
+
+
+def test_materialize_does_not_double_count_subprocess_boundary_failure(tmp_path):
+    """#343: when the subprocess boundary already recorded the failure on the circuit (while the
+    lease was held), the higher-level materialization caller must not record it a second time —
+    otherwise a single threshold-crossing failure would be double-counted in telemetry."""
+    import citypods.media as media
+
+    class _BoundaryRecordedFfmpeg(FakeFfmpeg):
+        def extract_audio(self, *args, **kwargs):
+            super().extract_audio(*args, **kwargs)
+            raise media.RateLimitedMediaFetchError(
+                "ffmpeg filter-render hit provider throttle",
+                circuit_recorded=True,
+                opened_domain="granicus.com",
+            )
+
+    eps = [_ep("g1", kind="direct", url="https://archive-video.granicus.com/one.mp4")]
+    city = _city(extract_audio=True)
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+
+    materialize_audio(
+        city,
+        eps,
+        storage=_store(tmp_path),
+        ffmpeg=_BoundaryRecordedFfmpeg(),
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        rate_limit_circuit=circuit,
+    )
+
+    # The boundary already recorded the failure (simulated by ``circuit_recorded=True`` above), so
+    # the caller must not have touched this circuit at all — no domain entry should appear.
+    assert "granicus.com" not in circuit.telemetry()
+
+
 def test_circuit_deferred_telemetry_is_counted_by_media_domain():
     import citypods.media as media
 

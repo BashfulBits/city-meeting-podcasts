@@ -210,6 +210,15 @@ Hard-won facts that bite anyone adding/debugging providers:
   process's local cap must never already hold a cross-shard slot — acquiring distributed-first let one
   early-starting process's other threads win every distributed candidate while they waited locally,
   starving other shards of capacity they could otherwise use.
+- **The circuit is recorded/opened at the subprocess boundary, before its provider lease is released
+  (issue #343).** `_raise_if_rate_limited` classifies a throttled ffmpeg/ffprobe exit and updates the
+  run-local circuit breaker from inside the same `with` that still holds the `HOST_LIMITER` and
+  distributed-lease slots, for both the `subprocess.run` and monitored/`Popen` paths. Recording it only
+  at the higher-level materialization caller — after that `with` had already exited — left a window
+  where a queued waiter could acquire the just-released lease, pass the still-closed circuit check, and
+  start one extra ffmpeg process per threshold crossing. `RateLimitedMediaFetchError` carries
+  `circuit_recorded`/`opened_domain` so the caller does not double-record a failure the boundary already
+  handled.
 - **`403` is retried as a rate-limit signal** by the shared session (`403` in `_ClampedRetry`'s
   `status_forcelist`): media bytes never go through `requests`, so a `403` a `requests` call sees is a
   provider throttle, not auth — retrying with backoff generalizes the old bespoke Granicus loop.
