@@ -31,7 +31,6 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
 
 _PREFIX = "spike-r2-cas"
 _CTYPE = "application/json"
@@ -39,20 +38,21 @@ _CTYPE = "application/json"
 
 # ── result types ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TestResult:
     test: str
-    mechanism: str          # "native" | "inject" | "n/a"
+    mechanism: str  # "native" | "inject" | "n/a"
     passed: bool
     detail: str
-    http_status: Optional[int] = None
-    etag: Optional[str] = None
+    http_status: int | None = None
+    etag: str | None = None
     elapsed_ms: float = 0.0
 
 
 @dataclass
 class LatencySample:
-    operation: str          # "conditional_put" | "get" | "head"
+    operation: str  # "conditional_put" | "get" | "head"
     count: int
     p50_ms: float
     p95_ms: float
@@ -63,7 +63,7 @@ class LatencySample:
 class SpikeReport:
     boto3_version: str
     botocore_version: str
-    cas_mechanism: str      # "native" | "inject" | "unknown"
+    cas_mechanism: str  # "native" | "inject" | "unknown"
     helper_signature: str
     tests: list[TestResult] = field(default_factory=list)
     latency: list[LatencySample] = field(default_factory=list)
@@ -73,8 +73,10 @@ class SpikeReport:
 
 # ── boto3 helpers ─────────────────────────────────────────────────────────────
 
+
 def _make_client():
     import boto3
+
     account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
     return boto3.client(
         "s3",
@@ -88,6 +90,7 @@ def _make_client():
 def _is_412(exc) -> bool:
     """True if ClientError is a 412 PreconditionFailed."""
     import botocore.exceptions
+
     if not isinstance(exc, botocore.exceptions.ClientError):
         return False
     err = exc.response.get("Error", {})
@@ -104,9 +107,16 @@ def _safe_delete(client, bucket: str, key: str) -> None:
 
 # ── CAS put implementations ───────────────────────────────────────────────────
 
-def _put_native(client, bucket: str, key: str, body: bytes, *,
-                if_none_match: Optional[str] = None,
-                if_match: Optional[str] = None) -> dict:
+
+def _put_native(
+    client,
+    bucket: str,
+    key: str,
+    body: bytes,
+    *,
+    if_none_match: str | None = None,
+    if_match: str | None = None,
+) -> dict:
     """put_object with native IfNoneMatch/IfMatch params (boto3 >= 1.35)."""
     kwargs: dict = dict(Bucket=bucket, Key=key, Body=body, ContentType=_CTYPE)
     if if_none_match:
@@ -116,9 +126,15 @@ def _put_native(client, bucket: str, key: str, body: bytes, *,
     return client.put_object(**kwargs)
 
 
-def _put_inject(client, bucket: str, key: str, body: bytes, *,
-                if_none_match: Optional[str] = None,
-                if_match: Optional[str] = None) -> dict:
+def _put_inject(
+    client,
+    bucket: str,
+    key: str,
+    body: bytes,
+    *,
+    if_none_match: str | None = None,
+    if_match: str | None = None,
+) -> dict:
     """put_object with If-Match/If-None-Match injected via botocore before-send."""
     extra: dict[str, str] = {}
     if if_none_match:
@@ -148,14 +164,20 @@ def _put_cas(mechanism: str, client, bucket: str, key: str, body: bytes, **kw) -
 
 # ── mechanism detection ───────────────────────────────────────────────────────
 
+
 def detect_mechanism(client, bucket: str, run_id: str) -> str:
     """Return 'native' if boto3 accepts IfNoneMatch natively, else 'inject'."""
     import botocore.exceptions
+
     probe = f"{_PREFIX}/{run_id}/mechanism-probe"
     try:
         # Key won't exist yet; IfNoneMatch="*" should succeed if native works.
         client.put_object(
-            Bucket=bucket, Key=probe, Body=b"{}", ContentType=_CTYPE, IfNoneMatch="*",
+            Bucket=bucket,
+            Key=probe,
+            Body=b"{}",
+            ContentType=_CTYPE,
+            IfNoneMatch="*",
         )
         _safe_delete(client, bucket, probe)
         return "native"
@@ -170,6 +192,7 @@ def detect_mechanism(client, bucket: str, run_id: str) -> str:
 
 # ── CAS test suite ────────────────────────────────────────────────────────────
 
+
 def run_cas_tests(client, bucket: str, run_id: str, mechanism: str) -> list[TestResult]:
     import botocore.exceptions
 
@@ -182,21 +205,33 @@ def run_cas_tests(client, bucket: str, run_id: str, mechanism: str) -> list[Test
     try:
         resp = _put_cas(mechanism, client, bucket, key, b'{"v":1}', if_none_match="*")
         ms = (time.perf_counter() - t0) * 1000
-        etag = resp.get("ETag", "")   # keep surrounding quotes for IfMatch
-        results.append(TestResult(
-            test="create_if_absent_success", mechanism=mechanism, passed=True,
-            detail=f"IfNoneMatch=* on absent key → 200; ETag={etag}",
-            http_status=200, etag=etag, elapsed_ms=round(ms, 2),
-        ))
+        etag = resp.get("ETag", "")  # keep surrounding quotes for IfMatch
+        results.append(
+            TestResult(
+                test="create_if_absent_success",
+                mechanism=mechanism,
+                passed=True,
+                detail=f"IfNoneMatch=* on absent key → 200; ETag={etag}",
+                http_status=200,
+                etag=etag,
+                elapsed_ms=round(ms, 2),
+            )
+        )
         _log("PASS", "create_if_absent_success", f"ETag={etag} {ms:.0f}ms")
         current_etag = etag
     except botocore.exceptions.ClientError as exc:
         ms = (time.perf_counter() - t0) * 1000
         status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-        results.append(TestResult(
-            test="create_if_absent_success", mechanism=mechanism, passed=False,
-            detail=f"Unexpected error: {exc}", http_status=status, elapsed_ms=round(ms, 2),
-        ))
+        results.append(
+            TestResult(
+                test="create_if_absent_success",
+                mechanism=mechanism,
+                passed=False,
+                detail=f"Unexpected error: {exc}",
+                http_status=status,
+                elapsed_ms=round(ms, 2),
+            )
+        )
         _log("FAIL", "create_if_absent_success", str(exc))
         # Create unconditionally so remaining tests have an object to work with.
         resp = client.put_object(Bucket=bucket, Key=key, Body=b'{"v":1}', ContentType=_CTYPE)
@@ -207,50 +242,77 @@ def run_cas_tests(client, bucket: str, run_id: str, mechanism: str) -> list[Test
     try:
         _put_cas(mechanism, client, bucket, key, b'{"v":999}', if_none_match="*")
         ms = (time.perf_counter() - t0) * 1000
-        results.append(TestResult(
-            test="create_if_absent_conflict", mechanism=mechanism, passed=False,
-            detail="PUT IfNoneMatch=* on existing key → 200 (expected 412)",
-            http_status=200, elapsed_ms=round(ms, 2),
-        ))
+        results.append(
+            TestResult(
+                test="create_if_absent_conflict",
+                mechanism=mechanism,
+                passed=False,
+                detail="PUT IfNoneMatch=* on existing key → 200 (expected 412)",
+                http_status=200,
+                elapsed_ms=round(ms, 2),
+            )
+        )
         _log("FAIL", "create_if_absent_conflict", "expected 412, got 200")
     except botocore.exceptions.ClientError as exc:
         ms = (time.perf_counter() - t0) * 1000
         if _is_412(exc):
-            results.append(TestResult(
-                test="create_if_absent_conflict", mechanism=mechanism, passed=True,
-                detail="IfNoneMatch=* on existing key → 412 as expected",
-                http_status=412, elapsed_ms=round(ms, 2),
-            ))
+            results.append(
+                TestResult(
+                    test="create_if_absent_conflict",
+                    mechanism=mechanism,
+                    passed=True,
+                    detail="IfNoneMatch=* on existing key → 412 as expected",
+                    http_status=412,
+                    elapsed_ms=round(ms, 2),
+                )
+            )
             _log("PASS", "create_if_absent_conflict", f"412 {ms:.0f}ms")
         else:
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-            results.append(TestResult(
-                test="create_if_absent_conflict", mechanism=mechanism, passed=False,
-                detail=f"Unexpected error (not 412): {exc}", http_status=status,
-                elapsed_ms=round(ms, 2),
-            ))
+            results.append(
+                TestResult(
+                    test="create_if_absent_conflict",
+                    mechanism=mechanism,
+                    passed=False,
+                    detail=f"Unexpected error (not 412): {exc}",
+                    http_status=status,
+                    elapsed_ms=round(ms, 2),
+                )
+            )
             _log("FAIL", "create_if_absent_conflict", str(exc))
 
     # ── 3: CAS update succeeds with current ETag ─────────────────────────────
-    stale_etag = current_etag   # save before update
+    stale_etag = current_etag  # save before update
     t0 = time.perf_counter()
     try:
         resp = _put_cas(mechanism, client, bucket, key, b'{"v":2}', if_match=current_etag)
         ms = (time.perf_counter() - t0) * 1000
         new_etag = resp.get("ETag", "")
-        results.append(TestResult(
-            test="cas_update_success", mechanism=mechanism, passed=True,
-            detail=f"IfMatch=<current> → 200; new ETag={new_etag}",
-            http_status=200, etag=new_etag, elapsed_ms=round(ms, 2),
-        ))
+        results.append(
+            TestResult(
+                test="cas_update_success",
+                mechanism=mechanism,
+                passed=True,
+                detail=f"IfMatch=<current> → 200; new ETag={new_etag}",
+                http_status=200,
+                etag=new_etag,
+                elapsed_ms=round(ms, 2),
+            )
+        )
         _log("PASS", "cas_update_success", f"old={current_etag} new={new_etag} {ms:.0f}ms")
     except botocore.exceptions.ClientError as exc:
         ms = (time.perf_counter() - t0) * 1000
         status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-        results.append(TestResult(
-            test="cas_update_success", mechanism=mechanism, passed=False,
-            detail=f"Unexpected error: {exc}", http_status=status, elapsed_ms=round(ms, 2),
-        ))
+        results.append(
+            TestResult(
+                test="cas_update_success",
+                mechanism=mechanism,
+                passed=False,
+                detail=f"Unexpected error: {exc}",
+                http_status=status,
+                elapsed_ms=round(ms, 2),
+            )
+        )
         _log("FAIL", "cas_update_success", str(exc))
 
     # ── 4: CAS update fails with stale ETag ──────────────────────────────────
@@ -258,28 +320,43 @@ def run_cas_tests(client, bucket: str, run_id: str, mechanism: str) -> list[Test
     try:
         _put_cas(mechanism, client, bucket, key, b'{"v":3}', if_match=stale_etag)
         ms = (time.perf_counter() - t0) * 1000
-        results.append(TestResult(
-            test="cas_update_stale", mechanism=mechanism, passed=False,
-            detail="IfMatch=<stale> → 200 (expected 412)",
-            http_status=200, elapsed_ms=round(ms, 2),
-        ))
+        results.append(
+            TestResult(
+                test="cas_update_stale",
+                mechanism=mechanism,
+                passed=False,
+                detail="IfMatch=<stale> → 200 (expected 412)",
+                http_status=200,
+                elapsed_ms=round(ms, 2),
+            )
+        )
         _log("FAIL", "cas_update_stale", "expected 412, got 200")
     except botocore.exceptions.ClientError as exc:
         ms = (time.perf_counter() - t0) * 1000
         if _is_412(exc):
-            results.append(TestResult(
-                test="cas_update_stale", mechanism=mechanism, passed=True,
-                detail="IfMatch=<stale ETag> → 412 as expected",
-                http_status=412, elapsed_ms=round(ms, 2),
-            ))
+            results.append(
+                TestResult(
+                    test="cas_update_stale",
+                    mechanism=mechanism,
+                    passed=True,
+                    detail="IfMatch=<stale ETag> → 412 as expected",
+                    http_status=412,
+                    elapsed_ms=round(ms, 2),
+                )
+            )
             _log("PASS", "cas_update_stale", f"412 {ms:.0f}ms")
         else:
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-            results.append(TestResult(
-                test="cas_update_stale", mechanism=mechanism, passed=False,
-                detail=f"Unexpected error (not 412): {exc}", http_status=status,
-                elapsed_ms=round(ms, 2),
-            ))
+            results.append(
+                TestResult(
+                    test="cas_update_stale",
+                    mechanism=mechanism,
+                    passed=False,
+                    detail=f"Unexpected error (not 412): {exc}",
+                    http_status=status,
+                    elapsed_ms=round(ms, 2),
+                )
+            )
             _log("FAIL", "cas_update_stale", str(exc))
 
     _safe_delete(client, bucket, key)
@@ -288,8 +365,10 @@ def run_cas_tests(client, bucket: str, run_id: str, mechanism: str) -> list[Test
 
 # ── latency measurement ───────────────────────────────────────────────────────
 
-def run_latency(client, bucket: str, run_id: str, mechanism: str,
-                iterations: int = 20) -> list[LatencySample]:
+
+def run_latency(
+    client, bucket: str, run_id: str, mechanism: str, iterations: int = 20
+) -> list[LatencySample]:
     key = f"{_PREFIX}/{run_id}/latency-probe"
     body = b'{"latency":true}'
 
@@ -411,24 +490,36 @@ def put_cas(self, key: str, data: bytes, content_type: str, *,
 
 # ── output helpers ────────────────────────────────────────────────────────────
 
+
 def _log(status: str, test: str, detail: str) -> None:
     print(f"{status:4s}  {test}: {detail}", flush=True)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--latency-iterations", type=int, default=20,
-                        help="PUT/GET/HEAD iterations for latency measurement (default 20)")
-    parser.add_argument("--output", type=Path, default=Path("r2-cas-spike-results.json"),
-                        help="JSON report path (default: r2-cas-spike-results.json)")
-    parser.add_argument("--no-latency", action="store_true",
-                        help="Skip latency measurement (faster for local debugging)")
+    parser.add_argument(
+        "--latency-iterations",
+        type=int,
+        default=20,
+        help="PUT/GET/HEAD iterations for latency measurement (default 20)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("r2-cas-spike-results.json"),
+        help="JSON report path (default: r2-cas-spike-results.json)",
+    )
+    parser.add_argument(
+        "--no-latency",
+        action="store_true",
+        help="Skip latency measurement (faster for local debugging)",
+    )
     args = parser.parse_args()
 
-    for var in ("CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
-                "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
+    for var in ("CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
         if not os.environ.get(var):
             print(f"ERROR: env var {var} is required", file=sys.stderr)
             return 2
@@ -458,7 +549,9 @@ def main() -> int:
         print(f"\n── Latency ({args.latency_iterations} iterations each) ──────────────")
         latency = run_latency(client, bucket, run_id, mechanism, args.latency_iterations)
         for s in latency:
-            print(f"     {s.operation:20s}  p50={s.p50_ms:.1f}ms  p95={s.p95_ms:.1f}ms  n={s.count}")
+            print(
+                f"     {s.operation:20s}  p50={s.p50_ms:.1f}ms  p95={s.p95_ms:.1f}ms  n={s.count}"
+            )  # noqa: E501
 
     # 4. Build report
     all_pass = all(t.passed for t in cas_tests)
@@ -484,7 +577,7 @@ def main() -> int:
 
     args.output.write_text(json.dumps(asdict(report), indent=2) + "\n")
 
-    print(f"\n── Summary ──────────────────────────────────────────────")
+    print("\n── Summary ──────────────────────────────────────────────")
     print(f"     mechanism:    {mechanism}")
     print(f"     tests:        {sum(t.passed for t in cas_tests)}/{len(cas_tests)} passed")
     print(f"     overall_pass: {all_pass}")
