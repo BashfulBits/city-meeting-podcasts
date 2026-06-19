@@ -1,0 +1,74 @@
+name: Granicus sustained probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeat_count:
+        description: "Short serial requests per clip"
+        type: number
+        default: 8
+      durations:
+        description: "Progressive sample durations in seconds"
+        type: string
+        default: "30,120,600"
+      cooldown_seconds:
+        description: "Quiet interval before recovery checks"
+        type: number
+        default: 1800
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # Share Audio's workflow-level queue so a probe cannot race a scheduled/manual Audio run after
+  # its initial isolation check. cancel-in-progress=false makes the probe wait its turn.
+  group: audio
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
+      FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e .
+      - name: Install pinned static ffmpeg
+        run: |
+          python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${RUNNER_TEMP}/ffmpeg-static"
+      - name: Require isolated Audio state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5)
+          QUEUED=$(gh run list --workflow audio.yml --status queued --json databaseId --limit 5)
+          if [[ "${ACTIVE}" != "[]" || "${QUEUED}" != "[]" ]]; then
+            echo "::error title=Probe isolation unavailable::Audio is active or queued."
+            exit 1
+          fi
+          echo "No active or queued Audio run."
+      - name: Run sustained Granicus matrix
+        run: |
+          PYTHONPATH=. python scripts/probe_granicus_sustained.py \
+            --ffmpeg "${RUNNER_TEMP}/ffmpeg-static/bin/ffmpeg" \
+            --repeat-count "${{ inputs.repeat_count }}" \
+            --durations "${{ inputs.durations }}" \
+            --cooldown-seconds "${{ inputs.cooldown_seconds }}" \
+            --output granicus-sustained-results.json
+      - name: Upload probe results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: granicus-sustained-results
+          path: granicus-sustained-results.json

@@ -214,6 +214,25 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
     assert "faster-whisper-large-v3-turbo" in str(job["steps"])
 
 
+def test_granicus_sustained_probe_is_manual_isolated_and_archived():
+    wf, job = _job("granicus-probe.yml", job_name="probe")
+
+    assert set(_on(wf)) == {"workflow_dispatch"}
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+    assert wf["concurrency"]["group"] == "audio"
+    assert wf["concurrency"]["cancel-in-progress"] is False
+
+    runs = "\n".join(str(step.get("run", "")) for step in job["steps"])
+    assert "probe_granicus_sustained.py" in runs
+    assert "audio.yml --status in_progress" in runs
+    assert "audio.yml --status queued" in runs
+    assert "--sha256" in runs
+
+    upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
+    assert upload["if"] == "always()"
+    assert upload["with"]["path"] == "granicus-sustained-results.json"
+
+
 def test_deploy_is_render_only():
     """H11b: deploy.yml is a render-only job — it publishes feeds/pages and never runs the heavy
     phase, so encoding/transcription can't block or redden the Pages deploy. Guard that the enrich

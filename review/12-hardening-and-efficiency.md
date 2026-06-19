@@ -1426,13 +1426,49 @@ in priority order (most to least networking-friendly):
 2. Fetch `DownloadFile.php` directly instead of following the pre-resolved `archive-video` URL.
 3. Discover and test an HLS/streaming URL that Granicus serves more consistently to Actions runners.
 
+**2026-06-19 evidence and recovery refinement (#337/#353).** The corrected isolated GitHub-hosted
+short-fetch matrix passed all six controls after Audio #37: Ubuntu FFmpeg and pinned FFmpeg 7.1.4,
+the same archive object, direct `DownloadFile.php`, archive + `Referer`/`Origin`, and two concurrent
+archive samples. No request shape distinguished itself. Together with Audio #33's substantial
+successful transfer followed by #34–#37's immediate 403s, the leading hypothesis is a rolling
+request/byte/egress reputation limit or cooldown state, not a permanently invalid archive transport.
+
+Before activating a transport fallback:
+
+- the manual isolated `granicus-probe.yml` runs `probe_granicus_sustained.py` against both known-good
+  controls and the exact Fort Worth archive objects that opened Audio #37's circuit;
+- it shares Audio's workflow-level `audio` concurrency group (`cancel-in-progress: false`), so a
+  schedule cannot begin between the probe's isolation check and its network cases;
+- it measures round-robin repeated short requests, progressively longer bounded transfers, a
+  configurable quiet interval and post-cooldown check, then concurrency only after serial evidence;
+- output is an uploaded redacted JSON artifact containing hostname/path/outcome/timestamps/bytes but
+  never signed query strings.
+
+Production recovery is also no longer “open circuit, rapidly consume the whole queue as deferred.”
+A planner/source-cache 403/429 is persisted once as that episode's materialization failure and halts
+the remaining stage chain, preventing an immediate duplicate AudioStage request. Circuit-open items
+remain non-failures and are parked while ordinary work drains. After cooldown, one parked item is a
+half-open canary: another throttle immediately reopens the circuit; a complete materialization records
+recovery and releases the remaining parked work through the unchanged local/distributed caps. The
+stop signal cancels the wait, so recovery never overrides the wall-clock or supersession budget.
+Run-history convenience totals now sum throttle/deferral events across the whole audio stage chain,
+including planner-stage source-cache requests, instead of reporting only AudioStage.
+
+New breaker telemetry adds `recovery_probes` and `recoveries`. Existing `rate_limited`,
+`circuit_trips`, and `circuit_deferred` counters remain cumulative. No audio recipe, object identity,
+or pipeline version changes; existing artifacts are untouched and only future attempts use this
+recovery behavior.
+
 **Abort & escalation condition:** If a single audio file is **attempted across 8+ materialize runs
 without completing**, flag it as a high-priority GH issue (stuck download, needs investigation). Do
 **not** prototype off-GitHub-Actions solutions at this phase.
 
 **Files.** `config/site_config.yml` (`provider_distributed_leases`, `provider_rate_limits`);
-`.github/workflows/audio.yml` + `contracts.yml` (coordination gates); `citypods/provider_leases.py`
-(metrics); `citypods/report/status.py` (dashboard flags + budget-remaining visuals).
+`.github/workflows/audio.yml` + `contracts.yml` (coordination gates);
+`.github/workflows/granicus-probe.yml` + `scripts/probe_granicus_sustained.py` (manual sustained
+experiment); `citypods/media.py`, `stages.py`, and `run.py` (single-attempt accounting, half-open
+recovery, parked queue); `citypods/provider_leases.py` (metrics); `citypods/report/status.py`
+(dashboard flags + budget-remaining visuals).
 
 **Acceptance.** Phase 1: backlog drain rate stable, 403 rate <5% (success ≥95%). Phase 2: contracts
 auto-pause/resume without manual intervention, auto-retry closes transient failures. Phase 3 (if needed):

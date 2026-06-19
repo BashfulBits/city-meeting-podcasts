@@ -93,6 +93,7 @@ from citypods.media import (
     SourceCache,
     _probe_duration_secs,
     materialize_audio,
+    record_materialize_failure,
 )
 from citypods.models import City, Episode
 from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workitem_from_episode
@@ -663,15 +664,22 @@ class TimelineStage:
                 # letting it propagate to the global queue's blanket per-item catch, which would
                 # silently drop this episode for the pass with no stats and no backoff.
                 with lock:
+                    stats.skipped += 1
                     stats.circuit_skipped += 1
                 return
             except RateLimitedMediaFetchError as exc:
                 # A planner's source-cache prefetch hit a provider 403/429 (it records on the
                 # shared circuit breaker itself; this just makes the failure visible in the
                 # report instead of vanishing into the global queue's blanket catch).
+                if exc.opened_domain is not None:
+                    print(
+                        f"[enrich] provider throttle circuit opened domain={exc.opened_domain}",
+                        flush=True,
+                    )
                 with lock:
                     stats.rate_limited += 1
                     stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+                record_materialize_failure(ep, getattr(exc, "code", None) or "rate_limited")
                 return
 
             if changed and current is not None:
@@ -1805,4 +1813,9 @@ def run_stages(
                 flush=True,
             )
         out.append(stat)
+        # A provider throttle in a planner is the materialization attempt for this item. Continuing
+        # to AudioStage would immediately repeat the same source-cache request and double-count one
+        # failure. Circuit-open work is similarly parked by the global queue for a later canary.
+        if stat.rate_limited or stat.circuit_skipped:
+            break
     return out

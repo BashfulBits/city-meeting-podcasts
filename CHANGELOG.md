@@ -41,6 +41,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Granicus throttle failures no longer cause an immediate duplicate request or force every
+  remaining meeting out of the run ([#337](https://github.com/BashfulBits/city-meeting-podcasts/issues/337)).**
+  A 403/429 raised while `TimelineStage`/`SilencePlanner` fills the per-run source cache now records
+  exactly one persisted materialization attempt and halts that episode before `AudioStage` can fetch
+  the same URL again. Circuit-open meetings remain deferred without backoff, but the global queue now
+  parks them while other-provider work drains, waits only while the normal stop budget permits, and
+  runs one half-open canary after cooldown. A canary throttle immediately reopens the circuit; a
+  completed materialization records recovery and releases the parked work through the unchanged
+  Granicus caps. Run telemetry adds recovery-probe/recovery counts. A new manual, isolated
+  `granicus-probe.yml` measures repeated request count, progressive bounded transfer volume, cooldown,
+  exact Audio #37 Fort Worth failures, and concurrency-last behavior with redacted JSON artifacts.
+  No audio recipe/pipeline version changed and no stored artifact is invalidated.
 - **Stale-lease and release/renewal logs now name the GitHub run, job, matrix shard, and lease
   state ([#345](https://github.com/BashfulBits/city-meeting-podcasts/issues/345)).** GH#336 already
   stored `github_run_id`/`github_run_attempt`/`github_job` in renewable lease payloads, but

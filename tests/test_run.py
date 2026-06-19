@@ -13,6 +13,7 @@ from citypods.models import City, Episode
 from citypods.providers import get_provider, register
 from citypods.providers.base import ProviderError
 from citypods.records import feed_content_hash
+from citypods.stages import StageContext, StageStats
 from citypods.state import build_fingerprint
 
 
@@ -252,6 +253,36 @@ def test_build_writes_run_history_and_summary(tmp_path, fake_provider):
     assert all(_json.loads(line)["schema_version"] for line in hist2)
 
 
+def test_run_history_counts_planner_and_audio_throttles_once(tmp_path):
+    base = {
+        "ran": 0,
+        "encoded": 0,
+        "credited": 0,
+        "aligned": 0,
+        "transcribed": 0,
+        "reused": 0,
+        "backlog": 0,
+        "seconds": 0.0,
+        "bytes": 0,
+        "errors": 0,
+        "rate_limited": 0,
+        "circuit_skipped": 0,
+    }
+    timeline = {**base, "rate_limited": 2, "circuit_skipped": 3, "errors": 2}
+    audio = {**base, "rate_limited": 1, "circuit_skipped": 4, "errors": 1}
+
+    run._record_run_history(
+        tmp_path,
+        [],
+        {"timeline": timeline, "audio": audio},
+        scope={"phase": "enrich", "lane": "audio"},
+    )
+
+    summary = json.loads((tmp_path / "run_summary.json").read_text())
+    assert summary["audio_rate_limited_403s"] == 3
+    assert summary["audio_circuit_skipped"] == 7
+
+
 def test_build_writes_work_manifest(tmp_path, fake_provider):
     """H5: an enrich/all run persists the derived work manifest to state/work.json."""
     from citypods.ops.workqueue import load_manifest
@@ -370,6 +401,95 @@ def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys,
     assert "[enrich] source fetched slug=fake-city provider=faketest" in out
     assert "[enrich] global queue:" in out
     assert "[enrich] audio pass:" in out and "[enrich] audio pass done" in out
+
+
+def test_global_queue_parks_circuit_items_then_releases_after_canary(tmp_path, monkeypatch):
+    city = City(
+        slug="granicus-city",
+        provider="granicus",
+        source={"feed_url": "https://example.granicus.com/feed"},
+        podcast_title="Granicus City",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    episodes = [_ep("parked-1"), _ep("healthy"), _ep("parked-2")]
+    calls: list[str] = []
+
+    class _Circuit:
+        def wait_for_recovery_probe(self, **_kwargs):
+            calls.append("wait")
+            return "granicus.com"
+
+        def recovery_succeeded(self, domain):
+            assert domain == "granicus.com"
+            return True
+
+    class _Stage:
+        name = "audio"
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None,
+                ffmpeg=None,
+                max_kbps=96,
+                dry_run=False,
+                lane="audio",
+                rate_limit_circuit=_Circuit(),
+            )
+            self.stages = [_Stage()]
+            self.resolved = 0
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def resolve_parked_stats(self, stats):
+            assert any(s.circuit_skipped for s in stats)
+            self.resolved += 1
+
+        def persist_source(self, _key, eps, _persisted, *, notes):
+            assert eps is episodes
+            assert notes == []
+
+    attempts: dict[str, int] = {}
+
+    def _run_stages(_provider, _city, batch, _stages, _ctx, *, quiet):
+        assert quiet is True
+        uid = batch[0].uid
+        attempts[uid] = attempts.get(uid, 0) + 1
+        calls.append(uid)
+        if uid in {"uid-parked-1", "uid-parked-2"} and attempts[uid] == 1:
+            return [StageStats("audio", skipped=1, circuit_skipped=1)]
+        return [StageStats("audio", ran=1, encoded=1)]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+    pipeline = _Pipeline()
+
+    results = run._run_enrich_global_queue(
+        pipeline,
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+    )
+
+    # The healthy item runs before the queue waits. One parked item is then the canary; its success
+    # releases the remaining parked item in the same run.
+    assert calls == [
+        "uid-parked-1",
+        "uid-healthy",
+        "uid-parked-2",
+        "wait",
+        "uid-parked-1",
+        "uid-parked-2",
+    ]
+    assert pipeline.resolved == 2
+    assert results[0].status == "built"
 
 
 def test_stop_signal_fires_on_deadline():

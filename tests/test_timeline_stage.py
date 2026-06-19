@@ -239,6 +239,9 @@ class TestTimelineStagePlannerThrottle:
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.rate_limited == 1
         assert len(stats.errors) == 1
+        assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "rate_limited"
+        assert ep.materialize_last_attempt is not None
         assert ep.timeline is None  # episode left untouched, not crashed
 
     def test_circuit_open_planner_counted_not_raised(self, tmp_path):
@@ -246,6 +249,8 @@ class TestTimelineStagePlannerThrottle:
         stage = TimelineStage(planners=[_CircuitOpenPlanner()])
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.circuit_skipped == 1
+        assert stats.skipped == 1
+        assert ep.materialize_attempts == 0
         assert ep.timeline is None
 
     def test_throttle_in_second_planner_does_not_lose_first_planner_result(self, tmp_path):
