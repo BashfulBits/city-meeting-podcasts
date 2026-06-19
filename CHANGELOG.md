@@ -41,6 +41,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **The ffmpeg/ffprobe rate-limit circuit now opens before the failed attempt's provider lease is
+  released ([#343](https://github.com/BashfulBits/city-meeting-podcasts/issues/343)).** GH#336 added
+  post-lease circuit admission, but the circuit was only recorded/opened by the higher-level
+  materialization caller, after the subprocess boundary had already released its distributed and
+  process-local provider slots on the way out. A queued waiter could acquire that just-released lease,
+  pass the still-closed circuit check, and start one extra ffmpeg process per threshold crossing —
+  Audio #33 shard 3 showed four direct Granicus 403s against a configured threshold of three, twice.
+  `_raise_if_rate_limited` now records the failure (and atomically opens the circuit, when the
+  threshold is crossed) from inside the same `with` block that holds both provider slots, for both the
+  `subprocess.run` and monitored/`Popen` ffmpeg paths; `RateLimitedMediaFetchError` carries
+  `circuit_recorded`/`opened_domain` so the materialization caller skips re-recording (no
+  double-counting) while still logging the open transition and applying episode backoff. Circuit-open
+  logging remains once per transition; rate-limit/circuit-deferred telemetry is unchanged.
 - **Process-local workers can no longer hoard distributed provider slots
   ([#342](https://github.com/BashfulBits/city-meeting-podcasts/issues/342)).** The ffmpeg/ffprobe
   guard now acquires the process-local `HostRateLimiter` slot *before* joining the distributed
