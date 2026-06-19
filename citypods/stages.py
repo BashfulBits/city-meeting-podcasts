@@ -217,6 +217,9 @@ class StageContext:
     # cutoff. Stores the previous 100 successful ASR runtime/recording-duration ratios, seeded
     # with a conservative estimate until real samples replace it.
     asr_runtime_log_path: Path | None = None
+    # Local/in-process faster-whisper memory-safety ceiling. External dispatch backends are not
+    # subject to it. A non-positive value disables the guard; unknown durations remain eligible.
+    asr_local_max_duration_hours: float = 0
     # Set after an ASR timeout so other source workers skip starting more ASR in this run. The
     # timed-out daemon thread may still be burning CPU until process exit, so don't pile on.
     asr_abort_event: threading.Event | None = None
@@ -494,6 +497,28 @@ def _episode_duration_hours(ep: Episode) -> tuple[float, str]:
     if ep.duration is not None and ep.duration > 0:
         return ep.duration / 3600, "source"
     return 0.0, "unknown"
+
+
+def _asr_local_duration_eligible(ctx: StageContext, duration_hours: float) -> bool:
+    """Whether a known recording duration is safe for the in-process ASR backend.
+
+    This is independent from the rolling runtime estimator: it protects local peak memory, while
+    ``_asr_fits_remaining_budget`` protects the Actions wall-clock window. Unknown durations retain
+    the existing behavior and are checked again after the hosted-audio probe.
+    """
+    limit = ctx.asr_local_max_duration_hours
+    return limit <= 0 or duration_hours <= 0 or duration_hours <= limit
+
+
+def _log_asr_external_required(
+    ep_ref: str, *, duration_hours: float, duration_source: str, local_max_hours: float
+) -> None:
+    print(
+        f"[enrich] transcript asr skipped {ep_ref} reason=external-required "
+        f"duration_h={duration_hours:.2f} duration_source={duration_source} "
+        f"local_max_duration_h={local_max_hours:.2f}",
+        flush=True,
+    )
 
 
 class AudioStage:
@@ -1354,11 +1379,20 @@ class TranscriptStage:
                 # overflow to local — fall through to the on-runner synchronous path below.
 
             # Preflight with the known episode duration before taking the scarce ASR slot or
-            # downloading audio. A later probe of the hosted audio may refine this, but if the
-            # metadata duration already cannot fit in the remaining lane budget, defer this
-            # recording and let the worker try another candidate.
+            # downloading audio. A later probe of the hosted audio may refine this. Local duration
+            # eligibility is a peak-memory guard; the existing runtime estimate remains the
+            # independent wall-clock guard.
             preflight_dur_h, preflight_duration_source = _episode_duration_hours(ep)
             if preflight_duration_source != "unknown":
+                if not _asr_local_duration_eligible(ctx, preflight_dur_h):
+                    stats.skipped += 1
+                    _log_asr_external_required(
+                        ep_ref,
+                        duration_hours=preflight_dur_h,
+                        duration_source=preflight_duration_source,
+                        local_max_hours=ctx.asr_local_max_duration_hours,
+                    )
+                    continue
                 fits_budget, estimate_s, remaining_s = _asr_fits_remaining_budget(
                     ctx, preflight_dur_h, runtime_log
                 )
@@ -1459,6 +1493,22 @@ class TranscriptStage:
                 duration_source = "hosted"
             duration_label = f"{dur_h:.1f}" if duration_source != "unknown" else "unknown"
             mode = "align" if align_text else "transcribe"
+            if not _asr_local_duration_eligible(ctx, dur_h):
+                audio_tmp.cleanup()
+                if native_gate_acquired and ctx.native_work_gate is not None:
+                    ctx.native_work_gate.release(kind="asr")
+                    native_gate_acquired = False
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                stats.skipped += 1
+                _log_asr_external_required(
+                    ep_ref,
+                    duration_hours=dur_h,
+                    duration_source=duration_source,
+                    local_max_hours=ctx.asr_local_max_duration_hours,
+                )
+                continue
             fits_budget, estimate_s, remaining_s = _asr_fits_remaining_budget(
                 ctx, dur_h, runtime_log
             )

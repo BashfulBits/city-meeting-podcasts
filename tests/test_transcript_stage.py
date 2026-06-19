@@ -19,6 +19,10 @@ from unittest.mock import patch
 import pytest
 
 from citypods.asr import TranscriptArtifacts, asr_spec_hash
+from citypods.compute import DispatchCoordinator, DispatchTarget
+from citypods.compute.base import InferenceJob, JobHandle
+from citypods.compute.budget import Budget
+from citypods.compute.local import LocalBackend
 from citypods.models import City, Episode
 from citypods.records import (
     episode_to_record,
@@ -575,6 +579,40 @@ class _FakeAsr:
         return asr_spec_hash(audio_spec_hash, model, align_hash, version)
 
 
+class _FakeDispatchBackend:
+    name = "modal"
+
+    def __init__(self):
+        self.submitted: list[InferenceJob] = []
+
+    def estimate_gpu_seconds(self, job):
+        return 60.0
+
+    def run_inference(self, job):
+        self.submitted.append(job)
+        return JobHandle(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            backend=self.name,
+            ref=f"job-{len(self.submitted)}",
+        )
+
+
+def _dispatcher(tmp_path, fake_asr, external, *, monthly_gpu_seconds=10_000):
+    return DispatchCoordinator(
+        local=LocalBackend(fake_asr),
+        targets=[
+            DispatchTarget(
+                backend=external,
+                monthly_gpu_seconds=monthly_gpu_seconds,
+                max_inflight=8,
+            )
+        ],
+        budget=Budget(),
+        state_dir=tmp_path,
+    )
+
+
 def _asr_ctx(tmp_path: Path, fake_asr: _FakeAsr) -> StageContext:
     """StageContext with a patched asr module and no stop signal."""
     ctx = _ctx(tmp_path)
@@ -735,6 +773,7 @@ class TestTranscriptStageASR:
         ep.duration = 4 * 3600
         fake_asr = _FakeAsr()
         ctx = _ctx(tmp_path)
+        ctx.asr_local_max_duration_hours = 4
         ctx.asr_timeout_base_seconds = 15 * 60
         ctx.asr_timeout_per_hour_seconds = 30 * 60
         ctx.asr_start_deadline = time.monotonic() + 60 * 60
@@ -756,6 +795,134 @@ class TestTranscriptStageASR:
         assert stats.skipped == 1
         assert ep.transcript_key is None
         assert "reason=insufficient-budget" in out
+
+    def test_local_asr_defers_known_duration_above_memory_limit_before_download(
+        self, tmp_path, capsys
+    ):
+        ep = _ep_with_audio()
+        ep.duration = 5 * 3600
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_local_max_duration_hours = 4
+        ctx.asr_semaphore = threading.Semaphore(1)
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch(
+                "citypods.stages._download_audio_file",
+                side_effect=AssertionError("oversized local ASR must not download audio"),
+            ),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        out = capsys.readouterr().out
+        assert stats.skipped == 1
+        assert stats.errors == []
+        assert fake_asr.transcribe_calls == []
+        assert ctx.asr_semaphore.acquire(blocking=False) is True
+        assert "reason=external-required" in out
+        assert "duration_h=5.00" in out
+        assert "duration_source=source" in out
+        assert "local_max_duration_h=4.00" in out
+
+    def test_auto_dispatch_accepts_recording_above_local_duration_limit(self, tmp_path, capsys):
+        ep = _ep_with_audio()
+        ep.duration = 7 * 3600
+        fake_asr = _FakeAsr()
+        external = _FakeDispatchBackend()
+        ctx = _ctx(tmp_path)
+        ctx.asr_local_max_duration_hours = 4
+        ctx.compute_backend = _dispatcher(tmp_path, fake_asr, external)
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch(
+                "citypods.stages._download_audio_file",
+                side_effect=AssertionError("dispatched ASR must not download locally"),
+            ),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        out = capsys.readouterr().out
+        assert stats.dispatched == 1
+        assert stats.skipped == 0
+        assert len(external.submitted) == 1
+        assert fake_asr.transcribe_calls == []
+        assert "transcript asr dispatched" in out
+        assert "reason=external-required" not in out
+
+    def test_auto_dispatch_decline_defers_oversized_recording_instead_of_local_overflow(
+        self, tmp_path, capsys
+    ):
+        ep = _ep_with_audio()
+        ep.duration = 7 * 3600
+        fake_asr = _FakeAsr()
+        external = _FakeDispatchBackend()
+        ctx = _ctx(tmp_path)
+        ctx.asr_local_max_duration_hours = 4
+        ctx.compute_backend = _dispatcher(tmp_path, fake_asr, external, monthly_gpu_seconds=30)
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch(
+                "citypods.stages._download_audio_file",
+                side_effect=AssertionError("ineligible local overflow must not download audio"),
+            ),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        out = capsys.readouterr().out
+        assert stats.dispatched == 0
+        assert stats.skipped == 1
+        assert stats.errors == []
+        assert external.submitted == []
+        assert fake_asr.transcribe_calls == []
+        assert "reason=external-required" in out
+
+    @pytest.mark.parametrize("limit", [0, -1])
+    def test_non_positive_local_duration_limit_preserves_existing_behavior(self, tmp_path, limit):
+        ep = _ep_with_audio()
+        ep.duration = 7 * 3600
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_local_max_duration_hours = limit
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.stages._probe_duration_secs", return_value=None),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        assert stats.transcribed == 1
+        assert len(fake_asr.transcribe_calls) == 1
+
+    def test_hosted_probe_defers_unknown_oversized_duration_before_local_inference(
+        self, tmp_path, capsys
+    ):
+        ep = _ep_with_audio()
+        ep.duration = None
+        ep.audio_duration_served = None
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_local_max_duration_hours = 4
+        ctx.asr_semaphore = threading.Semaphore(1)
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.stages._probe_duration_secs", return_value=5 * 3600),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        out = capsys.readouterr().out
+        assert stats.skipped == 1
+        assert stats.errors == []
+        assert fake_asr.transcribe_calls == []
+        assert ep.audio_duration_served == pytest.approx(5 * 3600)
+        assert ctx.asr_semaphore.acquire(blocking=False) is True
+        assert "reason=external-required" in out
+        assert "duration_source=hosted" in out
 
     def test_asr_skips_when_no_remaining_budget_after_download(self, tmp_path, capsys):
         ep = _ep_with_audio()

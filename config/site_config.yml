@@ -180,6 +180,11 @@ defaults:
   asr_timeout_base_minutes: 15
   asr_timeout_per_audio_hour_minutes: 30
   asr_timeout_budget_reserve_minutes: 1
+  # Local/in-process faster-whisper memory-safety ceiling. This is independent from the rolling
+  # runtime estimator above: external dispatch may accept recordings of any duration, but a known
+  # recording longer than this is never allowed to overflow onto the GitHub runner. It remains
+  # queued for Modal/Beam instead. Forks with larger self-hosted machines may raise it; <=0 disables.
+  asr_local_max_duration_hours: 4
   # GPU/ASR execution backend (H13 — the pre-1.0 "compute is pluggable" lock). Selects where
   # transcribe/align inference runs. "local" runs faster-whisper/stable-ts in-process on the runner;
   # "auto" (H14a) routes through the dispatcher below — filling each external free-tier GPU budget

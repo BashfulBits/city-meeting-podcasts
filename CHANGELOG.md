@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Local ASR now has a configurable duration admission guard for runner memory safety.**
+  `asr_local_max_duration_hours` defaults to 4 hours in production and applies only to synchronous
+  faster-whisper/stable-ts execution. `compute_backend: auto` still attempts external dispatch first;
+  when dispatch declines—or under `compute_backend: local`—a known oversized recording is deferred with
+  `reason=external-required` before semaphore acquisition/download, or after the hosted-audio probe if
+  duration was initially unknown. It is not marked failed and remains eligible for later external
+  dispatch. Non-positive values disable the guard. The existing rolling 100-sample runtime estimator,
+  timeout formula, 285-minute start cutoff, and 350-minute backstop are unchanged. No ASR pipeline
+  version or artifact identity changed, so stored transcripts are not invalidated and no backfill is
+  triggered.
 - **Audio runners now use a prebuilt, version-pinned GHCR runtime with a verified static fallback.**
   `.github/workflows/audio-runner-image.yml` builds and smoke-tests the linux/amd64 runtime weekly and
   whenever its definition changes. The image pins the official Python base by digest and installs an

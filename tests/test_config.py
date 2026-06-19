@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
 
 import pytest
 
-from citypods.config import load_city_configs
+from citypods.config import load_city_configs, load_site_config
 
 DEFAULTS = {"podcast_language": "en-us", "podcast_category": "Government", "max_episodes": 50}
 
@@ -98,6 +99,11 @@ def test_asr_alignment_defaults_off_and_can_be_enabled(tmp_path):
         VALID + "asr_alignment_enabled: true\n",
     )
     assert load_city_configs(tmp_path, DEFAULTS)[0].asr_alignment_enabled is True
+
+
+def test_production_local_asr_duration_limit_is_four_hours():
+    config = load_site_config(Path(__file__).resolve().parents[1] / "config" / "site_config.yml")
+    assert config["defaults"]["asr_local_max_duration_hours"] == 4
 
 
 def test_template_file_skipped(tmp_path):

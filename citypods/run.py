@@ -1193,6 +1193,7 @@ def build(
         )
         * 60,
         asr_runtime_log_path=state_dir / ASR_RUNTIME_LOG_NAME,
+        asr_local_max_duration_hours=float(defaults.get("asr_local_max_duration_hours", 4)),
         asr_abort_event=threading.Event()
         if not dry_run and defaults.get("asr_enabled", True)
         else None,
