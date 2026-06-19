@@ -1198,6 +1198,118 @@ def test_run_ffmpeg_guarded_serializes_remote_fetches_per_host_to_the_cap():
         HOST_LIMITER.configure({})  # reset the process-global singleton
 
 
+def test_run_ffmpeg_guarded_local_cap_does_not_hoard_distributed_slots(tmp_path):
+    """#342: the local host slot must be acquired *before* the distributed lease, so a process whose
+    local cap is one can never hold more than one distributed slot for that domain — even with
+    several threads racing for it — leaving the other slot free for a different shard to use."""
+    import time
+
+    import citypods.media as media
+    from citypods.http import HOST_LIMITER
+    from citypods.provider_leases import DistributedProviderLeasePool
+
+    url = "https://archive-video.granicus.com/x.mp4"
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+
+    class _CountingPool(DistributedProviderLeasePool):
+        """Wraps real lease acquisition to track how many leases *this shard* holds concurrently,
+        independent of where in the call stack they're acquired from."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.active = 0
+            self.peak = 0
+            self._count_lock = threading.Lock()
+
+        def slots(self, urls):
+            inner = super().slots(urls)
+
+            @contextmanager
+            def _counted():
+                with inner:
+                    with self._count_lock:
+                        self.active += 1
+                        self.peak = max(self.peak, self.active)
+                    try:
+                        yield
+                    finally:
+                        with self._count_lock:
+                            self.active -= 1
+
+            return _counted()
+
+    # Both pools share the same backing storage (the "distributed" part), but each represents a
+    # different process: shard A is the process under test (cap=1 local limiter, two threads
+    # racing); shard B is a separate process with its own (uncontended) local limiter.
+    lease_rule = {
+        "granicus.com": {"slots": 2, "ttl_seconds": 60, "poll_seconds": 0.01, "settle_seconds": 0}
+    }
+    shard_a_pool = _CountingPool(prefix="test-provider-leases")
+    shard_a_pool.configure(store, lease_rule)
+    shard_b_pool = DistributedProviderLeasePool(prefix="test-provider-leases")
+    shard_b_pool.configure(store, lease_rule)
+    HOST_LIMITER.configure({"granicus.com": 1})
+
+    original_pool = media.DISTRIBUTED_PROVIDER_LEASES
+    media.DISTRIBUTED_PROVIDER_LEASES = shard_a_pool
+
+    a_holding = threading.Event()
+    b_acquired = threading.Event()
+
+    class _FakeProc:
+        pid = 1
+
+        def poll(self):
+            return 0
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+    def _popen(cmd, **kw):
+        a_holding.set()
+        # Give the other shard a chance to grab the second distributed slot while this process's
+        # second thread is still queued on its own local cap, not on the distributed lease.
+        b_acquired.wait(timeout=1)
+        return _FakeProc()
+
+    def run_shard_a():
+        media._run_ffmpeg_guarded(
+            ["ffmpeg"],
+            phase="source-cache",
+            memory_floor_bytes=1,
+            rate_limit_urls=(url,),
+            snapshot=_snap,
+            sleep=lambda _s: None,
+            log=lambda *a, **k: None,
+            popen=_popen,
+            child_rss=lambda _p: 0,
+        )
+
+    def run_shard_b():
+        # A separate process has its own local rate limiter, so it never contends with shard A's
+        # local cap — only the shared distributed lease pool decides whether it can proceed.
+        a_holding.wait(timeout=1)
+        with shard_b_pool.slots([url]):
+            b_acquired.set()
+            time.sleep(0.02)
+
+    try:
+        shard_a_threads = [threading.Thread(target=run_shard_a) for _ in range(2)]
+        shard_b_thread = threading.Thread(target=run_shard_b)
+        for t in shard_a_threads:
+            t.start()
+        shard_b_thread.start()
+        for t in shard_a_threads:
+            t.join(timeout=2)
+        shard_b_thread.join(timeout=2)
+
+        assert shard_a_pool.peak == 1  # local cap of one held at most one distributed slot
+        assert b_acquired.is_set()  # the other shard could still use the unused distributed slot
+    finally:
+        media.DISTRIBUTED_PROVIDER_LEASES = original_pool
+        HOST_LIMITER.configure({})
+
+
 def test_run_ffmpeg_guarded_classifies_provider_throttle(monkeypatch):
     import citypods.media as media
 

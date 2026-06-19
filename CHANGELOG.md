@@ -41,6 +41,15 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **Process-local workers can no longer hoard distributed provider slots
+  ([#342](https://github.com/BashfulBits/city-meeting-podcasts/issues/342)).** The ffmpeg/ffprobe
+  guard now acquires the process-local `HostRateLimiter` slot *before* joining the distributed
+  provider-lease election (previously the other way around), for both monitored and unmonitored
+  ffmpeg paths and the ffprobe probe. A process with a local cap of one can therefore hold at most
+  one distributed slot for a domain at a time, instead of letting several of its own threads win
+  every distributed candidate while they wait behind the local cap — which had let one early-starting
+  shard occupy both Granicus slots in Audio runs #32/#33 while other shards were still starting up.
+  Existing aggregate slot limits and post-slot circuit admission are unaffected.
 - **Distributed provider leases now renew safely, reap dead owners promptly, and stop queued media
   work after a provider circuit opens ([#336](https://github.com/BashfulBits/city-meeting-podcasts/issues/336)).**
   Waiting and acquired lease candidates refresh their explicit expiry while alive; winner election

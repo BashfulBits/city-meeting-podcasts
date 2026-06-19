@@ -204,6 +204,12 @@ Hard-won facts that bite anyone adding/debugging providers:
   a worker waits therefore defers that item without recording a materialization failure/backoff. The
   closed→open transition is atomic per cooldown, and per-domain run telemetry records direct
   throttles, trips, circuit deferrals, lease acquisition/wait/renewal, and stale-owner cleanup.
+- **The process-local slot is acquired before the distributed lease (issue #342).** The ffmpeg/ffprobe
+  guard always enters `HOST_LIMITER` first and `provider_distributed_leases` second, for both
+  monitored and unmonitored ffmpeg paths and the ffprobe probe. A thread still queued behind its own
+  process's local cap must never already hold a cross-shard slot — acquiring distributed-first let one
+  early-starting process's other threads win every distributed candidate while they waited locally,
+  starving other shards of capacity they could otherwise use.
 - **`403` is retried as a rate-limit signal** by the shared session (`403` in `_ClampedRetry`'s
   `status_forcelist`): media bytes never go through `requests`, so a `403` a `requests` call sees is a
   provider throttle, not auth — retrying with backoff generalizes the old bespoke Granicus loop.
