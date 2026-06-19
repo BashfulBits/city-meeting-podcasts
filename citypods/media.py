@@ -1774,6 +1774,34 @@ def _hosted_keys(city: City, storage: StorageBackend) -> set[str] | None:
     return {key for key, _ in storage.list_objects(prefix)}
 
 
+class HostedKeysCache:
+    """Thread-safe per-pass cache of :func:`_hosted_keys`, keyed by source.
+
+    The H5 PR3 global queue dispatches ``AudioStage`` once per *episode* rather than once
+    per source, so that an episode from any source can be processed in true
+    newest-everywhere-first priority order. Without this cache, ``materialize_audio()``
+    would call ``storage.list_objects()`` on the same source prefix once per episode —
+    thousands of redundant listings for a single source, which is what stretched a
+    stopped shard's drain to tens of minutes (issue #344). Each source's listing is
+    fetched at most once per cache (i.e. once per global pass) and shared across however
+    many worker threads end up processing that source's episodes concurrently.
+    """
+
+    def __init__(self) -> None:
+        self._keys: dict[str, set[str] | None] = {}
+        self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
+        self._guard = threading.Lock()
+
+    def get(self, city: City, storage: StorageBackend) -> set[str] | None:
+        key = source_key(city)
+        with self._guard:
+            lock = self._locks[key]
+        with lock:
+            if key not in self._keys:
+                self._keys[key] = _hosted_keys(city, storage)
+            return self._keys[key]
+
+
 def _sources_by_id(ep: Episode, source_url: str) -> dict[str, str]:
     """Map source_id → resolved URL.
 
@@ -1884,6 +1912,7 @@ def materialize_audio(
     native_work_gate: NativeWorkGate | None = None,
     memory_reservation: MemoryReservation | None = None,
     rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    hosted_keys_cache: HostedKeysCache | None = None,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -1907,9 +1936,17 @@ def materialize_audio(
     ``max_workers`` controls the inner ThreadPoolExecutor for the encode loop. Workers are
     almost entirely I/O-bound (rate-limited HLS streaming), so this can safely exceed the
     number of CPU cores.
+
+    ``hosted_keys_cache``, when provided, shares one ``list_objects`` listing per source across
+    every call for that source during the cache's lifetime — needed because the global queue
+    (H5 PR3) invokes this function once per *episode*, not once per source (issue #344).
     """
     stats = MaterializeStats()
-    hosted_keys = _hosted_keys(city, storage)
+    hosted_keys = (
+        hosted_keys_cache.get(city, storage)
+        if hosted_keys_cache is not None
+        else _hosted_keys(city, storage)
+    )
     now = datetime.now(UTC)
 
     # Deferred-but-out-of-backoff episodes first: when a feature lands that unblocks

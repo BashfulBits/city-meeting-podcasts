@@ -41,6 +41,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **The global audio queue now drains promptly after a graceful `stop()`
+  ([#344](https://github.com/BashfulBits/city-meeting-podcasts/issues/344)).** The H5 PR3 global queue
+  dispatches `AudioStage` once per *episode* (for true newest-everywhere-first ordering across
+  sources), so `materialize_audio()`'s `_hosted_keys()` re-listed the same source's storage prefix once
+  per episode instead of once per source — Audio #32 shard 0 spent ~25 minutes draining queued-but-cheap
+  items after its last in-flight encode finished. A new `HostedKeysCache` (wired through
+  `StageContext.hosted_keys_cache`) shares one `list_objects` listing per source across every
+  `AudioStage` call for that source during a build, so listings scale with the number of sources, not
+  episodes. Cheap reuse/credit bookkeeping is unchanged and still runs regardless of `stop()`; only the
+  redundant listing is eliminated.
 - **The ffmpeg/ffprobe rate-limit circuit now opens before the failed attempt's provider lease is
   released ([#343](https://github.com/BashfulBits/city-meeting-podcasts/issues/343)).** GH#336 added
   post-lease circuit admission, but the circuit was only recorded/opened by the higher-level
