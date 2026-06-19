@@ -897,6 +897,7 @@ def build(
         storage if not dry_run else None,
         site_config.get("provider_distributed_leases", {}),
         log=lambda msg: print(msg, flush=True),
+        shard=f"{shard[0]}/{shard[1]}" if shard is not None else None,
     )
     # GPU/ASR execution backend (H13). ``local`` (in-process) by default; ``auto`` (H14a) returns a
     # DispatchCoordinator filling external free-tier GPU budgets first, overflowing to ``local``.

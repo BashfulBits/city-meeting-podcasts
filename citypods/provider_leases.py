@@ -32,6 +32,35 @@ class ProviderLeaseRule:
     settle_seconds: float = 0.25
 
 
+@dataclass(frozen=True)
+class _LeaseMetadata:
+    """Ownership/run context for a lease candidate, parsed from its payload (or ``None`` fields for
+    a legacy/unreadable payload)."""
+
+    owner: str | None = None
+    state: str | None = None
+    run_id: str | None = None
+    run_attempt: str | None = None
+    job: str | None = None
+    shard: str | None = None
+
+    def detail(self) -> str:
+        """Concise ``" key=value ..."`` suffix for a log line; empty when nothing is known."""
+        parts = [
+            f"{label}={value}"
+            for label, value in (
+                ("owner", self.owner),
+                ("run_id", self.run_id),
+                ("run_attempt", self.run_attempt),
+                ("job", self.job),
+                ("shard", self.shard),
+                ("state", self.state),
+            )
+            if value
+        ]
+        return f" {' '.join(parts)}" if parts else ""
+
+
 @dataclass
 class ProviderLease:
     """One acquired distributed slot with a renewable storage-backed claim."""
@@ -72,9 +101,12 @@ class DistributedProviderLeasePool:
         self._rules: dict[str, ProviderLeaseRule] = {}
         self._owner = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex}"
         self._log: Callable[[str], None] | None = None
+        self._shard: str | None = None
         self._guard = threading.Lock()
         self._telemetry: dict[str, dict[str, int | float]] = {}
-        self._expiry_cache: dict[str, tuple[datetime | None, datetime | None, str | None]] = {}
+        self._expiry_cache: dict[
+            str, tuple[datetime | None, datetime | None, _LeaseMetadata | None]
+        ] = {}
 
     def configure(
         self,
@@ -82,6 +114,7 @@ class DistributedProviderLeasePool:
         config: Mapping[str, object] | None,
         *,
         log: Callable[[str], None] | None = None,
+        shard: str | None = None,
     ) -> None:
         """Replace lease configuration.
 
@@ -90,7 +123,9 @@ class DistributedProviderLeasePool:
         storage or a backend without the required methods disables the pool. The protocol uses only
         ordinary object upload/list/delete operations so it works with B2's S3-compatible API.
         ``get_file`` is optional: when available it makes payload expiry authoritative; otherwise
-        object modification time plus TTL is the compatibility fallback.
+        object modification time plus TTL is the compatibility fallback. ``shard`` is this process's
+        ``K/N`` matrix shard label (the H6b sharded workflows), recorded in lease payloads/logs
+        alongside the GitHub run/job env vars.
         """
         rules: dict[str, ProviderLeaseRule] = {}
         for domain, raw in (config or {}).items():
@@ -106,6 +141,7 @@ class DistributedProviderLeasePool:
             self._storage = usable_storage
             self._rules = rules if usable_storage is not None else {}
             self._log = log
+            self._shard = shard
             self._telemetry = {}
             self._expiry_cache = {}
         if rules and usable_storage is None and log is not None:
@@ -220,12 +256,14 @@ class DistributedProviderLeasePool:
             with self._guard:
                 self._expiry_cache.pop(lease.key, None)
             if log is not None:
-                _emit(log, f"[enrich] provider lease released domain={lease.domain}")
+                detail = self._self_metadata(state="released").detail()
+                _emit(log, f"[enrich] provider lease released domain={lease.domain}{detail}")
         except Exception as exc:  # noqa: BLE001 - release should not mask the encode result
             if log is not None:
+                detail = self._self_metadata(state="released").detail()
                 _emit(
                     log,
-                    f"[enrich] provider lease release failed domain={lease.domain}: {exc}",
+                    f"[enrich] provider lease release failed domain={lease.domain}{detail}: {exc}",
                 )
 
     def _delete_key(self, key: str) -> None:
@@ -256,9 +294,11 @@ class DistributedProviderLeasePool:
                 self._increment(lease.domain, "lease_renewals")
             except Exception as exc:  # noqa: BLE001 - the holder continues until normal release
                 if log is not None:
+                    detail = self._self_metadata(state="acquired").detail()
                     _emit(
                         log,
-                        f"[enrich] provider lease renewal failed domain={lease.domain}: {exc}",
+                        f"[enrich] provider lease renewal failed domain={lease.domain}{detail}: "
+                        f"{exc}",
                     )
 
     @staticmethod
@@ -269,7 +309,7 @@ class DistributedProviderLeasePool:
         now = datetime.now(UTC)
         prefix = self._domain_prefix(domain)
         for key, modified in storage.list_objects(prefix):
-            expires_at, owner = self._candidate_expiry(storage, key, modified, rule)
+            expires_at, metadata = self._candidate_expiry(storage, key, modified, rule)
             if expires_at is not None and expires_at < now:
                 storage.delete(key)
                 with self._guard:
@@ -278,10 +318,10 @@ class DistributedProviderLeasePool:
                 with self._guard:
                     log = self._log
                 if log is not None:
-                    owner_detail = f" owner={owner}" if owner else ""
+                    detail = metadata.detail() if metadata is not None else ""
                     _emit(
                         log,
-                        f"[enrich] provider lease stale reaped domain={domain}{owner_detail}",
+                        f"[enrich] provider lease stale reaped domain={domain}{detail}",
                     )
 
     def _winners(self, storage: StorageBackend, domain: str, rule: ProviderLeaseRule) -> set[str]:
@@ -298,7 +338,7 @@ class DistributedProviderLeasePool:
         key: str,
         modified: datetime | None,
         rule: ProviderLeaseRule,
-    ) -> tuple[datetime | None, str | None]:
+    ) -> tuple[datetime | None, _LeaseMetadata | None]:
         if hasattr(storage, "get_file"):
             with self._guard:
                 cached = self._expiry_cache.get(key)
@@ -313,10 +353,17 @@ class DistributedProviderLeasePool:
                         expires = datetime.fromisoformat(expires_raw) if expires_raw else None
                         if expires is not None and expires.tzinfo is None:
                             expires = expires.replace(tzinfo=UTC)
-                        owner = str(payload.get("owner") or "") or None
+                        metadata = _LeaseMetadata(
+                            owner=str(payload.get("owner") or "") or None,
+                            state=str(payload.get("state") or "") or None,
+                            run_id=str(payload.get("github_run_id") or "") or None,
+                            run_attempt=str(payload.get("github_run_attempt") or "") or None,
+                            job=str(payload.get("github_job") or "") or None,
+                            shard=str(payload.get("github_shard") or "") or None,
+                        )
                         with self._guard:
-                            self._expiry_cache[key] = (modified, expires, owner)
-                        return expires, owner
+                            self._expiry_cache[key] = (modified, expires, metadata)
+                        return expires, metadata
             except Exception:  # noqa: BLE001 - optional payload read falls back to object metadata
                 pass
         if modified is None:
@@ -325,28 +372,37 @@ class DistributedProviderLeasePool:
             modified = modified.replace(tzinfo=UTC)
         return modified + timedelta(seconds=max(0.1, rule.ttl_seconds)), None
 
+    def _self_metadata(self, *, state: str) -> _LeaseMetadata:
+        """Ownership/run context for a candidate this process writes or just released."""
+        with self._guard:
+            shard = self._shard
+        return _LeaseMetadata(
+            owner=self._owner,
+            state=state,
+            run_id=os.environ.get("GITHUB_RUN_ID") or None,
+            run_attempt=os.environ.get("GITHUB_RUN_ATTEMPT") or None,
+            job=os.environ.get("GITHUB_JOB") or None,
+            shard=shard,
+        )
+
     def _payload(self, domain: str, rule: ProviderLeaseRule, *, acquired: bool) -> str:
         now = datetime.now(UTC)
-        metadata = {
-            key: value
-            for key, value in {
-                "github_run_id": os.environ.get("GITHUB_RUN_ID"),
-                "github_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
-                "github_job": os.environ.get("GITHUB_JOB"),
-            }.items()
-            if value
+        metadata = self._self_metadata(state="acquired" if acquired else "waiting")
+        fields = {
+            "owner": metadata.owner,
+            "domain": domain,
+            "state": metadata.state,
+            "renewed_at": now.isoformat(),
+            "expires_at": (now + timedelta(seconds=rule.ttl_seconds)).isoformat(),
         }
-        return json.dumps(
-            {
-                "owner": self._owner,
-                "domain": domain,
-                "state": "acquired" if acquired else "waiting",
-                "renewed_at": now.isoformat(),
-                "expires_at": (now + timedelta(seconds=rule.ttl_seconds)).isoformat(),
-                **metadata,
-            },
-            sort_keys=True,
-        )
+        extra = {
+            "github_run_id": metadata.run_id,
+            "github_run_attempt": metadata.run_attempt,
+            "github_job": metadata.job,
+            "github_shard": metadata.shard,
+        }
+        fields.update({key: value for key, value in extra.items() if value})
+        return json.dumps(fields, sort_keys=True)
 
     def _record_acquisition(self, domain: str, wait_seconds: float) -> None:
         with self._guard:

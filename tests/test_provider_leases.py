@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -148,6 +149,88 @@ def test_payload_expiry_reaps_stale_lease_even_when_object_mtime_is_fresh(tmp_pa
         assert key not in keys
 
     assert pool.telemetry()["granicus.com"]["stale_leases_reaped"] == 1
+
+
+def test_stale_reap_log_includes_run_job_shard_and_owner(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "999")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("GITHUB_JOB", "audio")
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    messages: list[str] = []
+    pool = DistributedProviderLeasePool(prefix="test-provider-leases")
+    pool.configure(
+        store,
+        {
+            "granicus.com": {
+                "slots": 1,
+                "ttl_seconds": 60,
+                "poll_seconds": 0.01,
+                "settle_seconds": 0,
+            }
+        },
+        log=lambda msg, **_kw: messages.append(msg),
+        shard="2/4",
+    )
+    key = "test-provider-leases/granicus.com/0000000000000000000-dead.json"
+    payload = tmp_path / "lease.json"
+    payload.write_text(
+        json.dumps(
+            {
+                "owner": "dead-run:123",
+                "domain": "granicus.com",
+                "state": "acquired",
+                "github_run_id": "111",
+                "github_job": "audio",
+                "github_shard": "0/4",
+                "expires_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
+            }
+        )
+    )
+    store.put_file(key, payload, "application/json")
+
+    with pool.slots(["https://archive-video.granicus.com/x.mp4"]):
+        pass
+
+    reaped = [m for m in messages if "stale reaped" in m]
+    assert len(reaped) == 1
+    assert "owner=dead-run:123" in reaped[0]
+    assert "run_id=111" in reaped[0]
+    assert "job=audio" in reaped[0]
+    assert "shard=0/4" in reaped[0]
+    assert "state=acquired" in reaped[0]
+
+
+def test_stale_reap_log_falls_back_concisely_for_legacy_payload(tmp_path):
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    messages: list[str] = []
+    pool = DistributedProviderLeasePool(prefix="test-provider-leases")
+    pool.configure(
+        store,
+        {
+            "granicus.com": {
+                "slots": 1,
+                "ttl_seconds": 60,
+                "poll_seconds": 0.01,
+                "settle_seconds": 0,
+            }
+        },
+        log=lambda msg, **_kw: messages.append(msg),
+    )
+    # Simulate an unreadable/legacy payload (body is not valid JSON) with a stale modification
+    # time, so only the mtime+TTL fallback applies (no metadata available).
+    key = "test-provider-leases/granicus.com/0000000000000000000-old.json"
+    object_path = tmp_path / "bucket" / key
+    object_path.parent.mkdir(parents=True, exist_ok=True)
+    object_path.write_text("not json", encoding="utf-8")
+    stale_modified = datetime.now(UTC) - timedelta(hours=1)
+    os.utime(object_path, (stale_modified.timestamp(), stale_modified.timestamp()))
+
+    with pool.slots(["https://archive-video.granicus.com/x.mp4"]):
+        pass
+
+    reaped = [m for m in messages if "stale reaped" in m]
+    assert len(reaped) == 1
+    assert reaped[0] == "[enrich] provider lease stale reaped domain=granicus.com"
 
 
 def test_acquire_failure_removes_waiting_candidate(tmp_path):
