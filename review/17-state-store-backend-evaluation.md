@@ -1,6 +1,6 @@
 # review/17 — State-store backend evaluation & R2 migration design
 
-**Maturity: L2 (→ L3 after the R2-CAS spike) · breakout of [`review/11`](11-technical-design-roadmap.md)
+**Maturity: L3 · breakout of [`review/11`](11-technical-design-roadmap.md)
 cross-cutting infra · last updated 2026-06-19**
 
 > Forward-looking evaluation of where the project's **persistent state** should live as the catalog
@@ -13,8 +13,8 @@ cross-cutting infra · last updated 2026-06-19**
 
 | Sub-item | Maturity | Disposition |
 |---|---|---|
-| R2-CAS spike (boto3 conditional writes against R2) | L2 → L3 | Do-next; gates the L3 design |
-| Coordination control-plane → R2 (CAS) | L2 → L3 after spike | **Recommended now** (after PR358 for circuits/leases) |
+| R2-CAS spike (boto3 conditional writes against R2) | **L3 · Shipped** | Run 2026-06-19; all 4 tests PASS; native params (boto3 1.43); see §7 |
+| Coordination control-plane → R2 (CAS) | L2 → L3 | **Do-next** — spike unblocked; cut issues per §8 |
 | `episodes.json` records → R2 vs hold-for-SQL | L2 (swing) | Recommend per access-model; see §3 |
 | Records → managed SQL (D1/Turso) | L1 (Phase R) | Trigger-gated; supersedes the "no hosted DB" note for this scope |
 | Coordination → dedicated KV/DO (fallback) | L1 | Deferred; trigger in §8 |
@@ -205,7 +205,7 @@ and the mitigation (S2) is already on the roadmap. Coordination — the part we 
 
 ---
 
-## §5. Architecture & implementation (→ L3 after the spike)
+## §5. Architecture & implementation
 
 Grounded in the existing seams (`citypods/storage/`):
 
@@ -216,12 +216,28 @@ Grounded in the existing seams (`citypods/storage/`):
   → **B2**; the coordination control-plane → **R2**. Callers (`statesync.py`, `media.py`, `stages.py`,
   `provider_circuits.py`, `provider_leases.py`) keep using one storage object unchanged. R2 is already
   constructible via `r2_from_env()`.
-- **CAS extension.** Add conditional-write support to `S3CompatibleStorage`. The current `put_file` uses
-  boto3's high-level `upload_file`, which cannot carry conditional headers — add a `put_bytes`/`put_cas`
-  path over `put_object` with `IfNoneMatch="*"` (create-if-absent) and `IfMatch=<etag>` (CAS update),
-  returning the new ETag or signalling a 412 conflict. Expose it as an **optional** Protocol capability
-  (feature-detected via `hasattr`, like `get_file`/`list_objects` today). The exact botocore mechanism
-  (native param vs. an event-system header injection) is what the §7 spike pins down.
+- **CAS extension.** Add `put_cas()` to `S3CompatibleStorage` using **native boto3 params** (confirmed by
+  the §7 spike on boto3 1.43 — no header injection needed). Expose it as an **optional** Protocol
+  capability (feature-detected via `hasattr`, like `get_file`/`list_objects` today). Pass the ETag as
+  returned by boto3 (includes surrounding quotes). Raise `CASConflict` on 412.
+
+  ```python
+  def put_cas(self, key: str, data: bytes, content_type: str, *,
+              if_none_match: str | None = None,
+              if_match: str | None = None) -> tuple[str, str]:
+      kwargs = dict(Bucket=self.bucket, Key=key, Body=data, ContentType=content_type)
+      if if_none_match:
+          kwargs["IfNoneMatch"] = if_none_match
+      if if_match:
+          kwargs["IfMatch"] = if_match          # pass ETag as returned (includes quotes)
+      try:
+          r = self._client.put_object(**kwargs)
+          return self.public_url(key), r["ETag"]
+      except botocore.exceptions.ClientError as exc:
+          if exc.response["Error"]["Code"] == "PreconditionFailed":
+              raise CASConflict(key) from exc
+          raise
+  ```
 - **Coordination redesign.** Re-implement `provider_circuits.py` + `provider_leases.py` and the H5
   work/budget lease writes on R2 CAS, retiring the one-slot FIFO emulation: lease acquire = conditional
   create; renew/release = CAS update; circuit open/close = CAS update; budget decrement = CAS read-modify-
@@ -240,9 +256,9 @@ Grounded in the existing seams (`citypods/storage/`):
 
 - **Two backends + two credential sets** on every runner (incl. external) — threaded via `RoutingStorage`;
   document secrets (`B2_*` and `CLOUDFLARE_ACCOUNT_ID`/`R2_*`).
-- **boto3 ↔ R2 conditional PUT ergonomics** — *the* implementation risk; **gated by the §7 spike**.
-  Fallbacks: a thin CF Worker in front of R2 for CAS ops, or keep lease-emulation on R2 (then R2 buys
-  consistency-parity, not simplification).
+- **boto3 ↔ R2 conditional PUT ergonomics** — ~~the implementation risk~~ **resolved by §7 spike**
+  (2026-06-19): native `IfNoneMatch`/`IfMatch` params work on boto3 1.43 against R2. Fallbacks (Worker
+  shim, lease-on-R2) are not needed.
 - **Tier-3 is the safety-critical throttle path; PR358 is in flight** — sequence circuits/leases **after**
   PR358 lands; prove the router + CAS helper on lower-stakes `work.json`/budget first.
 - **R2 introduces a metered Class A budget B2 didn't** — couple records-on-R2 with S2 (§4).
@@ -317,48 +333,31 @@ python scripts/spike_r2_cas.py --no-latency
 python scripts/spike_r2_cas.py --latency-iterations 20 --output r2-cas-spike-results.json
 ```
 
-### Feeding results back into this document
-
-Once you have the JSON artifact, update this section by replacing the placeholder table below with the
-actual results and bumping the doc maturity to L3:
-
-1. Open `r2-cas-spike-results.json`.
-2. Check `overall_pass` — all four tests must be `true`.
-3. Copy `cas_mechanism` (`"native"` or `"inject"`) and record it here.
-4. Copy the `helper_signature` string — this becomes the literal `put_cas()` stub in §5.
-5. Copy the latency table from `latency[*].{operation, p50_ms, p95_ms}`.
-6. Edit this document:
-   - Replace the placeholder results table (below) with real values.
-   - Update the maturity header at the top of this file: `L2 (→ L3 after the R2-CAS spike)` → `L3`.
-   - Update the status table row for "R2-CAS spike" → `L3 · Shipped (run <date>)`.
-   - In §5, replace the `put_cas` stub with the `helper_signature` from the report.
-7. Open a docs PR updating this file (no code changes required if mechanism = native).
-
-### Results (placeholder — update after running the spike)
+### Results (run 2026-06-19, GHA `ubuntu-latest`)
 
 | Field | Value |
 |---|---|
-| boto3 version | _pending_ |
-| botocore version | _pending_ |
-| `cas_mechanism` | _pending_ |
-| `create_if_absent_success` | _pending_ |
-| `create_if_absent_conflict` | _pending_ |
-| `cas_update_success` | _pending_ |
-| `cas_update_stale` | _pending_ |
-| conditional PUT p50 / p95 (GHA) | _pending_ |
-| GET p50 / p95 (GHA) | _pending_ |
-| HEAD p50 / p95 (GHA) | _pending_ |
-| `overall_pass` | _pending_ |
+| boto3 / botocore version | 1.43.34 / 1.43.34 |
+| `cas_mechanism` | **native** (no header injection needed) |
+| `create_if_absent_success` | PASS — 200, 176 ms |
+| `create_if_absent_conflict` | PASS — 412, 69 ms |
+| `cas_update_success` | PASS — 200, 160 ms |
+| `cas_update_stale` | PASS — 412, 46 ms |
+| conditional PUT p50 / p95 (GHA) | **170 ms / 211 ms** |
+| GET p50 / p95 (GHA) | **86 ms / 118 ms** |
+| HEAD p50 / p95 (GHA) | **41 ms / 51 ms** |
+| `overall_pass` | **true** |
+
+**Decision: proceed with §5 native-param CAS extension.** No fallback needed.
 
 ---
 
 ## §8. Phased sequence & triggers
 
-1. **Land PR358 / resolve the Granicus reliability work** — do not refactor the throttle/coordination path
-   mid-stabilization.
-2. **R2-CAS spike** (§7) — parallel-OK; gates the L3 design.
-3. **Mature this doc to L3** (concrete file/function changes, tests, backfill, acceptance) and cut issues;
-   fold in [`review/16`](16-scaling-review-plan.md) **S2** access-pattern work.
+1. **Land PR358 / resolve the Granicus reliability work** — ✅ merged.
+2. **R2-CAS spike** (§7) — ✅ complete (2026-06-19); native params confirmed; this doc promoted to L3.
+3. **Cut implementation issues and begin migration** — `RoutingStorage` + `put_cas()` (§5); fold in
+   [`review/16`](16-scaling-review-plan.md) **S2** access-pattern work to keep R2 Class A free.
 4. **Migrate the coordination control-plane → R2** — start with `work.json`/`compute_budget.json` to prove
    the router + CAS helper; move `provider-circuits`/`provider-leases` **after PR358**.
 5. **`episodes.json`** per §3 — R2-CAS now *iff* external workers will access records directly near-term,
