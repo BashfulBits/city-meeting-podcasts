@@ -248,6 +248,9 @@ class MediaRateLimitCircuitBreaker:
         self._total_rate_limited: dict[str, int] = {}
         self._total_circuit_trips: dict[str, int] = {}
         self._total_circuit_deferred: dict[str, int] = {}
+        self._half_open: set[str] = set()
+        self._total_recovery_probes: dict[str, int] = {}
+        self._total_recoveries: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def has_rules(self) -> bool:
@@ -267,29 +270,33 @@ class MediaRateLimitCircuitBreaker:
                     "rate_limited": self._total_rate_limited.get(domain, 0),
                     "circuit_trips": self._total_circuit_trips.get(domain, 0),
                     "circuit_deferred": self._total_circuit_deferred.get(domain, 0),
+                    "recovery_probes": self._total_recovery_probes.get(domain, 0),
+                    "recoveries": self._total_recoveries.get(domain, 0),
                 }
                 for domain in self._rules
                 if self._total_rate_limited.get(domain, 0)
                 or self._total_circuit_trips.get(domain, 0)
                 or self._total_circuit_deferred.get(domain, 0)
+                or self._total_recovery_probes.get(domain, 0)
+                or self._total_recoveries.get(domain, 0)
             }
 
     def open_for(self, urls: Sequence[str]) -> str | None:
-        now = time.monotonic()
         with self._lock:
             for domain in self._domains_for(urls):
-                until = self._open_until.get(domain)
-                if until is None:
-                    continue
-                if now < until:
+                # Expiry makes a domain *eligible* for one explicit half-open probe; it does not
+                # silently release every queued worker. The global queue claims that probe through
+                # wait_for_recovery_probe(), preventing a post-cooldown thundering herd.
+                if domain in self._open_until:
                     return domain
-                self._open_until.pop(domain, None)
-                self._failures[domain] = 0
         return None
 
     def record_success(self, urls: Sequence[str]) -> None:
         with self._lock:
             for domain in self._domains_for(urls):
+                if domain in self._half_open:
+                    self._total_recoveries[domain] = self._total_recoveries.get(domain, 0) + 1
+                    self._half_open.discard(domain)
                 self._failures[domain] = 0
 
     def record_rate_limited(self, urls: Sequence[str]) -> str | None:
@@ -305,7 +312,10 @@ class MediaRateLimitCircuitBreaker:
                 if until is not None:
                     self._open_until.pop(domain, None)
                     self._failures[domain] = 0
-                count = self._failures.get(domain, 0) + 1
+                half_open = domain in self._half_open
+                if half_open:
+                    self._half_open.discard(domain)
+                count = rule.threshold if half_open else self._failures.get(domain, 0) + 1
                 self._failures[domain] = count
                 if count >= rule.threshold:
                     self._open_until[domain] = now + rule.cooldown_seconds
@@ -321,6 +331,48 @@ class MediaRateLimitCircuitBreaker:
         with self._lock:
             self._total_circuit_deferred[domain] = self._total_circuit_deferred.get(domain, 0) + 1
         return domain
+
+    def wait_for_recovery_probe(
+        self,
+        *,
+        stop: Callable[[], bool] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        poll_seconds: float = 1.0,
+    ) -> str | None:
+        """Wait until the earliest open circuit may run one half-open recovery probe.
+
+        The global work queue calls this only after ordinary provider work has drained. Returning a
+        domain claims exactly one canary opportunity: a 403/429 reopens immediately, while a
+        successful media materialization records a recovery and releases the parked work.
+        """
+        while True:
+            if stop is not None and stop():
+                return None
+            now = time.monotonic()
+            with self._lock:
+                pending = [
+                    (until, domain)
+                    for domain, until in self._open_until.items()
+                    if domain not in self._half_open
+                ]
+                if not pending:
+                    return None
+                until, domain = min(pending)
+                remaining = until - now
+                if remaining <= 0:
+                    self._open_until.pop(domain, None)
+                    self._failures[domain] = 0
+                    self._half_open.add(domain)
+                    self._total_recovery_probes[domain] = (
+                        self._total_recovery_probes.get(domain, 0) + 1
+                    )
+                    return domain
+            sleep(max(0.01, min(poll_seconds, remaining)))
+
+    def recovery_succeeded(self, domain: str) -> bool:
+        """Return whether a claimed half-open probe closed successfully."""
+        with self._lock:
+            return domain not in self._half_open and domain not in self._open_until
 
     def _domains_for(self, urls: Sequence[str]) -> list[str]:
         domains: set[str] = set()
@@ -357,6 +409,23 @@ def _parse_circuit_rule(raw: object) -> RateLimitCircuitRule | None:
     except (TypeError, ValueError):
         return None
     return RateLimitCircuitRule(threshold=threshold) if threshold > 0 else None
+
+
+def record_materialize_failure(
+    ep: Episode,
+    code: str,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Persist one direct materialization failure on an episode.
+
+    Planner/source-cache fetches are part of materialization even when they fail before AudioStage.
+    Recording them here makes the normal exponential backoff and stuck-download accounting apply
+    without letting AudioStage immediately issue the same provider request again.
+    """
+    ep.materialize_attempts += 1
+    ep.materialize_last_attempt = (now or datetime.now(UTC)).isoformat()
+    ep.materialize_error = code
 
 
 def _rate_limited_status(stderr: bytes | str | None) -> str | None:
@@ -2200,12 +2269,12 @@ def materialize_audio(
             # A timeout is transient (the source may recover), so like a generic ``error`` it backs
             # off + retries rather than counting as ``dead``; it gets its own code only so a stalled
             # source is distinguishable from other failures on the record.
-            ep.materialize_attempts += 1
-            ep.materialize_last_attempt = now.isoformat()
-            ep.materialize_error = (
+            record_materialize_failure(
+                ep,
                 "timeout"
                 if isinstance(exc, subprocess.TimeoutExpired)
-                else getattr(exc, "code", None) or "error"
+                else getattr(exc, "code", None) or "error",
+                now=now,
             )
             with lock:
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")

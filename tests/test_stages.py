@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from citypods.models import City, Episode
-from citypods.stages import AudioStage, LinksStage, StageContext, default_stages, run_stages
+from citypods.stages import (
+    AudioStage,
+    LinksStage,
+    StageContext,
+    StageStats,
+    default_stages,
+    run_stages,
+)
 from citypods.storage.local import LocalStorage
 
 
@@ -116,6 +123,33 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
     assert audio.ran == 1
     assert "audio" in audio.note()
     assert eps[0].links.get("canonical_video")
+
+
+def test_run_stages_halts_after_provider_throttle(tmp_path):
+    calls: list[str] = []
+
+    class _ThrottleStage:
+        name = "timeline"
+        version = "1"
+
+        def process(self, provider, city, episodes, ctx):
+            calls.append(self.name)
+            return StageStats(self.name, rate_limited=1, errors=["HTTP 403"])
+
+    class _MustNotRun:
+        name = "audio"
+        version = "1"
+
+        def process(self, provider, city, episodes, ctx):
+            calls.append(self.name)
+            return StageStats(self.name)
+
+    stats = run_stages(
+        FakeProvider(), _city(), [_ep("g1")], [_ThrottleStage(), _MustNotRun()], _ctx(tmp_path)
+    )
+
+    assert calls == ["timeline"]
+    assert [s.name for s in stats] == ["timeline"]
 
 
 def test_transcribe_lane_skips_the_audio_chain(tmp_path):

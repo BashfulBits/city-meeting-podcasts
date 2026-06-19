@@ -203,7 +203,24 @@ Hard-won facts that bite anyone adding/debugging providers:
   provider slots are acquired and immediately before ffmpeg/ffprobe starts. A circuit that opens while
   a worker waits therefore defers that item without recording a materialization failure/backoff. The
   closed→open transition is atomic per cooldown, and per-domain run telemetry records direct
-  throttles, trips, circuit deferrals, lease acquisition/wait/renewal, and stale-owner cleanup.
+  throttles, trips, circuit deferrals, recovery probes/recoveries, lease acquisition/wait/renewal, and
+  stale-owner cleanup.
+- **Planner throttles are the materialization attempt; Audio does not immediately repeat them.**
+  `TimelineStage` can fetch provider media through `SilencePlanner`/`SourceCache` before `AudioStage`.
+  A typed 403/429 there records one episode materialization attempt/backoff and halts that episode's
+  remaining audio-stage chain. Circuit-open planner work remains a non-failure: it is queued with no
+  attempt history, exactly like an AudioStage circuit deferral.
+- **Circuit-deferred work is parked and can recover inside the same Audio run.** The global audio queue
+  first lets every ordinary candidate—including other providers—drain, retaining circuit-open items
+  as a parked set. When the configured cooldown expires (unless the wall-clock/supersession stop signal
+  fires), exactly one parked item runs as a half-open canary. A 403/429 immediately reopens the circuit;
+  a complete materialization closes it and releases the remaining parked work through the existing
+  process-local and distributed provider limits. Deferral telemetry remains cumulative, while recovered
+  items are removed from the run's final backlog count.
+- **The sustained Granicus probe shares Audio's workflow queue.** Manual `granicus-probe.yml` uses the
+  same `audio` concurrency group with cancellation disabled, then verifies no active/queued Audio run
+  before touching provider media. A scheduled Audio run therefore cannot slip into the experiment
+  after its isolation check.
 - **The process-local slot is acquired before the distributed lease (issue #342).** The ffmpeg/ffprobe
   guard always enters `HOST_LIMITER` first and `provider_distributed_leases` second, for both
   monitored and unmonitored ffmpeg paths and the ffprobe probe. A thread still queued behind its own

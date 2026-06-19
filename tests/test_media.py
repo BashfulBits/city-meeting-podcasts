@@ -1789,6 +1789,68 @@ def test_circuit_deferred_telemetry_is_counted_by_media_domain():
     assert circuit.telemetry()["granicus.com"]["circuit_deferred"] == 1
 
 
+def test_circuit_recovery_probe_success_releases_half_open_domain(monkeypatch):
+    import citypods.media as media
+
+    clock = [100.0]
+    monkeypatch.setattr(media.time, "monotonic", lambda: clock[0])
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 30}}
+    )
+    urls = ["https://archive-video.granicus.com/x.mp4"]
+    assert circuit.record_rate_limited(urls) == "granicus.com"
+
+    def _sleep(seconds):
+        clock[0] += seconds
+
+    assert circuit.wait_for_recovery_probe(sleep=_sleep, poll_seconds=10) == "granicus.com"
+    assert circuit.recovery_succeeded("granicus.com") is False
+
+    circuit.record_success(urls)
+
+    assert circuit.recovery_succeeded("granicus.com") is True
+    telemetry = circuit.telemetry()["granicus.com"]
+    assert telemetry["recovery_probes"] == 1
+    assert telemetry["recoveries"] == 1
+
+
+def test_circuit_half_open_failure_reopens_immediately(monkeypatch):
+    import citypods.media as media
+
+    clock = [100.0]
+    monkeypatch.setattr(media.time, "monotonic", lambda: clock[0])
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 3, "cooldown_seconds": 30}}
+    )
+    urls = ["https://archive-video.granicus.com/x.mp4"]
+    for _ in range(2):
+        assert circuit.record_rate_limited(urls) is None
+    assert circuit.record_rate_limited(urls) == "granicus.com"
+    clock[0] += 30
+
+    assert circuit.wait_for_recovery_probe(sleep=lambda _seconds: None) == "granicus.com"
+    assert circuit.record_rate_limited(urls) == "granicus.com"
+    assert circuit.open_for(urls) == "granicus.com"
+    telemetry = circuit.telemetry()["granicus.com"]
+    assert telemetry["rate_limited"] == 4
+    assert telemetry["circuit_trips"] == 2
+    assert telemetry["recovery_probes"] == 1
+    assert telemetry["recoveries"] == 0
+
+
+def test_circuit_recovery_wait_respects_stop(monkeypatch):
+    import citypods.media as media
+
+    monkeypatch.setattr(media.time, "monotonic", lambda: 100.0)
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 30}}
+    )
+    circuit.record_rate_limited(["https://archive-video.granicus.com/x.mp4"])
+
+    assert circuit.wait_for_recovery_probe(stop=lambda: True, sleep=lambda _: None) is None
+    assert circuit.telemetry()["granicus.com"]["recovery_probes"] == 0
+
+
 def test_probe_audio_bitrate_sends_browser_user_agent(monkeypatch):
     import citypods.media as media
     from citypods.http import USER_AGENT
