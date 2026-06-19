@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from citypods.media import CircuitOpenMediaFetchError, RateLimitedMediaFetchError
 from citypods.models import City, Episode
 from citypods.stages import (
     StageContext,
@@ -206,6 +207,54 @@ class TestTimelineStageNoPlanner:
         assert ep.timeline is None
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.reused == 1
+
+
+# ---------------------------------------------------------------------------
+# TimelineStage — planner raises a provider-throttle error (e.g. SilencePlanner's
+# source-cache prefetch hits the circuit breaker). Must be counted in stats, not
+# silently swallowed by the global queue's blanket per-item catch.
+# ---------------------------------------------------------------------------
+
+
+class _RateLimitedPlanner:
+    name = "rate-limited-fake"
+    version = "1"
+
+    def plan(self, provider, city, ep, ctx, current):
+        raise RateLimitedMediaFetchError("ffmpeg speech-measure hit provider throttle (HTTP 403)")
+
+
+class _CircuitOpenPlanner:
+    name = "circuit-open-fake"
+    version = "1"
+
+    def plan(self, provider, city, ep, ctx, current):
+        raise CircuitOpenMediaFetchError("granicus.com")
+
+
+class TestTimelineStagePlannerThrottle:
+    def test_rate_limited_planner_counted_not_raised(self, tmp_path):
+        ep = _ep()
+        stage = TimelineStage(planners=[_RateLimitedPlanner()])
+        stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert stats.rate_limited == 1
+        assert len(stats.errors) == 1
+        assert ep.timeline is None  # episode left untouched, not crashed
+
+    def test_circuit_open_planner_counted_not_raised(self, tmp_path):
+        ep = _ep()
+        stage = TimelineStage(planners=[_CircuitOpenPlanner()])
+        stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert stats.circuit_skipped == 1
+        assert ep.timeline is None
+
+    def test_throttle_in_second_planner_does_not_lose_first_planner_result(self, tmp_path):
+        # The first planner's result is discarded on a later throttle (no partial timeline is
+        # stamped) — same all-or-nothing semantics as any other mid-loop exception.
+        ep = _ep()
+        stage = TimelineStage(planners=[_SilencePlanner(), _RateLimitedPlanner()])
+        stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert ep.timeline is None
 
 
 # ---------------------------------------------------------------------------
