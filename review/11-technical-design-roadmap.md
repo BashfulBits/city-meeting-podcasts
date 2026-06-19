@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-19**
+**Status: LIVING · last updated 2026-06-19 (R2-CAS spike complete → review/17 L3)**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -173,7 +173,7 @@ sync · #20 video enclosures (partial).
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
 | Pluggable inference-execution backend (compute offload) | new (Infra) | L3 · **pre-1.0 lock** — GPU/ASR interface = H13; Modal+Beam GPU adapters = H14 (built in Phase H); first LLM API adapter = R3/R4 |
 | Catalog scaling readiness (10→500 cities) | new (Infra) | L2 · **trigger-gated, not active-phase work** — [`review/16`](16-scaling-review-plan.md); R2 owns the search-size spike/partitioned-search launch, while S0–S4 promote one tranche at a time only when their city/metric gates are reached |
-| State-store backend (coordination → R2/CAS · records per-artifact · SQL at Phase R) | new (Infra) | L2 · **trigger-gated** — [`review/17`](17-state-store-backend-evaluation.md). Do-next: R2-CAS spike → migrate the coordination control-plane (`work.json`/`compute_budget.json`, then `provider-circuits`/`provider-leases` **after PR358**) to R2 for real CAS (retires the FIFO-lease emulation B2 forces); immutable blobs + append-only logs stay on B2; `episodes.json` is a swing case (R2-CAS now vs hold-for-SQL); couple [`review/16`](16-scaling-review-plan.md) S2 to keep R2 Class A free |
+| State-store backend (coordination → R2/CAS · records per-artifact · SQL at Phase R) | new (Infra) | L3 · **trigger-gated** — [`review/17`](17-state-store-backend-evaluation.md). R2-CAS spike complete (2026-06-19): native boto3 CAS confirmed. Do-next: cut issues for `RoutingStorage` + `put_cas()` + coordination control-plane migration (`work.json`/`compute_budget.json` first, then `provider-circuits`/`provider-leases`); couple [`review/16`](16-scaling-review-plan.md) S2; `episodes.json` swing case deferred to H14 access-model decision |
 
 ### Deferred backlog (ongoing) — §6
 #9 translation · #24 bitrate ladders · #25 intro/outro stinger (GH#153) · #26 chapter
