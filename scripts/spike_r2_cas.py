@@ -18,6 +18,11 @@ See .github/workflows/spike-r2-cas.yml.
 Required env vars (same set as r2_from_env()):
   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 
+Optional:
+  R2_ENDPOINT  override the default S3 endpoint (needed for jurisdiction-specific
+               buckets, e.g. https://<id>.eu.r2.cloudflarestorage.com; shown on
+               the Cloudflare token-creation page as "jurisdiction-specific endpoint")
+
 All test objects live under "spike-r2-cas/<run-id>/" and are deleted on exit.
 """
 
@@ -78,9 +83,10 @@ def _make_client():
     import boto3
 
     account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    endpoint = os.environ.get("R2_ENDPOINT", f"https://{account}.r2.cloudflarestorage.com")
     return boto3.client(
         "s3",
-        endpoint_url=f"https://{account}.r2.cloudflarestorage.com",
+        endpoint_url=endpoint,
         aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
         region_name="auto",
