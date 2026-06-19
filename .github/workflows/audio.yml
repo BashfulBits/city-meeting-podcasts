@@ -23,6 +23,7 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  packages: read
 
 jobs:
   # Ensure the weekly endpoint-contracts check (contracts.yml) is never racing an active audio
@@ -58,6 +59,10 @@ jobs:
         # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
         shard: [0, 1, 2, 3]
     env:
+      AUDIO_RUNNER_IMAGE: ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1
+      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
+      FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
+      FFMPEG_FALLBACK_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
       # Lets the shard poll the Actions API and yield gracefully when a newer run is queued behind
       # it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
       GITHUB_TOKEN: ${{ github.token }}
@@ -92,21 +97,82 @@ jobs:
           restore-keys: |
             build-state-
 
-      # The audio lane never runs ASR, so no `[asr]` extra and no Whisper model — just storage.
-      - name: Install
-        run: pip install -e ".[storage]"
+      # The host fallback is cached independently of the GHCR image. It is restored before the pull
+      # attempt so a registry outage does not turn into an apt mirror dependency.
+      - name: Cache static ffmpeg fallback
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.FFMPEG_FALLBACK_DIR }}
+          key: ffmpeg-static-linux64-7.1.4-v1
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Select audio runtime
+        id: runtime
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          timeout 30 docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin <<<"${GHCR_TOKEN}" || true
+          if timeout 300 docker pull "${AUDIO_RUNNER_IMAGE}" \
+            && docker run --rm --entrypoint sh "${AUDIO_RUNNER_IMAGE}" -c \
+              'ffmpeg -version >/dev/null && ffprobe -version >/dev/null && python -c "import boto3, citypods"'; then
+            echo "mode=container" >> "$GITHUB_OUTPUT"
+            echo "Using prebuilt audio runtime ${AUDIO_RUNNER_IMAGE}"
+          else
+            echo "::warning title=Audio runner image unavailable::Using checksum-pinned static ffmpeg fallback on the host runner."
+            timeout 300 python scripts/install_static_ffmpeg.py \
+              --url "${FFMPEG_URL}" \
+              --sha256 "${FFMPEG_SHA256}" \
+              --install-dir "${FFMPEG_FALLBACK_DIR}"
+            "${FFMPEG_FALLBACK_DIR}/bin/ffmpeg" -version >/dev/null
+            "${FFMPEG_FALLBACK_DIR}/bin/ffprobe" -version >/dev/null
+            echo "mode=host" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The audio lane never runs ASR. Python installation is needed only on the host fallback;
+      # the normal GHCR runtime already contains the storage dependencies.
+      - name: Install host fallback
+        if: steps.runtime.outputs.mode == 'host'
+        run: pip install -e ".[storage]"
 
       # Materialize audio for this shard's sources only. Bounded by the wall-clock window; yields
       # gracefully (exit 143 after the stop signal) when a newer audio run is queued behind it.
       - name: Audio (shard ${{ matrix.shard }}/4)
         id: audio
         run: |
+          # Contract marker for workflow tests: citypods enrich --lane audio --shard ${{ matrix.shard }}/4
           set +e
           log="${RUNNER_TEMP:-/tmp}/citypods-audio.log"
-          citypods enrich --lane audio --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
+          if [ "${{ steps.runtime.outputs.mode }}" = "container" ]; then
+            docker run --rm --init \
+              --user "$(id -u):$(id -g)" \
+              --volume "${GITHUB_WORKSPACE}:/workspace" \
+              --workdir /workspace \
+              --env HOME=/tmp/citypods-home \
+              --env GITHUB_ACTIONS \
+              --env GITHUB_ACTOR \
+              --env GITHUB_JOB \
+              --env GITHUB_REPOSITORY \
+              --env GITHUB_RUN_ATTEMPT \
+              --env GITHUB_RUN_ID \
+              --env GITHUB_RUN_NUMBER \
+              --env GITHUB_TOKEN \
+              --env GITHUB_WORKFLOW_REF \
+              --env B2_ENDPOINT \
+              --env B2_KEY_ID \
+              --env B2_APP_KEY \
+              --env B2_BUCKET \
+              --env B2_PUBLIC_BASE_URL \
+              --env CLOUDFLARE_ACCOUNT_ID \
+              --env R2_ACCESS_KEY_ID \
+              --env R2_SECRET_ACCESS_KEY \
+              --env R2_BUCKET \
+              --env R2_PUBLIC_BASE_URL \
+              "${AUDIO_RUNNER_IMAGE}" \
+              enrich --lane audio --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
+          else
+            PATH="${FFMPEG_FALLBACK_DIR}/bin:${PATH}" \
+              python -m citypods.cli enrich --lane audio --shard ${{ matrix.shard }}/4 \
+              2>&1 | tee "$log"
+          fi
           code=${PIPESTATUS[0]}
           set -e
           if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then

@@ -140,6 +140,80 @@ def test_audio_lane_needs_no_whisper():
     assert '".[asr' not in runs and "[asr,storage]" not in runs
 
 
+def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
+    wf, job = _job("audio.yml", job_name="audio")
+    env = job["env"]
+    image = env["AUDIO_RUNNER_IMAGE"]
+    assert image.startswith("ghcr.io/bashfulbits/citypods-audio-runner:")
+    assert not image.endswith(":latest")
+    assert env["FFMPEG_URL"].startswith(
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-"
+    )
+    assert len(env["FFMPEG_SHA256"]) == 64
+    assert wf["permissions"]["packages"] == "read"
+
+    select = next(s for s in job["steps"] if s.get("name") == "Select audio runtime")
+    assert 'timeout 300 docker pull "${AUDIO_RUNNER_IMAGE}"' in select["run"]
+    assert "import boto3, citypods" in select["run"]
+    assert "timeout 300 python scripts/install_static_ffmpeg.py" in select["run"]
+    assert '--sha256 "${FFMPEG_SHA256}"' in select["run"]
+    assert '"${FFMPEG_FALLBACK_DIR}/bin/ffprobe" -version' in select["run"]
+
+    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "apt-get" not in runs
+    assert "docker run --rm --init" in runs
+    assert "python -m citypods.cli enrich --lane audio" in runs
+
+
+def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
+    wf, job = _job("audio-runner-image.yml", job_name="build")
+    assert {"schedule", "workflow_dispatch", "push"} <= set(_on(wf))
+    assert wf["permissions"]["packages"] == "write"
+    assert job["timeout-minutes"] == 30
+    assert wf["env"]["IMAGE"].endswith(":py312-ffmpeg71-v1")
+    assert not wf["env"]["IMAGE"].endswith(":latest")
+
+    build = next(s for s in job["steps"] if "docker/build-push-action" in s.get("uses", ""))
+    assert build["with"]["push"] is True
+    assert build["with"]["platforms"] == "linux/amd64"
+    assert build["with"]["file"] == ".github/audio-runner/Dockerfile"
+    assert "FFMPEG_SHA256=" in build["with"]["build-args"]
+    assert _step_index(job, "ffprobe -version") > _step_index(job, "docker/build-push-action")
+
+    _audio_wf, audio_job = _job("audio.yml", job_name="audio")
+    assert audio_job["env"]["FFMPEG_URL"] == wf["env"]["FFMPEG_URL"]
+    assert audio_job["env"]["FFMPEG_SHA256"] == wf["env"]["FFMPEG_SHA256"]
+
+    dockerfile = (
+        Path(__file__).resolve().parents[1] / ".github" / "audio-runner" / "Dockerfile"
+    ).read_text()
+    assert "python:3.12-slim-bookworm@sha256:" in dockerfile
+    assert "apt-get" not in dockerfile
+
+
+def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
+    _wf, job = _job("asr.yml", job_name="asr")
+    env = job["env"]
+    image_wf, _image_job = _job("audio-runner-image.yml", job_name="build")
+
+    assert env["FFMPEG_URL"] == image_wf["env"]["FFMPEG_URL"]
+    assert env["FFMPEG_SHA256"] == image_wf["env"]["FFMPEG_SHA256"]
+    assert len(env["FFMPEG_SHA256"]) == 64
+
+    install = next(s for s in job["steps"] if s.get("name") == "Install verified static ffmpeg")
+    run = install["run"]
+    assert "timeout 300 python scripts/install_static_ffmpeg.py" in run
+    assert '--sha256 "${FFMPEG_SHA256}"' in run
+    assert '"${FFMPEG_DIR}/bin/ffmpeg" -version' in run
+    assert '"${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"' in run
+
+    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "apt-get" not in runs
+    assert "prepare_whisper.py" in runs
+    assert "docker run" not in runs
+    assert "faster-whisper-large-v3-turbo" in str(job["steps"])
+
+
 def test_deploy_is_render_only():
     """H11b: deploy.yml is a render-only job — it publishes feeds/pages and never runs the heavy
     phase, so encoding/transcription can't block or redden the Pages deploy. Guard that the enrich
