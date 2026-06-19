@@ -85,9 +85,11 @@ from citypods.bodies import body_key, canonical_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
 from citypods.media import (
+    CircuitOpenMediaFetchError,
     HostedKeysCache,
     MaterializeStats,
     MediaRateLimitCircuitBreaker,
+    RateLimitedMediaFetchError,
     SourceCache,
     _probe_duration_secs,
     materialize_audio,
@@ -649,11 +651,28 @@ class TimelineStage:
 
             current: Timeline | None = ep.timeline
             changed = False
-            for planner in self.planners:
-                result = planner.plan(provider, city, ep, ctx, current)
-                if result is not None:
-                    current = result
-                    changed = True
+            try:
+                for planner in self.planners:
+                    result = planner.plan(provider, city, ep, ctx, current)
+                    if result is not None:
+                        current = result
+                        changed = True
+            except CircuitOpenMediaFetchError:
+                # A planner's source-cache prefetch (e.g. SilencePlanner) found the provider
+                # circuit already open. Surface it the same way AudioStage does instead of
+                # letting it propagate to the global queue's blanket per-item catch, which would
+                # silently drop this episode for the pass with no stats and no backoff.
+                with lock:
+                    stats.circuit_skipped += 1
+                return
+            except RateLimitedMediaFetchError as exc:
+                # A planner's source-cache prefetch hit a provider 403/429 (it records on the
+                # shared circuit breaker itself; this just makes the failure visible in the
+                # report instead of vanishing into the global queue's blanket catch).
+                with lock:
+                    stats.rate_limited += 1
+                    stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+                return
 
             if changed and current is not None:
                 # Stamp the planner-set signature so a future run can detect staleness.
