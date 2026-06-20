@@ -251,6 +251,27 @@ def test_ci_runs_granicus_worker_unit_tests():
     assert step["run"] == "npm test"
 
 
+def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
+    wf, job = _job("granicus-worker-deploy.yml", job_name="deploy")
+    triggers = _on(wf)
+    paths = triggers["push"]["paths"]
+    assert triggers["push"]["branches"] == ["main"]
+    assert "workers/granicus-media-proxy/src/**" in paths
+    assert "workers/granicus-media-proxy/wrangler.jsonc" in paths
+    assert "workers/granicus-media-proxy/README.md" not in paths
+    assert "workflow_dispatch" in triggers
+    assert wf["permissions"] == {"contents": "read"}
+
+    test_step = next(step for step in job["steps"] if step.get("name") == "Test Worker")
+    assert test_step["working-directory"] == "workers/granicus-media-proxy"
+    deploy = next(step for step in job["steps"] if step.get("name") == "Deploy Worker")
+    assert deploy["uses"] == "cloudflare/wrangler-action@v3"
+    assert deploy["with"]["workingDirectory"] == "workers/granicus-media-proxy"
+    assert deploy["with"]["apiToken"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+    assert deploy["with"]["accountId"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+    assert "secrets" not in deploy["with"], "PROXY_TOKEN must stay Cloudflare-managed"
+
+
 def test_deploy_is_render_only():
     """H11b: deploy.yml is a render-only job — it publishes feeds/pages and never runs the heavy
     phase, so encoding/transcription can't block or redden the Pages deploy. Guard that the enrich

@@ -1,0 +1,40 @@
+name: Deploy Granicus media Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/granicus-media-proxy/src/**"
+      - "workers/granicus-media-proxy/wrangler.jsonc"
+      - ".github/workflows/granicus-worker-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: granicus-media-worker-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Test Worker
+        working-directory: workers/granicus-media-proxy
+        run: npm test
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/granicus-media-proxy
+          wranglerVersion: "4"

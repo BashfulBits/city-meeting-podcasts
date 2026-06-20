@@ -241,6 +241,10 @@ Hard-won facts that bite anyone adding/debugging providers:
   bearer secret, restricts tenants and tenant-prefixed MP4 names, refuses queries/redirects, forwards
   only range/cache validators, and streams `no-store`; it is not a general proxy. A scheduled Audio
   run therefore cannot slip into any experiment after its isolation check.
+- **Worker deployment is path-scoped.** `granicus-worker-deploy.yml` runs Worker tests and deploys
+  only when `main` changes the Worker source, Wrangler config, or deployment workflow (plus a manual
+  dispatch escape hatch). A scoped Cloudflare API token/account ID authenticate deployment. The
+  runtime `PROXY_TOKEN` remains Cloudflare-managed and is not copied into deployment CI.
 - **The process-local slot is acquired before the distributed lease (issue #342).** The ffmpeg/ffprobe
   guard always enters `HOST_LIMITER` first and `provider_distributed_leases` second, for both
   monitored and unmonitored ffmpeg paths and the ffprobe probe. A thread still queued behind its own

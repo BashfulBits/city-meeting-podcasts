@@ -1570,6 +1570,11 @@ reversible, not a production routing change:
   most one full object under the configured size ceiling through local ffprobe/ffmpeg.
 - The token and Worker endpoint are redacted from output. Production Audio receives no proxy secret
   and does not construct proxy URLs in this slice.
+- `.github/workflows/granicus-worker-deploy.yml` makes deployment operational rather than
+  memory-dependent: a push to `main` redeploys only when Worker source, Wrangler configuration, or
+  the deployment workflow changes, and a manual dispatch remains available. It tests before deploy,
+  authenticates with a scoped `CLOUDFLARE_API_TOKEN` plus account ID, and deliberately leaves the
+  runtime `PROXY_TOKEN` in Cloudflare instead of copying it into deployment CI.
 
 Activation gate for a later production fallback: direct requests on the same runner receive 403,
 Worker Range returns 206, Worker ffmpeg succeeds, one bounded full download validates locally, and
