@@ -130,6 +130,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **The scheduled transcribe lane no longer defers episodes merely because they have untimed
+  provider text while forced alignment is disabled.** `TranscriptStage` previously applied the
+  `alignment-disabled` guard before `--lane transcribe` discarded the alignment hint, so exactly
+  the caption/minutes-bearing episodes that the fresh-ASR lane was intended to cover stayed queued.
+  Lane routing now happens first: `transcribe` always selects fresh faster-whisper, while the
+  unscheduled `align` lane and combined auto mode retain the alignment-disabled defer behavior.
 - **`SilencePlanner`'s `ffmpeg silencedetect` pass no longer oversubscribes the CPU alongside
   `AudioStage`'s encodes.** `detect_silences()` shelled out to ffmpeg with no `-threads` cap and
   wasn't gated by `NativeWorkGate`, so `TimelineStage`'s per-episode planner threads (parallelized up

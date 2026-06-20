@@ -988,6 +988,53 @@ class TestTranscriptStageASR:
         assert stats.skipped == 1
         assert "reason=alignment-disabled" in out
 
+    def test_transcribe_lane_ignores_source_text_when_alignment_disabled(self, tmp_path, capsys):
+        """The scheduled transcribe lane forces fresh ASR before applying the align-only guard."""
+        from citypods.records import source_key as _src_key
+
+        sk = _src_key(_city())
+        ep = _ep_with_audio()
+        ep.transcript_key = f"transcripts/{sk}/uid-source.txt"
+        ep.transcript_format = "txt"
+        ep.transcript_synced = False
+        ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+
+        storage_root = tmp_path / "audio"
+        (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (storage_root / ep.transcript_key).write_bytes(b"These are the meeting minutes.")
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+            def get(self, url, **kw):
+                class _R:
+                    status_code = 200
+                    content = b"These are the meeting minutes."
+
+                return _R()
+
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.lane = "transcribe"
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        out = capsys.readouterr().out
+        assert fake_asr.align_calls == []
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ep.transcript_synced is True
+        assert stats.transcribed == 1
+        assert stats.skipped == 0
+        assert "reason=alignment-disabled" not in out
+
     def test_provider_text_transcript_defers_alignment_without_fallback(self, tmp_path, capsys):
         """Newly fetched untimed provider text is stored, then deferred while alignment is off."""
         ep = _ep_with_audio(links={"transcript": "https://provider/t.txt"})

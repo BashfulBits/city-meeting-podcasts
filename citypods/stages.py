@@ -1299,25 +1299,27 @@ class TranscriptStage:
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
 
-            if align_text and not city.asr_alignment_enabled:
-                stats.skipped += 1
-                print(
-                    f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
-                    flush=True,
-                )
-                continue
-
             # Lane gating (H6b): the sharded asr.yml runs a single-model lane so faster-whisper and
             # stable-ts never co-load in one runner. ``transcribe`` forces fresh transcription (drop
             # the alignment hint → never load stable-ts); ``align`` only handles episodes with a
             # source transcript (others defer to a transcribe lane). The default (None) lane keeps
-            # the auto per-episode behavior for a direct ``citypods enrich``.
+            # the auto per-episode behavior for a direct ``citypods enrich``. Apply this before the
+            # alignment-enabled guard: production's transcribe lane must deliberately ignore source
+            # text and generate fresh ASR even while the separate align lane remains disabled.
             if ctx.lane == "transcribe":
                 align_text = None
             elif ctx.lane == "align" and align_text is None:
                 stats.skipped += 1
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=align-lane-no-source-text",
+                    flush=True,
+                )
+                continue
+
+            if align_text and not city.asr_alignment_enabled:
+                stats.skipped += 1
+                print(
+                    f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
                     flush=True,
                 )
                 continue
