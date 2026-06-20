@@ -51,7 +51,7 @@ def run_bench(
     try:
         import jiwer
     except ImportError:
-        print("jiwer is required for WER computation. Install: pip install 'citypods[asr]'")
+        print("jiwer is required for WER computation. Install: pip install 'citypods[asr-bench]'")
         return 1
 
     site_config = load_site_config(site_config_path)

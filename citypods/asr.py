@@ -10,7 +10,7 @@ Both return a :class:`TranscriptArtifacts` (a clean segment-level VTT + a word-l
 sidecar) in *served time* (caller downloads the hosted M4A before calling).
 
 All third-party imports (faster_whisper, stable_whisper) are lazy — the module loads
-cleanly without the [asr] optional extras; a missing import surfaces only when
+cleanly without the ASR optional extras; a missing import surfaces only when
 transcribe() / align() is actually called.
 """
 
@@ -149,7 +149,8 @@ def load_model(model: str, compute_type: str, cpu_threads: int):
         from faster_whisper import WhisperModel
     except ImportError as exc:
         raise ImportError(
-            "faster-whisper is required for ASR. Install it with: pip install 'citypods[asr]'"
+            "faster-whisper is required for ASR. "
+            "Install it with: pip install 'citypods[asr-transcribe]'"
         ) from exc
 
     # ASR_MODEL_PATH overrides the config model name: either a local directory
@@ -182,7 +183,7 @@ def _load_alignment_model(model_or_path: str, compute_type: str | None, cpu_thre
     except ImportError as exc:
         raise ImportError(
             "stable-ts is required for forced alignment. "
-            "Install it with: pip install 'citypods[asr]'"
+            "Install it with: pip install 'citypods[asr-align]'"
         ) from exc
 
     cache_key = ("stable-faster-whisper", model_or_path, compute_type, cpu_threads)
@@ -221,7 +222,7 @@ def transcribe(
     except ImportError as exc:
         raise ImportError(
             "faster-whisper is required for ASR transcription. "
-            "Install it with: pip install 'citypods[asr]'"
+            "Install it with: pip install 'citypods[asr-transcribe]'"
         ) from exc
 
     if isinstance(model_or_name, str):

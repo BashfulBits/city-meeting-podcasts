@@ -74,7 +74,8 @@ jobs:
           path: .
 
       - name: Install
-        run: pip install -e ".[asr,storage]"
+        # The scheduled lane never aligns, so do not install stable-ts/torch or benchmark-only jiwer.
+        run: pip install -e ".[asr-transcribe,storage]"
 
       - name: Cache static ffmpeg
         uses: actions/cache@v5

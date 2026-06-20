@@ -26,7 +26,7 @@ class LocalBackend:
 
     def __init__(self, asr: ModuleType | None = None):
         if asr is None:
-            from citypods import asr as asr_module  # lazy: keep [asr]-extras cost off import
+            from citypods import asr as asr_module  # lazy: keep ASR extras cost off import
 
             asr = asr_module
         self._asr = asr

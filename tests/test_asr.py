@@ -239,7 +239,7 @@ class TestTranscribeMocked:
                 transcribe(audio, "base.en", "en", "int8", 5, None, 4)
                 raise AssertionError("Expected ImportError")
             except ImportError as exc:
-                assert "citypods[asr]" in str(exc)
+                assert "citypods[asr-transcribe]" in str(exc)
         finally:
             if saved is not None:
                 sys.modules["faster_whisper"] = saved

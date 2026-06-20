@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     ab = sub.add_parser(
         "asr-bench",
         help="dev diagnostic: measure ASR model WER and speed on a known episode "
-        "(requires [asr] extras and a hosted episode with a stored source transcript).",
+        "(requires [asr-bench] extras and a hosted episode with a stored source transcript).",
     )
     ab.add_argument("--city", required=True, metavar="SLUG", help="city feed slug")
     ab.add_argument("--uid", required=True, metavar="UID", help="episode uid to benchmark")

@@ -72,6 +72,9 @@ independent from native-tool provisioning. Local faster-whisper/stable-ts infere
 persistent spawned worker process, not an unkillable daemon thread in the orchestrator. The worker
 retains its model cache across episodes but can be terminated and restarted on an item timeout;
 the timed-out episode records an exponential durable backoff while unrelated episodes continue.
+Packaging follows the lane boundary: scheduled fresh ASR installs `asr-transcribe` (faster-whisper
+only), a future align-only job installs `asr-align` (stable-ts), and diagnostics install `asr-bench`;
+the legacy aggregate `asr` extra remains available for contributors needing all three surfaces.
 Encoding/transcription can never block or redden the Pages deploy (H11b), and concurrent shards clear
 the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
 records, leaving the
