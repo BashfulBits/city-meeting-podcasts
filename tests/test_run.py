@@ -303,6 +303,40 @@ def test_run_history_counts_planner_and_audio_throttles_once(tmp_path):
     assert summary["audio_circuit_skipped"] == 7
 
 
+def test_run_history_records_logical_run_id_and_defer_reasons(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "example/repo")
+    transcript = {
+        "ran": 0,
+        "encoded": 0,
+        "credited": 0,
+        "aligned": 0,
+        "transcribed": 0,
+        "reused": 0,
+        "backlog": 3,
+        "seconds": 0.0,
+        "bytes": 0,
+        "errors": 0,
+        "rate_limited": 0,
+        "circuit_skipped": 0,
+        "defer_reasons": {"insufficient-budget": 2, "timeout-backoff": 1},
+    }
+
+    run._record_run_history(
+        tmp_path,
+        [],
+        {"transcript": transcript},
+        scope={"phase": "enrich", "lane": "transcribe", "shard": "0/4", "scoped": True},
+    )
+
+    summary = json.loads((tmp_path / "run_summary.json").read_text())
+    assert summary["logical_run_id"] == "github:12345:enrich:transcribe"
+    assert summary["stages"]["transcript"]["defer_reasons"] == {
+        "insufficient-budget": 2,
+        "timeout-backoff": 1,
+    }
+
+
 def test_build_writes_work_manifest(tmp_path, fake_provider):
     """H5: an enrich/all run persists the derived work manifest to state/work.json."""
     from citypods.ops.workqueue import load_manifest

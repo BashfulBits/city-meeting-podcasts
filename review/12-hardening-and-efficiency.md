@@ -205,6 +205,12 @@ hours are correct.
 separate audio + transcript backlogs with ETAs, `hours_hosted` is non-zero for re-hosted feeds, and it
 never recommends the removed key. Tests updated.
 
+**2026-06-20 logical-run/defer follow-up.** Scoped `run_events` sharing GitHub run id + phase + lane
+are one logical execution. KPI selection waits for all shard indices before replacing the previous
+complete run (while marking a first partial run incomplete), and each event carries a stable
+`logical_run_id`. Stage telemetry also carries merged `defer_reasons` counters through history,
+status JSON, and the admin stage table so operationally distinct queued states are not collapsed.
+
 ---
 
 ## H3 — Feed-validation publish gate (#53)

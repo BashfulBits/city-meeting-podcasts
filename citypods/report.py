@@ -666,9 +666,11 @@ def _sum_stage_totals(rows: list[dict]) -> dict:
     )
     for row in rows:
         for name, stage in (row.get("stages") or {}).items():
-            out = totals.setdefault(name, {k: 0 for k in keys})
+            out = totals.setdefault(name, {**{k: 0 for k in keys}, "defer_reasons": {}})
             for k in keys:
                 out[k] += stage.get(k, 0) or 0
+            for reason, count in (stage.get("defer_reasons") or {}).items():
+                out["defer_reasons"][reason] = out["defer_reasons"].get(reason, 0) + int(count or 0)
     for stage in totals.values():
         if "seconds" in stage:
             stage["seconds"] = round(stage["seconds"], 1)
@@ -794,14 +796,19 @@ def _logical_run_groups(run_summary: dict, history: list[dict]) -> list[dict]:
 
 
 def _latest_run_summary(run_summary: dict, history: list[dict]) -> dict:
-    """Return the newest run summary, aggregating sibling shard events when possible."""
-    unique = _run_candidates(run_summary, history)
-    if not unique:
-        return {}
+    """Return the newest *completed logical run*, aggregating sibling shard events.
 
-    latest = max(unique, key=_run_sort_value)
-    group = [row for row in unique if _same_logical_run(row, latest)] or [latest]
-    return _merge_logical_run_group(group)
+    A fast shard can publish hours before its slow siblings. Treating that row as the latest run
+    makes KPI telemetry report a partial matrix as a completed ASR/Audio execution. Use the same
+    completeness gate as the per-stage table and retain the previous complete run until every
+    expected shard has reported.
+    """
+    groups = _logical_run_groups(run_summary, history)
+    complete = [group for group in groups if group.get("complete", True)]
+    # On first deployment there may be no earlier complete group yet. Return the newest partial
+    # group explicitly marked ``complete=false`` rather than pretending there was no run at all.
+    candidates = complete or groups
+    return max(candidates, key=_run_sort_value) if candidates else {}
 
 
 def _latest_stage_runs(run_summary: dict, history: list[dict]) -> dict[str, dict]:
@@ -837,6 +844,7 @@ def _latest_stage_runs(run_summary: dict, history: list[dict]) -> dict[str, dict
                 "scoped": group.get("scoped"),
                 "github_run_id": group.get("github_run_id"),
                 "github_run_url": group.get("github_run_url"),
+                "logical_run_id": group.get("logical_run_id"),
                 "built": group.get("built", 0),
                 "skipped": group.get("skipped", 0),
                 "errors": group.get("errors", 0),
@@ -1141,6 +1149,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
                 "shard": run_summary.get("shard"),
                 "shards": run_summary.get("shards"),
                 "scoped": run_summary.get("scoped"),
+                "complete": run_summary.get("complete", True) if run_summary else None,
             },
             "last_deploy": {
                 "ts": now.isoformat(),

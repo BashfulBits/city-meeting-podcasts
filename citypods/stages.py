@@ -271,6 +271,12 @@ class StageStats:
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     circuit_skipped: int = 0  # audio encodes skipped because the circuit breaker was open
     circuit_keys: set[str] = field(default_factory=set)  # tenant/domain scopes for queue parking
+    defer_reasons: dict[str, int] = field(default_factory=dict)
+
+    def defer(self, reason: str, count: int = 1) -> None:
+        """Record restartable work left for a later run, grouped by a stable reason token."""
+        self.skipped += count
+        self.defer_reasons[reason] = self.defer_reasons.get(reason, 0) + count
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -1218,7 +1224,7 @@ class TranscriptStage:
             provider_url = (ep.links or {}).get("transcript")
             if provider_url and not ep.transcript_key:
                 if ctx.stop is not None and ctx.stop():
-                    stats.skipped += 1
+                    stats.defer("stop-signal")
                     continue
 
                 try:
@@ -1292,7 +1298,7 @@ class TranscriptStage:
                 continue  # step 2 may have just set this in the same pass
             timeout_backoff_until = transcript_timeout_backoff_until(ep)
             if timeout_backoff_until is not None and datetime.now(UTC) < timeout_backoff_until:
-                stats.skipped += 1
+                stats.defer("timeout-backoff")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=timeout-backoff "
                     f"attempts={ep.transcript_timeout_attempts} "
@@ -1301,7 +1307,7 @@ class TranscriptStage:
                 )
                 continue
             if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
-                stats.skipped += 1
+                stats.defer("prior-timeout")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=prior-timeout",
                     flush=True,
@@ -1336,7 +1342,7 @@ class TranscriptStage:
             if ctx.lane == "transcribe":
                 align_text = None
             elif ctx.lane == "align" and align_text is None:
-                stats.skipped += 1
+                stats.defer("align-lane-no-source-text")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=align-lane-no-source-text",
                     flush=True,
@@ -1344,7 +1350,7 @@ class TranscriptStage:
                 continue
 
             if align_text and not city.asr_alignment_enabled:
-                stats.skipped += 1
+                stats.defer("alignment-disabled")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
                     flush=True,
@@ -1384,7 +1390,7 @@ class TranscriptStage:
                 work_class = "transcript-align" if align_text else "transcript-asr"
                 disp_uid = ep.uid or ep.guid
                 if dispatcher.is_inflight(src_key, disp_uid, work_class):
-                    stats.skipped += 1
+                    stats.defer("dispatched-prior-run")
                     print(
                         f"[enrich] transcript asr in-flight {ep_ref} reason=dispatched-prior-run",
                         flush=True,
@@ -1428,7 +1434,7 @@ class TranscriptStage:
             preflight_dur_h, preflight_duration_source = _episode_duration_hours(ep)
             if preflight_duration_source != "unknown":
                 if not _asr_local_duration_eligible(ctx, preflight_dur_h):
-                    stats.skipped += 1
+                    stats.defer("external-required")
                     _log_asr_external_required(
                         ep_ref,
                         duration_hours=preflight_dur_h,
@@ -1440,7 +1446,7 @@ class TranscriptStage:
                     ctx, preflight_dur_h, runtime_log
                 )
                 if not fits_budget:
-                    stats.skipped += 1
+                    stats.defer("insufficient-budget")
                     estimate_label = (
                         f"{estimate_s / 60:.1f}" if estimate_s is not None else "unknown"
                     )
@@ -1458,12 +1464,12 @@ class TranscriptStage:
                     continue
 
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
+                stats.defer("stop-signal")
                 continue
             if ctx.resource_admission is not None and not ctx.resource_admission.wait(
                 kind="asr", label=ep.uid or ep.guid, stop=ctx.stop
             ):
-                stats.skipped += 1
+                stats.defer("resource-admission")
                 continue
 
             # Acquire the global ASR semaphore before starting inference.
@@ -1481,7 +1487,7 @@ class TranscriptStage:
                     flush=True,
                 )
                 if not _acquire_asr_semaphore(ctx, sem, ep_ref):
-                    stats.skipped += 1
+                    stats.defer("asr-slot-stop")
                     continue
                 print(
                     f"[enrich] transcript asr acquired {ep_ref}",
@@ -1497,7 +1503,7 @@ class TranscriptStage:
                     if sem is not None:
                         sem.release()
                         sem = None
-                    stats.skipped += 1
+                    stats.defer("native-gate-stop")
                     continue
 
             audio_tmp = _tmp.TemporaryDirectory()
@@ -1544,7 +1550,7 @@ class TranscriptStage:
                 if sem is not None:
                     sem.release()
                     sem = None
-                stats.skipped += 1
+                stats.defer("external-required")
                 _log_asr_external_required(
                     ep_ref,
                     duration_hours=dur_h,
@@ -1563,7 +1569,7 @@ class TranscriptStage:
                 if sem is not None:
                     sem.release()
                     sem = None
-                stats.skipped += 1
+                stats.defer("insufficient-budget")
                 estimate_label = f"{estimate_s / 60:.1f}" if estimate_s is not None else "unknown"
                 remaining_label = (
                     f"{max(0.0, remaining_s) / 60:.1f}" if remaining_s is not None else "unknown"
@@ -1583,15 +1589,11 @@ class TranscriptStage:
                 flush=True,
             )
 
-            # Run inference in a daemon thread so stop() can interrupt it immediately.
-            # CTranslate2 inference runs in C++ with the GIL released — it cannot be
-            # interrupted from Python.  The daemon thread approach lets the main thread
-            # poll stop() every 2 s and bail out without waiting for inference to finish:
-            #   • Semaphore is released immediately on stop() so cleanup is not blocked.
-            #   • The daemon thread keeps running in the background but dies automatically
-            #     when the process exits (daemon=True), so no zombie work survives the run.
-            #   • Results produced after stop() fires are never stored — this prevents
-            #     ``transcript done`` being reported for work not counted in this run's budget.
+            # Keep the backend call on a helper thread so the orchestrator can poll the item
+            # deadline. Production's process-local backend runs native inference in a persistent
+            # child that ``terminate_active`` can kill/restart; injected in-process test/legacy
+            # backends retain the conservative abandoned-thread fallback. Results arriving after
+            # a timeout are discarded and never reported as completed work.
             _artifacts: list = []
             _err: list[Exception] = []
             _aligned: list[bool] = []
@@ -1698,7 +1700,7 @@ class TranscriptStage:
                     _abandoned = True
                     message = f"{label}: ASR timeout after {timeout_s / 60:.1f}m"
                     stats.errors.append(message)
-                    stats.skipped += 1
+                    stats.defer("timeout")
                     _record_asr_timeout(ep)
                     terminate = getattr(backend, "terminate_active", None)
                     worker_terminated = bool(terminate()) if callable(terminate) else False
