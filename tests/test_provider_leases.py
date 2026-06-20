@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from citypods.http import StopRequested
 from citypods.provider_leases import DistributedProviderLeasePool
 from citypods.storage.local import LocalStorage
 
@@ -268,3 +269,67 @@ def test_acquire_failure_removes_waiting_candidate(tmp_path):
             pass
 
     assert list(inner.list_objects("test-provider-leases/")) == []
+
+
+def test_stop_firing_raises_instead_of_blocking_out_the_lease_wait(tmp_path):
+    """A waiter polling for a held lease yields ``StopRequested`` once the run's wall-clock budget
+    expires, instead of blocking until the holder releases (which TTL alone could make minutes)."""
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    first = _pool(store)
+    second = _pool(store)
+    holder_released = threading.Event()
+
+    def hold():
+        with first.slots(["https://archive-video.granicus.com/x.mp4"]):
+            holder_released.wait(timeout=2.0)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    try:
+        with pytest.raises(StopRequested):
+            with second.slots(["https://archive-video.granicus.com/x.mp4"], stop=lambda: True):
+                pass
+    finally:
+        holder_released.set()
+        t.join()
+
+    # The aborted waiter's own candidate key must be cleaned up — only the holder's lease key
+    # (now released too) may remain.
+    assert list(store.list_objects("test-provider-leases/")) == []
+
+
+def test_stop_never_firing_still_acquires_lease(tmp_path):
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    pool = _pool(store)
+    with pool.slots(["https://archive-video.granicus.com/x.mp4"], stop=lambda: False):
+        pass  # acquired without raising
+
+
+def test_current_waiting_counts_empty_when_idle(tmp_path):
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    pool = _pool(store)
+    assert pool.current_waiting_counts() == {}
+
+
+def test_current_waiting_counts_reflects_live_queue_depth(tmp_path):
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    first = _pool(store)
+    second = _pool(store)
+    waiting_seen = threading.Event()
+
+    def _waiter():
+        with second.slots(["https://archive-video.granicus.com/x.mp4"]):
+            pass
+
+    with first.slots(["https://archive-video.granicus.com/x.mp4"]):
+        t = threading.Thread(target=_waiter)
+        t.start()
+        for _ in range(200):
+            if second.current_waiting_counts().get("granicus.com", 0) == 1:
+                waiting_seen.set()
+                break
+            time.sleep(0.01)
+        assert waiting_seen.is_set()
+
+    t.join(timeout=2)
+    assert second.current_waiting_counts() == {}

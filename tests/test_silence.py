@@ -6,14 +6,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from citypods.http import StopRequested
 from citypods.silence import (
     SilencePlanner,
     _parse_ffmpeg_duration,
     build_silence_timeline,
     detect_silences,
+    is_degenerate_served_duration,
     parse_silences,
 )
-from citypods.timeline import timeline_digest
+from citypods.timeline import Segment, Timeline, timeline_digest
 
 # ---------------------------------------------------------------------------
 # parse_silences
@@ -196,18 +198,43 @@ class TestDetectSilences:
         assert "silencedetect=noise=-50.0dB:d=2.0" in " ".join(cmd)
         assert "-vn" in cmd
 
+    def test_threads_arg_pins_ffmpeg_thread_count(self):
+        """Mirrors CommandFfmpeg's -threads pinning so a silencedetect pass doesn't default to
+        'all cores' alongside NativeWorkGate-budgeted encodes."""
+        with patch("citypods.silence.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stderr="", returncode=0)
+            detect_silences("http://x.com/v.mp4", threads=2)
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("-threads") + 1] == "2"
+
+    def test_no_threads_arg_when_threads_is_none(self):
+        with patch("citypods.silence.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stderr="", returncode=0)
+            detect_silences("http://x.com/v.mp4")
+        cmd = mock_run.call_args[0][0]
+        assert "-threads" not in cmd
+
 
 # ---------------------------------------------------------------------------
 # SilencePlanner
 # ---------------------------------------------------------------------------
 
 
-def _make_ctx(trim_silence=True, noise_db=-40.0, lead_trail=1.0, mid=10.0):
+def _make_ctx(
+    trim_silence=True,
+    noise_db=-40.0,
+    lead_trail=1.0,
+    mid=10.0,
+    min_served_seconds=5.0,
+    min_served_fraction=0.02,
+):
     ctx = MagicMock()
     ctx.trim_silence = trim_silence
     ctx.silence_noise_db = noise_db
     ctx.silence_lead_trail_min_s = lead_trail
     ctx.silence_mid_min_s = mid
+    ctx.silence_min_served_seconds = min_served_seconds
+    ctx.silence_min_served_fraction = min_served_fraction
     ctx.ffmpeg.binary = "ffmpeg"
     ctx.ffmpeg.timeout_seconds = None
     return ctx
@@ -312,6 +339,64 @@ class TestSilencePlanner:
         assert len(result.segments) == 1
         assert result.segments[0].source_start == pytest.approx(5.0)
 
+    def test_detect_silences_called_with_native_work_gate_threads(self):
+        """The detect_silences call is pinned to CommandFfmpeg's configured thread count, the same
+        budget AudioStage's encodes respect, so a planner pass can't oversubscribe the CPU."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.ffmpeg.threads = 2
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0)
+            planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert mock_detect.call_args.kwargs["threads"] == 2
+
+    def test_defers_when_native_work_gate_denies_admission(self):
+        """A NativeWorkGate that denies admission (budget/queue pressure) must defer the planner
+        pass — not run silencedetect unbounded and not raise."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.native_work_gate.acquire.return_value = False
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert result is None
+        mock_detect.assert_not_called()
+        ctx.native_work_gate.release.assert_not_called()
+
+    def test_releases_native_work_gate_after_detect_silences(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.native_work_gate.acquire.return_value = True
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences", return_value=([], 3600.0)),
+        ):
+            planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        ctx.native_work_gate.release.assert_called_once_with(kind="audio")
+
+    def test_defers_without_recording_failure_when_source_cache_stop_requested(self):
+        """The run's wall-clock budget expiring while queued on the source cache's per-uid lock is
+        not a source failure: defer cleanly, don't raise out of the planner."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.source_cache.get_or_fetch.side_effect = StopRequested("stopped")
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert result is None
+
     def test_returns_none_when_provider_error(self):
         from citypods.providers.base import ProviderError
 
@@ -361,3 +446,78 @@ class TestSilencePlanner:
             result = planner.plan(provider, _make_city(), _make_episode(), ctx, None)
         assert result is None
         provider.resolve_media_url.assert_not_called()  # no network call when ffmpeg absent
+
+    def test_degenerate_timeline_with_no_prior_falls_back_to_identity(self):
+        """A near-total-silence detection (bad probe) with no prior timeline → identity, not
+        a near-empty served timeline that would get hosted."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            # Almost the entire (claimed) 3600s source flagged silent → 0.01s kept.
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0)
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert result is not None
+        assert timeline_digest(result) == ""  # identity, not the degenerate trim
+
+    def test_degenerate_timeline_with_prior_preserves_prior(self):
+        """When a (good) prior timeline already exists, a degenerate re-detection must not
+        downgrade it — return None so TimelineStage leaves ``current`` untouched."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        prior = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=3597.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=3.0,
+                    source_end=3600.0,
+                ),
+            ),
+        )
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0)
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, prior)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# is_degenerate_served_duration
+# ---------------------------------------------------------------------------
+
+
+class TestIsDegenerateServedDuration:
+    def test_normal_trim_not_degenerate(self):
+        tl = build_silence_timeline("s0", 3600.0, [(0.0, 5.0)], lead_trail_min=1.0)
+        assert tl is not None
+        assert not is_degenerate_served_duration(tl, 3600.0)
+
+    def test_near_total_wipeout_is_degenerate(self):
+        tl = build_silence_timeline("s0", 3600.0, [(0.0, 3599.99)], lead_trail_min=1.0)
+        assert tl is not None
+        assert is_degenerate_served_duration(tl, 3600.0)
+
+    def test_short_meeting_near_absolute_floor_not_degenerate(self):
+        # A genuinely short (20s) meeting with a 2s trim: 18s kept clears the 5s absolute floor
+        # even though it's a small fraction of a typical meeting length.
+        tl = build_silence_timeline("s0", 20.0, [(0.0, 2.0)], lead_trail_min=1.0)
+        assert tl is not None
+        assert not is_degenerate_served_duration(tl, 20.0, min_seconds=5.0, min_fraction=0.02)
+
+    def test_custom_thresholds_respected(self):
+        tl = build_silence_timeline("s0", 100.0, [(0.0, 90.0)], lead_trail_min=1.0)
+        assert tl is not None  # 10s kept of 100s
+        assert is_degenerate_served_duration(tl, 100.0, min_seconds=1.0, min_fraction=0.5)
+        assert not is_degenerate_served_duration(tl, 100.0, min_seconds=1.0, min_fraction=0.05)

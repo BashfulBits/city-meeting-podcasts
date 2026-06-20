@@ -16,7 +16,7 @@ tenant (the cause of the Granicus/Swagit ``403`` + truncated-fetch storm under H
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from urllib.parse import urlsplit
 
 import requests
@@ -80,6 +80,15 @@ _RETRY = _ClampedRetry(
 )
 
 
+class StopRequested(Exception):
+    """Raised by a coordination wait (host rate limit, distributed lease, source cache) when the
+    caller's ``stop`` predicate fires before the wait could acquire its slot.
+
+    These waits are otherwise unbounded — or bounded only by *another* thread's own work timeout —
+    so without this a worker idle past the run's wall-clock budget still blocks on a queue position
+    instead of yielding immediately (audio workflow review, 2026-06)."""
+
+
 class HostRateLimiter:
     """Process-global per-registrable-domain concurrency cap (issue #39).
 
@@ -138,35 +147,65 @@ class HostRateLimiter:
                 self._sems[key] = sem
             return sem
 
-    def slot(self, url: str) -> _Slots:
-        """Hold the cap slot for ``url``'s host. No-op when the host has no configured cap."""
-        return self.slots([url])
+    def slot(
+        self, url: str, *, stop: Callable[[], bool] | None = None, poll_seconds: float = 1.0
+    ) -> _Slots:
+        """Hold the cap slot for ``url``'s host. No-op when the host has no configured cap.
 
-    def slots(self, urls: Iterable[str]) -> _Slots:
+        ``stop``, if given, is polled every ``poll_seconds`` while waiting; if it fires before the
+        slot is acquired, raises :class:`StopRequested` instead of blocking further."""
+        return self.slots([url], stop=stop, poll_seconds=poll_seconds)
+
+    def slots(
+        self,
+        urls: Iterable[str],
+        *,
+        stop: Callable[[], bool] | None = None,
+        poll_seconds: float = 1.0,
+    ) -> _Slots:
         """Hold the cap slots for every distinct configured host among ``urls`` (ffmpeg may read
         several remote sources in one invocation). Domains are deduped and acquired in a fixed
         (sorted) order so two concurrent multi-source renders can't deadlock. Local-file inputs and
-        unconfigured hosts contribute nothing."""
+        unconfigured hosts contribute nothing.
+
+        ``stop``/``poll_seconds``: see :meth:`slot`."""
         keys: set[str] = set()
         for url in urls:
             key = self._key_for((urlsplit(url).hostname or "").lower())
             if key is not None:
                 keys.add(key)
-        return _Slots(self, sorted(keys))
+        return _Slots(self, sorted(keys), stop=stop, poll_seconds=poll_seconds)
 
 
 class _Slots:
     """Context manager that acquires/releases a fixed, sorted set of host semaphores together."""
 
-    def __init__(self, limiter: HostRateLimiter, keys: list[str]) -> None:
+    def __init__(
+        self,
+        limiter: HostRateLimiter,
+        keys: list[str],
+        *,
+        stop: Callable[[], bool] | None = None,
+        poll_seconds: float = 1.0,
+    ) -> None:
         self._limiter = limiter
         self._keys = keys
+        self._stop = stop
+        self._poll_seconds = poll_seconds
 
     def __enter__(self) -> None:
         self._acquired: list[threading.BoundedSemaphore] = []
         for key in self._keys:
             sem = self._limiter._sem_for_key(key)
-            sem.acquire()
+            if self._stop is None:
+                sem.acquire()
+            else:
+                while not sem.acquire(timeout=self._poll_seconds):
+                    if self._stop():
+                        for held in reversed(self._acquired):
+                            held.release()
+                        self._acquired = []
+                        raise StopRequested(f"host rate limit wait for {key!r} stopped")
             self._acquired.append(sem)
 
     def __exit__(self, *_exc: object) -> None:

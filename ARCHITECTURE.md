@@ -138,7 +138,11 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
   native-process ceiling so provider slots and CPUs can remain occupied without exceeding
   `native_audio_max_active`. The old duration-scaled 64 MiB/min, 12,000 MiB max/unknown model remains
   only for the disabled legacy dynamic-loudnorm path. The mid-flight kill floor
-  (`audio_ffmpeg_memory_floor_mb`) stays as the backstop.
+  (`audio_ffmpeg_memory_floor_mb`) stays as the backstop. `TimelineStage`'s `SilencePlanner` runs
+  before `AudioStage` and shells out to ffmpeg `silencedetect`, so its pass is admitted through the
+  same `NativeWorkGate` (`kind="audio"`) and pinned to the same `-threads` count as `CommandFfmpeg`'s
+  encodes — otherwise an unthreaded, ungated silencedetect call defaults to "all cores" and can
+  oversubscribe the box alongside (or ahead of) the gated encodes it's meant to share CPU with.
 - **Backlog prioritization + async-ready dispatch** — the enrich phase orders work
   *newest-everywhere-first* across all sources by a configurable `backlog_priority` policy; audio
   re-hosting runs on the runner while transcribe/diarize are modeled as **dispatch-not-await** work
@@ -210,7 +214,14 @@ Hard-won facts that bite anyone adding/debugging providers:
   identifies the GitHub run/job that held a stale claim. Storage backends with `get_file` use the
   payload expiry as authoritative; modification time plus TTL is the compatibility fallback. Keys are
   registrable domains so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the
-  tenant sees.
+  tenant sees. Both `HostRateLimiter` and `DistributedProviderLeasePool`, plus `SourceCache`'s
+  per-uid fetch lock, accept an optional `stop` predicate and raise `StopRequested` if it fires
+  before the wait acquires its slot/lease/lock — so a worker idle past the run's wall-clock budget
+  yields immediately instead of blocking out a full queue/lease cycle. `CommandFfmpeg` and
+  `SourceCache` bind `stop` once at construction; `_encode_one`, `SwagitConcatPlanner`, and
+  `SilencePlanner` treat `StopRequested` as a non-failure defer, the same as a circuit deferral. The
+  ffmpeg subprocess call itself remains out of scope — `stop()` can't preempt a thread parked in
+  `subprocess.run`, only `audio_encode_timeout_minutes` bounds that.
 - **Provider circuit admission happens at the subprocess boundary and is shared across Audio
   shards.** Audio first checks the circuit before entering expensive work, then refreshes its
   authoritative storage marker after distributed and process-local provider slots are acquired and

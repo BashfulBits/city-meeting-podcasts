@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from citypods.http import StopRequested
 from citypods.storage.base import StorageBackend
 
 
@@ -104,6 +105,7 @@ class DistributedProviderLeasePool:
         self._shard: str | None = None
         self._guard = threading.Lock()
         self._telemetry: dict[str, dict[str, int | float]] = {}
+        self._waiting: dict[str, int] = {}
         self._expiry_cache: dict[
             str, tuple[datetime | None, datetime | None, _LeaseMetadata | None]
         ] = {}
@@ -143,18 +145,24 @@ class DistributedProviderLeasePool:
             self._log = log
             self._shard = shard
             self._telemetry = {}
+            self._waiting = {}
             self._expiry_cache = {}
         if rules and usable_storage is None and log is not None:
             _emit(log, "[enrich] provider lease disabled: storage backend lacks lease support")
 
-    def slots(self, urls: Iterable[str]) -> _DistributedSlots:
+    def slots(
+        self, urls: Iterable[str], *, stop: Callable[[], bool] | None = None
+    ) -> _DistributedSlots:
+        """``stop``, if given, is polled once per fairness-queue iteration (every
+        ``rule.poll_seconds``); if it fires before this process's candidate wins, raises
+        :class:`~citypods.http.StopRequested` instead of waiting out the queue."""
         keys: set[str] = set()
         for url in urls:
             host = (urlsplit(url).hostname or "").lower()
             key = self._key_for(host)
             if key is not None:
                 keys.add(key)
-        return _DistributedSlots(self, sorted(keys))
+        return _DistributedSlots(self, sorted(keys), stop=stop)
 
     def _key_for(self, host: str) -> str | None:
         host = (host or "").lower()
@@ -183,19 +191,32 @@ class DistributedProviderLeasePool:
                 for domain, values in self._telemetry.items()
             }
 
-    def _acquire(self, domain: str) -> ProviderLease:
+    def current_waiting_counts(self) -> dict[str, int]:
+        """Live count of callers currently blocked in :meth:`_acquire` per domain, for
+        heartbeat/stall diagnostics — ``telemetry()`` is cumulative and can't show a live queue."""
+        with self._guard:
+            return {domain: count for domain, count in self._waiting.items() if count > 0}
+
+    def _acquire(self, domain: str, *, stop: Callable[[], bool] | None = None) -> ProviderLease:
         key: str | None = None
         started = time.monotonic()
         last_renewed = started
         waiting_logged = False
+        counted = False
         try:
             while True:
+                if stop is not None and stop():
+                    raise StopRequested(f"provider lease wait for domain={domain!r} stopped")
                 with self._guard:
                     storage = self._storage
                     rule = self._rules[domain]
                     log = self._log
                 if storage is None:
                     return ProviderLease(self, domain, "", rule, 0.0)
+                if not counted:
+                    with self._guard:
+                        self._waiting[domain] = self._waiting.get(domain, 0) + 1
+                    counted = True
 
                 if key is None:
                     key = self._candidate_key(domain)
@@ -236,6 +257,10 @@ class DistributedProviderLeasePool:
             if key is not None:
                 self._delete_key(key)
             raise
+        finally:
+            if counted:
+                with self._guard:
+                    self._waiting[domain] = max(0, self._waiting.get(domain, 0) - 1)
 
     def _write_candidate(self, storage: StorageBackend, key: str, payload: str) -> None:
         with tempfile.TemporaryDirectory(prefix="citypods_lease_") as tmp:
@@ -429,16 +454,23 @@ class DistributedProviderLeasePool:
 
 
 class _DistributedSlots:
-    def __init__(self, pool: DistributedProviderLeasePool, domains: list[str]) -> None:
+    def __init__(
+        self,
+        pool: DistributedProviderLeasePool,
+        domains: list[str],
+        *,
+        stop: Callable[[], bool] | None = None,
+    ) -> None:
         self._pool = pool
         self._domains = domains
+        self._stop = stop
         self._leases: list[ProviderLease] = []
 
     def __enter__(self) -> None:
         self._leases = []
         try:
             for domain in self._domains:
-                self._leases.append(self._pool._acquire(domain))
+                self._leases.append(self._pool._acquire(domain, stop=self._stop))
         except BaseException:
             for lease in reversed(self._leases):
                 lease.release()

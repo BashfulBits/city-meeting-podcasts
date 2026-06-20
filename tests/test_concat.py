@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from citypods.concat import SwagitConcatPlanner, _probe_duration_url
+from citypods.http import StopRequested
 from citypods.timeline import timeline_digest
 
 SEG_URL_0 = "https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4"
@@ -109,6 +110,20 @@ class TestGuards:
             result = planner.plan(_make_provider(), _make_city(), _make_ep(), _make_ctx(), None)
         assert result is None
 
+    def test_probe_failure_records_segment_index(self):
+        """The failure is recorded against the specific segment that failed to probe."""
+        planner = SwagitConcatPlanner()
+        ep = _make_ep()
+        # First segment probes fine, second fails → code should identify segment 1.
+        with (
+            patch("citypods.concat.shutil.which", return_value="ffmpeg"),
+            patch("citypods.concat._probe_duration_url", side_effect=[1800.0, None]),
+            patch("citypods.concat.record_materialize_failure") as mock_record,
+        ):
+            result = planner.plan(_make_provider(), _make_city(), ep, _make_ctx(), None)
+        assert result is None
+        mock_record.assert_called_once_with(ep, "concat-probe:s1")
+
     def test_defers_when_provider_raises(self):
         """Network failure in fetch_segment_objects → return None (defer, not error)."""
         from citypods.providers.base import ProviderError
@@ -119,6 +134,46 @@ class TestGuards:
         with patch("citypods.concat.shutil.which", return_value="ffmpeg"):
             result = planner.plan(provider, _make_city(), _make_ep(), _make_ctx(), None)
         assert result is None
+
+    def test_defers_without_recording_failure_when_probe_stop_requested(self):
+        """The run's wall-clock budget expiring mid-probe is not a source failure: no backoff
+        should be recorded for it (#120-style false penalty)."""
+        planner = SwagitConcatPlanner()
+        ep = _make_ep()
+        with (
+            patch("citypods.concat.shutil.which", return_value="ffmpeg"),
+            patch("citypods.concat._probe_duration_url", side_effect=StopRequested("stopped")),
+            patch("citypods.concat.record_materialize_failure") as mock_record,
+        ):
+            result = planner.plan(_make_provider(), _make_city(), ep, _make_ctx(), None)
+        assert result is None
+        mock_record.assert_not_called()
+
+    def test_probe_called_with_ctx_stop(self):
+        planner = SwagitConcatPlanner()
+        ctx = _make_ctx()
+        ctx.stop = lambda: False
+        with (
+            patch("citypods.concat.shutil.which", return_value="ffmpeg"),
+            patch("citypods.concat._probe_duration_url", return_value=1800.0) as mock_probe,
+        ):
+            planner.plan(_make_provider(), _make_city(), _make_ep(), ctx, None)
+        assert mock_probe.call_args.kwargs["stop"] is ctx.stop
+
+    def test_provider_raises_records_fetch_failure(self):
+        from citypods.providers.base import ProviderError
+
+        planner = SwagitConcatPlanner()
+        provider = MagicMock()
+        ep = _make_ep()
+        provider.fetch_segment_objects.side_effect = ProviderError("network down")
+        with (
+            patch("citypods.concat.shutil.which", return_value="ffmpeg"),
+            patch("citypods.concat.record_materialize_failure") as mock_record,
+        ):
+            result = planner.plan(provider, _make_city(), ep, _make_ctx(), None)
+        assert result is None
+        mock_record.assert_called_once_with(ep, "concat-fetch")
 
 
 # ---------------------------------------------------------------------------
@@ -287,3 +342,30 @@ class TestProbeDurationUrl:
             _probe_duration_url("http://x.com/f.mp4", ffprobe="ffprobe")
             cmd = mock_run.call_args[0][0]
         assert cmd[0] == "ffprobe"
+
+    def test_stop_firing_raises_before_running_ffprobe(self):
+        """A stop predicate that's already true must abort a queued host-rate-limit wait (and
+        never call ffprobe) rather than block until the holder releases the slot."""
+        import threading
+
+        from citypods.http import HOST_LIMITER
+
+        url = "https://archive-video.granicus.com/x.mp4"
+        HOST_LIMITER.configure({"granicus.com": 1})
+        holder_released = threading.Event()
+
+        def hold():
+            with HOST_LIMITER.slot(url):
+                holder_released.wait(timeout=2.0)
+
+        t = threading.Thread(target=hold)
+        t.start()
+        try:
+            with patch("citypods.concat.subprocess.run") as mock_run:
+                with pytest.raises(StopRequested):
+                    _probe_duration_url(url, stop=lambda: True)
+            mock_run.assert_not_called()
+        finally:
+            holder_released.set()
+            t.join()
+            HOST_LIMITER.configure({})

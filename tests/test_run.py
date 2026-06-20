@@ -403,6 +403,125 @@ def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys,
     assert "[enrich] audio pass:" in out and "[enrich] audio pass done" in out
 
 
+def test_heartbeat_tick_prints_active_work_snapshot(tmp_path, capsys):
+    progress_entry = run.PROGRESS.start(source="dallas-tx", uid="ep1", phase="audio-encode")
+    try:
+        hb = run._ResourceHeartbeat(
+            enabled=True, label="enrich", root=tmp_path, interval_seconds=0.02
+        )
+        with hb:
+            time.sleep(0.06)
+        out = capsys.readouterr().out
+        assert "[enrich] active work:" in out
+        assert "audio-encode" in out and "dallas-tx" in out and "ep1" in out
+    finally:
+        run.PROGRESS.finish(progress_entry)
+
+
+def test_heartbeat_dumps_stalled_threads_once_per_cooldown(tmp_path, capsys, monkeypatch):
+    progress_entry = run.PROGRESS.start(source="dallas-tx", uid="ep1", phase="audio-encode")
+    dump_calls = []
+    monkeypatch.setattr(run.faulthandler, "dump_traceback", lambda **kw: dump_calls.append(kw))
+    try:
+        hb = run._ResourceHeartbeat(
+            enabled=True,
+            label="enrich",
+            root=tmp_path,
+            interval_seconds=999,
+            stall_dump_seconds=0.001,
+        )
+        time.sleep(0.01)  # ensure the tracked entry is older than stall_dump_seconds
+        hb._maybe_dump_stalled_threads()
+        captured = capsys.readouterr()
+        assert "dumping all thread stacks" in captured.out
+        assert len(dump_calls) == 1
+        assert hb._last_stall_dump is not None
+        # Second call within the cooldown window must not dump again.
+        prior = hb._last_stall_dump
+        hb._maybe_dump_stalled_threads()
+        assert hb._last_stall_dump == prior
+        assert len(dump_calls) == 1
+    finally:
+        run.PROGRESS.finish(progress_entry)
+
+
+def test_heartbeat_no_dump_when_stall_dump_disabled(tmp_path, capsys):
+    progress_entry = run.PROGRESS.start(source="dallas-tx", uid="ep1", phase="audio-encode")
+    try:
+        hb = run._ResourceHeartbeat(
+            enabled=True,
+            label="enrich",
+            root=tmp_path,
+            interval_seconds=999,
+            stall_dump_seconds=0.0,  # 0 == disabled
+        )
+        hb._maybe_dump_stalled_threads()
+        assert hb._last_stall_dump is None
+        assert "dumping all thread stacks" not in capsys.readouterr().out
+    finally:
+        run.PROGRESS.finish(progress_entry)
+
+
+def test_heartbeat_tick_prints_gate_state_when_active(tmp_path, capsys):
+    gate = run.NativeWorkGate(max_audio_active=3, poll_seconds=0.01)
+    assert gate.acquire(kind="audio", label="x") is True
+    try:
+        hb = run._ResourceHeartbeat(
+            enabled=True,
+            label="enrich",
+            root=tmp_path,
+            interval_seconds=0.02,
+            native_work_gate=gate,
+        )
+        with hb:
+            time.sleep(0.06)
+        out = capsys.readouterr().out
+        assert "[enrich] gate: audio_active=1/3" in out
+    finally:
+        gate.release(kind="audio")
+
+
+def test_heartbeat_tick_suppresses_gate_line_when_idle(tmp_path, capsys):
+    gate = run.NativeWorkGate(max_audio_active=3, poll_seconds=0.01)
+    hb = run._ResourceHeartbeat(
+        enabled=True,
+        label="enrich",
+        root=tmp_path,
+        interval_seconds=0.02,
+        native_work_gate=gate,
+    )
+    with hb:
+        time.sleep(0.06)
+    out = capsys.readouterr().out
+    assert "[enrich] gate:" not in out
+
+
+def test_heartbeat_tick_prints_lease_waiting_state(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(
+        run.DISTRIBUTED_PROVIDER_LEASES,
+        "current_waiting_counts",
+        lambda: {"granicus.com": 2},
+    )
+    monkeypatch.setattr(
+        run.DISTRIBUTED_PROVIDER_LEASES,
+        "telemetry",
+        lambda: {"granicus.com": {"lease_wait_seconds": 12.3, "lease_renewals": 4}},
+    )
+    hb = run._ResourceHeartbeat(enabled=True, label="enrich", root=tmp_path, interval_seconds=0.02)
+    with hb:
+        time.sleep(0.06)
+    out = capsys.readouterr().out
+    assert "[enrich] leases: granicus.com waiting=2 cum_wait=12.3s renewals=4" in out
+
+
+def test_heartbeat_no_dump_when_nothing_tracked(tmp_path):
+    hb = run._ResourceHeartbeat(
+        enabled=True, label="enrich", root=tmp_path, interval_seconds=999, stall_dump_seconds=1.0
+    )
+    hb._maybe_dump_stalled_threads()
+    assert hb._last_stall_dump is None
+
+
 def test_global_queue_parks_circuit_items_then_releases_after_canary(tmp_path, monkeypatch):
     city = City(
         slug="granicus-city",

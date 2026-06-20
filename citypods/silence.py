@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 
+from citypods.http import StopRequested
 from citypods.timeline import Segment, Timeline, identity_timeline
 
 # ---------------------------------------------------------------------------
@@ -133,6 +134,26 @@ def build_silence_timeline(
     return Timeline(version="identity", segments=tuple(segments))
 
 
+def is_degenerate_served_duration(
+    tl: Timeline,
+    source_duration: float,
+    *,
+    min_seconds: float = 5.0,
+    min_fraction: float = 0.02,
+) -> bool:
+    """True when a trimmed Timeline's kept (served) span is implausibly short.
+
+    Guards against hosting a near-empty recording (observed: 0.005s/0.010s outputs) when
+    ``source_duration`` itself is garbage — e.g. ``detect_silences`` read a truncated/throttled
+    fetch and flagged nearly the whole thing as silent. The floor is the larger of an absolute
+    minimum and a fraction of the (claimed) source duration, so a real short meeting near the
+    absolute floor is not rejected outright while a near-total wipeout is.
+    """
+    served_total = tl.segments[-1].served_end if tl.segments else 0.0
+    floor = max(min_seconds, source_duration * min_fraction)
+    return served_total < floor
+
+
 # ---------------------------------------------------------------------------
 # I/O: run ffmpeg silencedetect
 # ---------------------------------------------------------------------------
@@ -144,6 +165,7 @@ def detect_silences(
     noise_db: float = -40.0,
     min_duration_s: float = 1.0,
     timeout: float | None = None,
+    threads: int | None = None,
 ) -> tuple[list[tuple[float, float]], float | None]:
     """Run ``ffmpeg silencedetect`` on ``url``; return ``(silences, source_duration)``.
 
@@ -153,6 +175,11 @@ def detect_silences(
 
     ``source_duration`` is parsed from the same stderr output — no extra ffprobe call.
     Returns ``([], None)`` on any subprocess or parse error.
+
+    ``threads``, if given, pins ffmpeg's decode/filter thread count the same way
+    ``CommandFfmpeg`` pins its encode passes — ffmpeg otherwise defaults to "all cores",
+    and an unpinned silencedetect pass running alongside ``AudioStage``'s
+    ``NativeWorkGate``-budgeted encodes would oversubscribe the CPU the gate exists to bound.
     """
     cmd = [
         ffmpeg_binary,
@@ -161,6 +188,7 @@ def detect_silences(
         "info",
         "-protocol_whitelist",
         "file,crypto,data,http,https,tcp,tls",
+        *(["-threads", str(threads)] if threads is not None else []),
         "-i",
         url,
         "-vn",
@@ -202,10 +230,14 @@ class SilencePlanner:
 
     To force a full catalog re-trim after changing detection parameters, bump ``version``
     here.  ``TimelineStage`` detects the stale signature and re-plans all episodes.
+
+    ``version`` bumped 1->2 (audio workflow review, 2026-06) to re-examine episodes that may
+    already carry a degenerate stamped timeline from before ``is_degenerate_served_duration``
+    existed — a one-time full-catalog re-trim, bounded as always by the enrich wall-clock window.
     """
 
     name = "silence"
-    version = "1"
+    version = "2"
 
     def plan(self, provider, city, ep, ctx, current: Timeline | None) -> Timeline | None:
         from citypods.providers.base import MediaUnavailable, ProviderError
@@ -241,17 +273,37 @@ class SilencePlanner:
         # pass can read from disk rather than re-streaming the rate-limited source.
         detect_url = source_url
         if ctx.source_cache is not None and ep.uid:
-            local = ctx.source_cache.get_or_fetch(ep.uid, source_url)
+            try:
+                local = ctx.source_cache.get_or_fetch(ep.uid, source_url)
+            except StopRequested:
+                # The run's wall-clock budget expired while queued behind another thread's fetch
+                # of the same source — defer without recording a failure (#120); not a real error.
+                return None
             if local is not None:
                 detect_url = str(local)
 
-        silences, source_duration = detect_silences(
-            detect_url,
-            ffmpeg_binary=ffmpeg_binary,
-            noise_db=ctx.silence_noise_db,
-            min_duration_s=1.0,  # detect all candidates; thresholds applied below
-            timeout=timeout,
-        )
+        # silencedetect is a CPU-bound ffmpeg decode pass, same as an AudioStage encode — gate it
+        # on the same NativeWorkGate so a TimelineStage planner pass for one source can't run
+        # concurrently, unbounded, alongside the encodes the gate exists to budget (#111 follow-up,
+        # audio workflow review 2026-06).
+        gate = ctx.native_work_gate
+        gate_acquired = False
+        if gate is not None:
+            gate_acquired = gate.acquire(kind="audio", label=str(ep.uid or ep.guid), stop=ctx.stop)
+            if not gate_acquired:
+                return None  # deferred: budget/queue pressure, not a real failure
+        try:
+            silences, source_duration = detect_silences(
+                detect_url,
+                ffmpeg_binary=ffmpeg_binary,
+                noise_db=ctx.silence_noise_db,
+                min_duration_s=1.0,  # detect all candidates; thresholds applied below
+                timeout=timeout,
+                threads=getattr(ctx.ffmpeg, "threads", None),
+            )
+        finally:
+            if gate_acquired:
+                gate.release(kind="audio")
 
         # Fall back to ep.duration when ffmpeg didn't emit a Duration header.
         if source_duration is None:
@@ -269,9 +321,27 @@ class SilencePlanner:
             mid_min=ctx.silence_mid_min_s,
         )
 
+        if tl is not None and is_degenerate_served_duration(
+            tl,
+            source_duration,
+            min_seconds=ctx.silence_min_served_seconds,
+            min_fraction=ctx.silence_min_served_fraction,
+        ):
+            served_total = tl.segments[-1].served_end if tl.segments else 0.0
+            print(
+                f"[enrich] silence planner rejected degenerate timeline uid={ep.uid or ep.guid} "
+                f"served_total={served_total:.3f}s source_duration={source_duration:.1f}s "
+                "— likely a bad/truncated source probe, not a real near-total silence wipeout",
+                flush=True,
+            )
+            if current is not None:
+                return None  # preserve the prior (non-degenerate) timeline as-is
+            tl = None  # no prior timeline to fall back to → treat as "nothing to trim" below
+
         if tl is None:
-            # Nothing to trim: return an identity timeline so the episode is stamped and
-            # not re-examined on the next run (per TimelinePlanner protocol).
+            # Nothing to trim (or a degenerate result was rejected with no prior timeline to
+            # keep): return an identity timeline so the episode is stamped and not re-examined
+            # on the next run (per TimelinePlanner protocol).
             from citypods.timeline import SourceMedia
 
             src = SourceMedia(
