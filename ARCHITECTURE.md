@@ -235,8 +235,12 @@ Hard-won facts that bite anyone adding/debugging providers:
   touching provider media. Its low-volume transport mode alternates curl/ffmpeg ordering against the
   same archive objects, captures selected redacted HTTP timing/range metadata, and can prove one
   size-capped curl download through local ffprobe/ffmpeg. Its sustained mode retains the
-  request-count/volume/cooldown/concurrency matrix. A scheduled Audio run therefore cannot slip into
-  either experiment after its isolation check.
+  request-count/volume/cooldown/concurrency matrix. Its gated `worker` mode compares direct access
+  with an authenticated Cloudflare Worker on the same GitHub runner and can prove one Worker-streamed
+  file through local ffprobe/ffmpeg. The Worker hard-codes the Granicus archive origin, requires a
+  bearer secret, restricts tenants and tenant-prefixed MP4 names, refuses queries/redirects, forwards
+  only range/cache validators, and streams `no-store`; it is not a general proxy. A scheduled Audio
+  run therefore cannot slip into any experiment after its isolation check.
 - **The process-local slot is acquired before the distributed lease (issue #342).** The ffmpeg/ffprobe
   guard always enters `HOST_LIMITER` first and `provider_distributed_leases` second, for both
   monitored and unmonitored ffmpeg paths and the ffprobe probe. A thread still queued behind its own

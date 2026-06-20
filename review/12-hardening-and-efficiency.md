@@ -1547,6 +1547,35 @@ Before activating a transport fallback:
   fallback is justified only if curl succeeds while remote ffmpeg fails and the local-media proof
   succeeds; if both receive 403, the evidence continues to favor runner egress/CDN cooldown state.
 
+**2026-06-20 alternate-egress gate and chosen deviation.** The GitHub-hosted transport artifact
+returned immediate HTTP 403 for all 12 cases: direct ffmpeg, curl Range, and curl with browser context
+across Arlington, Pflugerville, Fort Worth, and the historically successful Audio #33 control. The
+same exact objects then all succeeded from a Mac (12/12 short cases plus one 89.9 MB full Fort Worth
+download, local ffprobe, and local ffmpeg). This rules out a curl fallback on GitHub and makes shared
+GitHub-hosted egress/CDN reputation the leading diagnosis.
+
+The earlier abort text below said not to prototype off-Actions solutions during this phase. The
+maintainer explicitly chose a narrow deviation after the direct-vs-Mac evidence: test Cloudflare
+alternate egress before committing to a self-hosted runner. The implementation is diagnostic and
+reversible, not a production routing change:
+
+- `workers/granicus-media-proxy` is a streaming Worker with no arbitrary URL input. It requires a
+  bearer secret, hard-codes `archive-video.granicus.com`, accepts only committed tenants and strict
+  tenant-prefixed `.mp4` names, refuses queries/encoded paths/upstream redirects, forwards only
+  `Range` and cache validators, returns selected media headers, and sends `Cache-Control: no-store`.
+- The large MP4 is a response body, not a Worker request body. The GitHub request contains only
+  headers and a small path; the Worker returns `upstream.body` without `arrayBuffer()` or R2 storage.
+- `granicus-probe.yml` adds a `worker` mode using GitHub secrets for the Worker origin/token. It
+  compares direct curl with Worker curl and Worker ffmpeg on one isolated runner, then permits at
+  most one full object under the configured size ceiling through local ffprobe/ffmpeg.
+- The token and Worker endpoint are redacted from output. Production Audio receives no proxy secret
+  and does not construct proxy URLs in this slice.
+
+Activation gate for a later production fallback: direct requests on the same runner receive 403,
+Worker Range returns 206, Worker ffmpeg succeeds, one bounded full download validates locally, and
+the Worker remains stable for at least two isolated probes. Only then design one direct-first,
+single-Worker-attempt fallback inside the existing Granicus lease/circuit envelope.
+
 Production recovery is also no longer “open circuit, rapidly consume the whole queue as deferred.”
 A planner/source-cache 403/429 is persisted once as that episode's materialization failure and halts
 the remaining stage chain, preventing an immediate duplicate AudioStage request. Circuit-open items
@@ -1580,14 +1609,16 @@ version changes; existing artifacts are untouched and only future attempts use t
 
 **Abort & escalation condition:** If a single audio file is **attempted across 8+ materialize runs
 without completing**, flag it as a high-priority GH issue (stuck download, needs investigation). Do
-**not** prototype off-GitHub-Actions solutions at this phase.
+not enable an off-GitHub-Actions production path without the explicit evidence and activation gate
+above.
 
 **Files.** `config/site_config.yml` (`provider_distributed_leases`, `provider_rate_limits`,
 `provider_rate_limit_circuit_breakers`);
 `.github/workflows/audio.yml` + `contracts.yml` (coordination gates);
-`.github/workflows/granicus-probe.yml` + `scripts/probe_granicus_{sustained,transport}.py` (manual
-sustained and transport experiments); `citypods/provider_circuits.py`, `media.py`, `stages.py`, and
-`run.py` (shared
+`.github/workflows/granicus-probe.yml` +
+`scripts/probe_granicus_{sustained,transport,worker}.py` +
+`workers/granicus-media-proxy/` (manual sustained, transport, and alternate-egress experiments);
+`citypods/provider_circuits.py`, `media.py`, `stages.py`, and `run.py` (shared
 tenant/domain state, single-attempt accounting, half-open recovery, parked queue);
 `citypods/provider_leases.py` (coordination primitive + metrics); `citypods/report/status.py`
 (dashboard flags + budget-remaining visuals).

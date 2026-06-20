@@ -26,3 +26,7 @@ jobs:
 
       - name: Test (pytest)
         run: pytest -q
+
+      - name: Test Granicus Cloudflare Worker
+        working-directory: workers/granicus-media-proxy
+        run: npm test

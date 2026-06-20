@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - transport
+          - worker
           - sustained
         default: transport
       repeat_count:
@@ -87,6 +88,19 @@ jobs:
             --full-download-max-mib "${{ inputs.full_download_max_mib }}" \
             --full-download-count "${{ inputs.full_download_count }}" \
             --output granicus-transport-results.json
+      - name: Run Cloudflare Worker Granicus probe
+        if: ${{ inputs.probe_kind == 'worker' }}
+        env:
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+        run: |
+          PYTHONPATH=. python scripts/probe_granicus_worker.py \
+            --ffmpeg "${RUNNER_TEMP}/ffmpeg-static/bin/ffmpeg" \
+            --ffprobe "${RUNNER_TEMP}/ffmpeg-static/bin/ffprobe" \
+            --range-mib "${{ inputs.range_mib }}" \
+            --full-download-max-mib "${{ inputs.full_download_max_mib }}" \
+            --full-download-count "${{ inputs.full_download_count }}" \
+            --output granicus-worker-results.json
       - name: Run sustained Granicus matrix
         if: ${{ inputs.probe_kind == 'sustained' }}
         run: |
