@@ -154,3 +154,40 @@ Then remove both GitHub secrets:
 gh secret delete GRANICUS_PROXY_BASE_URL
 gh secret delete GRANICUS_PROXY_TOKEN
 ```
+
+## 9. Automatic deployment after merge
+
+The repository workflow `.github/workflows/granicus-worker-deploy.yml` runs only when a push to
+`main` changes:
+
+- `workers/granicus-media-proxy/src/**`;
+- `workers/granicus-media-proxy/wrangler.jsonc`; or
+- the deployment workflow itself.
+
+It runs `npm test` and then deploys with Cloudflare's official Wrangler action. Ordinary repository
+changes do not redeploy the Worker. The workflow can also be run manually from the Actions UI.
+
+Create a narrowly scoped Cloudflare API token:
+
+1. In Cloudflare, open **My Profile → API Tokens → Create Token**.
+2. Use **Edit Cloudflare Workers**.
+3. Restrict account resources to the account containing this Worker.
+4. Copy the token once; Cloudflare will not show it again.
+
+Find the account ID with:
+
+```bash
+npx wrangler@4 whoami
+```
+
+Add both deployment credentials to GitHub:
+
+```bash
+printf '%s' '<Cloudflare account ID>' | gh secret set CLOUDFLARE_ACCOUNT_ID
+printf '%s' '<scoped Edit Workers API token>' | gh secret set CLOUDFLARE_API_TOKEN
+gh secret list
+```
+
+`PROXY_TOKEN` is deliberately not passed to the deployment workflow. It remains an encrypted Worker
+secret in Cloudflare and survives ordinary source/config deployments. Rotate it separately using
+`wrangler secret put` only when credential rotation is intended.
