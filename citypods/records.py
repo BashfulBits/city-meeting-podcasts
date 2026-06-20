@@ -27,9 +27,10 @@ import dataclasses
 import hashlib
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from citypods.bodies import body_key, canonical_body
 from citypods.models import City, Episode
@@ -298,6 +299,137 @@ def pending_audio_work(
             continue
         pending += 1
     return pending
+
+
+TranscribeRoute = Literal["local", "dispatch", "blocked", "inflight"]
+TranscribeRouteClassifier = Callable[[Episode, float | None], TranscribeRoute]
+
+# Shard weights use cost-seconds as a common proxy. Local work uses recording duration because it
+# dominates runner occupancy; external dispatch and blocked inspection are cheap control-plane work.
+# These constants keep those items represented without letting a 10-hour external-only meeting
+# distort the balance of GitHub runners that will not transcribe it.
+TRANSCRIBE_DISPATCH_WEIGHT_SECONDS = 60.0
+TRANSCRIBE_BLOCKED_WEIGHT_SECONDS = 1.0
+TRANSCRIBE_UNKNOWN_LOCAL_WEIGHT_SECONDS = 2 * 3600.0
+
+
+@dataclasses.dataclass(frozen=True)
+class TranscribeShardWork:
+    """Routing-aware work estimate for one source in the transcribe lane.
+
+    ``local_seconds`` is the recording-duration proxy handled synchronously on the shard.
+    External jobs contribute a small fixed dispatch cost, blocked jobs a minimal scan/defer cost,
+    and already-in-flight jobs no new work. H14's canonical planner can provide a route classifier
+    based on one budget/capacity snapshot; until real external adapters exist, the default
+    classifier treats recordings above the local duration ceiling as blocked.
+    """
+
+    local_seconds: float = 0.0
+    local_items: int = 0
+    dispatch_items: int = 0
+    blocked_items: int = 0
+    inflight_items: int = 0
+
+    def shard_weight(
+        self,
+        *,
+        dispatch_seconds: float = TRANSCRIBE_DISPATCH_WEIGHT_SECONDS,
+        blocked_seconds: float = TRANSCRIBE_BLOCKED_WEIGHT_SECONDS,
+    ) -> float:
+        return (
+            self.local_seconds
+            + self.dispatch_items * dispatch_seconds
+            + self.blocked_items * blocked_seconds
+        )
+
+
+def estimate_transcribe_shard_work(
+    state_dir: Path,
+    src_key: str,
+    *,
+    asr_enabled: bool,
+    asr_pipeline_version: str,
+    local_max_duration_hours: float,
+    route_classifier: TranscribeRouteClassifier | None = None,
+    unknown_local_seconds: float = TRANSCRIBE_UNKNOWN_LOCAL_WEIGHT_SECONDS,
+) -> TranscribeShardWork:
+    """Estimate routing-aware transcribe work for source-atomic shard assignment.
+
+    The default route model matches current production: locally eligible work is weighted by audio
+    duration, while known recordings above ``local_max_duration_hours`` contribute only a minimal
+    blocked/defer cost. A genuinely unknown duration gets a conservative local estimate because the
+    current stage may still attempt it after probing hosted audio.
+
+    H14 supplies ``route_classifier`` from a single canonical planner snapshot. It may classify an
+    item as ``dispatch`` (small submit/reconcile cost), ``local`` (duration-weighted fallback),
+    ``blocked`` (cheap defer), or ``inflight`` (no new shard work). Keeping routing outside this
+    helper prevents four matrix jobs from independently guessing against changing GPU budgets.
+
+    Mirrors only the local, I/O-free half of ``TranscriptStage.process``'s ``lane="transcribe"``
+    reuse check (the audio-readiness gate + the synced/stale-ASR-version check): it skips that
+    stage's ``storage.exists()`` probes and provider-transcript fetch, the same tradeoff
+    ``pending_audio_work`` makes for the audio lane. One known overestimate follows from skipping
+    the fetch: an episode with an unfetched provider transcript URL that *would* resolve to an
+    already-timed transcript (skipping ASR entirely) still counts as pending here. Advisory only,
+    same as ``pending_audio_work`` — it sizes a shard, it doesn't gate what that shard transcribes.
+    An episode without hosted audio yet contributes nothing: it isn't transcribable this run
+    regardless of lane.
+    """
+    if not asr_enabled:
+        return TranscribeShardWork()
+    local_seconds = 0.0
+    local_items = 0
+    dispatch_items = 0
+    blocked_items = 0
+    inflight_items = 0
+    for rec in load_records(state_dir, src_key).values():
+        ep = record_to_episode(rec)
+        if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
+            continue
+        if ep.transcript_synced:
+            key_name = (ep.transcript_key or "").rsplit("/", 1)[-1]
+            is_stale_asr = (
+                key_name.startswith(f"{ep.uid or ep.guid}-asr-")
+                and ep.transcript_pipeline_version != asr_pipeline_version
+            )
+            if not is_stale_asr:
+                continue
+        raw_duration = ep.audio_duration_served or ep.duration
+        duration_seconds = float(raw_duration) if raw_duration and raw_duration > 0 else None
+        if route_classifier is not None:
+            route = route_classifier(ep, duration_seconds)
+        elif (
+            duration_seconds is not None
+            and local_max_duration_hours > 0
+            and duration_seconds > local_max_duration_hours * 3600
+        ):
+            route = "blocked"
+        else:
+            route = "local"
+
+        if route == "local":
+            local_items += 1
+            local_seconds += (
+                duration_seconds
+                if duration_seconds is not None
+                else max(0.0, unknown_local_seconds)
+            )
+        elif route == "dispatch":
+            dispatch_items += 1
+        elif route == "blocked":
+            blocked_items += 1
+        elif route == "inflight":
+            inflight_items += 1
+        else:
+            raise ValueError(f"unknown transcribe shard route {route!r}")
+
+    return TranscribeShardWork(
+        local_seconds=local_seconds,
+        local_items=local_items,
+        dispatch_items=dispatch_items,
+        blocked_items=blocked_items,
+        inflight_items=inflight_items,
+    )
 
 
 def referenced_audio_keys(state_dir: Path) -> set[str]:

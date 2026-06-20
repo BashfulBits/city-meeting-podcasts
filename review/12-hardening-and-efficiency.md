@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-19 (H14 long-audio/routing design + H9 evaluation scope)**
+last updated 2026-06-20 (routing-aware ASR shard cost + H14 planner contract)**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -528,6 +528,16 @@ no render) is preserved; `all`/`render` are untouched.
 > is re-enabled as its own lane (the "Alignment re-enable criteria" below + a future claim/lease). The
 > "Step 2" and "record-write race" design below is the frozen record this implemented. Competitive
 > leases stay reserved for the **external** backend (H14).
+
+**ASR weighting follow-up (2026-06-20).** Source ownership remains atomic, but transcribe-lane
+packing now uses `TranscribeShardWork`: local fallback contributes a recording-duration cost proxy,
+external dispatch contributes a small fixed control-plane cost, blocked/deferred inspection contributes
+a minimal cost, and already-in-flight work contributes zero. With no real external adapter configured,
+recordings above the local ceiling are classified as blocked rather than charged to a runner that
+cannot transcribe them. H14 must move route classification into a once-per-run planner that restores
+canonical records/work state, snapshots leases and free-tier budget/capacity once, and publishes one
+immutable source assignment for every matrix shard. Per-shard classification against changing GPU
+availability is forbidden because it can produce divergent ownership maps.
 
 **Problem.** Both audio encoding and ASR transcription compete with each other and with the Pages deploy
 inside the single enrich job, serializing through the `pages` concurrency group. An enrich kill marks
@@ -1131,6 +1141,14 @@ each provider's monthly free allotment**, which the design must *enforce*.
   that is routing state, not an ASR failure. The `local` adapter is considered only after external
   targets decline and only when both local admission guards pass. The `audio.yml` workflow is
   unaffected — audio stays on-runner.
+- **Reconcile is the canonical shard planner.** Before matrix work starts, restore records,
+  `work.json`, the budget ledger, and live leases; take one external capability/budget/capacity
+  snapshot; classify each pending episode as `dispatch`, `local`, `blocked`, or `inflight`; feed those
+  classifications into `estimate_transcribe_shard_work`; then perform source-atomic greedy packing.
+  Publish the versioned assignment as an immutable workflow artifact keyed to the run. Every shard
+  consumes that same artifact; adapters report routing inputs but do not independently assign source
+  ownership. Planner failure stops the workflow before shard writes rather than falling back to four
+  independently computed maps.
 - **Remote worker entrypoints** (`scripts/compute/modal_app.py`, `scripts/compute/beam_app.py`): a thin
   function running faster-whisper (transcribe) / stable-ts (align) / later pyannote (diarize), reading
   audio from the public URL and writing artifacts to the bucket via the existing storage backend (creds as
@@ -1220,13 +1238,15 @@ each provider's monthly free allotment**, which the design must *enforce*.
 **Recommended implementation sequence (no code implied by this design update).**
 
 1. Add the configurable local-duration admission guard.
-2. Implement the first real H14 Modal and Beam adapters/workers.
-3. Require both workers to handle long audio safely.
-4. Centralize backend-independent audio preparation, chunk planning, stitching, and validation.
-5. Support combined ASR+diarization preparation when Phase R diarization lands.
-6. Add capability-, deadline-, and cost-aware routing based on H9 measurements.
-7. Add durable chunk-level intermediate artifacts only if retry/parallelism measurements justify them.
-8. Later consider reusing the bounded-memory chunking engine in `LocalBackend`, improving the fallback
+2. Move route classification and source packing into reconcile/planning; publish one immutable shard
+   assignment that all matrix jobs consume.
+3. Implement the first real H14 Modal and Beam adapters/workers.
+4. Require both workers to handle long audio safely.
+5. Centralize backend-independent audio preparation, chunk planning, stitching, and validation.
+6. Support combined ASR+diarization preparation when Phase R diarization lands.
+7. Add capability-, deadline-, and cost-aware routing based on H9 measurements.
+8. Add durable chunk-level intermediate artifacts only if retry/parallelism measurements justify them.
+9. Later consider reusing the bounded-memory chunking engine in `LocalBackend`, improving the fallback
    available to forks and self-hosted installations.
 
 **Files.** `citypods/compute/{modal_backend,beam_backend,budget}.py`;
@@ -1234,11 +1254,14 @@ each provider's monthly free allotment**, which the design must *enforce*.
 `scripts/compute/{modal_app,beam_app}.py`;
 `citypods/compute/base.py` (the dispatch/`JobHandle` half); `citypods/stages.py` (dispatcher when
 `compute_backend != local`); `citypods/ops/workqueue.py` (leases go live + reconcile-expired);
-`config/site_config.yml` (`compute_backends`); `.github/workflows/asr.yml` (dispatch + `compute reconcile`
-step; Modal/Beam tokens as secrets); `tests/test_compute_dispatch.py` (dispatch records a lease +
+`citypods/records.py` (`TranscribeShardWork` and routing-aware cost calculation);
+`config/site_config.yml` (`compute_backends`); `.github/workflows/asr.yml` (dispatch + reconcile/planning
+job, immutable shard-plan artifact, and Modal/Beam tokens as secrets);
+`tests/test_compute_dispatch.py` (dispatch records a lease +
 decrements budget; budget/capacity decline tries the next target and then only an eligible `local`;
 no eligible backend leaves queued work without failure backoff; reconcile reaps an expired lease +
-re-queues; the result-write contract round-trips an artifact onto a mock bucket);
+re-queues; every matrix shard consumes the same source assignment; the result-write contract
+round-trips an artifact onto a mock bucket);
 `tests/test_compute_long_audio.py` (bounded windows, absolute timestamps, overlap dedupe, validation,
 recipe invalidation, and meeting-wide speaker-reconciliation fixtures); `ARCHITECTURE.md` + `SECURITY.md`
 (external-worker trust boundary + secrets surface).
@@ -1799,7 +1822,9 @@ after merge, test on 1–2 real backlog files before enabling on full catalog.
 **Dispatch priority & budget:** Follow the shared router policy rather than embedding transcript
 semantics in this adapter. Initial policy may prefer Modal or rotate providers, but it must preserve
 the hard monthly budget/max-inflight guarantee and expose enough estimates for later capability-,
-deadline-, and cost-aware routing.
+deadline-, and cost-aware routing. The adapter reports those inputs to the once-per-run planner; it
+does not assign shards. An accepted external route contributes fixed dispatch cost to
+`TranscribeShardWork`, while an already leased Modal job contributes zero new shard work.
 
 **Files.** `citypods/compute/modal_backend.py`, `scripts/compute/modal_app.py`,
 `citypods/compute/budget.py` (Modal budget ledger), `.github/workflows/asr.yml` (dispatch + compute
@@ -1832,6 +1857,8 @@ own `monthly_gpu_seconds` and `max_inflight`.
 capacity, or capability decline allows the router to try another external target and then only a
 locally eligible fallback. If no backend is eligible, retain the item as queued (`external-required`
 or a more specific routing reason); do not classify normal free-tier exhaustion as an ASR failure.
+Beam reports capability, budget, and capacity inputs to the once-per-run planner and consumes the
+published assignment; it must not compute source ownership against live state inside a matrix shard.
 
 **Secrets & configuration:** Beam API token as `secrets.BEAM_TOKEN` in GitHub Actions. Config per
 `compute_backends.beam` in `site_config.yml`: `monthly_gpu_seconds`, `max_inflight`.
