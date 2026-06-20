@@ -11,9 +11,10 @@ from citypods.silence import (
     _parse_ffmpeg_duration,
     build_silence_timeline,
     detect_silences,
+    is_degenerate_served_duration,
     parse_silences,
 )
-from citypods.timeline import timeline_digest
+from citypods.timeline import Segment, Timeline, timeline_digest
 
 # ---------------------------------------------------------------------------
 # parse_silences
@@ -202,12 +203,21 @@ class TestDetectSilences:
 # ---------------------------------------------------------------------------
 
 
-def _make_ctx(trim_silence=True, noise_db=-40.0, lead_trail=1.0, mid=10.0):
+def _make_ctx(
+    trim_silence=True,
+    noise_db=-40.0,
+    lead_trail=1.0,
+    mid=10.0,
+    min_served_seconds=5.0,
+    min_served_fraction=0.02,
+):
     ctx = MagicMock()
     ctx.trim_silence = trim_silence
     ctx.silence_noise_db = noise_db
     ctx.silence_lead_trail_min_s = lead_trail
     ctx.silence_mid_min_s = mid
+    ctx.silence_min_served_seconds = min_served_seconds
+    ctx.silence_min_served_fraction = min_served_fraction
     ctx.ffmpeg.binary = "ffmpeg"
     ctx.ffmpeg.timeout_seconds = None
     return ctx
@@ -361,3 +371,78 @@ class TestSilencePlanner:
             result = planner.plan(provider, _make_city(), _make_episode(), ctx, None)
         assert result is None
         provider.resolve_media_url.assert_not_called()  # no network call when ffmpeg absent
+
+    def test_degenerate_timeline_with_no_prior_falls_back_to_identity(self):
+        """A near-total-silence detection (bad probe) with no prior timeline → identity, not
+        a near-empty served timeline that would get hosted."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            # Almost the entire (claimed) 3600s source flagged silent → 0.01s kept.
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0)
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert result is not None
+        assert timeline_digest(result) == ""  # identity, not the degenerate trim
+
+    def test_degenerate_timeline_with_prior_preserves_prior(self):
+        """When a (good) prior timeline already exists, a degenerate re-detection must not
+        downgrade it — return None so TimelineStage leaves ``current`` untouched."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        prior = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=3597.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=3.0,
+                    source_end=3600.0,
+                ),
+            ),
+        )
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0)
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, prior)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# is_degenerate_served_duration
+# ---------------------------------------------------------------------------
+
+
+class TestIsDegenerateServedDuration:
+    def test_normal_trim_not_degenerate(self):
+        tl = build_silence_timeline("s0", 3600.0, [(0.0, 5.0)], lead_trail_min=1.0)
+        assert tl is not None
+        assert not is_degenerate_served_duration(tl, 3600.0)
+
+    def test_near_total_wipeout_is_degenerate(self):
+        tl = build_silence_timeline("s0", 3600.0, [(0.0, 3599.99)], lead_trail_min=1.0)
+        assert tl is not None
+        assert is_degenerate_served_duration(tl, 3600.0)
+
+    def test_short_meeting_near_absolute_floor_not_degenerate(self):
+        # A genuinely short (20s) meeting with a 2s trim: 18s kept clears the 5s absolute floor
+        # even though it's a small fraction of a typical meeting length.
+        tl = build_silence_timeline("s0", 20.0, [(0.0, 2.0)], lead_trail_min=1.0)
+        assert tl is not None
+        assert not is_degenerate_served_duration(tl, 20.0, min_seconds=5.0, min_fraction=0.02)
+
+    def test_custom_thresholds_respected(self):
+        tl = build_silence_timeline("s0", 100.0, [(0.0, 90.0)], lead_trail_min=1.0)
+        assert tl is not None  # 10s kept of 100s
+        assert is_degenerate_served_duration(tl, 100.0, min_seconds=1.0, min_fraction=0.5)
+        assert not is_degenerate_served_duration(tl, 100.0, min_seconds=1.0, min_fraction=0.05)

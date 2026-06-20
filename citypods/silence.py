@@ -133,6 +133,26 @@ def build_silence_timeline(
     return Timeline(version="identity", segments=tuple(segments))
 
 
+def is_degenerate_served_duration(
+    tl: Timeline,
+    source_duration: float,
+    *,
+    min_seconds: float = 5.0,
+    min_fraction: float = 0.02,
+) -> bool:
+    """True when a trimmed Timeline's kept (served) span is implausibly short.
+
+    Guards against hosting a near-empty recording (observed: 0.005s/0.010s outputs) when
+    ``source_duration`` itself is garbage — e.g. ``detect_silences`` read a truncated/throttled
+    fetch and flagged nearly the whole thing as silent. The floor is the larger of an absolute
+    minimum and a fraction of the (claimed) source duration, so a real short meeting near the
+    absolute floor is not rejected outright while a near-total wipeout is.
+    """
+    served_total = tl.segments[-1].served_end if tl.segments else 0.0
+    floor = max(min_seconds, source_duration * min_fraction)
+    return served_total < floor
+
+
 # ---------------------------------------------------------------------------
 # I/O: run ffmpeg silencedetect
 # ---------------------------------------------------------------------------
@@ -202,10 +222,14 @@ class SilencePlanner:
 
     To force a full catalog re-trim after changing detection parameters, bump ``version``
     here.  ``TimelineStage`` detects the stale signature and re-plans all episodes.
+
+    ``version`` bumped 1->2 (audio workflow review, 2026-06) to re-examine episodes that may
+    already carry a degenerate stamped timeline from before ``is_degenerate_served_duration``
+    existed — a one-time full-catalog re-trim, bounded as always by the enrich wall-clock window.
     """
 
     name = "silence"
-    version = "1"
+    version = "2"
 
     def plan(self, provider, city, ep, ctx, current: Timeline | None) -> Timeline | None:
         from citypods.providers.base import MediaUnavailable, ProviderError
@@ -269,9 +293,27 @@ class SilencePlanner:
             mid_min=ctx.silence_mid_min_s,
         )
 
+        if tl is not None and is_degenerate_served_duration(
+            tl,
+            source_duration,
+            min_seconds=ctx.silence_min_served_seconds,
+            min_fraction=ctx.silence_min_served_fraction,
+        ):
+            served_total = tl.segments[-1].served_end if tl.segments else 0.0
+            print(
+                f"[enrich] silence planner rejected degenerate timeline uid={ep.uid or ep.guid} "
+                f"served_total={served_total:.3f}s source_duration={source_duration:.1f}s "
+                "— likely a bad/truncated source probe, not a real near-total silence wipeout",
+                flush=True,
+            )
+            if current is not None:
+                return None  # preserve the prior (non-degenerate) timeline as-is
+            tl = None  # no prior timeline to fall back to → treat as "nothing to trim" below
+
         if tl is None:
-            # Nothing to trim: return an identity timeline so the episode is stamped and
-            # not re-examined on the next run (per TimelinePlanner protocol).
+            # Nothing to trim (or a degenerate result was rejected with no prior timeline to
+            # keep): return an identity timeline so the episode is stamped and not re-examined
+            # on the next run (per TimelinePlanner protocol).
             from citypods.timeline import SourceMedia
 
             src = SourceMedia(
