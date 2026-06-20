@@ -36,7 +36,7 @@ provider_rate_limits:
 provider_distributed_leases:
   granicus.com:
     slots: 2
-    ttl_seconds: 3600
+    ttl_seconds: 900  # GH#378: 3600→900 so a dead holder's slot is reclaimable in ~15min, not 1h. Free: _renew_interval caps the renewal cadence at 60s for any ttl≥180, so 900/3=300→still 60s (unchanged renewal traffic). A legitimate fetch+encode (≤45min audio_encode_timeout) renews well within this.
     poll_seconds: 2
     settle_seconds: 0.25
 
