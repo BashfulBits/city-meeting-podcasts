@@ -1469,6 +1469,11 @@ def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypat
     assert sum(row["rate_limited"] for row in circuit.telemetry().values()) == 0
     assert any("strategy=cloudflare-worker" in line for line in logs)
     assert all("secret-token" not in line for line in logs)
+    # GH#337 telemetry: one fallback attempt, recovered, on the Arlington tenant scope.
+    telemetry = circuit.telemetry()
+    assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 1
+    assert sum(row["worker_fallback_successes"] for row in telemetry.values()) == 1
+    assert sum(row["worker_fallback_failures"] for row in telemetry.values()) == 0
 
 
 def test_worker_failure_records_provider_throttle_without_leaking_token(monkeypatch):
@@ -1504,7 +1509,10 @@ def test_worker_failure_records_provider_throttle_without_leaking_token(monkeypa
         )
 
     assert "secret-token" not in str(excinfo.value)
-    assert sum(row["rate_limited"] for row in circuit.telemetry().values()) == 1
+    telemetry = circuit.telemetry()
+    assert sum(row["rate_limited"] for row in telemetry.values()) == 1
+    assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 1
+    assert sum(row["worker_fallback_failures"] for row in telemetry.values()) == 1
 
 
 def test_monitored_source_cache_uses_worker_after_direct_granicus_403(monkeypatch):
@@ -1538,11 +1546,15 @@ def test_monitored_source_cache_uses_worker_after_direct_granicus_403(monkeypatc
         commands.append(command)
         return _Process(command)
 
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
     stdout, _stderr = media._run_ffmpeg_guarded(
         ["ffmpeg", "-i", archive_url, "out.mka"],
         phase="source-cache",
         memory_floor_bytes=1,
         rate_limit_urls=(archive_url,),
+        rate_limit_circuit=circuit,
         snapshot=_snap,
         sleep=lambda _seconds: None,
         log=lambda _line: None,
@@ -1553,6 +1565,111 @@ def test_monitored_source_cache_uses_worker_after_direct_granicus_403(monkeypatc
     assert stdout == b"audio"
     assert len(commands) == 2
     assert commands[1][commands[1].index("-i") + 1].startswith("https://worker.example/")
+    telemetry = circuit.telemetry()
+    assert sum(row["rate_limited"] for row in telemetry.values()) == 0
+    assert sum(row["worker_fallback_successes"] for row in telemetry.values()) == 1
+
+
+def test_monitored_worker_failure_records_throttle_and_redacts_endpoint(monkeypatch):
+    """Memory-floor path: a Worker that also 403s records the throttle exactly once and the
+    worker-fallback failure once, never leaks the bearer token, and scrubs the secret Worker
+    endpoint that ffmpeg's stderr echoes at ``-loglevel error`` (R3 + R4 coverage)."""
+    import citypods.media as media
+
+    archive_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret-token")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda _url: None)
+    commands: list[list[str]] = []
+
+    class _Process:
+        pid = 123
+
+        def __init__(self, command):
+            self.command = command
+            self.is_worker = any(
+                isinstance(arg, str) and arg.startswith("https://worker.example/")
+                for arg in command
+            )
+
+        def poll(self):
+            return 1
+
+        def communicate(self, timeout=None):
+            if self.is_worker:
+                # ffmpeg echoes the failing input URL in stderr; the Worker endpoint is a secret.
+                return b"", b"https://worker.example/v1/archive/x: Server returned 403 Forbidden"
+            return b"", b"Server returned 403 Forbidden"
+
+    def _popen(command, **_kwargs):
+        commands.append(command)
+        return _Process(command)
+
+    logs: list[str] = []
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+
+    with pytest.raises(media.RateLimitedMediaFetchError) as excinfo:
+        media._run_ffmpeg_guarded(
+            ["ffmpeg", "-i", archive_url, "out.mka"],
+            phase="source-cache",
+            memory_floor_bytes=1,
+            rate_limit_urls=(archive_url,),
+            rate_limit_circuit=circuit,
+            snapshot=_snap,
+            sleep=lambda _seconds: None,
+            log=logs.append,
+            popen=_popen,
+            child_rss=lambda _pid: 0,
+        )
+
+    assert len(commands) == 2  # one direct, one Worker — no third attempt
+    assert "secret-token" not in str(excinfo.value)
+    telemetry = circuit.telemetry()
+    assert sum(row["rate_limited"] for row in telemetry.values()) == 1
+    assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 1
+    assert sum(row["worker_fallback_failures"] for row in telemetry.values()) == 1
+    assert all("secret-token" not in line for line in logs)
+    assert all("worker.example" not in line for line in logs)
+    assert any("<granicus-worker>" in line for line in logs)
+
+
+def test_half_configured_worker_secret_does_not_mask_direct_403(monkeypatch):
+    """A half-set GRANICUS_PROXY_* config must not turn a handled 403 into an uncaught ValueError:
+    the fallback disables itself and the normal throttle classification still runs (R2)."""
+    import citypods.media as media
+
+    archive_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "worker.example")
+    monkeypatch.delenv("GRANICUS_PROXY_TOKEN", raising=False)
+
+    def _run(command, **_kwargs):
+        raise subprocess.CalledProcessError(1, command, stderr=b"Server returned 403 Forbidden")
+
+    monkeypatch.setattr(media.subprocess, "run", _run)
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+
+    with pytest.raises(media.RateLimitedMediaFetchError):
+        media._run_ffmpeg_guarded(
+            ["ffmpeg", "-i", archive_url, "out.m4a"],
+            phase="source-cache",
+            rate_limit_urls=(archive_url,),
+            rate_limit_circuit=circuit,
+            log=lambda _line: None,
+        )
+
+    telemetry = circuit.telemetry()
+    assert sum(row["rate_limited"] for row in telemetry.values()) == 1
+    assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 0
 
 
 def test_run_ffmpeg_guarded_poll_interval_is_responsive():

@@ -21,11 +21,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   limiter, distributed lease, and circuit admission. Worker success prevents the direct 403 from
   tripping the circuit; Worker throttling is counted once before lease release. Audio workflow
   secrets are passed to both container and host-fallback runtimes, while bearer headers are redacted
-  from logs and exception commands. The isolated probe now classifies authenticated HTTP 200
-  responses that ignore Range as `range_unsupported` access successes and can run one full
-  Arlington/Pflugerville source through the production source-cache and `podcast-speech-v2` recipe.
-  This changes transport only: no official metadata, audio recipe, pipeline version, artifact key,
-  existing object, or backfill behavior changes.
+  from logs and exception commands and the Worker endpoint ffmpeg echoes on error is scrubbed from
+  logs. A half-configured `GRANICUS_PROXY_*` pair disables the fallback (warned once) instead of
+  aborting the shard, and each attempt/outcome is counted per Granicus tenant on the circuit
+  (`worker_fallback_attempts`/`successes`/`failures`) — surfaced in the build log and run summary —
+  so the three post-activation runs required by GH#337 can be judged from telemetry rather than log
+  archaeology. The isolated probe now classifies authenticated HTTP 200 responses that ignore Range
+  as `range_unsupported` access successes and can run one full Arlington/Pflugerville source through
+  the production source-cache and `podcast-speech-v2` recipe. This changes transport only: no
+  official metadata, audio recipe, pipeline version, artifact key, existing object, or backfill
+  behavior changes.
 - **An authenticated Cloudflare Worker probe can test alternate egress for Granicus archive media.**
   The GitHub-hosted transport artifact returned 403 for all 12 direct curl/ffmpeg/header cases while
   the same exact objects all succeeded from a Mac, including one full download and local media

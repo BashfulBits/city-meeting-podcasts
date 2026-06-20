@@ -1599,14 +1599,45 @@ The production design is direct-first and single-attempt:
   recorded exactly once before the lease releases;
 - no fallback is attempted for other hosts, HTTP statuses, malformed paths, queries, or unsupported
   tenants, and no fallback chain is attempted once the circuit is already open;
-- the bearer header is never logged and fallback subprocess exceptions are re-raised with the
-  original redacted/direct command;
+- a half-set or invalid `GRANICUS_PROXY_*` configuration disables the fallback for the run (warned
+  once) rather than converting an already-handled 403 into an uncaught error that aborts the shard;
+- the bearer header is never logged, the Worker endpoint ffmpeg echoes in stderr on error is scrubbed
+  before any log line, and fallback subprocess exceptions are re-raised with the original
+  redacted/direct command;
+- each attempt and its outcome are counted per tenant on the circuit telemetry
+  (`worker_fallback_attempts`/`successes`/`failures`); these flow through the per-run
+  `provider_rate_limit_telemetry` summary and the cross-shard report merge with no new persistence
+  path, and are the signal the post-activation evaluation reads;
 - concurrency remains 1 local / 2 distributed.
 
 This changes fetch transport only. It does not alter official metadata, the audio recipe, pipeline
 versions, content-addressed keys, or existing artifacts, and therefore triggers no catalog backfill.
-After activation, the existing three-run GH#337 validation window still governs whether the fallback
-is considered effective.
+
+**Post-activation evaluation (GH#337 acceptance).** Once the secrets are set and the fallback is live,
+judge it over the next three scheduled `audio.yml` runs using the per-tenant Worker-fallback counters
+— visible in each run's build log (`provider granicus.com granicus worker fallback: N attempts, …`)
+and in the merged run summary's `provider_rate_limit_telemetry`. The fallback is **effective** when,
+for every Granicus tenant that materialized audio:
+
+- `worker_fallback_successes` ≈ `worker_fallback_attempts` with `worker_fallback_failures` ≈ 0 — direct
+  403s are being recovered through the Worker rather than failing;
+- Granicus `circuit_trips`/`circuit_deferred` return to ~0 — 403s no longer become materialization
+  failures, so the breaker/parking/canary path goes quiet;
+- no new `TruncatedAudioError` backoffs appear on Granicus sources (the no-Range Worker stream still
+  produced a complete encode within the production encode timeout);
+- published episode URLs, artifact keys, and durations are unchanged versus pre-activation.
+
+**Routing decision the data drives.** If `worker_fallback_attempts` ≈ the Granicus fetch count on
+*every* run (direct is reliably 403, as the transport artifact found), evaluate making the Worker
+*sticky* within a run — preferred after the first confirmed direct-403→Worker-success — to stop
+re-issuing a guaranteed-403 direct request per episode against the same egress-reputation surface this
+follow-up implicates. If attempts are intermittent, keep direct-first: it uses direct egress whenever
+it works and minimizes Cloudflare dependence. Either way, the then-near-dead Granicus
+circuit/parking/canary machinery is a candidate for simplification only **after** this window proves
+the fallback, not before.
+
+**Rollback** is config-only: unsetting `GRANICUS_PROXY_BASE_URL`/`GRANICUS_PROXY_TOKEN` reverts
+production to direct-only fetches and the existing throttle/circuit behavior with no code change.
 
 Production recovery is also no longer “open circuit, rapidly consume the whole queue as deferred.”
 A planner/source-cache 403/429 is persisted once as that episode's materialization failure and halts

@@ -38,8 +38,10 @@ single-maintainer civic project.
   `archive-video.granicus.com`, refuses queries and redirects, forwards only selected range/cache
   headers, and never writes the secret or configured endpoint to probe artifacts. Production uses
   it only after a direct canonical archive request returns HTTP 403; the retry stays inside the
-  Granicus coordination envelope, and subprocess errors are sanitized so the bearer header cannot
-  appear in logs.
+  Granicus coordination envelope, subprocess errors are sanitized so the bearer header cannot
+  appear in logs, and the Worker endpoint that ffmpeg echoes in stderr on error is scrubbed before
+  any log line. A half-set or invalid `GRANICUS_PROXY_*` configuration disables the fallback (logged
+  once) rather than surfacing an endpoint value through an unexpected error.
 - **Hardened XML parsing** — provider feeds are parsed with `defusedxml` (entity-expansion safe).
 - **Secrets are environment-only** — credentials are provided via GitHub Actions secrets; none are
   committed. Enabling GitHub secret-scanning + push protection (free for public repos) is recommended as

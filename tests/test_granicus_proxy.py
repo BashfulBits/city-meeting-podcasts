@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from citypods.granicus_proxy import GranicusWorkerFallback
+from citypods.granicus_proxy import GranicusWorkerFallback, redact_worker_endpoint
 
 ARCHIVE_URL = (
     "https://archive-video.granicus.com/arlingtontx/"
+    "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+)
+WORKER_URL = (
+    "https://worker.example/v1/archive/arlingtontx/"
     "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
 )
 
@@ -53,8 +57,30 @@ def test_rewrite_adds_auth_only_to_the_worker_input(monkeypatch):
         "-headers",
         "Authorization: Bearer secret-token\r\n",
         "-i",
-        "https://worker.example/v1/archive/arlingtontx/"
-        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4",
+        WORKER_URL,
         "-vn",
         "out.m4a",
     ]
+
+
+def test_redact_worker_endpoint_scrubs_only_worker_urls():
+    worker_cmd = [
+        "ffmpeg",
+        "-headers",
+        "Authorization: Bearer secret-token\r\n",
+        "-i",
+        WORKER_URL,
+        "out.mka",
+    ]
+    # ffmpeg echoes the failing input URL; the Worker endpoint must not survive into a log line.
+    scrubbed = redact_worker_endpoint(f"{WORKER_URL}: Server returned 403 Forbidden", worker_cmd)
+    assert "worker.example" not in scrubbed
+    assert scrubbed == "<granicus-worker>: Server returned 403 Forbidden"
+
+    # The bearer token is not a URL, so the scrubber never touches it (and it is never in stderr).
+    assert "secret-token" not in redact_worker_endpoint("Authorization redacted", worker_cmd)
+
+    # A direct (non-Worker) command has no /v1/archive/ HTTPS input → stderr is returned unchanged.
+    direct_cmd = ["ffmpeg", "-i", ARCHIVE_URL, "out.mka"]
+    direct_stderr = f"{ARCHIVE_URL}: Server returned 403 Forbidden"
+    assert redact_worker_endpoint(direct_stderr, direct_cmd) == direct_stderr

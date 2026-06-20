@@ -137,6 +137,15 @@ The result is sufficient to activate or retain the production fallback only when
 
 If the Worker also receives 403, do not deploy a production fallback; use a different egress design.
 
+Once activated, evaluate the fallback over the three post-activation `audio.yml` runs required by
+GH#337 using the per-tenant Worker-fallback counters in each run's build log
+(`provider granicus.com granicus worker fallback: N attempts, …`) and the run summary's
+`provider_rate_limit_telemetry`: it is effective when `worker_fallback_successes` ≈
+`worker_fallback_attempts` with failures ≈ 0 per Granicus tenant, Granicus circuit trips/deferrals
+fall to ~0, and episode URLs/keys/durations are unchanged. Rollback is config-only — unset
+`GRANICUS_PROXY_BASE_URL`/`GRANICUS_PROXY_TOKEN` to revert to direct-only fetches. Full criteria live
+in `review/12` §Granicus follow-up.
+
 ## 8. Rotate or remove
 
 Rotate the bearer token by updating Cloudflare first, then the GitHub secret:

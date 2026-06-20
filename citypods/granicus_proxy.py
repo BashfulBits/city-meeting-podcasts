@@ -8,12 +8,14 @@ direct GitHub-runner request has already returned HTTP 403.
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
 
 from citypods.security import validate_source_url
 
 _ARCHIVE_HOST = "archive-video.granicus.com"
+_WORKER_PATH_PREFIX = "/v1/archive/"
 _SAFE_FILENAME_CHARS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 )
@@ -74,7 +76,10 @@ class GranicusWorkerFallback:
             or any(ch not in _SAFE_FILENAME_CHARS for ch in filename)
         ):
             return None
-        return f"{self.base_url}/v1/archive/{quote(tenant, safe='')}/{quote(filename, safe='')}"
+        return (
+            f"{self.base_url}{_WORKER_PATH_PREFIX}"
+            f"{quote(tenant, safe='')}/{quote(filename, safe='')}"
+        )
 
     def rewrite_ffmpeg_command(
         self,
@@ -121,3 +126,23 @@ def worker_fallback_command(
 ) -> list[str] | None:
     fallback = GranicusWorkerFallback.from_env()
     return fallback.rewrite_ffmpeg_command(command, source_urls) if fallback is not None else None
+
+
+def redact_worker_endpoint(text: str, command: Sequence[str]) -> str:
+    """Replace any Worker URL/origin found in *command* with a placeholder inside *text*.
+
+    ffmpeg at ``-loglevel error`` echoes the failing input URL in its stderr. The Worker endpoint is
+    configured as a secret (kept out of workflow logs so it is not advertised), so scrub it before a
+    stderr tail reaches a log line or artifact. The bearer token itself never appears in ffmpeg
+    stderr — request headers are not echoed — so only the endpoint needs scrubbing. A direct
+    (non-Worker) command contains no ``/v1/archive/`` HTTPS input, so this is a no-op for it.
+    """
+    if not text:
+        return text
+    for arg in command:
+        if isinstance(arg, str) and arg.startswith("https://") and _WORKER_PATH_PREFIX in arg:
+            netloc = urlsplit(arg).netloc
+            text = text.replace(arg, "<granicus-worker>")
+            if netloc:
+                text = text.replace(f"https://{netloc}", "<granicus-worker>")
+    return text

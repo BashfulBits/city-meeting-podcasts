@@ -1362,6 +1362,16 @@ def build(
                 f"{values.get('recovery_probes', 0)} recovery probes, "
                 f"{values.get('recoveries', 0)} recoveries"
             )
+        # Granicus Worker fallback usage (GH#337): direct-403 → authenticated Cloudflare egress.
+        # These per-tenant counts are the post-activation evaluation signal — successes ≈ attempts
+        # and failures ≈ 0 over the three acceptance runs means the fallback is recovering blocks.
+        if values.get("worker_fallback_attempts"):
+            print(
+                f"provider {domain} granicus worker fallback: "
+                f"{values.get('worker_fallback_attempts', 0)} attempts, "
+                f"{values.get('worker_fallback_successes', 0)} ok, "
+                f"{values.get('worker_fallback_failures', 0)} failed"
+            )
 
     # Why the run ended (time-bounded phases only). "completed within the window" means all due
     # work finished; otherwise this names the trigger that wrapped it up (wall-clock vs a queued

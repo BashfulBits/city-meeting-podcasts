@@ -99,6 +99,9 @@ class MediaRateLimitCircuitBreaker:
             "circuit_deferred",
             "recovery_probes",
             "recoveries",
+            "worker_fallback_attempts",
+            "worker_fallback_successes",
+            "worker_fallback_failures",
         )
         with self._lock:
             return {
@@ -242,6 +245,23 @@ class MediaRateLimitCircuitBreaker:
             return None
         self._increment(key, "circuit_deferred")
         return key
+
+    def record_worker_fallback(self, urls: Sequence[str], *, outcome: str) -> None:
+        """Count one Granicus Worker fallback attempt and its outcome on the tenant scope.
+
+        Telemetry only — no shared-state mutation. The fallback runs inside the same provider
+        lease and circuit admission as the direct attempt, and a Worker *success* deliberately does
+        not touch circuit failure state (a direct 403 the Worker recovered must not trip the
+        breaker). ``outcome`` is ``"success"`` or ``"failure"``; per scope, the recorded
+        ``worker_fallback_attempts`` always equals ``successes`` + ``failures``. These counters are
+        the post-activation GH#337 evaluation signal per Granicus tenant (see review/12 §Granicus
+        follow-up). Scopes without a configured rule (non-Granicus URLs) are ignored, like the
+        other ``record_*`` methods.
+        """
+        field = "worker_fallback_successes" if outcome == "success" else "worker_fallback_failures"
+        for _domain, tenant_key in self._domain_tenant_pairs(self._scope_keys(urls)):
+            self._increment(tenant_key, "worker_fallback_attempts")
+            self._increment(tenant_key, field)
 
     def wait_for_recovery_probe(
         self,
