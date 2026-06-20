@@ -144,6 +144,19 @@ class DispatchCoordinator:
         when :meth:`try_dispatch` declines (overflow to local), so that path is unchanged."""
         return self._local
 
+    @property
+    def isolates_inference(self) -> bool:
+        return bool(getattr(self._local, "isolates_inference", False))
+
+    def terminate_active(self) -> bool:
+        terminate = getattr(self._local, "terminate_active", None)
+        return bool(terminate()) if callable(terminate) else False
+
+    def close(self) -> None:
+        close = getattr(self._local, "close", None)
+        if callable(close):
+            close()
+
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
         """:class:`~citypods.compute.base.Backend`-protocol safety net for callers without a
         ``WorkItem`` (no lease context): run synchronously on ``local``. The lease-aware dispatch

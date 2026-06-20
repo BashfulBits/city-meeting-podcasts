@@ -77,6 +77,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -98,7 +99,7 @@ from citypods.media import (
 from citypods.models import City, Episode
 from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workitem_from_episode
 from citypods.progress import PROGRESS
-from citypods.records import AUDIO_PIPELINE_VERSION
+from citypods.records import AUDIO_PIPELINE_VERSION, transcript_timeout_backoff_until
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.timeline import Timeline, remap, timeline_digest
 
@@ -318,6 +319,16 @@ def _asr_timeout_seconds(ctx: StageContext, duration_hours: float) -> float | No
     if remaining <= 0:
         return 0.0
     return min(timeout, remaining) if timeout is not None else remaining
+
+
+def _record_asr_timeout(ep: Episode) -> None:
+    ep.transcript_timeout_attempts += 1
+    ep.transcript_timeout_last_attempt = datetime.now(UTC).isoformat()
+
+
+def _reset_asr_timeout_backoff(ep: Episode) -> None:
+    ep.transcript_timeout_attempts = 0
+    ep.transcript_timeout_last_attempt = None
 
 
 def _asr_default_ratio(ctx: StageContext) -> float:
@@ -1135,22 +1146,6 @@ class TranscriptStage:
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
         runtime_log = AsrRuntimeLog(ctx.asr_runtime_log_path, default_ratio=_asr_default_ratio(ctx))
 
-        # Load the Whisper model — uses the process-level cache so the actual load only
-        # happens once per process (pre-loaded by run.py before workers start).  The log
-        # line is suppressed here since run.py already printed it; any load failure is
-        # still recorded as a single batch error rather than one per episode.
-        _asr_model = None
-        if city.asr_enabled:
-            try:
-                _asr_model = asr_mod.load_model(city.asr_model, city.asr_compute_type, cpu_threads)
-            except Exception as exc:  # noqa: BLE001
-                stats.errors.append(f"ASR model load failed ({city.asr_model}): {exc}")
-                print(
-                    f"[enrich] transcript model-load error slug={city.slug} "
-                    f"provider={city.provider}: {exc}",
-                    flush=True,
-                )
-
         # Route inference through the H13 execution backend. Default to an in-process LocalBackend
         # bound to this module's ``asr_mod`` so the path is behavior-preserving (and stays patchable
         # in tests); production injects the configured backend via ``ctx.compute_backend``.
@@ -1162,6 +1157,26 @@ class TranscriptStage:
         dispatcher = backend if isinstance(backend, DispatchCoordinator) else None
         if dispatcher is not None:
             backend = dispatcher.local_backend
+
+        # In-process/test backends reuse the pre-loaded model object. Production's process-local
+        # backend receives the serializable model name and owns loading/caching inside its child,
+        # keeping native inference and its memory fully killable.
+        _asr_model = None
+        if city.asr_enabled:
+            if getattr(backend, "isolates_inference", False):
+                _asr_model = city.asr_model
+            else:
+                try:
+                    _asr_model = asr_mod.load_model(
+                        city.asr_model, city.asr_compute_type, cpu_threads
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    stats.errors.append(f"ASR model load failed ({city.asr_model}): {exc}")
+                    print(
+                        f"[enrich] transcript model-load error slug={city.slug} "
+                        f"provider={city.provider}: {exc}",
+                        flush=True,
+                    )
 
         for ep in _materialize_set(
             episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
@@ -1189,6 +1204,7 @@ class TranscriptStage:
                     ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                     if ep.transcript_words_key and _present(ep.transcript_words_key):
                         ep.transcript_words_url = ctx.storage.public_url(ep.transcript_words_key)
+                    _reset_asr_timeout_backoff(ep)
                     stats.reused += 1
                     continue
 
@@ -1255,6 +1271,7 @@ class TranscriptStage:
                     )
 
                     if synced:
+                        _reset_asr_timeout_backoff(ep)
                         continue  # timed VTT already stored — skip ASR
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: {exc}")
@@ -1273,6 +1290,16 @@ class TranscriptStage:
                 continue
             if ep.transcript_synced and not redo_stale_asr:
                 continue  # step 2 may have just set this in the same pass
+            timeout_backoff_until = transcript_timeout_backoff_until(ep)
+            if timeout_backoff_until is not None and datetime.now(UTC) < timeout_backoff_until:
+                stats.skipped += 1
+                print(
+                    f"[enrich] transcript asr skipped {ep_ref} reason=timeout-backoff "
+                    f"attempts={ep.transcript_timeout_attempts} "
+                    f"retry_at={timeout_backoff_until.isoformat()}",
+                    flush=True,
+                )
+                continue
             if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
                 stats.skipped += 1
                 print(
@@ -1342,6 +1369,7 @@ class TranscriptStage:
                 ep.transcript_format = "vtt"
                 ep.transcript_spec_hash = recipe
                 ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+                _reset_asr_timeout_backoff(ep)
                 stats.reused += 1
                 continue
 
@@ -1671,22 +1699,40 @@ class TranscriptStage:
                     message = f"{label}: ASR timeout after {timeout_s / 60:.1f}m"
                     stats.errors.append(message)
                     stats.skipped += 1
-                    if ctx.asr_abort_event is not None:
-                        ctx.asr_abort_event.set()
-                    print(
-                        f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
-                        "(inference continues in background, result discarded; "
-                        "remaining ASR skipped this run)",
-                        flush=True,
-                    )
-                    if sem is not None:
-                        _release_abandoned_asr_slot.set()
-                        sem = None
-                    if native_gate_acquired and ctx.native_work_gate is not None:
-                        _release_abandoned_native_gate.set()
-                        native_gate_acquired = False
-                    if ctx.asr_abandoned_event is not None:
-                        ctx.asr_abandoned_event.set()
+                    _record_asr_timeout(ep)
+                    terminate = getattr(backend, "terminate_active", None)
+                    worker_terminated = bool(terminate()) if callable(terminate) else False
+                    if worker_terminated:
+                        _t.join(timeout=10)
+                    if worker_terminated and not _t.is_alive():
+                        print(
+                            f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
+                            "worker=terminated result=discarded",
+                            flush=True,
+                        )
+                        if sem is not None:
+                            sem.release()
+                            sem = None
+                        if native_gate_acquired and ctx.native_work_gate is not None:
+                            ctx.native_work_gate.release(kind="asr")
+                            native_gate_acquired = False
+                    else:
+                        if ctx.asr_abort_event is not None:
+                            ctx.asr_abort_event.set()
+                        print(
+                            f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
+                            "(inference continues in background, result discarded; "
+                            "remaining ASR skipped this run)",
+                            flush=True,
+                        )
+                        if sem is not None:
+                            _release_abandoned_asr_slot.set()
+                            sem = None
+                        if native_gate_acquired and ctx.native_work_gate is not None:
+                            _release_abandoned_native_gate.set()
+                            native_gate_acquired = False
+                        if ctx.asr_abandoned_event is not None:
+                            ctx.asr_abandoned_event.set()
                     break
                 time.sleep(2)
 
@@ -1744,6 +1790,7 @@ class TranscriptStage:
                 ep.transcript_format = "vtt"
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True
+                _reset_asr_timeout_backoff(ep)
                 asr_elapsed = time.monotonic() - _asr_started_at
                 runtime_log.append(
                     transcribe_seconds=asr_elapsed,

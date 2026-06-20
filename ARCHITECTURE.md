@@ -68,7 +68,10 @@ bundle restored through `actions/cache`; no `apt-get` or Ubuntu mirror is on the
 The ASR lane reuses that checksum-pinned static ffmpeg/ffprobe cache directly on the host, while its
 multi-gigabyte Whisper weights remain outside the runtime image in the existing Actions-cache →
 Hugging Face/B2 fallback cascade. This avoids large repeated container pulls and keeps model selection
-independent from native-tool provisioning.
+independent from native-tool provisioning. Local faster-whisper/stable-ts inference runs in one
+persistent spawned worker process, not an unkillable daemon thread in the orchestrator. The worker
+retains its model cache across episodes but can be terminated and restarted on an item timeout;
+the timed-out episode records an exponential durable backoff while unrelated episodes continue.
 Encoding/transcription can never block or redden the Pages deploy (H11b), and concurrent shards clear
 the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
 records, leaving the

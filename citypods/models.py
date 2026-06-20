@@ -85,6 +85,11 @@ class Episode:
     # pre-versioning). Drives version-aware re-transcription: an ASR transcript from an
     # older version is re-done; provider transcripts are never invalidated by a bump.
     transcript_pipeline_version: str | None = None
+    # Consecutive local-inference timeouts and the ISO8601 timestamp of the latest one. Persisted
+    # per episode so a pathological recording backs off across scheduled ASR runs instead of
+    # repeatedly consuming the full item timeout. Reset after successful local inference.
+    transcript_timeout_attempts: int = 0
+    transcript_timeout_last_attempt: str | None = None
     # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
     # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
     # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs

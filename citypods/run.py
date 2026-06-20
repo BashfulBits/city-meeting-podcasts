@@ -1354,7 +1354,13 @@ def build(
         # Pre-load only the ASR model the active lane will use, so a transcribe shard never pulls
         # in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio lane loads
         # nothing. ``lane=None`` (combined enrich) keeps the faster-whisper preload as before.
-        if time_bounded and not dry_run and storage is not None and lane != "audio":
+        if (
+            time_bounded
+            and not dry_run
+            and storage is not None
+            and lane != "audio"
+            and not getattr(compute_backend, "isolates_inference", False)
+        ):
             _try_preload_asr_model(defaults, lane=lane)
 
         if phase == "enrich":
@@ -1614,6 +1620,9 @@ def build(
         ):
             _abandoned_asr_exit()
 
+    close_compute = getattr(compute_backend, "close", None)
+    if callable(close_compute):
+        close_compute()
     return results
 
 

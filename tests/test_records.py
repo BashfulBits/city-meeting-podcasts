@@ -433,6 +433,31 @@ def test_transcribe_shard_work_accepts_canonical_gpu_route_classification(tmp_pa
     assert estimate.shard_weight() == 3660.0
 
 
+def test_transcribe_shard_work_treats_timeout_backoff_as_blocked(tmp_path):
+    ep = _ep("g-timeout")
+    ep.uid = "u-timeout"
+    ep.audio_key = "audio/src/u-timeout.m4a"
+    ep.audio_spec_hash = "spec"
+    ep.hosted_audio_url = "https://cdn/u-timeout.m4a"
+    ep.audio_duration_served = 3 * 3600.0
+    ep.transcript_timeout_attempts = 1
+    ep.transcript_timeout_last_attempt = datetime.now(UTC).isoformat()
+    save_records(tmp_path, "src", {ep.uid: episode_to_record(ep)})
+
+    estimate = estimate_transcribe_shard_work(
+        tmp_path,
+        "src",
+        asr_enabled=True,
+        asr_pipeline_version="3",
+        local_max_duration_hours=4,
+    )
+
+    assert estimate.local_items == 0
+    assert estimate.local_seconds == 0
+    assert estimate.blocked_items == 1
+    assert estimate.shard_weight() == 1
+
+
 def test_transcribe_shard_work_is_empty_when_asr_disabled(tmp_path):
     pending_ep = _ep("g-pending")
     pending_ep.uid = "u-pending"
@@ -481,6 +506,8 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
     ep.transcript_url = "https://x/t.vtt"
     ep.materialize_attempts = 2
     ep.materialize_last_attempt = "2026-06-01T00:00:00+00:00"
+    ep.transcript_timeout_attempts = 3
+    ep.transcript_timeout_last_attempt = "2026-06-02T00:00:00+00:00"
 
     back = record_to_episode(episode_to_record(ep))
     for attr in (
@@ -501,8 +528,24 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "audio_spec_hash",
         "materialize_attempts",
         "materialize_last_attempt",
+        "transcript_timeout_attempts",
+        "transcript_timeout_last_attempt",
     ):
         assert getattr(back, attr) == getattr(ep, attr), attr
+
+
+def test_timeout_backoff_persists_without_a_transcript_artifact():
+    ep = _ep("g-timeout")
+    ep.uid = "u-timeout"
+    ep.transcript_timeout_attempts = 1
+    ep.transcript_timeout_last_attempt = "2026-06-20T12:00:00+00:00"
+
+    rec = episode_to_record(ep)
+    assert rec["transcript"]["key"] is None
+    back = record_to_episode(rec)
+    assert back.transcript_key is None
+    assert back.transcript_timeout_attempts == 1
+    assert back.transcript_timeout_last_attempt == "2026-06-20T12:00:00+00:00"
 
 
 def test_merge_records_is_append_only_with_fresh_winning():

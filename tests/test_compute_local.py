@@ -22,6 +22,7 @@ from citypods.compute import (
     JobHandle,
     JobResult,
     LocalBackend,
+    ProcessLocalBackend,
     make_compute,
 )
 from citypods.compute.base import Task
@@ -81,12 +82,16 @@ class TestInterface:
         }
 
     def test_make_compute_defaults_to_local(self):
-        assert isinstance(make_compute({}), LocalBackend)
-        assert isinstance(make_compute({"defaults": {"compute_backend": "local"}}), LocalBackend)
+        assert isinstance(make_compute({}), ProcessLocalBackend)
+        assert isinstance(
+            make_compute({"defaults": {"compute_backend": "local"}}), ProcessLocalBackend
+        )
 
     def test_make_compute_env_override(self, monkeypatch):
         monkeypatch.setenv("COMPUTE_BACKEND", "local")
-        assert isinstance(make_compute({"defaults": {"compute_backend": "nope"}}), LocalBackend)
+        assert isinstance(
+            make_compute({"defaults": {"compute_backend": "nope"}}), ProcessLocalBackend
+        )
 
     def test_make_compute_rejects_unknown(self):
         with pytest.raises(ValueError, match="unknown compute_backend"):
