@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1338,6 +1338,97 @@ class TestTranscriptStageASR:
         release.set()
         assert ctx.asr_semaphore.acquire(timeout=2) is True
         ctx.asr_semaphore.release()
+
+    def test_killable_backend_times_out_one_episode_then_continues(self, tmp_path, capsys):
+        eps = [_ep_with_audio("uid-a"), _ep_with_audio("uid-b")]
+
+        class _KillableBackend:
+            name = "local"
+            isolates_inference = True
+
+            def __init__(self):
+                self.calls = 0
+                self.release = threading.Event()
+                self.terminated = 0
+
+            def run_inference(self, job):
+                self.calls += 1
+                if self.calls == 1:
+                    self.release.wait(timeout=10)
+                    raise RuntimeError("worker terminated")
+                return type(
+                    "_Result",
+                    (),
+                    {
+                        "output": TranscriptArtifacts(
+                            vtt=b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nok\n",
+                            words=b"{}",
+                        )
+                    },
+                )()
+
+            def terminate_active(self):
+                self.terminated += 1
+                self.release.set()
+                return True
+
+        backend = _KillableBackend()
+        ctx = _ctx(tmp_path)
+        ctx.compute_backend = backend
+        ctx.asr_timeout_base_seconds = 0.01
+        ctx.asr_timeout_per_hour_seconds = 0
+        ctx.asr_abort_event = threading.Event()
+        ctx.asr_abandoned_event = threading.Event()
+
+        with patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download):
+            stats = TranscriptStage().process(FakeProvider(), _city(), eps, ctx)
+
+        out = capsys.readouterr().out
+        assert backend.terminated == 1
+        assert backend.calls == 2
+        assert stats.skipped == 1
+        assert stats.transcribed == 1
+        assert eps[0].transcript_timeout_attempts == 1
+        assert eps[0].transcript_timeout_last_attempt is not None
+        assert eps[1].transcript_timeout_attempts == 0
+        assert eps[1].transcript_synced is True
+        assert not ctx.asr_abort_event.is_set()
+        assert not ctx.asr_abandoned_event.is_set()
+        assert "worker=terminated" in out
+
+    def test_episode_timeout_backoff_skips_only_that_episode(self, tmp_path, capsys):
+        backed_off = _ep_with_audio("uid-a")
+        backed_off.transcript_timeout_attempts = 2
+        backed_off.transcript_timeout_last_attempt = datetime.now(UTC).isoformat()
+        eligible = _ep_with_audio("uid-b")
+        fake_asr = _FakeAsr()
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            stats = TranscriptStage().process(
+                FakeProvider(), _city(), [backed_off, eligible], _ctx(tmp_path)
+            )
+
+        out = capsys.readouterr().out
+        assert stats.skipped == 1
+        assert stats.transcribed == 1
+        assert eligible.transcript_synced is True
+        assert len(fake_asr.transcribe_calls) == 1
+        assert "reason=timeout-backoff attempts=2" in out
+
+    def test_expired_timeout_backoff_allows_retry(self, tmp_path):
+        ep = _ep_with_audio()
+        ep.transcript_timeout_attempts = 1
+        ep.transcript_timeout_last_attempt = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert len(fake_asr.transcribe_calls) == 1
+        assert stats.transcribed == 1
+        assert ep.transcript_timeout_attempts == 0
+        assert ep.transcript_timeout_last_attempt is None
 
     def test_waiting_asr_slot_polls_abort_event(self, tmp_path):
         ep = _ep_with_audio("uid-a")

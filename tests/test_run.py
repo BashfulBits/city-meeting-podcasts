@@ -53,6 +53,26 @@ def test_build_fingerprint_tracks_base_url_and_templates():
     assert build_fingerprint("https://a") == build_fingerprint("https://a")
 
 
+def test_build_closes_compute_backend_when_impl_raises(monkeypatch):
+    class _Backend:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    backend = _Backend()
+
+    def _fail(**kwargs):
+        kwargs["_compute_backend_holder"].append(backend)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(run, "_build_impl", _fail)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        run.build()
+    assert backend.closed is True
+
+
 # --- end-to-end incremental build via a fake provider ----------------------------------
 
 

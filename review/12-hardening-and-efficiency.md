@@ -745,6 +745,12 @@ core count and `mem_avail` never approaching the OOM floor, **no exit-143 / lost
 and enrich consistently uses most of its 204-min window; transcript-minutes/runner-hour improves
 measurably vs the H6 Step-1 baseline; documented recommended settings.
 
+**2026-06-20 timeout follow-up.** Local faster-whisper/stable-ts inference now lives in one persistent
+spawned subprocess. It preserves model reuse between episodes while making the native process
+terminable at the existing per-item deadline. A timeout records episode-local attempt/timestamp state
+with exponential 1–30 day backoff, restarts the worker for later eligible episodes, and no longer
+forces the entire shard to abandon ASR. Successful artifact reuse or inference clears the backoff.
+
 **2026-06-15 follow-up — predicted-memory encode admission.** The first sharded Audio runs after the
 #274 fixes (Audio #8/#9) hosted real audio but terminated **~46%** of the large filter-render (loudnorm)
 encodes of multi-hour meetings (`ffmpeg filter-render stopped: mem_avail … below floor`). Log analysis

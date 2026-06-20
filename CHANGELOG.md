@@ -130,6 +130,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **Local ASR timeouts now terminate native inference and back off only the offending episode.**
+  Production local execution moved into a persistent spawned subprocess that keeps model caches warm
+  across episodes but can be terminated/restarted when faster-whisper or stable-ts exceeds the
+  per-item deadline. The prior daemon-thread fallback could not stop CTranslate2 work, abandoned the
+  runner slot, and skipped all remaining ASR for the run. Timeout attempt count and timestamp now
+  persist in the transcript record with exponential 1–30 day backoff; successful reuse or inference
+  resets it, shard weighting treats active timeout backoff as blocked work, and other episodes
+  continue after a killed worker. No transcript recipe or pipeline-version change.
 - **ASR shard ownership now comes from one canonical pre-matrix snapshot, eliminating divergent
   assignments and four redundant full B2 restores per workflow.** The reconcile job restores durable
   state once, reconciles leases/budget, writes a versioned `ShardPlan`, and uploads both state and plan

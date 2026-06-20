@@ -38,6 +38,7 @@ from citypods.compute.dispatch import (
     select_backend,
 )
 from citypods.compute.local import LocalBackend
+from citypods.compute.local_process import ProcessLocalBackend
 
 # Registry of external dispatch backends, keyed by the name used in ``compute_backends`` config.
 # Empty in H14a (overflow-to-local only); H14b/H14c register ``modal`` / ``beam`` factories here.
@@ -73,7 +74,7 @@ def _make_auto(site_config: dict, *, state_dir: str | Path | None) -> DispatchCo
     budget = load_budget(state_dir)
     budget.roll_month()
     return DispatchCoordinator(
-        local=LocalBackend(), targets=targets, budget=budget, state_dir=state_dir
+        local=ProcessLocalBackend(), targets=targets, budget=budget, state_dir=state_dir
     )
 
 
@@ -85,7 +86,7 @@ def make_compute(site_config: dict, *, state_dir: str | Path | None = None) -> B
     defaults = site_config.get("defaults", {})
     backend = os.environ.get("COMPUTE_BACKEND") or defaults.get("compute_backend", "local")
     if backend == "local":
-        return LocalBackend()
+        return ProcessLocalBackend()
     if backend == "auto":
         return _make_auto(site_config, state_dir=state_dir)
     raise ValueError(f"unknown compute_backend: {backend!r}")
@@ -101,6 +102,7 @@ __all__ = [
     "JobHandle",
     "JobResult",
     "LocalBackend",
+    "ProcessLocalBackend",
     "Task",
     "lease_owner_for",
     "load_budget",

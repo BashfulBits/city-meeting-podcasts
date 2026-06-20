@@ -47,6 +47,8 @@ AUDIO_PIPELINE_VERSION = "1"
 # ``BACKOFF_MAX``, before re-attempting. A successful host resets the counter.
 BACKOFF_BASE = timedelta(days=1)
 BACKOFF_MAX = timedelta(days=30)
+TRANSCRIPT_TIMEOUT_BACKOFF_BASE = timedelta(days=1)
+TRANSCRIPT_TIMEOUT_BACKOFF_MAX = timedelta(days=30)
 
 
 def _in_backoff(ep: Episode, now: datetime) -> bool:
@@ -59,6 +61,25 @@ def _in_backoff(ep: Episode, now: datetime) -> bool:
         return False
     delay = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (ep.materialize_attempts - 1))
     return now < last + delay
+
+
+def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
+    """When this episode's local-ASR timeout backoff expires, or ``None`` if not backing off."""
+    if ep.transcript_timeout_attempts <= 0 or not ep.transcript_timeout_last_attempt:
+        return None
+    try:
+        last = datetime.fromisoformat(ep.transcript_timeout_last_attempt)
+    except ValueError:
+        return None
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=UTC)
+    else:
+        last = last.astimezone(UTC)
+    delay = min(
+        TRANSCRIPT_TIMEOUT_BACKOFF_MAX,
+        TRANSCRIPT_TIMEOUT_BACKOFF_BASE * 2 ** (ep.transcript_timeout_attempts - 1),
+    )
+    return last + delay
 
 
 def source_key(city: City) -> str:
@@ -394,6 +415,10 @@ def estimate_transcribe_shard_work(
             )
             if not is_stale_asr:
                 continue
+        timeout_backoff_until = transcript_timeout_backoff_until(ep)
+        if timeout_backoff_until is not None and datetime.now(UTC) < timeout_backoff_until:
+            blocked_items += 1
+            continue
         raw_duration = ep.audio_duration_served or ep.duration
         duration_seconds = float(raw_duration) if raw_duration and raw_duration > 0 else None
         if route_classifier is not None:
@@ -491,8 +516,10 @@ def episode_to_record(ep: Episode) -> dict:
             "words_key": ep.transcript_words_key,
             "words_url": ep.transcript_words_url,
             "pipeline_version": ep.transcript_pipeline_version,
+            "timeout_attempts": ep.transcript_timeout_attempts,
+            "timeout_last_attempt": ep.transcript_timeout_last_attempt,
         }
-        if ep.transcript_key
+        if ep.transcript_key or ep.transcript_timeout_attempts
         else None,
         # v2: source-media registry and timeline EDL (omitted when empty/identity).
         "sources": [dataclasses.asdict(s) for s in ep.sources] if ep.sources else [],
@@ -513,6 +540,13 @@ def episode_to_record(ep: Episode) -> dict:
     }
 
 
+def _coerce_non_negative_int(value: object) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _transcript_fields_from_rec(rec: dict) -> dict:
     """Extract transcript artifact fields from a v2 record.  Returns empty-value dict for v1
     records (where the old ``transcript_url`` field is silently dropped — those transcripts
@@ -530,6 +564,8 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_words_key": t.get("words_key"),
         "transcript_words_url": t.get("words_url"),
         "transcript_pipeline_version": t.get("pipeline_version"),
+        "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
+        "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
     }
 
 
@@ -717,13 +753,16 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
         t = rec.get("transcript") or {}
-        if isinstance(t, dict) and t.get("key"):
-            ep.transcript_key = t.get("key")
-            ep.transcript_hosted_url = t.get("url")
-            ep.transcript_spec_hash = t.get("spec_hash")
-            ep.transcript_format = t.get("format")
-            ep.transcript_basis = t.get("basis", "source:s0")
-            ep.transcript_synced = bool(t.get("synced", False))
+        if isinstance(t, dict):
+            if t.get("key"):
+                ep.transcript_key = t.get("key")
+                ep.transcript_hosted_url = t.get("url")
+                ep.transcript_spec_hash = t.get("spec_hash")
+                ep.transcript_format = t.get("format")
+                ep.transcript_basis = t.get("basis", "source:s0")
+                ep.transcript_synced = bool(t.get("synced", False))
+            ep.transcript_timeout_attempts = _coerce_non_negative_int(t.get("timeout_attempts"))
+            ep.transcript_timeout_last_attempt = t.get("timeout_last_attempt")
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
