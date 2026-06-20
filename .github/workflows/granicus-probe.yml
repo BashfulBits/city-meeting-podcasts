@@ -1,8 +1,15 @@
-name: Granicus sustained probe
+name: Granicus probe
 
 on:
   workflow_dispatch:
     inputs:
+      probe_kind:
+        description: "Low-volume transport discriminator or sustained pressure/cooldown matrix"
+        type: choice
+        options:
+          - transport
+          - sustained
+        default: transport
       repeat_count:
         description: "Short serial requests per clip"
         type: number
@@ -15,6 +22,18 @@ on:
         description: "Quiet interval before recovery checks"
         type: number
         default: 1800
+      range_mib:
+        description: "Maximum bytes per curl admission request (MiB)"
+        type: number
+        default: 16
+      full_download_max_mib:
+        description: "Maximum size of an end-to-end curl download (MiB)"
+        type: number
+        default: 512
+      full_download_count:
+        description: "Maximum objects to download fully and process locally"
+        type: number
+        default: 1
 
 permissions:
   contents: read
@@ -58,7 +77,18 @@ jobs:
             exit 1
           fi
           echo "No active or queued Audio run."
+      - name: Run Granicus transport discriminator
+        if: ${{ inputs.probe_kind == 'transport' }}
+        run: |
+          PYTHONPATH=. python scripts/probe_granicus_transport.py \
+            --ffmpeg "${RUNNER_TEMP}/ffmpeg-static/bin/ffmpeg" \
+            --ffprobe "${RUNNER_TEMP}/ffmpeg-static/bin/ffprobe" \
+            --range-bytes "$(( ${{ inputs.range_mib }} * 1024 * 1024 ))" \
+            --full-download-max-bytes "$(( ${{ inputs.full_download_max_mib }} * 1024 * 1024 ))" \
+            --full-download-count "${{ inputs.full_download_count }}" \
+            --output granicus-transport-results.json
       - name: Run sustained Granicus matrix
+        if: ${{ inputs.probe_kind == 'sustained' }}
         run: |
           PYTHONPATH=. python scripts/probe_granicus_sustained.py \
             --ffmpeg "${RUNNER_TEMP}/ffmpeg-static/bin/ffmpeg" \
@@ -70,5 +100,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: granicus-sustained-results
-          path: granicus-sustained-results.json
+          name: granicus-probe-results
+          path: granicus-*-results.json
+          if-no-files-found: warn

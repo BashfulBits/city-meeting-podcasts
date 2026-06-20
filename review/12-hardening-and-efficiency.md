@@ -1536,6 +1536,16 @@ Before activating a transport fallback:
   configurable quiet interval and post-cooldown check, then concurrency only after serial evidence;
 - output is an uploaded redacted JSON artifact containing hostname/path/outcome/timestamps/bytes but
   never signed query strings.
+- the same isolated workflow also offers a low-volume transport mode. On one GitHub-hosted runner it
+  alternates which client goes first while pairing production-pinned ffmpeg with curl against the
+  exact Arlington, Pflugerville, and Fort Worth Audio #40 archive objects plus an Audio #33 control.
+  Curl cases record only selected status/range/timing/final-host metadata, test browser context,
+  disable retries and automatic redirects, and cap admission reads. The existing short-fetch matrix
+  retains its guarded `DownloadFile.php` comparison. At most a
+  configurable number of objects under a configurable size ceiling are downloaded fully and passed
+  through local ffprobe plus a 30-second local ffmpeg stream-copy. A production curl source-cache
+  fallback is justified only if curl succeeds while remote ffmpeg fails and the local-media proof
+  succeeds; if both receive 403, the evidence continues to favor runner egress/CDN cooldown state.
 
 Production recovery is also no longer “open circuit, rapidly consume the whole queue as deferred.”
 A planner/source-cache 403/429 is persisted once as that episode's materialization failure and halts
@@ -1575,8 +1585,9 @@ without completing**, flag it as a high-priority GH issue (stuck download, needs
 **Files.** `config/site_config.yml` (`provider_distributed_leases`, `provider_rate_limits`,
 `provider_rate_limit_circuit_breakers`);
 `.github/workflows/audio.yml` + `contracts.yml` (coordination gates);
-`.github/workflows/granicus-probe.yml` + `scripts/probe_granicus_sustained.py` (manual sustained
-experiment); `citypods/provider_circuits.py`, `media.py`, `stages.py`, and `run.py` (shared
+`.github/workflows/granicus-probe.yml` + `scripts/probe_granicus_{sustained,transport}.py` (manual
+sustained and transport experiments); `citypods/provider_circuits.py`, `media.py`, `stages.py`, and
+`run.py` (shared
 tenant/domain state, single-attempt accounting, half-open recovery, parked queue);
 `citypods/provider_leases.py` (coordination primitive + metrics); `citypods/report/status.py`
 (dashboard flags + budget-remaining visuals).
