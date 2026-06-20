@@ -176,7 +176,39 @@ def test_worker_proxy_url_maps_only_canonical_archive_objects():
         "https://proxy.example/v1/archive/fortworthgov/"
         "fortworthgov_e4cc067f-6b2d-11f1-9494-005056a89546.mp4"
     )
+    assert worker._proxy_url("proxy.example", archive) == (
+        "https://proxy.example/v1/archive/fortworthgov/"
+        "fortworthgov_e4cc067f-6b2d-11f1-9494-005056a89546.mp4"
+    )
     with pytest.raises(ValueError, match="canonical Granicus"):
         worker._proxy_url("https://proxy.example", "https://example.com/video.mp4")
     with pytest.raises(ValueError, match="HTTPS origin"):
         worker._proxy_url("https://proxy.example/prefix", archive)
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        ("proxy.example", "https://proxy.example"),
+        (" proxy.example/ ", "https://proxy.example"),
+        ("https://proxy.example/", "https://proxy.example"),
+        ("https://proxy.example:443", "https://proxy.example"),
+    ],
+)
+def test_worker_proxy_base_url_normalizes_bare_hostnames(configured, expected):
+    assert worker._normalize_proxy_base_url(configured) == expected
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "http://proxy.example",
+        "https://proxy.example/path",
+        "https://proxy.example?query=yes",
+        "https://user:secret@proxy.example",
+        "https://proxy.example:8443",
+    ],
+)
+def test_worker_proxy_base_url_rejects_unsafe_origins(configured):
+    with pytest.raises(ValueError, match="HTTPS origin"):
+        worker._normalize_proxy_base_url(configured)

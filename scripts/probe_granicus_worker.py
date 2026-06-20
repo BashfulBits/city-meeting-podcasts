@@ -27,17 +27,28 @@ def _redact_proxy_endpoint(result, archive_url: str):
     return result
 
 
-def _proxy_url(base_url: str, archive_url: str) -> str:
+def _normalize_proxy_base_url(base_url: str) -> str:
+    base_url = base_url.strip().rstrip("/")
+    if "://" not in base_url:
+        base_url = f"https://{base_url}"
+
     base_parts = urlsplit(base_url)
     if (
         base_parts.scheme != "https"
         or not base_parts.hostname
+        or base_parts.username
+        or base_parts.password
+        or base_parts.port not in {None, 443}
         or base_parts.path not in {"", "/"}
         or base_parts.query
         or base_parts.fragment
     ):
         raise ValueError("proxy base URL must be an HTTPS origin without a path or query")
-    base = f"https://{base_parts.netloc}"
+    return f"https://{base_parts.hostname}"
+
+
+def _proxy_url(base_url: str, archive_url: str) -> str:
+    base = _normalize_proxy_base_url(base_url)
     parts = urlsplit(archive_url)
     segments = [segment for segment in parts.path.split("/") if segment]
     if parts.hostname != "archive-video.granicus.com" or len(segments) != 2:
@@ -69,7 +80,11 @@ def main() -> int:
         parser.error("--proxy-base-url or GRANICUS_PROXY_BASE_URL is required")
     if not token:
         parser.error("GRANICUS_PROXY_TOKEN is required")
-    validate_source_url(args.proxy_base_url.rstrip("/"))
+    try:
+        args.proxy_base_url = _normalize_proxy_base_url(args.proxy_base_url)
+    except ValueError as exc:
+        parser.error(str(exc))
+    validate_source_url(args.proxy_base_url)
 
     results = []
     comparisons = []
