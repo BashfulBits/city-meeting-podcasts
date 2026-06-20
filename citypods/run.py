@@ -242,6 +242,10 @@ class SourcePipeline:
     ) -> list[Episode]:
         """Build + persist the append-only record store for one source, cache the rendered
         archive, and return it. Shared by ``enrich`` and the global orchestrator (PR3)."""
+        # Copy notes so a repeat persist of the same source (GH#377 incremental persistence: once
+        # after the audio pass, again after the transcript pass) doesn't append "{n} archived"
+        # twice to the caller's list — keeps repeat persistence idempotent.
+        notes = list(notes)
         # Append-only archive (issue #109): merge this run's freshly-enriched records over
         # the persisted store (fresh wins on uid) instead of replacing it, so a meeting that
         # left the provider window keeps its record + audio. Bounded by the (high) retention
@@ -864,6 +868,14 @@ def _run_enrich_global_queue(
     def _transcript_task(item: tuple[str, Episode]) -> None:
         _run_for(item, transcript_stages)
 
+    def _persist_all() -> None:
+        """Persist every prepared source's in-place-mutated episodes. Called after the audio pass
+        (so audio-pass results survive a mid-run kill before the decoupled transcript pass even
+        starts, GH#377) and again at the end (to capture transcripts). ``persist_source`` /
+        ``merge_records`` are append-only and idempotent, so the repeat is safe."""
+        for key, st in prepared.items():
+            pipeline.persist_source(key, st["episodes"], st["persisted"], notes=st["notes"])
+
     with source_cache or _nullcontext():
         if audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
@@ -939,6 +951,10 @@ def _run_enrich_global_queue(
                         )
                     remaining_keys.remove(circuit_key)
             print("[enrich] audio pass done", flush=True)
+            # Persist audio-pass results now, before the decoupled transcript pass — shrinks the
+            # window in which a mid-run kill (SIGTERM/OOM/lost-comms) would lose every record update
+            # for this run, not just killed ones (GH#377).
+            _persist_all()
         if transcript_stages:
             # Decoupled from the audio pass: only episodes that now have hosted audio.
             tx = [item for item in candidates if item[1].hosted_audio_url]
@@ -949,9 +965,9 @@ def _run_enrich_global_queue(
                 list(pool.map(_transcript_task, tx))
             print("[enrich] transcript pass done", flush=True)
 
-    # 4) Persist each prepared source (episodes were mutated in place by the passes).
-    for key, st in prepared.items():
-        pipeline.persist_source(key, st["episodes"], st["persisted"], notes=st["notes"])
+    # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
+    #    repeat of the post-audio-pass persist above; also captures the transcript-pass mutations.
+    _persist_all()
 
     # 5) One CityResult per configured city, mirroring its source's outcome.  Transcript lanes are
     # best-effort backfill workers: a transient provider refresh failure for one shard means that
@@ -1555,6 +1571,7 @@ def _build_impl(
                     "source": source,
                     "scoped": scoped,
                 },
+                interrupted=interrupt_requested(),
             )
             # Persist the derived work manifest (H5) for the status surface + as the H6b lease
             # substrate. Derived fresh from the just-updated records (hybrid model); ordered by
@@ -1767,6 +1784,7 @@ def _record_run_history(
     provider_errors: dict[str, int] | None = None,
     rate_limit_telemetry: dict[str, dict[str, int | float]] | None = None,
     scope: dict | None = None,
+    interrupted: bool = False,
 ) -> None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
@@ -1822,6 +1840,11 @@ def _record_run_history(
         "shard": scope.get("shard"),
         "source": scope.get("source"),
         "scoped": bool(scope.get("scoped", False)),
+        # GH#377: was this run cut short by a termination signal (SIGTERM/cancel)? Lets the
+        # projection/audit tell a deliberately-completed run from one that was killed mid-queue
+        # rather than inferring it from a missing trailing entry.
+        "interrupted": bool(interrupted),
+        "outcome": "interrupted" if interrupted else "completed",
         "cities": len(results),
         "built": sum(r.status == "built" for r in results),
         "skipped": sum(r.status == "skipped" for r in results),
@@ -1879,6 +1902,50 @@ def _record_run_history(
         )
 
 
+# Process-wide interrupt latch (GH#377). Set by the SIGTERM handler installed at the CLI entry
+# point (``install_signal_handlers``); read by ``StopSignal`` so in-flight workers start deferring
+# immediately instead of waiting for the next wall-clock poll, and by ``_build_impl`` to mark the
+# run cut-short in ``run_history.jsonl``. Module-level (not per-``StopSignal``) so the async signal
+# handler has a stable target regardless of which ``StopSignal`` instance — if any — is live.
+_INTERRUPT = threading.Event()
+
+
+def request_stop() -> None:
+    """Latch the process-wide interrupt (idempotent). Safe to call from a signal handler."""
+    _INTERRUPT.set()
+
+
+def interrupt_requested() -> bool:
+    """True once a termination signal has flipped the interrupt latch this process."""
+    return _INTERRUPT.is_set()
+
+
+def _signal_stop_handler(signum, _frame) -> None:
+    """SIGTERM handler: latch the interrupt and log once. Deliberately minimal — the graceful path
+    (in-flight workers deferring, then per-source persist + run-history) runs on the normal threads
+    once they observe the flipped ``stop`` predicate, not from inside this async handler."""
+    request_stop()
+    try:
+        print(
+            f"stop: signal {signum} received — finishing in-flight work, then persisting",
+            flush=True,
+        )
+    except Exception:  # noqa: BLE001 - a handler must never raise back into arbitrary code
+        pass
+
+
+def install_signal_handlers() -> None:
+    """Register SIGTERM → graceful stop. Call once from the CLI entry point; never from library
+    code that tests import, so the test process's signal disposition is left untouched. Fails open
+    (e.g. when not on the main thread, where ``signal.signal`` raises)."""
+    import signal
+
+    try:
+        signal.signal(signal.SIGTERM, _signal_stop_handler)
+    except (ValueError, OSError):
+        pass
+
+
 class StopSignal:
     """Shared, thread-safe predicate telling expensive stages when to stop starting new work.
 
@@ -1913,6 +1980,9 @@ class StopSignal:
         self.fired_reason: str | None = None
 
     def __call__(self) -> bool:
+        if _INTERRUPT.is_set():
+            self._announce("termination signal received")
+            return True
         if self._deadline is not None and time.monotonic() >= self._deadline:
             self._announce("wall-clock window spent")
             return True

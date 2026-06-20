@@ -696,6 +696,128 @@ def test_stop_signal_latches_superseded_and_throttles_polling():
     assert s() is True and calls["n"] == 2  # latched -> no further polling
 
 
+# --- GH#377: mid-run checkpoint + graceful SIGTERM shutdown ----------------------------
+
+
+def test_signal_handler_flips_stop_and_marks_interrupt():
+    """The SIGTERM handler latches the process-wide interrupt so any live StopSignal returns True
+    (in-flight workers defer immediately) and the run is recorded as interrupted. Invoked directly
+    — no real signal needed."""
+    assert run.interrupt_requested() is False
+    stop = run.StopSignal()
+    assert stop() is False
+    try:
+        run._signal_stop_handler(15, None)
+        assert run.interrupt_requested() is True
+        assert stop() is True
+        assert stop.fired_reason == "termination signal received"
+    finally:
+        run._INTERRUPT.clear()
+
+
+def test_install_signal_handlers_registers_sigterm():
+    import signal
+
+    prev = signal.getsignal(signal.SIGTERM)
+    try:
+        run.install_signal_handlers()
+        assert run.interrupt_requested() is False
+        signal.raise_signal(signal.SIGTERM)  # delivered synchronously to the main thread
+        assert run.interrupt_requested() is True
+    finally:
+        run._INTERRUPT.clear()
+        signal.signal(signal.SIGTERM, prev)
+
+
+def test_record_run_history_marks_interrupted(tmp_path):
+    run._record_run_history(tmp_path, [], {}, scope={"phase": "enrich"}, interrupted=True)
+    summary = json.loads((tmp_path / "run_summary.json").read_text())
+    assert summary["interrupted"] is True
+    assert summary["outcome"] == "interrupted"
+    hist = (tmp_path / "run_history.jsonl").read_text().strip().splitlines()
+    assert json.loads(hist[-1])["outcome"] == "interrupted"
+
+
+def test_record_run_history_marks_completed_by_default(tmp_path):
+    run._record_run_history(tmp_path, [], {}, scope={"phase": "enrich"})
+    summary = json.loads((tmp_path / "run_summary.json").read_text())
+    assert summary["interrupted"] is False
+    assert summary["outcome"] == "completed"
+
+
+def test_global_queue_persists_after_audio_pass_and_again_after_transcript(tmp_path, monkeypatch):
+    """GH#377 incremental persistence: a source is saved once the audio pass drains (before the
+    decoupled transcript pass even starts) and again at the end, shrinking the window a mid-run
+    kill could lose."""
+    city = City(
+        slug="c",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="C",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    ep = _ep("e1")
+    ep.hosted_audio_url = "https://cdn/e1.m4a"  # so the transcript pass includes it
+    episodes = [ep]
+    events: list[str] = []
+
+    class _AudioStage:
+        name = "audio"
+
+    class _TranscriptStage:
+        name = "transcript"
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.stages = [_AudioStage(), _TranscriptStage()]
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    def _run_stages(_p, _c, batch, stages, _ctx, *, quiet):
+        events.append(f"{stages[0].name}:{batch[0].uid}")
+        return [StageStats(stages[0].name, ran=1)]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+
+    run._run_enrich_global_queue(_Pipeline(), [city], source_cache=None, max_workers=1, policy=None)
+
+    assert events == ["audio:uid-e1", "persist", "transcript:uid-e1", "persist"]
+
+
+def test_repeat_persist_source_is_idempotent(tmp_path):
+    """A source flushed early (incremental persist) and then again at end-of-run must not corrupt
+    or duplicate records, and must not double-append notes to the caller's list (GH#377)."""
+    from citypods.records import load_records
+
+    state_dir = tmp_path / "state"
+    ctx = StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None)
+    pipeline = run.SourcePipeline(state_dir=state_dir, stages=[], ctx=ctx)
+    episodes = [_ep("a"), _ep("b")]
+    notes: list[str] = []
+
+    pipeline.persist_source("granicus/src", episodes, {}, notes=notes)
+    first = load_records(state_dir, "granicus/src")
+    pipeline.persist_source("granicus/src", episodes, {}, notes=notes)
+    second = load_records(state_dir, "granicus/src")
+
+    assert set(first) == set(second) == {"uid-a", "uid-b"}
+    assert first == second  # byte-for-byte stable across the repeat persist
+    assert notes == []  # caller's list untouched by repeat persists
+
+
 def _set_actions_env(monkeypatch, run_number="63"):
     """The standard GITHUB_* vars _newer_run_queued reads, with a realistic GITHUB_WORKFLOW_REF
     (the ``@refs/heads/main`` suffix is the part the old parse tripped on)."""

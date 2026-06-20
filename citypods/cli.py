@@ -10,7 +10,7 @@ import sys
 from citypods.bodies import is_excluded
 from citypods.config import load_city_configs, load_site_config
 from citypods.providers import get_provider
-from citypods.run import build
+from citypods.run import build, install_signal_handlers, interrupt_requested
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -285,6 +285,11 @@ def _parse_shard(spec: str | None) -> tuple[int, int] | None:
 
 
 def _run_build(args, *, phase: str, dry_run: bool) -> int:
+    # GH#377: convert SIGTERM (GitHub cancel, lost-comms) into the existing graceful-stop path so
+    # in-flight workers defer and the build still persists records + writes a run-history entry on
+    # the way out, instead of the process dying mid-queue with everything since the last persist
+    # lost. Installed only here at the CLI entry, never in importable library code.
+    install_signal_handlers()
     results = build(
         site_config_path=args.site_config,
         config_dir=args.config_dir,
@@ -312,7 +317,16 @@ def _run_build(args, *, phase: str, dry_run: bool) -> int:
         print(f"  {mark} {r.slug}{extra}")
     suffix = " (dry run)" if dry_run else ""
     print(f"\n{built} built, {skipped} skipped, {len(errors)} errors{suffix}")
-    return 1 if errors else 0
+    if errors:
+        return 1
+    # GH#377: a run cut short by SIGTERM persisted what it could, but it did NOT finish the backlog.
+    # Surface it as the conventional 128+SIGTERM(15) code so `continue-on-error` / log readers don't
+    # mistake a killed run for a clean success. A graceful wall-clock/superseded yield is *not* an
+    # interrupt and still returns 0.
+    if interrupt_requested():
+        print("interrupted by signal — partial run persisted; exiting 143")
+        return 143
+    return 0
 
 
 def _report(args) -> int:

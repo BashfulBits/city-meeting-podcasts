@@ -15,6 +15,22 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **A mid-run kill of the enrich phase (SIGTERM, GitHub cancel, lost-comms) now shuts down
+  gracefully instead of silently losing every record update for the run.** Previously the global
+  enrich queue persisted each source only once, after *both* the audio and transcript passes
+  finished, and nothing intercepted SIGTERM — a kill mid-queue dropped all in-memory record updates
+  since the last (end-of-run) persist and left no trailing `run_history.jsonl` entry. The CLI entry
+  now installs a SIGTERM handler (`install_signal_handlers`) that latches a process-wide interrupt
+  the existing `StopSignal` predicate ORs in, so in-flight workers start deferring immediately and
+  the run flows through its normal persist + run-history + state-push path on the way out. The
+  global queue also persists every source as soon as the **audio pass** drains — before the
+  decoupled transcript pass even starts — and again at the end, shrinking the unpersisted window for
+  *every* run, not just killed ones; the repeat persist is idempotent (append-only `merge_records`,
+  and `persist_source` no longer mutates the caller's notes list so the "{n} archived" note can't
+  double-append). An interrupted run is tagged `interrupted: true` / `outcome: "interrupted"` in
+  `run_history.jsonl` + `run_summary.json` and the `enrich`/`build` CLI exits `143` (128+SIGTERM) so
+  `continue-on-error` and log readers don't mistake a cut-short run for a clean success — a normal
+  wall-clock/supersession yield is **not** an interrupt and still exits `0` (GH#377).
 - **Native Granicus audio can fall back once to authenticated Cloudflare egress after a direct
   GitHub-runner HTTP 403.** The retry applies only to strict canonical
   `archive-video.granicus.com/<tenant>/<tenant>_*.mp4` inputs and remains inside the existing local

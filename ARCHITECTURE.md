@@ -130,6 +130,16 @@ persists stable `defer_reasons` counters (for example `insufficient-budget`, `ex
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.
 - **Wall-clock budget + graceful yield** — heavy work runs until a time window closes or a newer run
   queues; cheap idempotent bookkeeping always finishes (see `stages.py` "stop convention").
+- **Graceful SIGTERM + mid-run checkpoint** — the CLI entry installs a SIGTERM handler
+  (`install_signal_handlers`) that latches a process-wide interrupt the `StopSignal` predicate ORs
+  in, so a GitHub cancel / lost-comms kill converts into the same graceful-stop path as a wall-clock
+  yield: in-flight workers defer, then the run still persists records and writes its `run_history`
+  entry instead of dying mid-queue. The global enrich queue persists every source once the **audio
+  pass** drains (before the decoupled transcript pass) and again at the end, so the unpersisted
+  window is one pass, not the whole run; the repeat persist is idempotent (append-only
+  `merge_records`). An interrupted run is tagged `interrupted`/`outcome:"interrupted"` in
+  `run_history.jsonl` and exits `143` (128+SIGTERM) so a cut-short run isn't mistaken for a clean
+  success — a normal wall-clock/supersession yield is **not** an interrupt and still exits `0`.
 - **Resource admission for expensive native work** — ffmpeg/ASR starts can wait for memory/load
   headroom; ASR lanes have a 285m start cutoff and 350m backstop, and use a rolling
   `state/asr_runtime_log.json` ratio buffer to estimate whether a recording can finish before the
