@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import sys
 from pathlib import Path
@@ -129,3 +130,19 @@ def test_transport_total_size_prefers_content_range():
 )
 def test_transport_outcome_classification(returncode, stderr, size, status, expected):
     assert transport._outcome(returncode, stderr, size, status) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (16.0, 16 * 1024 * 1024),
+        (0.5, 512 * 1024),
+    ],
+)
+def test_transport_converts_decimal_mib_inputs(raw, expected):
+    assert transport._mib_to_bytes(raw) == expected
+
+
+def test_transport_rejects_nonpositive_mib_inputs():
+    with pytest.raises(argparse.ArgumentTypeError, match="MiB values must be positive"):
+        transport._mib_to_bytes(0.0)

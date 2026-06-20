@@ -473,6 +473,12 @@ def _parse_named_url(raw: str) -> tuple[str, str]:
     return name, url
 
 
+def _mib_to_bytes(value: float) -> int:
+    if value <= 0:
+        raise argparse.ArgumentTypeError("MiB values must be positive")
+    return int(value * 1024 * 1024)
+
+
 def _emit(result: ProbeResult) -> None:
     print(
         f"{'PASS' if result.ok else 'FAIL'} sequence={result.sequence} clip={result.clip} "
@@ -503,9 +509,25 @@ def main() -> int:
     parser.add_argument("--clip", action="append", type=_parse_named_url, dest="clips")
     parser.add_argument("--sample-seconds", type=float, default=5.0)
     parser.add_argument("--pair-delay-seconds", type=float, default=5.0)
-    parser.add_argument("--range-bytes", type=int, default=DEFAULT_RANGE_BYTES)
-    parser.add_argument(
-        "--full-download-max-bytes", type=int, default=DEFAULT_FULL_DOWNLOAD_MAX_BYTES
+    range_group = parser.add_mutually_exclusive_group()
+    range_group.add_argument("--range-bytes", type=int, default=DEFAULT_RANGE_BYTES)
+    range_group.add_argument(
+        "--range-mib",
+        type=_mib_to_bytes,
+        dest="range_bytes",
+        default=argparse.SUPPRESS,
+    )
+    full_group = parser.add_mutually_exclusive_group()
+    full_group.add_argument(
+        "--full-download-max-bytes",
+        type=int,
+        default=DEFAULT_FULL_DOWNLOAD_MAX_BYTES,
+    )
+    full_group.add_argument(
+        "--full-download-max-mib",
+        type=_mib_to_bytes,
+        dest="full_download_max_bytes",
+        default=argparse.SUPPRESS,
     )
     parser.add_argument("--full-download-count", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=120.0)

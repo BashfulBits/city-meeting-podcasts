@@ -228,8 +228,10 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     runs = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert "probe_granicus_sustained.py" in runs
     assert "probe_granicus_transport.py" in runs
-    assert "--full-download-max-bytes" in runs
+    assert "--range-mib" in runs
+    assert "--full-download-max-mib" in runs
     assert "--full-download-count" in runs
+    assert "$((" not in runs
     assert "audio.yml --status in_progress" in runs
     assert "audio.yml --status queued" in runs
     assert "--sha256" in runs
