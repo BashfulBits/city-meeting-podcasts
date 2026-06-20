@@ -165,6 +165,7 @@ def detect_silences(
     noise_db: float = -40.0,
     min_duration_s: float = 1.0,
     timeout: float | None = None,
+    threads: int | None = None,
 ) -> tuple[list[tuple[float, float]], float | None]:
     """Run ``ffmpeg silencedetect`` on ``url``; return ``(silences, source_duration)``.
 
@@ -174,6 +175,11 @@ def detect_silences(
 
     ``source_duration`` is parsed from the same stderr output — no extra ffprobe call.
     Returns ``([], None)`` on any subprocess or parse error.
+
+    ``threads``, if given, pins ffmpeg's decode/filter thread count the same way
+    ``CommandFfmpeg`` pins its encode passes — ffmpeg otherwise defaults to "all cores",
+    and an unpinned silencedetect pass running alongside ``AudioStage``'s
+    ``NativeWorkGate``-budgeted encodes would oversubscribe the CPU the gate exists to bound.
     """
     cmd = [
         ffmpeg_binary,
@@ -182,6 +188,7 @@ def detect_silences(
         "info",
         "-protocol_whitelist",
         "file,crypto,data,http,https,tcp,tls",
+        *(["-threads", str(threads)] if threads is not None else []),
         "-i",
         url,
         "-vn",
@@ -275,13 +282,28 @@ class SilencePlanner:
             if local is not None:
                 detect_url = str(local)
 
-        silences, source_duration = detect_silences(
-            detect_url,
-            ffmpeg_binary=ffmpeg_binary,
-            noise_db=ctx.silence_noise_db,
-            min_duration_s=1.0,  # detect all candidates; thresholds applied below
-            timeout=timeout,
-        )
+        # silencedetect is a CPU-bound ffmpeg decode pass, same as an AudioStage encode — gate it
+        # on the same NativeWorkGate so a TimelineStage planner pass for one source can't run
+        # concurrently, unbounded, alongside the encodes the gate exists to budget (#111 follow-up,
+        # audio workflow review 2026-06).
+        gate = ctx.native_work_gate
+        gate_acquired = False
+        if gate is not None:
+            gate_acquired = gate.acquire(kind="audio", label=str(ep.uid or ep.guid), stop=ctx.stop)
+            if not gate_acquired:
+                return None  # deferred: budget/queue pressure, not a real failure
+        try:
+            silences, source_duration = detect_silences(
+                detect_url,
+                ffmpeg_binary=ffmpeg_binary,
+                noise_db=ctx.silence_noise_db,
+                min_duration_s=1.0,  # detect all candidates; thresholds applied below
+                timeout=timeout,
+                threads=getattr(ctx.ffmpeg, "threads", None),
+            )
+        finally:
+            if gate_acquired:
+                gate.release(kind="audio")
 
         # Fall back to ep.duration when ffmpeg didn't emit a Duration header.
         if source_duration is None:

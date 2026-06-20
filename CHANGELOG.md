@@ -120,6 +120,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `subprocess.run`, only `audio_encode_timeout_minutes` bounds that.
 
 ### Fixed
+- **`SilencePlanner`'s `ffmpeg silencedetect` pass no longer oversubscribes the CPU alongside
+  `AudioStage`'s encodes.** `detect_silences()` shelled out to ffmpeg with no `-threads` cap and
+  wasn't gated by `NativeWorkGate`, so `TimelineStage`'s per-episode planner threads (parallelized up
+  to `ctx.max_encodes_per_source`) could each spawn an unbounded, all-cores ffmpeg `silencedetect`
+  process — running concurrently with, or ahead of, the gated audio encodes the gate exists to budget.
+  `detect_silences()` now accepts a `threads: int | None` param applied as `-threads N` the same way
+  `CommandFfmpeg` pins its encode passes, and `SilencePlanner.plan()` acquires/releases
+  `ctx.native_work_gate` (`kind="audio"`) around the call using the same `ffmpeg_threads` value
+  `CommandFfmpeg` is configured with — so a silencedetect pass competes for the same admission slots
+  as `AudioStage`'s encodes instead of running outside the budget. A denied/stopped admission defers
+  the planner pass (`ep.timeline` stays unstamped) rather than running ungated or raising.
 - **The silence-trim and Swagit-concat planners no longer produce or silently swallow degenerate
   results.** `SilencePlanner` could stamp a near-empty served timeline (observed: 0.005s/0.010s
   outputs) when `detect_silences` misread a throttled/truncated source as almost entirely silent;
