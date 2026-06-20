@@ -109,6 +109,20 @@ class TestGuards:
             result = planner.plan(_make_provider(), _make_city(), _make_ep(), _make_ctx(), None)
         assert result is None
 
+    def test_probe_failure_records_segment_index(self):
+        """The failure is recorded against the specific segment that failed to probe."""
+        planner = SwagitConcatPlanner()
+        ep = _make_ep()
+        # First segment probes fine, second fails → code should identify segment 1.
+        with (
+            patch("citypods.concat.shutil.which", return_value="ffmpeg"),
+            patch("citypods.concat._probe_duration_url", side_effect=[1800.0, None]),
+            patch("citypods.concat.record_materialize_failure") as mock_record,
+        ):
+            result = planner.plan(_make_provider(), _make_city(), ep, _make_ctx(), None)
+        assert result is None
+        mock_record.assert_called_once_with(ep, "concat-probe:s1")
+
     def test_defers_when_provider_raises(self):
         """Network failure in fetch_segment_objects → return None (defer, not error)."""
         from citypods.providers.base import ProviderError
@@ -119,6 +133,21 @@ class TestGuards:
         with patch("citypods.concat.shutil.which", return_value="ffmpeg"):
             result = planner.plan(provider, _make_city(), _make_ep(), _make_ctx(), None)
         assert result is None
+
+    def test_provider_raises_records_fetch_failure(self):
+        from citypods.providers.base import ProviderError
+
+        planner = SwagitConcatPlanner()
+        provider = MagicMock()
+        ep = _make_ep()
+        provider.fetch_segment_objects.side_effect = ProviderError("network down")
+        with (
+            patch("citypods.concat.shutil.which", return_value="ffmpeg"),
+            patch("citypods.concat.record_materialize_failure") as mock_record,
+        ):
+            result = planner.plan(provider, _make_city(), ep, _make_ctx(), None)
+        assert result is None
+        mock_record.assert_called_once_with(ep, "concat-fetch")
 
 
 # ---------------------------------------------------------------------------

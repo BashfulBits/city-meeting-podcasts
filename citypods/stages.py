@@ -167,6 +167,12 @@ class StageContext:
     silence_noise_db: float = -40.0
     silence_lead_trail_min_s: float = 1.0
     silence_mid_min_s: float = 10.0
+    # Sanity floor on the planner's *result* (audio workflow review, 2026-06): a garbage/short
+    # ``source_duration`` (e.g. a throttled fetch silencedetect read as near-silent) must not
+    # produce a near-empty served timeline that then gets encoded and hosted. Reject when the kept
+    # served duration is below both the absolute floor and the source-duration fraction.
+    silence_min_served_seconds: float = 5.0
+    silence_min_served_fraction: float = 0.02
     # Parallel episode processing within one source. Workers are I/O-bound (rate-limited HLS
     # streaming), so this can safely exceed CPU count. Set via site_config max_encodes_per_source.
     max_encodes_per_source: int = 1

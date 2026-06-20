@@ -24,6 +24,7 @@ import shutil
 import subprocess
 
 from citypods.http import HOST_LIMITER, USER_AGENT
+from citypods.media import record_materialize_failure
 from citypods.models import City, Episode
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.timeline import Segment, SourceMedia, Timeline
@@ -107,7 +108,9 @@ class SwagitConcatPlanner:
 
         try:
             seg_objs = provider.fetch_segment_objects(ep, city.source)
-        except (ProviderError, Exception):  # noqa: BLE001
+        except (ProviderError, Exception) as exc:  # noqa: BLE001
+            record_materialize_failure(ep, "concat-fetch")
+            print(f"[enrich] concat planner fetch failed for {ep.uid or ep.guid}: {exc}")
             return None
 
         if seg_objs is None or len(seg_objs) <= 1:
@@ -119,9 +122,13 @@ class SwagitConcatPlanner:
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 
         durations: list[float] = []
-        for url, _ in seg_objs:
+        for i, (url, _) in enumerate(seg_objs):
             dur = _probe_duration_url(url, ffprobe, timeout=timeout)
             if dur is None:
+                # Record which segment failed so backoff/diagnostics target the actual failure
+                # rather than a generic "concat deferred" — segment URLs/CDN behavior can differ
+                # within one meeting (#370-style routing issues).
+                record_materialize_failure(ep, f"concat-probe:s{i}")
                 return None  # probe failed → defer; backoff handles retry
             durations.append(dur)
 

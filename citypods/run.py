@@ -1176,6 +1176,8 @@ def build(
         silence_noise_db=float(defaults.get("silence_noise_db", -40.0)),
         silence_lead_trail_min_s=float(defaults.get("silence_lead_trail_min_s", 1.0)),
         silence_mid_min_s=float(defaults.get("silence_mid_min_s", 10.0)),
+        silence_min_served_seconds=float(defaults.get("silence_min_served_seconds", 5.0)),
+        silence_min_served_fraction=float(defaults.get("silence_min_served_fraction", 0.02)),
         max_encodes_per_source=max_encodes_per_source,
         backlog_policy=backlog_policy,
         source_cache=source_cache,
