@@ -114,8 +114,9 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
 Scoped workflow telemetry is append-only under `state/run_events/`. Sibling matrix events sharing
 `GITHUB_RUN_ID` + phase + lane form one logical run; status/projection aggregates them only after every
 declared shard reports, so a fast partial matrix cannot replace the last complete KPI. Each stage also
-persists stable `defer_reasons` counters (for example `insufficient-budget`, `external-required`, or
-`timeout-backoff`), surfaced beside the deferred total on `/admin/status`.
+persists stable `defer_reasons` counters (`insufficient-budget`, `external-required`,
+`timeout-backoff`, `alignment-disabled`, and `dispatched-prior-run`), surfaced beside the deferred
+total on `/admin/status`.
 | **Security** | `security.py` — SSRF gate (`validate_source_url`), host allowlists, redirect/size caps; `http.py` retry/backoff; ffmpeg protocol whitelist; defusedxml. |
 
 ## Key invariants (why it extends cleanly)
