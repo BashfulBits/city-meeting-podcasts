@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Callable
 
-from citypods.http import HOST_LIMITER, USER_AGENT
+from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
 from citypods.media import record_materialize_failure
 from citypods.models import City, Episode
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
@@ -31,11 +32,20 @@ from citypods.timeline import Segment, SourceMedia, Timeline
 
 
 def _probe_duration_url(
-    url: str, ffprobe: str = "ffprobe", timeout: float | None = None
+    url: str,
+    ffprobe: str = "ffprobe",
+    timeout: float | None = None,
+    *,
+    stop: Callable[[], bool] | None = None,
 ) -> float | None:
-    """Return a remote URL's container duration in seconds via ffprobe, or ``None`` on failure."""
-    try:
-        with DISTRIBUTED_PROVIDER_LEASES.slots([url]), HOST_LIMITER.slot(url):
+    """Return a remote URL's container duration in seconds via ffprobe, or ``None`` on failure.
+
+    Raises :class:`~citypods.http.StopRequested` (rather than returning ``None``) if the run's
+    wall-clock budget expires while queued on the rate-limit/lease wait — the caller distinguishes
+    that from a genuine probe failure so it doesn't record a materialize-failure backoff for it.
+    """
+    with DISTRIBUTED_PROVIDER_LEASES.slots([url], stop=stop), HOST_LIMITER.slot(url, stop=stop):
+        try:
             out = subprocess.run(
                 [
                     ffprobe,
@@ -54,9 +64,9 @@ def _probe_duration_url(
                 text=True,
                 timeout=timeout,
             ).stdout.strip()
-        return float(out) if out else None
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
-        return None
+            return float(out) if out else None
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
+            return None
 
 
 class SwagitConcatPlanner:
@@ -123,7 +133,12 @@ class SwagitConcatPlanner:
 
         durations: list[float] = []
         for i, (url, _) in enumerate(seg_objs):
-            dur = _probe_duration_url(url, ffprobe, timeout=timeout)
+            try:
+                dur = _probe_duration_url(url, ffprobe, timeout=timeout, stop=ctx.stop)
+            except StopRequested:
+                # The run's wall-clock budget expired while queued, not a probe failure — defer
+                # without recording a backoff so this isn't mistaken for a broken source (#120).
+                return None
             if dur is None:
                 # Record which segment failed so backoff/diagnostics target the actual failure
                 # rather than a generic "concat deferred" — segment URLs/CDN behavior can differ

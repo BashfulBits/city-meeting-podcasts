@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from citypods.http import StopRequested
 from citypods.silence import (
     SilencePlanner,
     _parse_ffmpeg_duration,
@@ -321,6 +322,18 @@ class TestSilencePlanner:
         assert timeline_digest(result) != ""  # non-identity → will re-encode
         assert len(result.segments) == 1
         assert result.segments[0].source_start == pytest.approx(5.0)
+
+    def test_defers_without_recording_failure_when_source_cache_stop_requested(self):
+        """The run's wall-clock budget expiring while queued on the source cache's per-uid lock is
+        not a source failure: defer cleanly, don't raise out of the planner."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.source_cache.get_or_fetch.side_effect = StopRequested("stopped")
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert result is None
 
     def test_returns_none_when_provider_error(self):
         from citypods.providers.base import ProviderError

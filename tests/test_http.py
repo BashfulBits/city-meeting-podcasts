@@ -6,9 +6,10 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
 import requests
 
-from citypods.http import _RETRY, GuardedHTTPAdapter, HostRateLimiter, _ClampedRetry
+from citypods.http import _RETRY, GuardedHTTPAdapter, HostRateLimiter, StopRequested, _ClampedRetry
 
 
 class _Resp:
@@ -135,6 +136,71 @@ class TestHostRateLimiter:
         lim.configure({"granicus.com": 0, "swagit.com": -3})
         assert lim._key_for("x.granicus.com") is None
         assert lim._key_for("x.swagit.com") is None
+
+
+class TestHostRateLimiterStopAware:
+    """A queued slot wait yields ``StopRequested`` once the run's wall-clock budget expires,
+    instead of blocking out the full queue."""
+
+    def test_stop_firing_raises_instead_of_blocking(self):
+        lim = HostRateLimiter()
+        lim.configure({"granicus.com": 1})
+        # Hold the only slot on a background thread so the foreground wait queues.
+        holder_released = threading.Event()
+
+        def hold():
+            with lim.slots(["https://archive-video.granicus.com/x.mp4"]):
+                holder_released.wait(timeout=2.0)
+
+        t = threading.Thread(target=hold)
+        t.start()
+        try:
+            with pytest.raises(StopRequested):
+                with lim.slots(
+                    ["https://archive-video.granicus.com/x.mp4"],
+                    stop=lambda: True,
+                    poll_seconds=0.01,
+                ):
+                    pass
+        finally:
+            holder_released.set()
+            t.join()
+
+    def test_stop_never_firing_still_acquires(self):
+        lim = HostRateLimiter()
+        lim.configure({"granicus.com": 1})
+        with lim.slots(
+            ["https://archive-video.granicus.com/x.mp4"], stop=lambda: False, poll_seconds=0.01
+        ):
+            pass  # acquired without raising
+
+    def test_stop_does_not_leak_partially_acquired_slots(self):
+        """Two distinct hosts, second blocked: stopping must release the first before raising, or
+        the held semaphore would starve every other waiter on that host forever."""
+        lim = HostRateLimiter()
+        lim.configure({"granicus.com": 1, "swagit.com": 1})
+        holder_released = threading.Event()
+
+        def hold_swagit():
+            with lim.slots(["https://v.swagit.com/a.mp4"]):
+                holder_released.wait(timeout=2.0)
+
+        t = threading.Thread(target=hold_swagit)
+        t.start()
+        try:
+            with pytest.raises(StopRequested):
+                with lim.slots(
+                    ["https://archive-video.granicus.com/x.mp4", "https://v.swagit.com/a.mp4"],
+                    stop=lambda: True,
+                    poll_seconds=0.01,
+                ):
+                    pass
+            # The granicus.com slot acquired before the swagit.com block must have been released.
+            with lim.slots(["https://archive-video.granicus.com/x.mp4"]):
+                pass
+        finally:
+            holder_released.set()
+            t.join()
 
 
 class Test403RetriedAsRateLimit:

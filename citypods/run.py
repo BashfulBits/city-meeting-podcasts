@@ -1181,6 +1181,7 @@ def build(
         phase_gate=_native_work_gate,
         finalize_workers=int(defaults.get("audio_finalize_workers", 2)),
         rate_limit_circuit=_rate_limit_circuit,
+        stop=stop,
     )
     source_cache = (
         SourceCache(
@@ -1188,6 +1189,7 @@ def build(
             timeout_seconds=getattr(ffmpeg, "timeout_seconds", None),
             memory_floor_bytes=getattr(ffmpeg, "memory_floor_bytes", None),
             rate_limit_circuit=_rate_limit_circuit,
+            stop=stop,
         )
         if not dry_run
         else None
