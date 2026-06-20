@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Native Granicus audio can fall back once to authenticated Cloudflare egress after a direct
+  GitHub-runner HTTP 403.** The retry applies only to strict canonical
+  `archive-video.granicus.com/<tenant>/<tenant>_*.mp4` inputs and remains inside the existing local
+  limiter, distributed lease, and circuit admission. Worker success prevents the direct 403 from
+  tripping the circuit; Worker throttling is counted once before lease release. Audio workflow
+  secrets are passed to both container and host-fallback runtimes, while bearer headers are redacted
+  from logs and exception commands. The isolated probe now classifies authenticated HTTP 200
+  responses that ignore Range as `range_unsupported` access successes and can run one full
+  Arlington/Pflugerville source through the production source-cache and `podcast-speech-v2` recipe.
+  This changes transport only: no official metadata, audio recipe, pipeline version, artifact key,
+  existing object, or backfill behavior changes.
 - **An authenticated Cloudflare Worker probe can test alternate egress for Granicus archive media.**
   The GitHub-hosted transport artifact returned 403 for all 12 direct curl/ffmpeg/header cases while
   the same exact objects all succeeded from a Mac, including one full download and local media
@@ -23,8 +34,8 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   tenant-prefixed MP4 validation, no queries/redirects/cache, selected Range validators only, and no
   response buffering. The manual Audio-isolated Granicus workflow adds a `worker` mode that compares
   direct versus Worker-routed curl and ffmpeg on one GitHub runner, then performs at most one
-  size-capped full-download/local-processing proof. Production Audio is unchanged; setup and teardown
-  are documented in the Worker README. A path-filtered deployment workflow tests and redeploys the
+  size-capped full-download/local-processing proof. Setup and teardown are documented in the Worker
+  README. A path-filtered deployment workflow tests and redeploys the
   Worker automatically when its source or Wrangler configuration changes on `main`, using a scoped
   Cloudflare deployment token while leaving the runtime bearer secret Cloudflare-managed. No audio
   recipe, pipeline version, artifact identity, or stored artifact changes.
