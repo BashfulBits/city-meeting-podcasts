@@ -529,15 +529,17 @@ no render) is preserved; `all`/`render` are untouched.
 > "Step 2" and "record-write race" design below is the frozen record this implemented. Competitive
 > leases stay reserved for the **external** backend (H14).
 
-**ASR weighting follow-up (2026-06-20).** Source ownership remains atomic, but transcribe-lane
+**ASR weighting/planner follow-up (2026-06-20).** Source ownership remains atomic, but transcribe-lane
 packing now uses `TranscribeShardWork`: local fallback contributes a recording-duration cost proxy,
 external dispatch contributes a small fixed control-plane cost, blocked/deferred inspection contributes
 a minimal cost, and already-in-flight work contributes zero. With no real external adapter configured,
 recordings above the local ceiling are classified as blocked rather than charged to a runner that
-cannot transcribe them. H14 must move route classification into a once-per-run planner that restores
-canonical records/work state, snapshots leases and free-tier budget/capacity once, and publishes one
-immutable source assignment for every matrix shard. Per-shard classification against changing GPU
-availability is forbidden because it can produce divergent ownership maps.
+cannot transcribe them. The once-per-run `asr.yml` reconcile/planner now restores canonical B2 state,
+reconciles leases/budget, emits a versioned `ShardPlan`, and uploads the state snapshot plus plan as one
+immutable artifact. Matrix shards validate/consume it and skip their own full B2 restore. H14 extends
+that planner to snapshot external capability/budget/capacity and classify routes once. Per-shard
+classification against changing GPU availability remains forbidden because it can produce divergent
+ownership maps.
 
 **Problem.** Both audio encoding and ASR transcription compete with each other and with the Pages deploy
 inside the single enrich job, serializing through the `pages` concurrency group. An enrich kill marks
@@ -1141,14 +1143,15 @@ each provider's monthly free allotment**, which the design must *enforce*.
   that is routing state, not an ASR failure. The `local` adapter is considered only after external
   targets decline and only when both local admission guards pass. The `audio.yml` workflow is
   unaffected — audio stays on-runner.
-- **Reconcile is the canonical shard planner.** Before matrix work starts, restore records,
+- **Reconcile is the canonical shard planner (substrate implemented).** Before matrix work starts,
   `work.json`, the budget ledger, and live leases; take one external capability/budget/capacity
   snapshot; classify each pending episode as `dispatch`, `local`, `blocked`, or `inflight`; feed those
   classifications into `estimate_transcribe_shard_work`; then perform source-atomic greedy packing.
-  Publish the versioned assignment as an immutable workflow artifact keyed to the run. Every shard
-  consumes that same artifact; adapters report routing inputs but do not independently assign source
-  ownership. Planner failure stops the workflow before shard writes rather than falling back to four
-  independently computed maps.
+  The shipped substrate already restores B2 once, emits the versioned assignment, and publishes it
+  with the canonical state snapshot as an immutable workflow artifact keyed to the run; all shards
+  consume it and skip duplicate restores. H14b/H14c add the external route classifications. Adapters
+  report routing inputs but do not independently assign source ownership. Planner failure stops the
+  workflow before shard writes rather than falling back to four independently computed maps.
 - **Remote worker entrypoints** (`scripts/compute/modal_app.py`, `scripts/compute/beam_app.py`): a thin
   function running faster-whisper (transcribe) / stable-ts (align) / later pyannote (diarize), reading
   audio from the public URL and writing artifacts to the bucket via the existing storage backend (creds as

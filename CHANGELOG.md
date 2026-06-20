@@ -130,6 +130,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **ASR shard ownership now comes from one canonical pre-matrix snapshot, eliminating divergent
+  assignments and four redundant full B2 restores per workflow.** The reconcile job restores durable
+  state once, reconciles leases/budget, writes a versioned `ShardPlan`, and uploads both state and plan
+  as one run-scoped artifact. All four ASR matrix jobs validate and consume that exact assignment,
+  fail closed on lane/shard/source drift, and skip `pull_state`; they no longer independently restore
+  the full `state/` prefix or calculate weights while sibling state changes. The local CLI path keeps
+  deterministic in-process planning when no artifact is supplied.
 - **The scheduled transcribe lane no longer defers episodes merely because they have untimed
   provider text while forced alignment is disabled.** `TranscriptStage` previously applied the
   `alignment-disabled` guard before `--lane transcribe` discarded the alignment hint, so exactly

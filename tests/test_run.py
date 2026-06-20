@@ -1128,6 +1128,44 @@ def test_enrich_shards_partition_sources_disjoint_and_exhaustive(tmp_path, fake_
         assert c.slug in by_shard[assignment[source_key(c)]]
 
 
+def test_enrich_consumes_canonical_plan_and_skips_duplicate_state_restore(
+    tmp_path, fake_provider, monkeypatch
+):
+    from citypods.config import load_city_configs
+    from citypods.records import source_key
+    from citypods.sharding import ShardPlan, save_shard_plan
+
+    cities_dir = _setup_multi(tmp_path)
+    cfg = load_city_configs(cities_dir, {})
+    keys = {city.slug: source_key(city) for city in cfg}
+    plan_path = tmp_path / "asr-plan.json"
+    save_shard_plan(
+        plan_path,
+        ShardPlan(
+            lane="transcribe",
+            num_shards=2,
+            assignment={keys["feed-a"]: 1, keys["feed-b"]: 0},
+            weights={keys["feed-a"]: 10, keys["feed-b"]: 1},
+        ),
+    )
+    pulls = []
+    monkeypatch.setattr(run, "pull_state", lambda *_a, **_k: pulls.append(True))
+
+    results = _build_phase(
+        tmp_path,
+        cities_dir,
+        "enrich",
+        _CountingFfmpeg(),
+        shard=(0, 2),
+        lane="transcribe",
+        shard_plan_path=plan_path,
+        state_snapshot_restored=True,
+    )
+
+    assert [result.slug for result in results] == ["feed-b"]
+    assert pulls == []
+
+
 def test_enrich_source_scopes_to_one_source(tmp_path, fake_provider):
     from citypods.config import load_city_configs
     from citypods.records import source_key

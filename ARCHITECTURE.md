@@ -53,10 +53,12 @@ Audio; routing-aware runner cost for ASR — so large local backlogs are not cas
 ones while concurrent shards still never write the same record file. The ASR estimate separates
 duration-weighted local inference from cheap external dispatch, blocked/deferred inspection, and
 already-in-flight work. Until H14 registers a real external backend, recordings above the local
-duration ceiling contribute only the cheap blocked cost rather than their full audio duration. H14's
-canonical planner will classify routes once from restored state plus one budget/capacity snapshot and
-feed that immutable classification into the same estimator; individual matrix shards must not race to
-predict changing GPU availability.
+duration ceiling contribute only the cheap blocked cost rather than their full audio duration.
+`asr.yml` restores durable B2 state once in its reconcile/planner job, computes a versioned
+source-atomic assignment from that canonical snapshot, and uploads the snapshot plus plan as an
+immutable workflow artifact. Every matrix shard consumes that same artifact and skips its own full B2
+restore. H14 extends the planner's route classifier with one budget/capacity snapshot; individual
+matrix shards must not race to predict changing GPU availability.
 The Audio lane runs its CLI inside the version-pinned
 `ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1` image. That image is built weekly and on
 runtime-definition changes from a digest-pinned Python base plus a checksum-pinned static
