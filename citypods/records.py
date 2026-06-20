@@ -71,10 +71,12 @@ def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
         last = datetime.fromisoformat(ep.transcript_timeout_last_attempt)
     except ValueError:
         return None
-    delay = min(
-        TRANSCRIPT_TIMEOUT_BACKOFF_MAX,
-        TRANSCRIPT_TIMEOUT_BACKOFF_BASE * 2 ** (ep.transcript_timeout_attempts - 1),
-    )
+    delay = TRANSCRIPT_TIMEOUT_BACKOFF_BASE
+    for _ in range(max(0, ep.transcript_timeout_attempts - 1)):
+        if delay >= TRANSCRIPT_TIMEOUT_BACKOFF_MAX:
+            delay = TRANSCRIPT_TIMEOUT_BACKOFF_MAX
+            break
+        delay = min(TRANSCRIPT_TIMEOUT_BACKOFF_MAX, delay * 2)
     return last + delay
 
 
