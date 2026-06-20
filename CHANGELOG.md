@@ -382,6 +382,9 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   passes a stable config-derived weight — the number of configured feeds sharing the source — so
   every matrix job computes the same partition while large multi-body sources like Dallas/Fort Worth
   are no longer bundled with extra small sources merely because source counts balanced.
+  **Superseded:** this config-derived weight was later replaced by each source's actual pending
+  audio-encode backlog (`pending_audio_work`), and — for the ASR lane only — by pending
+  transcription duration (`pending_transcribe_work`, above).
 - **Per-provider (per-host) rate limiting + sharding-regression fixes (#39)** —
   ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274)). The first sharded Audio
   run after H6b regressed: comparing it to the last pre-sharding Enrich run, source fetches collapsed
