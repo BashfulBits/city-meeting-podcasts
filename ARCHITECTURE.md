@@ -49,8 +49,14 @@ runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two
 `audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription), each on its
 own concurrency group **sharded by `source_key`** (`strategy.matrix.shard`). Assignment is
 source-atomic and weighted by each lane's own remaining-work estimate — pending encode count for
-Audio, pending transcription duration for ASR — so large backlogs are not casually bundled with small
-ones while concurrent shards still never write the same record file.
+Audio; routing-aware runner cost for ASR — so large local backlogs are not casually bundled with small
+ones while concurrent shards still never write the same record file. The ASR estimate separates
+duration-weighted local inference from cheap external dispatch, blocked/deferred inspection, and
+already-in-flight work. Until H14 registers a real external backend, recordings above the local
+duration ceiling contribute only the cheap blocked cost rather than their full audio duration. H14's
+canonical planner will classify routes once from restored state plus one budget/capacity snapshot and
+feed that immutable classification into the same estimator; individual matrix shards must not race to
+predict changing GPU availability.
 The Audio lane runs its CLI inside the version-pinned
 `ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1` image. That image is built weekly and on
 runtime-definition changes from a digest-pinned Python base plus a checksum-pinned static

@@ -92,17 +92,22 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
-- **ASR shard assignment is now weighted by pending transcription duration, not the audio lane's
+- **ASR shard assignment is now weighted by routing-aware transcription cost, not the audio lane's
   pending-encode backlog.** `run.py` fed `asr.yml`'s `--shard K/4` partition the same
   `pending_audio_work` signal as `audio.yml`; in steady state (Audio runs more often than ASR) that
   backlog sits near zero for nearly every source, which silently collapsed ASR shard assignment to
   alphabetical round-robin — blind to how much transcription work a source actually had outstanding,
-  so one shard could own a multi-hour backlog while a sibling finished and sat idle. A new
-  `pending_transcribe_work` (`citypods/records.py`) sums each source's hosted-audio seconds still
-  needing a fresh or stale-pipeline-version ASR transcript (mirroring `TranscriptStage`'s
-  `lane="transcribe"` reuse check, I/O-free at shard-assignment time like the existing helper);
-  `run.py` selects it only when `lane == "transcribe"`, so the Audio lane's weighting is unchanged.
-  No audio/transcript recipe, pipeline version, or stored artifact changes.
+  so one shard could own a multi-hour local backlog while a sibling finished and sat idle. New
+  `estimate_transcribe_shard_work` / `TranscribeShardWork` (`citypods/records.py`) mirror the
+  `lane="transcribe"` reuse check and separate duration-weighted local inference from cheap external
+  dispatch, blocked/deferred inspection, and already-in-flight work. Current production has no real
+  external adapter, so locally eligible recordings are weighted by duration, known recordings above
+  the 4-hour local ceiling contribute only a minimal blocked cost, and unknown durations receive a
+  conservative local estimate. H14's canonical planner can inject one route classification computed
+  from restored state and a single GPU budget/capacity snapshot; matrix shards will consume that
+  immutable decision instead of independently guessing dynamic external availability. `run.py`
+  selects the estimate only for `lane == "transcribe"`, leaving Audio weighting unchanged. No
+  audio/transcript recipe, pipeline version, stored artifact, or backfill behavior changes.
 - **Granicus throttle circuits are now shared across Audio shards and isolated by tenant
   ([#337](https://github.com/BashfulBits/city-meeting-podcasts/issues/337)).** The previous breaker
   counted failures independently in each shard and opened one registrable-domain circuit, so the same
@@ -384,7 +389,7 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   are no longer bundled with extra small sources merely because source counts balanced.
   **Superseded:** this config-derived weight was later replaced by each source's actual pending
   audio-encode backlog (`pending_audio_work`), and — for the ASR lane only — by pending
-  transcription duration (`pending_transcribe_work`, above).
+  routing-aware transcription cost (`estimate_transcribe_shard_work`, above).
 - **Per-provider (per-host) rate limiting + sharding-regression fixes (#39)** —
   ([#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274)). The first sharded Audio
   run after H6b regressed: comparing it to the last pre-sharding Enrich run, source fetches collapsed

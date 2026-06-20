@@ -48,13 +48,13 @@ from citypods.providers.base import ProviderError
 from citypods.records import (
     assign_uids,
     episode_to_record,
+    estimate_transcribe_shard_work,
     feed_content_hash,
     load_records,
     merge_persisted,
     merge_records,
     migrate_legacy_manifests,
     pending_audio_work,
-    pending_transcribe_work,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
@@ -974,23 +974,25 @@ def build(
             raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
         # Source-atomic weighted assignment (computed from local state only, so every shard
         # process in one workflow derives the same partition even if a sibling pushes state
-        # mid-run). The weight signal is lane-specific: the ASR (``transcribe``) lane weighs by
-        # pending transcription *duration*, not the audio lane's pending *encode count* — audio
-        # backlog sits near zero for most sources by the time ASR runs (audio runs more often than
-        # ASR), which otherwise collapses ASR shard assignment to alphabetical round-robin
-        # regardless of how much transcription work is actually outstanding.
+        # mid-run). The weight signal is lane-specific: the ASR (``transcribe``) lane uses
+        # routing-aware cost (local duration vs. cheap blocked/dispatch/in-flight work), not the
+        # audio lane's pending *encode count*. Audio backlog sits near zero for most sources by the
+        # time ASR runs (audio runs more often than ASR), which otherwise collapses ASR assignment
+        # to alphabetical round-robin regardless of the actual transcription work.
         source_city = {source_key(c): c for c in cities}
 
         def _shard_weight(key: str, city: City) -> float:
             if not records_path(state_dir, key).exists():
                 return 1.0  # never-crawled: unknown backlog, don't let it default to zero weight
             if lane == "transcribe":
-                return pending_transcribe_work(
+                estimate = estimate_transcribe_shard_work(
                     state_dir,
                     key,
                     asr_enabled=city.asr_enabled,
                     asr_pipeline_version=ASR_PIPELINE_VERSION,
+                    local_max_duration_hours=float(defaults.get("asr_local_max_duration_hours", 4)),
                 )
+                return estimate.shard_weight()
             # Audio lane (and the unsharded/legacy default): remaining encode count — episodes
             # that still need an encode under the current spec, not the source's total episode
             # count — so a source that's mostly caught up doesn't keep crowding out a source with

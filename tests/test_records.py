@@ -11,6 +11,7 @@ from citypods.records import (
     audio_object_key,
     audio_spec_hash,
     episode_to_record,
+    estimate_transcribe_shard_work,
     feed_content_hash,
     load_records,
     merge_persisted,
@@ -18,7 +19,6 @@ from citypods.records import (
     merge_records,
     migrate_legacy_manifests,
     pending_audio_work,
-    pending_transcribe_work,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
@@ -277,7 +277,7 @@ def test_pending_audio_work_is_zero_for_unknown_source(tmp_path):
     )
 
 
-def test_pending_transcribe_work_sums_duration_of_episodes_still_needing_asr(tmp_path):
+def test_transcribe_shard_work_separates_local_duration_from_blocked_work(tmp_path):
     no_audio_yet = _ep("g-no-audio")
     no_audio_yet.uid = "u-no-audio"
     no_audio_yet.duration = 9999  # would dominate the sum if counted — must be excluded
@@ -325,6 +325,19 @@ def test_pending_transcribe_work_sums_duration_of_episodes_still_needing_asr(tmp
     no_served_duration.hosted_audio_url = "https://cdn/u-fallback.m4a"
     no_served_duration.duration = 600  # falls back to the source-feed duration
 
+    oversized = _ep("g-oversized")
+    oversized.uid = "u-oversized"
+    oversized.audio_key = "audio/src/u-oversized.m4a"
+    oversized.audio_spec_hash = "spec"
+    oversized.hosted_audio_url = "https://cdn/u-oversized.m4a"
+    oversized.audio_duration_served = 5 * 3600.0
+
+    unknown_duration = _ep("g-unknown")
+    unknown_duration.uid = "u-unknown"
+    unknown_duration.audio_key = "audio/src/u-unknown.m4a"
+    unknown_duration.audio_spec_hash = "spec"
+    unknown_duration.hosted_audio_url = "https://cdn/u-unknown.m4a"
+
     save_records(
         tmp_path,
         "src",
@@ -335,18 +348,92 @@ def test_pending_transcribe_work_sums_duration_of_episodes_still_needing_asr(tmp
             "u-stale-asr": episode_to_record(stale_asr),
             "u-pending": episode_to_record(never_transcribed),
             "u-fallback": episode_to_record(no_served_duration),
+            "u-oversized": episode_to_record(oversized),
+            "u-unknown": episode_to_record(unknown_duration),
         },
     )
 
-    pending = pending_transcribe_work(tmp_path, "src", asr_enabled=True, asr_pipeline_version="3")
+    estimate = estimate_transcribe_shard_work(
+        tmp_path,
+        "src",
+        asr_enabled=True,
+        asr_pipeline_version="3",
+        local_max_duration_hours=4,
+    )
     # Excluded: no hosted audio yet, a synced provider transcript, and a synced ASR transcript
     # already on the current pipeline version. Included: the stale-pipeline ASR transcript (redo)
-    # and the two never-transcribed episodes (one via audio_duration_served, one via the
-    # ep.duration fallback) — 2400 + 3600 + 600.
-    assert pending == 2400.0 + 3600.0 + 600.0
+    # and locally eligible never-transcribed episodes. The >4h item contributes only a cheap
+    # blocked/defer cost; an unknown-duration item receives the conservative 2h local estimate.
+    assert estimate.local_items == 4
+    assert estimate.local_seconds == 2400.0 + 3600.0 + 600.0 + 2 * 3600.0
+    assert estimate.blocked_items == 1
+    assert estimate.dispatch_items == 0
+    assert estimate.inflight_items == 0
+    assert estimate.shard_weight() == estimate.local_seconds + 1.0
+
+    no_ceiling = estimate_transcribe_shard_work(
+        tmp_path,
+        "src",
+        asr_enabled=True,
+        asr_pipeline_version="3",
+        local_max_duration_hours=0,
+    )
+    assert no_ceiling.local_items == 5
+    assert no_ceiling.local_seconds == estimate.local_seconds + 5 * 3600.0
+    assert no_ceiling.blocked_items == 0
 
 
-def test_pending_transcribe_work_is_zero_when_asr_disabled(tmp_path):
+def test_transcribe_shard_work_accepts_canonical_gpu_route_classification(tmp_path):
+    local = _ep("g-local")
+    local.uid = "u-local"
+    local.audio_key = "audio/src/u-local.m4a"
+    local.audio_spec_hash = "spec"
+    local.hosted_audio_url = "https://cdn/u-local.m4a"
+    local.audio_duration_served = 3600.0
+
+    dispatch = _ep("g-dispatch")
+    dispatch.uid = "u-dispatch"
+    dispatch.audio_key = "audio/src/u-dispatch.m4a"
+    dispatch.audio_spec_hash = "spec"
+    dispatch.hosted_audio_url = "https://cdn/u-dispatch.m4a"
+    dispatch.audio_duration_served = 8 * 3600.0
+
+    inflight = _ep("g-inflight")
+    inflight.uid = "u-inflight"
+    inflight.audio_key = "audio/src/u-inflight.m4a"
+    inflight.audio_spec_hash = "spec"
+    inflight.hosted_audio_url = "https://cdn/u-inflight.m4a"
+    inflight.audio_duration_served = 6 * 3600.0
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-local": episode_to_record(local),
+            "u-dispatch": episode_to_record(dispatch),
+            "u-inflight": episode_to_record(inflight),
+        },
+    )
+
+    routes = {"u-local": "local", "u-dispatch": "dispatch", "u-inflight": "inflight"}
+    estimate = estimate_transcribe_shard_work(
+        tmp_path,
+        "src",
+        asr_enabled=True,
+        asr_pipeline_version="3",
+        local_max_duration_hours=4,
+        route_classifier=lambda ep, _duration: routes[ep.uid],
+    )
+
+    assert estimate.local_seconds == 3600.0
+    assert estimate.local_items == 1
+    assert estimate.dispatch_items == 1
+    assert estimate.blocked_items == 0
+    assert estimate.inflight_items == 1
+    assert estimate.shard_weight() == 3660.0
+
+
+def test_transcribe_shard_work_is_empty_when_asr_disabled(tmp_path):
     pending_ep = _ep("g-pending")
     pending_ep.uid = "u-pending"
     pending_ep.audio_key = "audio/src/u-pending.m4a"
@@ -356,13 +443,26 @@ def test_pending_transcribe_work_is_zero_when_asr_disabled(tmp_path):
     save_records(tmp_path, "src", {"u-pending": episode_to_record(pending_ep)})
 
     assert (
-        pending_transcribe_work(tmp_path, "src", asr_enabled=False, asr_pipeline_version="3") == 0
+        estimate_transcribe_shard_work(
+            tmp_path,
+            "src",
+            asr_enabled=False,
+            asr_pipeline_version="3",
+            local_max_duration_hours=4,
+        ).shard_weight()
+        == 0
     )
 
 
-def test_pending_transcribe_work_is_zero_for_unknown_source(tmp_path):
+def test_transcribe_shard_work_is_empty_for_unknown_source(tmp_path):
     assert (
-        pending_transcribe_work(tmp_path, "no-such-src", asr_enabled=True, asr_pipeline_version="3")
+        estimate_transcribe_shard_work(
+            tmp_path,
+            "no-such-src",
+            asr_enabled=True,
+            asr_pipeline_version="3",
+            local_max_duration_hours=4,
+        ).shard_weight()
         == 0
     )
 
