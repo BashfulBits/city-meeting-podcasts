@@ -149,29 +149,50 @@ class ResourceAdmission:
         self._snapshot = snapshot
         self._sleep = sleep
         self._log = log
+        # Threads currently blocked in ``wait`` (per kind). The heartbeat reads this so a shard
+        # whose worker threads are all parked on the load/memory guard is not misread as idle:
+        # those threads block here *before* reaching the NativeWorkGate, so its ``asr_waiting``
+        # counter stays 0 even when real work is queued behind a running ASR job (run #25).
+        self._waiting_lock = threading.Lock()
+        self._waiting: dict[str, int] = {}
 
     def wait(self, *, kind: str, label: str, stop: Callable[[], bool] | None = None) -> bool:
         """Return True when work may start, or False if the shared stop signal fires."""
         announced = False
-        while True:
-            if stop is not None and stop():
-                return False
-            snap = self._snapshot()
-            reasons = self._reasons(snap)
-            if not reasons:
-                if announced:
+        counted = False
+        try:
+            while True:
+                if stop is not None and stop():
+                    return False
+                snap = self._snapshot()
+                reasons = self._reasons(snap)
+                if not reasons:
+                    if announced:
+                        self._emit(
+                            f"[enrich] resource acquired kind={kind} label={label} "
+                            f"{self._format_snapshot(snap)}"
+                        )
+                    return True
+                if not announced:
                     self._emit(
-                        f"[enrich] resource acquired kind={kind} label={label} "
-                        f"{self._format_snapshot(snap)}"
+                        f"[enrich] resource wait kind={kind} label={label} "
+                        f"reason={';'.join(reasons)} {self._format_snapshot(snap)}"
                     )
-                return True
-            if not announced:
-                self._emit(
-                    f"[enrich] resource wait kind={kind} label={label} "
-                    f"reason={';'.join(reasons)} {self._format_snapshot(snap)}"
-                )
-                announced = True
-            self._sleep(self.poll_seconds)
+                    announced = True
+                if not counted:
+                    with self._waiting_lock:
+                        self._waiting[kind] = self._waiting.get(kind, 0) + 1
+                    counted = True
+                self._sleep(self.poll_seconds)
+        finally:
+            if counted:
+                with self._waiting_lock:
+                    self._waiting[kind] = max(0, self._waiting.get(kind, 0) - 1)
+
+    def current_waiting_counts(self) -> dict[str, int]:
+        """Live count of threads blocked on the guard, per kind, for heartbeat diagnostics."""
+        with self._waiting_lock:
+            return {kind: n for kind, n in self._waiting.items() if n}
 
     def _reasons(self, snap: ResourceSnapshot) -> list[str]:
         reasons: list[str] = []

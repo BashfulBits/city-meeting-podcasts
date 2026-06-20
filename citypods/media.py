@@ -2085,7 +2085,13 @@ def materialize_audio(
         legacy_ok = ep.audio_spec_hash == "legacy" and not (loudness_profile or processing_profile)
         spec_ok = bool(ep.hosted_audio_url) and (ep.audio_spec_hash == spec or legacy_ok)
         present = bool(ep.audio_key) and _present(ep.audio_key)
-        if spec_ok and present:
+        # An episode flagged with a materialization error is not "done" even if a stale object with
+        # a matching spec is still in storage (e.g. an encode that uploaded bytes but failed to
+        # probe a duration). Don't reuse/credit it: re-encode (subject to the backoff below) so a
+        # successful pass clears the error + records the served duration. This is what surfaces the
+        # ~600 errored episodes the ASR lane now skips back to the audio lane (run #25).
+        errored = bool(ep.materialize_error)
+        if spec_ok and present and not errored:
             _backfill_served_duration(ep)
             stats.reused += 1
             continue
@@ -2108,7 +2114,7 @@ def materialize_audio(
         # an encode — so it does NOT draw from the budget. The budget meters the expensive encode
         # path only, which keeps its per-episode time estimate honest and lets a credit-heavy
         # catch-up run reconcile freely without deferring real encodes.
-        if _present(key):
+        if _present(key) and not errored:
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = storage.public_url(key)

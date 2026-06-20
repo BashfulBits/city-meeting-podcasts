@@ -47,6 +47,33 @@ def test_resource_admission_waits_until_memory_and_load_have_headroom():
     assert "resource acquired" in logs[-1]
 
 
+def test_resource_admission_waiting_count_reflects_blocked_threads():
+    """The heartbeat reads ``current_waiting_counts`` so threads parked on the load/memory guard
+    are visible — otherwise a shard whose workers are all blocked here looks idle while the
+    NativeWorkGate's ``asr_waiting`` stays 0 (run #25 misdiagnosis)."""
+    snapshots = iter(
+        [
+            _snap(mem_available=2_000, load1=5.0),  # blocked: load over the per-CPU ceiling
+            _snap(mem_available=2_000, load1=0.5),  # headroom returns
+        ]
+    )
+    seen: list[dict[str, int]] = []
+
+    def _sleep(_seconds: float) -> None:
+        seen.append(guard.current_waiting_counts())
+
+    guard = ResourceAdmission(
+        max_load_per_cpu=1.0,
+        poll_seconds=0.1,
+        snapshot=lambda: next(snapshots),
+        sleep=_sleep,
+    )
+
+    assert guard.wait(kind="asr", label="uid-a") is True
+    assert seen == [{"asr": 1}]  # visible to the heartbeat while blocked
+    assert guard.current_waiting_counts() == {}  # cleared once admitted
+
+
 def test_resource_admission_returns_false_when_stop_fires():
     guard = ResourceAdmission(
         min_available_bytes=1_000,

@@ -692,6 +692,21 @@ class TestTranscriptStageASR:
         assert stats.transcribed == 1
         assert stats.aligned == 0
 
+    def test_asr_skips_episode_with_materialize_error(self, tmp_path, capsys):
+        """An episode flagged with an audio materialization error must not be transcribed: it's a
+        wasted serial ASR slot on possibly-broken audio. It is left for the audio lane to re-encode
+        (run #25)."""
+        ep = _ep_with_audio()
+        ep.materialize_error = "error"
+
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert fake_asr.transcribe_calls == []  # never reached inference
+        assert ep.transcript_synced is False
+        assert stats.ran == 0
+        out = capsys.readouterr().out
+        assert "reason=audio-error" in out
+
     def test_path_b_initial_prompt_contains_title(self, tmp_path):
         """Path B: initial_prompt includes podcast_title and episode title."""
         ep = _ep_with_audio()
