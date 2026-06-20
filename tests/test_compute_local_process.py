@@ -91,6 +91,7 @@ def test_process_backend_can_kill_and_restart_stuck_inference():
     deadline = time.monotonic() + 5
     while backend._process is None and time.monotonic() < deadline:
         time.sleep(0.01)
+    assert backend._process is not None, "process worker did not start within timeout"
     old_pid = backend._process.pid
     assert backend.terminate_active() is True
     thread.join(timeout=5)
