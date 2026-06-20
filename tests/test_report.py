@@ -821,6 +821,7 @@ def test_build_status_merges_scoped_run_events(tmp_path):
                     "transcribed": transcribed,
                     "reused": 2,
                     "backlog": 10,
+                    "defer_reasons": {"insufficient-budget": transcribed},
                     "seconds": 120.0,
                     "bytes": 0,
                     "errors": 0,
@@ -835,11 +836,13 @@ def test_build_status_merges_scoped_run_events(tmp_path):
     latest = status["kpis"]["last_build"]
     assert latest["lane"] == "transcribe"
     assert latest["shards"] == ["0/4", "1/4"]
+    assert latest["complete"] is False
     tx = status["backlog"]["stage_totals"]["transcript"]
     assert tx["transcribed"] == 12
     assert tx["ran"] == 12
     assert tx["reused"] == 4
     assert tx["backlog"] == 20
+    assert tx["defer_reasons"] == {"insufficient-budget": 12}
 
 
 def test_scoped_run_merge_aggregates_provider_lease_telemetry():
@@ -1089,6 +1092,64 @@ def test_build_status_skips_partially_reported_shard_run(tmp_path):
     assert audio_run["totals"]["reused"] == 3009
     assert audio_run["totals"]["backlog"] == 1662
     assert audio_run["totals"]["errors"] == 20
+
+
+def test_latest_build_kpi_skips_partial_logical_run(tmp_path):
+    events = tmp_path / "run_events"
+    events.mkdir()
+
+    def write(name: str, *, run_id: str, shard: str, ts: str, transcribed: int) -> None:
+        (events / name).write_text(
+            json.dumps(
+                {
+                    "ts": ts,
+                    "phase": "enrich",
+                    "lane": "transcribe",
+                    "shard": shard,
+                    "scoped": True,
+                    "cities": 1,
+                    "built": 1,
+                    "skipped": 0,
+                    "errors": 0,
+                    "stages": {
+                        "transcript": {
+                            "ran": transcribed,
+                            "transcribed": transcribed,
+                            "reused": 0,
+                            "backlog": 0,
+                            "seconds": 1,
+                            "bytes": 0,
+                            "errors": 0,
+                        }
+                    },
+                    "github_run_id": run_id,
+                }
+            )
+        )
+
+    for shard in ("0/2", "1/2"):
+        write(
+            f"complete-{shard[0]}.json",
+            run_id="complete",
+            shard=shard,
+            ts=f"2026-06-20T10:0{shard[0]}:00+00:00",
+            transcribed=3,
+        )
+    write(
+        "partial.json",
+        run_id="partial",
+        shard="0/2",
+        ts="2026-06-20T12:00:00+00:00",
+        transcribed=99,
+    )
+
+    status = build_status([], site_config=SITE, state_dir=tmp_path)
+
+    latest = status["kpis"]["last_build"]
+    assert latest["github_run_id"] == "complete"
+    assert latest["shards"] == ["0/2", "1/2"]
+    assert latest["complete"] is True
+    assert status["backlog"]["stage_totals"]["transcript"]["transcribed"] == 6
 
 
 def test_build_status_skips_partial_shard_run_for_every_stage_row(tmp_path):

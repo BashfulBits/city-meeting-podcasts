@@ -294,12 +294,16 @@ function renderBacklog(){
     const shardCount = Array.isArray(run.shards) && run.shards.length ? ` · ${run.shards.length} shards` : run.shard ? ` · shard ${esc(run.shard)}` : '';
     const runLink = run.github_run_url ? ` · <a href="${esc(run.github_run_url)}">Actions</a>` : '';
     const runMeta = hasStageRuns ? `${esc(runKind)} · ${esc(runTs)}${shardCount}${runLink}` : '<span class="muted">latest lane</span>';
+    const reasonEntries = Object.entries(t.defer_reasons||{}).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+    const deferred = `${t.backlog}${reasonEntries.length
+      ? `<div class="muted" style="font-size:.68rem">${reasonEntries.map(([reason,count])=>`${esc(reason)}:${count}`).join(' · ')}</div>`
+      : ''}`;
     return `<div class="bl-row">
       <div>${esc(name)}</div>
       <div>${runMeta}</div>
       <div>${newVal}</div>
       <div>${t.reused}</div>
-      <div>${t.backlog}</div>
+      <div>${deferred}</div>
       <div>${t.errors}</div>
       <div>${t.seconds!=null?t.seconds.toFixed(1)+'s':'—'}</div>
       <div>${bytes}</div>

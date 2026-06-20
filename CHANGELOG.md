@@ -130,6 +130,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **Logical-run telemetry no longer presents a partial shard matrix as the latest completed run,
+  and ASR deferrals now expose structured reasons.** Scoped events receive a stable logical-run id
+  from GitHub run + phase + lane; KPI selection retains the previous complete run until every
+  expected shard reports, while a first-ever partial run remains explicitly marked incomplete.
+  `StageStats.defer_reasons` now records stable ASR reason tokens through run history, cross-shard
+  aggregation, status JSON, and the `/admin/status` stage table instead of collapsing every queued
+  item into one opaque Deferred count.
 - **Local ASR timeouts now terminate native inference and back off only the offending episode.**
   Production local execution moved into a persistent spawned subprocess that keeps model caches warm
   across episodes but can be terminated/restarted when faster-whisper or stable-ts exceeds the

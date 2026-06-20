@@ -158,6 +158,7 @@ class SourcePipeline:
                 "error_samples": [],
                 "rate_limited": 0,
                 "circuit_skipped": 0,
+                "defer_reasons": {},
             }
         )
 
@@ -219,6 +220,8 @@ class SourcePipeline:
                     t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
                 t["rate_limited"] += s.rate_limited
                 t["circuit_skipped"] += s.circuit_skipped
+                for reason, count in s.defer_reasons.items():
+                    t["defer_reasons"][reason] = t["defer_reasons"].get(reason, 0) + count
 
     def resolve_parked_stats(self, stats: list) -> None:
         """Remove backlog counts for circuit-deferred stage results that were retried this run.
@@ -1735,6 +1738,11 @@ def _record_run_history(
         if github_run_id and github_repository
         else None
     )
+    logical_run_id = (
+        f"github:{github_run_id}:{scope.get('phase') or 'phase'}:{scope.get('lane') or 'lane'}"
+        if github_run_id and scope.get("scoped")
+        else None
+    )
 
     stages = {
         name: {
@@ -1750,6 +1758,7 @@ def _record_run_history(
             "errors": t["errors"],
             "rate_limited": t.get("rate_limited", 0),
             "circuit_skipped": t.get("circuit_skipped", 0),
+            "defer_reasons": dict(sorted((t.get("defer_reasons") or {}).items())),
         }
         for name, t in stage_totals.items()
     }
@@ -1780,6 +1789,7 @@ def _record_run_history(
         "stages": stages,
         "github_run_id": github_run_id,
         "github_run_url": github_run_url,
+        "logical_run_id": logical_run_id,
         "peak_load_per_cpu": round(peak_load_per_cpu, 3) if peak_load_per_cpu is not None else None,
         "min_mem_avail_mb": min_mem_avail_mb,
         "window_used_pct": window_used_pct,

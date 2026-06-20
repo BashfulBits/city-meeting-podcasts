@@ -986,6 +986,7 @@ class TestTranscriptStageASR:
         assert fake_asr.align_calls == []
         assert fake_asr.transcribe_calls == []
         assert stats.skipped == 1
+        assert stats.defer_reasons == {"alignment-disabled": 1}
         assert "reason=alignment-disabled" in out
 
     def test_transcribe_lane_ignores_source_text_when_alignment_disabled(self, tmp_path, capsys):
