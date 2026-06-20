@@ -164,6 +164,8 @@ def sources_for_shard(
         raise ValueError(
             f"shard plan has {plan.num_shards} shards, workflow requested {num_shards}"
         )
+    if not (0 <= shard_index < num_shards):
+        raise ValueError(f"shard index {shard_index} out of range for {num_shards} shards")
     planned_sources = set(plan.assignment)
     if planned_sources != expected_sources:
         missing = sorted(expected_sources - planned_sources)
