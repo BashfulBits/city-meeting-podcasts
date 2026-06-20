@@ -1425,6 +1425,136 @@ def test_run_ffmpeg_guarded_classifies_provider_throttle(monkeypatch):
         )
 
 
+def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypatch):
+    import citypods.media as media
+
+    archive_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret-token")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda _url: None)
+    calls: list[list[str]] = []
+
+    def _run(command, **_kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(
+                1,
+                command,
+                stderr=b"Server returned 403 Forbidden",
+            )
+        return subprocess.CompletedProcess(command, 0, b"audio", b"")
+
+    monkeypatch.setattr(media.subprocess, "run", _run)
+    logs: list[str] = []
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+
+    stdout, _stderr = media._run_ffmpeg_guarded(
+        ["ffmpeg", "-i", archive_url, "out.m4a"],
+        phase="source-cache",
+        rate_limit_urls=(archive_url,),
+        rate_limit_circuit=circuit,
+        log=logs.append,
+    )
+
+    assert stdout == b"audio"
+    assert len(calls) == 2
+    assert calls[0][calls[0].index("-i") + 1] == archive_url
+    assert calls[1][calls[1].index("-i") + 1].startswith("https://worker.example/")
+    assert "Authorization: Bearer secret-token\r\n" in calls[1]
+    assert sum(row["rate_limited"] for row in circuit.telemetry().values()) == 0
+    assert any("strategy=cloudflare-worker" in line for line in logs)
+    assert all("secret-token" not in line for line in logs)
+
+
+def test_worker_failure_records_provider_throttle_without_leaking_token(monkeypatch):
+    import citypods.media as media
+
+    archive_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret-token")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda _url: None)
+
+    def _run(command, **_kwargs):
+        raise subprocess.CalledProcessError(
+            1,
+            command,
+            stderr=b"Server returned 403 Forbidden",
+        )
+
+    monkeypatch.setattr(media.subprocess, "run", _run)
+    circuit = media.MediaRateLimitCircuitBreaker(
+        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
+    )
+
+    with pytest.raises(media.RateLimitedMediaFetchError) as excinfo:
+        media._run_ffmpeg_guarded(
+            ["ffmpeg", "-i", archive_url, "out.m4a"],
+            phase="source-cache",
+            rate_limit_urls=(archive_url,),
+            rate_limit_circuit=circuit,
+            log=lambda _line: None,
+        )
+
+    assert "secret-token" not in str(excinfo.value)
+    assert sum(row["rate_limited"] for row in circuit.telemetry().values()) == 1
+
+
+def test_monitored_source_cache_uses_worker_after_direct_granicus_403(monkeypatch):
+    import citypods.media as media
+
+    archive_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret-token")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda _url: None)
+    commands: list[list[str]] = []
+
+    class _Process:
+        pid = 123
+
+        def __init__(self, command):
+            self.command = command
+            self.returncode = 1 if len(commands) == 1 else 0
+
+        def poll(self):
+            return self.returncode
+
+        def communicate(self, timeout=None):
+            if self.returncode:
+                return b"", b"Server returned 403 Forbidden"
+            return b"audio", b""
+
+    def _popen(command, **_kwargs):
+        commands.append(command)
+        return _Process(command)
+
+    stdout, _stderr = media._run_ffmpeg_guarded(
+        ["ffmpeg", "-i", archive_url, "out.mka"],
+        phase="source-cache",
+        memory_floor_bytes=1,
+        rate_limit_urls=(archive_url,),
+        snapshot=_snap,
+        sleep=lambda _seconds: None,
+        log=lambda _line: None,
+        popen=_popen,
+        child_rss=lambda _pid: 0,
+    )
+
+    assert stdout == b"audio"
+    assert len(commands) == 2
+    assert commands[1][commands[1].index("-i") + 1].startswith("https://worker.example/")
+
+
 def test_run_ffmpeg_guarded_poll_interval_is_responsive():
     """Regression guard: a 5s poll cadence logged every sub-5s fetch as ``seconds=5.0``, masking the
     truncation bug. Keep the cadence small so reported timings reflect real runtime."""

@@ -78,6 +78,11 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      # Native Granicus archive media is attempted directly first. An immediate HTTP 403 gets one
+      # authenticated retry through the closed Cloudflare Worker while the same provider lease and
+      # circuit admission remain held.
+      GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+      GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
     steps:
       - uses: actions/checkout@v6
 
@@ -166,6 +171,8 @@ jobs:
               --env R2_SECRET_ACCESS_KEY \
               --env R2_BUCKET \
               --env R2_PUBLIC_BASE_URL \
+              --env GRANICUS_PROXY_BASE_URL \
+              --env GRANICUS_PROXY_TOKEN \
               "${AUDIO_RUNNER_IMAGE}" \
               enrich --lane audio --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
           else

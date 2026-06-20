@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -137,6 +139,54 @@ def test_transport_total_size_prefers_content_range():
 )
 def test_transport_outcome_classification(returncode, stderr, size, status, expected):
     assert transport._outcome(returncode, stderr, size, status) == expected
+
+
+def test_worker_range_size_limit_is_access_success_when_upstream_ignored_range(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "range.bin"
+
+    def _run(command, **_kwargs):
+        headers = Path(command[command.index("--dump-header") + 1])
+        headers.write_text(
+            "HTTP/2 200\r\n"
+            "content-type: video/mp4\r\n"
+            "content-length: 867494028\r\n"
+            "accept-ranges: bytes\r\n\r\n"
+        )
+        metrics = {
+            "http_code": 200,
+            "url_effective": "https://worker.example/v1/archive/a/a.mp4",
+            "remote_ip": "192.0.2.1",
+        }
+        return subprocess.CompletedProcess(
+            command,
+            63,
+            json.dumps(metrics),
+            "curl: (63) Maximum file size exceeded",
+        )
+
+    monkeypatch.setattr(transport, "validate_source_url", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(transport.subprocess, "run", _run)
+
+    result = transport.run_curl(
+        sequence=1,
+        clip="arlington",
+        url="https://worker.example/v1/archive/a/a.mp4",
+        curl="curl",
+        request_shape="cloudflare_worker_range",
+        timeout=30,
+        output=output,
+        max_bytes=16 * 1024 * 1024,
+        byte_range="0-16777215",
+        order_in_pair=1,
+        allowed_hosts=None,
+    )
+
+    assert result.ok is True
+    assert result.outcome == "range_unsupported"
+    assert result.http_status == 200
+    assert result.content_length == 867494028
 
 
 @pytest.mark.parametrize(

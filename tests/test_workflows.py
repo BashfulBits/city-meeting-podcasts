@@ -163,6 +163,11 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert "apt-get" not in runs
     assert "docker run --rm --init" in runs
     assert "python -m citypods.cli enrich --lane audio" in runs
+    assert job["env"]["GRANICUS_PROXY_BASE_URL"] == "${{ secrets.GRANICUS_PROXY_BASE_URL }}"
+    assert job["env"]["GRANICUS_PROXY_TOKEN"] == "${{ secrets.GRANICUS_PROXY_TOKEN }}"
+    audio_step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    assert "--env GRANICUS_PROXY_BASE_URL" in audio_step["run"]
+    assert "--env GRANICUS_PROXY_TOKEN" in audio_step["run"]
 
 
 def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():

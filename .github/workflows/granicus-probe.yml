@@ -35,6 +35,14 @@ on:
         description: "Maximum objects to download fully and process locally"
         type: number
         default: 1
+      production_encode_clip:
+        description: "Optional full production-recipe encode through the direct-first Worker fallback"
+        type: choice
+        options:
+          - none
+          - arlington-audio40
+          - pflugerville-audio40
+        default: none
 
 permissions:
   contents: read
@@ -100,6 +108,7 @@ jobs:
             --range-mib "${{ inputs.range_mib }}" \
             --full-download-max-mib "${{ inputs.full_download_max_mib }}" \
             --full-download-count "${{ inputs.full_download_count }}" \
+            --production-encode-clip "${{ inputs.production_encode_clip }}" \
             --output granicus-worker-results.json
       - name: Run sustained Granicus matrix
         if: ${{ inputs.probe_kind == 'sustained' }}

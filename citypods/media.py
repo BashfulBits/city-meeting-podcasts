@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from citypods.granicus_proxy import worker_fallback_command
 from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
 from citypods.provider_circuits import MediaRateLimitCircuitBreaker
@@ -283,6 +284,30 @@ def _raise_if_rate_limited(
     )
 
 
+def _redacted_process_error(
+    exc: subprocess.CalledProcessError,
+    direct_command: list[str],
+) -> subprocess.CalledProcessError:
+    """Keep the Worker bearer header out of higher-level exception strings and logs."""
+    return subprocess.CalledProcessError(
+        exc.returncode,
+        direct_command,
+        output=exc.output,
+        stderr=exc.stderr,
+    )
+
+
+def _worker_fallback_for_403(
+    *,
+    command: list[str],
+    stderr: bytes | str | None,
+    rate_limit_urls: Sequence[str],
+) -> list[str] | None:
+    if _rate_limited_status(stderr) != "HTTP 403":
+        return None
+    return worker_fallback_command(command, tuple(rate_limit_urls))
+
+
 @contextmanager
 def _circuit_admission(
     circuit: MediaRateLimitCircuitBreaker | None,
@@ -371,6 +396,57 @@ def _run_ffmpeg_guarded(
                     log,
                     f"[enrich] ffmpeg {phase} error returncode={exc.returncode}{detail}",
                 )
+                fallback_cmd = _worker_fallback_for_403(
+                    command=cmd,
+                    stderr=exc.stderr,
+                    rate_limit_urls=rate_limit_urls,
+                )
+                if fallback_cmd is not None:
+                    _log_ffmpeg_event(
+                        log,
+                        f"[enrich] granicus transport fallback phase={phase} "
+                        "direct=HTTP403 strategy=cloudflare-worker",
+                    )
+                    try:
+                        result = subprocess.run(
+                            fallback_cmd,
+                            check=True,
+                            capture_output=True,
+                            timeout=timeout,
+                        )
+                    except subprocess.TimeoutExpired as fallback_exc:
+                        raise subprocess.TimeoutExpired(
+                            cmd,
+                            fallback_exc.timeout,
+                            output=fallback_exc.output,
+                            stderr=fallback_exc.stderr,
+                        ) from fallback_exc
+                    except subprocess.CalledProcessError as fallback_exc:
+                        fallback_stderr = _stderr_tail(fallback_exc.stderr)
+                        fallback_detail = f" stderr={fallback_stderr}" if fallback_stderr else ""
+                        _log_ffmpeg_event(
+                            log,
+                            f"[enrich] granicus transport fallback error phase={phase} "
+                            f"strategy=cloudflare-worker returncode={fallback_exc.returncode}"
+                            f"{fallback_detail}",
+                        )
+                        _raise_if_rate_limited(
+                            phase=phase,
+                            stderr=fallback_exc.stderr,
+                            rate_limit_urls=rate_limit_urls,
+                            rate_limit_circuit=rate_limit_circuit,
+                        )
+                        raise _redacted_process_error(fallback_exc, cmd) from fallback_exc
+                    _log_ffmpeg_event(
+                        log,
+                        f"[enrich] granicus transport fallback done phase={phase} "
+                        "strategy=cloudflare-worker",
+                    )
+                    _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
+                    return (
+                        getattr(result, "stdout", b"") or b"",
+                        getattr(result, "stderr", b"") or b"",
+                    )
                 _raise_if_rate_limited(
                     phase=phase,
                     stderr=exc.stderr,
@@ -393,20 +469,69 @@ def _run_ffmpeg_guarded(
         DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
         _circuit_admission(rate_limit_circuit, rate_limit_urls),
     ):
-        return _run_ffmpeg_popen_monitored(
-            cmd,
-            phase=phase,
-            timeout=timeout,
-            memory_floor_bytes=memory_floor_bytes,
-            poll_seconds=poll_seconds,
-            snapshot=snapshot,
-            sleep=sleep,
-            log=log,
-            popen=popen,
-            child_rss=child_rss,
-            rate_limit_urls=rate_limit_urls,
-            rate_limit_circuit=rate_limit_circuit,
-        )
+        try:
+            return _run_ffmpeg_popen_monitored(
+                cmd,
+                phase=phase,
+                timeout=timeout,
+                memory_floor_bytes=memory_floor_bytes,
+                poll_seconds=poll_seconds,
+                snapshot=snapshot,
+                sleep=sleep,
+                log=log,
+                popen=popen,
+                child_rss=child_rss,
+                classify_rate_limit=False,
+            )
+        except subprocess.CalledProcessError as exc:
+            fallback_cmd = _worker_fallback_for_403(
+                command=cmd,
+                stderr=exc.stderr,
+                rate_limit_urls=rate_limit_urls,
+            )
+            if fallback_cmd is None:
+                _raise_if_rate_limited(
+                    phase=phase,
+                    stderr=exc.stderr,
+                    rate_limit_urls=rate_limit_urls,
+                    rate_limit_circuit=rate_limit_circuit,
+                )
+                raise
+            _log_ffmpeg_event(
+                log,
+                f"[enrich] granicus transport fallback phase={phase} "
+                "direct=HTTP403 strategy=cloudflare-worker",
+            )
+            try:
+                result = _run_ffmpeg_popen_monitored(
+                    fallback_cmd,
+                    phase=f"{phase}-worker",
+                    timeout=timeout,
+                    memory_floor_bytes=memory_floor_bytes,
+                    poll_seconds=poll_seconds,
+                    snapshot=snapshot,
+                    sleep=sleep,
+                    log=log,
+                    popen=popen,
+                    child_rss=child_rss,
+                    rate_limit_urls=rate_limit_urls,
+                    rate_limit_circuit=rate_limit_circuit,
+                )
+            except subprocess.TimeoutExpired as fallback_exc:
+                raise subprocess.TimeoutExpired(
+                    cmd,
+                    fallback_exc.timeout,
+                    output=fallback_exc.output,
+                    stderr=fallback_exc.stderr,
+                ) from fallback_exc
+            except subprocess.CalledProcessError as fallback_exc:
+                raise _redacted_process_error(fallback_exc, cmd) from fallback_exc
+            _log_ffmpeg_event(
+                log,
+                f"[enrich] granicus transport fallback done phase={phase} "
+                "strategy=cloudflare-worker",
+            )
+            return result
 
 
 def _run_ffmpeg_popen_monitored(
@@ -423,6 +548,7 @@ def _run_ffmpeg_popen_monitored(
     child_rss: Callable[[int], int | None],
     rate_limit_urls: Sequence[str] = (),
     rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    classify_rate_limit: bool = True,
 ) -> tuple[bytes, bytes]:
     """Popen + poll/sample loop for :func:`_run_ffmpeg_guarded` (memory-floor path). The caller
     holds the per-host rate-limit slot — and the distributed provider lease — for the whole
@@ -468,12 +594,13 @@ def _run_ffmpeg_popen_monitored(
                     f"min_mem_avail={_format_optional_bytes(min_mem_available)} "
                     f"samples={samples}{detail}",
                 )
-                _raise_if_rate_limited(
-                    phase=phase,
-                    stderr=stderr,
-                    rate_limit_urls=rate_limit_urls,
-                    rate_limit_circuit=rate_limit_circuit,
-                )
+                if classify_rate_limit:
+                    _raise_if_rate_limited(
+                        phase=phase,
+                        stderr=stderr,
+                        rate_limit_urls=rate_limit_urls,
+                        rate_limit_circuit=rate_limit_circuit,
+                    )
                 raise subprocess.CalledProcessError(
                     returncode,
                     cmd,
