@@ -300,6 +300,53 @@ def pending_audio_work(
     return pending
 
 
+def pending_transcribe_work(
+    state_dir: Path,
+    src_key: str,
+    *,
+    asr_enabled: bool,
+    asr_pipeline_version: str,
+) -> float:
+    """Sum this source's hosted-audio duration still needing a fresh ASR transcript, for the
+    ``transcribe`` lane's shard weight — the ASR analogue of :func:`pending_audio_work`.
+
+    Whisper runtime scales with recording duration, not episode count, so the weight is total
+    *seconds* of pending audio rather than a count: a source with one 4-hour meeting and a
+    source with eight 15-minute ones both look like "1 pending episode" under a count, but are
+    very different ASR workloads. Audio backlog (``pending_audio_work``) is the wrong signal for
+    this lane too — in steady state it sits near zero for nearly every source (audio runs more
+    often than ASR), which collapses ASR shard assignment to alphabetical round-robin, blind to
+    how much transcription work each source actually has outstanding.
+
+    Mirrors only the local, I/O-free half of ``TranscriptStage.process``'s ``lane="transcribe"``
+    reuse check (the audio-readiness gate + the synced/stale-ASR-version check): it skips that
+    stage's ``storage.exists()`` probes and provider-transcript fetch, the same tradeoff
+    ``pending_audio_work`` makes for the audio lane. One known overestimate follows from skipping
+    the fetch: an episode with an unfetched provider transcript URL that *would* resolve to an
+    already-timed transcript (skipping ASR entirely) still counts as pending here. Advisory only,
+    same as ``pending_audio_work`` — it sizes a shard, it doesn't gate what that shard transcribes.
+    An episode without hosted audio yet contributes nothing: it isn't transcribable this run
+    regardless of lane.
+    """
+    if not asr_enabled:
+        return 0.0
+    pending = 0.0
+    for rec in load_records(state_dir, src_key).values():
+        ep = record_to_episode(rec)
+        if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
+            continue
+        if ep.transcript_synced:
+            key_name = (ep.transcript_key or "").rsplit("/", 1)[-1]
+            is_stale_asr = (
+                key_name.startswith(f"{ep.uid or ep.guid}-asr-")
+                and ep.transcript_pipeline_version != asr_pipeline_version
+            )
+            if not is_stale_asr:
+                continue
+        pending += ep.audio_duration_served or ep.duration or 0.0
+    return pending
+
+
 def referenced_audio_keys(state_dir: Path) -> set[str]:
     """Every *managed* object key currently referenced by any source's records — the live set
     an orphan GC keeps; anything in storage outside this set is a candidate for deletion.

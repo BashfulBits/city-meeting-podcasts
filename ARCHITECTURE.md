@@ -48,8 +48,9 @@ see below): `deploy.yml` is render-only — it publishes Pages quickly from alre
 runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two dedicated workflows,
 `audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription), each on its
 own concurrency group **sharded by `source_key`** (`strategy.matrix.shard`). Assignment is
-source-atomic and weighted by the number of configured feeds/bodies sharing a source, so large sources
-are not casually bundled with small ones while concurrent shards still never write the same record file.
+source-atomic and weighted by each lane's own remaining-work estimate — pending encode count for
+Audio, pending transcription duration for ASR — so large backlogs are not casually bundled with small
+ones while concurrent shards still never write the same record file.
 The Audio lane runs its CLI inside the version-pinned
 `ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1` image. That image is built weekly and on
 runtime-definition changes from a digest-pinned Python base plus a checksum-pinned static

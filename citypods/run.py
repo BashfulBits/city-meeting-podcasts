@@ -54,6 +54,7 @@ from citypods.records import (
     merge_records,
     migrate_legacy_manifests,
     pending_audio_work,
+    pending_transcribe_work,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
@@ -78,6 +79,7 @@ from citypods.site import (
     render_redirect_page,
 )
 from citypods.stages import (
+    ASR_PIPELINE_VERSION,
     LANE_STAGES,
     StageContext,
     _materialize_set,
@@ -972,25 +974,37 @@ def build(
             raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
         # Source-atomic weighted assignment (computed from local state only, so every shard
         # process in one workflow derives the same partition even if a sibling pushes state
-        # mid-run). Weight by each source's *remaining* audio work — episodes that still need an
-        # encode under the current spec, not the source's total episode count — so a source that's
-        # mostly caught up doesn't keep crowding out a source with a real backlog (#37).
+        # mid-run). The weight signal is lane-specific: the ASR (``transcribe``) lane weighs by
+        # pending transcription *duration*, not the audio lane's pending *encode count* — audio
+        # backlog sits near zero for most sources by the time ASR runs (audio runs more often than
+        # ASR), which otherwise collapses ASR shard assignment to alphabetical round-robin
+        # regardless of how much transcription work is actually outstanding.
         source_city = {source_key(c): c for c in cities}
-        source_weights = {
-            key: (
-                pending_audio_work(
+
+        def _shard_weight(key: str, city: City) -> float:
+            if not records_path(state_dir, key).exists():
+                return 1.0  # never-crawled: unknown backlog, don't let it default to zero weight
+            if lane == "transcribe":
+                return pending_transcribe_work(
                     state_dir,
                     key,
-                    extract_audio=city.extract_audio,
-                    max_kbps=max_kbps,
-                    loudness_profile=loudness_profile,
-                    processing_profile=audio_processing_profile,
+                    asr_enabled=city.asr_enabled,
+                    asr_pipeline_version=ASR_PIPELINE_VERSION,
                 )
-                if records_path(state_dir, key).exists()
-                else 1.0  # never-crawled: unknown backlog, don't let it default to zero weight
+            # Audio lane (and the unsharded/legacy default): remaining encode count — episodes
+            # that still need an encode under the current spec, not the source's total episode
+            # count — so a source that's mostly caught up doesn't keep crowding out a source with
+            # a real backlog (#37).
+            return pending_audio_work(
+                state_dir,
+                key,
+                extract_audio=city.extract_audio,
+                max_kbps=max_kbps,
+                loudness_profile=loudness_profile,
+                processing_profile=audio_processing_profile,
             )
-            for key, city in source_city.items()
-        }
+
+        source_weights = {key: _shard_weight(key, city) for key, city in source_city.items()}
         assignment = shard_assignment((source_key(c) for c in cities), n, weights=source_weights)
         cities = [c for c in cities if assignment.get(source_key(c)) == k]
     # Backlog prioritization policy (H5). Built once per run so any windowed-recency horizon is

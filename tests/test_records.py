@@ -18,6 +18,7 @@ from citypods.records import (
     merge_records,
     migrate_legacy_manifests,
     pending_audio_work,
+    pending_transcribe_work,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
@@ -272,6 +273,96 @@ def test_pending_audio_work_is_zero_for_unknown_source(tmp_path):
             loudness_profile="",
             processing_profile="",
         )
+        == 0
+    )
+
+
+def test_pending_transcribe_work_sums_duration_of_episodes_still_needing_asr(tmp_path):
+    no_audio_yet = _ep("g-no-audio")
+    no_audio_yet.uid = "u-no-audio"
+    no_audio_yet.duration = 9999  # would dominate the sum if counted — must be excluded
+
+    synced_provider = _ep("g-provider")
+    synced_provider.uid = "u-provider"
+    synced_provider.audio_key = "audio/src/u-provider.m4a"
+    synced_provider.audio_spec_hash = "spec"
+    synced_provider.hosted_audio_url = "https://cdn/u-provider.m4a"
+    synced_provider.audio_duration_served = 1200.0
+    synced_provider.transcript_key = "transcripts/src/u-provider-officialminutes.vtt"
+    synced_provider.transcript_synced = True
+
+    synced_current_asr = _ep("g-current-asr")
+    synced_current_asr.uid = "u-current-asr"
+    synced_current_asr.audio_key = "audio/src/u-current-asr.m4a"
+    synced_current_asr.audio_spec_hash = "spec"
+    synced_current_asr.hosted_audio_url = "https://cdn/u-current-asr.m4a"
+    synced_current_asr.audio_duration_served = 1800.0
+    synced_current_asr.transcript_key = "transcripts/src/u-current-asr-asr-recipe.vtt"
+    synced_current_asr.transcript_synced = True
+    synced_current_asr.transcript_pipeline_version = "3"
+
+    stale_asr = _ep("g-stale-asr")
+    stale_asr.uid = "u-stale-asr"
+    stale_asr.audio_key = "audio/src/u-stale-asr.m4a"
+    stale_asr.audio_spec_hash = "spec"
+    stale_asr.hosted_audio_url = "https://cdn/u-stale-asr.m4a"
+    stale_asr.audio_duration_served = 2400.0
+    stale_asr.transcript_key = "transcripts/src/u-stale-asr-asr-recipe.vtt"
+    stale_asr.transcript_synced = True
+    stale_asr.transcript_pipeline_version = "2"  # superseded by ASR_PIPELINE_VERSION="3"
+
+    never_transcribed = _ep("g-pending")
+    never_transcribed.uid = "u-pending"
+    never_transcribed.audio_key = "audio/src/u-pending.m4a"
+    never_transcribed.audio_spec_hash = "spec"
+    never_transcribed.hosted_audio_url = "https://cdn/u-pending.m4a"
+    never_transcribed.audio_duration_served = 3600.0
+
+    no_served_duration = _ep("g-fallback")
+    no_served_duration.uid = "u-fallback"
+    no_served_duration.audio_key = "audio/src/u-fallback.m4a"
+    no_served_duration.audio_spec_hash = "spec"
+    no_served_duration.hosted_audio_url = "https://cdn/u-fallback.m4a"
+    no_served_duration.duration = 600  # falls back to the source-feed duration
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-no-audio": episode_to_record(no_audio_yet),
+            "u-provider": episode_to_record(synced_provider),
+            "u-current-asr": episode_to_record(synced_current_asr),
+            "u-stale-asr": episode_to_record(stale_asr),
+            "u-pending": episode_to_record(never_transcribed),
+            "u-fallback": episode_to_record(no_served_duration),
+        },
+    )
+
+    pending = pending_transcribe_work(tmp_path, "src", asr_enabled=True, asr_pipeline_version="3")
+    # Excluded: no hosted audio yet, a synced provider transcript, and a synced ASR transcript
+    # already on the current pipeline version. Included: the stale-pipeline ASR transcript (redo)
+    # and the two never-transcribed episodes (one via audio_duration_served, one via the
+    # ep.duration fallback) — 2400 + 3600 + 600.
+    assert pending == 2400.0 + 3600.0 + 600.0
+
+
+def test_pending_transcribe_work_is_zero_when_asr_disabled(tmp_path):
+    pending_ep = _ep("g-pending")
+    pending_ep.uid = "u-pending"
+    pending_ep.audio_key = "audio/src/u-pending.m4a"
+    pending_ep.audio_spec_hash = "spec"
+    pending_ep.hosted_audio_url = "https://cdn/u-pending.m4a"
+    pending_ep.audio_duration_served = 3600.0
+    save_records(tmp_path, "src", {"u-pending": episode_to_record(pending_ep)})
+
+    assert (
+        pending_transcribe_work(tmp_path, "src", asr_enabled=False, asr_pipeline_version="3") == 0
+    )
+
+
+def test_pending_transcribe_work_is_zero_for_unknown_source(tmp_path):
+    assert (
+        pending_transcribe_work(tmp_path, "no-such-src", asr_enabled=True, asr_pipeline_version="3")
         == 0
     )
 

@@ -92,6 +92,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **ASR shard assignment is now weighted by pending transcription duration, not the audio lane's
+  pending-encode backlog.** `run.py` fed `asr.yml`'s `--shard K/4` partition the same
+  `pending_audio_work` signal as `audio.yml`; in steady state (Audio runs more often than ASR) that
+  backlog sits near zero for nearly every source, which silently collapsed ASR shard assignment to
+  alphabetical round-robin — blind to how much transcription work a source actually had outstanding,
+  so one shard could own a multi-hour backlog while a sibling finished and sat idle. A new
+  `pending_transcribe_work` (`citypods/records.py`) sums each source's hosted-audio seconds still
+  needing a fresh or stale-pipeline-version ASR transcript (mirroring `TranscriptStage`'s
+  `lane="transcribe"` reuse check, I/O-free at shard-assignment time like the existing helper);
+  `run.py` selects it only when `lane == "transcribe"`, so the Audio lane's weighting is unchanged.
+  No audio/transcript recipe, pipeline version, or stored artifact changes.
 - **Granicus throttle circuits are now shared across Audio shards and isolated by tenant
   ([#337](https://github.com/BashfulBits/city-meeting-podcasts/issues/337)).** The previous breaker
   counted failures independently in each shard and opened one registrable-domain circuit, so the same
