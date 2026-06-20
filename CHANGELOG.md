@@ -92,6 +92,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `tests/test_compute_dispatch.py`.
 
 ### Fixed
+- **The scheduled transcribe lane no longer defers episodes merely because they have untimed
+  provider text while forced alignment is disabled.** `TranscriptStage` previously applied the
+  `alignment-disabled` guard before `--lane transcribe` discarded the alignment hint, so exactly
+  the caption/minutes-bearing episodes that the fresh-ASR lane was intended to cover stayed queued.
+  Lane routing now happens first: `transcribe` always selects fresh faster-whisper, while the
+  unscheduled `align` lane and combined auto mode retain the alignment-disabled defer behavior.
 - **ASR shard assignment is now weighted by routing-aware transcription cost, not the audio lane's
   pending-encode backlog.** `run.py` fed `asr.yml`'s `--shard K/4` partition the same
   `pending_audio_work` signal as `audio.yml`; in steady state (Audio runs more often than ASR) that
