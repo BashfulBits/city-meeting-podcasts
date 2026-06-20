@@ -130,6 +130,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **Fresh transcription no longer installs the alignment and benchmark dependency stacks.**
+  Optional dependencies are split into `asr-transcribe` (faster-whisper), `asr-align` (stable-ts
+  with its faster-whisper adapter), and `asr-bench` (both plus jiwer), while the existing `asr`
+  aggregate remains backward-compatible. Scheduled `asr.yml` installs only
+  `asr-transcribe,storage`; the manual benchmark installs `asr-bench`; the future align-only lane
+  is explicitly assigned `asr-align,storage`. This reduces install time/disk and prevents
+  transcribe runners from importing the unused torch/stable-ts alignment stack.
 - **Logical-run telemetry no longer presents a partial shard matrix as the latest completed run,
   and ASR deferrals now expose structured reasons.** Scoped events receive a stable logical-run id
   from GitHub run + phase + lane; KPI selection retains the previous complete run until every

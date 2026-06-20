@@ -20,10 +20,22 @@ dependencies = [
 [project.optional-dependencies]
 storage = ["boto3>=1.34"]           # Cloudflare R2 / S3-compatible upload
 svg = ["cairosvg>=2.7"]              # seal rendering (PR-B; needs libcairo)
-asr = [
-    "faster-whisper>=1.0",          # CTranslate2-optimised Whisper inference (CPU int8)
-    "stable-ts>=2.17",              # forced text-to-audio alignment (Path A)
+asr-transcribe = [
+    "faster-whisper>=1.0",          # CTranslate2-optimised fresh transcription (CPU int8)
+]
+asr-align = [
+    "stable-ts[fw]>=2.17",          # stable-ts forced alignment using its faster-whisper backend
+]
+asr-bench = [
+    "faster-whisper>=1.0",
+    "stable-ts[fw]>=2.17",
     "jiwer>=3.0",                   # WER computation for asr-bench diagnostic
+]
+# Backward-compatible aggregate for local contributors that want every ASR surface.
+asr = [
+    "faster-whisper>=1.0",
+    "stable-ts[fw]>=2.17",
+    "jiwer>=3.0",
 ]
 dev = ["pytest>=8.0", "ruff>=0.6", "boto3>=1.34"]
 

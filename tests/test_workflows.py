@@ -249,6 +249,9 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
     assert "prepare_whisper.py" in runs
     assert "docker run" not in runs
     assert "faster-whisper-large-v3-turbo" in str(job["steps"])
+    install = next(s for s in job["steps"] if s.get("name") == "Install")
+    assert 'pip install -e ".[asr-transcribe,storage]"' in install["run"]
+    assert "asr-align" not in install["run"]
 
 
 def test_granicus_sustained_probe_is_manual_isolated_and_archived():
@@ -391,7 +394,7 @@ def test_asr_bench_workflow_is_manual_serial_and_publishes_report():
     assert inputs["cpu_threads"]["default"] == "4,2,1"
 
     install = next(s for s in job["steps"] if s.get("name") == "Install")
-    assert 'pip install -e ".[asr]"' in install["run"]
+    assert 'pip install -e ".[asr-bench]"' in install["run"]
 
     bench = next(s for s in job["steps"] if s.get("name") == "Run ASR benchmark")
     run = bench["run"]

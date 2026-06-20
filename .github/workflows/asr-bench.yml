@@ -96,7 +96,7 @@ jobs:
             asr-bench-models-${{ runner.os }}-
 
       - name: Install
-        run: pip install -e ".[asr]"
+        run: pip install -e ".[asr-bench]"
 
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg

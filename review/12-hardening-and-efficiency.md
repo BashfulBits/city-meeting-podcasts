@@ -667,6 +667,11 @@ future `transcript-asr` claim rather than falling back inline. This keeps peak m
 throughput measurements comparable, and prevents the 2026-06-09 failure mode where stable-ts alignment
 stacked with ffmpeg work and GitHub terminated the runner with exit 143.
 
+Dependency installation follows the same isolation contract: the production transcribe lane installs
+`.[asr-transcribe,storage]`; the future align-only lane installs `.[asr-align,storage]`; the manual
+comparison harness installs `.[asr-bench]`. The aggregate `.[asr]` extra remains contributor-facing
+compatibility, not a production workflow dependency.
+
 **Files.** `.github/workflows/asr-bench.yml`, `.github/workflows/asr.yml`,
 `.github/workflows/audio.yml` (new, H6b/H11b); `citypods/cli.py` (ensure
 `enrich --stage transcript --lane {transcribe,align} --shard k/N` or `--source <key>` selection exists);
