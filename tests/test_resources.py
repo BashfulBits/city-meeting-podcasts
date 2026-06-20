@@ -235,6 +235,46 @@ def test_native_work_gate_total_wait_seconds_accumulates():
     assert gate.total_wait_seconds > 0.0
 
 
+def test_native_work_gate_current_counts_idle():
+    gate = NativeWorkGate(max_audio_active=3, poll_seconds=0.01)
+    assert gate.current_counts() == {
+        "audio_active": 0,
+        "max_audio_active": 3,
+        "audio_finalize_waiting": 0,
+        "asr_active": False,
+        "asr_waiting": 0,
+    }
+
+
+def test_native_work_gate_current_counts_reflects_active_audio():
+    gate = NativeWorkGate(max_audio_active=2, poll_seconds=0.01)
+    assert gate.acquire(kind="audio", label="a") is True
+    assert gate.current_counts()["audio_active"] == 1
+
+    gate.release(kind="audio")
+    assert gate.current_counts()["audio_active"] == 0
+
+
+def test_native_work_gate_current_counts_reflects_asr_waiting():
+    gate = NativeWorkGate(poll_seconds=0.01)
+    assert gate.acquire(kind="audio", label="a") is True
+
+    asr_waiting = threading.Event()
+
+    def _asr():
+        gate.acquire(kind="asr", label="asr-a")
+        gate.release(kind="asr")
+
+    t = threading.Thread(target=_asr)
+    t.start()
+    assert _wait_for(lambda: gate.current_counts()["asr_waiting"] == 1)
+    asr_waiting.set()
+
+    gate.release(kind="audio")
+    t.join(timeout=2)
+    assert gate.current_counts()["asr_waiting"] == 0
+
+
 def test_memory_reservation_admits_within_budget():
     r = MemoryReservation(budget_bytes=100, poll_seconds=0.01)
     assert r.reserve(60, label="a") is True

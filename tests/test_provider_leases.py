@@ -303,3 +303,33 @@ def test_stop_never_firing_still_acquires_lease(tmp_path):
     pool = _pool(store)
     with pool.slots(["https://archive-video.granicus.com/x.mp4"], stop=lambda: False):
         pass  # acquired without raising
+
+
+def test_current_waiting_counts_empty_when_idle(tmp_path):
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    pool = _pool(store)
+    assert pool.current_waiting_counts() == {}
+
+
+def test_current_waiting_counts_reflects_live_queue_depth(tmp_path):
+    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    first = _pool(store)
+    second = _pool(store)
+    waiting_seen = threading.Event()
+
+    def _waiter():
+        with second.slots(["https://archive-video.granicus.com/x.mp4"]):
+            pass
+
+    with first.slots(["https://archive-video.granicus.com/x.mp4"]):
+        t = threading.Thread(target=_waiter)
+        t.start()
+        for _ in range(200):
+            if second.current_waiting_counts().get("granicus.com", 0) == 1:
+                waiting_seen.set()
+                break
+            time.sleep(0.01)
+        assert waiting_seen.is_set()
+
+    t.join(timeout=2)
+    assert second.current_waiting_counts() == {}
