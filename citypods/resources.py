@@ -370,6 +370,18 @@ class NativeWorkGate:
         with self._wait_lock:
             return self._total_wait_seconds
 
+    def current_counts(self) -> dict[str, int | bool]:
+        """Live snapshot of gate occupancy, for heartbeat/stall diagnostics (cumulative
+        ``total_wait_seconds`` alone can't show *why* a tick is currently blocked)."""
+        with self._cond:
+            return {
+                "audio_active": self._audio_active,
+                "max_audio_active": self._max_audio_active,
+                "audio_finalize_waiting": self._audio_finalize_waiting,
+                "asr_active": self._asr_active,
+                "asr_waiting": self._asr_waiting,
+            }
+
     def _emit(self, message: str) -> None:
         if self._log is not None:
             self._log(message)

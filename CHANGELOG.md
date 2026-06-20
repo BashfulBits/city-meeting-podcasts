@@ -118,6 +118,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   failure and shouldn't count against an episode's retry backoff. The actual ffmpeg subprocess call
   remains intentionally out of scope: `stop()` still can't preempt a thread parked in
   `subprocess.run`, only `audio_encode_timeout_minutes` bounds that.
+- **The heartbeat now surfaces live `NativeWorkGate` occupancy and provider-lease queue depth each
+  tick, not just cumulative end-of-run totals.** `total_wait_seconds` and `telemetry()` could only
+  show *how much* waiting had happened over the whole run, not *whether* the current tick was
+  blocked — useless for telling "the gate is fully booked right now" apart from "nothing has
+  contended in a while." `NativeWorkGate.current_counts()` (`citypods/resources.py`) and
+  `DistributedProviderLeasePool.current_waiting_counts()` (`citypods/provider_leases.py`, a new
+  live per-domain gauge incremented/decremented around `_acquire`'s wait loop) expose the live
+  state; `_ResourceHeartbeat` (`citypods/run.py`) prints a `[enrich] gate: ...` line and one
+  `[enrich] leases: <domain> ...` line per tick, suppressed entirely when idle to avoid log noise
+  on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
 - **`SilencePlanner`'s `ffmpeg silencedetect` pass no longer oversubscribes the CPU alongside
