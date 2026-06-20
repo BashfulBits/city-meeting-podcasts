@@ -449,6 +449,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   to `contracts.yml`), so a silent "audio never downloads" regression now fails loudly.
 
 ### Changed
+- **Granicus distributed-lease TTL dropped from 3600s to 900s so a dead holder's slot is reclaimable
+  in ~15 minutes instead of up to an hour.** A holder that dies without releasing (crash, SIGKILL,
+  lost comms) previously pinned one of the two Granicus lease slots for the full hour-long TTL before
+  `stale_leases_reaped` logic could reclaim it. This is free in renewal traffic:
+  `DistributedProviderLeasePool._renew_interval` clamps the renewal cadence to 60s for any
+  `ttl_seconds >= 180`, so 900/3=300 still resolves to the same 60s interval as 3600/3=1200 did — a
+  legitimate fetch+encode (bounded by the 45-minute `audio_encode_timeout_minutes`) renews well
+  within the shorter window. Config-only diff in `config/site_config.yml`; a new
+  `test_renew_interval_is_capped_so_lowering_ttl_costs_no_renewal_traffic` locks in the
+  no-extra-renewals reasoning (GH#378).
 - **Audio memory admission recalibrated from Audio run #10 telemetry.** Long loudnorm/filter encodes
   in the run peaked around 9–13 GiB, beyond the old 6.5 GiB clamp. `estimate_encode_rss_bytes` now
   uses a 64 MiB/min served-duration coefficient with a 12,000 MiB max/unknown reservation, so very

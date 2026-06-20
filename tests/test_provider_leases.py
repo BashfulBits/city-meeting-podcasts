@@ -12,7 +12,10 @@ from pathlib import Path
 import pytest
 
 from citypods.http import StopRequested
-from citypods.provider_leases import DistributedProviderLeasePool
+from citypods.provider_leases import (
+    DistributedProviderLeasePool,
+    ProviderLeaseRule,
+)
 from citypods.storage.local import LocalStorage
 
 
@@ -105,6 +108,20 @@ def test_distributed_provider_lease_uses_basic_object_storage_api(tmp_path):
         assert len(keys) == 1
 
     assert list(store.list_objects("test-provider-leases/")) == []
+
+
+def test_renew_interval_is_capped_so_lowering_ttl_costs_no_renewal_traffic():
+    """GH#378: the production Granicus TTL drop 3600→900 is free because the renewal cadence is
+    clamped at 60s for any ttl >= 180 (180/3). If this cap ever drops below 300s a future TTL
+    reduction would start increasing renewal traffic — this guards that reasoning."""
+
+    def interval(ttl: float) -> float:
+        rule = ProviderLeaseRule(slots=2, ttl_seconds=ttl)
+        return DistributedProviderLeasePool._renew_interval(rule)
+
+    assert interval(3600) == 60.0
+    assert interval(900) == 60.0
+    assert interval(3600) == interval(900)  # unchanged renewal cadence across the reduction
 
 
 def test_active_lease_renews_past_ttl_and_blocks_waiter(tmp_path):
