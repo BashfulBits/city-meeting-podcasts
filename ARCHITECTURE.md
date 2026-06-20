@@ -236,11 +236,27 @@ Hard-won facts that bite anyone adding/debugging providers:
   same archive objects, captures selected redacted HTTP timing/range metadata, and can prove one
   size-capped curl download through local ffprobe/ffmpeg. Its sustained mode retains the
   request-count/volume/cooldown/concurrency matrix. Its gated `worker` mode compares direct access
-  with an authenticated Cloudflare Worker on the same GitHub runner and can prove one Worker-streamed
-  file through local ffprobe/ffmpeg. The Worker hard-codes the Granicus archive origin, requires a
+  with an authenticated Cloudflare Worker on the same GitHub runner, can prove one Worker-streamed
+  file through local ffprobe/ffmpeg, and can optionally run one full Arlington/Pflugerville source
+  through the production source-cache plus speech-mastering recipe. A Worker HTTP 200 that ignores
+  Range is reported as access success with `range_unsupported`, not as a failed size cap. The Worker
+  hard-codes the Granicus archive origin, requires a
   bearer secret, restricts tenants and tenant-prefixed MP4 names, refuses queries/redirects, forwards
   only range/cache validators, and streams `no-store`; it is not a general proxy. A scheduled Audio
   run therefore cannot slip into any experiment after its isolation check.
+- **Native Granicus media uses one direct-first alternate-egress fallback.** Production ffmpeg first
+  requests the validated canonical `archive-video.granicus.com` object normally. Only an HTTP 403
+  can rewrite that strict tenant/filename input to the authenticated Worker; malformed/query URLs,
+  other hosts, and other errors never route through it. The retry remains inside the original
+  Granicus local limiter, distributed lease, and circuit admission. Worker success does not trip the
+  circuit; Worker throttling is recorded once before releasing the lease. Each attempt and its
+  outcome are counted per tenant on the circuit (`worker_fallback_attempts`/`successes`/`failures`),
+  flowing through the per-run summary and cross-shard report merge so activation is measurable. A
+  half-set or invalid `GRANICUS_PROXY_*` configuration disables the fallback for the run (warned once)
+  rather than turning an already-handled 403 into a shard-aborting error. The bearer header is never
+  logged, the Worker endpoint that ffmpeg echoes in stderr on error is scrubbed before any log line,
+  and exceptions expose only the original direct command. Official episode URLs and audio artifact
+  identity remain unchanged.
 - **Worker deployment is path-scoped.** `granicus-worker-deploy.yml` runs Worker tests and deploys
   only when `main` changes the Worker source, Wrangler config, or deployment workflow (plus a manual
   dispatch escape hatch). A scoped Cloudflare API token/account ID authenticate deployment. The

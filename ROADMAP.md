@@ -54,9 +54,20 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > (`Referer`/`Origin`, direct `DownloadFile.php`, Granicus playback/HLS URLs) or move Granicus media
 > fetching off GitHub-hosted runners. The 2026-06-20 paired transport result crossed that third gate:
 > every direct GitHub curl/ffmpeg/header case returned immediate 403 while all exact objects succeeded
-> from a Mac. An authenticated, allowlisted Cloudflare streaming Worker is now implemented as an
-> isolated probe only; do not enable it in production until the same-runner direct-vs-Worker matrix
-> and bounded full-download/local-processing proof pass.
+> from a Mac. The authenticated, allowlisted Cloudflare Worker then produced ffmpeg audio for all
+> four same-runner samples; Fort Worth honored Range and its full 89.9 MB object validated locally,
+> while the larger Arlington/Pflugerville objects authenticated successfully but ignored Range.
+> A direct-first, one-attempt production fallback is implemented under the existing 1-local /
+> 2-distributed coordination ceiling, with per-tenant Worker-fallback telemetry
+> (`worker_fallback_attempts`/`successes`/`failures`) added to the circuit so usage is measurable in
+> the build log and run summary. **Before merge/activation,** require one full production-recipe
+> Arlington or Pflugerville encode from the isolated GitHub-hosted probe. **Then evaluate over the
+> three post-activation `audio.yml` runs required by GH#337:** the fallback is effective when those
+> counters show successes ≈ attempts and failures ≈ 0 per Granicus tenant, Granicus
+> `circuit_trips`/deferrals fall to ~0, and no new truncation backoffs or episode-identity changes
+> appear. If direct stays 403 every run, evaluate a sticky Worker-preference; rollback is unsetting
+> the two proxy secrets (no code change). Full criteria:
+> [`review/12` §Granicus follow-up](review/12-hardening-and-efficiency.md#granicus-media-reliability-follow-up-gh300--39-follow-up).
 
 > **Reprioritized 2026-06-08** after a build-log root-cause review: **H10 shipped in PR #232** and
 > **H8 shipped in PR #235**; the remaining do-now reliability item **H11a** runs **ahead of H1–H5**.

@@ -373,6 +373,17 @@ def run_curl(
     outcome = _outcome(returncode, stderr, output_bytes, status)
     if outcome == "success" and byte_range and status == 200:
         outcome = "range_ignored"
+    elif (
+        outcome == "size_limit"
+        and byte_range
+        and status == 200
+        and content_length is not None
+        and content_length > max_bytes
+    ):
+        # curl rejects the response before writing it because Granicus ignored Range and announced
+        # the entire (often GiB-sized) object. Authentication/access succeeded; only partial fetch
+        # is unsupported for this object.
+        outcome = "range_unsupported"
     return ProbeResult(
         **_base_result(
             sequence=sequence,
@@ -397,7 +408,7 @@ def run_curl(
         first_byte_seconds=_as_float(metrics.get("time_starttransfer")),
         total_seconds=_as_float(metrics.get("time_total")),
         output_bytes=output_bytes,
-        ok=outcome in {"success", "range_ignored"},
+        ok=outcome in {"success", "range_ignored", "range_unsupported"},
         outcome=outcome,
         returncode=returncode,
         ffprobe_ok=None,

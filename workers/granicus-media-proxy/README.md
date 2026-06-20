@@ -1,6 +1,6 @@
 # Granicus media proxy
 
-This Cloudflare Worker is a narrow, authenticated experiment for Granicus media fetches that return
+This Cloudflare Worker is a narrow, authenticated fallback for Granicus media fetches that return
 HTTP 403 from GitHub-hosted runners but succeed from other networks.
 
 It is **not** a general URL proxy:
@@ -14,9 +14,10 @@ It is **not** a general URL proxy:
 - only selected range/cache validators are forwarded;
 - responses stream without buffering and use `Cache-Control: no-store`.
 
-Production Audio does not use this Worker yet. First deploy it, run the isolated GitHub-hosted
-`worker` probe, and confirm that Worker-routed curl and ffmpeg succeed where the same runner's direct
-requests receive 403.
+Production Audio always tries the canonical Granicus archive object directly first. Only an
+immediate HTTP 403 can trigger one Worker attempt, under the same Granicus local limiter,
+distributed lease, and circuit admission. Before activating a changed fallback, run the isolated
+GitHub-hosted `worker` probe and its optional full production-recipe encode.
 
 ## 1. Prerequisites
 
@@ -99,7 +100,7 @@ printf '%s' "${GRANICUS_PROXY_BASE_URL}" | gh secret set GRANICUS_PROXY_BASE_URL
 printf '%s' "${GRANICUS_PROXY_TOKEN}" | gh secret set GRANICUS_PROXY_TOKEN
 ```
 
-The base URL is kept as a secret alongside the token so the experimental endpoint is not advertised
+The base URL is kept as a secret alongside the token so the fallback endpoint is not advertised
 in workflow logs. Neither value is included in the uploaded probe artifact.
 
 ## 7. Run the isolated GitHub-hosted probe
@@ -124,14 +125,26 @@ gh workflow run granicus-probe.yml \
 The workflow shares Audio's concurrency group and verifies no Audio run is active or queued. Download
 the `granicus-probe-results` artifact and inspect `granicus-worker-results.json`.
 
-The result is sufficient to consider a production fallback only when:
+The result is sufficient to activate or retain the production fallback only when:
 
 - direct requests from the same runner receive 403;
-- Worker curl ranges succeed with HTTP 206;
+- Worker access returns media successfully (HTTP 206 when the object honors Range, or an authenticated
+  HTTP 200 classified as `range_unsupported` when the upstream sends the whole object);
 - Worker ffmpeg audio reads succeed;
 - one bounded full download passes local ffprobe and local ffmpeg processing.
+- before a new production activation, one Arlington or Pflugerville object completes the optional
+  full production-recipe encode.
 
 If the Worker also receives 403, do not deploy a production fallback; use a different egress design.
+
+Once activated, evaluate the fallback over the three post-activation `audio.yml` runs required by
+GH#337 using the per-tenant Worker-fallback counters in each run's build log
+(`provider granicus.com granicus worker fallback: N attempts, …`) and the run summary's
+`provider_rate_limit_telemetry`: it is effective when `worker_fallback_successes` ≈
+`worker_fallback_attempts` with failures ≈ 0 per Granicus tenant, Granicus circuit trips/deferrals
+fall to ~0, and episode URLs/keys/durations are unchanged. Rollback is config-only — unset
+`GRANICUS_PROXY_BASE_URL`/`GRANICUS_PROXY_TOKEN` to revert to direct-only fetches. Full criteria live
+in `review/12` §Granicus follow-up.
 
 ## 8. Rotate or remove
 
@@ -142,7 +155,7 @@ npx wrangler@4 secret put PROXY_TOKEN
 gh secret set GRANICUS_PROXY_TOKEN
 ```
 
-Delete the experimental Worker:
+Delete the Worker:
 
 ```bash
 npx wrangler@4 delete

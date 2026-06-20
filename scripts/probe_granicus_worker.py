@@ -11,13 +11,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import tempfile
+import time
 from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 import probe_granicus_transport as transport
 
+from citypods.media import PODCAST_SPEECH_PROFILE, CommandFfmpeg, SourceCache
 from citypods.security import validate_source_url
 
 
@@ -57,6 +60,69 @@ def _proxy_url(base_url: str, archive_url: str) -> str:
     return f"{base}/v1/archive/{quote(tenant, safe='')}/{quote(filename, safe='')}"
 
 
+def _run_production_encode(
+    *,
+    clip: str,
+    archive_url: str,
+    ffmpeg: str,
+    ffprobe: str,
+    timeout: float,
+) -> dict:
+    """Exercise the production direct-first source cache and speech-mastering recipe end to end."""
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="granicus-worker-production-encode-") as tmp:
+        tmpdir = Path(tmp)
+        with SourceCache(ffmpeg_binary=ffmpeg, timeout_seconds=timeout) as cache:
+            source = cache.get_or_fetch(clip, archive_url)
+            if source is None:
+                return {
+                    "clip": clip,
+                    "ok": False,
+                    "outcome": "source_cache_failed",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                }
+            output = tmpdir / "production.m4a"
+            runner = CommandFfmpeg(
+                binary=ffmpeg,
+                max_kbps=96,
+                timeout_seconds=timeout,
+                threads=1,
+            )
+            runner.extract_audio(
+                None,
+                {"s0": str(source)},
+                output,
+                loudness_profile="ebuR128:-16LUFS",
+                processing_profile=PODCAST_SPEECH_PROFILE,
+            )
+            probe = subprocess.run(
+                [
+                    ffprobe,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration:stream=codec_type,codec_name",
+                    "-of",
+                    "json",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=min(timeout, 120),
+                check=False,
+            )
+            output_bytes = output.stat().st_size if output.exists() else 0
+            ok = probe.returncode == 0 and output_bytes > 0
+            return {
+                "clip": clip,
+                "ok": ok,
+                "outcome": "success" if ok else "local_ffprobe_failed",
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "output_bytes": output_bytes,
+                "ffprobe_summary": " ".join(probe.stdout.strip().split())[:500],
+            }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ffmpeg", required=True)
@@ -72,6 +138,12 @@ def main() -> int:
     parser.add_argument("--full-download-count", type=transport._nonnegative_integer, default=1)
     parser.add_argument("--sample-seconds", type=float, default=5.0)
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument(
+        "--production-encode-clip",
+        choices=["none", "arlington-audio40", "pflugerville-audio40"],
+        default="none",
+        help="Run one full production-recipe encode through the direct-first Worker fallback",
+    )
     parser.add_argument("--output", type=Path, default=Path("granicus-worker-results.json"))
     args = parser.parse_args()
 
@@ -89,6 +161,7 @@ def main() -> int:
     results = []
     comparisons = []
     proxy_curl = {}
+    production_encode = None
     sequence = 0
     with tempfile.TemporaryDirectory(prefix="granicus-worker-probe-") as tmp:
         tmpdir = Path(tmp)
@@ -223,6 +296,23 @@ def main() -> int:
             transport._emit(full)
             full_downloads += 1
 
+        if args.production_encode_clip != "none":
+            archive_url = dict(transport.DEFAULT_CLIPS)[args.production_encode_clip]
+            production_encode = _run_production_encode(
+                clip=args.production_encode_clip,
+                archive_url=archive_url,
+                ffmpeg=args.ffmpeg,
+                ffprobe=args.ffprobe,
+                timeout=max(args.timeout, 7200),
+            )
+            print(
+                "PRODUCTION_ENCODE "
+                f"clip={production_encode['clip']} "
+                f"outcome={production_encode['outcome']} "
+                f"seconds={production_encode['elapsed_seconds']}",
+                flush=True,
+            )
+
     payload = {
         "environment": {
             "runner_image": os.environ.get("ImageOS", ""),
@@ -239,9 +329,20 @@ def main() -> int:
         "results": [asdict(result) for result in results],
         "comparisons": comparisons,
         "full_download_skips": full_download_skips,
+        "production_encode": production_encode,
         "summary": {
             "cases": len(results),
             "successes": sum(result.ok for result in results),
+            "worker_access_successes": sum(
+                comparison["worker_curl_outcome"]
+                in {"success", "range_ignored", "range_unsupported"}
+                and comparison["worker_ffmpeg_outcome"] == "success"
+                for comparison in comparisons
+            ),
+            "worker_ranges_unsupported": sum(
+                comparison["worker_curl_outcome"] == "range_unsupported"
+                for comparison in comparisons
+            ),
             "worker_bypasses": sum(
                 comparison["worker_bypassed_direct_403"] for comparison in comparisons
             ),

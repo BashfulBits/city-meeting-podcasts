@@ -43,6 +43,27 @@ def _circuit(
     )
 
 
+def test_record_worker_fallback_counts_per_tenant_and_ignores_non_granicus():
+    """GH#337 evaluation telemetry: per-tenant attempt/success/failure counts, in-memory only."""
+    breaker = MediaRateLimitCircuitBreaker({"granicus.com": {"threshold": 3}})
+
+    breaker.record_worker_fallback([FORT_WORTH], outcome="success")
+    breaker.record_worker_fallback([FORT_WORTH], outcome="failure")
+    breaker.record_worker_fallback([DENTON], outcome="success")
+    # A non-Granicus URL has no configured scope and is ignored, like the other record_* methods.
+    breaker.record_worker_fallback(["https://example.com/whatever.mp4"], outcome="success")
+
+    telemetry = breaker.telemetry()
+    assert set(telemetry) == {FORT_KEY, DENTON_KEY}
+    assert telemetry[FORT_KEY]["worker_fallback_attempts"] == 2
+    assert telemetry[FORT_KEY]["worker_fallback_successes"] == 1
+    assert telemetry[FORT_KEY]["worker_fallback_failures"] == 1
+    assert telemetry[DENTON_KEY]["worker_fallback_attempts"] == 1
+    assert telemetry[DENTON_KEY]["worker_fallback_successes"] == 1
+    # A Worker success must not look like a throttle on the breaker.
+    assert telemetry[FORT_KEY]["rate_limited"] == 0
+
+
 def test_failures_from_multiple_shards_trip_one_shared_tenant_circuit(tmp_path):
     store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
     shards = [_circuit(store, shard=f"{n}/4") for n in range(3)]

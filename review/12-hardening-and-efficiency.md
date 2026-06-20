@@ -1556,8 +1556,8 @@ GitHub-hosted egress/CDN reputation the leading diagnosis.
 
 The earlier abort text below said not to prototype off-Actions solutions during this phase. The
 maintainer explicitly chose a narrow deviation after the direct-vs-Mac evidence: test Cloudflare
-alternate egress before committing to a self-hosted runner. The implementation is diagnostic and
-reversible, not a production routing change:
+alternate egress before committing to a self-hosted runner. The initial implementation was
+diagnostic and reversible:
 
 - `workers/granicus-media-proxy` is a streaming Worker with no arbitrary URL input. It requires a
   bearer secret, hard-codes `archive-video.granicus.com`, accepts only committed tenants and strict
@@ -1568,18 +1568,76 @@ reversible, not a production routing change:
 - `granicus-probe.yml` adds a `worker` mode using GitHub secrets for the Worker origin/token. It
   compares direct curl with Worker curl and Worker ffmpeg on one isolated runner, then permits at
   most one full object under the configured size ceiling through local ffprobe/ffmpeg.
-- The token and Worker endpoint are redacted from output. Production Audio receives no proxy secret
-  and does not construct proxy URLs in this slice.
+- The token and Worker endpoint are redacted from output.
 - `.github/workflows/granicus-worker-deploy.yml` makes deployment operational rather than
   memory-dependent: a push to `main` redeploys only when Worker source, Wrangler configuration, or
   the deployment workflow changes, and a manual dispatch remains available. It tests before deploy,
   authenticates with a scoped `CLOUDFLARE_API_TOKEN` plus account ID, and deliberately leaves the
   runtime `PROXY_TOKEN` in Cloudflare instead of copying it into deployment CI.
 
-Activation gate for a later production fallback: direct requests on the same runner receive 403,
-Worker Range returns 206, Worker ffmpeg succeeds, one bounded full download validates locally, and
-the Worker remains stable for at least two isolated probes. Only then design one direct-first,
-single-Worker-attempt fallback inside the existing Granicus lease/circuit envelope.
+**2026-06-20 production-fallback decision and second chosen deviation.** The first Worker artifact
+returned 403 for every direct control while Worker ffmpeg produced audio for all four objects.
+Fort Worth honored the 16 MiB Range and a complete 89.9 MB download passed local ffprobe/ffmpeg.
+Arlington and Pflugerville returned authenticated HTTP 200 media streams but ignored Range, so the
+probe's old `size_limit` label understated successful access. The probe now reports those cases as
+`range_unsupported`, counts Worker access separately from partial-range support, and offers an
+optional full Arlington/Pflugerville encode through the production source-cache and
+`podcast-speech-v2` recipe.
+
+The maintainer explicitly chose to implement the conservative production fallback after this first
+artifact rather than wait for the previously stated second isolated short probe. This is a selected
+sequencing deviation: the stronger pre-merge gate is now one full production-recipe Arlington or
+Pflugerville encode on a GitHub-hosted runner. Do not merge/activate until that encode succeeds.
+
+The production design is direct-first and single-attempt:
+
+- only an immediate HTTP 403 from a canonical
+  `archive-video.granicus.com/<tenant>/<tenant>_*.mp4` ffmpeg input is eligible;
+- one authenticated Worker command replaces eligible input URLs while retaining the original
+  Granicus process-local slot, distributed lease, and circuit admission;
+- a successful Worker attempt prevents the direct 403 from opening the circuit; a Worker 403/429 is
+  recorded exactly once before the lease releases;
+- no fallback is attempted for other hosts, HTTP statuses, malformed paths, queries, or unsupported
+  tenants, and no fallback chain is attempted once the circuit is already open;
+- a half-set or invalid `GRANICUS_PROXY_*` configuration disables the fallback for the run (warned
+  once) rather than converting an already-handled 403 into an uncaught error that aborts the shard;
+- the bearer header is never logged, the Worker endpoint ffmpeg echoes in stderr on error is scrubbed
+  before any log line, and fallback subprocess exceptions are re-raised with the original
+  redacted/direct command;
+- each attempt and its outcome are counted per tenant on the circuit telemetry
+  (`worker_fallback_attempts`/`successes`/`failures`); these flow through the per-run
+  `provider_rate_limit_telemetry` summary and the cross-shard report merge with no new persistence
+  path, and are the signal the post-activation evaluation reads;
+- concurrency remains 1 local / 2 distributed.
+
+This changes fetch transport only. It does not alter official metadata, the audio recipe, pipeline
+versions, content-addressed keys, or existing artifacts, and therefore triggers no catalog backfill.
+
+**Post-activation evaluation (GH#337 acceptance).** Once the secrets are set and the fallback is live,
+judge it over the next three scheduled `audio.yml` runs using the per-tenant Worker-fallback counters
+— visible in each run's build log (`provider granicus.com granicus worker fallback: N attempts, …`)
+and in the merged run summary's `provider_rate_limit_telemetry`. The fallback is **effective** when,
+for every Granicus tenant that materialized audio:
+
+- `worker_fallback_successes` ≈ `worker_fallback_attempts` with `worker_fallback_failures` ≈ 0 — direct
+  403s are being recovered through the Worker rather than failing;
+- Granicus `circuit_trips`/`circuit_deferred` return to ~0 — 403s no longer become materialization
+  failures, so the breaker/parking/canary path goes quiet;
+- no new `TruncatedAudioError` backoffs appear on Granicus sources (the no-Range Worker stream still
+  produced a complete encode within the production encode timeout);
+- published episode URLs, artifact keys, and durations are unchanged versus pre-activation.
+
+**Routing decision the data drives.** If `worker_fallback_attempts` ≈ the Granicus fetch count on
+*every* run (direct is reliably 403, as the transport artifact found), evaluate making the Worker
+*sticky* within a run — preferred after the first confirmed direct-403→Worker-success — to stop
+re-issuing a guaranteed-403 direct request per episode against the same egress-reputation surface this
+follow-up implicates. If attempts are intermittent, keep direct-first: it uses direct egress whenever
+it works and minimizes Cloudflare dependence. Either way, the then-near-dead Granicus
+circuit/parking/canary machinery is a candidate for simplification only **after** this window proves
+the fallback, not before.
+
+**Rollback** is config-only: unsetting `GRANICUS_PROXY_BASE_URL`/`GRANICUS_PROXY_TOKEN` reverts
+production to direct-only fetches and the existing throttle/circuit behavior with no code change.
 
 Production recovery is also no longer “open circuit, rapidly consume the whole queue as deferred.”
 A planner/source-cache 403/429 is persisted once as that episode's materialization failure and halts
