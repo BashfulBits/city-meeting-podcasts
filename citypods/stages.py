@@ -1296,6 +1296,18 @@ class TranscriptStage:
                 continue
             if ep.transcript_synced and not redo_stale_asr:
                 continue  # step 2 may have just set this in the same pass
+            # Audio that failed to materialize (or produced no probeable duration) is not safely
+            # transcribable: feeding it to ASR wastes a scarce serial slot and the audio bytes may
+            # be broken. Skip it here and let the audio lane re-encode it (materialize_audio no
+            # longer reuses an errored record). #run-25: ~600 such episodes were monopolizing slots.
+            if ep.materialize_error:
+                stats.defer("audio-error")
+                print(
+                    f"[enrich] transcript asr skipped {ep_ref} reason=audio-error "
+                    f"error={ep.materialize_error}",
+                    flush=True,
+                )
+                continue
             timeout_backoff_until = transcript_timeout_backoff_until(ep)
             if timeout_backoff_until is not None and datetime.now(UTC) < timeout_backoff_until:
                 stats.defer("timeout-backoff")
@@ -1692,51 +1704,60 @@ class TranscriptStage:
 
             _abandoned = False
             _timeout_at = time.monotonic() + timeout_s if timeout_s else None
-            while _t.is_alive():
-                # Do not abandon active ASR merely because a newer scheduled ASR run is queued or
-                # the start cutoff has passed. Once native transcription starts, let it finish
-                # unless the separate backstop timeout below fires.
-                if _timeout_at is not None and time.monotonic() >= _timeout_at:
-                    _abandoned = True
-                    message = f"{label}: ASR timeout after {timeout_s / 60:.1f}m"
-                    stats.errors.append(message)
-                    stats.defer("timeout")
-                    _record_asr_timeout(ep)
-                    terminate = getattr(backend, "terminate_active", None)
-                    worker_terminated = bool(terminate()) if callable(terminate) else False
-                    if worker_terminated:
-                        _t.join(timeout=10)
-                    if worker_terminated and not _t.is_alive():
-                        print(
-                            f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
-                            "worker=terminated result=discarded",
-                            flush=True,
-                        )
-                        if sem is not None:
-                            sem.release()
-                            sem = None
-                        if native_gate_acquired and ctx.native_work_gate is not None:
-                            ctx.native_work_gate.release(kind="asr")
-                            native_gate_acquired = False
-                    else:
-                        if ctx.asr_abort_event is not None:
-                            ctx.asr_abort_event.set()
-                        print(
-                            f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
-                            "(inference continues in background, result discarded; "
-                            "remaining ASR skipped this run)",
-                            flush=True,
-                        )
-                        if sem is not None:
-                            _release_abandoned_asr_slot.set()
-                            sem = None
-                        if native_gate_acquired and ctx.native_work_gate is not None:
-                            _release_abandoned_native_gate.set()
-                            native_gate_acquired = False
-                        if ctx.asr_abandoned_event is not None:
-                            ctx.asr_abandoned_event.set()
-                    break
-                time.sleep(2)
+            # Register the in-flight inference so the heartbeat's progress snapshot shows a busy
+            # ASR shard as busy. Native inference runs in a killable child process, so without this
+            # the per-thread PROGRESS registry is empty for the whole (possibly multi-hour)
+            # transcription and a healthy run is indistinguishable from a hung one — the exact
+            # failure progress.py exists to prevent (run #25). Cleared on every exit via finally.
+            _asr_progress = PROGRESS.start(source=city.slug, uid=str(label), phase=f"asr-{mode}")
+            try:
+                while _t.is_alive():
+                    # Do not abandon active ASR merely because a newer scheduled ASR run is queued
+                    # or the start cutoff has passed. Once native transcription starts, let it
+                    # finish unless the separate backstop timeout below fires.
+                    if _timeout_at is not None and time.monotonic() >= _timeout_at:
+                        _abandoned = True
+                        message = f"{label}: ASR timeout after {timeout_s / 60:.1f}m"
+                        stats.errors.append(message)
+                        stats.defer("timeout")
+                        _record_asr_timeout(ep)
+                        terminate = getattr(backend, "terminate_active", None)
+                        worker_terminated = bool(terminate()) if callable(terminate) else False
+                        if worker_terminated:
+                            _t.join(timeout=10)
+                        if worker_terminated and not _t.is_alive():
+                            print(
+                                f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
+                                "worker=terminated result=discarded",
+                                flush=True,
+                            )
+                            if sem is not None:
+                                sem.release()
+                                sem = None
+                            if native_gate_acquired and ctx.native_work_gate is not None:
+                                ctx.native_work_gate.release(kind="asr")
+                                native_gate_acquired = False
+                        else:
+                            if ctx.asr_abort_event is not None:
+                                ctx.asr_abort_event.set()
+                            print(
+                                f"[enrich] transcript asr timeout {ep_ref} seconds={timeout_s:.0f} "
+                                "(inference continues in background, result discarded; "
+                                "remaining ASR skipped this run)",
+                                flush=True,
+                            )
+                            if sem is not None:
+                                _release_abandoned_asr_slot.set()
+                                sem = None
+                            if native_gate_acquired and ctx.native_work_gate is not None:
+                                _release_abandoned_native_gate.set()
+                                native_gate_acquired = False
+                            if ctx.asr_abandoned_event is not None:
+                                ctx.asr_abandoned_event.set()
+                        break
+                    time.sleep(2)
+            finally:
+                PROGRESS.finish(_asr_progress)
 
             if _abandoned:
                 # Only the combined-enrich (lane=None) path sets fast_yield_exit; the transcribe/

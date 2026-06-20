@@ -364,9 +364,11 @@ def test_transcribe_shard_work_separates_local_duration_from_blocked_work(tmp_pa
     # Excluded: no hosted audio yet, a synced provider transcript, and a synced ASR transcript
     # already on the current pipeline version. Included: the stale-pipeline ASR transcript (redo)
     # and locally eligible never-transcribed episodes. The >4h item contributes only a cheap
-    # blocked/defer cost; an unknown-duration item receives the conservative 2h local estimate.
+    # blocked/defer cost; the unknown-duration item is weighted by the average *known* local
+    # duration in this source ((2400+3600+600)/3 = 2200), not a flat 2h fallback.
+    known_local_seconds = 2400.0 + 3600.0 + 600.0
     assert estimate.local_items == 4
-    assert estimate.local_seconds == 2400.0 + 3600.0 + 600.0 + 2 * 3600.0
+    assert estimate.local_seconds == known_local_seconds + known_local_seconds / 3
     assert estimate.blocked_items == 1
     assert estimate.dispatch_items == 0
     assert estimate.inflight_items == 0
@@ -379,8 +381,11 @@ def test_transcribe_shard_work_separates_local_duration_from_blocked_work(tmp_pa
         asr_pipeline_version="3",
         local_max_duration_hours=0,
     )
+    # With no ceiling the 5h item routes local too, so it joins the known-duration set and the
+    # unknown item is now averaged against four known durations ((2400+3600+600+18000)/4 = 6150).
+    no_ceiling_known = 2400.0 + 3600.0 + 600.0 + 5 * 3600.0
     assert no_ceiling.local_items == 5
-    assert no_ceiling.local_seconds == estimate.local_seconds + 5 * 3600.0
+    assert no_ceiling.local_seconds == no_ceiling_known + no_ceiling_known / 4
     assert no_ceiling.blocked_items == 0
 
 
@@ -457,6 +462,64 @@ def test_transcribe_shard_work_treats_timeout_backoff_as_blocked(tmp_path):
     assert estimate.local_seconds == 0
     assert estimate.blocked_items == 1
     assert estimate.shard_weight() == 1
+
+
+def test_transcribe_shard_work_skips_audio_error_episodes(tmp_path):
+    """An episode whose audio failed to materialize is not transcribable this run — it must not
+    count toward the shard weight or the backlog (run #25: ~600 errored episodes inflated both)."""
+    healthy = _ep("g-ok")
+    healthy.uid = "u-ok"
+    healthy.audio_key = "audio/src/u-ok.m4a"
+    healthy.audio_spec_hash = "spec"
+    healthy.hosted_audio_url = "https://cdn/u-ok.m4a"
+    healthy.audio_duration_served = 1800.0
+
+    errored = _ep("g-err")
+    errored.uid = "u-err"
+    errored.audio_key = "audio/src/u-err.m4a"
+    errored.audio_spec_hash = "spec"
+    errored.hosted_audio_url = "https://cdn/u-err.m4a"  # bytes uploaded but flagged broken
+    errored.materialize_error = "error"
+
+    save_records(
+        tmp_path,
+        "src",
+        {"u-ok": episode_to_record(healthy), "u-err": episode_to_record(errored)},
+    )
+
+    estimate = estimate_transcribe_shard_work(
+        tmp_path,
+        "src",
+        asr_enabled=True,
+        asr_pipeline_version="3",
+        local_max_duration_hours=4,
+    )
+
+    assert estimate.local_items == 1
+    assert estimate.local_seconds == 1800.0
+
+
+def test_transcribe_shard_work_falls_back_to_constant_when_no_known_durations(tmp_path):
+    """With no known durations to average against, unknown-duration locals use the constant
+    fallback so an all-unknown source still registers as work rather than weighing ~0."""
+    unknown = _ep("g-unknown")
+    unknown.uid = "u-unknown"
+    unknown.audio_key = "audio/src/u-unknown.m4a"
+    unknown.audio_spec_hash = "spec"
+    unknown.hosted_audio_url = "https://cdn/u-unknown.m4a"
+    save_records(tmp_path, "src", {"u-unknown": episode_to_record(unknown)})
+
+    estimate = estimate_transcribe_shard_work(
+        tmp_path,
+        "src",
+        asr_enabled=True,
+        asr_pipeline_version="3",
+        local_max_duration_hours=4,
+        unknown_local_seconds=1234.0,
+    )
+
+    assert estimate.local_items == 1
+    assert estimate.local_seconds == 1234.0
 
 
 def test_transcribe_shard_work_is_empty_when_asr_disabled(tmp_path):

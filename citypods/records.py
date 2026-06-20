@@ -400,12 +400,18 @@ def estimate_transcribe_shard_work(
         return TranscribeShardWork()
     local_seconds = 0.0
     local_items = 0
+    unknown_local_items = 0
     dispatch_items = 0
     blocked_items = 0
     inflight_items = 0
     for rec in load_records(state_dir, src_key).values():
         ep = record_to_episode(rec)
         if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
+            continue
+        # Audio that failed to materialize isn't transcribable this run — the transcribe stage
+        # skips it and the audio lane re-encodes it. Counting it here would re-inflate the shard
+        # weight (and the backlog) with work ASR will never do, the exact distortion run #25 hit.
+        if ep.materialize_error:
             continue
         if ep.transcript_synced:
             key_name = (ep.transcript_key or "").rsplit("/", 1)[-1]
@@ -434,11 +440,10 @@ def estimate_transcribe_shard_work(
 
         if route == "local":
             local_items += 1
-            local_seconds += (
-                duration_seconds
-                if duration_seconds is not None
-                else max(0.0, unknown_local_seconds)
-            )
+            if duration_seconds is not None:
+                local_seconds += duration_seconds
+            else:
+                unknown_local_items += 1
         elif route == "dispatch":
             dispatch_items += 1
         elif route == "blocked":
@@ -447,6 +452,21 @@ def estimate_transcribe_shard_work(
             inflight_items += 1
         else:
             raise ValueError(f"unknown transcribe shard route {route!r}")
+
+    # Weight unknown-duration local items by the average *known* local duration in THIS source,
+    # not a flat per-item ceiling. A source with many not-yet-probed episodes (a large backfill, or
+    # audio whose duration never got recorded) would otherwise accumulate a multi-thousand-hour
+    # weight from the fallback alone and pin its whole, unsplittable backlog to one shard (run #25:
+    # one source estimated at ~3,550h). ``unknown_local_seconds`` only applies when the source has
+    # no known duration to average against.
+    if unknown_local_items:
+        known_local_items = local_items - unknown_local_items
+        per_item = (
+            local_seconds / known_local_items
+            if known_local_items
+            else max(0.0, unknown_local_seconds)
+        )
+        local_seconds += unknown_local_items * per_item
 
     return TranscribeShardWork(
         local_seconds=local_seconds,

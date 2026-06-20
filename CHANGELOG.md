@@ -147,6 +147,37 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **A busy ASR shard transcribing a multi-hour recording no longer looks idle/stalled, errored
+  audio no longer wastes scarce ASR slots, and one unprobed source no longer skews shard weighting
+  into the thousands of hours.** Investigating a run where three shards appeared to have "no work"
+  while one ground on surfaced four issues — all observability/efficiency, no recipe or
+  pipeline-version change:
+  - **ASR inference is now registered in the progress registry.** `TranscriptStage` runs native
+    inference in a killable child process while the parent thread only polls; it never wrapped that
+    wait in `PROGRESS.track`, so the heartbeat printed `active work: no tracked work active` for the
+    entire (sometimes 90-minute) transcription — a healthy run indistinguishable from a hung one,
+    the exact failure the registry exists to prevent. The poll loop now registers an `asr-<mode>`
+    entry (`citypods/stages.py`), so the heartbeat shows the in-flight episode/elapsed and the
+    stall-dump backstop can actually fire.
+  - **The heartbeat now surfaces `ResourceAdmission` waiters.** Worker threads parked on the
+    `load>N`/`mem_avail<N` guard block *before* reaching the `NativeWorkGate`, so its `asr_waiting`
+    stayed `0` even with real work queued behind a running ASR job — reading as "no demand."
+    `ResourceAdmission.current_waiting_counts()` (`citypods/resources.py`) exposes the live per-kind
+    queue and `_ResourceHeartbeat` (`citypods/run.py`) prints a `resource guard: waiting ...` line.
+  - **Episodes with a materialization error are no longer queued for ASR.** Audio that failed to
+    materialize (e.g. bytes uploaded but no probeable duration) still passed the transcribe
+    audio-readiness gate, wasting a serial ASR slot on broken audio and inflating the backlog/shard
+    weight (~600 such episodes in the investigated run). `TranscriptStage` skips them
+    (`reason=audio-error`), `estimate_transcribe_shard_work` excludes them, and `materialize_audio`
+    no longer reuses/credits an errored record so the audio lane re-encodes it (clearing the error +
+    recording a duration on success, with the existing exponential backoff guarding genuinely-broken
+    sources).
+  - **Unknown-duration items are weighted by their source's own average, not a flat 2h ceiling.**
+    `estimate_transcribe_shard_work` previously added a 2-hour fallback per unprobed episode, so one
+    source with thousands of them estimated at ~3,550h and pinned its whole (source-atomic,
+    unsplittable) backlog to a single shard. Unknown items now take the average known local duration
+    in the same source (`citypods/records.py`); the constant fallback applies only when the source
+    has no known duration to average against.
 - **Fresh transcription no longer installs the alignment and benchmark dependency stacks.**
   Optional dependencies are split into `asr-transcribe` (faster-whisper), `asr-align` (stable-ts
   with its faster-whisper adapter), and `asr-bench` (both plus jiwer), while the existing `asr`

@@ -620,6 +620,7 @@ class _ResourceHeartbeat:
         interval_seconds: float,
         stall_dump_seconds: float = 0.0,
         native_work_gate: NativeWorkGate | None = None,
+        resource_admission: ResourceAdmission | None = None,
     ):
         self.enabled = enabled and interval_seconds > 0
         self.label = label
@@ -627,6 +628,7 @@ class _ResourceHeartbeat:
         self.interval_seconds = interval_seconds
         self.stall_dump_seconds = stall_dump_seconds
         self.native_work_gate = native_work_gate
+        self.resource_admission = resource_admission
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -685,6 +687,12 @@ class _ResourceHeartbeat:
                     f"total_wait={self.native_work_gate.total_wait_seconds:.1f}s",
                     flush=True,
                 )
+
+        if self.resource_admission is not None:
+            guard_waiting = self.resource_admission.current_waiting_counts()
+            if guard_waiting:
+                summary = " ".join(f"{kind}={n}" for kind, n in sorted(guard_waiting.items()))
+                print(f"[{self.label}] resource guard: waiting {summary}", flush=True)
 
         waiting = DISTRIBUTED_PROVIDER_LEASES.current_waiting_counts()
         if waiting:
@@ -1372,6 +1380,7 @@ def _build_impl(
         interval_seconds=heartbeat_interval,
         stall_dump_seconds=_stall_dump_seconds() if heartbeat_enabled else 0.0,
         native_work_gate=_native_work_gate,
+        resource_admission=ctx.resource_admission,
     ) as _hb:
         # Pre-load only the ASR model the active lane will use, so a transcribe shard never pulls
         # in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio lane loads

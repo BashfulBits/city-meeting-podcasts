@@ -661,6 +661,31 @@ def test_matching_spec_reuses_without_ffmpeg(tmp_path):
     assert ep.audio_duration_served == pytest.approx(3600.0)
 
 
+def test_errored_record_is_re_encoded_not_reused(tmp_path):
+    """An episode flagged with a materialization error must not be reused/credited even when a
+    stale matching-spec object is still in storage: re-encode so a clean pass clears the error and
+    records a served duration. This surfaces the errored episodes the ASR lane skips (run #25)."""
+    ep = _ep("g1")
+    ep.duration = 3600
+    city = _city()
+    store = _store(tmp_path)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, spec)
+    _seed_object(store, key)  # stale object from the failed encode is present
+    ep.audio_key = key
+    ep.hosted_audio_url = store.public_url(key)
+    ep.audio_spec_hash = spec
+    ep.materialize_error = "error"
+
+    ff = FakeFfmpeg()
+    stats = _materialize(city, [ep], store, ff)
+
+    assert stats.reused == 0 and stats.credited == 0
+    assert stats.hosted == 1
+    assert ff.calls == ["https://src/manifest.m3u8"]  # actually re-encoded
+    assert ep.materialize_error is None  # cleared by the successful pass
+
+
 def test_matching_spec_corrects_edited_timeline_served_duration(tmp_path):
     ep = _ep("g1")
     ep.timeline = _edited_timeline()
