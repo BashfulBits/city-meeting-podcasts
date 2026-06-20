@@ -30,7 +30,8 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   double-append). An interrupted run is tagged `interrupted: true` / `outcome: "interrupted"` in
   `run_history.jsonl` + `run_summary.json` and the `enrich`/`build` CLI exits `143` (128+SIGTERM) so
   `continue-on-error` and log readers don't mistake a cut-short run for a clean success — a normal
-  wall-clock/supersession yield is **not** an interrupt and still exits `0` (GH#377).
+  wall-clock/supersession yield is **not** an interrupt and still exits `0` (GH#377,
+  [#386](https://github.com/BashfulBits/city-meeting-podcasts/pull/386)).
 - **Native Granicus audio can fall back once to authenticated Cloudflare egress after a direct
   GitHub-runner HTTP 403.** The retry applies only to strict canonical
   `archive-video.granicus.com/<tenant>/<tenant>_*.mp4` inputs and remains inside the existing local
