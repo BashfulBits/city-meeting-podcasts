@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Protocol
 
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
-from citypods.http import HOST_LIMITER, USER_AGENT
+from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
 from citypods.models import City, Episode
 from citypods.progress import PROGRESS
 from citypods.provider_circuits import MediaRateLimitCircuitBreaker
@@ -382,6 +382,7 @@ def _run_ffmpeg_guarded(
     memory_floor_bytes: int | None = None,
     rate_limit_urls: Sequence[str] = (),
     rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    stop: Callable[[], bool] | None = None,
     poll_seconds: float = _FFMPEG_GUARD_POLL_SECONDS,
     snapshot: Callable[[], ResourceSnapshot] = current_snapshot,
     sleep: Callable[[float], None] = time.sleep,
@@ -405,6 +406,9 @@ def _run_ffmpeg_guarded(
     already be holding a cross-shard slot, or one early-starting process can win every distributed
     candidate while its other threads just wait locally, starving other shards of capacity they
     could otherwise use.
+
+    ``stop``, if given, lets either wait yield with :class:`~citypods.http.StopRequested` once the
+    run's wall-clock budget has expired, instead of waiting out a full queue/lease cycle.
     """
     if not memory_floor_bytes:
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
@@ -414,8 +418,8 @@ def _run_ffmpeg_guarded(
         # a queued waiter acquire it, pass the still-closed circuit check, and start ffmpeg anyway
         # (#343).
         with (
-            HOST_LIMITER.slots(rate_limit_urls),
-            DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
+            HOST_LIMITER.slots(rate_limit_urls, stop=stop),
+            DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls, stop=stop),
             _circuit_admission(rate_limit_circuit, rate_limit_urls),
         ):
             try:
@@ -507,8 +511,8 @@ def _run_ffmpeg_guarded(
     # Memory-floor path: hold the per-host rate-limit slot (#39) for the whole monitored run so a
     # sharded burst can't open more than the configured number of simultaneous connections per host.
     with (
-        HOST_LIMITER.slots(rate_limit_urls),
-        DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls),
+        HOST_LIMITER.slots(rate_limit_urls, stop=stop),
+        DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls, stop=stop),
         _circuit_admission(rate_limit_circuit, rate_limit_urls),
     ):
         try:
@@ -728,6 +732,7 @@ def _download_audio(
     max_seconds: float | None = None,
     log: Callable[[str], None] | None = print,
     rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> bool:
     """Copy the source audio stream from *url* to *dest* without re-encoding.
 
@@ -768,6 +773,7 @@ def _download_audio(
             memory_floor_bytes=memory_floor_bytes,
             rate_limit_urls=(url,),  # the remote source — cap concurrent hits per provider (#39)
             rate_limit_circuit=rate_limit_circuit,
+            stop=stop,
             log=log,
         )
         return dest.exists() and dest.stat().st_size > 0
@@ -795,6 +801,7 @@ class SourceCache:
         timeout_seconds: float | None = None,
         memory_floor_bytes: int | None = None,
         rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+        stop: Callable[[], bool] | None = None,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
         self._paths: dict[str, Path] = {}
@@ -804,6 +811,10 @@ class SourceCache:
         self.timeout_seconds = timeout_seconds
         self.memory_floor_bytes = memory_floor_bytes
         self.rate_limit_circuit = rate_limit_circuit
+        # Shared run-budget predicate (set once for the whole run); lets a caller queued behind
+        # another thread's fetch of the same uid yield once the budget expires instead of waiting
+        # out that fetch's full timeout.
+        self._stop = stop
 
     def __enter__(self) -> SourceCache:
         return self
@@ -823,10 +834,18 @@ class SourceCache:
         download completes, then all receive the same path. Returns None on generic failure
         (caller may fall back to streaming *url* directly); provider throttling propagates as
         ``RateLimitedMediaFetchError`` so the caller does not immediately retry the same URL.
+        Raises :class:`~citypods.http.StopRequested` if the run's wall-clock budget expires while
+        queued behind another thread's fetch of the same *uid*.
         """
         with self._guard:
             lock = self._locks[uid]
-        with lock:
+        if self._stop is None:
+            lock.acquire()
+        else:
+            while not lock.acquire(timeout=1.0):
+                if self._stop():
+                    raise StopRequested(f"source cache wait for uid={uid!r} stopped")
+        try:
             if uid in self._paths:
                 return self._paths[uid]
             dest = Path(self._tmpdir.name) / f"{hashlib.md5(uid.encode()).hexdigest()}.mka"
@@ -837,10 +856,13 @@ class SourceCache:
                 self.timeout_seconds,
                 self.memory_floor_bytes,
                 rate_limit_circuit=self.rate_limit_circuit,
+                stop=self._stop,
             ):
                 self._paths[uid] = dest
                 return dest
             return None
+        finally:
+            lock.release()
 
 
 class FfmpegRunner(Protocol):
@@ -1239,6 +1261,7 @@ class CommandFfmpeg:
         phase_gate: NativeWorkGate | None = None,
         finalize_workers: int = 0,
         rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+        stop: Callable[[], bool] | None = None,
     ):
         self.binary = binary
         self.max_kbps = max_kbps
@@ -1252,6 +1275,11 @@ class CommandFfmpeg:
         self.phase_gate = phase_gate
         self.rate_limit_circuit = rate_limit_circuit
         self.manages_audio_phases = phase_gate is not None
+        # Shared run-budget predicate; used for the pre-subprocess coordination waits (phase-gate
+        # slot, per-host rate limit, distributed lease) so a queued encode yields once the run's
+        # wall-clock budget expires instead of waiting out the queue. The ffmpeg subprocess call
+        # itself stays bounded only by ``timeout_seconds`` (stop() can't preempt subprocess.run).
+        self._stop = stop
         self._finalize_executor = (
             ThreadPoolExecutor(
                 max_workers=max(1, int(finalize_workers)),
@@ -1342,6 +1370,7 @@ class CommandFfmpeg:
             self.binary,
             timeout=probe_timeout,
             rate_limit_circuit=self.rate_limit_circuit,
+            stop=self._stop,
         )
         codec_args = encode_args(
             stream_info.bit_rate, self.max_kbps, source_codec=stream_info.codec_name
@@ -1382,7 +1411,7 @@ class CommandFfmpeg:
             self._run_audio_phase(
                 kind="audio",
                 label="identity-render",
-                stop=None,
+                stop=self._stop,
                 run=lambda: _run_ffmpeg_guarded(
                     cmd,
                     phase="identity-render",
@@ -1390,6 +1419,7 @@ class CommandFfmpeg:
                     memory_floor_bytes=self.memory_floor_bytes,
                     rate_limit_urls=(source_url,),  # no-op if it's a local cached copy (#39)
                     rate_limit_circuit=self.rate_limit_circuit,
+                    stop=self._stop,
                 ),
             )
 
@@ -1535,7 +1565,7 @@ class CommandFfmpeg:
             self._run_audio_phase(
                 kind="audio",
                 label="filter-render",
-                stop=None,
+                stop=self._stop,
                 run=lambda: _run_ffmpeg_guarded(
                     cmd,
                     phase="filter-render",
@@ -1545,6 +1575,7 @@ class CommandFfmpeg:
                     # cached copies / insert assets resolve to no host → no-op.
                     rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
                     rate_limit_circuit=self.rate_limit_circuit,
+                    stop=self._stop,
                 ),
             )
 
@@ -1605,7 +1636,7 @@ class CommandFfmpeg:
         _, measure_stderr = self._run_audio_phase(
             kind="audio",
             label="speech-measure",
-            stop=None,
+            stop=self._stop,
             run=lambda: _run_ffmpeg_guarded(
                 measure_cmd,
                 phase="speech-measure",
@@ -1613,6 +1644,7 @@ class CommandFfmpeg:
                 memory_floor_bytes=self.memory_floor_bytes,
                 rate_limit_urls=rate_limit_urls,
                 rate_limit_circuit=self.rate_limit_circuit,
+                stop=self._stop,
             ),
         )
         measured = _parse_ebur128_summary(measure_stderr)
@@ -1665,7 +1697,7 @@ class CommandFfmpeg:
             return self._run_audio_phase(
                 kind="audio-finalize",
                 label=final_phase,
-                stop=None,
+                stop=self._stop,
                 run=lambda: _run_ffmpeg_guarded(
                     final_cmd,
                     phase=final_phase,
@@ -1704,13 +1736,14 @@ def _probe_audio_stream(
     ffmpeg_binary: str = "ffmpeg",
     timeout: float | None = None,
     rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> AudioStreamInfo:
     """Return source audio codec/bitrate via ffprobe, or unknown fields on failure."""
     ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
     try:
         with (
-            HOST_LIMITER.slot(url),
-            DISTRIBUTED_PROVIDER_LEASES.slots([url]),
+            HOST_LIMITER.slot(url, stop=stop),
+            DISTRIBUTED_PROVIDER_LEASES.slots([url], stop=stop),
             _circuit_admission(rate_limit_circuit, [url]),
         ):
             out = subprocess.run(
@@ -2231,6 +2264,17 @@ def materialize_audio(
                 f"[enrich] audio encode done slug={city.slug} provider={city.provider} "
                 f"source={src_key} uid={label} guid={ep.guid} "
                 f"bytes={size} seconds={elapsed:.1f}",
+                flush=True,
+            )
+        except StopRequested as exc:
+            # The run's wall-clock budget expired while queued on a coordination wait (host rate
+            # limit, distributed lease, source cache) — not a source/provider failure, so no
+            # backoff is recorded; this episode is simply retried from the top next run.
+            with lock:
+                stats.skipped_budget += 1
+            print(
+                f"[enrich] audio encode skipped slug={city.slug} provider={city.provider} "
+                f"source={src_key} uid={label} guid={ep.guid}: {exc}",
                 flush=True,
             )
         except CircuitOpenMediaFetchError as exc:

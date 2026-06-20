@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from citypods.http import StopRequested
 from citypods.silence import (
     SilencePlanner,
     _parse_ffmpeg_duration,
@@ -197,6 +198,22 @@ class TestDetectSilences:
         assert "silencedetect=noise=-50.0dB:d=2.0" in " ".join(cmd)
         assert "-vn" in cmd
 
+    def test_threads_arg_pins_ffmpeg_thread_count(self):
+        """Mirrors CommandFfmpeg's -threads pinning so a silencedetect pass doesn't default to
+        'all cores' alongside NativeWorkGate-budgeted encodes."""
+        with patch("citypods.silence.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stderr="", returncode=0)
+            detect_silences("http://x.com/v.mp4", threads=2)
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("-threads") + 1] == "2"
+
+    def test_no_threads_arg_when_threads_is_none(self):
+        with patch("citypods.silence.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stderr="", returncode=0)
+            detect_silences("http://x.com/v.mp4")
+        cmd = mock_run.call_args[0][0]
+        assert "-threads" not in cmd
+
 
 # ---------------------------------------------------------------------------
 # SilencePlanner
@@ -321,6 +338,64 @@ class TestSilencePlanner:
         assert timeline_digest(result) != ""  # non-identity → will re-encode
         assert len(result.segments) == 1
         assert result.segments[0].source_start == pytest.approx(5.0)
+
+    def test_detect_silences_called_with_native_work_gate_threads(self):
+        """The detect_silences call is pinned to CommandFfmpeg's configured thread count, the same
+        budget AudioStage's encodes respect, so a planner pass can't oversubscribe the CPU."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.ffmpeg.threads = 2
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0)
+            planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert mock_detect.call_args.kwargs["threads"] == 2
+
+    def test_defers_when_native_work_gate_denies_admission(self):
+        """A NativeWorkGate that denies admission (budget/queue pressure) must defer the planner
+        pass — not run silencedetect unbounded and not raise."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.native_work_gate.acquire.return_value = False
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert result is None
+        mock_detect.assert_not_called()
+        ctx.native_work_gate.release.assert_not_called()
+
+    def test_releases_native_work_gate_after_detect_silences(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.native_work_gate.acquire.return_value = True
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences", return_value=([], 3600.0)),
+        ):
+            planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        ctx.native_work_gate.release.assert_called_once_with(kind="audio")
+
+    def test_defers_without_recording_failure_when_source_cache_stop_requested(self):
+        """The run's wall-clock budget expiring while queued on the source cache's per-uid lock is
+        not a source failure: defer cleanly, don't raise out of the planner."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.source_cache.get_or_fetch.side_effect = StopRequested("stopped")
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        assert result is None
 
     def test_returns_none_when_provider_error(self):
         from citypods.providers.base import ProviderError

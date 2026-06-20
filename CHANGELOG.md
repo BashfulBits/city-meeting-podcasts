@@ -102,6 +102,32 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   the oldest tracked operation has made no progress for `CITYPODS_STALL_DUMP_SECONDS` (default
   600s, 0 disables), dumps every thread's stack via `faulthandler.dump_traceback` (cooled down to
   once per 30 minutes so a genuine stall doesn't flood the log).
+- **The host rate limiter, distributed provider lease pool, and per-run source cache now stop
+  waiting once the run's wall-clock budget expires, instead of blocking out a full queue/lease
+  cycle.** These three coordination waits were previously unbounded by `stop()` — a worker idle
+  past the run's deadline still queued behind whichever thread held the slot/lease/lock, sometimes
+  for minutes, before the caller could even check the budget. `HostRateLimiter`/`_Slots`
+  (`citypods/http.py`) and `DistributedProviderLeasePool`/`_acquire` (`citypods/provider_leases.py`)
+  now accept an optional `stop` predicate and raise a new `StopRequested` if it fires before the
+  wait acquires; `SourceCache.get_or_fetch` (`citypods/media.py`) does the same for its per-uid
+  lock. `CommandFfmpeg` and `SourceCache` bind `stop` once at construction (`citypods/run.py`)
+  rather than threading it through the `FfmpegRunner` Protocol, so existing test doubles are
+  unaffected. `StopRequested` is handled as a graceful defer (no backoff recorded) in
+  `_encode_one`, `SwagitConcatPlanner.plan()`, and `SilencePlanner.plan()` — the same treatment
+  already given to `CircuitOpenMediaFetchError` — since running out of time isn't a source/provider
+  failure and shouldn't count against an episode's retry backoff. The actual ffmpeg subprocess call
+  remains intentionally out of scope: `stop()` still can't preempt a thread parked in
+  `subprocess.run`, only `audio_encode_timeout_minutes` bounds that.
+- **The heartbeat now surfaces live `NativeWorkGate` occupancy and provider-lease queue depth each
+  tick, not just cumulative end-of-run totals.** `total_wait_seconds` and `telemetry()` could only
+  show *how much* waiting had happened over the whole run, not *whether* the current tick was
+  blocked — useless for telling "the gate is fully booked right now" apart from "nothing has
+  contended in a while." `NativeWorkGate.current_counts()` (`citypods/resources.py`) and
+  `DistributedProviderLeasePool.current_waiting_counts()` (`citypods/provider_leases.py`, a new
+  live per-domain gauge incremented/decremented around `_acquire`'s wait loop) expose the live
+  state; `_ResourceHeartbeat` (`citypods/run.py`) prints a `[enrich] gate: ...` line and one
+  `[enrich] leases: <domain> ...` line per tick, suppressed entirely when idle to avoid log noise
+  on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
 - **The scheduled transcribe lane no longer defers episodes merely because they have untimed
@@ -110,6 +136,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   the caption/minutes-bearing episodes that the fresh-ASR lane was intended to cover stayed queued.
   Lane routing now happens first: `transcribe` always selects fresh faster-whisper, while the
   unscheduled `align` lane and combined auto mode retain the alignment-disabled defer behavior.
+- **`SilencePlanner`'s `ffmpeg silencedetect` pass no longer oversubscribes the CPU alongside
+  `AudioStage`'s encodes.** `detect_silences()` shelled out to ffmpeg with no `-threads` cap and
+  wasn't gated by `NativeWorkGate`, so `TimelineStage`'s per-episode planner threads (parallelized up
+  to `ctx.max_encodes_per_source`) could each spawn an unbounded, all-cores ffmpeg `silencedetect`
+  process — running concurrently with, or ahead of, the gated audio encodes the gate exists to budget.
+  `detect_silences()` now accepts a `threads: int | None` param applied as `-threads N` the same way
+  `CommandFfmpeg` pins its encode passes, and `SilencePlanner.plan()` acquires/releases
+  `ctx.native_work_gate` (`kind="audio"`) around the call using the same `ffmpeg_threads` value
+  `CommandFfmpeg` is configured with — so a silencedetect pass competes for the same admission slots
+  as `AudioStage`'s encodes instead of running outside the budget. A denied/stopped admission defers
+  the planner pass (`ep.timeline` stays unstamped) rather than running ungated or raising.
 - **The silence-trim and Swagit-concat planners no longer produce or silently swallow degenerate
   results.** `SilencePlanner` could stamp a near-empty served timeline (observed: 0.005s/0.010s
   outputs) when `detect_silences` misread a throttled/truncated source as almost entirely silent;

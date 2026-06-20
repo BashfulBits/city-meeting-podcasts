@@ -615,12 +615,14 @@ class _ResourceHeartbeat:
         root: Path,
         interval_seconds: float,
         stall_dump_seconds: float = 0.0,
+        native_work_gate: NativeWorkGate | None = None,
     ):
         self.enabled = enabled and interval_seconds > 0
         self.label = label
         self.root = root
         self.interval_seconds = interval_seconds
         self.stall_dump_seconds = stall_dump_seconds
+        self.native_work_gate = native_work_gate
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -653,8 +655,44 @@ class _ResourceHeartbeat:
         while not self._stop.wait(self.interval_seconds):
             print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
             print(f"[{self.label}] active work: {format_snapshot(PROGRESS.snapshot())}", flush=True)
+            self._print_gate_and_lease_state()
             self._sample()
             self._maybe_dump_stalled_threads()
+
+    def _print_gate_and_lease_state(self) -> None:
+        """Surface *live* gate/lease occupancy each tick — ``total_wait_seconds`` and
+        ``telemetry()`` are cumulative-for-the-run and can't show why the current tick is
+        blocked (#376)."""
+        if self.native_work_gate is not None:
+            counts = self.native_work_gate.current_counts()
+            if any(
+                (
+                    counts["audio_active"],
+                    counts["audio_finalize_waiting"],
+                    counts["asr_active"],
+                    counts["asr_waiting"],
+                )
+            ):
+                print(
+                    f"[{self.label}] gate: "
+                    f"audio_active={counts['audio_active']}/{counts['max_audio_active']} "
+                    f"audio_finalize_waiting={counts['audio_finalize_waiting']} "
+                    f"asr_active={counts['asr_active']} asr_waiting={counts['asr_waiting']} "
+                    f"total_wait={self.native_work_gate.total_wait_seconds:.1f}s",
+                    flush=True,
+                )
+
+        waiting = DISTRIBUTED_PROVIDER_LEASES.current_waiting_counts()
+        if waiting:
+            telemetry = DISTRIBUTED_PROVIDER_LEASES.telemetry()
+            for domain, waiting_count in sorted(waiting.items()):
+                cum = telemetry.get(domain, {})
+                print(
+                    f"[{self.label}] leases: {domain} waiting={waiting_count} "
+                    f"cum_wait={cum.get('lease_wait_seconds', 0.0):.1f}s "
+                    f"renewals={cum.get('lease_renewals', 0)}",
+                    flush=True,
+                )
 
     def _maybe_dump_stalled_threads(self) -> None:
         if self.stall_dump_seconds <= 0:
@@ -1181,6 +1219,7 @@ def build(
         phase_gate=_native_work_gate,
         finalize_workers=int(defaults.get("audio_finalize_workers", 2)),
         rate_limit_circuit=_rate_limit_circuit,
+        stop=stop,
     )
     source_cache = (
         SourceCache(
@@ -1188,6 +1227,7 @@ def build(
             timeout_seconds=getattr(ffmpeg, "timeout_seconds", None),
             memory_floor_bytes=getattr(ffmpeg, "memory_floor_bytes", None),
             rate_limit_circuit=_rate_limit_circuit,
+            stop=stop,
         )
         if not dry_run
         else None
@@ -1311,6 +1351,7 @@ def build(
         root=output_dir,
         interval_seconds=heartbeat_interval,
         stall_dump_seconds=_stall_dump_seconds() if heartbeat_enabled else 0.0,
+        native_work_gate=_native_work_gate,
     ) as _hb:
         # Pre-load only the ASR model the active lane will use, so a transcribe shard never pulls
         # in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio lane loads
