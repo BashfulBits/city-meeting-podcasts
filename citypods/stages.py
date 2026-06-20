@@ -97,6 +97,7 @@ from citypods.media import (
 )
 from citypods.models import City, Episode
 from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workitem_from_episode
+from citypods.progress import PROGRESS
 from citypods.records import AUDIO_PIPELINE_VERSION
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.timeline import Timeline, remap, timeline_digest
@@ -685,48 +686,54 @@ class TimelineStage:
 
             current: Timeline | None = ep.timeline
             changed = False
+            progress_entry = PROGRESS.start(
+                source=city.slug, uid=str(ep.uid or ep.guid), phase="timeline-plan"
+            )
             try:
-                for planner in self.planners:
-                    result = planner.plan(provider, city, ep, ctx, current)
-                    if result is not None:
-                        current = result
-                        changed = True
-            except CircuitOpenMediaFetchError as exc:
-                # A planner's source-cache prefetch (e.g. SilencePlanner) found the provider
-                # circuit already open. Surface it the same way AudioStage does instead of
-                # letting it propagate to the global queue's blanket per-item catch, which would
-                # silently drop this episode for the pass with no stats and no backoff.
-                with lock:
-                    stats.skipped += 1
-                    stats.circuit_skipped += 1
-                    stats.circuit_keys.add(exc.circuit_key)
-                return
-            except RateLimitedMediaFetchError as exc:
-                # A planner's source-cache prefetch hit a provider 403/429 (it records on the
-                # shared circuit breaker itself; this just makes the failure visible in the
-                # report instead of vanishing into the global queue's blanket catch).
-                if exc.opened_domain is not None:
-                    print(
-                        f"[enrich] provider throttle circuit opened "
-                        f"domain={exc.opened_domain.split('/', 1)[0]} "
-                        f"circuit={exc.opened_domain}",
-                        flush=True,
-                    )
-                with lock:
-                    stats.rate_limited += 1
-                    stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
-                record_materialize_failure(ep, getattr(exc, "code", None) or "rate_limited")
-                return
+                try:
+                    for planner in self.planners:
+                        result = planner.plan(provider, city, ep, ctx, current)
+                        if result is not None:
+                            current = result
+                            changed = True
+                except CircuitOpenMediaFetchError as exc:
+                    # A planner's source-cache prefetch (e.g. SilencePlanner) found the provider
+                    # circuit already open. Surface it the same way AudioStage does instead of
+                    # letting it propagate to the global queue's blanket per-item catch, which
+                    # would silently drop this episode for the pass with no stats and no backoff.
+                    with lock:
+                        stats.skipped += 1
+                        stats.circuit_skipped += 1
+                        stats.circuit_keys.add(exc.circuit_key)
+                    return
+                except RateLimitedMediaFetchError as exc:
+                    # A planner's source-cache prefetch hit a provider 403/429 (it records on the
+                    # shared circuit breaker itself; this just makes the failure visible in the
+                    # report instead of vanishing into the global queue's blanket catch).
+                    if exc.opened_domain is not None:
+                        print(
+                            f"[enrich] provider throttle circuit opened "
+                            f"domain={exc.opened_domain.split('/', 1)[0]} "
+                            f"circuit={exc.opened_domain}",
+                            flush=True,
+                        )
+                    with lock:
+                        stats.rate_limited += 1
+                        stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+                    record_materialize_failure(ep, getattr(exc, "code", None) or "rate_limited")
+                    return
 
-            if changed and current is not None:
-                # Stamp the planner-set signature so a future run can detect staleness.
-                ep.timeline = replace(current, version=sig)
-                with lock:
-                    stats.ran += 1
-            else:
-                # No planner fired → identity path; ep.timeline stays None (== identity).
-                with lock:
-                    stats.reused += 1
+                if changed and current is not None:
+                    # Stamp the planner-set signature so a future run can detect staleness.
+                    ep.timeline = replace(current, version=sig)
+                    with lock:
+                        stats.ran += 1
+                else:
+                    # No planner fired → identity path; ep.timeline stays None (== identity).
+                    with lock:
+                        stats.reused += 1
+            finally:
+                PROGRESS.finish(progress_entry)
 
         if ctx.max_encodes_per_source > 1:
             with ThreadPoolExecutor(max_workers=ctx.max_encodes_per_source) as pool:

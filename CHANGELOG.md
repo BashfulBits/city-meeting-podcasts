@@ -91,6 +91,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   dedicated job the sharded `asr` job `needs`), and a `FakeDispatchBackend` exercises the whole path in
   `tests/test_compute_dispatch.py`.
 
+### Added
+- **A stall-diagnostics progress registry surfaces which episode/source/phase a stuck enrich
+  thread is on, with a thread-stack dump as a backstop.** `audio.yml` runs had intermittently shown
+  a shard stuck for the whole run with no further log output, and the existing heartbeat only
+  printed CPU/memory snapshots — useless for telling a stuck shard apart from a slow-but-healthy
+  one. New `citypods/progress.py` (`PROGRESS`, a thread-safe per-thread-ident registry) is updated
+  by `AudioStage`'s encode worker and `TimelineStage`'s planner loop on entry/exit; the heartbeat
+  now prints the longest-running active operations every tick (`[enrich] active work: ...`) and, if
+  the oldest tracked operation has made no progress for `CITYPODS_STALL_DUMP_SECONDS` (default
+  600s, 0 disables), dumps every thread's stack via `faulthandler.dump_traceback` (cooled down to
+  once per 30 minutes so a genuine stall doesn't flood the log).
+
 ### Fixed
 - **The silence-trim and Swagit-concat planners no longer produce or silently swallow degenerate
   results.** `SilencePlanner` could stamp a near-empty served timeline (observed: 0.005s/0.010s
