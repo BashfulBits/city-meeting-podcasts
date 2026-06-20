@@ -71,6 +71,10 @@ def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
         last = datetime.fromisoformat(ep.transcript_timeout_last_attempt)
     except ValueError:
         return None
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=UTC)
+    else:
+        last = last.astimezone(UTC)
     delay = min(
         TRANSCRIPT_TIMEOUT_BACKOFF_MAX,
         TRANSCRIPT_TIMEOUT_BACKOFF_BASE * 2 ** (ep.transcript_timeout_attempts - 1),
@@ -536,6 +540,13 @@ def episode_to_record(ep: Episode) -> dict:
     }
 
 
+def _coerce_non_negative_int(value: object) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _transcript_fields_from_rec(rec: dict) -> dict:
     """Extract transcript artifact fields from a v2 record.  Returns empty-value dict for v1
     records (where the old ``transcript_url`` field is silently dropped — those transcripts
@@ -553,7 +564,7 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_words_key": t.get("words_key"),
         "transcript_words_url": t.get("words_url"),
         "transcript_pipeline_version": t.get("pipeline_version"),
-        "transcript_timeout_attempts": int(t.get("timeout_attempts", 0) or 0),
+        "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
     }
 
@@ -750,7 +761,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
                 ep.transcript_format = t.get("format")
                 ep.transcript_basis = t.get("basis", "source:s0")
                 ep.transcript_synced = bool(t.get("synced", False))
-            ep.transcript_timeout_attempts = int(t.get("timeout_attempts", 0) or 0)
+            ep.transcript_timeout_attempts = _coerce_non_negative_int(t.get("timeout_attempts"))
             ep.transcript_timeout_last_attempt = t.get("timeout_last_attempt")
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters

@@ -60,6 +60,37 @@ def test_spawn_worker_starts_and_returns_serialized_error_without_asr_dependenci
         backend.close()
 
 
+def test_process_backend_close_kills_worker_that_ignores_terminate():
+    class _StubbornProcess:
+        def __init__(self):
+            self.alive = True
+            self.terminated = 0
+            self.killed = 0
+
+        def is_alive(self):
+            return self.alive
+
+        def terminate(self):
+            self.terminated += 1
+
+        def kill(self):
+            self.killed += 1
+            self.alive = False
+
+        def join(self, timeout=None):
+            pass
+
+    backend = ProcessLocalBackend()
+    process = _StubbornProcess()
+    backend._process = process
+
+    backend.close()
+
+    assert process.terminated == 1
+    assert process.killed == 1
+    assert backend._process is None
+
+
 @pytest.mark.skipif("fork" not in __import__("multiprocessing").get_all_start_methods(), reason="")
 def test_process_backend_returns_artifacts_and_reuses_worker():
     backend = ProcessLocalBackend(start_method="fork", asr=_FakeAsr())
@@ -91,6 +122,7 @@ def test_process_backend_can_kill_and_restart_stuck_inference():
     deadline = time.monotonic() + 5
     while backend._process is None and time.monotonic() < deadline:
         time.sleep(0.01)
+    assert backend._process is not None, "worker did not start before timeout"
     old_pid = backend._process.pid
     assert backend.terminate_active() is True
     thread.join(timeout=5)
