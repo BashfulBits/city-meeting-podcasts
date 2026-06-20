@@ -42,6 +42,7 @@ from typing import Protocol
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
 from citypods.http import HOST_LIMITER, USER_AGENT
 from citypods.models import City, Episode
+from citypods.progress import PROGRESS
 from citypods.provider_circuits import MediaRateLimitCircuitBreaker
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers.base import ProviderError
@@ -2104,6 +2105,7 @@ def materialize_audio(
                 stats.skipped_budget += 1
             return
         label = ep.uid or ep.guid
+        _progress_entry = PROGRESS.start(source=str(src_key), uid=str(label), phase="audio-encode")
         # Admission: reserve the encode's predicted peak RSS so it starts only with real budget
         # headroom — a *leading* signal. The reservation supersedes the instantaneous mem_available
         # gate for audio; that gate (resource_admission) is the fallback when no budget is set and
@@ -2118,11 +2120,13 @@ def materialize_audio(
             if not memory_reservation.reserve(reserved_bytes, label=str(label), stop=stop):
                 with lock:
                     stats.skipped_budget += 1
+                PROGRESS.finish(_progress_entry)
                 return
         elif resource_admission is not None:
             if not resource_admission.wait(kind="audio", label=str(label), stop=stop):
                 with lock:
                     stats.skipped_budget += 1
+                PROGRESS.finish(_progress_entry)
                 return
         gate_acquired = False
         phase_managed = bool(getattr(ffmpeg, "manages_audio_phases", False))
@@ -2298,6 +2302,7 @@ def materialize_audio(
                 native_work_gate.release(kind="audio")
             if memory_reservation is not None and reserved_bytes:
                 memory_reservation.release(reserved_bytes)
+            PROGRESS.finish(_progress_entry)
 
     if max_workers > 1:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:

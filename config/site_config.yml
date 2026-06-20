@@ -110,6 +110,13 @@ defaults:
   silence_lead_trail_min_s: 1.0  # min leading/trailing silence to remove (seconds)
   silence_mid_min_s: 10          # min mid-meeting gap to remove (seconds); 10s cuts procedural
                                  # pauses and vote transitions for a tighter podcast edit
+  # Sanity floor on the planned result (audio workflow review, 2026-06): rejects a near-empty
+  # served timeline (observed: 0.005s/0.010s outputs from a bad/truncated silencedetect probe
+  # reading the source as nearly all silent). Floor = max(silence_min_served_seconds,
+  # source_duration * silence_min_served_fraction). When rejected, a prior valid timeline is
+  # preserved; with no prior timeline the episode is stamped identity (untrimmed) instead.
+  silence_min_served_seconds: 5.0
+  silence_min_served_fraction: 0.02
   audio_encode_timeout_minutes: 45       # hard cap per probe+encode; a stalled source can't pin a
                                          # worker (which stop() can't preempt) past this. 0 = no cap.
   audio_ffmpeg_threads: 1                # per-encode AAC threads; filter paths also pin

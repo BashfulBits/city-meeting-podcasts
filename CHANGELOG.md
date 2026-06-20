@@ -91,7 +91,32 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   dedicated job the sharded `asr` job `needs`), and a `FakeDispatchBackend` exercises the whole path in
   `tests/test_compute_dispatch.py`.
 
+### Added
+- **A stall-diagnostics progress registry surfaces which episode/source/phase a stuck enrich
+  thread is on, with a thread-stack dump as a backstop.** `audio.yml` runs had intermittently shown
+  a shard stuck for the whole run with no further log output, and the existing heartbeat only
+  printed CPU/memory snapshots — useless for telling a stuck shard apart from a slow-but-healthy
+  one. New `citypods/progress.py` (`PROGRESS`, a thread-safe per-thread-ident registry) is updated
+  by `AudioStage`'s encode worker and `TimelineStage`'s planner loop on entry/exit; the heartbeat
+  now prints the longest-running active operations every tick (`[enrich] active work: ...`) and, if
+  the oldest tracked operation has made no progress for `CITYPODS_STALL_DUMP_SECONDS` (default
+  600s, 0 disables), dumps every thread's stack via `faulthandler.dump_traceback` (cooled down to
+  once per 30 minutes so a genuine stall doesn't flood the log).
+
 ### Fixed
+- **The silence-trim and Swagit-concat planners no longer produce or silently swallow degenerate
+  results.** `SilencePlanner` could stamp a near-empty served timeline (observed: 0.005s/0.010s
+  outputs) when `detect_silences` misread a throttled/truncated source as almost entirely silent;
+  `build_silence_timeline`'s result is now checked against `is_degenerate_served_duration` (new
+  `silence_min_served_seconds`/`silence_min_served_fraction` `StageContext`/site-config knobs,
+  defaults 5.0s / 2%) — a degenerate result preserves the prior valid timeline if one exists,
+  otherwise falls back to the untrimmed identity timeline instead of hosting near-silence.
+  `SilencePlanner.version` bumped 1→2 to re-examine episodes that may already carry a degenerate
+  stamped timeline from before this guard existed (a one-time, wall-clock-bounded re-trim).
+  Separately, `SwagitConcatPlanner` collapsed page-fetch and per-segment duration-probe failures
+  into one bare `return None` with no record of which sub-operation failed; both paths now call
+  `record_materialize_failure` with a distinct code (`concat-fetch`, `concat-probe:s<i>`) so
+  retries/backoff and diagnostics target the actual failure instead of a generic deferral.
 - **ASR shard assignment is now weighted by routing-aware transcription cost, not the audio lane's
   pending-encode backlog.** `run.py` fed `asr.yml`'s `--shard K/4` partition the same
   `pending_audio_work` signal as `audio.yml`; in steady state (Audio runs more often than ASR) that

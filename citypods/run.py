@@ -11,8 +11,10 @@ Two phases per build:
 from __future__ import annotations
 
 import collections
+import faulthandler
 import json
 import os
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -42,6 +44,7 @@ from citypods.ops.workqueue import (
     overlay_leases,
     save_manifest,
 )
+from citypods.progress import PROGRESS, format_snapshot
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
@@ -562,6 +565,17 @@ def _heartbeat_interval_seconds() -> float:
         return 60.0
 
 
+def _stall_dump_seconds() -> float:
+    """No-progress threshold after which the heartbeat dumps thread stacks (0 disables)."""
+    raw = os.environ.get("CITYPODS_STALL_DUMP_SECONDS")
+    if raw is None:
+        return 600.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 600.0
+
+
 def _bool_default(value: object, default: bool) -> bool:
     if value is None:
         return default
@@ -589,16 +603,30 @@ def _resource_admission_from_defaults(defaults: dict, *, time_bounded: bool, dry
 
 
 class _ResourceHeartbeat:
-    def __init__(self, *, enabled: bool, label: str, root: Path, interval_seconds: float):
+    # Once a stack dump has fired, wait at least this long before dumping again — the same stall
+    # would otherwise re-dump every tick and flood the log without adding information.
+    _STALL_DUMP_COOLDOWN_SECONDS = 1800.0
+
+    def __init__(
+        self,
+        *,
+        enabled: bool,
+        label: str,
+        root: Path,
+        interval_seconds: float,
+        stall_dump_seconds: float = 0.0,
+    ):
         self.enabled = enabled and interval_seconds > 0
         self.label = label
         self.root = root
         self.interval_seconds = interval_seconds
+        self.stall_dump_seconds = stall_dump_seconds
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self.peak_load_per_cpu: float | None = None
         self.min_mem_avail_bytes: int | None = None
+        self._last_stall_dump: float | None = None
 
     def __enter__(self) -> _ResourceHeartbeat:
         if not self.enabled:
@@ -624,7 +652,28 @@ class _ResourceHeartbeat:
     def _run(self) -> None:
         while not self._stop.wait(self.interval_seconds):
             print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
+            print(f"[{self.label}] active work: {format_snapshot(PROGRESS.snapshot())}", flush=True)
             self._sample()
+            self._maybe_dump_stalled_threads()
+
+    def _maybe_dump_stalled_threads(self) -> None:
+        if self.stall_dump_seconds <= 0:
+            return
+        if PROGRESS.longest_elapsed() < self.stall_dump_seconds:
+            return
+        now = time.monotonic()
+        if (
+            self._last_stall_dump is not None
+            and now - self._last_stall_dump < self._STALL_DUMP_COOLDOWN_SECONDS
+        ):
+            return
+        self._last_stall_dump = now
+        print(
+            f"[{self.label}] no progress for >={self.stall_dump_seconds:.0f}s on at least one "
+            "tracked operation — dumping all thread stacks",
+            flush=True,
+        )
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
 
     def _sample(self) -> None:
         try:
@@ -1176,6 +1225,8 @@ def build(
         silence_noise_db=float(defaults.get("silence_noise_db", -40.0)),
         silence_lead_trail_min_s=float(defaults.get("silence_lead_trail_min_s", 1.0)),
         silence_mid_min_s=float(defaults.get("silence_mid_min_s", 10.0)),
+        silence_min_served_seconds=float(defaults.get("silence_min_served_seconds", 5.0)),
+        silence_min_served_fraction=float(defaults.get("silence_min_served_fraction", 0.02)),
         max_encodes_per_source=max_encodes_per_source,
         backlog_policy=backlog_policy,
         source_cache=source_cache,
@@ -1259,6 +1310,7 @@ def build(
         label="enrich" if phase == "enrich" else phase,
         root=output_dir,
         interval_seconds=heartbeat_interval,
+        stall_dump_seconds=_stall_dump_seconds() if heartbeat_enabled else 0.0,
     ) as _hb:
         # Pre-load only the ASR model the active lane will use, so a transcribe shard never pulls
         # in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio lane loads
