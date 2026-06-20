@@ -48,19 +48,15 @@ from citypods.providers.base import ProviderError
 from citypods.records import (
     assign_uids,
     episode_to_record,
-    estimate_transcribe_shard_work,
     feed_content_hash,
     load_records,
     merge_persisted,
     merge_records,
     migrate_legacy_manifests,
-    pending_audio_work,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
-    records_path,
     save_records,
-    shard_assignment,
     source_key,
 )
 from citypods.resources import (
@@ -72,6 +68,7 @@ from citypods.resources import (
 )
 from citypods.security import SecurityError
 from citypods.seeds import merge_seed_episodes
+from citypods.sharding import create_shard_plan, load_shard_plan, sources_for_shard
 from citypods.site import (
     render_city_page,
     render_index,
@@ -904,6 +901,8 @@ def build(
     source: str | None = None,
     lane: str | None = None,
     no_refresh: bool = False,
+    shard_plan_path: str | Path | None = None,
+    state_snapshot_restored: bool = False,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
 
@@ -925,6 +924,9 @@ def build(
     until ``#sources < n``); ``source`` keeps only that one ``source_key``; ``lane`` selects the
     work class (``audio`` / ``transcribe`` / ``align``). A sharded or source-scoped run pushes back
     **only** the records it owns (scoped ``push_state``) and does not reconcile (H11b hooks).
+    ``shard_plan_path`` makes ownership come from one canonical pre-matrix snapshot instead of each
+    shard recomputing it. ``state_snapshot_restored`` says that same snapshot is already present
+    locally, so the shard skips the otherwise-redundant durable-state pull.
 
     ``no_refresh`` (render phase) renders each city purely from the record store and makes **no
     provider connections at all** — no ``detect_change``/``fetch_episodes``. Used by the PR preview:
@@ -936,6 +938,10 @@ def build(
         raise ValueError(f"unknown build phase {phase!r}")
     if lane is not None and lane not in ("audio", "transcribe", "align"):
         raise ValueError(f"unknown lane {lane!r}")
+    if shard_plan_path is not None and shard is None:
+        raise ValueError("shard_plan_path requires shard=(K, N)")
+    if state_snapshot_restored and shard_plan_path is None:
+        raise ValueError("state_snapshot_restored requires a canonical shard plan")
     site_config = load_site_config(site_config_path)
     # Per-host concurrency caps (issue #39). Configure the process-global limiter once, before any
     # fetching, so both make_session and the ffmpeg fetch paths (media.py) honor it — bounding the
@@ -972,43 +978,33 @@ def build(
         k, n = shard
         if not (0 <= k < n):
             raise ValueError(f"shard {k}/{n} out of range (need 0 <= k < n)")
-        # Source-atomic weighted assignment (computed from local state only, so every shard
-        # process in one workflow derives the same partition even if a sibling pushes state
-        # mid-run). The weight signal is lane-specific: the ASR (``transcribe``) lane uses
-        # routing-aware cost (local duration vs. cheap blocked/dispatch/in-flight work), not the
-        # audio lane's pending *encode count*. Audio backlog sits near zero for most sources by the
-        # time ASR runs (audio runs more often than ASR), which otherwise collapses ASR assignment
-        # to alphabetical round-robin regardless of the actual transcription work.
-        source_city = {source_key(c): c for c in cities}
-
-        def _shard_weight(key: str, city: City) -> float:
-            if not records_path(state_dir, key).exists():
-                return 1.0  # never-crawled: unknown backlog, don't let it default to zero weight
-            if lane == "transcribe":
-                estimate = estimate_transcribe_shard_work(
-                    state_dir,
-                    key,
-                    asr_enabled=city.asr_enabled,
-                    asr_pipeline_version=ASR_PIPELINE_VERSION,
-                    local_max_duration_hours=float(defaults.get("asr_local_max_duration_hours", 4)),
-                )
-                return estimate.shard_weight()
-            # Audio lane (and the unsharded/legacy default): remaining encode count — episodes
-            # that still need an encode under the current spec, not the source's total episode
-            # count — so a source that's mostly caught up doesn't keep crowding out a source with
-            # a real backlog (#37).
-            return pending_audio_work(
-                state_dir,
-                key,
-                extract_audio=city.extract_audio,
-                max_kbps=max_kbps,
-                loudness_profile=loudness_profile,
-                processing_profile=audio_processing_profile,
+        plan_lane = lane or "audio"
+        if shard_plan_path is not None:
+            plan = load_shard_plan(shard_plan_path)
+            owned = sources_for_shard(
+                plan,
+                lane=plan_lane,
+                shard_index=k,
+                num_shards=n,
+                expected_sources={source_key(city) for city in cities},
             )
-
-        source_weights = {key: _shard_weight(key, city) for key, city in source_city.items()}
-        assignment = shard_assignment((source_key(c) for c in cities), n, weights=source_weights)
-        cities = [c for c in cities if assignment.get(source_key(c)) == k]
+            print(
+                f"shard plan: loaded {shard_plan_path} lane={plan_lane} "
+                f"shard={k}/{n} sources={len(owned)}"
+            )
+        else:
+            # Legacy/local path: compute once inside this process. Production ASR supplies the
+            # immutable planner artifact so all four matrix jobs share one ownership decision.
+            plan = create_shard_plan(
+                cities,
+                state_dir,
+                lane=plan_lane,
+                num_shards=n,
+                defaults=defaults,
+                asr_pipeline_version=ASR_PIPELINE_VERSION,
+            )
+            owned = {key for key, owner in plan.assignment.items() if owner == k}
+        cities = [city for city in cities if source_key(city) in owned]
     # Backlog prioritization policy (H5). Built once per run so any windowed-recency horizon is
     # evaluated against a single ``now``. Empty/absent ⇒ behavior-preserving identity order.
     backlog_policy = load_backlog_policy(site_config)
@@ -1025,10 +1021,12 @@ def build(
 
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
     # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
-    if not dry_run:
+    if not dry_run and not state_snapshot_restored:
         restored = pull_state(storage, state_dir)
         if restored:
             print(f"state: restored {restored} file(s) from durable storage")
+    elif state_snapshot_restored:
+        print("state: using canonical pre-matrix snapshot; durable restore already completed")
     # H14a: adopt the unexpired dispatch leases from the restored manifest, so a transcript a prior
     # run handed to an external worker (still in flight) isn't dispatched again this run.
     if isinstance(compute_backend, DispatchCoordinator):

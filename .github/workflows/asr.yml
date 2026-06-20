@@ -64,13 +64,14 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Restore build state
-        uses: actions/cache@v5
+      # The reconcile job restored B2 once, reconciled leases, and planned source ownership from
+      # that exact snapshot. Every matrix job downloads the same immutable artifact instead of
+      # independently listing/downloading the complete B2 state prefix and recomputing ownership.
+      - name: Download canonical ASR snapshot + shard plan
+        uses: actions/download-artifact@v8
         with:
-          path: .citypods-state
-          key: build-state-asr-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: |
-            build-state-
+          name: asr-planner-${{ github.run_id }}
+          path: .
 
       - name: Install
         run: pip install -e ".[asr,storage]"
@@ -120,7 +121,12 @@ jobs:
         run: |
           set +e
           log="${RUNNER_TEMP:-/tmp}/citypods-asr.log"
-          citypods enrich --lane transcribe --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
+          citypods enrich \
+            --lane transcribe \
+            --shard ${{ matrix.shard }}/4 \
+            --shard-plan .citypods-asr-shard-plan.json \
+            --state-snapshot-restored \
+            2>&1 | tee "$log"
           code=${PIPESTATUS[0]}
           set -e
           if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then
@@ -159,3 +165,21 @@ jobs:
 
       - name: Reconcile dispatch leases + free-tier budget
         run: citypods compute reconcile
+
+      - name: Plan canonical ASR shard ownership
+        run: |
+          citypods compute plan-shards \
+            --lane transcribe \
+            --shards 4 \
+            --output .citypods-asr-shard-plan.json
+
+      - name: Upload canonical ASR snapshot + shard plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: asr-planner-${{ github.run_id }}
+          path: |
+            .citypods-state
+            .citypods-asr-shard-plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1

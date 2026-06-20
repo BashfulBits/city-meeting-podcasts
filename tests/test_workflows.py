@@ -131,6 +131,38 @@ def test_asr_workflow_runs_every_five_hours():
     assert {item.get("cron") for item in schedules} == {"0 */5 * * *"}
 
 
+def test_asr_uses_one_canonical_snapshot_and_shard_plan():
+    _wf, reconcile = _job("asr.yml", job_name="reconcile")
+    _wf, asr = _job("asr.yml", job_name="asr")
+
+    reconcile_runs = "\n".join(str(step.get("run", "")) for step in reconcile["steps"])
+    assert "citypods compute reconcile" in reconcile_runs
+    assert "citypods compute plan-shards" in reconcile_runs
+    assert "--lane transcribe" in reconcile_runs
+    assert "--shards 4" in reconcile_runs
+    upload = next(
+        step for step in reconcile["steps"] if "actions/upload-artifact" in step.get("uses", "")
+    )
+    assert upload["with"]["name"] == "asr-planner-${{ github.run_id }}"
+    assert ".citypods-state" in upload["with"]["path"]
+    assert ".citypods-asr-shard-plan.json" in upload["with"]["path"]
+    assert upload["with"]["include-hidden-files"] is True
+
+    download = next(
+        step for step in asr["steps"] if "actions/download-artifact" in step.get("uses", "")
+    )
+    assert download["with"]["name"] == "asr-planner-${{ github.run_id }}"
+    assert not any(step.get("name") == "Restore build state" for step in asr["steps"])
+    assert not any(
+        ".citypods-state" in str(step.get("with", {}).get("path", ""))
+        and "actions/cache" in step.get("uses", "")
+        for step in asr["steps"]
+    )
+    enrich = next(step for step in asr["steps"] if "citypods enrich" in str(step.get("run", "")))
+    assert "--shard-plan .citypods-asr-shard-plan.json" in enrich["run"]
+    assert "--state-snapshot-restored" in enrich["run"]
+
+
 def test_audio_lane_needs_no_whisper():
     """The audio lane never runs ASR, so it must not install the asr extra or download Whisper —
     that's wasted runner time and memory."""

@@ -81,6 +81,18 @@ def main(argv: list[str] | None = None) -> int:
         "only; 'align' runs forced-alignment only. Default runs the full enrich (audio + "
         "transcript). The sharded workflows pin one lane so the two ASR models never co-load.",
     )
+    e.add_argument(
+        "--shard-plan",
+        metavar="PATH",
+        help="consume an immutable canonical shard-assignment JSON instead of recomputing "
+        "ownership",
+    )
+    e.add_argument(
+        "--state-snapshot-restored",
+        action="store_true",
+        help="the canonical planner snapshot is already present locally; skip the durable-state "
+        "pull",
+    )
 
     d = sub.add_parser("bodies", help="list the meeting bodies in a city's source")
     d.add_argument("slug", help="city slug to inspect")
@@ -212,6 +224,16 @@ def main(argv: list[str] | None = None) -> int:
     cr.add_argument(
         "--dry-run", action="store_true", help="report leased/expired counts; write nothing"
     )
+    cps = cp_sub.add_parser(
+        "plan-shards",
+        help="create one source-atomic shard assignment from the currently restored state snapshot",
+    )
+    cps.add_argument("--lane", choices=["audio", "transcribe", "align"], required=True)
+    cps.add_argument("--shards", type=int, required=True, metavar="N")
+    cps.add_argument("--output", required=True, metavar="PATH")
+    cps.add_argument("--site-config", default="config/site_config.yml")
+    cps.add_argument("--config-dir", default="config")
+    cps.add_argument("--output-dir", default="docs")
 
     args = parser.parse_args(argv)
 
@@ -240,7 +262,10 @@ def main(argv: list[str] | None = None) -> int:
         return _validate_build(args)
 
     if args.command == "compute":
-        return _compute_reconcile(args)
+        if args.compute_command == "reconcile":
+            return _compute_reconcile(args)
+        if args.compute_command == "plan-shards":
+            return _compute_plan_shards(args)
 
     return 0
 
@@ -273,6 +298,8 @@ def _run_build(args, *, phase: str, dry_run: bool) -> int:
         source=getattr(args, "source", None),
         lane=getattr(args, "lane", None),
         no_refresh=getattr(args, "no_refresh", False),
+        shard_plan_path=getattr(args, "shard_plan", None),
+        state_snapshot_restored=getattr(args, "state_snapshot_restored", False),
     )
     built = sum(r.status == "built" for r in results)
     skipped = sum(r.status == "skipped" for r in results)
@@ -583,6 +610,40 @@ def _compute_reconcile(args) -> int:
     print(
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
         f"{summary['in_flight']} in-flight"
+    )
+    return 0
+
+
+def _compute_plan_shards(args) -> int:
+    """Write one deterministic shard plan from the state already restored by reconcile."""
+    from pathlib import Path
+
+    from citypods.sharding import create_shard_plan, save_shard_plan
+    from citypods.stages import ASR_PIPELINE_VERSION
+    from citypods.state import resolve_state_dir
+
+    if args.shards < 1:
+        raise SystemExit("--shards must be >= 1")
+    site_config = load_site_config(args.site_config)
+    defaults = site_config.get("defaults", {})
+    cities = load_city_configs(args.config_dir, defaults)
+    state_dir = resolve_state_dir(site_config, Path(args.output_dir))
+    plan = create_shard_plan(
+        cities,
+        state_dir,
+        lane=args.lane,
+        num_shards=args.shards,
+        defaults=defaults,
+        asr_pipeline_version=ASR_PIPELINE_VERSION,
+    )
+    save_shard_plan(args.output, plan)
+    loads = [0.0] * plan.num_shards
+    for key, owner in plan.assignment.items():
+        loads[owner] += plan.weights[key]
+    print(
+        f"compute plan-shards: wrote {len(plan.assignment)} sources across "
+        f"{plan.num_shards} {plan.lane} shard(s) to {args.output}; "
+        f"loads={','.join(f'{load:.1f}' for load in loads)}"
     )
     return 0
 
