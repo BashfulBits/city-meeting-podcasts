@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **The isolated Granicus probe can now distinguish HTTP transport behavior from runner/CDN
+  throttling.** Manual `granicus-probe.yml` defaults to a low-volume transport mode that pairs curl
+  and the production-pinned ffmpeg against the same exact Audio #40 Arlington, Pflugerville, and Fort
+  Worth archive objects plus an Audio #33 control, alternating which client goes first. It records
+  selected redacted response status/range/timing metadata, tests browser-context curl requests, and
+  performs at most one size-capped full curl download by default before validating it with local
+  ffprobe and a local 30-second ffmpeg stream-copy. Curl is restricted to the already-resolved archive
+  object without automatic redirects; the existing request-shape matrix retains the separately
+  guarded `DownloadFile.php` test. The sustained request-count/volume/cooldown matrix also remains
+  selectable. Both modes retain Audio-queue isolation and bounded transfers; this is diagnostic only
+  and does not change production media fetching, audio identity, pipeline versions, or stored
+  artifacts.
 - **Local ASR now has a configurable duration admission guard for runner memory safety.**
   `asr_local_max_duration_hours` defaults to 4 hours in production and applies only to synchronous
   faster-whisper/stable-ts execution. `compute_backend: auto` still attempts external dispatch first;

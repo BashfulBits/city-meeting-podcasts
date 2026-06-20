@@ -230,10 +230,13 @@ Hard-won facts that bite anyone adding/debugging providers:
   a complete materialization closes it and releases the remaining parked work through the existing
   process-local and distributed provider limits. Deferral telemetry remains cumulative, while recovered
   items are removed from the run's final backlog count.
-- **The sustained Granicus probe shares Audio's workflow queue.** Manual `granicus-probe.yml` uses the
-  same `audio` concurrency group with cancellation disabled, then verifies no active/queued Audio run
-  before touching provider media. A scheduled Audio run therefore cannot slip into the experiment
-  after its isolation check.
+- **Manual Granicus probes share Audio's workflow queue.** `granicus-probe.yml` uses the same `audio`
+  concurrency group with cancellation disabled, then verifies no active/queued Audio run before
+  touching provider media. Its low-volume transport mode alternates curl/ffmpeg ordering against the
+  same archive objects, captures selected redacted HTTP timing/range metadata, and can prove one
+  size-capped curl download through local ffprobe/ffmpeg. Its sustained mode retains the
+  request-count/volume/cooldown/concurrency matrix. A scheduled Audio run therefore cannot slip into
+  either experiment after its isolation check.
 - **The process-local slot is acquired before the distributed lease (issue #342).** The ffmpeg/ffprobe
   guard always enters `HOST_LIMITER` first and `provider_distributed_leases` second, for both
   monitored and unmonitored ffmpeg paths and the ffprobe probe. A thread still queued behind its own
