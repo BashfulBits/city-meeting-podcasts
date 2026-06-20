@@ -83,8 +83,8 @@ jobs:
           PYTHONPATH=. python scripts/probe_granicus_transport.py \
             --ffmpeg "${RUNNER_TEMP}/ffmpeg-static/bin/ffmpeg" \
             --ffprobe "${RUNNER_TEMP}/ffmpeg-static/bin/ffprobe" \
-            --range-bytes "$(( ${{ inputs.range_mib }} * 1024 * 1024 ))" \
-            --full-download-max-bytes "$(( ${{ inputs.full_download_max_mib }} * 1024 * 1024 ))" \
+            --range-mib "${{ inputs.range_mib }}" \
+            --full-download-max-mib "${{ inputs.full_download_max_mib }}" \
             --full-download-count "${{ inputs.full_download_count }}" \
             --output granicus-transport-results.json
       - name: Run sustained Granicus matrix
