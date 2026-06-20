@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **An authenticated Cloudflare Worker probe can test alternate egress for Granicus archive media.**
+  The GitHub-hosted transport artifact returned 403 for all 12 direct curl/ffmpeg/header cases while
+  the same exact objects all succeeded from a Mac, including one full download and local media
+  validation. `workers/granicus-media-proxy` therefore provides a deliberately narrow streaming
+  experiment: fixed Granicus archive origin, bearer authentication, committed tenant allowlist,
+  tenant-prefixed MP4 validation, no queries/redirects/cache, selected Range validators only, and no
+  response buffering. The manual Audio-isolated Granicus workflow adds a `worker` mode that compares
+  direct versus Worker-routed curl and ffmpeg on one GitHub runner, then performs at most one
+  size-capped full-download/local-processing proof. Production Audio is unchanged; setup and teardown
+  are documented in the Worker README. No audio recipe, pipeline version, artifact identity, or
+  stored artifact changes.
 - **The isolated Granicus probe can now distinguish HTTP transport behavior from runner/CDN
   throttling.** Manual `granicus-probe.yml` defaults to a low-volume transport mode that pairs curl
   and the production-pinned ffmpeg against the same exact Audio #40 Arlington, Pflugerville, and Fort

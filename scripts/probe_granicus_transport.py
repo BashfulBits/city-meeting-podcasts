@@ -214,8 +214,13 @@ def run_ffmpeg_remote(
     seconds: float,
     timeout: float,
     order_in_pair: int,
+    authorization: str | None = None,
+    allowed_hosts: tuple[str, ...] | None = ALLOWED_HOSTS,
+    transport: str = "ffmpeg_remote",
+    request_shape: str = "archive_browser_ua",
+    source_identity_url: str | None = None,
 ) -> ProbeResult:
-    validate_source_url(url, allowed_hosts=ALLOWED_HOSTS)
+    validate_source_url(url, allowed_hosts=allowed_hosts)
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="granicus-transport-ffmpeg-") as tmp:
@@ -230,6 +235,7 @@ def run_ffmpeg_remote(
             USER_AGENT,
             "-rw_timeout",
             "120000000",
+            *(["-headers", f"Authorization: Bearer {authorization}\r\n"] if authorization else []),
             "-i",
             url,
             "-t",
@@ -256,9 +262,9 @@ def run_ffmpeg_remote(
         **_base_result(
             sequence=sequence,
             clip=clip,
-            url=url,
-            transport="ffmpeg_remote",
-            request_shape="archive_browser_ua",
+            url=source_identity_url or url,
+            transport=transport,
+            request_shape=request_shape,
             order_in_pair=order_in_pair,
             started_at=started_at,
             elapsed=elapsed,
@@ -300,8 +306,12 @@ def run_curl(
     byte_range: str | None,
     order_in_pair: int | None,
     browser_context: bool = False,
+    authorization: str | None = None,
+    allowed_hosts: tuple[str, ...] | None = ALLOWED_HOSTS,
+    transport: str | None = None,
+    source_identity_url: str | None = None,
 ) -> ProbeResult:
-    validate_source_url(url, allowed_hosts=ALLOWED_HOSTS)
+    validate_source_url(url, allowed_hosts=allowed_hosts)
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     started = time.monotonic()
     headers_path = output.with_suffix(output.suffix + ".headers")
@@ -331,6 +341,8 @@ def run_curl(
     ]
     if byte_range:
         cmd.extend(["--range", byte_range])
+    if authorization:
+        cmd.extend(["--header", f"Authorization: Bearer {authorization}"])
     if browser_context:
         cmd.extend(
             ["--referer", "https://granicus.com/", "--header", "Origin: https://granicus.com"]
@@ -365,8 +377,8 @@ def run_curl(
         **_base_result(
             sequence=sequence,
             clip=clip,
-            url=url,
-            transport="curl_full" if byte_range is None else "curl_range",
+            url=source_identity_url or url,
+            transport=transport or ("curl_full" if byte_range is None else "curl_range"),
             request_shape=request_shape,
             order_in_pair=order_in_pair,
             started_at=started_at,

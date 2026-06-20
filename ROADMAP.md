@@ -52,7 +52,11 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > `media-fetch` participate in the same coordination envelope (shared leases or skip/defer while Audio
 > is active); (3) only if low/no-overlap runner fetches still 403, test browser-fidelity alternatives
 > (`Referer`/`Origin`, direct `DownloadFile.php`, Granicus playback/HLS URLs) or move Granicus media
-> fetching off GitHub-hosted runners.
+> fetching off GitHub-hosted runners. The 2026-06-20 paired transport result crossed that third gate:
+> every direct GitHub curl/ffmpeg/header case returned immediate 403 while all exact objects succeeded
+> from a Mac. An authenticated, allowlisted Cloudflare streaming Worker is now implemented as an
+> isolated probe only; do not enable it in production until the same-runner direct-vs-Worker matrix
+> and bounded full-download/local-processing proof pass.
 
 > **Reprioritized 2026-06-08** after a build-log root-cause review: **H10 shipped in PR #232** and
 > **H8 shipped in PR #235**; the remaining do-now reliability item **H11a** runs **ahead of H1–H5**.

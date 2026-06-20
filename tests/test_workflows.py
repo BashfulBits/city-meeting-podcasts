@@ -220,7 +220,7 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     assert set(_on(wf)) == {"workflow_dispatch"}
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["probe_kind"]["default"] == "transport"
-    assert inputs["probe_kind"]["options"] == ["transport", "sustained"]
+    assert inputs["probe_kind"]["options"] == ["transport", "worker", "sustained"]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"]["group"] == "audio"
     assert wf["concurrency"]["cancel-in-progress"] is False
@@ -228,6 +228,7 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     runs = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert "probe_granicus_sustained.py" in runs
     assert "probe_granicus_transport.py" in runs
+    assert "probe_granicus_worker.py" in runs
     assert "--range-mib" in runs
     assert "--full-download-max-mib" in runs
     assert "--full-download-count" in runs
@@ -239,6 +240,15 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
     assert upload["if"] == "always()"
     assert upload["with"]["path"] == "granicus-*-results.json"
+
+
+def test_ci_runs_granicus_worker_unit_tests():
+    _wf, job = _job("ci.yml", job_name="test")
+    step = next(
+        step for step in job["steps"] if step.get("name") == "Test Granicus Cloudflare Worker"
+    )
+    assert step["working-directory"] == "workers/granicus-media-proxy"
+    assert step["run"] == "npm test"
 
 
 def test_deploy_is_render_only():

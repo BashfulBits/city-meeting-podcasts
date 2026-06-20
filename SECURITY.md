@@ -32,6 +32,11 @@ single-maintainer civic project.
   upstreams and false-positive health alerts.
 - **ffmpeg protocol whitelist** — media is decoded with `-protocol_whitelist` restricted to the set
   needed for HTTPS HLS/MP4, so a hostile manifest cannot coax ffmpeg into reading local files.
+- **Granicus Worker probe is a closed media relay, not an open proxy** —
+  `workers/granicus-media-proxy` requires a bearer secret, constructs the upstream URL from a
+  committed tenant allowlist plus a strict tenant-prefixed MP4 filename, hard-codes
+  `archive-video.granicus.com`, refuses queries and redirects, forwards only selected range/cache
+  headers, and never writes the secret or configured endpoint to probe artifacts.
 - **Hardened XML parsing** — provider feeds are parsed with `defusedxml` (entity-expansion safe).
 - **Secrets are environment-only** — credentials are provided via GitHub Actions secrets; none are
   committed. Enabling GitHub secret-scanning + push protection (free for public repos) is recommended as

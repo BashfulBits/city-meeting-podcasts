@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "citypods-granicus-media-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-20",
+  "workers_dev": true,
+  "vars": {
+    "ALLOWED_TENANTS": "arlingtontx,pflugerville,fortworthgov,dentoncounty"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

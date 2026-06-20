@@ -25,6 +25,13 @@ transport = importlib.util.module_from_spec(TRANSPORT_SPEC)
 sys.modules[TRANSPORT_SPEC.name] = transport
 TRANSPORT_SPEC.loader.exec_module(transport)
 
+WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "probe_granicus_worker.py"
+WORKER_SPEC = importlib.util.spec_from_file_location("probe_granicus_worker", WORKER_SCRIPT)
+assert WORKER_SPEC and WORKER_SPEC.loader
+worker = importlib.util.module_from_spec(WORKER_SPEC)
+sys.modules[WORKER_SPEC.name] = worker
+WORKER_SPEC.loader.exec_module(worker)
+
 
 @pytest.mark.parametrize(
     ("returncode", "stderr", "size", "expected"),
@@ -158,3 +165,18 @@ def test_transport_accepts_integral_decimal_counts(raw, expected):
 def test_transport_rejects_invalid_counts(raw):
     with pytest.raises(argparse.ArgumentTypeError, match="non-negative integer"):
         transport._nonnegative_integer(raw)
+
+
+def test_worker_proxy_url_maps_only_canonical_archive_objects():
+    archive = (
+        "https://archive-video.granicus.com/fortworthgov/"
+        "fortworthgov_e4cc067f-6b2d-11f1-9494-005056a89546.mp4"
+    )
+    assert worker._proxy_url("https://proxy.example/", archive) == (
+        "https://proxy.example/v1/archive/fortworthgov/"
+        "fortworthgov_e4cc067f-6b2d-11f1-9494-005056a89546.mp4"
+    )
+    with pytest.raises(ValueError, match="canonical Granicus"):
+        worker._proxy_url("https://proxy.example", "https://example.com/video.mp4")
+    with pytest.raises(ValueError, match="HTTPS origin"):
+        worker._proxy_url("https://proxy.example/prefix", archive)
