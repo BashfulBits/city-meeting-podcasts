@@ -123,13 +123,14 @@ class ProcessLocalBackend:
             except OSError:
                 pass
         if self._process is not None:
-            self._process.join(timeout=0.1)
             if self._process.is_alive():
                 self._process.terminate()
                 self._process.join(timeout=5)
-            if self._process.is_alive():
-                self._process.kill()
-                self._process.join(timeout=5)
+                if self._process.is_alive():
+                    self._process.kill()
+                    self._process.join(timeout=5)
+            else:
+                self._process.join(timeout=0.1)
         self._conn = None
         self._process = None
 
@@ -188,5 +189,8 @@ class ProcessLocalBackend:
                 process.join(timeout=5)
             if process.is_alive():
                 process.terminate()
+                process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
                 process.join(timeout=5)
             self._reset_worker_locked()

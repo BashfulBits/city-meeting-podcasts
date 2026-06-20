@@ -976,7 +976,7 @@ def _run_enrich_global_queue(
     return results
 
 
-def build(
+def _build_impl(
     *,
     site_config_path: str | Path = "config/site_config.yml",
     config_dir: str | Path = "config",
@@ -993,6 +993,7 @@ def build(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
+    _compute_backend_holder: list[object] | None = None,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
 
@@ -1108,6 +1109,8 @@ def build(
     # GPU/ASR execution backend (H13). ``local`` (in-process) by default; ``auto`` (H14a) returns a
     # DispatchCoordinator filling external free-tier GPU budgets first, overflowing to ``local``.
     compute_backend = make_compute(site_config, state_dir=state_dir)
+    if _compute_backend_holder is not None:
+        _compute_backend_holder.append(compute_backend)
 
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
     # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
@@ -1623,10 +1626,53 @@ def build(
         ):
             _abandoned_asr_exit()
 
-    close_compute = getattr(compute_backend, "close", None)
-    if callable(close_compute):
-        close_compute()
     return results
+
+
+def build(
+    *,
+    site_config_path: str | Path = "config/site_config.yml",
+    config_dir: str | Path = "config",
+    output_dir: str | Path = "docs",
+    base_url: str | None = None,
+    only_slug: str | None = None,
+    dry_run: bool = False,
+    ffmpeg: FfmpegRunner | None = None,
+    chapters_cap: int | None = None,
+    phase: str = "all",
+    shard: tuple[int, int] | None = None,
+    source: str | None = None,
+    lane: str | None = None,
+    no_refresh: bool = False,
+    shard_plan_path: str | Path | None = None,
+    state_snapshot_restored: bool = False,
+) -> list[CityResult]:
+    """Run a build and always close a subprocess-backed compute backend."""
+    compute_backend_holder: list[object] = []
+    try:
+        return _build_impl(
+            site_config_path=site_config_path,
+            config_dir=config_dir,
+            output_dir=output_dir,
+            base_url=base_url,
+            only_slug=only_slug,
+            dry_run=dry_run,
+            ffmpeg=ffmpeg,
+            chapters_cap=chapters_cap,
+            phase=phase,
+            shard=shard,
+            source=source,
+            lane=lane,
+            no_refresh=no_refresh,
+            shard_plan_path=shard_plan_path,
+            state_snapshot_restored=state_snapshot_restored,
+            _compute_backend_holder=compute_backend_holder,
+        )
+    finally:
+        for compute_backend in reversed(compute_backend_holder):
+            close_compute = getattr(compute_backend, "close", None)
+            if callable(close_compute):
+                close_compute()
 
 
 # Top-level files/dirs the build owns directly; never pruned as a stale slug.
