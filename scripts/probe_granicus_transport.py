@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -473,10 +474,24 @@ def _parse_named_url(raw: str) -> tuple[str, str]:
     return name, url
 
 
-def _mib_to_bytes(value: float) -> int:
-    if value <= 0:
+def _mib_to_bytes(value: str | float) -> int:
+    try:
+        mib = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("MiB values must be numeric") from exc
+    if not math.isfinite(mib) or mib <= 0:
         raise argparse.ArgumentTypeError("MiB values must be positive")
-    return int(value * 1024 * 1024)
+    return int(mib * 1024 * 1024)
+
+
+def _nonnegative_integer(value: str | float) -> int:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("value must be a non-negative integer") from exc
+    if not math.isfinite(number) or number < 0 or not number.is_integer():
+        raise argparse.ArgumentTypeError("value must be a non-negative integer")
+    return int(number)
 
 
 def _emit(result: ProbeResult) -> None:
@@ -529,7 +544,7 @@ def main() -> int:
         dest="full_download_max_bytes",
         default=argparse.SUPPRESS,
     )
-    parser.add_argument("--full-download-count", type=int, default=1)
+    parser.add_argument("--full-download-count", type=_nonnegative_integer, default=1)
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--output", type=Path, default=Path("granicus-transport-results.json"))
     args = parser.parse_args()
