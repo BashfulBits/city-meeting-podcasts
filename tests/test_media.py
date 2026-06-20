@@ -10,10 +10,12 @@ from pathlib import Path
 
 import pytest
 
+from citypods.http import StopRequested
 from citypods.media import (
     _ENCODE_RSS_COPY_BYTES,
     _ENCODE_RSS_MAX_BYTES,
     _ENCODE_RSS_UNKNOWN_BYTES,
+    SourceCache,
     _probe_duration_secs,
     encode_args,
     estimate_encode_rss_bytes,
@@ -278,6 +280,30 @@ def test_source_cache_fetch_happens_before_native_cpu_admission(tmp_path):
 
     assert stats.encoded == 1
     assert events == ["fetch", "gate", "release"]
+
+
+def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_requested(tmp_path):
+    """The run's wall-clock budget expiring while queued on the source cache is not a source
+    failure: defer without recording it as an error/backoff (#120-style false penalty)."""
+
+    class _StoppingCache:
+        def get_or_fetch(self, uid, url):
+            raise StopRequested(f"source cache wait for uid={uid!r} stopped")
+
+    ep = _ep("g1")
+    stats = materialize_audio(
+        _city(),
+        [ep],
+        storage=_store(tmp_path),
+        ffmpeg=FakeFfmpeg(),
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        source_cache=_StoppingCache(),
+    )
+    assert stats.skipped_budget == 1
+    assert stats.encoded == 0
+    assert stats.errors == []
+    assert ep.materialize_attempts == 0  # no backoff recorded for a budget-expiry defer
 
 
 def test_audio_encode_defers_when_resource_admission_stops(tmp_path):
@@ -1317,8 +1343,8 @@ def test_run_ffmpeg_guarded_local_cap_does_not_hoard_distributed_slots(tmp_path)
             self.peak = 0
             self._count_lock = threading.Lock()
 
-        def slots(self, urls):
-            inner = super().slots(urls)
+        def slots(self, urls, *, stop=None):
+            inner = super().slots(urls, stop=stop)
 
             @contextmanager
             def _counted():
@@ -1923,7 +1949,7 @@ def test_ffmpeg_rechecks_circuit_after_provider_lease_acquisition(monkeypatch):
     subprocess_started = False
 
     @contextmanager
-    def _lease_that_observes_failure(_urls):
+    def _lease_that_observes_failure(_urls, *, stop=None):
         circuit.record_rate_limited(urls)
         yield
 
@@ -1961,7 +1987,7 @@ def test_run_ffmpeg_guarded_opens_circuit_before_releasing_lease(monkeypatch):
     observed_open_before_release: list[bool] = []
 
     @contextmanager
-    def _observing_slots(_urls):
+    def _observing_slots(_urls, *, stop=None):
         try:
             yield
         finally:
@@ -2237,3 +2263,31 @@ def test_estimate_rss_speech_profile_is_bounded_independent_of_duration():
         )
         == _ENCODE_RSS_STREAMING_BYTES
     )
+
+
+class TestSourceCacheStopAware:
+    """A caller queued behind another thread's fetch of the same uid yields ``StopRequested``
+    once the run's wall-clock budget expires, instead of blocking out that fetch's lock."""
+
+    def test_stop_firing_raises_instead_of_blocking(self, tmp_path):
+        with SourceCache(stop=lambda: True) as cache:
+            with cache._guard:
+                lock = cache._locks["ep1"]
+            lock.acquire()  # simulate another thread already fetching uid="ep1"
+            try:
+                with pytest.raises(StopRequested):
+                    cache.get_or_fetch("ep1", "https://example.com/a.mp4")
+            finally:
+                lock.release()
+
+    def test_stop_never_firing_proceeds_to_fetch(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "citypods.media._download_audio", lambda *a, **k: False
+        )  # avoid real ffmpeg
+        with SourceCache(stop=lambda: False) as cache:
+            assert cache.get_or_fetch("ep1", "https://example.com/a.mp4") is None
+
+    def test_no_stop_predicate_behaves_as_before(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("citypods.media._download_audio", lambda *a, **k: False)
+        with SourceCache() as cache:
+            assert cache.get_or_fetch("ep1", "https://example.com/a.mp4") is None

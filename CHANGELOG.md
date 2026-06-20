@@ -102,6 +102,22 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   the oldest tracked operation has made no progress for `CITYPODS_STALL_DUMP_SECONDS` (default
   600s, 0 disables), dumps every thread's stack via `faulthandler.dump_traceback` (cooled down to
   once per 30 minutes so a genuine stall doesn't flood the log).
+- **The host rate limiter, distributed provider lease pool, and per-run source cache now stop
+  waiting once the run's wall-clock budget expires, instead of blocking out a full queue/lease
+  cycle.** These three coordination waits were previously unbounded by `stop()` — a worker idle
+  past the run's deadline still queued behind whichever thread held the slot/lease/lock, sometimes
+  for minutes, before the caller could even check the budget. `HostRateLimiter`/`_Slots`
+  (`citypods/http.py`) and `DistributedProviderLeasePool`/`_acquire` (`citypods/provider_leases.py`)
+  now accept an optional `stop` predicate and raise a new `StopRequested` if it fires before the
+  wait acquires; `SourceCache.get_or_fetch` (`citypods/media.py`) does the same for its per-uid
+  lock. `CommandFfmpeg` and `SourceCache` bind `stop` once at construction (`citypods/run.py`)
+  rather than threading it through the `FfmpegRunner` Protocol, so existing test doubles are
+  unaffected. `StopRequested` is handled as a graceful defer (no backoff recorded) in
+  `_encode_one`, `SwagitConcatPlanner.plan()`, and `SilencePlanner.plan()` — the same treatment
+  already given to `CircuitOpenMediaFetchError` — since running out of time isn't a source/provider
+  failure and shouldn't count against an episode's retry backoff. The actual ffmpeg subprocess call
+  remains intentionally out of scope: `stop()` still can't preempt a thread parked in
+  `subprocess.run`, only `audio_encode_timeout_minutes` bounds that.
 
 ### Fixed
 - **The silence-trim and Swagit-concat planners no longer produce or silently swallow degenerate

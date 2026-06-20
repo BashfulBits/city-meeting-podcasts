@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from citypods.http import StopRequested
 from citypods.storage.base import StorageBackend
 
 
@@ -147,14 +148,19 @@ class DistributedProviderLeasePool:
         if rules and usable_storage is None and log is not None:
             _emit(log, "[enrich] provider lease disabled: storage backend lacks lease support")
 
-    def slots(self, urls: Iterable[str]) -> _DistributedSlots:
+    def slots(
+        self, urls: Iterable[str], *, stop: Callable[[], bool] | None = None
+    ) -> _DistributedSlots:
+        """``stop``, if given, is polled once per fairness-queue iteration (every
+        ``rule.poll_seconds``); if it fires before this process's candidate wins, raises
+        :class:`~citypods.http.StopRequested` instead of waiting out the queue."""
         keys: set[str] = set()
         for url in urls:
             host = (urlsplit(url).hostname or "").lower()
             key = self._key_for(host)
             if key is not None:
                 keys.add(key)
-        return _DistributedSlots(self, sorted(keys))
+        return _DistributedSlots(self, sorted(keys), stop=stop)
 
     def _key_for(self, host: str) -> str | None:
         host = (host or "").lower()
@@ -183,13 +189,15 @@ class DistributedProviderLeasePool:
                 for domain, values in self._telemetry.items()
             }
 
-    def _acquire(self, domain: str) -> ProviderLease:
+    def _acquire(self, domain: str, *, stop: Callable[[], bool] | None = None) -> ProviderLease:
         key: str | None = None
         started = time.monotonic()
         last_renewed = started
         waiting_logged = False
         try:
             while True:
+                if stop is not None and stop():
+                    raise StopRequested(f"provider lease wait for domain={domain!r} stopped")
                 with self._guard:
                     storage = self._storage
                     rule = self._rules[domain]
@@ -429,16 +437,23 @@ class DistributedProviderLeasePool:
 
 
 class _DistributedSlots:
-    def __init__(self, pool: DistributedProviderLeasePool, domains: list[str]) -> None:
+    def __init__(
+        self,
+        pool: DistributedProviderLeasePool,
+        domains: list[str],
+        *,
+        stop: Callable[[], bool] | None = None,
+    ) -> None:
         self._pool = pool
         self._domains = domains
+        self._stop = stop
         self._leases: list[ProviderLease] = []
 
     def __enter__(self) -> None:
         self._leases = []
         try:
             for domain in self._domains:
-                self._leases.append(self._pool._acquire(domain))
+                self._leases.append(self._pool._acquire(domain, stop=self._stop))
         except BaseException:
             for lease in reversed(self._leases):
                 lease.release()

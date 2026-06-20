@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 
+from citypods.http import StopRequested
 from citypods.timeline import Segment, Timeline, identity_timeline
 
 # ---------------------------------------------------------------------------
@@ -265,7 +266,12 @@ class SilencePlanner:
         # pass can read from disk rather than re-streaming the rate-limited source.
         detect_url = source_url
         if ctx.source_cache is not None and ep.uid:
-            local = ctx.source_cache.get_or_fetch(ep.uid, source_url)
+            try:
+                local = ctx.source_cache.get_or_fetch(ep.uid, source_url)
+            except StopRequested:
+                # The run's wall-clock budget expired while queued behind another thread's fetch
+                # of the same source — defer without recording a failure (#120); not a real error.
+                return None
             if local is not None:
                 detect_url = str(local)
 
