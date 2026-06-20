@@ -135,8 +135,9 @@ def test_transport_outcome_classification(returncode, stderr, size, status, expe
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        (16.0, 16 * 1024 * 1024),
-        (0.5, 512 * 1024),
+        ("16.0", 16 * 1024 * 1024),
+        ("512.0", 512 * 1024 * 1024),
+        ("0.5", 512 * 1024),
     ],
 )
 def test_transport_converts_decimal_mib_inputs(raw, expected):
@@ -145,4 +146,15 @@ def test_transport_converts_decimal_mib_inputs(raw, expected):
 
 def test_transport_rejects_nonpositive_mib_inputs():
     with pytest.raises(argparse.ArgumentTypeError, match="MiB values must be positive"):
-        transport._mib_to_bytes(0.0)
+        transport._mib_to_bytes("0.0")
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("1.0", 1), ("0.0", 0), ("2", 2)])
+def test_transport_accepts_integral_decimal_counts(raw, expected):
+    assert transport._nonnegative_integer(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["-1.0", "1.5", "nan", "not-a-number"])
+def test_transport_rejects_invalid_counts(raw):
+    with pytest.raises(argparse.ArgumentTypeError, match="non-negative integer"):
+        transport._nonnegative_integer(raw)
