@@ -147,11 +147,13 @@ def test_asr_uses_one_canonical_snapshot_and_shard_plan():
     assert ".citypods-state" in upload["with"]["path"]
     assert ".citypods-asr-shard-plan.json" in upload["with"]["path"]
     assert upload["with"]["include-hidden-files"] is True
+    assert upload["uses"].endswith("043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
 
     download = next(
         step for step in asr["steps"] if "actions/download-artifact" in step.get("uses", "")
     )
     assert download["with"]["name"] == "asr-planner-${{ github.run_id }}"
+    assert download["uses"].endswith("3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
     assert not any(step.get("name") == "Restore build state" for step in asr["steps"])
     assert not any(
         ".citypods-state" in str(step.get("with", {}).get("path", ""))

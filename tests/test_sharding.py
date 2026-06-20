@@ -100,6 +100,14 @@ def test_plan_validation_fails_closed_on_lane_shards_or_source_drift():
             num_shards=4,
             expected_sources={"a", "b"},
         )
+    with pytest.raises(ValueError, match="shard index 2 out of range"):
+        sources_for_shard(
+            plan,
+            lane="transcribe",
+            shard_index=2,
+            num_shards=2,
+            expected_sources={"a", "b"},
+        )
     with pytest.raises(ValueError, match="source set"):
         sources_for_shard(
             plan,
