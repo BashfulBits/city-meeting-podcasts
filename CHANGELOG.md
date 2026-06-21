@@ -31,6 +31,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   reviewer's race). `owned_uids=None` reproduces the prior source-atomic behavior byte-for-byte, so
   audio/align and the unsharded full enrich are unchanged. Audio stays source-atomic (its bottleneck
   is the per-source provider rate limit, not the runner — review/18 §2.3). No pipeline-version bump.
+- **Storage substrate for the R2/CAS control plane (H17, [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)).**
+  `S3CompatibleStorage` gains compare-and-swap primitives — `put_cas()` (native boto3
+  `IfNoneMatch`/`IfMatch`, raising `CASConflict` on a 412) and its `get_bytes()` read companion — the
+  storage-level gain R2 has over B2 (review/17 §1.3/§5; confirmed by the §7 spike on boto3 1.43). A new
+  `RoutingStorage` backend (`audio_storage_backend: routing`) implements the `StorageBackend` Protocol
+  and dispatches by key prefix to a B2 *primary* and an R2 *coordination* backend, degrading to
+  B2-only when R2 creds are absent, and tallies R2 Class-A/Class-B op counts for free-tier telemetry
+  (review/17 §4). **Routing is a deliberate no-op in this change** (`COORDINATION_PREFIXES` is empty),
+  so no artifact moves to R2 yet and production behavior is unchanged; later H17 work appends prefixes
+  as each coordination artifact migrates. No pipeline-version bump or backfill: nothing about audio or
+  transcript identity changes.
 - **A mid-run kill of the enrich phase (SIGTERM, GitHub cancel, lost-comms) now shuts down
   gracefully instead of silently losing every record update for the run.** Previously the global
   enrich queue persisted each source only once, after *both* the audio and transcript passes

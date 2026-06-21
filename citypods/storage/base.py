@@ -40,3 +40,24 @@ class StorageBackend(Protocol):
     def delete(self, key: str) -> None:
         """Delete the object at ``key``."""
         ...
+
+    # --- compare-and-swap (optional capability; R2 only today) -----------------------
+    # ``get_bytes`` / ``put_cas`` back the coordination control-plane (provider circuits/
+    # leases, work/budget) and the Stage-2 lease ledger. Only CAS-capable backends (R2)
+    # implement them; callers feature-detect via ``hasattr`` and raise ``CASConflict`` on 412.
+
+    def get_bytes(self, key: str) -> tuple[bytes, str] | None:
+        """Return ``(data, etag)`` for ``key``, or None if absent (the CAS read half)."""
+        ...
+
+    def put_cas(
+        self,
+        key: str,
+        data: bytes,
+        content_type: str,
+        *,
+        if_none_match: str | None = None,
+        if_match: str | None = None,
+    ) -> tuple[str, str]:
+        """Conditional PUT; return ``(public_url, etag)``. Raise ``CASConflict`` on 412."""
+        ...
