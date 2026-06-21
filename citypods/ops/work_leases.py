@@ -184,7 +184,15 @@ def renew(
 
     now = now or datetime.now(UTC)
     existing, etag = read_lease(storage, source_key, uid)
-    if existing is None or etag is None or existing.owner != owner or existing.state != "leased":
+    # Once expired we no longer hold it — the reaper (or a re-claim) owns it now, so refuse to
+    # extend dead work even if our owner string still matches the not-yet-reaped object.
+    if (
+        existing is None
+        or etag is None
+        or existing.owner != owner
+        or existing.state != "leased"
+        or existing.is_expired(now)
+    ):
         return None
     existing.lease_expiry = now + timedelta(seconds=ttl_seconds)
     existing.updated_at = now
@@ -215,7 +223,16 @@ def release(
 
     now = now or datetime.now(UTC)
     existing, etag = read_lease(storage, source_key, uid)
-    if existing is None or etag is None or existing.owner != owner:
+    # Refuse once expired: a stale worker must not stamp ``failed`` (or ``done``) on a lease the
+    # reaper should requeue. A worker that genuinely finished an over-TTL job still wrote the
+    # artifact, so the reaper settles it ``done`` from artifact presence regardless.
+    if (
+        existing is None
+        or etag is None
+        or existing.owner != owner
+        or existing.state != "leased"
+        or existing.is_expired(now)
+    ):
         return False
     existing.state = state
     existing.lease_expiry = None
@@ -235,12 +252,17 @@ def reap(
     *,
     artifact_present: Callable[[str, str], bool],
     now: datetime | None = None,
+    dry_run: bool = False,
 ) -> dict:
     """Sweep the leases for ``candidates`` (``(source_key, uid)`` pairs DERIVED from the discovery
     index — never an R2 list). For each held lease: artifact present → settle ``done`` (completion
     inferred); else expired → reset to ``queued`` so a crashed worker's item re-enters the pool;
     else leave it (still running). Returns per-outcome counts. CAS-guarded, so a concurrent claim
-    isn't clobbered (a lost CAS is simply counted as a skip and retried next sweep)."""
+    isn't clobbered (a lost CAS is simply counted as a skip and retried next sweep).
+
+    ``dry_run`` previews the same counts WITHOUT writing (read-only) — what a real sweep would do —
+    so ``compute reconcile --dry-run`` reports work-lease effects, not just legacy work.json leases.
+    """
     from citypods.storage import CASConflict
 
     now = now or datetime.now(UTC)
@@ -262,6 +284,10 @@ def reap(
             outcome = "requeued"
         else:
             in_flight += 1
+            continue
+        if dry_run:  # read-only preview: count what would change, write nothing
+            completed += outcome == "completed"
+            requeued += outcome == "requeued"
             continue
         try:
             storage.put_cas(

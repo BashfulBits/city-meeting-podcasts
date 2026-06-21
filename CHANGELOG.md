@@ -41,8 +41,11 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   every `reserve`/`settle`/`release` is a compare-and-swap read-modify-write (`budget.mutate_budget`:
   GET ETag → apply → `put_cas(if_match=…)` → re-read and retry with bounded backoff + jitter on a
   412). Concurrent shards can no longer lose each other's reservations or overspend the monthly
-  free-tier cap — the dispatch availability check reads the authoritative R2 ledger, not a stale
-  in-memory snapshot. `statesync` excludes CAS-managed keys from `pull_state`/`push_state` (so a
+  free-tier cap: the reservation is an **atomic check-and-reserve** (`reserve_if_available`) that
+  re-evaluates availability against the freshest ledger on every CAS retry, taken **before** the
+  irreversible remote submit (released if the submit fails) — so two shards selecting the same
+  backend from a stale snapshot can't both commit. `statesync` excludes CAS-managed keys from
+  `pull_state`/`push_state` (so a
   plain `put_file` can't clobber the CAS object), gated on a new `cas_capable` flag set **only for
   R2** (B2 silently ignores conditional headers); a plain-B2 / local / dry-run backend keeps the
   prior local-file ledger behavior byte-for-byte. External dispatch is still dormant (no adapter

@@ -115,6 +115,30 @@ def test_renew_extends_only_for_holder():
     assert wl.renew(bucket, "s1", "u1", owner="intruder", ttl_seconds=600, now=later) is None
 
 
+def test_renew_and_release_refuse_after_expiry():
+    # Once expired we no longer hold the lease — the reaper owns it. A stale worker must not extend
+    # dead work (renew) or terminally settle it (release); leave it for the reaper to requeue.
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    past_expiry = NOW + timedelta(hours=1)
+    assert wl.renew(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=past_expiry) is None
+    assert wl.release(bucket, "s1", "u1", owner="w1", state="failed", now=past_expiry) is False
+    assert wl.read_lease(bucket, "s1", "u1")[0].state == "leased"  # untouched → reaper requeues
+
+
+def test_reap_dry_run_previews_without_writing():
+    bucket = _MemCAS()
+    # expired claim
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW - timedelta(hours=1))
+    a0 = bucket.class_a
+    summary = wl.reap(
+        bucket, [("s1", "u1")], artifact_present=lambda s, u: False, now=NOW, dry_run=True
+    )
+    assert summary == {"completed": 0, "requeued": 1, "in_flight": 0}
+    assert bucket.class_a == a0  # read-only: no write
+    assert wl.read_lease(bucket, "s1", "u1")[0].state == "leased"  # unchanged
+
+
 def test_release_requires_ownership():
     bucket = _MemCAS()
     wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
