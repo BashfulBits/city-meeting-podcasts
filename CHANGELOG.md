@@ -15,6 +15,19 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **A live B2+R2 validation harness to verify the R2/CAS control plane before production cutover
+  (H17 PR5, [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)).**
+  `scripts/validate_control_plane.py` + the `Validate R2/CAS control plane` workflow
+  (`workflow_dispatch` + weekly schedule) exercise the *real* plumbing end-to-end against live
+  services — `RoutingStorage` routing/`cas_capable`, native R2 compare-and-swap
+  (`put_cas`/`get_bytes`: create-if-absent, conditional update, stale-ETag rejection), and the
+  Stage-2 work-lease ledger (`claim`/contended-skip/`renew`/`release`/`reap`) — and emit a per-check
+  JSON report (+ R2 Class-A/B op telemetry). **It never touches production data:** every object is
+  written under a unique scratch namespace (`work-leases/__validate__/<run-id>/…`) and deleted on
+  exit; the real budget/lease keys are never read or written, and the discovery index never
+  references `__validate__`. The workflow header documents the recommended pre-cutover sequence (set
+  secrets → run → confirm all checks pass → only then flip `audio_storage_backend: routing`). The
+  validation logic is unit-tested offline against an in-memory CAS fake.
 - **Stage-2 pull-based work-lease ledger — the frozen contract distributed ASR workers claim against
   (H17 PR4, [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/18 §4).**
   New `citypods/ops/work_leases.py` adds per-item compare-and-swap lease objects on R2
