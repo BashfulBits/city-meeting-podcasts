@@ -101,6 +101,106 @@ long-horizon direction, and **[`review/11-technical-design-roadmap.md`](review/1
 development-ready item. [`review/00–10`](review/) hold point-in-time rationale, cost models, and
 architecture history.
 
+## GitHub issue and Project metadata
+
+GitHub is the execution surface; committed docs remain the plan:
+
+- [`review/11`](review/11-technical-design-roadmap.md) is canonical for initiative scope, phase,
+  maturity, dependencies, and strategic order.
+- The public [Citypods Delivery Project](https://github.com/users/BashfulBits/projects/1) shows live
+  execution state and tactical ordering.
+- Milestones represent concrete finish lines, currently **Phase H Complete** and
+  **1.0 — Phase R Complete**.
+- Issues are cut just-in-time for the active development series. Auto-managed health signals and
+  individual city requests may remain open outside a development milestone.
+
+### Project fields
+
+| Field | Meaning | Values / rule |
+|---|---|---|
+| **Status** | Current execution state | `Backlog`, `Ready`, `In progress`, `Blocked`, `Review`, `Done` |
+| **Priority** | Importance/urgency, independent of dependency order | `P0 urgent`, `P1 current`, `P2 next`, `P3 optional` |
+| **Order** | "Do these in this order" | Numeric gaps (`10`, `20`, `30`); parallel items share a number |
+| **Phase** | Owning series/surface | `H`, `R`, `Operations` |
+| **Type** | Nature of the work | `Feature`, `Bug`, `Infrastructure`, `Research`, `Operations`, `Request` |
+
+**Priority is not order.** A blocked prerequisite may have a lower `Order` but the same or lower
+priority than an urgent operational signal. Strategic reordering changes `review/11` and the Project
+together; tactical ordering within an already-approved initiative may update only `Order`.
+
+Status conventions:
+
+- `Ready`: unblocked and eligible to start now.
+- `In progress`: code, investigation, or a required production observation is actively underway.
+- `Blocked`: a named dependency or external condition prevents useful implementation.
+- `Review`: implementation is complete and awaiting review/merge/acceptance.
+- `Backlog`: valid work or signal, but not in the active execution queue.
+- `Done`: completed; closed items may then be archived from the Project.
+
+### Label taxonomy
+
+Labels are repo-wide descriptive/search metadata. Use lowercase namespaced labels:
+
+| Namespace | Examples | Purpose |
+|---|---|---|
+| `type:*` | `type:bug`, `type:feature`, `type:infrastructure`, `type:research`, `type:operations`, `type:request`, `type:docs` | What kind of work this is |
+| `area:*` | `area:audio`, `area:ops`, `area:provider`, `area:frontend`, `area:search`, `area:timeline` | Code/product surface affected; multiple allowed |
+| `signal:*` | `signal:feed-health`, `signal:endpoint-contract` | Automated source of an operational issue |
+| `severity:*` | `severity:error`, `severity:warn` | Impact of an operational signal |
+| `needs:*` | `needs:fixture`, `needs:live-verification`, `needs:human-verification` | Missing evidence or action |
+| `resolution:*` | `resolution:duplicate`, `resolution:invalid`, `resolution:wontfix` | Why an issue was closed without implementation |
+| `agent:*` | `agent:codex` | Agent provenance when useful |
+
+Keep GitHub's community-discovery labels `good first issue` and `help wanted` in their familiar
+unnamespaced form. Do not encode priority, status, phase, or sequence in labels; the Project fields own
+those dimensions. Keep the issue's `type:*` label and Project `Type` field consistent.
+
+### Milestone policy
+
+- Assign active Phase-H implementation issues and their implementation PRs to **Phase H Complete**.
+- Assign Phase-R implementation issues and their PRs to **1.0 — Phase R Complete** when that series is
+  active.
+- Do not assign auto-managed health signals or city requests to development milestones.
+- Do not invent due dates. Add one only when there is a real external deadline.
+- A milestone is a completion set, not a priority bucket; Project `Order` supplies sequencing.
+
+### Agent maintenance command
+
+The phrase **"clean up the GH issue list metadata"** means:
+
+1. Run `gh auth status`; Project operations require the `project` scope
+   (`gh auth refresh -s project` if absent).
+2. Read `review/11` and the Project README before mutating GitHub.
+3. Audit live state:
+
+   ```bash
+   gh issue list --repo BashfulBits/city-meeting-podcasts --state open --limit 200 \
+     --json number,title,labels,milestone,url
+   gh pr list --repo BashfulBits/city-meeting-podcasts --state open --limit 200 \
+     --json number,title,labels,milestone,url
+   gh project item-list 1 --owner BashfulBits --limit 200 --format json
+   gh project field-list 1 --owner BashfulBits --format json
+   gh label list --repo BashfulBits/city-meeting-podcasts --limit 200
+   gh api 'repos/BashfulBits/city-meeting-podcasts/milestones?state=open&per_page=100'
+   ```
+
+4. Add missing open issues/PRs to Project 1; normalize labels; set Project fields and milestones from
+   the rules above. Discover current Project/field/option IDs at runtime—never hard-code saved IDs in
+   committed scripts or docs.
+5. Preserve the sequence in `review/11`. If the live tracker reveals a real plan change, stop, explain
+   the deviation and trade-offs, obtain maintainer confirmation, then update the committed design and
+   GitHub metadata together.
+6. Metadata cleanup alone does **not** authorize closing issues, rewriting scope, changing roadmap
+   phase, or creating implementation tickets. Those require an explicit reconciliation/planning
+   request and must preserve unique ideas in the committed reviews before closure.
+7. Verify by re-running the issue, milestone, label, and Project listings. Report the final ordered
+   queue, milestone membership, label changes, and any unresolved mismatch.
+
+Saved Project views are currently configured in the web UI, not through `gh`/the public Projects API.
+Their canonical recipes live in the Project README: **Do Next** (`Phase:H`, sort `Order` ascending),
+**Board** (`Phase:H`, group by `Status`), and **Operations** (`Phase:Operations`, sort by `Priority`,
+then `Order`).
+
 ## Documentation map
 
 | To understand… | Read |

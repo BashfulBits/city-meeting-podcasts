@@ -28,6 +28,26 @@ Read this first, then the doc it points you to for your task.
 3. **Update the docs per the lifecycle contract** (below + in CONTRIBUTING) — this is mandatory, because
    stale design docs are how this project's earlier reviews went out of date.
 
+## GitHub execution metadata
+
+[`review/11`](review/11-technical-design-roadmap.md) owns scope and strategic sequence. The public
+[Citypods Delivery Project](https://github.com/users/BashfulBits/projects/1) is the live execution view;
+milestones are finish lines, and labels describe the work. GitHub metadata must mirror the committed
+docs, never silently replace them.
+
+When the maintainer asks an agent to **"clean up the GH issue list metadata"**, follow the normative
+procedure in [CONTRIBUTING.md](CONTRIBUTING.md#github-issue-and-project-metadata):
+
+1. Read `review/11`, then audit all open issues, PRs, Project items, milestones, and labels.
+2. Reconcile Project `Status`, `Priority`, `Order`, `Phase`, and `Type` with `review/11`.
+3. Keep descriptive labels namespaced (`type:*`, `area:*`, `signal:*`, `severity:*`, `needs:*`,
+   `resolution:*`, `agent:*`); preserve GitHub's standard `good first issue` / `help wanted` names.
+4. Put active-series development issues in the matching milestone. Operational signals and city
+   requests stay outside development milestones.
+5. Do **not** close issues or change strategic order merely as metadata cleanup. If reality and
+   `review/11` disagree, surface the mismatch and use the roadmap-deviation gate below.
+6. Verify the final live issue list and Project table, then report every mutation.
+
 ## Feature lifecycle & doc-update contract (the "change X → update Y" rule)
 
 When you move a feature along the pipeline, update the listed docs in the **same** change:
