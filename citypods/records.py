@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body
 from citypods.models import City, Episode
 from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
@@ -635,6 +636,9 @@ def episode_to_record(ep: Episode) -> dict:
             "last_attempt": ep.materialize_last_attempt,
             "error": ep.materialize_error,
         },
+        # Durable media-availability verdict (H16 PR3): omitted when never classified so the
+        # record stays clean for direct enclosures we don't re-host and for pre-PR3 records.
+        "media_availability": _availability_to_dict(ep.media_availability),
     }
 
 
@@ -665,6 +669,23 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
     }
+
+
+def _availability_to_dict(av: MediaAvailability | None) -> dict | None:
+    """Serialize the durable availability verdict (H16 PR3), or ``None`` to omit the block."""
+    if av is None:
+        return None
+    return dataclasses.asdict(av)
+
+
+def _availability_from_rec(rec: dict) -> MediaAvailability | None:
+    """Rebuild the availability verdict from a record. Older records lack the block -> ``None``
+    (the episode is simply re-classified on the next audio run)."""
+    block = rec.get("media_availability")
+    if not isinstance(block, dict) or not block.get("state"):
+        return None
+    known = {f.name for f in dataclasses.fields(MediaAvailability)}
+    return MediaAvailability(**{k: v for k, v in block.items() if k in known})
 
 
 def _source_media_from_dict(d: dict) -> SourceMedia:
@@ -728,6 +749,7 @@ def record_to_episode(rec: dict) -> Episode:
         audio_rebuild=audio.get("rebuild") or "",
         audio_encode_time=audio.get("encode_time"),
         audio_duration_served=audio.get("duration_served"),
+        media_availability=_availability_from_rec(rec),
     )
 
 
@@ -756,13 +778,16 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 # ``"diarize": frozenset({"speakers"})`` in ``_LANE_OWNED_BLOCKS``. The merge/push logic is
 # block-set-driven and needs no other change; ``episode_to_record`` / ``record_to_episode`` /
 # ``referenced_audio_keys`` gain the new block alongside the existing ``audio`` / ``transcript``.
-ARTIFACT_BLOCKS: frozenset[str] = frozenset({"audio", "transcript"})
+# ``media_availability`` (H16 PR3) is produced by the audio lane's detection pass, so it is an
+# audio-owned artifact block: a sibling ``transcribe``/``align`` push must preserve it, exactly like
+# the ``audio`` block, or it would regress a freshly-written availability verdict.
+ARTIFACT_BLOCKS: frozenset[str] = frozenset({"audio", "transcript", "media_availability"})
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
 # full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
 # it preserves nothing (behaves like the legacy whole-record push).
 _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
-    "audio": frozenset({"audio"}),
+    "audio": frozenset({"audio", "media_availability"}),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
 }

@@ -154,6 +154,26 @@ def _identity_result(events: list[dict]) -> dict:
     }
 
 
+def _availability_result(events: list[dict]) -> dict:
+    """Census of durable media-availability verdicts across the run's shards (H16 PR3).
+
+    Informational only — availability is observability over withheld/empty recordings, not part of
+    the transport-recovery acceptance gate, so it never changes the overall verdict. The latest
+    per-shard ``h16_availability`` census is summed (each shard reports its own catalog slice)."""
+    rows = [event.get("h16_availability") for event in events if event.get("h16_availability")]
+    classified = sum(int(row.get("classified", 0)) for row in rows)
+    withheld = sum(int(row.get("withheld", 0)) for row in rows)
+    by_state: dict[str, int] = {}
+    for row in rows:
+        for state, count in (row.get("by_state") or {}).items():
+            by_state[state] = by_state.get(state, 0) + int(count or 0)
+    return {
+        "classified": classified,
+        "withheld": withheld,
+        "by_state": dict(sorted(by_state.items())),
+    }
+
+
 def _tenant_results(telemetry: dict[str, dict[str, int | float]]) -> dict[str, dict]:
     tenants: dict[str, dict] = {}
     for scope, values in sorted(telemetry.items()):
@@ -264,6 +284,7 @@ def build_h16_report(
         },
         "run_stage_errors": stage_errors,
         "non_granicus_provider_errors": dict(sorted(non_granicus_errors.items())),
+        "availability": _availability_result(events),
     }
 
 
@@ -326,6 +347,17 @@ def to_markdown(report: dict) -> str:
             for category, count in criteria["identity"]["mismatch_categories"].items()
         )
         lines.append(f"- Identity mismatch categories: {rendered}")
+    availability = report.get("availability") or {}
+    if availability.get("classified"):
+        by_state = ", ".join(
+            f"{state}={count}" for state, count in (availability.get("by_state") or {}).items()
+        )
+        lines.append(
+            "- Media availability "
+            "(informational, not an H16 transport criterion): "
+            f"{availability['withheld']} withheld of {availability['classified']} classified"
+            + (f" ({by_state})" if by_state else "")
+        )
     return "\n".join(lines) + "\n"
 
 

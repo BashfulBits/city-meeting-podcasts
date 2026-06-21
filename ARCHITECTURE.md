@@ -112,7 +112,7 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
 | Area | Modules |
 |---|---|
 | **Providers** | `providers/{base,granicus,civicplus,civicclerk,swagit}.py` — `MeetingProvider` Protocol + registry; each normalizes to the episode model. |
-| **Records / identity** | `records.py` — stable `uid`, `source_key`, `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. |
+| **Records / identity** | `records.py` — stable `uid`, `source_key`, `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. `availability.py` — versioned `media_availability` classification (H16 PR3). |
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
 | **Scheduling / backlog** | `ops/workqueue.py` — the `backlog_priority` policy (comparator registry: windowed `recency`, `city_order`, `body_order`, `feed_visible_first`, …), the derived **work manifest** (`WorkItem` per episode × output `work_class`, persisted to `state/work.json`), and the `lease`/`release`/`is_leased` API — the coordination substrate for off-runner ASR/diarization workers (H6b/H9). |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
@@ -139,6 +139,14 @@ total on `/admin/status`.
 - **Split hashes** — `audio_spec_hash` (bytes) and `feed_content_hash` (RSS) invalidate independently.
 - **Content-addressed audio + stable UID** — CDN cache-bust, rollback, and provider-migration safe.
 - **Append-only archive** — meetings that drop off a provider feed are never lost (#52).
+- **Durable media-availability verdict** — `availability.py` carries a versioned `media_availability`
+  projection on the record (available / suspected-or-confirmed empty / missing / invalid / recovered
+  + operator override). It rides the audio lane's `SilencePlanner` decode (no extra ffmpeg pass);
+  withheld verdicts drop the episode from both feeds (`feeds.enclosure_url`) and from `AudioStage`,
+  so an empty/missing source is never published while metadata stages keep flowing to the meeting
+  page. Confirmation needs two independent successful silent fetches — a transport failure never
+  confirms — and re-evaluation (detector version / source fingerprint / detect profile / operator
+  override) is decoupled from `AUDIO_PIPELINE_VERSION`, so re-classifying never re-encodes (H16 PR3).
 - **Timeline served↔source EDL** — silence-trim/concat/intro/transcripts/clips all reduce to one
   served-vs-source time map (see [`review/08`](review/08-timeline-and-content-transforms.md)).
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.

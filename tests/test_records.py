@@ -744,10 +744,11 @@ def test_prune_archive_keeps_undated_records():
 
 
 def test_protected_blocks_for_lane():
-    # A lane preserves the artifact block(s) it does NOT own from the freshest remote.
+    # A lane preserves the artifact block(s) it does NOT own from the freshest remote. The audio
+    # lane owns both the audio bytes and the media-availability verdict it derives (H16 PR3).
     assert protected_blocks_for_lane("audio") == frozenset({"transcript"})
-    assert protected_blocks_for_lane("transcribe") == frozenset({"audio"})
-    assert protected_blocks_for_lane("align") == frozenset({"audio"})
+    assert protected_blocks_for_lane("transcribe") == frozenset({"audio", "media_availability"})
+    assert protected_blocks_for_lane("align") == frozenset({"audio", "media_availability"})
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
     assert protected_blocks_for_lane(None) == frozenset()
     assert protected_blocks_for_lane("mystery") == frozenset()
@@ -779,6 +780,38 @@ def test_merge_preserving_foreign_audio_lane_keeps_remote_transcript():
     merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
     assert merged["u1"]["transcript"] == {"key": "tNEW"}  # remote transcript preserved
     assert merged["u1"]["audio"]["url"] == "NEW"  # local audio written (this lane owns it)
+
+
+def test_merge_preserving_foreign_transcribe_lane_keeps_remote_availability():
+    # An ASR (transcribe) shard does not own the audio-derived availability verdict; on push it must
+    # preserve the freshest remote one rather than regress it with its stale snapshot (H16 PR3).
+    remote = {"u1": {"uid": "u1", "media_availability": {"state": "confirmed_empty"}}}
+    local = {"u1": {"uid": "u1", "media_availability": None, "transcript": {"key": "t1"}}}
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("transcribe"))
+    assert merged["u1"]["media_availability"] == {"state": "confirmed_empty"}
+    assert merged["u1"]["transcript"] == {"key": "t1"}
+
+
+def test_availability_block_round_trips():
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+
+    ep = _ep("g")
+    ep.media_availability = MediaAvailability(
+        state=CONFIRMED_EMPTY,
+        reason="silence confirmed",
+        source_fingerprint="abc123",
+        profile="noise=-40",
+        silent_confirmations=2,
+    )
+    back = record_to_episode(episode_to_record(ep))
+    assert back.media_availability == ep.media_availability
+
+
+def test_availability_absent_on_unclassified_record():
+    ep = _ep("g")
+    rec = episode_to_record(ep)
+    assert rec["media_availability"] is None
+    assert record_to_episode(rec).media_availability is None
 
 
 def test_merge_preserving_foreign_unions_new_and_remote_only_uids():
