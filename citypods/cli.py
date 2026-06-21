@@ -621,11 +621,12 @@ def _compute_reconcile(args) -> int:
     from citypods.statesync import pull_state, push_state
 
     # Operate on the durable (bucket) state: pull the snapshot, reconcile, push back only the
-    # manifest reconcile owns (so it never clobbers records). The budget ledger is written directly
-    # by reconcile via CAS on R2 (excluded from the bulk push). No-op for a sync-less local backend.
+    # files reconcile owns (so it never clobbers records). On a CAS backend the budget ledger is
+    # written directly by reconcile via CAS and push_state skips it (CAS-managed); on a non-CAS
+    # backend (plain B2 / local) it rides this bulk push as before. No-op for a sync-less backend.
     pull_state(storage, state_dir)
     summary = reconcile_compute(state_dir, storage)
-    push_state(storage, state_dir, only_prefixes=["work.json"])
+    push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
     print(
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
         f"{summary['in_flight']} in-flight"
