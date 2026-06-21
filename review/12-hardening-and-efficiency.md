@@ -1701,7 +1701,10 @@ generic ffmpeg error output. The implementation sequence is:
    token, key) from stderr, timeout/error payloads, and exception commands while retaining
    host/path/status diagnostics; Worker-origin redaction remains layered on top. This is
    transport/observability only: no audio pipeline-version bump or artifact backfill.
-3. **PR3 — durable unavailable/empty recording classification.** Replace repeated ambiguous Swagit
+3. **PR3 — durable unavailable/empty recording classification.** Split into **PR3a** (durable
+   classification + record projection + feed/stage gating + auto-recovery + H16 report surfacing —
+   *implemented, unreleased*) and **PR3b** (bounded proxy evidence + weekly review digest). Replace
+   repeated ambiguous Swagit
    failures with an explicit, versioned media-availability projection while preserving the
    append-only meeting record and canonical city watch-page URL. States distinguish available,
    suspected/confirmed empty, missing, invalid, recovered, and operator overrides. Suspected or
@@ -1710,9 +1713,15 @@ generic ffmpeg error output. The implementation sequence is:
    by Phase-R meeting pages. Automatic confirmation requires two independent successful source
    fetches; transport/truncation failures cannot confirm silence. A dedicated detector version,
    source fingerprint, profile/threshold changes, periodic recovery checks, and operator requests
-   make every classification re-evaluable without bumping the audio pipeline version.
+   make every classification re-evaluable without bumping the audio pipeline version. **PR3a as
+   built:** the verdict rides the audio lane's existing `SilencePlanner` decode (no extra ffmpeg
+   pass) — `citypods/availability.py` holds the pure state machine and fingerprint; the
+   `media_availability` record block is an audio-lane-owned artifact (sibling transcribe/align
+   pushes preserve it); `feeds.enclosure_url` and `AudioStage` enforce withholding while
+   `TimelineStage` keeps running so a withheld episode is re-examined and can recover; and a per-run
+   availability census flows into the H16 report as informational observability.
 
-   PR3 also emits bounded, low-bitrate diagnostic evidence: an untrimmed source-audio review proxy
+   PR3b also emits bounded, low-bitrate diagnostic evidence: an untrimmed source-audio review proxy
    and the candidate silence-trimmed result, plus durations, sizes, hashes, silence intervals,
    profile/version, canonical source-page URL, and redacted source identity. A weekly workflow opens
    or updates one digest issue only when new/changed candidates exist, samples a small deterministic

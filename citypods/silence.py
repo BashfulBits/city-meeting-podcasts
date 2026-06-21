@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 
+from citypods.availability import is_effectively_silent
 from citypods.http import StopRequested
 from citypods.timeline import Segment, Timeline, identity_timeline
 
@@ -155,6 +156,38 @@ def is_degenerate_served_duration(
 
 
 # ---------------------------------------------------------------------------
+# Durable media-availability detection (H16 PR3) — rides the existing decode pass
+# ---------------------------------------------------------------------------
+
+
+def _availability_profile(ctx) -> str:
+    """The detector profile string folded into the availability fingerprint. Changing any silence
+    threshold re-fingerprints, which re-opens stored verdicts (review/12 PR3)."""
+    return (
+        f"noise={ctx.silence_noise_db}dB;"
+        f"min_s={ctx.silence_min_served_seconds};"
+        f"min_f={ctx.silence_min_served_fraction}"
+    )
+
+
+def _stamp_availability(ep, obs_kind: str, profile: str, *, reason: str = "") -> None:
+    """Fold one media observation into the episode's durable availability verdict (H16 PR3).
+
+    ``classify`` returns ``None`` only for a transport failure with no prior verdict; in that case
+    the episode is left unclassified so the normal backoff/circuit machinery keeps owning retries.
+    """
+    from citypods import availability
+
+    fingerprint = availability.source_fingerprint(ep, profile)
+    obs = availability.Observation(
+        kind=obs_kind, fingerprint=fingerprint, profile=profile, reason=reason
+    )
+    verdict = availability.classify(ep.media_availability, obs)
+    if verdict is not None:
+        ep.media_availability = verdict
+
+
+# ---------------------------------------------------------------------------
 # I/O: run ffmpeg silencedetect
 # ---------------------------------------------------------------------------
 
@@ -240,7 +273,7 @@ class SilencePlanner:
     version = "2"
 
     def plan(self, provider, city, ep, ctx, current: Timeline | None) -> Timeline | None:
-        from citypods.providers.base import MediaUnavailable, ProviderError
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable, ProviderError
 
         # Gate: feature disabled globally or opted out per feed.
         if not city.extra.get("trim_silence", ctx.trim_silence):
@@ -256,6 +289,7 @@ class SilencePlanner:
             return None
 
         ffmpeg_binary = getattr(ctx.ffmpeg, "binary", "ffmpeg")
+        profile = _availability_profile(ctx)
 
         # Skip silently when ffmpeg isn't installed (e.g. PR preview CI). Avoid the expensive
         # resolve_media_url network call when we can't do anything with the result.
@@ -265,7 +299,16 @@ class SilencePlanner:
         # Resolve the source URL (may involve a network request for Swagit/CivicPlus).
         try:
             source_url = provider.resolve_media_url(ep, city.source)
-        except (ProviderError, MediaUnavailable, Exception):  # noqa: BLE001
+        except MediaUnavailable as exc:
+            # Permanently-dead media (no usable recording) is a durable availability signal; a
+            # merely-deferred one (a pending feature like multi-segment concat) is not, so leave it
+            # unclassified and let the existing materialize-backoff path own it.
+            if getattr(exc, "code", None) == MEDIA_DEAD:
+                _stamp_availability(
+                    ep, "missing", profile, reason="provider reports no usable media"
+                )
+            return None
+        except (ProviderError, Exception):  # noqa: BLE001
             return None
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 
@@ -304,6 +347,24 @@ class SilencePlanner:
         finally:
             if gate_acquired:
                 gate.release(kind="audio")
+
+        # Durable availability verdict (H16 PR3), judged off the *probed* duration only. A missing
+        # probe header means the fetch/decode itself failed (throttle/truncation) — transport, not
+        # evidence about content, so it can never confirm silence or clear a known-good episode.
+        probed_duration = source_duration
+        if probed_duration is None:
+            _stamp_availability(ep, "transport_failed", profile)
+        elif is_effectively_silent(
+            silences,
+            probed_duration,
+            min_seconds=ctx.silence_min_served_seconds,
+            min_fraction=ctx.silence_min_served_fraction,
+        ):
+            _stamp_availability(
+                ep, "silent", profile, reason="successful decode is near-totally silent"
+            )
+        else:
+            _stamp_availability(ep, "playable", profile)
 
         # Fall back to ep.duration when ffmpeg didn't emit a Duration header.
         if source_duration is None:

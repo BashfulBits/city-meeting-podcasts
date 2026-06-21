@@ -15,6 +15,23 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Durable media-availability classification withholds empty/missing recordings from feeds
+  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), H16 PR3a).** A
+  meeting whose source media is missing or (near-)totally silent now carries an explicit, versioned
+  `media_availability` verdict on its record (`available` / `suspected_empty` / `confirmed_empty` /
+  `missing` / `invalid` / `recovered`, plus operator overrides) instead of being re-attempted every
+  run with no durable outcome. The verdict rides the audio lane's existing silence-detection decode
+  (no extra ffmpeg pass): a successful decode that is near-totally silent is *suspected* and, after
+  a second independent successful silent fetch, *confirmed*; a transport failure (403/429/timeout/
+  truncation) can never confirm silence or flip a known-good episode. Withheld verdicts are kept out
+  of both audio and video feeds and out of `AudioStage`, so a bad/empty enclosure is never published
+  and a confirmed-unavailable meeting keeps its prior known-good artifact — while metadata stages
+  (chapters/links) keep running so agenda/minutes still reach the meeting page. Classification is
+  re-evaluable via a dedicated detector version, a query-stripped source fingerprint, the detection
+  profile, and operator overrides, and recovers automatically when the city later supplies playable
+  media — none of which bumps the audio pipeline version or backfills the catalog. Per-run
+  availability counts flow through each shard run event into the H16 acceptance report as
+  informational observability (not a transport pass/fail criterion).
 - **H16 Audio acceptance now proves Granicus record and artifact identity and generically redacts
   subprocess diagnostics ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).**
   The audio lane snapshots each Granicus meeting after provider/persisted-record merge and verifies

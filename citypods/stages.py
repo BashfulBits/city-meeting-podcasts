@@ -131,6 +131,19 @@ def _materialize_set(
     return out
 
 
+def _playable(episodes: list[Episode]) -> list[Episode]:
+    """Drop episodes whose durable media-availability verdict is withheld (H16 PR3).
+
+    Applied only by ``AudioStage`` — the stage that would otherwise encode/host a bad or empty
+    recording. ``TimelineStage`` (which runs the silence-detection / availability pass) deliberately
+    does NOT use this, so a withheld episode is still re-examined every run and can recover. A
+    confirmed-unavailable episode is simply skipped here, keeping its prior record block untouched.
+    """
+    return [
+        ep for ep in episodes if not (ep.media_availability and ep.media_availability.is_withheld())
+    ]
+
+
 class AsrArtifactCache:
     """Thread-safe run-local reuse for identical stable-uid + ASR-recipe work.
 
@@ -608,8 +621,10 @@ class AudioStage:
             return StageStats(self.name)
         ms: MaterializeStats = materialize_audio(
             city,
-            _materialize_set(
-                episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            _playable(
+                _materialize_set(
+                    episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+                )
             ),
             storage=ctx.storage,
             ffmpeg=ctx.ffmpeg,

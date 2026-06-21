@@ -23,6 +23,7 @@ def _write_event(
     shard: str,
     telemetry: dict,
     identity: dict | None = None,
+    availability: dict | None = None,
     stage_errors: int = 0,
 ) -> None:
     event = {
@@ -38,6 +39,8 @@ def _write_event(
     }
     if identity is not None:
         event["h16_identity"] = identity
+    if availability is not None:
+        event["h16_availability"] = availability
     (root / f"event-{shard[0]}.json").write_text(json.dumps(event))
 
 
@@ -200,6 +203,49 @@ def test_report_uses_latest_event_per_shard_on_workflow_rerun(tmp_path):
 
     assert report["shards"] == ["0/4"]
     assert report["tenants"]["arlingtontx"]["direct_successes"] == 1
+
+
+def test_report_surfaces_availability_census_without_affecting_verdict(tmp_path):
+    # H16 PR3: availability is informational observability — it is summed across shards and shown,
+    # but never flips the transport/identity/secret verdict.
+    config = tmp_path / "site.yml"
+    _write_config(config)
+    tenant = "granicus.com/tenant:fortworthgov"
+    for shard in ("0/4", "1/4", "2/4", "3/4"):
+        telemetry = (
+            {
+                tenant: {
+                    "direct_fetch_successes": 1,
+                    "worker_fallback_attempts": 0,
+                }
+            }
+            if shard == "0/4"
+            else {}
+        )
+        _write_event(
+            tmp_path,
+            shard=shard,
+            telemetry=telemetry,
+            identity={"checked": 1, "mismatches": 0},
+            availability={
+                "classified": 3,
+                "withheld": 1,
+                "by_state": {"available": 2, "confirmed_empty": 1},
+            },
+        )
+    for shard in range(4):
+        (tmp_path / f"secret-scan-{shard}.json").write_text(
+            json.dumps(
+                {"kind": "h16_log_scan", "status": "pass", "finding_count": 0, "scanned_files": 1}
+            )
+        )
+
+    report = build_h16_report(tmp_path, run_id="123", site_config_path=config, expected_shards=4)
+
+    assert report["status"] == "pass"  # availability did not change the verdict
+    assert report["availability"]["withheld"] == 4  # 1 per shard, summed
+    assert report["availability"]["by_state"]["confirmed_empty"] == 4
+    assert "Media availability" in to_markdown(report)
 
 
 def test_write_report_emits_json_and_markdown(tmp_path):

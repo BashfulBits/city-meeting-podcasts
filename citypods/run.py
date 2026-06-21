@@ -232,6 +232,39 @@ class SourcePipeline:
                 for reason, count in s.defer_reasons.items():
                     t["defer_reasons"][reason] = t["defer_reasons"].get(reason, 0) + count
 
+    def h16_availability_summary(self) -> dict:
+        """Census of durable media-availability verdicts across this run's known catalog (H16 PR3).
+
+        Counted over the per-source archives the run loaded, so it reflects the current
+        classification (persisted verdicts + this run's fresh ones), not just freshly-touched
+        episodes. ``withheld`` is the count kept out of feeds; ``by_state`` breaks down the
+        effective state (operator overrides included)."""
+        by_state: dict[str, int] = collections.defaultdict(int)
+        withheld = 0
+        classified = 0
+        seen: set[str] = set()
+        with self._guard:
+            archives = list(self._cache.values())
+        for episodes in archives:
+            for ep in episodes:
+                av = ep.media_availability
+                if av is None:
+                    continue
+                # One verdict per stable uid (a meeting may appear under several source views).
+                marker = ep.uid or ep.guid
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                classified += 1
+                by_state[av.effective_state()] += 1
+                if av.is_withheld():
+                    withheld += 1
+        return {
+            "classified": classified,
+            "withheld": withheld,
+            "by_state": dict(sorted(by_state.items())),
+        }
+
     def resolve_parked_stats(self, stats: list) -> None:
         """Remove backlog counts for circuit-deferred stage results that were retried this run.
 
@@ -1603,6 +1636,7 @@ def _build_impl(
                 provider_errors=provider_errors or None,
                 rate_limit_telemetry=provider_rate_limit_telemetry or None,
                 h16_identity=pipeline.h16_identity.summary(),
+                h16_availability=pipeline.h16_availability_summary(),
                 scope={
                     "phase": phase,
                     "lane": lane,
@@ -1824,6 +1858,7 @@ def _record_run_history(
     provider_errors: dict[str, int] | None = None,
     rate_limit_telemetry: dict[str, dict[str, int | float]] | None = None,
     h16_identity: dict | None = None,
+    h16_availability: dict | None = None,
     scope: dict | None = None,
     interrupted: bool = False,
 ) -> None:
@@ -1912,6 +1947,7 @@ def _record_run_history(
         "audio_circuit_skipped": media_circuit_skipped,
         "provider_rate_limit_telemetry": rate_limit_telemetry or {},
         "h16_identity": h16_identity or {},
+        "h16_availability": h16_availability or {},
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")

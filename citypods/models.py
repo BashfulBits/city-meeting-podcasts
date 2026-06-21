@@ -8,8 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from citypods.timeline import SourceMedia, Timeline
+
+if TYPE_CHECKING:
+    from citypods.availability import MediaAvailability
 
 
 @dataclass(frozen=True)
@@ -124,6 +128,14 @@ class Episode:
     # Served audio duration in seconds (may differ from source duration after trim/concat).
     # None for pre-v2 records; set by the encoder on each successful encode.
     audio_duration_served: float | None = None
+
+    # --- durable media-availability projection (H16 PR3, GH#353) -----------------------
+    # Versioned verdict on whether this meeting's source media is usable: available / suspected
+    # or confirmed empty / missing / invalid / recovered, plus operator overrides. Withheld
+    # verdicts keep bad/empty enclosures out of feeds and the media-affecting stages while
+    # metadata stages continue (review/12 PR3, review/13). None = never classified (e.g. direct
+    # enclosures we don't re-host, or pre-PR3 records). See citypods/availability.py.
+    media_availability: MediaAvailability | None = None
 
     def resolved_audio_url(self) -> str:
         return self.audio_url or self.video_url

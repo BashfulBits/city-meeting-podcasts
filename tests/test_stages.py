@@ -113,6 +113,19 @@ def test_audio_stage_noop_without_storage(tmp_path):
     assert stats.ran == 0 and eps[0].hosted_audio_url is None
 
 
+def test_audio_stage_skips_withheld_availability(tmp_path):
+    # H16 PR3: a confirmed-empty/withheld episode must not be encoded/hosted, while a playable
+    # sibling in the same set is processed normally and its record block is left untouched.
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+
+    good, withheld = _ep("good"), _ep("empty")
+    withheld.media_availability = MediaAvailability(state=CONFIRMED_EMPTY)
+    stats = AudioStage().process(FakeProvider(), _city(), [good, withheld], _ctx(tmp_path))
+    assert stats.ran == 1
+    assert good.hosted_audio_url is not None
+    assert withheld.hosted_audio_url is None  # never hosted a bad enclosure
+
+
 def test_run_stages_returns_stats_per_stage(tmp_path):
     eps = [_ep("g1")]
     stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
