@@ -1,0 +1,111 @@
+name: Availability digest
+
+# Weekly review digest for empty-recording candidates (H16 PR3b, GH#353). PR3a durably classifies a
+# meeting's source media as suspected/confirmed empty and withholds it from the feeds; this job turns
+# those withheld empties into a bounded, low-bitrate review bundle (untrimmed + silence-trimmed audio
+# proxies + evidence JSON) and opens/updates ONE rolling digest issue — only when new/changed
+# candidates exist. Network-touching (it re-fetches sources to encode the proxies), so it is its own
+# scheduled job, not part of PR CI.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Mondays 08:00 UTC (after the weekly endpoint-contracts probe at 06:30)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: availability-digest
+  cancel-in-progress: true
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # Durable state lives in the object bucket (state-as-truth); the script pulls it to read the
+      # persisted media-availability verdicts. Set the secrets for whichever backend
+      # site_config.defaults.audio_storage_backend selects.
+      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      # The proxy re-fetch hits native Granicus media, so it gets the same authenticated Worker
+      # fallback the audio lane uses to recover an HTTP 403.
+      GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+      GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # The proxy encode opens Granicus/Swagit media connections; running it alongside an active
+      # audio.yml cycle is the primary cause of HTTP 403 throttling (GH#300). Poll for up to an hour,
+      # then proceed anyway so a stuck audio run never permanently blocks the weekly digest.
+      - name: Wait for active audio runs to finish
+        run: |
+          for i in $(seq 1 30); do
+            ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
+            if [ "$ACTIVE" = "[]" ]; then
+              echo "No active audio runs. Proceeding."
+              exit 0
+            fi
+            echo "[$i/30] audio.yml is running. Waiting 2 minutes..."
+            sleep 120
+          done
+          echo "Timed out after 60 minutes. Proceeding anyway."
+
+      - name: Build availability digest
+        id: digest
+        run: |
+          python scripts/availability_digest.py \
+            --pull --push \
+            --out availability-digest \
+            --limit 8
+          echo "has_candidates=$(cat availability-digest/has_candidates 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload evidence bundle
+        if: steps.digest.outputs.has_candidates == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: availability-evidence-${{ github.run_id }}
+          path: availability-digest/availability-evidence.zip
+          if-no-files-found: warn
+
+      # Open or update ONE rolling digest issue. The artifact URL is appended so reviewers can grab
+      # the proxies; the body itself never contains a signed/credential-bearing URL (the evidence
+      # only carries the redacted source identity + the public canonical watch page).
+      - name: Open or update digest issue
+        if: steps.digest.outputs.has_candidates == 'true'
+        run: |
+          TITLE="H16 empty-recording review digest"
+          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          printf '\n\n> Evidence artifact: %s\n' "$ARTIFACT_URL" >> availability-digest/issue-body.md
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --body-file availability-digest/issue-body.md
+            echo "Updated digest issue #$EXISTING"
+          else
+            gh issue create --title "$TITLE" --body-file availability-digest/issue-body.md
+            echo "Opened a new digest issue"
+          fi
