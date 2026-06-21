@@ -39,12 +39,18 @@ class S3CompatibleStorage:
         bucket: str,
         public_base_url: str,
         region: str = "auto",
+        cas_capable: bool = False,
     ):
         import boto3  # lazy so the package imports without the extra installed
 
         self.name = name
         self.bucket = bucket
         self.public_base_url = public_base_url.rstrip("/")
+        # ``put_cas``/``get_bytes`` exist on every instance, but only R2 *enforces* the conditional
+        # headers — B2 silently ignores them, so it is NOT real compare-and-swap. Callers that need
+        # atomicity must gate on ``cas_capable`` (set True only for R2 via ``r2_from_env``), so a
+        # B2-backed deployment falls back to the bulk-synced local-file path instead.
+        self.cas_capable = cas_capable
         self._client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -167,6 +173,7 @@ def r2_from_env() -> S3CompatibleStorage | None:
             secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
             bucket=os.environ["R2_BUCKET"],
             public_base_url=os.environ["R2_PUBLIC_BASE_URL"],
+            cas_capable=True,  # R2 enforces If-Match/If-None-Match (real compare-and-swap)
         )
     except KeyError:
         return None

@@ -350,3 +350,60 @@ def _tmpfile(tmp_path, text: str):
     p = tmp_path / "_payload.json"
     p.write_text(text)
     return p
+
+
+# ── coordination-key exclusion from the bulk sync (H17 PR3) ───────────────────────
+
+
+class _CASLocal(LocalStorage):
+    """A LocalStorage that advertises CAS (like an R2-backed routing storage) so statesync treats
+    coordination keys (state/compute_budget.json) as CAS-managed and skips them in the bulk sync."""
+
+    cas_capable = True
+
+
+def test_push_state_excludes_cas_managed_budget(tmp_path):
+    bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "compute_budget.json").write_text('{"month": "2026-06", "backends": {}}')
+    save_records(state_dir, "src1", {"u1": {"uid": "u1"}})
+
+    pushed = push_state(bucket, state_dir)
+    # The CAS-managed ledger is NOT bulk-pushed (it would clobber the R2 CAS object); records are.
+    assert not bucket.exists(f"{STATE_PREFIX}/compute_budget.json")
+    assert bucket.exists(f"{STATE_PREFIX}/sources/src1/episodes.json")
+    assert pushed == 1
+
+
+def test_push_state_includes_budget_for_non_cas_backend(tmp_path):
+    # A plain B2/local backend (no real CAS) keeps the prior behavior: the ledger rides the sync.
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "compute_budget.json").write_text('{"month": "2026-06", "backends": {}}')
+
+    push_state(bucket, state_dir)
+    assert bucket.exists(f"{STATE_PREFIX}/compute_budget.json")
+
+
+def test_pull_state_skips_cas_managed_budget(tmp_path):
+    bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
+    # Seed a budget + a record on the remote.
+    import tempfile
+
+    for key, body in (
+        (f"{STATE_PREFIX}/compute_budget.json", '{"month": "2026-06", "backends": {}}'),
+        (f"{STATE_PREFIX}/sources/src1/episodes.json", '{"episodes": {}}'),
+    ):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as tf:
+            tf.write(body)
+            tmp = tf.name
+        bucket.put_file(key, tmp, "application/json")
+
+    state_dir = tmp_path / "state"
+    restored = pull_state(bucket, state_dir)
+    # The CAS-managed ledger is not restored into the local snapshot; the record is.
+    assert not (state_dir / "compute_budget.json").exists()
+    assert (state_dir / "sources" / "src1" / "episodes.json").exists()
+    assert restored == 1

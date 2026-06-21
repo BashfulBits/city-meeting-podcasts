@@ -21,12 +21,20 @@ statesync automatically (any ``state/*.json`` syncs; see :mod:`citypods.statesyn
 from __future__ import annotations
 
 import json
+import random
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 BUDGET_NAME = "compute_budget.json"
 BUDGET_SCHEMA_VERSION = 1
+
+# Durable key on the coordination backend. The ledger needs an atomic decrement (the overspend
+# guard) so it lives on R2 and is read/written by compare-and-swap, **not** the bulk B2 state sync
+# (``statesync`` excludes coordination keys). Must match a ``storage.routing.COORDINATION_PREFIXES``
+# entry so ``RoutingStorage`` routes it to R2.
+BUDGET_STATE_KEY = "state/compute_budget.json"
 
 
 def month_key(now: datetime | None = None) -> str:
@@ -147,8 +155,83 @@ def load_budget(state_dir: str | Path) -> Budget:
 
 
 def save_budget(state_dir: str | Path, budget: Budget) -> Path:
-    """Persist the ledger; rides statesync via its ``.json`` suffix under ``state/``."""
+    """Persist the ledger to the local ``state_dir`` — the no-CAS fallback path (local dev / dry run
+    / no R2). With a CAS backend the durable ledger lives on R2; see :func:`mutate_budget`.
+    """
     path = Path(state_dir) / BUDGET_NAME
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(budget.to_dict(), indent=2, sort_keys=True) + "\n")
+    path.write_text(_serialize(budget))
     return path
+
+
+# ── CAS-backed durable ledger (H17 PR3) ──────────────────────────────────────────
+
+
+def _serialize(budget: Budget) -> str:
+    return json.dumps(budget.to_dict(), indent=2, sort_keys=True) + "\n"
+
+
+def storage_supports_cas(storage) -> bool:
+    """True if ``storage`` can compare-and-swap the budget key. Use this, not ``hasattr``:
+    ``RoutingStorage`` always exposes ``put_cas`` but it only works with an R2 backend attached."""
+    return bool(getattr(storage, "cas_capable", False))
+
+
+def load_budget_cas(storage) -> tuple[Budget, str | None]:
+    """Read the durable ledger and its current ETag from the coordination backend.
+
+    Returns ``(budget, etag)``; ``etag`` is ``None`` when the object does not exist yet (a first
+    write conditions on ``If-None-Match: *``). A present-but-corrupt object is treated as empty but
+    keeps its ETag so the next CAS write replaces it cleanly."""
+    got = storage.get_bytes(BUDGET_STATE_KEY)
+    if got is None:
+        return Budget(), None
+    data, etag = got
+    try:
+        parsed = json.loads(data)
+    except ValueError:
+        return Budget(), etag
+    return Budget.from_dict(parsed if isinstance(parsed, dict) else {}), etag
+
+
+def mutate_budget(
+    storage,
+    mutate,
+    *,
+    now: datetime | None = None,
+    max_attempts: int = 8,
+    base_sleep: float = 0.05,
+    max_sleep: float = 1.0,
+    sleep=time.sleep,
+    rng: random.Random | None = None,
+) -> Budget:
+    """Atomic read-modify-write of the durable budget via CAS — the overspend guard.
+
+    Loads the freshest ledger + ETag, rolls the allotment month, applies ``mutate(budget)`` (the
+    reserve/settle/release), and conditionally writes it back (``If-Match`` on the ETag, or
+    ``If-None-Match: *`` for a first write). On a :class:`CASConflict` — a sibling shard committed
+    first — it re-reads and retries with bounded exponential backoff + jitter, so concurrent
+    reservations serialize and the free-tier cap can't be overspent across shards (review/17 §3/§5).
+    Returns the committed ``Budget``. Raises :class:`CASConflict` if it can't commit within
+    ``max_attempts``.
+    """
+    from citypods.storage import CASConflict
+
+    rng = rng or random
+    last: CASConflict | None = None
+    for attempt in range(max_attempts):
+        budget, etag = load_budget_cas(storage)
+        budget.roll_month(now)
+        mutate(budget)
+        body = _serialize(budget).encode()
+        try:
+            if etag is None:
+                storage.put_cas(BUDGET_STATE_KEY, body, "application/json", if_none_match="*")
+            else:
+                storage.put_cas(BUDGET_STATE_KEY, body, "application/json", if_match=etag)
+            return budget
+        except CASConflict as exc:  # a sibling wrote first → re-read and retry
+            last = exc
+            sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
+    assert last is not None
+    raise last

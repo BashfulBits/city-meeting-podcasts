@@ -20,9 +20,11 @@ from pathlib import Path
 
 from citypods.storage.base import StorageBackend
 
-# Keys whose prefix matches route to the coordination (CAS) backend. Empty until an
-# artifact is migrated; each migration appends its prefix here with its own change.
-COORDINATION_PREFIXES: tuple[str, ...] = ()
+# Keys whose prefix matches route to the coordination (CAS) backend. Each migration appends its
+# prefix here with its own change. ``state/compute_budget.json`` (H17 PR3) is the free-tier GPU
+# ledger — it needs an atomic decrement (overspend guard), so it lives on R2 and is accessed by CAS,
+# not via the bulk B2 state sync (statesync excludes coordination keys).
+COORDINATION_PREFIXES: tuple[str, ...] = ("state/compute_budget.json",)
 
 
 class RoutingStorage:
@@ -47,6 +49,16 @@ class RoutingStorage:
         # the coordination backend so we can watch the R2 free-tier budget (review/17 §4).
         self._class_a = 0
         self._class_b = 0
+
+    @property
+    def cas_capable(self) -> bool:
+        """True when a coordination backend that supports CAS is attached. ``put_cas``/``get_bytes``
+        exist on this class unconditionally, so callers must check this (not ``hasattr``) before
+        relying on compare-and-swap — with R2 creds absent the router degrades to B2-only and CAS
+        on a coordination key would raise ``NotImplementedError``."""
+        return self.coordination is not None and bool(
+            getattr(self.coordination, "cas_capable", False)
+        )
 
     # --- routing ---------------------------------------------------------------------
 

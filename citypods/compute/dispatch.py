@@ -36,7 +36,14 @@ from citypods.compute.base import (
     JobResult,
     lease_owner_for,
 )
-from citypods.compute.budget import Budget, load_budget, save_budget
+from citypods.compute.budget import (
+    Budget,
+    load_budget,
+    load_budget_cas,
+    mutate_budget,
+    save_budget,
+    storage_supports_cas,
+)
 from citypods.ops.workqueue import (
     WorkItem,
     is_leased,
@@ -102,12 +109,19 @@ class DispatchCoordinator:
         targets: list[DispatchTarget],
         budget: Budget,
         state_dir: str | Path,
+        storage=None,
         lease_ttl_seconds: float = DEFAULT_LEASE_TTL_SECONDS,
     ) -> None:
         self._local = local
         self._targets = list(targets)
-        self._budget = budget
         self._state_dir = Path(state_dir)
+        self._storage = storage
+        # CAS path: the durable ledger lives on R2 and every reserve is an atomic compare-and-swap,
+        # so concurrent shards can't overspend the free-tier cap. No-CAS path (local dev / dry run /
+        # no R2): keep the prior local-file behavior. When CAS is available, ignore the passed-in
+        # local snapshot and read the authoritative ledger from R2.
+        self._cas = storage_supports_cas(storage)
+        self._budget = load_budget_cas(storage)[0] if self._cas else budget
         self._lease_ttl = lease_ttl_seconds
         self._lock = threading.Lock()
         self._leases: dict[LeaseKey, tuple[str, datetime | None]] = {}
@@ -176,6 +190,11 @@ class DispatchCoordinator:
         runs in the caller, outside the lock, fully concurrent."""
         now = now or datetime.now(UTC)
         with self._lock:
+            # Read the authoritative ledger so the availability check sees other shards' spend
+            # (CAS path); the no-CAS path uses the in-memory ledger as before.
+            if self._cas:
+                self._budget = load_budget_cas(self._storage)[0]
+                self._budget.roll_month(now)
             backend, target = select_backend(
                 job, targets=self._targets, local=self._local, budget=self._budget, now=now
             )
@@ -185,16 +204,23 @@ class DispatchCoordinator:
             if not isinstance(result, JobHandle):
                 return None  # a dispatch backend must hand back a JobHandle; treat as no-dispatch
             owner = lease_owner_for(result)
-            self._budget.reserve(owner, result.backend, backend.estimate_gpu_seconds(job))
+            est = backend.estimate_gpu_seconds(job)
+            # Persist the decrement eagerly: a crash mid-run must not lose the spend, or the
+            # free-tier cap could be breached on the next run. Leases ride the run-end manifest
+            # overlay (work.json is rebuilt from records there).
+            if self._cas:
+                # Atomic compare-and-swap RMW: concurrent shards serialize, no lost reservation.
+                self._budget = mutate_budget(
+                    self._storage, lambda b: b.reserve(owner, result.backend, est), now=now
+                )
+            else:
+                self._budget.reserve(owner, result.backend, est)
+                save_budget(self._state_dir, self._budget)
             lease(item, owner, ttl_seconds=self._lease_ttl, now=now)
             self._leases[(item.source_key, item.episode_uid, item.work_class)] = (
                 owner,
                 item.lease_expires,
             )
-            # Persist the decrement eagerly: a crash mid-run must not lose the spend, or the
-            # free-tier cap could be breached on the next run. Leases ride the run-end manifest
-            # overlay (work.json is rebuilt from records there).
-            save_budget(self._state_dir, self._budget)
             return result
 
     def live_leases(self, *, now: datetime | None = None) -> dict[LeaseKey, tuple[str, datetime]]:
@@ -209,7 +235,10 @@ class DispatchCoordinator:
             }
 
     def flush(self) -> None:
-        """Persist the budget ledger (final write of the run)."""
+        """Persist the budget ledger (final write of the run). No-op on the CAS path — every reserve
+        already committed atomically to R2."""
+        if self._cas:
+            return
         with self._lock:
             save_budget(self._state_dir, self._budget)
 
@@ -247,24 +276,27 @@ def reconcile_compute(state_dir: str | Path, storage, *, now: datetime | None = 
     now = now or datetime.now(UTC)
     state_dir = Path(state_dir)
     items = load_manifest(state_dir)
-    budget = load_budget(state_dir)
-    budget.roll_month(now)
+    cas = storage_supports_cas(storage)
 
     reaped = settled = in_flight = 0
     manifest_changed = False
+    # Collect ledger mutations and apply them in one atomic pass (a single CAS RMW on the CAS path),
+    # so a concurrent shard's reconcile/dispatch can't lose a settle or release.
+    budget_ops: list = []
     for wi in items:
         if not wi.lease_owner:
             continue
-        backend = wi.lease_owner.split(":", 1)[0]
+        owner = wi.lease_owner
+        backend = owner.split(":", 1)[0]
         if _asr_artifact_present(storage, wi.source_key, wi.episode_uid):
             actual = wi.observed_seconds if wi.observed_seconds > 0 else None
-            budget.settle(wi.lease_owner, backend, actual)
+            budget_ops.append(lambda b, o=owner, bk=backend, a=actual: b.settle(o, bk, a))
             release(wi)
             wi.state = "done"
             settled += 1
             manifest_changed = True
         elif not is_leased(wi, now=now):
-            budget.release(wi.lease_owner, backend)
+            budget_ops.append(lambda b, o=owner, bk=backend: b.release(o, bk))
             release(wi)
             wi.state = "queued"
             reaped += 1
@@ -272,7 +304,17 @@ def reconcile_compute(state_dir: str | Path, storage, *, now: datetime | None = 
         else:
             in_flight += 1
 
-    save_budget(state_dir, budget)
+    def _apply(b: Budget) -> None:
+        for op in budget_ops:
+            op(b)
+
+    if cas:
+        mutate_budget(storage, _apply, now=now)
+    else:
+        budget = load_budget(state_dir)
+        budget.roll_month(now)
+        _apply(budget)
+        save_budget(state_dir, budget)
     if manifest_changed:
         save_manifest(state_dir, items)
     return {"reaped": reaped, "settled": settled, "in_flight": in_flight}

@@ -21,8 +21,17 @@ from citypods.compute import (
     select_backend,
 )
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.budget import Budget, load_budget, month_key, save_budget
+from citypods.compute.budget import (
+    BUDGET_STATE_KEY,
+    Budget,
+    load_budget,
+    load_budget_cas,
+    month_key,
+    mutate_budget,
+    save_budget,
+)
 from citypods.ops.workqueue import WorkItem, is_leased, lease, load_manifest, save_manifest
+from citypods.storage import CASConflict
 from citypods.storage.local import LocalStorage
 
 NOW = datetime(2026, 6, 14, 12, 0, tzinfo=UTC)
@@ -95,7 +104,72 @@ def _item(uid: str = "u1", work_class: str = "transcript-asr") -> WorkItem:
     return WorkItem(source_key="s1", episode_uid=uid, work_class=work_class, city_slug="c")
 
 
-def _coordinator(state_dir, *, fake=None, cap=10_000.0, max_inflight=8, budget=None):
+class _MemBucket:
+    """In-memory bucket exposing BOTH the bulk surface (put_file/get_file/list_objects) and the CAS
+    surface (get_bytes/put_cas), so it stands in for an R2-backed routing storage. ``cas_capable``
+    is True; ``put_cas`` enforces If-Match/If-None-Match like R2."""
+
+    cas_capable = True
+    name = "r2"
+
+    def __init__(self):
+        self.objs: dict[str, bytes] = {}
+        self.etags: dict[str, str] = {}
+        self._n = 0
+
+    def _bump(self, key: str) -> str:
+        self._n += 1
+        self.etags[key] = f'"e{self._n}"'
+        return self.etags[key]
+
+    # bulk surface
+    def put_file(self, key, local_path, content_type):
+        self.objs[key] = Path(local_path).read_bytes()
+        self._bump(key)
+        return "mem://" + key
+
+    def get_file(self, key, local_path):
+        if key not in self.objs:
+            return False
+        p = Path(local_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(self.objs[key])
+        return True
+
+    def list_objects(self, prefix=""):
+        for k in sorted(self.objs):
+            if k.startswith(prefix):
+                yield k, None
+
+    def exists(self, key):
+        return key in self.objs
+
+    def delete(self, key):
+        self.objs.pop(key, None)
+        self.etags.pop(key, None)
+
+    def public_url(self, key):
+        return "mem://" + key
+
+    # CAS surface
+    def get_bytes(self, key):
+        if key not in self.objs:
+            return None
+        return self.objs[key], self.etags[key]
+
+    def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
+        from citypods.storage import CASConflict
+
+        exists = key in self.objs
+        if if_none_match == "*" and exists:
+            raise CASConflict(key)
+        if if_match is not None and (not exists or self.etags.get(key) != if_match):
+            raise CASConflict(key)
+        self.objs[key] = data
+        return "mem://" + key, self._bump(key)
+
+
+def _coordinator(state_dir, *, fake=None, cap=10_000.0, max_inflight=8, budget=None, storage=None):
     targets = (
         [DispatchTarget(backend=fake, monthly_gpu_seconds=cap, max_inflight=max_inflight)]
         if fake is not None
@@ -106,6 +180,7 @@ def _coordinator(state_dir, *, fake=None, cap=10_000.0, max_inflight=8, budget=N
         targets=targets,
         budget=budget or Budget(),
         state_dir=state_dir,
+        storage=storage,
         lease_ttl_seconds=3600,
     )
 
@@ -382,3 +457,130 @@ class TestResultWriteContract:
         assert summary["settled"] == 1
         assert load_budget(tmp_path).backends["modal"].used_gpu_seconds == 60
         assert load_manifest(tmp_path)[0].state == "done"
+
+
+# ── CAS-backed budget ledger (H17 PR3) ────────────────────────────────────────────
+
+
+class TestBudgetCAS:
+    def test_load_budget_cas_absent_then_present(self):
+        bucket = _MemBucket()
+        budget, etag = load_budget_cas(bucket)
+        assert etag is None and budget.backends == {}
+        mutate_budget(bucket, lambda b: b.reserve("modal:1", "modal", 90.0))
+        budget, etag = load_budget_cas(bucket)
+        assert etag is not None
+        assert budget.backends["modal"].used_gpu_seconds == 90.0
+        # The durable object is the CAS key (so RoutingStorage sends it to R2).
+        assert BUDGET_STATE_KEY in bucket.objs
+
+    def test_mutate_budget_first_write_uses_if_none_match(self):
+        bucket = _MemBucket()
+        calls = []
+        real = bucket.put_cas
+
+        def spy(key, data, ct, *, if_none_match=None, if_match=None):
+            calls.append((if_none_match, if_match))
+            return real(key, data, ct, if_none_match=if_none_match, if_match=if_match)
+
+        bucket.put_cas = spy
+        mutate_budget(bucket, lambda b: b.reserve("modal:1", "modal", 10.0))  # create
+        mutate_budget(bucket, lambda b: b.reserve("modal:2", "modal", 10.0))  # update
+        assert calls[0] == ("*", None)  # first write: create-if-absent
+        assert calls[1][0] is None and calls[1][1] is not None  # then If-Match on the etag
+
+    def test_mutate_budget_retries_and_merges_sibling_reservation(self):
+        # The overspend/lost-update guard: while we hold a stale snapshot, a sibling shard commits
+        # its own reservation first; our conditional write must fail, reload, and re-apply onto the
+        # fresh ledger so BOTH reservations survive (review/17 §3/§5).
+        bucket = _MemBucket()
+        mutate_budget(bucket, lambda b: None)  # seed an empty ledger (so an ETag exists)
+        real = bucket.put_cas
+        fired = {"n": 0}
+
+        def flaky(key, data, ct, *, if_none_match=None, if_match=None):
+            fired["n"] += 1
+            if fired["n"] == 1:
+                # a sibling reserves first, via the real CAS path → bumps the ETag
+                b, etag = load_budget_cas(bucket)
+                b.reserve("modal:sibling", "modal", 50.0)
+                real(key, _serialize_budget(b), "application/json", if_match=etag)
+                raise CASConflict(key)
+            return real(key, data, ct, if_none_match=if_none_match, if_match=if_match)
+
+        bucket.put_cas = flaky
+        result = mutate_budget(
+            bucket, lambda b: b.reserve("modal:me", "modal", 90.0), sleep=lambda _s: None
+        )
+        led = result.backends["modal"]
+        assert set(led.inflight) == {"modal:sibling", "modal:me"}  # no lost update
+        assert led.used_gpu_seconds == 140.0
+
+    def test_mutate_budget_raises_after_max_attempts(self):
+        bucket = _MemBucket()
+        mutate_budget(bucket, lambda b: None)
+
+        def always_conflict(key, data, ct, *, if_none_match=None, if_match=None):
+            raise CASConflict(key)
+
+        bucket.put_cas = always_conflict
+        try:
+            mutate_budget(
+                bucket,
+                lambda b: b.reserve("x", "modal", 1.0),
+                max_attempts=3,
+                sleep=lambda _s: None,
+            )
+            raise AssertionError("expected CASConflict")
+        except CASConflict:
+            pass
+
+
+def _serialize_budget(budget: Budget) -> bytes:
+    from citypods.compute.budget import _serialize
+
+    return _serialize(budget).encode()
+
+
+class TestCoordinatorCAS:
+    def test_cross_shard_dispatch_does_not_overspend(self, tmp_path):
+        # Two shards share one durable ledger on R2. cap fits ONE 90s job. The second shard reads
+        # the first's reservation (fresh load) and overflows to local instead of overspending.
+        bucket = _MemBucket()
+        coord_a = _coordinator(
+            tmp_path / "a", fake=FakeDispatchBackend("modal"), cap=100.0, storage=bucket
+        )
+        coord_b = _coordinator(
+            tmp_path / "b", fake=FakeDispatchBackend("modal"), cap=100.0, storage=bucket
+        )
+        assert coord_a.try_dispatch(_item("u1"), _job(), now=NOW) is not None  # reserved 90
+        assert coord_b.try_dispatch(_item("u2"), _job(), now=NOW) is None  # 90+90>100 → local
+        led = load_budget_cas(bucket)[0].backends["modal"]
+        assert led.used_gpu_seconds == 90.0  # only one reservation committed
+        assert led.inflight_count == 1
+
+    def test_dispatch_persists_via_cas_not_local_file(self, tmp_path):
+        bucket = _MemBucket()
+        coord = _coordinator(
+            tmp_path, fake=FakeDispatchBackend("modal"), cap=1000.0, storage=bucket
+        )
+        assert coord.try_dispatch(_item("u1"), _job(), now=NOW) is not None
+        # Durable ledger is the R2 CAS object; no local fallback file is written on the CAS path.
+        assert BUDGET_STATE_KEY in bucket.objs
+        assert not (tmp_path / "compute_budget.json").exists()
+
+    def test_reconcile_settles_via_cas(self, tmp_path):
+        bucket = _MemBucket()
+        fake = FakeDispatchBackend("modal", est=90.0)
+        coord = _coordinator(tmp_path, fake=fake, cap=1000.0, storage=bucket)
+        item = _item("u1")
+        coord.try_dispatch(item, _job(), now=NOW)
+        save_manifest(tmp_path, [item])  # the live lease rides the manifest overlay
+        # worker finishes: artifact lands, actuals reported
+        FakeDispatchBackend.write_result(bucket, item, "r1", observed_seconds=60.0)
+        save_manifest(tmp_path, [item])
+        summary = reconcile_compute(tmp_path, bucket, now=NOW)
+        assert summary["settled"] == 1
+        led = load_budget_cas(bucket)[0].backends["modal"]
+        assert led.inflight_count == 0  # slot freed
+        assert led.used_gpu_seconds == 60.0  # estimate swapped for the actual
