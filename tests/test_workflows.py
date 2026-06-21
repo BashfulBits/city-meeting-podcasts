@@ -175,6 +175,50 @@ def test_audio_lane_needs_no_whisper():
     assert '".[asr' not in runs and "[asr,storage]" not in runs
 
 
+def test_audio_workflow_uploads_shard_evidence_and_builds_h16_report():
+    wf, audio = _job("audio.yml", job_name="audio")
+    _wf, validate = _job("audio.yml", job_name="validate-h16")
+
+    assert validate["needs"] == "audio"
+    assert validate["if"] == "always()"
+    assert wf["permissions"]["actions"] == "read"
+
+    upload = next(
+        step for step in audio["steps"] if step.get("name") == "Upload H16 shard evidence"
+    )
+    assert upload["if"] == "always()"
+    assert (
+        upload["with"]["name"]
+        == "audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}"
+    )
+    assert upload["with"]["path"] == "h16-evidence/*.json"
+    assert upload["with"]["retention-days"] == 14
+    collect = next(step for step in audio["steps"] if step.get("name") == "Collect H16 run event")
+    assert "PYTHONPATH=. python scripts/scan_h16_log.py" in collect["run"]
+
+    download = next(
+        step for step in validate["steps"] if step.get("name") == "Download H16 shard evidence"
+    )
+    assert download["continue-on-error"] is True
+    assert (
+        download["with"]["pattern"] == "audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert download["with"]["merge-multiple"] is True
+
+    report = next(
+        step for step in validate["steps"] if step.get("name") == "Build H16 acceptance report"
+    )
+    assert "citypods h16-report" in report["run"]
+    assert "mkdir -p h16-input" in report["run"]
+    assert '>> "$GITHUB_STEP_SUMMARY"' in report["run"]
+
+    report_upload = next(
+        step for step in validate["steps"] if step.get("name") == "Upload H16 acceptance report"
+    )
+    assert report_upload["if"] == "always()"
+    assert report_upload["with"]["retention-days"] == 30
+
+
 def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     wf, job = _job("audio.yml", job_name="audio")
     env = job["env"]

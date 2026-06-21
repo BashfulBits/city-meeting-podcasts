@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Audio runs now publish a machine-readable GH#353/H16 acceptance report after all four shards
+  finish.** Each shard uploads only its run event plus redacted secret-scan metadata—never the raw
+  log—to a post-matrix `validate-h16` job. The merged JSON artifact and GitHub step-summary table
+  classify transport recovery per Granicus tenant, including direct successes/403s, Worker
+  successes/failures, circuit activity, truncations, lease behavior, and the unchanged 1-local /
+  2-distributed ceiling. Identity stability is deliberately reported as `not_reported` until H16
+  PR2 supplies the invariant comparison; such a run is `insufficient_activity`, not a false pass.
+  Credential-shaped query strings, bearer values, and Worker endpoint paths are detected locally
+  on each shard and represented only by redacted category/file/line metadata. This adds telemetry
+  and workflow evidence only: no audio bytes, pipeline versions, artifact identities, or backfill
+  behavior change ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).
 - **Per-episode transcribe sharding so one skewed source spreads across all shards (H17 Stage 1,
   [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/18 §3).** The
   transcribe lane now plans per `(source, uid)` episode instead of per source: a Granicus source with

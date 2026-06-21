@@ -102,6 +102,9 @@ class MediaRateLimitCircuitBreaker:
             "worker_fallback_attempts",
             "worker_fallback_successes",
             "worker_fallback_failures",
+            "direct_fetch_successes",
+            "direct_fetch_403s",
+            "truncations",
         )
         with self._lock:
             return {
@@ -262,6 +265,19 @@ class MediaRateLimitCircuitBreaker:
         for _domain, tenant_key in self._domain_tenant_pairs(self._scope_keys(urls)):
             self._increment(tenant_key, "worker_fallback_attempts")
             self._increment(tenant_key, field)
+
+    def record_direct_fetch(self, urls: Sequence[str], *, outcome: str) -> None:
+        """Count a direct Granicus fetch outcome on each configured tenant scope."""
+        if outcome not in {"success", "403"}:
+            raise ValueError(f"unsupported direct fetch outcome: {outcome}")
+        field = "direct_fetch_successes" if outcome == "success" else "direct_fetch_403s"
+        for _domain, tenant_key in self._domain_tenant_pairs(self._scope_keys(urls)):
+            self._increment(tenant_key, field)
+
+    def record_truncation(self, urls: Sequence[str]) -> None:
+        """Count a completed-but-truncated Granicus media result for H16 acceptance."""
+        for _domain, tenant_key in self._domain_tenant_pairs(self._scope_keys(urls)):
+            self._increment(tenant_key, "truncations")
 
     def wait_for_recovery_probe(
         self,
