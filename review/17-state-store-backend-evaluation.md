@@ -171,6 +171,13 @@ external-worker access model:
 Recommended default: dispatch (work/budget) moves to R2 with the rest of the control-plane; **hold
 `episodes.json` on B2 until the H14 access model is decided**, then either move to R2-CAS or skip to SQL.
 
+> **Cross-ref:** the H14 access model is designed in [`review/18`](18-work-distribution-sharding.md)
+> (work distribution for distributed ASR workers). Its Stage 2 — external workers **claim** episodes from
+> a CAS lease ledger and write transcript records directly — is the "external workers read/write records
+> directly in the near term" branch above, i.e. it tips this swing case toward **R2-CAS now** for the
+> transcript path. Its Stage 1 (ownership-keyed per-episode merge) is the write path both in-Actions
+> shards and external workers commit through, and it composes onto this doc's `put_cas` substrate (§5).
+
 ---
 
 ## §4. Cost model — B2 vs R2 at scale
