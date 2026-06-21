@@ -115,6 +115,20 @@ def test_renew_extends_only_for_holder():
     assert wl.renew(bucket, "s1", "u1", owner="intruder", ttl_seconds=600, now=later) is None
 
 
+def test_read_lease_treats_malformed_schema_as_claimable():
+    # Valid JSON, invalid schema (attempts not an int) must not crash the worker — treat as
+    # claimable (None) but keep the ETag so a claim cleanly replaces it.
+    bucket = _MemCAS()
+    key = wl.lease_key("s1", "u1")
+    bucket.objs[key] = b'{"attempts": "not-an-int"}'
+    bucket._n += 1
+    bucket.etags[key] = f'"e{bucket._n}"'
+    lease, etag = wl.read_lease(bucket, "s1", "u1")
+    assert lease is None and etag is not None
+    held = wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=300, now=NOW)
+    assert held is not None and held.state == "leased"
+
+
 def test_renew_and_release_refuse_after_expiry():
     # Once expired we no longer hold the lease — the reaper owns it. A stale worker must not extend
     # dead work (renew) or terminally settle it (release); leave it for the reaper to requeue.

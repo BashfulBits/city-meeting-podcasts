@@ -120,9 +120,11 @@ def read_lease(storage, source_key: str, uid: str) -> tuple[WorkLease | None, st
     data, etag = got
     try:
         parsed = json.loads(data)
-    except ValueError:
-        return None, etag  # corrupt → treat as claimable, but keep the ETag for a clean CAS replace
-    return WorkLease.from_dict(parsed if isinstance(parsed, dict) else {}), etag
+        return WorkLease.from_dict(parsed if isinstance(parsed, dict) else {}), etag
+    except (AttributeError, TypeError, ValueError):
+        # Corrupt (bad JSON *or* valid JSON with a malformed schema) → treat as claimable, but keep
+        # the ETag so the next CAS write cleanly replaces it rather than crashing the worker.
+        return None, etag
 
 
 def claim(
