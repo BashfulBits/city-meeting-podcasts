@@ -154,6 +154,7 @@ def test_asr_uses_one_canonical_snapshot_and_shard_plan():
     )
     assert download["with"]["name"] == "asr-planner-${{ github.run_id }}"
     assert download["uses"].endswith("3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
+    assert download["env"]["NODE_OPTIONS"] == "--no-deprecation"
     assert not any(step.get("name") == "Restore build state" for step in asr["steps"])
     assert not any(
         ".citypods-state" in str(step.get("with", {}).get("path", ""))

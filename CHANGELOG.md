@@ -174,6 +174,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **Duplicate source views of one stable meeting no longer run the same ASR recipe twice.** The
+  per-episode planner now groups matching `(stable uid, ASR recipe)` work, co-locates every
+  source-local alias on one shard, and charges the inference weight once. `TranscriptStage` uses a
+  thread-safe run-local result cache with per-key in-flight reservations, so concurrent aliases fan
+  one completed VTT/word-JSON result out to their existing source-scoped object keys instead of both
+  entering native inference — even if multiple ASR worker permits are configured. Fresh-ASR recipes
+  now include the stable `author + body + title` prompt plus language, compute type, and beam size;
+  different inference inputs remain independent. Existing current-version transcripts are still
+  accepted before recipe recomputation, and `ASR_PIPELINE_VERSION` is unchanged, so already-stored
+  artifacts are **left as-is** and no catalog backfill is queued. Pending items use the complete recipe.
+  The ASR workflow also suppresses the known upstream Node `Buffer()` deprecation only for the pinned
+  `actions/download-artifact` step; application warnings remain visible.
 - **A busy ASR shard transcribing a multi-hour recording no longer looks idle/stalled, errored
   audio no longer wastes scarce ASR slots, and one unprobed source no longer skews shard weighting
   into the thousands of hours.** Investigating a run where three shards appeared to have "no work"

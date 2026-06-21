@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from citypods.asr import TranscriptArtifacts, asr_spec_hash
+from citypods.asr import TranscriptArtifacts, asr_initial_prompt, asr_spec_hash
 from citypods.compute import DispatchCoordinator, DispatchTarget
 from citypods.compute.base import InferenceJob, JobHandle
 from citypods.compute.budget import Budget
@@ -33,6 +33,7 @@ from citypods.records import (
 )
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
+    AsrArtifactCache,
     AsrRuntimeLog,
     StageContext,
     TranscriptStage,
@@ -574,9 +575,9 @@ class _FakeAsr:
         self.align_calls.append({"text": text, "model": model_or_name})
         return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
-    def asr_spec_hash(self, audio_spec_hash, model, align_hash, version):
+    def asr_spec_hash(self, audio_spec_hash, model, align_hash, version, **kwargs):
         # Use the real implementation
-        return asr_spec_hash(audio_spec_hash, model, align_hash, version)
+        return asr_spec_hash(audio_spec_hash, model, align_hash, version, **kwargs)
 
 
 class _FakeDispatchBackend:
@@ -638,6 +639,19 @@ def _asr_ctx(tmp_path: Path, fake_asr: _FakeAsr) -> StageContext:
 
 def _fake_audio_download(_url, dest):
     Path(dest).write_bytes(b"fake audio")
+
+
+def _fresh_recipe(ep: Episode, city: City, version: str = ASR_PIPELINE_VERSION) -> str:
+    return asr_spec_hash(
+        ep.audio_spec_hash,
+        city.asr_model,
+        None,
+        version,
+        language=city.asr_language or None,
+        compute_type=city.asr_compute_type,
+        beam_size=city.asr_beam_size,
+        initial_prompt=asr_initial_prompt(city.podcast_author, ep.body, ep.title),
+    )
 
 
 def _run_asr(tmp_path, ep, fake_asr=None):
@@ -708,12 +722,13 @@ class TestTranscriptStageASR:
         assert "reason=audio-error" in out
 
     def test_path_b_initial_prompt_contains_title(self, tmp_path):
-        """Path B: initial_prompt includes podcast_title and episode title."""
+        """Path B: initial_prompt includes stable author/body/title context."""
         ep = _ep_with_audio()
         ep, stats, fake_asr = _run_asr(tmp_path, ep)
 
         assert len(fake_asr.transcribe_calls) == 1
         prompt = fake_asr.transcribe_calls[0]["prompt"]
+        assert _city().podcast_author in prompt
         assert "Meeting" in prompt  # ep.title
 
     def test_asr_log_reports_unknown_duration_without_rounding_to_zero(self, tmp_path, capsys):
@@ -1507,8 +1522,9 @@ class TestTranscriptStageASR:
         ep = _ep_with_audio()
 
         # Pre-compute the asr_key we expect
-        recipe = asr_spec_hash(ep.audio_spec_hash, _city().asr_model, None, ASR_PIPELINE_VERSION)
-        src_key = _src_key(_city())
+        city = _city()
+        recipe = _fresh_recipe(ep, city)
+        src_key = _src_key(city)
         asr_key = f"transcripts/{src_key}/{ep.uid}-asr-{recipe}.vtt"
 
         # Put the key in storage
@@ -1526,6 +1542,128 @@ class TestTranscriptStageASR:
         assert ep.transcript_synced is True
         assert ep.transcript_key == asr_key
         assert stats.reused == 1
+
+    def test_concurrent_source_aliases_share_one_asr_inference(self, tmp_path):
+        """Same stable meeting + recipe in two source views runs native ASR only once."""
+
+        inference_started = threading.Event()
+        finish_inference = threading.Event()
+
+        second_acquire = threading.Event()
+
+        class _InstrumentedSemaphore:
+            def __init__(self):
+                self._sem = threading.Semaphore(1)
+                self._lock = threading.Lock()
+                self._attempts = 0
+
+            def acquire(self, timeout=None):
+                with self._lock:
+                    self._attempts += 1
+                    if self._attempts == 2:
+                        second_acquire.set()
+                return self._sem.acquire(timeout=timeout)
+
+            def release(self):
+                self._sem.release()
+
+        class _SlowFakeAsr(_FakeAsr):
+            def transcribe(self, *args, **kwargs):
+                inference_started.set()
+                assert finish_inference.wait(timeout=3)
+                return super().transcribe(*args, **kwargs)
+
+        fake_asr = _SlowFakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_semaphore = _InstrumentedSemaphore()
+        city_a = _city(slug="source-a", source={"feed_url": "a"})
+        city_b = _city(slug="source-b", source={"feed_url": "b"})
+        ep_a = _ep_with_audio("shared")
+        ep_b = _ep_with_audio("shared")
+        results = []
+
+        def _run(city, ep):
+            results.append(TranscriptStage().process(FakeProvider(), city, [ep], ctx))
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            first = threading.Thread(target=_run, args=(city_a, ep_a))
+            second = threading.Thread(target=_run, args=(city_b, ep_b))
+            workers = [first, second]
+            first.start()
+            assert inference_started.wait(timeout=3)
+            second.start()
+            assert second_acquire.wait(timeout=3)
+            finish_inference.set()
+            for worker in workers:
+                worker.join(timeout=5)
+
+        assert all(not worker.is_alive() for worker in workers)
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ep_a.transcript_synced and ep_b.transcript_synced
+        assert ep_a.transcript_key != ep_b.transcript_key  # durable layout remains source-scoped
+        assert sum(stats.transcribed for stats in results) == 1
+        assert sum(stats.reused for stats in results) == 1
+
+    def test_inflight_reservation_dedupes_with_multiple_asr_permits(self, tmp_path):
+        """Per-key reservation, not the one-slot default, prevents concurrent duplicate ASR."""
+        inference_started = threading.Event()
+        finish_inference = threading.Event()
+        second_claim = threading.Event()
+
+        class _ObservedCache(AsrArtifactCache):
+            def __init__(self):
+                super().__init__()
+                self._calls = 0
+                self._calls_lock = threading.Lock()
+
+            def claim(self, key):
+                with self._calls_lock:
+                    self._calls += 1
+                    if self._calls == 2:
+                        second_claim.set()
+                return super().claim(key)
+
+        class _SlowFakeAsr(_FakeAsr):
+            def transcribe(self, *args, **kwargs):
+                inference_started.set()
+                assert finish_inference.wait(timeout=3)
+                return super().transcribe(*args, **kwargs)
+
+        fake_asr = _SlowFakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_semaphore = threading.Semaphore(2)
+        ctx.asr_artifact_cache = _ObservedCache()
+        city_a = _city(slug="source-a", source={"feed_url": "a"})
+        city_b = _city(slug="source-b", source={"feed_url": "b"})
+        ep_a = _ep_with_audio("shared")
+        ep_b = _ep_with_audio("shared")
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            first = threading.Thread(
+                target=TranscriptStage().process,
+                args=(FakeProvider(), city_a, [ep_a], ctx),
+            )
+            second = threading.Thread(
+                target=TranscriptStage().process,
+                args=(FakeProvider(), city_b, [ep_b], ctx),
+            )
+            first.start()
+            assert inference_started.wait(timeout=3)
+            second.start()
+            assert second_claim.wait(timeout=3)
+            finish_inference.set()
+            first.join(timeout=5)
+            second.join(timeout=5)
+
+        assert not first.is_alive() and not second.is_alive()
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ep_a.transcript_synced and ep_b.transcript_synced
 
     def test_asr_error_recorded_not_raised(self, tmp_path):
         """ASR failure → error recorded in stats, episode left without transcript."""
@@ -1590,8 +1728,9 @@ class TestTranscriptVersionAwareReuse:
 
     def test_current_version_asr_transcript_is_reused(self, tmp_path):
         ep = _ep_with_audio()
-        recipe = asr_spec_hash(ep.audio_spec_hash, _city().asr_model, None, ASR_PIPELINE_VERSION)
-        src_key = source_key(_city())
+        city = _city()
+        recipe = _fresh_recipe(ep, city)
+        src_key = source_key(city)
         asr_key = f"transcripts/{src_key}/{ep.uid}-asr-{recipe}.vtt"
         ep.transcript_key = asr_key
         ep.transcript_synced = True
@@ -1608,7 +1747,8 @@ class TestTranscriptVersionAwareReuse:
     def test_stale_version_asr_transcript_is_redone(self, tmp_path):
         ep = _ep_with_audio()
         src_key = source_key(_city())
-        old_recipe = asr_spec_hash(ep.audio_spec_hash, _city().asr_model, None, "1")
+        city = _city()
+        old_recipe = _fresh_recipe(ep, city, "1")
         old_key = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.vtt"
         ep.transcript_key = old_key
         ep.transcript_synced = True
@@ -1619,9 +1759,7 @@ class TestTranscriptVersionAwareReuse:
         ep, stats, fake_asr = _run_asr(tmp_path, ep)
         assert len(fake_asr.transcribe_calls) == 1  # re-transcribed, not reused
         assert ep.transcript_pipeline_version == ASR_PIPELINE_VERSION
-        new_recipe = asr_spec_hash(
-            ep.audio_spec_hash, _city().asr_model, None, ASR_PIPELINE_VERSION
-        )
+        new_recipe = _fresh_recipe(ep, city)
         assert ep.transcript_key == f"transcripts/{src_key}/{ep.uid}-asr-{new_recipe}.vtt"
         assert ep.transcript_words_key.endswith(f"-asr-{new_recipe}.words.json")
 
