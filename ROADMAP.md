@@ -119,8 +119,8 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 
 | Pri | Item |
 |----:|------|
-| **R1** | **#46/#157** per-meeting permalink pages (player, transcript, chapters/agenda, official + source-time links, shareable deep-links, "report a problem") |
-| **R2** | **#6** static client-side transcript search |
+| **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
+| **R2** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
 | **R3** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
 | **R4** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites |
 | **R5** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
