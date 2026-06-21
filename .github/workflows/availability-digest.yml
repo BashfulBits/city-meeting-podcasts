@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload evidence bundle
         if: steps.digest.outputs.has_candidates == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: availability-evidence-${{ github.run_id }}
           path: availability-digest/availability-evidence.zip

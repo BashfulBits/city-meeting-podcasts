@@ -62,6 +62,21 @@ class Candidate:
         return f"{self.uid}:{self.source_fingerprint}:{self.detector_version}:{self.state}"
 
 
+def safe_stem(uid: str) -> str:
+    """A filesystem-safe filename stem for a uid.
+
+    A uid is normally a hex identity hash, but it is data, so a hostile/garbled value containing
+    ``/`` or ``..`` must never be written into a path verbatim. Keep an alphanumeric/`-`/`_` stem
+    and fall back to a content hash for anything else, so a proxy/evidence file always stays inside
+    the work dir.
+    """
+    cleaned = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in uid)
+    if cleaned and cleaned == uid:
+        return cleaned
+    digest = hashlib.sha256(uid.encode("utf-8")).hexdigest()[:16]
+    return f"{cleaned[:32]}-{digest}" if cleaned else digest
+
+
 def iter_candidates(state_dir: Path) -> list[Candidate]:
     """Collect every empty-recording candidate from the persisted records under ``state_dir``."""
     out: list[Candidate] = []
@@ -76,10 +91,15 @@ def iter_candidates(state_dir: Path) -> list[Candidate]:
             effective = av.get("operator_override") or av.get("state")
             if effective not in REVIEW_STATES:
                 continue
+            uid = str(rec.get("uid") or "")
+            if not uid:
+                # No stable identity → its digest key and evidence filename would collide with any
+                # other uid-less record. Skip it; a real meeting always has a uid (records.py).
+                continue
             out.append(
                 Candidate(
                     source_key=source_key,
-                    uid=str(rec.get("uid") or ""),
+                    uid=uid,
                     title=str(rec.get("title") or ""),
                     state=effective,
                     reason=str(av.get("reason") or ""),
@@ -195,7 +215,7 @@ def render_issue_body(evidence: list[dict], *, run_url: str | None = None) -> st
         probed = ev.get("probed_duration_seconds")
         declared = ev.get("declared_duration_seconds")
         probed_s = f"{probed:.0f}s" if isinstance(probed, (int, float)) else "—"
-        declared_s = f"{declared}s" if declared else "—"
+        declared_s = f"{declared}s" if isinstance(declared, (int, float)) else "—"
         watch = ev.get("canonical_source_url") or "—"
         title = (ev.get("title") or ev.get("uid") or "").replace("|", "\\|")
         lines.append(f"| {title} | {ev['state']} | {probed_s} / {declared_s} | {watch} |")
@@ -243,6 +263,10 @@ def proxy_ffmpeg_cmd(
     production silence EDL — good enough to answer "is there any speech here?"). The protocol
     allowlist mirrors :func:`citypods.silence.detect_silences`, and there is no ``-Range`` request,
     so a no-Range Worker stream still works.
+
+    ``src_url`` is passed straight to ffmpeg (which does its own fetch, bypassing the Python SSRF
+    guard), so the **caller must validate it with** :func:`citypods.security.validate_source_url`
+    first — ``scripts/availability_digest.py`` gates the resolved URL before it reaches here.
     """
     cmd = [
         ffmpeg_binary,

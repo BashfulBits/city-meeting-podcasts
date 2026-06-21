@@ -14,6 +14,7 @@ from citypods.availability_digest import (
     proxy_ffmpeg_cmd,
     redacted_identity,
     render_issue_body,
+    safe_stem,
     select_for_digest,
     updated_digest_state,
 )
@@ -86,6 +87,24 @@ def test_iter_candidates_respects_operator_override(tmp_path):
     # An operator who cleared a false positive (override=available) removes it from the digest.
     _write_source(tmp_path, "srcA", {"u1": _rec("u1", "confirmed_empty", override="available")})
     assert iter_candidates(tmp_path) == []
+
+
+def test_iter_candidates_skips_records_without_uid(tmp_path):
+    # A uid-less empty record would collide with every other on the "" digest key / filename.
+    rec = _rec("", "confirmed_empty")
+    rec["uid"] = ""
+    _write_source(tmp_path, "srcA", {"k1": rec})
+    assert iter_candidates(tmp_path) == []
+
+
+def test_safe_stem_neutralizes_path_traversal():
+    assert "/" not in safe_stem("../../etc/passwd")
+    assert ".." not in safe_stem("a/../b")
+    # A clean hex-ish uid is preserved verbatim for readable filenames.
+    assert safe_stem("abc123DEF-_") == "abc123DEF-_"
+    # A hostile value still yields a non-empty, contained stem.
+    stem = safe_stem("../x")
+    assert stem and "/" not in stem
 
 
 # --- deterministic selection ---------------------------------------------------------------------

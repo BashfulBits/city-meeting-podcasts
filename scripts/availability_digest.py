@@ -30,12 +30,14 @@ from citypods.availability_digest import (
     load_digest_state,
     proxy_ffmpeg_cmd,
     render_issue_body,
+    safe_stem,
     select_for_digest,
     sha256_file,
     updated_digest_state,
 )
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import record_to_episode, source_key
+from citypods.security import SecurityError, allowed_hosts_for_city, validate_source_url
 from citypods.silence import detect_silences
 from citypods.state import resolve_state_dir
 
@@ -64,9 +66,20 @@ def _resolve_source_url(candidate: Candidate, cities_by_source: dict) -> str | N
         {"provider_guid": candidate.uid, "video_url": candidate.video_url, "uid": candidate.uid}
     )
     try:
-        return provider.resolve_media_url(ep, city.source)
+        url = provider.resolve_media_url(ep, city.source)
     except (ProviderError, Exception):  # noqa: BLE001 - best effort; record a note instead
         return None
+    if not url:
+        return None
+    # ffmpeg fetches this URL itself, bypassing the Python SSRF guard, so gate it here before it
+    # reaches detect_silences / the proxy encode. A blocked URL falls back to metadata-only.
+    try:
+        validate_source_url(
+            url, allowed_hosts=allowed_hosts_for_city(city.provider, city.city_website)
+        )
+    except SecurityError:
+        return None
+    return url
 
 
 def _encode_proxy(
@@ -108,7 +121,7 @@ def _evidence_for(
         note = "source media could not be resolved; metadata only"
     else:
         silences, duration = detect_silences(src_url, ffmpeg_binary=ffmpeg_binary, timeout=timeout)
-        stem = candidate.uid or "candidate"
+        stem = safe_stem(candidate.uid)
         untrimmed = _encode_proxy(
             src_url,
             work_dir / f"{stem}.untrimmed.m4a",
@@ -193,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
             encode=not args.no_encode,
         )
-        (work_dir / f"{candidate.uid or 'candidate'}.json").write_text(
+        (work_dir / f"{safe_stem(candidate.uid)}.json").write_text(
             json.dumps(ev, indent=2, sort_keys=True) + "\n"
         )
         evidence.append(ev)
