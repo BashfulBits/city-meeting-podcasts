@@ -71,7 +71,7 @@ from citypods.resources import (
 )
 from citypods.security import SecurityError
 from citypods.seeds import merge_seed_episodes
-from citypods.sharding import create_shard_plan, load_shard_plan, sources_for_shard
+from citypods.sharding import create_shard_plan, episodes_for_shard, load_shard_plan
 from citypods.site import (
     render_city_page,
     render_index,
@@ -774,6 +774,7 @@ def _run_enrich_global_queue(
     source_cache,
     max_workers: int,
     policy,
+    owned_uids: dict[str, frozenset[str]] | None = None,
 ) -> list[CityResult]:
     """H5 PR3 — global two-pass enrich for the time-bounded heavy phase.
 
@@ -964,8 +965,15 @@ def _run_enrich_global_queue(
             # for this run, not just killed ones (GH#377).
             _persist_all()
         if transcript_stages:
-            # Decoupled from the audio pass: only episodes that now have hosted audio.
-            tx = [item for item in candidates if item[1].hosted_audio_url]
+            # Decoupled from the audio pass: only episodes that now have hosted audio. Under a
+            # per-episode transcribe plan (review/18 §3.3), also skip any uid this shard does not
+            # own — its source is still loaded for render context, but a sibling shard handles it.
+            tx = [
+                item
+                for item in candidates
+                if item[1].hosted_audio_url
+                and (owned_uids is None or item[1].uid in owned_uids.get(item[0], frozenset()))
+            ]
             print(
                 f"[enrich] transcript pass: {len(tx)} item(s) with audio (newest-first)", flush=True
             )
@@ -1089,6 +1097,10 @@ def _build_impl(
     loudness_profile = str(defaults.get("audio_loudness_profile", ""))
     audio_processing_profile = str(defaults.get("audio_processing_profile", ""))
 
+    # Per-episode transcribe ownership (review/18 §3.2): for an episode-unit plan this maps each
+    # owned source to the subset of uids this shard transcribes/writes; None means source-atomic
+    # (own every uid), preserving audio/align and unsharded behavior exactly.
+    shard_owned_uids: dict[str, frozenset[str]] | None = None
     if shard is not None:
         k, n = shard
         if not (0 <= k < n):
@@ -1096,17 +1108,7 @@ def _build_impl(
         plan_lane = lane or "audio"
         if shard_plan_path is not None:
             plan = load_shard_plan(shard_plan_path)
-            owned = sources_for_shard(
-                plan,
-                lane=plan_lane,
-                shard_index=k,
-                num_shards=n,
-                expected_sources={source_key(city) for city in cities},
-            )
-            print(
-                f"shard plan: loaded {shard_plan_path} lane={plan_lane} "
-                f"shard={k}/{n} sources={len(owned)}"
-            )
+            source = f"loaded {shard_plan_path}"
         else:
             # Legacy/local path: compute once inside this process. Production ASR supplies the
             # immutable planner artifact so all four matrix jobs share one ownership decision.
@@ -1118,7 +1120,23 @@ def _build_impl(
                 defaults=defaults,
                 asr_pipeline_version=ASR_PIPELINE_VERSION,
             )
-            owned = {key for key, owner in plan.assignment.items() if owner == k}
+            source = "computed in-process"
+        owned, shard_owned_uids = episodes_for_shard(
+            plan,
+            lane=plan_lane,
+            shard_index=k,
+            num_shards=n,
+            expected_sources={source_key(city) for city in cities},
+        )
+        uid_note = (
+            f" uids={sum(len(u) for u in shard_owned_uids.values())}"
+            if shard_owned_uids is not None
+            else ""
+        )
+        print(
+            f"shard plan: {source} lane={plan_lane} unit={plan.unit} "
+            f"shard={k}/{n} sources={len(owned)}{uid_note}"
+        )
         cities = [city for city in cities if source_key(city) in owned]
     # Backlog prioritization policy (H5). Built once per run so any windowed-recency horizon is
     # evaluated against a single ``now``. Empty/absent ⇒ behavior-preserving identity order.
@@ -1404,6 +1422,7 @@ def _build_impl(
                 source_cache=source_cache,
                 max_workers=max_workers,
                 policy=backlog_policy,
+                owned_uids=shard_owned_uids,
             )
         else:
             # all/render: the per-city pool. Light cross-source ordering (H5 PR2) submits cities
@@ -1623,6 +1642,7 @@ def _build_impl(
                     state_dir,
                     owned,
                     protected_blocks=protected_blocks_for_lane(lane),
+                    owned_uids=shard_owned_uids,
                     log=lambda msg: print(msg, flush=True),
                 )
                 pushed += push_state(

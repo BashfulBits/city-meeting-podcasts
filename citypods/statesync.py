@@ -119,6 +119,7 @@ def push_records_merged(
     source_keys,
     *,
     protected_blocks,
+    owned_uids: dict[str, frozenset[str]] | None = None,
     log=None,
 ) -> int:
     """Foreign-block-preserving scoped push of owned ``sources/<key>/episodes.json`` files.
@@ -138,7 +139,12 @@ def push_records_merged(
     is cheap (review/12 §H6 recovery note). No-op for backends without sync support.
 
     ``protected_blocks`` empty (a full/unknown lane that owns every artifact) degrades to a plain
-    per-source push that still preserves remote-only uids — never less safe than the legacy push."""
+    per-source push that still preserves remote-only uids — never less safe than the legacy push.
+
+    ``owned_uids`` (review/18 §3.2): for a per-episode-sharded transcribe run, ``{source: uids}``
+    restricting which uids this push may write an artifact block for, so sibling shards on one
+    source never regress each other's fresh transcripts. ``None`` (audio/align/source-atomic/full
+    run) owns every uid in ``local`` — byte-for-byte the prior behavior."""
     from citypods.records import (
         load_records,
         merge_preserving_foreign,
@@ -162,7 +168,12 @@ def push_records_merged(
             emit(f"state: WARNING remote record for source {sk} unreadable; skipping push")
             continue
         local = load_records(state_dir, sk)
-        merged = merge_preserving_foreign(remote, local, protected)
+        merged = merge_preserving_foreign(
+            remote,
+            local,
+            protected,
+            owned_uids=owned_uids.get(sk) if owned_uids is not None else None,
+        )
         save_records(state_dir, sk, merged)
         storage.put_file(
             f"{STATE_PREFIX}/sources/{sk}/episodes.json",

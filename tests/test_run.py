@@ -1362,9 +1362,12 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     cities_dir = _setup_multi(tmp_path)
     captured = {}
 
-    def _push_merged(_storage, _state_dir, source_keys, *, protected_blocks, log=None):
+    def _push_merged(
+        _storage, _state_dir, source_keys, *, protected_blocks, owned_uids=None, log=None
+    ):
         captured["owned"] = sorted(set(source_keys))
         captured["protected"] = protected_blocks
+        captured["owned_uids"] = owned_uids
         return len(captured["owned"])
 
     def _push(_storage, _state_dir, *, only_prefixes=None):
@@ -1391,6 +1394,7 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     assignment = shard_assignment((source_key(c) for c in cfg), 2)
     owned = sorted({source_key(c) for c in cfg if assignment[source_key(c)] == 0})
     assert captured["owned"] == owned  # records pushed only for owned sources
+    assert captured["owned_uids"] is None  # audio is source-atomic → own every uid (review/18 §2.3)
     assert captured["only_prefixes"] == ["run_events/"]  # append-only events pushed separately
     assert captured["asr_runtime_log"] == "asr_runtime_log.json"
     events = list((tmp_path / "state" / "run_events").glob("*.json"))
@@ -1408,8 +1412,11 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
     cities_dir = _setup_multi(tmp_path)
     captured = {}
 
-    def _push_merged(_storage, _state_dir, source_keys, *, protected_blocks, log=None):
+    def _push_merged(
+        _storage, _state_dir, source_keys, *, protected_blocks, owned_uids=None, log=None
+    ):
         captured["protected"] = protected_blocks
+        captured["owned_uids"] = owned_uids
         return 0
 
     monkeypatch.setattr(run, "push_records_merged", _push_merged)
@@ -1418,6 +1425,8 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
 
     _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2), lane="transcribe")
     assert captured["protected"] == protected_blocks_for_lane("transcribe") == frozenset({"audio"})
+    # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).
+    assert isinstance(captured["owned_uids"], dict)
 
 
 def test_unsharded_enrich_pushes_everything_and_reconciles(tmp_path, fake_provider, monkeypatch):
