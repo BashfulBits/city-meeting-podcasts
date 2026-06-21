@@ -228,6 +228,16 @@ class TestAsrSpecHash:
             beam_size=5,
             initial_prompt="County. Council.",
         )
+        assert base != asr_spec_hash(
+            "abc",
+            "small.en",
+            None,
+            "1",
+            language="en",
+            compute_type="float16",
+            beam_size=5,
+            initial_prompt="City. Council.",
+        )
 
     def test_hexadecimal(self):
         h = asr_spec_hash("x", "m", None, "v")
