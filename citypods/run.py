@@ -1150,7 +1150,11 @@ def _build_impl(
     )
     # GPU/ASR execution backend (H13). ``local`` (in-process) by default; ``auto`` (H14a) returns a
     # DispatchCoordinator filling external free-tier GPU budgets first, overflowing to ``local``.
-    compute_backend = make_compute(site_config, state_dir=state_dir, storage=storage)
+    # A dry run must never reach the live CAS budget ledger: pass storage=None so ``auto`` uses the
+    # local-file budget path and a stray dispatch can't mutate the production R2 ledger.
+    compute_backend = make_compute(
+        site_config, state_dir=state_dir, storage=None if dry_run else storage
+    )
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from citypods.ops import work_leases as wl
 from citypods.storage import CASConflict
 
@@ -151,6 +153,15 @@ def test_reap_dry_run_previews_without_writing():
     assert summary == {"completed": 0, "requeued": 1, "in_flight": 0}
     assert bucket.class_a == a0  # read-only: no write
     assert wl.read_lease(bucket, "s1", "u1")[0].state == "leased"  # unchanged
+
+
+def test_release_rejects_non_terminal_state():
+    # release must only settle to a terminal state; a "leased"/"queued" release would write a
+    # non-terminal object (e.g. leased with no expiry) that can wedge the item.
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=300, now=NOW)
+    with pytest.raises(ValueError, match="terminal"):
+        wl.release(bucket, "s1", "u1", owner="w1", state="leased", now=NOW)
 
 
 def test_release_requires_ownership():

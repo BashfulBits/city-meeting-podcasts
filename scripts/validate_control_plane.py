@@ -46,8 +46,11 @@ def validate(storage, *, run_id: str, now: datetime | None = None) -> dict:
     created: list[str] = []
 
     # 1) Routing + capability: the coordination backend must advertise real CAS, and a coordination
-    #    key must route to it while a blob key (audio/) stays on the B2 primary.
-    cas_capable = bool(getattr(storage, "cas_capable", False))
+    #    key must route to it while a blob key (audio/) stays on the B2 primary. ``cas_capable`` is
+    #    a property/attr on our backends; a validator still shouldn't false-green if one ever
+    #    exposes it as a method — so call it if callable.
+    cap_attr = getattr(storage, "cas_capable", False)
+    cas_capable = bool(cap_attr() if callable(cap_attr) else cap_attr)
     _check(results, "cas_capable", cas_capable, f"cas_capable={cas_capable}")
     is_managed = getattr(storage, "is_cas_managed_key", None)
     if callable(is_managed):

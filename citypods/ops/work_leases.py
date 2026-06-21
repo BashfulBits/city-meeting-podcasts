@@ -40,6 +40,9 @@ LEASE_SCHEMA_VERSION = 1
 # Claimable states: a fresh/abandoned item. ``leased`` is claimable only once expired; ``done`` and
 # ``failed`` are terminal (``failed`` needs operator/attempts attention, never auto-reclaimed here).
 LeaseState = Literal["queued", "leased", "done", "failed"]
+# A held lease may only be settled to a terminal state — releasing to ``queued``/``leased`` would
+# write a non-terminal object (e.g. ``leased`` with no expiry) that can wedge the item forever.
+TerminalLeaseState = Literal["done", "failed"]
 
 
 def lease_key(source_key: str, uid: str) -> str:
@@ -213,7 +216,7 @@ def release(
     uid: str,
     *,
     owner: str,
-    state: LeaseState = "done",
+    state: TerminalLeaseState = "done",
     now: datetime | None = None,
 ) -> bool:
     """Settle our held lease to a terminal state (``done``/``failed``). Returns False if we don't
@@ -223,6 +226,8 @@ def release(
     ``attempts`` are recorded) and is available when a prompt explicit ``done`` is wanted."""
     from citypods.storage import CASConflict
 
+    if state not in ("done", "failed"):  # guard the type hint at runtime — never write non-terminal
+        raise ValueError(f"release state must be terminal (done/failed), got {state!r}")
     now = now or datetime.now(UTC)
     existing, etag = read_lease(storage, source_key, uid)
     # Refuse once expired: a stale worker must not stamp ``failed`` (or ``done``) on a lease the
