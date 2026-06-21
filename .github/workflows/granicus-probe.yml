@@ -62,8 +62,8 @@ jobs:
       FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
       FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
           cache: pip
