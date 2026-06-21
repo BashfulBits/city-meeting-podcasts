@@ -1671,6 +1671,53 @@ for every Granicus tenant that materialized audio:
   produced a complete encode within the production encode timeout);
 - published episode URLs, artifact keys, and durations are unchanged versus pre-activation.
 
+**Three-PR closure sequence (chosen 2026-06-21).** Audio #46/#47 supplied favorable transport
+evidence, but manual inspection found three acceptance gaps: no one-shot merged H16 verdict, no
+record-level proof of identity stability, and signed Swagit media query credentials appearing in
+generic ffmpeg error output. The implementation sequence is:
+
+1. **PR1 — H16 acceptance report.** Add a post-matrix `validate-h16` job that restores the completed
+   run events and emits one merged JSON artifact plus GitHub step-summary table for the current
+   `GITHUB_RUN_ID`. Per Granicus tenant it reports direct successes/403s, Worker
+   attempts/successes/failures, circuit trips/deferrals/recovery probes, truncation backoffs, lease
+   activity, configured local/distributed ceilings, identity-verification status, and secret-scan
+   status. Classification is `pass`, `fail`, or `insufficient activity`; zero Worker attempts can
+   pass when direct Granicus fetches succeeded. This creates the compact three-run evidence GH#353
+   requires without treating unrelated-provider warnings as Granicus failures.
+2. **PR2 — identity proof + generic subprocess redaction.** Capture each Granicus record after
+   provider merge and before media stages, then verify that transport processing leaves stable UID,
+   provider GUID, official/source URL, and source duration unchanged; an existing current-spec
+   artifact must retain its key/URL/served duration, while newly materialized audio must use the
+   deterministic expected content-addressed key and public URL. Sanitize both subprocess stderr and
+   exception command arguments: remove media query strings and redact credential-shaped parameters
+   (`X-Amz-*`, signature, credential, token, key) while retaining host/path/status diagnostics. The
+   H16 report consumes these checks. This is transport/observability only: no audio pipeline-version
+   bump or artifact backfill.
+3. **PR3 — durable unavailable/empty recording classification.** Replace repeated ambiguous Swagit
+   failures with an explicit, versioned media-availability projection while preserving the
+   append-only meeting record and canonical city watch-page URL. States distinguish available,
+   suspected/confirmed empty, missing, invalid, recovered, and operator overrides. Suspected or
+   unavailable media is withheld from audio/video feeds and media-dependent stages, but metadata
+   stages continue so agenda/minutes/chapters/resources and future vote-result fields remain usable
+   by Phase-R meeting pages. Automatic confirmation requires two independent successful source
+   fetches; transport/truncation failures cannot confirm silence. A dedicated detector version,
+   source fingerprint, profile/threshold changes, periodic recovery checks, and operator requests
+   make every classification re-evaluable without bumping the audio pipeline version.
+
+   PR3 also emits bounded, low-bitrate diagnostic evidence: an untrimmed source-audio review proxy
+   and the candidate silence-trimmed result, plus durations, sizes, hashes, silence intervals,
+   profile/version, canonical source-page URL, and redacted source identity. A weekly workflow opens
+   or updates one digest issue only when new/changed candidates exist, samples a small deterministic
+   set, uploads a ZIP workflow artifact with both variants and evidence JSON, and links it from the
+   issue. Confirmed unavailable
+   meetings leave the audio backlog/ETA, retain prior known-good hosted artifacts, and automatically
+   recover into normal processing if the city later supplies valid media.
+
+PR3 is a deliberate narrow promotion of the Phase-R durable provider-failure design: the
+episode-level availability state and evidence are needed now to prevent bad enclosures and repeated
+work. The presentation, archive browsing, search/filtering, admin review UI, and broader query API
+remain Phase R in `review/13`, `review/17`, and the `review/11` Phase-R catalog.
+
 **Routing decision the data drives.** If `worker_fallback_attempts` ≈ the Granicus fetch count on
 *every* run (direct is reliably 403, as the transport artifact found), evaluate making the Worker
 *sticky* within a run — preferred after the first confirmed direct-403→Worker-success — to stop
