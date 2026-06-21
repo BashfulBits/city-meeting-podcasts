@@ -30,15 +30,17 @@ external workers instead of repeatedly overflowing onto and terminating a hosted
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
-> **Remaining tail (2026-06-12, updated 2026-06-16).** With
-> H1–H5/H6a/H6b/H7/H8/H10/H11a/H11b/H12/H13/**#39** shipped, two interlocking items remain, in order:
-> **H14** the first real external workers (**Modal + Beam**, free-tier-bounded) → **H9**
+> **Remaining tail (updated 2026-06-21).** With
+> H1–H8/H10–H13/**#39** shipped, the remaining items are:
+> **H16** Granicus proxy production validation → **H17** R2/CAS + durable pull-work substrate
+> (`review/17`/`review/18`) → **H14** the first real external workers
+> (**Modal + Beam**, free-tier-bounded) → **H9**
 > combined-throughput eval. The maintainer pulled the external-worker *build* into Phase H so "compute
 > is pluggable" ships proven by two live GPU adapters before 1.0. (**#39** per-provider rate limiting
 > shipped in [#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274) — it fixed the
 > Granicus 403 / truncated-fetch storm the first sharded Audio run hit.)
-> Runtime/dependency update automation is tracked separately as the **1.0-M pre-release gate** below;
-> it does not reorder the H14 → H9 implementation sequence.
+> Runtime/dependency update automation is now the final **Phase-R** item; completing Phase R is the
+> gate for 1.0.
 > The local-ASR duration guard is a narrow H14 reliability prerequisite, not a promotion of later
 > scaling work: ship it now, then continue with Modal and Beam workers that explicitly support audio
 > longer than the local ceiling.
@@ -62,7 +64,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > (`worker_fallback_attempts`/`successes`/`failures`) added to the circuit so usage is measurable in
 > the build log and run summary. **Before merge/activation,** require one full production-recipe
 > Arlington or Pflugerville encode from the isolated GitHub-hosted probe. **Then evaluate over the
-> three post-activation `audio.yml` runs required by GH#337:** the fallback is effective when those
+> three post-activation `audio.yml` runs tracked by H16/GH#353:** the fallback is effective when those
 > counters show successes ≈ attempts and failures ≈ 0 per Granicus tenant, Granicus
 > `circuit_trips`/deferrals fall to ~0, and no new truncation backoffs or episode-identity changes
 > appear. If direct stays 403 every run, evaluate a sticky Worker-preference; rollback is unsetting
@@ -94,7 +96,9 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H12** | ✓ Shipped — transcript artifact rework (PR #253): clean segment-cue VTT for players + a word-level JSON sidecar for search/clips/diarization + version-aware gradual re-transcribe (fixes #249's word-per-cue regression) |
 | **H13** | **GPU/ASR execution-backend interface** (+ `local` adapter) — the pre-1.0 "compute is pluggable" lock; `citypods/compute/` mirrors `storage/`. Do **first** (seam for H6b lanes + H14 adapters). LLM-API half of the interface lands with R3/R4 |
 | **H14** | **External transcription workers — Modal + Beam** (free-tier-bounded async dispatch behind H13; `asr.yml` dispatches). _H14a substrate **shipped** ([#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275)): budget ledger ($0 guarantee), router + `DispatchCoordinator`, live H5 leases, `compute reconcile`, `compute_backend: auto`._ The unreleased local guard defers known recordings above 4h when external dispatch declines; the separate runtime estimator still protects the Actions deadline. ASR shard weighting separates local duration cost from cheap dispatch, blocked, and in-flight work; a once-per-run planner now restores B2 state once and publishes one immutable state/assignment artifact consumed by every matrix shard. H14 extends that canonical planner with one external budget/capacity route snapshot. **H14b/H14c next:** real Modal + Beam workers that support longer recordings with bounded memory. Local overflow is allowed only when both local guards pass; otherwise work remains queued, not failed. The locked episode-level `transcribe`/`align`/`diarize` interface remains unchanged; `diarize` implementation stays in Phase R and Mac-mini/AWS stay post-1.0. |
-| **#300/#39 follow-up** | **Granicus media reliability** — eliminate remaining Actions-runner `archive-video.granicus.com` HTTP 403s by reducing aggregate Granicus media concurrency, coordinating endpoint contracts with Audio's provider leases, then testing request-shape/off-Actions alternatives only if low/no-overlap fetches still fail. Tracked in [`review/11`](review/11-technical-design-roadmap.md#granicus-media-reliability-follow-up-30039). |
+| **H15** | **Transcript-quality metric** — periodic caption-trust scoring that gates align-vs-transcribe routing ([GH#391](https://github.com/BashfulBits/city-meeting-podcasts/issues/391)) |
+| **H16** | **Granicus proxy validation + simplification** — three production Audio runs, direct-first vs sticky-Worker decision, then remove or justify redundant circuit machinery ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)) |
+| **H17** | **Distributed work/control-plane substrate** — `RoutingStorage` + native R2 CAS, per-episode ownership-safe merge/planning, and the pull-ledger claim contract H14 workers consume ([GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); `review/17` + `review/18`) |
 
 **Phase H exit criteria ("green").** Phase H is done — and Phase R may start — when, measured off
 `run_history.jsonl` + the status page (instruments built in H2/H4):
@@ -120,27 +124,12 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R3** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
 | **R4** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites |
 | **R5** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
+| **R6** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |
 
 ## 1.0 milestone (drop the beta tag)
-Phase **H** green (per the exit criteria above) + **#52** content permanence (shipped) + **#53**
-validation gate (H3) + **#55** front-end design cycle + **#50** accessibility + the **execution-backend
-interface locked** (so post-1.0 compute scaling — Modal / Kaggle / self-hosted / AWS — is adapter-only;
-see VISION "Compute is pluggable" and the pluggable-compute initiative in
-[`review/11`](review/11-technical-design-roadmap.md)) + the **1.0-M runtime-maintenance gate**.
 
-**1.0-M — automated runtime/dependency maintenance (required before dropping beta).**
-
-- Enable Dependabot update PRs for Python dependencies, Docker base images, and GitHub Actions.
-- Build the runtime image from reproducible Python dependency constraints rather than resolving
-  floating compatible versions on every rebuild.
-- Run a monthly FFmpeg release check that opens a PR updating the immutable download URL and checksum;
-  that PR must pass the image build and FFmpeg smoke test before merge.
-- Keep the weekly scheduled GHCR rebuild as a verification/rebuild mechanism for the pinned inputs,
-  not as an implicit updater.
-
-Acceptance: routine security/version maintenance arrives as reviewable PRs with passing smoke tests;
-the maintainer does not need a separate calendar reminder to discover new base-image, package, action,
-or FFmpeg releases.
+Complete Phase **H** and the Phase **R** research-tool/release-hardening series above. R6 carries the
+former standalone runtime-maintenance gate, so Phase-R completion is the single canonical 1.0 gate.
 
 ## Beyond 1.0 (the long-horizon phases)
 Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](review/11-technical-design-roadmap.md):
