@@ -187,6 +187,48 @@ class TestAsrSpecHash:
         h2 = asr_spec_hash("abc", "small.en", "deadbeef0000", "1")
         assert h1 != h2
 
+    def test_changes_on_fresh_transcription_prompt_or_hints(self):
+        base = asr_spec_hash(
+            "abc",
+            "small.en",
+            None,
+            "1",
+            language="en",
+            compute_type="int8",
+            beam_size=5,
+            initial_prompt="City. Council.",
+        )
+        assert base != asr_spec_hash(
+            "abc",
+            "small.en",
+            None,
+            "1",
+            language="es",
+            compute_type="int8",
+            beam_size=5,
+            initial_prompt="City. Council.",
+        )
+        assert base != asr_spec_hash(
+            "abc",
+            "small.en",
+            None,
+            "1",
+            language="en",
+            compute_type="int8",
+            beam_size=1,
+            initial_prompt="City. Council.",
+        )
+        assert base != asr_spec_hash(
+            "abc",
+            "small.en",
+            None,
+            "1",
+            language="en",
+            compute_type="int8",
+            beam_size=5,
+            initial_prompt="County. Council.",
+        )
+
     def test_hexadecimal(self):
         h = asr_spec_hash("x", "m", None, "v")
         assert all(c in "0123456789abcdef" for c in h)

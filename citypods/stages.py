@@ -82,6 +82,7 @@ from pathlib import Path
 from typing import Protocol
 
 from citypods import asr as asr_mod
+from citypods.asr import asr_initial_prompt
 from citypods.bodies import body_key, canonical_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
@@ -139,16 +140,40 @@ class AsrArtifactCache:
     """
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._condition = threading.Condition()
         self._values: dict[tuple[str, str], object] = {}
+        self._inflight: set[tuple[str, str]] = set()
 
     def get(self, key: tuple[str, str]) -> object | None:
-        with self._lock:
+        with self._condition:
             return self._values.get(key)
 
-    def put(self, key: tuple[str, str], value: object) -> None:
-        with self._lock:
-            self._values.setdefault(key, value)
+    def claim(self, key: tuple[str, str]) -> tuple[bool, object | None]:
+        """Wait for an in-flight leader, or reserve ``key`` for the caller.
+
+        Returns ``(True, None)`` to the leader that must run inference, or
+        ``(False, artifacts)`` to a follower after the leader completes.
+        """
+        with self._condition:
+            while key in self._inflight:
+                self._condition.wait()
+            value = self._values.get(key)
+            if value is not None:
+                return False, value
+            self._inflight.add(key)
+            return True, None
+
+    def complete(self, key: tuple[str, str], value: object) -> None:
+        with self._condition:
+            self._values[key] = value
+            self._inflight.discard(key)
+            self._condition.notify_all()
+
+    def abort(self, key: tuple[str, str]) -> None:
+        """Release a failed/deferred reservation so one follower may retry."""
+        with self._condition:
+            self._inflight.discard(key)
+            self._condition.notify_all()
 
 
 @dataclass
@@ -1419,8 +1444,18 @@ class TranscriptStage:
                 continue
 
             align_hash = hashlib.sha1(align_text.encode()).hexdigest()[:12] if align_text else None
+            # Alignment falls back to fresh transcription on quality/runtime errors, so keep the
+            # fresh prompt/beam inputs in the recipe even when alignment is the primary path.
+            initial_prompt = asr_initial_prompt(city.podcast_author, ep.body, ep.title)
             recipe = asr_mod.asr_spec_hash(
-                ep.audio_spec_hash, city.asr_model, align_hash, ASR_PIPELINE_VERSION
+                ep.audio_spec_hash,
+                city.asr_model,
+                align_hash,
+                ASR_PIPELINE_VERSION,
+                language=city.asr_language or None,
+                compute_type=city.asr_compute_type,
+                beam_size=city.asr_beam_size,
+                initial_prompt=initial_prompt,
             )
             asr_key = _asr_object_key(src_key, ep.uid or ep.guid, recipe)
             cache_key = (ep.uid or ep.guid, recipe)
@@ -1492,6 +1527,9 @@ class TranscriptStage:
                             "audio_key": ep.audio_key,
                             "language": city.asr_language or None,
                             "model": city.asr_model,
+                            "compute_type": city.asr_compute_type,
+                            "beam_size": city.asr_beam_size if not align_text else None,
+                            "initial_prompt": initial_prompt,
                             "text": align_text,
                         },
                         recipe_hash=recipe,
@@ -1574,11 +1612,10 @@ class TranscriptStage:
                     flush=True,
                 )
 
-            # Another source view of the same stable meeting may have completed while this worker
-            # waited for the serial ASR slot. Re-check after acquisition so both workers cannot
-            # observe an empty cache and then run duplicate native inference.
-            cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
-            if cached_artifacts is not None:
+            # Reserve this exact inference identity. With multiple ASR permits, aliases can reach
+            # this point concurrently; one becomes the leader and followers wait for its result.
+            cache_leader, cached_artifacts = ctx.asr_artifact_cache.claim(cache_key)
+            if not cache_leader:
                 if sem is not None:
                     sem.release()
                     sem = None
@@ -1597,6 +1634,13 @@ class TranscriptStage:
                     flush=True,
                 )
                 continue
+            if ctx.asr_abort_event is not None and ctx.asr_abort_event.is_set():
+                ctx.asr_artifact_cache.abort(cache_key)
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                stats.defer("prior-timeout")
+                continue
 
             native_gate_acquired = False
             if ctx.native_work_gate is not None:
@@ -1604,6 +1648,7 @@ class TranscriptStage:
                     kind="asr", label=ep.uid or ep.guid, stop=ctx.stop
                 )
                 if not native_gate_acquired:
+                    ctx.asr_artifact_cache.abort(cache_key)
                     if sem is not None:
                         sem.release()
                         sem = None
@@ -1615,6 +1660,7 @@ class TranscriptStage:
             try:
                 _download_audio_file(ep.hosted_audio_url, audio_path)
             except Exception as exc:  # noqa: BLE001
+                ctx.asr_artifact_cache.abort(cache_key)
                 audio_tmp.cleanup()
                 if native_gate_acquired and ctx.native_work_gate is not None:
                     ctx.native_work_gate.release(kind="asr")
@@ -1647,6 +1693,7 @@ class TranscriptStage:
             duration_label = f"{dur_h:.1f}" if duration_source != "unknown" else "unknown"
             mode = "align" if align_text else "transcribe"
             if not _asr_local_duration_eligible(ctx, dur_h):
+                ctx.asr_artifact_cache.abort(cache_key)
                 audio_tmp.cleanup()
                 if native_gate_acquired and ctx.native_work_gate is not None:
                     ctx.native_work_gate.release(kind="asr")
@@ -1666,6 +1713,7 @@ class TranscriptStage:
                 ctx, dur_h, runtime_log
             )
             if not fits_budget:
+                ctx.asr_artifact_cache.abort(cache_key)
                 audio_tmp.cleanup()
                 if native_gate_acquired and ctx.native_work_gate is not None:
                     ctx.native_work_gate.release(kind="asr")
@@ -1722,13 +1770,11 @@ class TranscriptStage:
                 _release_native=_release_abandoned_native_gate,
                 _backend=backend,
                 _recipe=recipe,
+                _initial_prompt=initial_prompt,
             ) -> None:
                 try:
 
                     def _transcribe_fresh():
-                        _prompt = ". ".join(
-                            p for p in (city.podcast_title, _ep.body, _ep.title) if p
-                        )
                         return _backend.run_inference(
                             InferenceJob(
                                 task="transcribe",
@@ -1738,7 +1784,7 @@ class TranscriptStage:
                                     "language": city.asr_language or None,
                                     "compute_type": city.asr_compute_type,
                                     "beam_size": city.asr_beam_size,
-                                    "initial_prompt": _prompt,
+                                    "initial_prompt": _initial_prompt,
                                     "cpu_threads": cpu_threads,
                                 },
                                 recipe_hash=_recipe,
@@ -1809,6 +1855,7 @@ class TranscriptStage:
                     # finish unless the separate backstop timeout below fires.
                     if _timeout_at is not None and time.monotonic() >= _timeout_at:
                         _abandoned = True
+                        ctx.asr_artifact_cache.abort(cache_key)
                         message = f"{label}: ASR timeout after {timeout_s / 60:.1f}m"
                         stats.errors.append(message)
                         stats.defer("timeout")
@@ -1861,6 +1908,7 @@ class TranscriptStage:
                 continue
 
             if _err:
+                ctx.asr_artifact_cache.abort(cache_key)
                 if sem is not None:
                     sem.release()
                     sem = None
@@ -1876,6 +1924,7 @@ class TranscriptStage:
                 continue
 
             if not _artifacts:
+                ctx.asr_artifact_cache.abort(cache_key)
                 if sem is not None:
                     sem.release()
                     sem = None
@@ -1891,9 +1940,8 @@ class TranscriptStage:
                 continue
 
             artifacts = _artifacts[0]
-            # Publish to the shard-local cache before releasing the serial slot. A duplicate source
-            # view waiting on the semaphore will then consume these bytes instead of starting ASR.
-            ctx.asr_artifact_cache.put(cache_key, artifacts)
+            # Publish before releasing the ASR slot so every follower observes completed bytes.
+            ctx.asr_artifact_cache.complete(cache_key, artifacts)
             if sem is not None:
                 sem.release()
                 sem = None

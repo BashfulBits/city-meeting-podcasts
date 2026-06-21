@@ -332,23 +332,38 @@ def asr_spec_hash(
     model: str,
     align_text_hash: str | None,
     version: str,
+    *,
+    language: str | None = None,
+    compute_type: str | None = None,
+    beam_size: int | None = None,
+    initial_prompt: str | None = None,
 ) -> str:
-    """Recipe hash for an ASR transcript: changes when audio, model, or source text changes.
+    """Recipe hash for an ASR transcript: changes when any inference input changes.
 
     Keyed on *inputs* (not output bytes) so the storage key can be computed before
     running inference, enabling a cheap ``_present(key)`` reuse check.
 
     ``align_text_hash`` is the SHA-1 prefix of the source text used for alignment
-    (Path A); ``None`` means fresh transcription (Path B).
+    (Path A); ``None`` means fresh transcription (Path B). Fresh-transcription prompt and
+    decoding hints are included because they can change Whisper output even for identical audio.
     """
     spec = {
         "v": version,
         "audio": audio_spec_hash,
         "model": model,
         "align": align_text_hash,
+        "language": language,
+        "compute_type": compute_type,
+        "beam_size": beam_size,
+        "initial_prompt": initial_prompt,
     }
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha1(blob).hexdigest()[:12]
+
+
+def asr_initial_prompt(author: str, body: str | None, title: str) -> str:
+    """Stable fresh-ASR prompt shared by aliases of the same real-world meeting."""
+    return ". ".join(part for part in (author, body, title) if part)
 
 
 # ── Text extraction from VTT/SRT (for bench WER) ────────────────────────────

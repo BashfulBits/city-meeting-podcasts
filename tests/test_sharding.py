@@ -44,6 +44,10 @@ def _hosted_episode(uid: str, duration: float) -> Episode:
     return ep
 
 
+def _planned_episode_keys(keys: list[str], uid: str) -> list[str]:
+    return [f"{key}/{uid}" for key in keys]
+
+
 def test_transcribe_plan_is_per_episode_and_uses_snapshot_weights(tmp_path):
     cities = [_city("a", "https://a"), _city("b", "https://b")]
     key_a, key_b = (source_key(city) for city in cities)
@@ -123,7 +127,7 @@ def test_transcribe_plan_colocates_and_charges_duplicate_stable_meeting_once(tmp
         asr_pipeline_version="3",
     )
 
-    episode_keys = [f"{key}/shared" for key in keys]
+    episode_keys = _planned_episode_keys(keys, "shared")
     assert {plan.assignment[key] for key in episode_keys} == {plan.assignment[episode_keys[0]]}
     assert sorted(plan.weights[key] for key in episode_keys) == [0.0, 2 * 3600]
 
@@ -146,7 +150,36 @@ def test_transcribe_plan_does_not_dedupe_same_uid_with_different_audio_recipe(tm
         asr_pipeline_version="3",
     )
 
+    episode_keys = _planned_episode_keys(keys, "shared")
+    assert sorted(plan.weights[key] for key in episode_keys) == [1800, 1800]
     assert sum(plan.weights.values()) == 3600
+
+
+def test_transcribe_plan_does_not_dedupe_same_uid_with_different_prompts(tmp_path):
+    cities = [
+        _city("a", "https://a"),
+        _city("b", "https://b"),
+    ]
+    cities[1].podcast_author = "Different County"
+    keys = [source_key(city) for city in cities]
+    for key in keys:
+        save_records(
+            tmp_path,
+            key,
+            {"shared": episode_to_record(_hosted_episode("shared", 1800))},
+        )
+
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="transcribe",
+        num_shards=2,
+        defaults={"asr_local_max_duration_hours": 4},
+        asr_pipeline_version="3",
+    )
+
+    episode_keys = _planned_episode_keys(keys, "shared")
+    assert sorted(plan.weights[key] for key in episode_keys) == [1800, 1800]
 
 
 def test_audio_plan_stays_source_atomic(tmp_path):

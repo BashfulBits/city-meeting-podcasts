@@ -59,8 +59,10 @@ local inference from cheap external dispatch, blocked/deferred inspection, and a
 `pending_transcribe_items` emits the same per-episode classification so the plan agrees with the
 aggregate weight. When the same stable meeting appears in multiple configured source views, matching
 `(uid, ASR recipe)` items are assigned to one shard and charged once; a thread-safe run-local result
-cache writes that one inference result to each source-scoped transcript key, preserving the durable
-blob layout while avoiding duplicate native ASR. Until H14 registers a real external backend,
+cache reserves each in-flight recipe and writes that one inference result to each source-scoped
+transcript key, preserving the durable blob layout while avoiding duplicate native ASR. The recipe
+includes the stable author/body/title prompt and decoding hints in addition to audio/model/version.
+Until H14 registers a real external backend,
 recordings above the local duration ceiling contribute only the cheap blocked cost rather than their
 full audio duration. `asr.yml` restores durable B2 state once in its reconcile/planner job, computes a
 versioned `unit=episode` assignment from that canonical snapshot, and uploads the snapshot plus plan as

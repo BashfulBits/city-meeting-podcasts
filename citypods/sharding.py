@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from citypods.asr import asr_spec_hash
+from citypods.asr import asr_initial_prompt, asr_spec_hash
 from citypods.models import City
 from citypods.records import (
     load_records,
@@ -115,6 +115,14 @@ def create_shard_plan(
                     city.asr_model,
                     None,
                     asr_pipeline_version,
+                    language=city.asr_language or None,
+                    compute_type=city.asr_compute_type,
+                    beam_size=city.asr_beam_size,
+                    initial_prompt=asr_initial_prompt(
+                        city.podcast_author,
+                        ep.body,
+                        ep.title,
+                    ),
                 )
                 grouped.setdefault(f"{uid}/{recipe}", []).append((_episode_key(key, uid), weight))
 

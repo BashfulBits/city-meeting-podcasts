@@ -172,10 +172,13 @@ ownership-aware write path Stage 2 reuses. Audio/align unchanged.
 - Cross-source alias rule (production follow-up after ASR runs 26/27): if multiple pending
   source-local records have the same stable `uid` and fresh-transcription recipe, retain every
   `(source,uid)` entry so every record has an owner, but assign the group to one shard and charge its
-  inference weight once. `TranscriptStage` keeps source-scoped durable keys and uses a thread-safe
-  run-local artifact cache, rechecked after the serial ASR semaphore, to fan one result out to all
-  aliases. Different recipes remain independent. This changes neither `ASR_PIPELINE_VERSION` nor
-  existing transcript identity and triggers no backfill.
+  inference weight once. Fresh-ASR recipe identity includes the stable `author + body + title` prompt,
+  language, compute type, and beam size, so aliases coalesce only when every inference-affecting input
+  matches. `TranscriptStage` keeps source-scoped durable keys and uses a thread-safe run-local artifact
+  cache with per-key in-flight reservations to fan one result out to all aliases even if more than one
+  ASR worker permit is configured. This changes neither `ASR_PIPELINE_VERSION` nor automatic
+  invalidation: existing current-version transcripts are left as-is; pending items use the complete
+  recipe.
 - Plan-size sanity: at review/16's ~3,000-source scale the pending set is bounded by what the free-tier
   ASR throughput can clear per cycle (review/12 §H9 gate: 80-feed backlog < 1 month), i.e. thousands of
   16-char uids = tens of KB of JSON in the workflow artifact. Comfortable.
