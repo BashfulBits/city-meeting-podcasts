@@ -188,27 +188,21 @@ def test_plan_validation_fails_closed_on_lane_shards_or_source_drift():
         )
 
 
-def test_load_plan_rejects_v1():
-    plan_v1 = {
-        "version": 1,
-        "lane": "transcribe",
-        "num_shards": 2,
-        "assignment": {"a": 0, "b": 1},
-        "weights": {"a": 1, "b": 1},
-    }
-    p = json.dumps(plan_v1)
-
-    def _write(tmp):
-        path = tmp / "v1.json"
-        path.write_text(p)
-        return path
-
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.TemporaryDirectory() as td:
-        with pytest.raises(ValueError, match="unsupported shard plan version"):
-            load_shard_plan(_write(Path(td)))
+def test_load_plan_rejects_v1(tmp_path):
+    path = tmp_path / "v1.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "lane": "transcribe",
+                "num_shards": 2,
+                "assignment": {"a": 0, "b": 1},
+                "weights": {"a": 1, "b": 1},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="unsupported shard plan version"):
+        load_shard_plan(path)
 
 
 def test_load_plan_rejects_mismatched_assignment_and_weights(tmp_path):

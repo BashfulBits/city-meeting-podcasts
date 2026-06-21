@@ -1108,7 +1108,7 @@ def _build_impl(
         plan_lane = lane or "audio"
         if shard_plan_path is not None:
             plan = load_shard_plan(shard_plan_path)
-            source = f"loaded {shard_plan_path}"
+            plan_source_desc = f"loaded {shard_plan_path}"
         else:
             # Legacy/local path: compute once inside this process. Production ASR supplies the
             # immutable planner artifact so all four matrix jobs share one ownership decision.
@@ -1120,7 +1120,7 @@ def _build_impl(
                 defaults=defaults,
                 asr_pipeline_version=ASR_PIPELINE_VERSION,
             )
-            source = "computed in-process"
+            plan_source_desc = "computed in-process"
         owned, shard_owned_uids = episodes_for_shard(
             plan,
             lane=plan_lane,
@@ -1134,7 +1134,7 @@ def _build_impl(
             else ""
         )
         print(
-            f"shard plan: {source} lane={plan_lane} unit={plan.unit} "
+            f"shard plan: {plan_source_desc} lane={plan_lane} unit={plan.unit} "
             f"shard={k}/{n} sources={len(owned)}{uid_note}"
         )
         cities = [city for city in cities if source_key(city) in owned]

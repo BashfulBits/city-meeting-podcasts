@@ -1352,6 +1352,22 @@ def test_enrich_source_scopes_to_one_source(tmp_path, fake_provider):
     assert [r.slug for r in results] == ["feed-a"]
 
 
+def test_enrich_source_and_shard_run_history_keeps_source_filter(tmp_path, fake_provider):
+    # Regression: the shard block must not shadow the ``source`` parameter with the plan-origin
+    # description, or combining --source and --shard corrupts run_history's recorded source.
+    import json
+
+    from citypods.config import load_city_configs
+    from citypods.records import source_key
+
+    cities_dir = _setup_multi(tmp_path)
+    key_a = next(source_key(c) for c in load_city_configs(cities_dir, {}) if c.slug == "feed-a")
+    _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), source=key_a, shard=(0, 1))
+    hist = (tmp_path / "state" / "run_history.jsonl").read_text().strip().splitlines()
+    entry = json.loads(hist[-1])
+    assert entry["source"] == key_a  # the --source filter, not "computed in-process"
+
+
 def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provider, monkeypatch):
     """A sharded run pushes back ONLY its owned ``sources/<key>/`` records (via the foreign-block-
     preserving ``push_records_merged``) and does not reconcile — the H6b/H11b scope hooks, so
