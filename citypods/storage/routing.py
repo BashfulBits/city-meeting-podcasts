@@ -60,6 +60,12 @@ class RoutingStorage:
             getattr(self.coordination, "cas_capable", False)
         )
 
+    def is_cas_managed_key(self, key: str) -> bool:
+        """True if THIS router manages ``key`` by CAS on the coordination backend, so the bulk state
+        sync must skip it (``statesync`` asks the storage rather than the module constant, which can
+        diverge from a router built with custom ``coordination_prefixes``)."""
+        return self.cas_capable and key.startswith(self._prefixes)
+
     # --- routing ---------------------------------------------------------------------
 
     def _is_coordination(self, key: str) -> bool:

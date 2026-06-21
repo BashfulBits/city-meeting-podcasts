@@ -36,10 +36,14 @@ def _is_cas_managed(storage, key: str) -> bool:
 
     Such keys are read/written by CAS (review/17 §5), so the bulk state sync must skip them on both
     legs: ``pull_state`` would shadow the CAS object with a stale local copy, and ``push_state``
-    would clobber it with a non-conditional ``put_file``. Gated on ``cas_capable`` so a non-CAS
-    backend (plain B2 / local) keeps bulk-syncing the file as before (the local-file fallback path).
-    Derived from the single routing table so each migration that adds a prefix is excluded
-    automatically."""
+    would clobber it with a non-conditional ``put_file``. The storage is the authority: a
+    ``RoutingStorage`` answers from its own configured prefixes (which can differ from the module
+    constant). A non-routing CAS backend (e.g. a plain ``r2``) has no per-instance prefix list, so
+    fall back to the module table. A non-CAS backend (plain B2 / local) keeps bulk-syncing the file
+    as before (the local-file fallback path)."""
+    predicate = getattr(storage, "is_cas_managed_key", None)
+    if callable(predicate):
+        return bool(predicate(key))
     if not getattr(storage, "cas_capable", False):
         return False
     from citypods.storage.routing import COORDINATION_PREFIXES

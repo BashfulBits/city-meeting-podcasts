@@ -407,3 +407,26 @@ def test_pull_state_skips_cas_managed_budget(tmp_path):
     assert not (state_dir / "compute_budget.json").exists()
     assert (state_dir / "sources" / "src1" / "episodes.json").exists()
     assert restored == 1
+
+
+def test_cas_managed_uses_router_instance_prefixes_not_global(tmp_path):
+    # A RoutingStorage built with CUSTOM coordination_prefixes must drive the bulk-sync exclusion
+    # from its own config, not the module-level COORDINATION_PREFIXES (which could diverge).
+    from citypods.statesync import _is_cas_managed
+    from citypods.storage.routing import COORDINATION_PREFIXES, RoutingStorage
+
+    class _CASPrimary(LocalStorage):
+        cas_capable = True
+
+    primary = LocalStorage(root=tmp_path / "b2", url_prefix="https://b2")
+    coord = _CASPrimary(root=tmp_path / "r2", url_prefix="https://r2")
+    router = RoutingStorage(
+        primary=primary,
+        coordination=coord,
+        coordination_prefixes=("state/custom_coord.json",),
+    )
+    # The router's own prefix is CAS-managed; the global default budget key is NOT (this router
+    # doesn't manage it) — proving statesync consults the instance, not the constant.
+    assert _is_cas_managed(router, "state/custom_coord.json") is True
+    assert _is_cas_managed(router, "state/compute_budget.json") is False
+    assert "state/compute_budget.json" in COORDINATION_PREFIXES  # would be excluded if using global
