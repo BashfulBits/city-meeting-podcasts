@@ -19,6 +19,7 @@ from citypods.records import (
     merge_records,
     migrate_legacy_manifests,
     pending_audio_work,
+    pending_transcribe_items,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
@@ -389,6 +390,73 @@ def test_transcribe_shard_work_separates_local_duration_from_blocked_work(tmp_pa
     assert no_ceiling.blocked_items == 0
 
 
+def test_pending_transcribe_items_matches_aggregate_and_excludes_non_pending(tmp_path):
+    # Per-episode plan input must agree with the aggregate estimate: same pending uids, and the
+    # per-uid weights sum to the source's shard weight (review/18 §3.1).
+    synced = _ep("done")
+    synced.uid = "u-done"
+    synced.audio_key = "audio/src/u-done.m4a"
+    synced.audio_spec_hash = "spec"
+    synced.hosted_audio_url = "https://cdn/u-done.m4a"
+    synced.audio_duration_served = 1200.0
+    synced.transcript_key = "transcripts/src/u-done-asr-recipe.vtt"
+    synced.transcript_synced = True
+    synced.transcript_pipeline_version = "3"
+
+    pending = _ep("pend")
+    pending.uid = "u-pend"
+    pending.audio_key = "audio/src/u-pend.m4a"
+    pending.audio_spec_hash = "spec"
+    pending.hosted_audio_url = "https://cdn/u-pend.m4a"
+    pending.audio_duration_served = 3600.0
+
+    oversized = _ep("big")
+    oversized.uid = "u-big"
+    oversized.audio_key = "audio/src/u-big.m4a"
+    oversized.audio_spec_hash = "spec"
+    oversized.hosted_audio_url = "https://cdn/u-big.m4a"
+    oversized.audio_duration_served = 5 * 3600.0
+
+    no_audio = _ep("noaud")
+    no_audio.uid = "u-noaud"  # not transcribable this run → never pending
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-done": episode_to_record(synced),
+            "u-pend": episode_to_record(pending),
+            "u-big": episode_to_record(oversized),
+            "u-noaud": episode_to_record(no_audio),
+        },
+    )
+    kwargs = dict(asr_enabled=True, asr_pipeline_version="3", local_max_duration_hours=4)
+    items = pending_transcribe_items(tmp_path, "src", **kwargs)
+    estimate = estimate_transcribe_shard_work(tmp_path, "src", **kwargs)
+
+    assert {uid for uid, _ in items} == {"u-pend", "u-big"}  # synced + no-audio excluded
+    assert sum(w for _, w in items) == estimate.shard_weight()
+    weights = dict(items)
+    assert weights["u-pend"] == 3600.0  # local: recording-duration proxy
+    assert weights["u-big"] == 1.0  # blocked (>4h): minimal defer cost
+
+
+def test_pending_transcribe_items_empty_when_asr_disabled(tmp_path):
+    ep = _ep("x")
+    ep.uid = "u-x"
+    ep.audio_key = "audio/src/u-x.m4a"
+    ep.audio_spec_hash = "spec"
+    ep.hosted_audio_url = "https://cdn/u-x.m4a"
+    ep.audio_duration_served = 600.0
+    save_records(tmp_path, "src", {"u-x": episode_to_record(ep)})
+    assert (
+        pending_transcribe_items(
+            tmp_path, "src", asr_enabled=False, asr_pipeline_version="3", local_max_duration_hours=4
+        )
+        == []
+    )
+
+
 def test_transcribe_shard_work_accepts_canonical_gpu_route_classification(tmp_path):
     local = _ep("g-local")
     local.uid = "u-local"
@@ -729,6 +797,56 @@ def test_merge_preserving_foreign_never_drops_a_block_remote_lacks():
     merged = merge_preserving_foreign(remote, local, frozenset({"transcript"}))
     assert merged["u1"]["transcript"] == {"key": "t1"}  # local transcript kept (remote had none)
     assert merged["u1"]["audio"]["url"] == "OLD"  # audio not protected here → local value
+
+
+def test_merge_preserving_foreign_owned_uids_none_is_unchanged_behavior():
+    # owned_uids=None must reproduce today's source-atomic merge byte-for-byte (audio/align/full).
+    remote = {"u1": {"uid": "u1", "audio": {"url": "R"}, "transcript": {"key": "tR"}}}
+    local = {"u1": {"uid": "u1", "audio": {"url": "L"}, "transcript": {"key": "tL"}}}
+    protected = protected_blocks_for_lane("transcribe")
+    assert merge_preserving_foreign(remote, local, protected) == merge_preserving_foreign(
+        remote, local, protected, owned_uids=None
+    )
+
+
+def test_merge_preserving_foreign_owned_uids_prevents_sibling_uid_regression():
+    # The reviewer's race (review/18 §2.1): two transcribe shards split one source. Both pulled the
+    # full snapshot, so shard B's `local` carries a snapshot-stale transcript for uid1 (owned by A).
+    # Shard A already wrote uid1's fresh transcript into remote. Shard B owns only uid2 — its merge
+    # must NOT regress uid1's fresh transcript with B's stale snapshot copy.
+    remote = {
+        "uid1": {"uid": "uid1", "transcript": {"key": "FRESH-from-A", "synced": True}},
+        "uid2": {"uid": "uid2", "transcript": None},
+    }
+    local = {  # shard B's whole-source view, stale for uid1
+        "uid1": {"uid": "uid1", "transcript": {"key": "STALE-snapshot", "synced": False}},
+        "uid2": {"uid": "uid2", "transcript": {"key": "FRESH-from-B", "synced": True}},
+    }
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("transcribe"), owned_uids=frozenset({"uid2"})
+    )
+    assert merged["uid1"]["transcript"]["key"] == "FRESH-from-A"  # sibling not regressed
+    assert merged["uid2"]["transcript"]["key"] == "FRESH-from-B"  # owned uid written
+
+
+def test_merge_preserving_foreign_unowned_new_uid_carries_no_artifact_block():
+    # §2.2 unowned-uid rule: a uid discovered this run but owned by no one contributes provider/
+    # render fields but NO artifact block (a sibling will own and write it).
+    remote: dict = {}
+    local = {
+        "newbie": {
+            "uid": "newbie",
+            "title": "T",
+            "audio": {"url": "L"},
+            "transcript": {"key": "tL"},
+        }
+    }
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("transcribe"), owned_uids=frozenset()
+    )
+    assert merged["newbie"]["title"] == "T"  # provider/render fields kept
+    assert "audio" not in merged["newbie"]  # artifact blocks dropped
+    assert "transcript" not in merged["newbie"]
 
 
 def test_legacy_manifest_carryover(tmp_path):

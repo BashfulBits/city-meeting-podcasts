@@ -27,7 +27,7 @@ import dataclasses
 import hashlib
 import json
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -396,48 +396,20 @@ def estimate_transcribe_shard_work(
     An episode without hosted audio yet contributes nothing: it isn't transcribable this run
     regardless of lane.
     """
-    if not asr_enabled:
-        return TranscribeShardWork()
     local_seconds = 0.0
     local_items = 0
     unknown_local_items = 0
     dispatch_items = 0
     blocked_items = 0
     inflight_items = 0
-    for rec in load_records(state_dir, src_key).values():
-        ep = record_to_episode(rec)
-        if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
-            continue
-        # Audio that failed to materialize isn't transcribable this run — the transcribe stage
-        # skips it and the audio lane re-encodes it. Counting it here would re-inflate the shard
-        # weight (and the backlog) with work ASR will never do, the exact distortion run #25 hit.
-        if ep.materialize_error:
-            continue
-        if ep.transcript_synced:
-            key_name = (ep.transcript_key or "").rsplit("/", 1)[-1]
-            is_stale_asr = (
-                key_name.startswith(f"{ep.uid or ep.guid}-asr-")
-                and ep.transcript_pipeline_version != asr_pipeline_version
-            )
-            if not is_stale_asr:
-                continue
-        timeout_backoff_until = transcript_timeout_backoff_until(ep)
-        if timeout_backoff_until is not None and datetime.now(UTC) < timeout_backoff_until:
-            blocked_items += 1
-            continue
-        raw_duration = ep.audio_duration_served or ep.duration
-        duration_seconds = float(raw_duration) if raw_duration and raw_duration > 0 else None
-        if route_classifier is not None:
-            route = route_classifier(ep, duration_seconds)
-        elif (
-            duration_seconds is not None
-            and local_max_duration_hours > 0
-            and duration_seconds > local_max_duration_hours * 3600
-        ):
-            route = "blocked"
-        else:
-            route = "local"
-
+    for _uid, route, duration_seconds in _iter_transcribe_routes(
+        state_dir,
+        src_key,
+        asr_enabled=asr_enabled,
+        asr_pipeline_version=asr_pipeline_version,
+        local_max_duration_hours=local_max_duration_hours,
+        route_classifier=route_classifier,
+    ):
         if route == "local":
             local_items += 1
             if duration_seconds is not None:
@@ -450,8 +422,6 @@ def estimate_transcribe_shard_work(
             blocked_items += 1
         elif route == "inflight":
             inflight_items += 1
-        else:
-            raise ValueError(f"unknown transcribe shard route {route!r}")
 
     # Weight unknown-duration local items by the average *known* local duration in THIS source,
     # not a flat per-item ceiling. A source with many not-yet-probed episodes (a large backfill, or
@@ -475,6 +445,114 @@ def estimate_transcribe_shard_work(
         blocked_items=blocked_items,
         inflight_items=inflight_items,
     )
+
+
+def _iter_transcribe_routes(
+    state_dir: Path,
+    src_key: str,
+    *,
+    asr_enabled: bool,
+    asr_pipeline_version: str,
+    local_max_duration_hours: float,
+    route_classifier: TranscribeRouteClassifier | None = None,
+) -> Iterator[tuple[str, TranscribeRoute, float | None]]:
+    """Yield ``(uid, route, duration_seconds)`` for each record that is transcribe **work this
+    run** — the shared classification behind the source-atomic estimate
+    (:func:`estimate_transcribe_shard_work`) and the per-episode plan
+    (:func:`pending_transcribe_items`), so both agree on exactly which uids are pending and why.
+
+    Skips (yields nothing for) records that are not transcribable this run: no hosted audio yet, a
+    failed materialization (the audio lane re-encodes it), or a transcript already synced at the
+    current ASR pipeline version. ``inflight`` is yielded but represents no new shard work.
+    """
+    if not asr_enabled:
+        return
+    now = datetime.now(UTC)
+    for uid, rec in load_records(state_dir, src_key).items():
+        ep = record_to_episode(rec)
+        if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
+            continue
+        # Audio that failed to materialize isn't transcribable this run — the transcribe stage
+        # skips it and the audio lane re-encodes it. Counting it here would re-inflate the shard
+        # weight (and the backlog) with work ASR will never do, the exact distortion run #25 hit.
+        if ep.materialize_error:
+            continue
+        if ep.transcript_synced:
+            key_name = (ep.transcript_key or "").rsplit("/", 1)[-1]
+            is_stale_asr = (
+                key_name.startswith(f"{ep.uid or ep.guid}-asr-")
+                and ep.transcript_pipeline_version != asr_pipeline_version
+            )
+            if not is_stale_asr:
+                continue
+        timeout_backoff_until = transcript_timeout_backoff_until(ep)
+        if timeout_backoff_until is not None and now < timeout_backoff_until:
+            yield uid, "blocked", None
+            continue
+        raw_duration = ep.audio_duration_served or ep.duration
+        duration_seconds = float(raw_duration) if raw_duration and raw_duration > 0 else None
+        if route_classifier is not None:
+            route = route_classifier(ep, duration_seconds)
+        elif (
+            duration_seconds is not None
+            and local_max_duration_hours > 0
+            and duration_seconds > local_max_duration_hours * 3600
+        ):
+            route = "blocked"
+        else:
+            route = "local"
+        if route not in ("local", "dispatch", "blocked", "inflight"):
+            raise ValueError(f"unknown transcribe shard route {route!r}")
+        yield uid, route, duration_seconds
+
+
+def pending_transcribe_items(
+    state_dir: Path,
+    src_key: str,
+    *,
+    asr_enabled: bool,
+    asr_pipeline_version: str,
+    local_max_duration_hours: float,
+    route_classifier: TranscribeRouteClassifier | None = None,
+    unknown_local_seconds: float = TRANSCRIBE_UNKNOWN_LOCAL_WEIGHT_SECONDS,
+) -> list[tuple[str, float]]:
+    """Per-episode transcribe backlog: ``[(uid, weight_seconds), ...]`` (review/18 §3.1).
+
+    The per-episode counterpart of :func:`estimate_transcribe_shard_work`: instead of one aggregate
+    weight per source it emits one entry per **pending** uid, so the transcribe planner can spread a
+    single skewed source across all shards. ``inflight`` items contribute no new work and are
+    omitted; ``local``/``dispatch``/``blocked`` items carry the same cost-second proxy the aggregate
+    uses, so ``sum(weights) == estimate_transcribe_shard_work(...).shard_weight()``. Plan size
+    tracks *backlog*, not catalog: a caught-up source contributes no entries.
+    """
+    routes = list(
+        _iter_transcribe_routes(
+            state_dir,
+            src_key,
+            asr_enabled=asr_enabled,
+            asr_pipeline_version=asr_pipeline_version,
+            local_max_duration_hours=local_max_duration_hours,
+            route_classifier=route_classifier,
+        )
+    )
+    # Resolve unknown-duration local weight to the per-source average of known local durations
+    # (matching the aggregate estimator), so per-uid weights sum to the source's shard weight.
+    known = [d for _u, r, d in routes if r == "local" and d is not None]
+    unknown_per_item = sum(known) / len(known) if known else max(0.0, unknown_local_seconds)
+    items: list[tuple[str, float]] = []
+    for uid, route, duration_seconds in routes:
+        if route == "inflight":
+            continue
+        if route == "dispatch":
+            weight = TRANSCRIBE_DISPATCH_WEIGHT_SECONDS
+        elif route == "blocked":
+            weight = TRANSCRIBE_BLOCKED_WEIGHT_SECONDS
+        elif duration_seconds is not None:
+            weight = duration_seconds
+        else:
+            weight = unknown_per_item
+        items.append((uid, weight))
+    return items
 
 
 def referenced_audio_keys(state_dir: Path) -> set[str]:
@@ -698,21 +776,47 @@ def protected_blocks_for_lane(lane: str | None) -> frozenset[str]:
     return ARTIFACT_BLOCKS - owned
 
 
-def merge_preserving_foreign(remote: dict, local: dict, protected: frozenset[str]) -> dict:
+def merge_preserving_foreign(
+    remote: dict,
+    local: dict,
+    protected: frozenset[str],
+    *,
+    owned_uids: frozenset[str] | None = None,
+) -> dict:
     """Merge a scoped lane run's ``local`` records to push against the freshest ``remote`` snapshot,
     preserving the ``protected`` artifact blocks (the ones this lane does not own) from ``remote``.
 
+    Two preservation axes (review/18 §3.2):
+
+    * **Across blocks** (always): for a uid this run writes, keep ``remote``'s value for each
+      ``protected`` block — the artifacts this *lane* does not own (audio vs transcript) — so a
+      concurrent sibling *lane* is never regressed (review/12 §H6).
+    * **Across uids** (only when ``owned_uids`` is given): a per-episode-sharded transcribe run
+      holds the *whole* source in ``local`` (it pulled the full snapshot) but owns only some uids.
+      For a uid it does **not** own, its ``local`` artifact block is snapshot-stale — a sibling
+      *shard* may have just written a fresh one — so we must never write it. ``owned_uids=None``
+      reproduces the source-atomic behavior exactly (the run owns every uid in ``local``), keeping
+      audio/align and the unsharded full enrich byte-for-byte unchanged.
+
     Rules, per uid:
-      * uid only in ``remote`` (a sibling lane discovered/owns it) — kept as-is.
-      * uid only in ``local`` (this run discovered it) — taken whole.
-      * uid in both — take ``local`` (fresh provider/render fields + this lane's artifact), but for
-        each ``protected`` block keep ``remote``'s value **when remote has one** (a sibling lane may
-        have just written it). When remote lacks the block, local's is kept so a block is never
-        dropped. This makes the running lane authoritative only for its own artifact and provider
-        fields, and never regresses a concurrently-written foreign artifact (review/12 §H6).
+      * uid only in ``remote`` (a sibling discovered/owns it) — kept as-is.
+      * uid in ``local`` but **not owned** — keep ``remote`` as-is if present; if it is newly
+        discovered (absent from ``remote``), record its provider/render fields but **no artifact
+        block** (§2.2 unowned-uid rule — a sibling will own and write it).
+      * uid owned (or ``owned_uids is None``) and only in ``local`` — taken whole.
+      * uid owned and in both — take ``local`` (fresh provider/render fields + this lane's
+        artifact), but for each ``protected`` block keep ``remote``'s value when remote has one;
+        when remote lacks the block, local's is kept so a block is never dropped.
     """
     merged = {uid: dict(rec) for uid, rec in remote.items()}
     for uid, local_rec in local.items():
+        if owned_uids is not None and uid not in owned_uids:
+            # uid this run does NOT own: never write our snapshot-stale artifact for it.
+            if uid not in remote:
+                # newly discovered, unowned — keep provider/render fields, drop artifact blocks.
+                merged[uid] = {k: v for k, v in local_rec.items() if k not in ARTIFACT_BLOCKS}
+            # else: keep remote as-is (already copied) — a sibling owns/writes it.
+            continue
         rec = dict(local_rec)
         remote_rec = remote.get(uid)
         if remote_rec:

@@ -47,16 +47,21 @@ The production deploy **splits render from enrich** into **separate workflows** 
 see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state and never
 runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two dedicated workflows,
 `audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription), each on its
-own concurrency group **sharded by `source_key`** (`strategy.matrix.shard`). Assignment is
-source-atomic and weighted by each lane's own remaining-work estimate — pending encode count for
-Audio; routing-aware runner cost for ASR — so large local backlogs are not casually bundled with small
-ones while concurrent shards still never write the same record file. The ASR estimate separates
-duration-weighted local inference from cheap external dispatch, blocked/deferred inspection, and
-already-in-flight work. Until H14 registers a real external backend, recordings above the local
-duration ceiling contribute only the cheap blocked cost rather than their full audio duration.
-`asr.yml` restores durable B2 state once in its reconcile/planner job, computes a versioned
-source-atomic assignment from that canonical snapshot, and uploads the snapshot plus plan as an
-immutable workflow artifact. Every matrix shard consumes that same artifact and skips its own full B2
+own concurrency group **sharded** (`strategy.matrix.shard`). The **Audio** (and unscheduled
+**align**) lane is **source-atomic** — a `source_key` goes to exactly one shard — because that lane
+is throttled per source (per-source encode caps, Granicus media leases, the provider circuit), so the
+provider, not the runner, is the ceiling (review/18 §2.3). The **transcribe** lane plans **per
+`(source, uid)` episode** (review/18 §3.1): each episode is independent GPU work, so one skewed
+source (e.g. a 2,000-episode Granicus backlog) spreads across all shards instead of pinning to one.
+Assignment is weighted by each lane's own remaining-work estimate — pending encode count for Audio;
+routing-aware runner cost per pending episode for ASR. The ASR estimate separates duration-weighted
+local inference from cheap external dispatch, blocked/deferred inspection, and already-in-flight work;
+`pending_transcribe_items` emits the same per-episode classification so the plan agrees with the
+aggregate weight. Until H14 registers a real external backend, recordings above the local duration
+ceiling contribute only the cheap blocked cost rather than their full audio duration. `asr.yml`
+restores durable B2 state once in its reconcile/planner job, computes a versioned `unit=episode`
+assignment from that canonical snapshot, and uploads the snapshot plus plan as an immutable workflow
+artifact. Every matrix shard consumes that same artifact and skips its own full B2
 restore. H14 extends the planner's route classifier with one budget/capacity snapshot; individual
 matrix shards must not race to predict changing GPU availability.
 The Audio lane runs its CLI inside the version-pinned
@@ -87,7 +92,10 @@ overlapping times, the scoped push is also **foreign-block-preserving**: a lane 
 artifact (`audio` vs `transcript`, per `records.protected_blocks_for_lane`), so on push it re-reads the
 freshest remote and keeps the block it doesn't own — closing the cross-*lane* lost update the per-shard
 scope alone does not (`records.merge_preserving_foreign`; `stages.LANE_STAGES` keeps each lane to its own
-work-class stages so it never re-derives a foreign block — review/12 §H6). The heavy
+work-class stages so it never re-derives a foreign block — review/12 §H6). When transcribe runs
+per-episode, the same merge also preserves **across uids**: a shard passes its `owned_uids`, so it
+writes a `transcript` block only for the uids it owns and keeps the freshest remote for siblings'
+uids — the cross-*uid* lost update two shards splitting one source would otherwise hit (review/18 §3.2). The heavy
 `enrich` phase processes its backlog as a **global, policy-ordered two-pass queue** (`ops/workqueue.py` +
 `run.py`): prepare every source, then run an on-runner **audio pass** (`chapters→timeline→remap→audio`,
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript

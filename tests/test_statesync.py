@@ -193,6 +193,61 @@ def test_push_records_merged_preserves_concurrent_audio(tmp_path):
     assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
 
 
+def test_push_records_merged_owned_uids_no_sibling_shard_clobber(tmp_path):
+    """Two transcribe shards split ONE source per-episode (review/18 §3.2). Each pulled the whole
+    source, so each local carries a snapshot-stale transcript for the uid it does not own. Pushing
+    with owned_uids must let each shard write only its uid and preserve the sibling's fresh one."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    sk = "src1"
+    _seed_remote(
+        bucket,
+        sk,
+        {"uid1": {"uid": "uid1", "transcript": None}, "uid2": {"uid": "uid2", "transcript": None}},
+    )
+    protected = protected_blocks_for_lane("transcribe")
+
+    # Shard A owns uid1: writes uid1's transcript; its uid2 copy is the start-of-run snapshot.
+    state_a = tmp_path / "state_a"
+    save_records(
+        state_a,
+        sk,
+        {
+            "uid1": {"uid": "uid1", "transcript": {"key": "A", "synced": True}},
+            "uid2": {"uid": "uid2", "transcript": None},
+        },
+    )
+    assert (
+        push_records_merged(
+            bucket, state_a, [sk], protected_blocks=protected, owned_uids={sk: frozenset({"uid1"})}
+        )
+        == 1
+    )
+
+    # Shard B owns uid2. It pulled BEFORE A's push, so its uid1 transcript is stale (None). On push
+    # it re-reads the freshest remote (now carrying A's uid1) and must preserve it.
+    state_b = tmp_path / "state_b"
+    save_records(
+        state_b,
+        sk,
+        {
+            "uid1": {"uid": "uid1", "transcript": None},
+            "uid2": {"uid": "uid2", "transcript": {"key": "B", "synced": True}},
+        },
+    )
+    assert (
+        push_records_merged(
+            bucket, state_b, [sk], protected_blocks=protected, owned_uids={sk: frozenset({"uid2"})}
+        )
+        == 1
+    )
+
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)
+    assert final["uid1"]["transcript"]["key"] == "A"  # sibling shard not regressed
+    assert final["uid2"]["transcript"]["key"] == "B"
+
+
 def test_push_records_merged_first_write_when_remote_absent(tmp_path):
     bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"

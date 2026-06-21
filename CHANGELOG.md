@@ -15,6 +15,22 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Per-episode transcribe sharding so one skewed source spreads across all shards (H17 Stage 1,
+  [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/18 §3).** The
+  transcribe lane now plans per `(source, uid)` episode instead of per source: a Granicus source with
+  thousands of pending episodes no longer pins to a single shard while its siblings idle. `ShardPlan`
+  gains a `unit` field (`source` for the source-atomic audio/align lanes, `episode` for transcribe)
+  and `SHARD_PLAN_VERSION` bumps to `2` (reconcile emits a fresh plan every run, so there is no
+  durable v1 artifact to migrate — **no backfill**). New `records.pending_transcribe_items` emits the
+  per-episode backlog from the same classifier as the aggregate `estimate_transcribe_shard_work`, so
+  per-uid weights sum to the source's shard weight. `sources_for_shard` becomes `episodes_for_shard`,
+  returning both the owned sources and a per-source owned-uid set. **The load-bearing safety change:**
+  `records.merge_preserving_foreign` gains an `owned_uids` axis — a per-episode-sharded shard writes a
+  `transcript` block only for the uids it owns and preserves the freshest remote for siblings' uids,
+  closing the cross-*uid* lost update two shards splitting one source would otherwise hit (the
+  reviewer's race). `owned_uids=None` reproduces the prior source-atomic behavior byte-for-byte, so
+  audio/align and the unsharded full enrich are unchanged. Audio stays source-atomic (its bottleneck
+  is the per-source provider rate limit, not the runner — review/18 §2.3). No pipeline-version bump.
 - **Storage substrate for the R2/CAS control plane (H17, [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)).**
   `S3CompatibleStorage` gains compare-and-swap primitives — `put_cas()` (native boto3
   `IfNoneMatch`/`IfMatch`, raising `CASConflict` on a 412) and its `get_bytes()` read companion — the

@@ -654,8 +654,9 @@ def _compute_plan_shards(args) -> int:
     loads = [0.0] * plan.num_shards
     for key, owner in plan.assignment.items():
         loads[owner] += plan.weights[key]
+    unit_label = "episode" if plan.unit == "episode" else "source"
     print(
-        f"compute plan-shards: wrote {len(plan.assignment)} sources across "
+        f"compute plan-shards: wrote {len(plan.assignment)} {unit_label}(s) across "
         f"{plan.num_shards} {plan.lane} shard(s) to {args.output}; "
         f"loads={','.join(f'{load:.1f}' for load in loads)}"
     )

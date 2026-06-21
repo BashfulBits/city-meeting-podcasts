@@ -10,9 +10,9 @@ from citypods.records import episode_to_record, save_records, source_key
 from citypods.sharding import (
     ShardPlan,
     create_shard_plan,
+    episodes_for_shard,
     load_shard_plan,
     save_shard_plan,
-    sources_for_shard,
 )
 
 
@@ -44,19 +44,11 @@ def _hosted_episode(uid: str, duration: float) -> Episode:
     return ep
 
 
-def test_transcribe_plan_is_serializable_and_uses_snapshot_weights(tmp_path):
+def test_transcribe_plan_is_per_episode_and_uses_snapshot_weights(tmp_path):
     cities = [_city("a", "https://a"), _city("b", "https://b")]
     key_a, key_b = (source_key(city) for city in cities)
-    save_records(
-        tmp_path,
-        key_a,
-        {"a1": episode_to_record(_hosted_episode("a1", 3 * 3600))},
-    )
-    save_records(
-        tmp_path,
-        key_b,
-        {"b1": episode_to_record(_hosted_episode("b1", 30 * 60))},
-    )
+    save_records(tmp_path, key_a, {"a1": episode_to_record(_hosted_episode("a1", 3 * 3600))})
+    save_records(tmp_path, key_b, {"b1": episode_to_record(_hosted_episode("b1", 30 * 60))})
 
     plan = create_shard_plan(
         cities,
@@ -71,10 +63,103 @@ def test_transcribe_plan_is_serializable_and_uses_snapshot_weights(tmp_path):
 
     loaded = load_shard_plan(path)
     assert loaded == plan
-    assert loaded.weights[key_a] == 3 * 3600
-    assert loaded.weights[key_b] == 30 * 60
-    assert set(loaded.assignment) == {key_a, key_b}
+    assert loaded.unit == "episode"
+    assert loaded.weights[f"{key_a}/a1"] == 3 * 3600
+    assert loaded.weights[f"{key_b}/b1"] == 30 * 60
+    assert set(loaded.assignment) == {f"{key_a}/a1", f"{key_b}/b1"}
     assert set(loaded.assignment.values()) == {0, 1}
+
+
+def test_transcribe_plan_spreads_one_skewed_source_across_all_shards(tmp_path):
+    # One hot source with many pending episodes must not pin to a single shard (review/18 §1.2).
+    cities = [_city("hot", "https://hot")]
+    key = source_key(cities[0])
+    save_records(
+        tmp_path,
+        key,
+        {f"u{i}": episode_to_record(_hosted_episode(f"u{i}", 1800)) for i in range(8)},
+    )
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="transcribe",
+        num_shards=4,
+        defaults={"asr_local_max_duration_hours": 4},
+        asr_pipeline_version="3",
+    )
+    assert plan.unit == "episode"
+    assert len(plan.assignment) == 8
+    # Equal-weight items balance across all four shards.
+    assert set(plan.assignment.values()) == {0, 1, 2, 3}
+
+    # episodes_for_shard partitions the source's uids disjointly + exhaustively across shards.
+    seen: set[str] = set()
+    for k in range(4):
+        owned, owned_uids = episodes_for_shard(
+            plan, lane="transcribe", shard_index=k, num_shards=4, expected_sources={key}
+        )
+        assert owned == {key}
+        assert owned_uids is not None
+        seen |= owned_uids[key]
+    assert seen == {f"u{i}" for i in range(8)}
+
+
+def test_audio_plan_stays_source_atomic(tmp_path):
+    cities = [_city("a", "https://a"), _city("b", "https://b")]
+    key_a = source_key(cities[0])
+    save_records(tmp_path, key_a, {"a1": episode_to_record(_hosted_episode("a1", 3600))})
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="audio",
+        num_shards=2,
+        defaults={},
+        asr_pipeline_version="3",
+    )
+    assert plan.unit == "source"
+    assert set(plan.assignment) == {source_key(c) for c in cities}
+    owned, owned_uids = episodes_for_shard(
+        plan,
+        lane="audio",
+        shard_index=0,
+        num_shards=2,
+        expected_sources={source_key(c) for c in cities},
+    )
+    assert owned_uids is None  # source-atomic: own every uid in each owned source
+
+
+def test_caught_up_source_contributes_no_episode_entries(tmp_path):
+    # A synced source at the current ASR version is not pending — it drops out of the plan.
+    cities = [_city("done", "https://done")]
+    key = source_key(cities[0])
+    ep = _hosted_episode("d1", 1800)
+    ep.transcript_synced = True
+    ep.transcript_key = "transcripts/done/d1-asr-3.vtt"
+    ep.transcript_pipeline_version = "3"
+    save_records(tmp_path, key, {"d1": episode_to_record(ep)})
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="transcribe",
+        num_shards=2,
+        defaults={"asr_local_max_duration_hours": 4},
+        asr_pipeline_version="3",
+    )
+    assert plan.assignment == {}
+
+
+def test_episode_plan_rejects_unconfigured_source():
+    plan = ShardPlan(
+        lane="transcribe",
+        num_shards=2,
+        assignment={"src1/u1": 0, "src2/u2": 1},
+        weights={"src1/u1": 1.0, "src2/u2": 1.0},
+        unit="episode",
+    )
+    with pytest.raises(ValueError, match="extra"):
+        episodes_for_shard(
+            plan, lane="transcribe", shard_index=0, num_shards=2, expected_sources={"src1"}
+        )
 
 
 def test_plan_validation_fails_closed_on_lane_shards_or_source_drift():
@@ -83,39 +168,41 @@ def test_plan_validation_fails_closed_on_lane_shards_or_source_drift():
         num_shards=2,
         assignment={"a": 0, "b": 1},
         weights={"a": 1, "b": 1},
+        unit="source",
     )
     with pytest.raises(ValueError, match="lane"):
-        sources_for_shard(
-            plan,
-            lane="align",
-            shard_index=0,
-            num_shards=2,
-            expected_sources={"a", "b"},
+        episodes_for_shard(
+            plan, lane="align", shard_index=0, num_shards=2, expected_sources={"a", "b"}
         )
     with pytest.raises(ValueError, match="has 2 shards"):
-        sources_for_shard(
-            plan,
-            lane="transcribe",
-            shard_index=0,
-            num_shards=4,
-            expected_sources={"a", "b"},
+        episodes_for_shard(
+            plan, lane="transcribe", shard_index=0, num_shards=4, expected_sources={"a", "b"}
         )
     with pytest.raises(ValueError, match="shard index 2 out of range"):
-        sources_for_shard(
-            plan,
-            lane="transcribe",
-            shard_index=2,
-            num_shards=2,
-            expected_sources={"a", "b"},
+        episodes_for_shard(
+            plan, lane="transcribe", shard_index=2, num_shards=2, expected_sources={"a", "b"}
         )
     with pytest.raises(ValueError, match="source set"):
-        sources_for_shard(
-            plan,
-            lane="transcribe",
-            shard_index=0,
-            num_shards=2,
-            expected_sources={"a", "c"},
+        episodes_for_shard(
+            plan, lane="transcribe", shard_index=0, num_shards=2, expected_sources={"a", "c"}
         )
+
+
+def test_load_plan_rejects_v1(tmp_path):
+    path = tmp_path / "v1.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "lane": "transcribe",
+                "num_shards": 2,
+                "assignment": {"a": 0, "b": 1},
+                "weights": {"a": 1, "b": 1},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="unsupported shard plan version"):
+        load_shard_plan(path)
 
 
 def test_load_plan_rejects_mismatched_assignment_and_weights(tmp_path):
@@ -123,13 +210,14 @@ def test_load_plan_rejects_mismatched_assignment_and_weights(tmp_path):
     path.write_text(
         json.dumps(
             {
-                "version": 1,
+                "version": 2,
                 "lane": "transcribe",
+                "unit": "episode",
                 "num_shards": 2,
-                "assignment": {"a": 0},
-                "weights": {"b": 1},
+                "assignment": {"a/u1": 0},
+                "weights": {"b/u1": 1},
             }
         )
     )
-    with pytest.raises(ValueError, match="source sets differ"):
+    with pytest.raises(ValueError, match="key sets differ"):
         load_shard_plan(path)
