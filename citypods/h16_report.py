@@ -132,13 +132,25 @@ def _sum_telemetry(events: list[dict]) -> dict[str, dict[str, int | float]]:
 def _identity_result(events: list[dict]) -> dict:
     rows = [event.get("h16_identity") for event in events if event.get("h16_identity")]
     if not rows:
-        return {"status": "not_reported", "checked": 0, "mismatches": 0}
+        return {
+            "status": "not_reported",
+            "checked": 0,
+            "mismatches": 0,
+            "artifact_checked": 0,
+            "mismatch_categories": {},
+        }
     checked = sum(int(row.get("checked", 0)) for row in rows)
     mismatches = sum(int(row.get("mismatches", 0)) for row in rows)
+    categories: dict[str, int] = {}
+    for row in rows:
+        for category, count in (row.get("mismatch_categories") or {}).items():
+            categories[category] = categories.get(category, 0) + int(count or 0)
     return {
         "status": "pass" if checked > 0 and mismatches == 0 else "fail",
         "checked": checked,
         "mismatches": mismatches,
+        "artifact_checked": sum(int(row.get("artifact_checked", 0)) for row in rows),
+        "mismatch_categories": dict(sorted(categories.items())),
     }
 
 
@@ -289,6 +301,7 @@ def to_markdown(report: dict) -> str:
             f"- Transport recovery: **{criteria['transport']['status']}**",
             f"- Identity stability: **{criteria['identity']['status']}** "
             f"({criteria['identity']['checked']} checked, "
+            f"{criteria['identity'].get('artifact_checked', 0)} artifacts, "
             f"{criteria['identity']['mismatches']} mismatches)",
             f"- Secret scan: **{criteria['secret_scan']['status']}** "
             f"({criteria['secret_scan']['finding_count']} findings)",
@@ -307,6 +320,12 @@ def to_markdown(report: dict) -> str:
             for provider, count in report["non_granicus_provider_errors"].items()
         )
         lines.append(f"- Non-Granicus provider warnings: {rendered}")
+    if criteria["identity"].get("mismatch_categories"):
+        rendered = ", ".join(
+            f"{category}={count}"
+            for category, count in criteria["identity"]["mismatch_categories"].items()
+        )
+        lines.append(f"- Identity mismatch categories: {rendered}")
     return "\n".join(lines) + "\n"
 
 

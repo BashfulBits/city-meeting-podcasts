@@ -318,9 +318,16 @@ Hard-won facts that bite anyone adding/debugging providers:
   existing Worker/circuit counters, scans its own log for credential-shaped material, and uploads
   only the run event plus redacted scan findings. The `validate-h16` job merges all four shards,
   verifies the configured 1-local / 2-distributed ceiling, and writes JSON plus a GitHub summary.
-  Missing shard activity or the not-yet-implemented PR2 identity check yields
-  `insufficient_activity`; transport or secret findings yield `fail`. The report is observational
-  and does not gate, mutate, or invalidate audio.
+  The Audio lane also snapshots every Granicus record immediately after provider/persisted-record
+  merge, then verifies post-media stable UID/GUID, official/source URLs, source duration, and
+  deterministic content-addressed artifact identity. Missing shard or Granicus activity yields
+  `insufficient_activity`; transport, identity, concurrency, or secret findings yield `fail`. The
+  report is observational and does not gate, mutate, or invalidate audio.
+- **All media subprocess surfaces use generic credential redaction.** Before ffmpeg/ffprobe stderr,
+  timeout/error payloads, or command arguments can reach a log or higher-level exception, media URL
+  query strings are removed and bearer/credential-shaped values are replaced. Host, path, process
+  status, and HTTP status remain visible for diagnosis. Worker endpoint redaction remains an
+  additional layer because that origin is itself secret.
 - **Worker deployment is path-scoped.** `granicus-worker-deploy.yml` runs Worker tests and deploys
   only when `main` changes the Worker source, Wrangler config, or deployment workflow (plus a manual
   dispatch escape hatch). A scoped Cloudflare API token/account ID authenticate deployment. The
