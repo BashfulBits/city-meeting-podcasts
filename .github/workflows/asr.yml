@@ -69,6 +69,11 @@ jobs:
       # independently listing/downloading the complete B2 state prefix and recomputing ownership.
       - name: Download canonical ASR snapshot + shard plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        # download-artifact v8 currently emits Node's upstream Buffer() deprecation from its
+        # bundled dependency. Suppress deprecations for this action process only; application and
+        # Python warnings remain fully visible.
+        env:
+          NODE_OPTIONS: --no-deprecation
         with:
           name: asr-planner-${{ github.run_id }}
           path: .

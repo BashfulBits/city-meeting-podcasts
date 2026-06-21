@@ -1527,6 +1527,52 @@ class TestTranscriptStageASR:
         assert ep.transcript_key == asr_key
         assert stats.reused == 1
 
+    def test_concurrent_source_aliases_share_one_asr_inference(self, tmp_path):
+        """Same stable meeting + recipe in two source views runs native ASR only once."""
+
+        inference_started = threading.Event()
+        finish_inference = threading.Event()
+
+        class _SlowFakeAsr(_FakeAsr):
+            def transcribe(self, *args, **kwargs):
+                inference_started.set()
+                assert finish_inference.wait(timeout=3)
+                return super().transcribe(*args, **kwargs)
+
+        fake_asr = _SlowFakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.asr_semaphore = threading.Semaphore(1)
+        city_a = _city(slug="source-a", source={"feed_url": "a"})
+        city_b = _city(slug="source-b", source={"feed_url": "b"})
+        ep_a = _ep_with_audio("shared")
+        ep_b = _ep_with_audio("shared")
+        results = []
+
+        def _run(city, ep):
+            results.append(TranscriptStage().process(FakeProvider(), city, [ep], ctx))
+
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+        ):
+            first = threading.Thread(target=_run, args=(city_a, ep_a))
+            second = threading.Thread(target=_run, args=(city_b, ep_b))
+            workers = [first, second]
+            first.start()
+            assert inference_started.wait(timeout=3)
+            second.start()
+            time.sleep(0.1)  # second observes an empty cache, then waits on the serial ASR slot
+            finish_inference.set()
+            for worker in workers:
+                worker.join(timeout=5)
+
+        assert all(not worker.is_alive() for worker in workers)
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ep_a.transcript_synced and ep_b.transcript_synced
+        assert ep_a.transcript_key != ep_b.transcript_key  # durable layout remains source-scoped
+        assert sum(stats.transcribed for stats in results) == 1
+        assert sum(stats.reused for stats in results) == 1
+
     def test_asr_error_recorded_not_raised(self, tmp_path):
         """ASR failure → error recorded in stats, episode left without transcript."""
         ep = _ep_with_audio()

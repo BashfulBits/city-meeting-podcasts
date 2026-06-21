@@ -104,6 +104,51 @@ def test_transcribe_plan_spreads_one_skewed_source_across_all_shards(tmp_path):
     assert seen == {f"u{i}" for i in range(8)}
 
 
+def test_transcribe_plan_colocates_and_charges_duplicate_stable_meeting_once(tmp_path):
+    cities = [_city("primary", "https://primary"), _city("committee", "https://committee")]
+    keys = [source_key(city) for city in cities]
+    for key in keys:
+        save_records(
+            tmp_path,
+            key,
+            {"shared": episode_to_record(_hosted_episode("shared", 2 * 3600))},
+        )
+
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="transcribe",
+        num_shards=4,
+        defaults={"asr_local_max_duration_hours": 4},
+        asr_pipeline_version="3",
+    )
+
+    episode_keys = [f"{key}/shared" for key in keys]
+    assert {plan.assignment[key] for key in episode_keys} == {plan.assignment[episode_keys[0]]}
+    assert sorted(plan.weights[key] for key in episode_keys) == [0.0, 2 * 3600]
+
+
+def test_transcribe_plan_does_not_dedupe_same_uid_with_different_audio_recipe(tmp_path):
+    cities = [_city("a", "https://a"), _city("b", "https://b")]
+    keys = [source_key(city) for city in cities]
+    ep_a = _hosted_episode("shared", 1800)
+    ep_b = _hosted_episode("shared", 1800)
+    ep_b.audio_spec_hash = "different-spec"
+    save_records(tmp_path, keys[0], {"shared": episode_to_record(ep_a)})
+    save_records(tmp_path, keys[1], {"shared": episode_to_record(ep_b)})
+
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="transcribe",
+        num_shards=2,
+        defaults={"asr_local_max_duration_hours": 4},
+        asr_pipeline_version="3",
+    )
+
+    assert sum(plan.weights.values()) == 3600
+
+
 def test_audio_plan_stays_source_atomic(tmp_path):
     cities = [_city("a", "https://a"), _city("b", "https://b")]
     key_a = source_key(cities[0])

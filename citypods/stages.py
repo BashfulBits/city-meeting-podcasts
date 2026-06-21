@@ -130,6 +130,27 @@ def _materialize_set(
     return out
 
 
+class AsrArtifactCache:
+    """Thread-safe run-local reuse for identical stable-uid + ASR-recipe work.
+
+    The durable transcript layout remains source-scoped, but one real-world meeting may appear in
+    multiple source views. The planner co-locates those aliases on one shard; this cache lets the
+    first completed inference supply bytes to every source-local object without re-running ASR.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._values: dict[tuple[str, str], object] = {}
+
+    def get(self, key: tuple[str, str]) -> object | None:
+        with self._lock:
+            return self._values.get(key)
+
+    def put(self, key: tuple[str, str], value: object) -> None:
+        with self._lock:
+            self._values.setdefault(key, value)
+
+
 @dataclass
 class StageContext:
     """Shared resources passed to every stage for one build.
@@ -209,6 +230,10 @@ class StageContext:
     # blowing the 6-hour job ceiling.  Serialising to 1 (default) keeps total time predictable.
     # Set via site_config asr_workers (same field that drives cpu_threads per inference call).
     asr_semaphore: threading.Semaphore | None = None
+    # Identical stable-uid + recipe work can occur in multiple configured source views. The
+    # canonical planner co-locates those aliases; this cache fans one inference result out to each
+    # source-scoped transcript object. Run-local only: no durable identity or backfill change.
+    asr_artifact_cache: AsrArtifactCache = field(default_factory=AsrArtifactCache)
     # ASR inference is native C++ work and can occasionally stop making visible progress. Bound
     # one item by wall-clock so the run can persist completed work instead of waiting for Actions
     # to SIGTERM the whole process. The timeout is base + per-audio-hour; <=0 disables it.
@@ -1149,6 +1174,30 @@ class TranscriptStage:
         def _present(k: str) -> bool:
             return k in hosted_keys if hosted_keys is not None else ctx.storage.exists(k)
 
+        def _store_asr_artifacts(ep: Episode, artifacts, recipe: str) -> None:
+            """Write one inference result to this source's existing source-scoped object keys."""
+            uid = ep.uid or ep.guid
+            asr_key = _asr_object_key(src_key, uid, recipe)
+            words_key = _asr_words_object_key(src_key, uid, recipe)
+            with _tmp.TemporaryDirectory() as t:
+                vtt_dest = Path(t) / "transcript.vtt"
+                vtt_dest.write_bytes(artifacts.vtt)
+                url = ctx.storage.put_file(asr_key, vtt_dest, TRANSCRIPT_MIME["vtt"])
+                words_dest = Path(t) / "transcript.words.json"
+                words_dest.write_bytes(artifacts.words)
+                words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
+
+            ep.transcript_key = asr_key
+            ep.transcript_hosted_url = url
+            ep.transcript_words_key = words_key
+            ep.transcript_words_url = words_url
+            ep.transcript_spec_hash = recipe
+            ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            _reset_asr_timeout_backoff(ep)
+
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
         runtime_log = AsrRuntimeLog(ctx.asr_runtime_log_path, default_ratio=_asr_default_ratio(ctx))
 
@@ -1374,6 +1423,7 @@ class TranscriptStage:
                 ep.audio_spec_hash, city.asr_model, align_hash, ASR_PIPELINE_VERSION
             )
             asr_key = _asr_object_key(src_key, ep.uid or ep.guid, recipe)
+            cache_key = (ep.uid or ep.guid, recipe)
 
             if _present(asr_key):
                 ep.transcript_key = asr_key
@@ -1389,6 +1439,24 @@ class TranscriptStage:
                 ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
                 _reset_asr_timeout_backoff(ep)
                 stats.reused += 1
+                continue
+
+            cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
+            if cached_artifacts is not None:
+                try:
+                    _store_asr_artifacts(ep, cached_artifacts, recipe)
+                except Exception as exc:  # noqa: BLE001
+                    stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
+                    print(
+                        f"[enrich] transcript asr dedupe-store error {ep_ref}: {exc}",
+                        flush=True,
+                    )
+                    continue
+                stats.reused += 1
+                print(
+                    f"[enrich] transcript asr reused {ep_ref} reason=deduplicated-run",
+                    flush=True,
+                )
                 continue
 
             # 3b. External dispatch (H14a): under ``compute_backend: auto`` with an external GPU
@@ -1505,6 +1573,30 @@ class TranscriptStage:
                     f"[enrich] transcript asr acquired {ep_ref}",
                     flush=True,
                 )
+
+            # Another source view of the same stable meeting may have completed while this worker
+            # waited for the serial ASR slot. Re-check after acquisition so both workers cannot
+            # observe an empty cache and then run duplicate native inference.
+            cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
+            if cached_artifacts is not None:
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                try:
+                    _store_asr_artifacts(ep, cached_artifacts, recipe)
+                except Exception as exc:  # noqa: BLE001
+                    stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
+                    print(
+                        f"[enrich] transcript asr dedupe-store error {ep_ref}: {exc}",
+                        flush=True,
+                    )
+                    continue
+                stats.reused += 1
+                print(
+                    f"[enrich] transcript asr reused {ep_ref} reason=deduplicated-run",
+                    flush=True,
+                )
+                continue
 
             native_gate_acquired = False
             if ctx.native_work_gate is not None:
@@ -1768,16 +1860,14 @@ class TranscriptStage:
                     ctx.fast_yield_exit()
                 continue
 
-            # Normal completion — release semaphore and check for errors/results.
-            if sem is not None:
-                sem.release()
-                sem = None
-            if native_gate_acquired and ctx.native_work_gate is not None:
-                ctx.native_work_gate.release(kind="asr")
-                native_gate_acquired = False
-            audio_tmp.cleanup()
-
             if _err:
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                if native_gate_acquired and ctx.native_work_gate is not None:
+                    ctx.native_work_gate.release(kind="asr")
+                    native_gate_acquired = False
+                audio_tmp.cleanup()
                 stats.errors.append(f"{ep.uid}: ASR: {_err[0]}")
                 print(
                     f"[enrich] transcript asr error {ep_ref}: {_err[0]}",
@@ -1786,6 +1876,13 @@ class TranscriptStage:
                 continue
 
             if not _artifacts:
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                if native_gate_acquired and ctx.native_work_gate is not None:
+                    ctx.native_work_gate.release(kind="asr")
+                    native_gate_acquired = False
+                audio_tmp.cleanup()
                 stats.errors.append(f"{ep.uid}: ASR: inference produced no result")
                 print(
                     f"[enrich] transcript asr error {ep_ref}: inference produced no result",
@@ -1793,27 +1890,20 @@ class TranscriptStage:
                 )
                 continue
 
-            try:
-                artifacts = _artifacts[0]
-                words_key = _asr_words_object_key(src_key, ep.uid or ep.guid, recipe)
-                with _tmp.TemporaryDirectory() as t:
-                    vtt_dest = Path(t) / "transcript.vtt"
-                    vtt_dest.write_bytes(artifacts.vtt)
-                    url = ctx.storage.put_file(asr_key, vtt_dest, TRANSCRIPT_MIME["vtt"])
-                    words_dest = Path(t) / "transcript.words.json"
-                    words_dest.write_bytes(artifacts.words)
-                    words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
+            artifacts = _artifacts[0]
+            # Publish to the shard-local cache before releasing the serial slot. A duplicate source
+            # view waiting on the semaphore will then consume these bytes instead of starting ASR.
+            ctx.asr_artifact_cache.put(cache_key, artifacts)
+            if sem is not None:
+                sem.release()
+                sem = None
+            if native_gate_acquired and ctx.native_work_gate is not None:
+                ctx.native_work_gate.release(kind="asr")
+                native_gate_acquired = False
+            audio_tmp.cleanup()
 
-                ep.transcript_key = asr_key
-                ep.transcript_hosted_url = url
-                ep.transcript_words_key = words_key
-                ep.transcript_words_url = words_url
-                ep.transcript_spec_hash = recipe
-                ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
-                ep.transcript_format = "vtt"
-                ep.transcript_basis = "served"
-                ep.transcript_synced = True
-                _reset_asr_timeout_backoff(ep)
+            try:
+                _store_asr_artifacts(ep, artifacts, recipe)
                 asr_elapsed = time.monotonic() - _asr_started_at
                 runtime_log.append(
                     transcribe_seconds=asr_elapsed,
