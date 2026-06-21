@@ -248,6 +248,22 @@ def test_checkout_and_setup_python_are_sha_pinned_everywhere():
     assert not offenders, "unpinned action references:\n" + "\n".join(offenders)
 
 
+def test_checkout_disables_credential_persistence_everywhere():
+    """Every job checks out the repo and then executes its code (pip install -e ., npm test),
+    yet none push via the persisted GITHUB_TOKEN (state lands in B2/R2; Pages deploys via
+    actions/deploy-pages OIDC). So no checkout needs persisted credentials — assert they are all
+    disabled so a compromised setup.py/package script can't read the token."""
+    offenders = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        wf = yaml.safe_load(workflow.read_text())
+        for job_name, job in (wf.get("jobs") or {}).items():
+            for step in job.get("steps", []):
+                if "actions/checkout@" in str(step.get("uses", "")):
+                    if (step.get("with") or {}).get("persist-credentials") is not False:
+                        offenders.append(f"{workflow.name}:{job_name}")
+    assert not offenders, "checkout without persist-credentials: false:\n" + "\n".join(offenders)
+
+
 def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     wf, job = _job("audio.yml", job_name="audio")
     env = job["env"]
