@@ -769,6 +769,21 @@ Rules:
 - Evict by storage budget and last use.
 - Never evict final podcast artifacts merely because the disposable cache is being cleaned.
 
+#### Canonical provider-media identity and duplicate-work coalescing
+
+Before durable source-media caching is promoted, define one stable provider-media **work identity**
+shared by equivalent configured sources. Base it on provider/platform plus a stable clip/media ID or
+validated canonical media path—not an expiring signed URL and not `source_key` when two source
+configurations reference the same official media. Coalescing belongs at the real-fetch boundary: one
+provider request, lease/rate-limit/circuit contribution, truncation check, and materialization outcome;
+every consuming feed retains its stable episode UID, official metadata, membership, and
+content-addressed audio reference.
+
+Required telemetry: duplicate candidates coalesced, provider requests/bytes avoided, and affected
+source keys/stable media identities, with signed URLs redacted. Newest-everywhere-first ordering remains:
+an older alias cannot displace the newest occurrence. This preserves the durable design content from
+closed GH#352 without promoting it into current Phase H.
+
 ### 6.3 Cost decision gate
 
 Source-media caching trades provider bandwidth and reliability for object-storage capacity.
@@ -921,6 +936,14 @@ audit.yml: daily, sampled/tiered
 contracts.yml: weekly, provider representatives only
 full-consistency.yml: weekly or monthly
 ```
+
+The durable claim/checkpoint model in `review/18` is the primary protection against wasted expensive
+work. A thin scheduled-admission workflow may additionally skip a routine cron dispatch when a healthy
+recent manual or scheduled run is already draining the same durable queue. Event priority must be
+explicit (manual/code-changing work may supersede routine schedules), stale runs must not suppress
+future schedules indefinitely, and wall-clock stops remain authoritative. This is an optional
+Actions-cost optimization after the pull ledger is observable, not a scheduler prerequisite
+(preserved from closed GH#340).
 
 ### 7.6 GitHub concurrency and network controls
 

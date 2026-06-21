@@ -135,7 +135,7 @@ items (**H10**, **H11**), concrete/committed changes folded into **H8** (incl. H
 
 ## H1 — Docs / roadmap / issue reconciliation
 
-> **Implemented.** GH#154 closed (28 `<podcast:transcript>` tags confirmed live 2026-06-11); GH#110 narrowed to backfill/ops; GH#141 marked umbrella-only.
+> **Implemented.** GH#154 closed (28 `<podcast:transcript>` tags confirmed live 2026-06-11); GH#110 narrowed to backfill/ops; GH#141 was initially umbrella-only and closed in the 2026-06-21 consolidation when `review/11` became the sole cross-series backlog.
 
 **Problem.** `ROADMAP.md`/`review/01` listed shipped work as future; the issue tracker mixes real
 breakage with catch-up status; `<podcast:transcript>` (GH#154) is already emitted.
@@ -146,7 +146,8 @@ ADD_CITY.md wall-clock fix.
 **Issue reconciliation (complete):**
 - GH#154 closed — production feed verified (28 tags in Arlington TX feed).
 - GH#110 narrowed — title + body updated to "backfill + ops follow-up"; implementation framing removed.
-- GH#141 kept open as umbrella — comment added listing remaining Phase R features (#153/#155/#156/#157).
+- GH#141 was initially kept as an umbrella, then closed with #153/#155/#156/#157 after their durable
+  scope was verified in `review/11`, `review/08`, and `review/13`.
 - Feed-health issue cleanup deferred to H4 (don't bulk-close by hand).
 
 **Acceptance:** `gh issue list` shows no open issue describing already-shipped work as unbuilt; review/11
@@ -1656,7 +1657,7 @@ The production design is direct-first and single-attempt:
 This changes fetch transport only. It does not alter official metadata, the audio recipe, pipeline
 versions, content-addressed keys, or existing artifacts, and therefore triggers no catalog backfill.
 
-**Post-activation evaluation (GH#337 acceptance).** Once the secrets are set and the fallback is live,
+**Post-activation evaluation (H16 / GH#353 acceptance).** Once the secrets are set and the fallback is live,
 judge it over the next three scheduled `audio.yml` runs using the per-tenant Worker-fallback counters
 — visible in each run's build log (`provider granicus.com granicus worker fallback: N attempts, …`)
 and in the merged run summary's `provider_rate_limit_telemetry`. The fallback is **effective** when,
@@ -1681,6 +1682,14 @@ the fallback, not before.
 
 **Rollback** is config-only: unsetting `GRANICUS_PROXY_BASE_URL`/`GRANICUS_PROXY_TOKEN` reverts
 production to direct-only fetches and the existing throttle/circuit behavior with no code change.
+
+**Canonical remaining scope (2026-06-21 issue consolidation).** GH#353 is the sole open development
+ticket for this work. GH#333's concurrency-ramp experiment is superseded by the alternate-egress
+diagnosis; GH#337's implementation shipped in PRs #356/#358/#368–#370; and GH#338/#352 are not required
+to validate the proxy. Their durable ideas remain in `review/16`: one stable provider-media work
+identity may coalesce equivalent configured sources without changing episode UIDs or feed membership,
+and selective validated source-media reuse may be promoted only when measured residual repeated bytes
+justify bounded storage. Neither is current Phase-H work.
 
 Production recovery is also no longer “open circuit, rapidly consume the whole queue as deferred.”
 A planner/source-cache 403/429 is persisted once as that episode's materialization failure and halts
@@ -1729,9 +1738,10 @@ tenant/domain state, single-attempt accounting, half-open recovery, parked queue
 `citypods/provider_leases.py` (coordination primitive + metrics); `citypods/report/status.py`
 (dashboard flags + budget-remaining visuals).
 
-**Acceptance.** Phase 1: backlog drain rate stable, 403 rate <5% (success ≥95%). Phase 2: contracts
-auto-pause/resume without manual intervention, auto-retry closes transient failures. Phase 3 (if needed):
-one request-shape change resolves 403s without breaking other providers.
+**Acceptance.** Three scheduled production Audio runs demonstrate successful Worker recovery without
+new truncation/backoff or identity changes; the evidence selects direct-first vs sticky-Worker routing;
+and circuit/parking/canary behavior made redundant by the selected route is removed or explicitly
+retained with a reason.
 
 ---
 

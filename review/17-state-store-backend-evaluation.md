@@ -14,7 +14,7 @@ cross-cutting infra · last updated 2026-06-19**
 | Sub-item | Maturity | Disposition |
 |---|---|---|
 | R2-CAS spike (boto3 conditional writes against R2) | **L3 · Shipped** | Run 2026-06-19; all 4 tests PASS; native params (boto3 1.43); see §7 |
-| Coordination control-plane → R2 (CAS) | L2 → L3 | **Do-next** — spike unblocked; cut issues per §8 |
+| Coordination control-plane → R2 (CAS) | L2 → L3 | **H17 do-next** — spike unblocked; one consolidated implementation issue with review/18 |
 | `episodes.json` records → R2 vs hold-for-SQL | L2 (swing) | Recommend per access-model; see §3 |
 | Records → managed SQL (D1/Turso) | L1 (Phase R) | Trigger-gated; supersedes the "no hosted DB" note for this scope |
 | Coordination → dedicated KV/DO (fallback) | L1 | Deferred; trigger in §8 |
@@ -363,7 +363,7 @@ python scripts/spike_r2_cas.py --latency-iterations 20 --output r2-cas-spike-res
 
 1. **Land PR358 / resolve the Granicus reliability work** — ✅ merged.
 2. **R2-CAS spike** (§7) — ✅ complete (2026-06-19); native params confirmed; this doc promoted to L3.
-3. **Cut implementation issues and begin migration** — `RoutingStorage` + `put_cas()` (§5); fold in
+3. **Execute H17's consolidated implementation issue** — `RoutingStorage` + `put_cas()` (§5); fold in
    [`review/16`](16-scaling-review-plan.md) **S2** access-pattern work to keep R2 Class A free.
 4. **Migrate the coordination control-plane → R2** — start with `work.json`/`compute_budget.json` to prove
    the router + CAS helper; move `provider-circuits`/`provider-leases` **after PR358**.

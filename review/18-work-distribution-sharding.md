@@ -1,7 +1,7 @@
 # review/18 — Work distribution & sharding for distributed ASR workers
 
-**Maturity: L2 planning breakout · cross-cutting (H6b sharding × H14 external workers ×
-[`review/17`](17-state-store-backend-evaluation.md) R2/CAS) · last updated 2026-06-20**
+**Maturity: L2→L3 active Phase-H breakout (H17; H6b sharding × H14 external workers ×
+[`review/17`](17-state-store-backend-evaluation.md) R2/CAS) · last updated 2026-06-21**
 
 > How transcription work is partitioned across workers. Today: a single deterministic source-atomic
 > **plan** computed in GitHub Actions and fanned out to a fixed matrix of identical shards. Tomorrow:
@@ -18,9 +18,13 @@
 | Sub-item | Maturity | Disposition |
 |---|---|---|
 | **Stage 1** — per-`(source,uid)` transcribe planning + per-episode owned-block merge | **L2 → L3** | **Do-next.** One load-bearing code change (the merge); the rest composes around it. Ships independently of external workers and is the write-path Stage 2 reuses. |
-| **Stage 2** — pull-based work ledger (CAS leases on R2); workers claim episodes | L1 → L2 | **Designed, trigger-gated.** Target architecture for H14b/H14c; built on review/17's R2-CAS migration. Define the worker contract against this *now*. |
+| **Stage 2** — pull-based work ledger (CAS leases on R2); workers claim episodes | L2 → L3 | **H17, before H14b/H14c.** Mature the fixed claim contract and implement the substrate external workers use from their first production version. |
 | Audio lane → per-`(source,uid)` | — | **Rejected** — stays source-atomic (per-source provider leases / rate limits make the source the right unit; §2.3). |
 | Static plan retained for transcribe long-term | — | **Superseded by Stage 2** once external workers land; kept as the in-Actions interim. |
+
+Stage 1 plus the review/17 CAS/router substrate are now **H17** implementation work. Before H14b/H14c,
+Stage 2 must be matured to L3 and implemented far enough that external workers use the pull/claim
+contract from their first production version.
 
 ---
 
@@ -284,7 +288,16 @@ more) and are homogeneous with external workers. The `reconcile` job shrinks to:
 index + reap expired leases. This **deletes** the Stage-1 plan-emit/download/validate machinery for
 transcribe (it remains for the source-atomic audio lane).
 
-### 4.4 End-state with R2-CAS on records (review/17 swing case)
+### 4.4 Scheduled-run coalescing is optional, not the ownership model
+
+The pull ledger plus H11c checkpoints absorb the correctness concern behind former GH#340: expensive
+work is durable, exclusively claimed, and reclaimable after lease expiry rather than lost when a new
+schedule arrives. A later thin cron admission workflow may skip dispatch when a healthy recent run is
+already draining the same queue, while allowing manual/code-changing work to supersede routine
+schedules and refusing to let stale runs suppress future work. That optimization reduces runner setup
+cost; it does not issue ownership tokens and is not required before H14.
+
+### 4.5 End-state with R2-CAS on records (review/17 swing case)
 
 If review/17's `episodes.json`→R2-CAS (or the §6 "per-stage object files",
 `transcript/<source>/<uid>.json`) lands, the §4.2 commit becomes a CAS read-modify-write of just the
@@ -293,7 +306,7 @@ uid's transcript is written only by its lease-holder, on its own ETag); only the
 remains, and even that dissolves under per-stage object files. This is review/17's "CAS lets us simplify
 the foreign-block merge," reached incrementally rather than as a big-bang rewrite.
 
-### 4.5 Keeping R2 Class A low with per-item leases
+### 4.6 Keeping R2 Class A low with per-item leases
 
 Per-item granularity and a low Class A bill are in tension **only if contention and listing drive the
 writes**. R2 meters **Class A = writes *and* lists** (1M/mo free, $4.50/M after); Class B = reads (10M/mo
@@ -380,14 +393,13 @@ writes) so nothing else leaks Class A.
   "external workers read/write records directly" branch, so it tips that decision toward **R2-CAS now**
   for the transcript path. It is the work-distribution half of **H14b/H14c**; H13's backend interface and
   H14a's lease lifecycle are reused unchanged.
-- **review/11 catalog:** add a Cross-cutting/Infra row "Work distribution & sharding for distributed ASR
-  workers" → [`review/18`], Stage 1 at **L2→L3 (do-next)**, Stage 2 at **L1→L2 (trigger-gated by first
-  external worker)."
-- **At Stage-1 ship time** (per [`review/11`](11-technical-design-roadmap.md) §2): cut the issue(s),
+- **review/11 catalog:** H17 + [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)
+  are the single active implementation entry for review/17 + review/18.
+- **At Stage-1 ship time** (per [`review/11`](11-technical-design-roadmap.md) §2), update
   update [`ARCHITECTURE.md`](../ARCHITECTURE.md) (transcribe ownership is now per-episode) +
   [`CHANGELOG.md`](../CHANGELOG.md); flip the catalog entry; mature this doc's Stage-1 row to **Shipped**.
 - **Before building H14b/H14c:** mature Stage 2 to L3 here (full ledger schema, TTL/renew/reaper params,
-  R2 key layout, claim-loop CLI) and cut its issues, so the worker contract is frozen first.
+  R2 key layout, claim-loop CLI) under GH#390, so the worker contract is frozen first.
 
 ---
 
