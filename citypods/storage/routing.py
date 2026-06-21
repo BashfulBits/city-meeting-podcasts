@@ -77,6 +77,18 @@ class RoutingStorage:
         return self._route(key).get_file(key, local_path)
 
     def list_objects(self, prefix: str = ""):
+        """List under ``prefix`` on the single backend that owns it — **namespace-scoped**.
+
+        A prefix fully inside the coordination namespace lists R2; everything else (including a
+        broad prefix like ``""`` or ``"state/"`` that straddles both namespaces) lists the B2
+        primary only. This is deliberate, not a partial-result bug: coordination/lease objects on R2
+        are **key-addressed and never enumerated** — the discovery path reads the B2-resident index
+        and derives each key (review/18 §4.6 lever 1), so a list never spends an R2 Class-A op.
+        Merging both backends here would (a) add an R2 Class-A to every broad B2 listing
+        (``pull_state``, orphan GC) and (b) pull coordination objects into flows that must not
+        manage them. Callers needing coordination objects address them by key, or list that
+        *specific* coordination prefix (which routes to R2 correctly).
+        """
         if self._is_coordination(prefix):
             self._class_a += 1  # listing is a Class-A op on R2
         return self._route(prefix).list_objects(prefix)

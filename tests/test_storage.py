@@ -163,6 +163,19 @@ def test_routing_empty_prefixes_is_noop_all_primary():
     assert router.telemetry() == {"r2_class_a": 0, "r2_class_b": 0}
 
 
+def test_routing_list_objects_is_namespace_scoped():
+    # A broad/straddling prefix lists the B2 primary only (coordination is key-addressed, never
+    # enumerated — review/18 §4.6); a fully-coordination prefix routes to R2. No merge, no R2 list
+    # cost on broad B2 listings.
+    router, primary, coord = _router()
+    list(router.list_objects(""))  # broad → primary only
+    list(router.list_objects("coord/"))  # fully-coordination → R2
+    assert ("list_objects", "") in primary.calls
+    assert ("list_objects", "") not in coord.calls
+    assert ("list_objects", "coord/") in coord.calls
+    assert router.telemetry() == {"r2_class_a": 1, "r2_class_b": 0}  # only the coord list bills R2
+
+
 def test_routing_class_a_b_telemetry():
     router, _, _ = _router()
     router.put_file("coord/a.json", Path("/tmp/a"), "application/json")  # A
