@@ -28,6 +28,7 @@ from citypods.bodies import filter_by_body
 from citypods.compute import DispatchCoordinator, make_compute
 from citypods.config import load_backlog_policy, load_city_configs, load_site_config
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
+from citypods.h16_identity import H16IdentityTracker
 from citypods.http import HOST_LIMITER
 from citypods.media import (
     CommandFfmpeg,
@@ -138,6 +139,13 @@ class SourcePipeline:
         # The render phase writes only docs/: it persists no records, so a stale render push can't
         # clobber audio/transcripts written by the separate enrich workflow (review/12 §H6/H11b).
         self.persist_records = persist_records
+        self.h16_identity = H16IdentityTracker(
+            storage=ctx.storage,
+            max_kbps=ctx.max_kbps,
+            loudness_profile=ctx.loudness_profile,
+            processing_profile=ctx.audio_processing_profile,
+            enabled=ctx.lane == "audio",
+        )
         self._cache: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
@@ -177,6 +185,7 @@ class SourcePipeline:
         persisted = load_records(self.state_dir, key)
         merge_persisted(episodes, persisted)
         seeded = migrate_legacy_manifests(self.state_dir, episodes)
+        self.h16_identity.capture(city, episodes)
         return provider, episodes, persisted, seeded
 
     def fetch_merge_from_records(
@@ -246,6 +255,7 @@ class SourcePipeline:
         # after the audio pass, again after the transcript pass) doesn't append "{n} archived"
         # twice to the caller's list — keeps repeat persistence idempotent.
         notes = list(notes)
+        self.h16_identity.verify(key, episodes)
         # Append-only archive (issue #109): merge this run's freshly-enriched records over
         # the persisted store (fresh wins on uid) instead of replacing it, so a meeting that
         # left the provider window keeps its record + audio. Bounded by the (high) retention
@@ -1592,6 +1602,7 @@ def _build_impl(
                 ),
                 provider_errors=provider_errors or None,
                 rate_limit_telemetry=provider_rate_limit_telemetry or None,
+                h16_identity=pipeline.h16_identity.summary(),
                 scope={
                     "phase": phase,
                     "lane": lane,
@@ -1812,6 +1823,7 @@ def _record_run_history(
     gate_wait_seconds: float | None = None,
     provider_errors: dict[str, int] | None = None,
     rate_limit_telemetry: dict[str, dict[str, int | float]] | None = None,
+    h16_identity: dict | None = None,
     scope: dict | None = None,
     interrupted: bool = False,
 ) -> None:
@@ -1899,6 +1911,7 @@ def _record_run_history(
         "audio_rate_limited_403s": media_rate_limited,
         "audio_circuit_skipped": media_circuit_skipped,
         "provider_rate_limit_telemetry": rate_limit_telemetry or {},
+        "h16_identity": h16_identity or {},
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / RUN_SUMMARY_NAME).write_text(json.dumps(summary, indent=2) + "\n")

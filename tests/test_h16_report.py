@@ -92,6 +92,7 @@ def test_report_passes_direct_and_worker_recovery_with_identity(tmp_path):
     assert report["complete"] is True
     assert report["criteria"]["transport"]["status"] == "pass"
     assert report["criteria"]["identity"]["checked"] == 4
+    assert report["criteria"]["identity"]["artifact_checked"] == 0
     assert report["criteria"]["secret_scan"]["status"] == "pass"
     assert report["tenants"]["fortworthgov"]["worker_successes"] == 1
     assert report["lease"]["acquisitions"] == 2
@@ -117,7 +118,12 @@ def test_report_fails_worker_errors_truncations_and_signed_query(tmp_path):
             }
             if shard == "0/4"
             else {},
-            identity={"checked": 1, "mismatches": 0},
+            identity={
+                "checked": 1,
+                "mismatches": 1 if shard == "0/4" else 0,
+                "artifact_checked": 1,
+                "mismatch_categories": {"audio_key": 1} if shard == "0/4" else {},
+            },
         )
     (tmp_path / "audio-0.log").write_text(
         "https://example.test/a.mp4?X-Amz-Credential=abc&X-Amz-Signature=secret\n"
@@ -134,6 +140,9 @@ def test_report_fails_worker_errors_truncations_and_signed_query(tmp_path):
 
     assert report["status"] == "fail"
     assert report["criteria"]["transport"]["status"] == "fail"
+    assert report["criteria"]["identity"]["status"] == "fail"
+    assert report["criteria"]["identity"]["artifact_checked"] == 4
+    assert report["criteria"]["identity"]["mismatch_categories"] == {"audio_key": 1}
     assert report["criteria"]["secret_scan"]["finding_count"] == 1
     assert report["criteria"]["secret_scan"]["samples"][0]["category"] == "signed-query"
 

@@ -1476,6 +1476,36 @@ def test_run_ffmpeg_guarded_classifies_provider_throttle(monkeypatch):
         )
 
 
+def test_run_ffmpeg_guarded_redacts_signed_url_from_logs_and_exception(monkeypatch):
+    import citypods.media as media
+
+    signed = (
+        "https://swagit-video.granicus.com/archive/video.mp4"
+        "?X-Amz-Credential=secret&X-Amz-Signature=also-secret"
+    )
+    err = subprocess.CalledProcessError(
+        1,
+        ["ffmpeg", "-i", signed],
+        stderr=f"{signed}: Invalid data found".encode(),
+    )
+    monkeypatch.setattr(media.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(err))
+    logs: list[str] = []
+
+    with pytest.raises(subprocess.CalledProcessError) as excinfo:
+        media._run_ffmpeg_guarded(
+            ["ffmpeg", "-i", signed],
+            phase="source-cache",
+            rate_limit_urls=(signed,),
+            log=logs.append,
+        )
+
+    rendered = f"{excinfo.value} {excinfo.value.cmd} {excinfo.value.stderr} {' '.join(logs)}"
+    assert "swagit-video.granicus.com/archive/video.mp4" in rendered
+    assert "Invalid data found" in rendered
+    assert "X-Amz-" not in rendered
+    assert "secret" not in rendered
+
+
 def test_run_ffmpeg_guarded_records_direct_granicus_success(monkeypatch):
     import citypods.media as media
 

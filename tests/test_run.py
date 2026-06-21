@@ -303,6 +303,26 @@ def test_run_history_counts_planner_and_audio_throttles_once(tmp_path):
     assert summary["audio_circuit_skipped"] == 7
 
 
+def test_run_history_records_h16_identity_summary(tmp_path):
+    identity = {
+        "checked": 12,
+        "mismatches": 1,
+        "artifact_checked": 8,
+        "mismatch_categories": {"audio_key": 1},
+    }
+
+    run._record_run_history(
+        tmp_path,
+        [],
+        {},
+        h16_identity=identity,
+        scope={"phase": "enrich", "lane": "audio"},
+    )
+
+    summary = json.loads((tmp_path / "run_summary.json").read_text())
+    assert summary["h16_identity"] == identity
+
+
 def test_run_history_records_logical_run_id_and_defer_reasons(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_RUN_ID", "12345")
     monkeypatch.setenv("GITHUB_REPOSITORY", "example/repo")

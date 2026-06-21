@@ -42,6 +42,11 @@ single-maintainer civic project.
   appear in logs, and the Worker endpoint that ffmpeg echoes in stderr on error is scrubbed before
   any log line. A half-set or invalid `GRANICUS_PROXY_*` configuration disables the fallback (logged
   once) rather than surfacing an endpoint value through an unexpected error.
+- **Generic media subprocess redaction** strips URL query strings and redacts bearer plus
+  credential-shaped (`X-Amz-*`, signature, credential, token, key) values from ffmpeg/ffprobe
+  stderr, timeout/error payloads, and exception command arguments while retaining hostname, path,
+  process status, and HTTP status context. This covers signed provider URLs outside the Granicus
+  Worker path; Worker-origin redaction remains an additional layer.
 - **Hardened XML parsing** — provider feeds are parsed with `defusedxml` (entity-expansion safe).
 - **Secrets are environment-only** — credentials are provided via GitHub Actions secrets; none are
   committed. Enabling GitHub secret-scanning + push protection (free for public repos) is recommended as

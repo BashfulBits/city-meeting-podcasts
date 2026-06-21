@@ -59,6 +59,7 @@ from citypods.resources import (
     current_snapshot,
     format_bytes,
 )
+from citypods.security import redact_subprocess_command, redact_subprocess_text
 from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, Timeline, timeline_digest
 
@@ -138,7 +139,10 @@ def _format_optional_bytes(value: int | None) -> str:
 def _stderr_tail(stderr: bytes | str | None, *, limit: int = 1200) -> str:
     if stderr is None:
         return ""
-    text = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else str(stderr)
+    redacted = redact_subprocess_text(stderr)
+    text = (
+        redacted.decode("utf-8", errors="replace") if isinstance(redacted, bytes) else str(redacted)
+    )
     text = text.strip()
     if not text:
         return ""
@@ -287,14 +291,26 @@ def _raise_if_rate_limited(
 
 def _redacted_process_error(
     exc: subprocess.CalledProcessError,
-    direct_command: list[str],
+    command: list[str] | None = None,
 ) -> subprocess.CalledProcessError:
-    """Keep the Worker bearer header out of higher-level exception strings and logs."""
+    """Keep media credentials out of higher-level exception strings and logs."""
     return subprocess.CalledProcessError(
         exc.returncode,
-        direct_command,
-        output=exc.output,
-        stderr=exc.stderr,
+        redact_subprocess_command(command if command is not None else exc.cmd),
+        output=redact_subprocess_text(exc.output),
+        stderr=redact_subprocess_text(exc.stderr),
+    )
+
+
+def _redacted_timeout_error(
+    exc: subprocess.TimeoutExpired,
+    command: list[str] | None = None,
+) -> subprocess.TimeoutExpired:
+    return subprocess.TimeoutExpired(
+        redact_subprocess_command(command if command is not None else exc.cmd),
+        exc.timeout,
+        output=redact_subprocess_text(exc.output),
+        stderr=redact_subprocess_text(exc.stderr),
     )
 
 
@@ -465,12 +481,7 @@ def _run_ffmpeg_guarded(
                         )
                         worker_ok = True
                     except subprocess.TimeoutExpired as fallback_exc:
-                        raise subprocess.TimeoutExpired(
-                            cmd,
-                            fallback_exc.timeout,
-                            output=fallback_exc.output,
-                            stderr=fallback_exc.stderr,
-                        ) from fallback_exc
+                        raise _redacted_timeout_error(fallback_exc, cmd) from fallback_exc
                     except subprocess.CalledProcessError as fallback_exc:
                         fallback_stderr = redact_worker_endpoint(
                             _stderr_tail(fallback_exc.stderr), fallback_cmd
@@ -511,12 +522,12 @@ def _run_ffmpeg_guarded(
                     rate_limit_urls=rate_limit_urls,
                     rate_limit_circuit=rate_limit_circuit,
                 )
-                raise
+                raise _redacted_process_error(exc, cmd) from exc
             except subprocess.TimeoutExpired as exc:
                 stderr = _stderr_tail(exc.stderr)
                 detail = f" stderr={stderr}" if stderr else ""
                 _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} timeout seconds={timeout}{detail}")
-                raise
+                raise _redacted_timeout_error(exc, cmd) from exc
             else:
                 _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="success")
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
@@ -561,7 +572,7 @@ def _run_ffmpeg_guarded(
                     rate_limit_urls=rate_limit_urls,
                     rate_limit_circuit=rate_limit_circuit,
                 )
-                raise
+                raise _redacted_process_error(exc, cmd) from exc
             _log_ffmpeg_event(
                 log,
                 f"[enrich] granicus transport fallback phase={phase} "
@@ -585,12 +596,7 @@ def _run_ffmpeg_guarded(
                 )
                 worker_ok = True
             except subprocess.TimeoutExpired as fallback_exc:
-                raise subprocess.TimeoutExpired(
-                    cmd,
-                    fallback_exc.timeout,
-                    output=fallback_exc.output,
-                    stderr=fallback_exc.stderr,
-                ) from fallback_exc
+                raise _redacted_timeout_error(fallback_exc, cmd) from fallback_exc
             except subprocess.CalledProcessError as fallback_exc:
                 raise _redacted_process_error(fallback_exc, cmd) from fallback_exc
             finally:
@@ -679,9 +685,9 @@ def _run_ffmpeg_popen_monitored(
                     )
                 raise subprocess.CalledProcessError(
                     returncode,
-                    cmd,
-                    output=stdout,
-                    stderr=stderr,
+                    redact_subprocess_command(cmd),
+                    output=redact_subprocess_text(stdout),
+                    stderr=redact_subprocess_text(stderr),
                 )
             _log_ffmpeg_event(
                 log,
@@ -708,7 +714,12 @@ def _run_ffmpeg_popen_monitored(
                 f"min_mem_avail={_format_optional_bytes(min_mem_available)} "
                 f"samples={samples}{detail}",
             )
-            raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=stderr)
+            raise subprocess.TimeoutExpired(
+                redact_subprocess_command(cmd),
+                timeout,
+                output=redact_subprocess_text(stdout),
+                stderr=redact_subprocess_text(stderr),
+            )
 
         if (
             memory_floor_bytes is not None
@@ -731,7 +742,7 @@ def _run_ffmpeg_popen_monitored(
                 proc.communicate()
             raise FfmpegMemoryLimitExceeded(
                 phase=phase,
-                cmd=cmd,
+                cmd=redact_subprocess_command(cmd),
                 floor=memory_floor_bytes,
                 available=available,
             )

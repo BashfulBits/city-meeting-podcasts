@@ -15,13 +15,25 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **H16 Audio acceptance now proves Granicus record and artifact identity and generically redacts
+  subprocess diagnostics ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).**
+  The audio lane snapshots each Granicus meeting after provider/persisted-record merge and verifies
+  after media processing that stable UID, provider GUID, official/source URLs, canonical video URL,
+  and source duration did not drift. Reused current-spec artifacts must retain key, public URL, and
+  served duration; newly materialized or refreshed artifacts must match the deterministic
+  content-addressed spec/key/public URL and report a positive served duration. Aggregate checked,
+  artifact-checked, mismatch, and bounded category counts flow through each shard run event into
+  the existing H16 report. ffmpeg/ffprobe stderr, timeout/error payloads, and exception command
+  arguments now strip all media URL queries and redact bearer or credential-shaped values while
+  preserving host/path/status diagnostics. This is transport/observability only: no audio bytes,
+  pipeline versions, artifact recipes, or backfill behavior change.
 - **Audio runs now publish a machine-readable GH#353/H16 acceptance report after all four shards
   finish.** Each shard uploads only its run event plus redacted secret-scan metadata—never the raw
   log—to a post-matrix `validate-h16` job. The merged JSON artifact and GitHub step-summary table
   classify transport recovery per Granicus tenant, including direct successes/403s, Worker
   successes/failures, circuit activity, truncations, lease behavior, and the unchanged 1-local /
-  2-distributed ceiling. Identity stability is deliberately reported as `not_reported` until H16
-  PR2 supplies the invariant comparison; such a run is `insufficient_activity`, not a false pass.
+  2-distributed ceiling. Identity stability consumes the record/artifact invariant checks described
+  above; a run without applicable identity activity is `insufficient_activity`, not a false pass.
   Credential-shaped query strings, bearer values, and Worker endpoint paths are detected locally
   on each shard and represented only by redacted category/file/line metadata. This adds telemetry
   and workflow evidence only: no audio bytes, pipeline versions, artifact identities, or backfill

@@ -1676,7 +1676,7 @@ evidence, but manual inspection found three acceptance gaps: no one-shot merged 
 record-level proof of identity stability, and signed Swagit media query credentials appearing in
 generic ffmpeg error output. The implementation sequence is:
 
-1. **PR1 — H16 acceptance report — Implemented (unreleased).** A post-matrix `validate-h16` job
+1. **PR1 — H16 acceptance report — Shipped ([PR #405](https://github.com/BashfulBits/city-meeting-podcasts/pull/405)).** A post-matrix `validate-h16` job
    restores the completed run events and emits one merged JSON artifact plus GitHub step-summary
    table for the current
    `GITHUB_RUN_ID`. Per Granicus tenant it reports direct successes/403s, Worker
@@ -1686,17 +1686,21 @@ generic ffmpeg error output. The implementation sequence is:
    pass when direct Granicus fetches succeeded. This creates the compact three-run evidence GH#353
    requires without treating unrelated-provider warnings as Granicus failures. Each shard scans its
    log locally and uploads only redacted finding metadata plus its run event; raw logs are not copied
-   into the evidence artifact. Until PR2 emits identity results, the explicit `not_reported` identity
-   state keeps the overall verdict at `insufficient_activity`.
-2. **PR2 — identity proof + generic subprocess redaction.** Capture each Granicus record after
-   provider merge and before media stages, then verify that transport processing leaves stable UID,
-   provider GUID, official/source URL, and source duration unchanged; an existing current-spec
-   artifact must retain its key/URL/served duration, while newly materialized audio must use the
-   deterministic expected content-addressed key and public URL. Sanitize both subprocess stderr and
-   exception command arguments: remove media query strings and redact credential-shaped parameters
-   (`X-Amz-*`, signature, credential, token, key) while retaining host/path/status diagnostics. The
-   H16 report consumes these checks. This is transport/observability only: no audio pipeline-version
-   bump or artifact backfill.
+   into the evidence artifact. Before PR2, the explicit `not_reported` identity state kept the
+   overall verdict at `insufficient_activity`.
+2. **PR2 — identity proof + generic subprocess redaction — Implemented (unreleased).** Each
+   Granicus record is captured after provider/persisted-record merge and before media stages, then
+   verified at the persistence boundary: stable UID, provider GUID, official/source/canonical video
+   URLs, and source duration must remain unchanged. An existing current-spec artifact retains its
+   key/URL/served duration; newly materialized or refreshed audio must use the deterministic
+   expected content-addressed spec/key/public URL and a positive served duration. A recipe changed
+   by pre-audio stages but deferred by the run budget is explicitly not claimed as artifact-checked,
+   avoiding a false failure. Aggregate counts and bounded mismatch categories flow through the
+   existing run event into PR1's H16 verdict. Generic subprocess sanitization removes media query
+   strings and redacts bearer/credential-shaped parameters (`X-Amz-*`, signature, credential,
+   token, key) from stderr, timeout/error payloads, and exception commands while retaining
+   host/path/status diagnostics; Worker-origin redaction remains layered on top. This is
+   transport/observability only: no audio pipeline-version bump or artifact backfill.
 3. **PR3 — durable unavailable/empty recording classification.** Replace repeated ambiguous Swagit
    failures with an explicit, versioned media-availability projection while preserving the
    append-only meeting record and canonical city watch-page URL. States distinguish available,
