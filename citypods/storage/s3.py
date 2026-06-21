@@ -14,6 +14,20 @@ import os
 from pathlib import Path
 
 
+class CASConflict(Exception):
+    """Raised when a conditional write (compare-and-swap) is rejected by the backend.
+
+    Maps the S3 ``PreconditionFailed`` (HTTP 412) returned when an ``If-Match`` /
+    ``If-None-Match`` precondition no longer holds — i.e. another writer changed the
+    object first. Callers re-read the current state and retry (bounded backoff + jitter),
+    or treat the conflict as "someone else won the claim" (Stage-2 lease ledger).
+    """
+
+    def __init__(self, key: str):
+        super().__init__(f"compare-and-swap conflict on {key!r}")
+        self.key = key
+
+
 class S3CompatibleStorage:
     def __init__(
         self,
@@ -56,6 +70,62 @@ class S3CompatibleStorage:
 
     def public_url(self, key: str) -> str:
         return f"{self.public_base_url}/{key}"
+
+    # --- compare-and-swap (optional StorageBackend capability) ---
+
+    def get_bytes(self, key: str) -> tuple[bytes, str] | None:
+        """Read an object's bytes and current ETag, or ``None`` if absent.
+
+        The ETag pairs with :meth:`put_cas`'s ``if_match`` for a compare-and-swap
+        read-modify-write. This is a Class-B (read) op on R2.
+        """
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = self._client.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("NoSuchKey", "404") or status == 404:
+                return None
+            raise
+        return resp["Body"].read(), resp["ETag"]
+
+    def put_cas(
+        self,
+        key: str,
+        data: bytes,
+        content_type: str,
+        *,
+        if_none_match: str | None = None,
+        if_match: str | None = None,
+    ) -> tuple[str, str]:
+        """Conditional PUT (compare-and-swap). Returns ``(public_url, etag)``.
+
+        ``if_none_match="*"`` creates the object only if absent (claim-if-free).
+        ``if_match=<etag>`` updates only if the current ETag matches (lost-update guard).
+        Pass the ETag exactly as a prior call returned it (boto3 includes the surrounding
+        quotes). Raises :class:`CASConflict` on a 412 ``PreconditionFailed``.
+
+        Native boto3 ``IfNoneMatch``/``IfMatch`` params are used (confirmed against R2 on
+        boto3 1.43 by the review/17 §7 spike — no header injection needed).
+        """
+        from botocore.exceptions import ClientError
+
+        kwargs: dict = dict(Bucket=self.bucket, Key=key, Body=data, ContentType=content_type)
+        if if_none_match is not None:
+            kwargs["IfNoneMatch"] = if_none_match
+        if if_match is not None:
+            kwargs["IfMatch"] = if_match
+        try:
+            resp = self._client.put_object(**kwargs)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("PreconditionFailed", "ConditionalRequestConflict") or status == 412:
+                raise CASConflict(key) from exc
+            raise
+        return self.public_url(key), resp["ETag"]
 
     def get_file(self, key: str, local_path: Path) -> bool:
         from botocore.exceptions import ClientError
