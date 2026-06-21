@@ -636,9 +636,16 @@ def _compute_reconcile(args) -> int:
     pull_state(storage, state_dir)
     summary = reconcile_compute(state_dir, storage)
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
+    leases = summary.get("leases", {})
+    lease_note = (
+        f"; work-leases: {leases.get('requeued', 0)} requeued, "
+        f"{leases.get('completed', 0)} settled, {leases.get('in_flight', 0)} in-flight"
+        if leases
+        else ""
+    )
     print(
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
-        f"{summary['in_flight']} in-flight"
+        f"{summary['in_flight']} in-flight{lease_note}"
     )
     return 0
 

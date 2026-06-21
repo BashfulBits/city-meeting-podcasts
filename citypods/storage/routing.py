@@ -21,10 +21,13 @@ from pathlib import Path
 from citypods.storage.base import StorageBackend
 
 # Keys whose prefix matches route to the coordination (CAS) backend. Each migration appends its
-# prefix here with its own change. ``state/compute_budget.json`` (H17 PR3) is the free-tier GPU
-# ledger — it needs an atomic decrement (overspend guard), so it lives on R2 and is accessed by CAS,
-# not via the bulk B2 state sync (statesync excludes coordination keys).
-COORDINATION_PREFIXES: tuple[str, ...] = ("state/compute_budget.json",)
+# prefix here with its own change:
+#   - ``state/compute_budget.json`` (H17 PR3): free-tier GPU ledger — atomic-decrement overspend
+#     guard; lives on R2, accessed by CAS, excluded from the bulk B2 state sync.
+#   - ``work-leases/`` (H17 PR4): the Stage-2 per-item competitive-claim ledger (review/18 §4); each
+#     ``work-leases/<source>/<uid>.json`` is an independent CAS object. Derived/GET by key, never
+#     listed (listing is a Class-A op on R2).
+COORDINATION_PREFIXES: tuple[str, ...] = ("state/compute_budget.json", "work-leases/")
 
 
 class RoutingStorage:

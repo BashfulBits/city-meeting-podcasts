@@ -17,8 +17,8 @@
 
 | Sub-item | Maturity | Disposition |
 |---|---|---|
-| **Stage 1** — per-`(source,uid)` transcribe planning + per-episode owned-block merge | **L2 → L3** | **Do-next.** One load-bearing code change (the merge); the rest composes around it. Ships independently of external workers and is the write-path Stage 2 reuses. |
-| **Stage 2** — pull-based work ledger (CAS leases on R2); workers claim episodes | L2 → L3 | **H17, before H14b/H14c.** Mature the fixed claim contract and implement the substrate external workers use from their first production version. |
+| **Stage 1** — per-`(source,uid)` transcribe planning + per-episode owned-block merge | **Implemented** | **Shipped** ([GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390) PR2): `merge_preserving_foreign(owned_uids=)`, `pending_transcribe_items`, `ShardPlan.unit`/v2, `episodes_for_shard`. The one load-bearing change (the merge); the rest composed around it. |
+| **Stage 2** — pull-based work ledger (CAS leases on R2); workers claim episodes | **Implemented (substrate; contract frozen)** | **GH#390 PR4.** `citypods/ops/work_leases.py`: per-item CAS lease objects + `claim`/`renew`/`release`/`reap` + `run_claim_loop`; reaped by `compute reconcile`; `work-leases/` routed to R2; cost-disciplined (§4.6). **In-Actions matrix shards still run the Stage-1 static plan** (§6); the ledger is the frozen contract H14b/H14c pull against, with neural inference as the injected seam they fill. |
 | Audio lane → per-`(source,uid)` | — | **Rejected** — stays source-atomic (per-source provider leases / rate limits make the source the right unit; §2.3). |
 | Static plan retained for transcribe long-term | — | **Superseded by Stage 2** once external workers land; kept as the in-Actions interim. |
 

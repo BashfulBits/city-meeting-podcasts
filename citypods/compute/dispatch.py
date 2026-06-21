@@ -317,4 +317,24 @@ def reconcile_compute(state_dir: str | Path, storage, *, now: datetime | None = 
         save_budget(state_dir, budget)
     if manifest_changed:
         save_manifest(state_dir, items)
-    return {"reaped": reaped, "settled": settled, "in_flight": in_flight}
+
+    # Stage-2 work-lease ledger reaping (review/18 §4.2): reclaim expired claims and settle done
+    # ones, derived from the discovery index — never listing the R2 lease prefix. CAS-only (the
+    # ledger lives on R2); a non-CAS backend has no ledger, so this is skipped. Candidates are the
+    # not-yet-done transcript-asr items, so the sweep tracks backlog, not the whole catalog.
+    leases = {"completed": 0, "requeued": 0, "in_flight": 0}
+    if cas:
+        from citypods.ops.work_leases import reap as reap_work_leases
+
+        candidates = [
+            (wi.source_key, wi.episode_uid)
+            for wi in items
+            if wi.work_class == "transcript-asr" and wi.state != "done"
+        ]
+        leases = reap_work_leases(
+            storage,
+            candidates,
+            artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+            now=now,
+        )
+    return {"reaped": reaped, "settled": settled, "in_flight": in_flight, "leases": leases}

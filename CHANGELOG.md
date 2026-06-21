@@ -15,6 +15,25 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Stage-2 pull-based work-lease ledger — the frozen contract distributed ASR workers claim against
+  (H17 PR4, [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/18 §4).**
+  New `citypods/ops/work_leases.py` adds per-item compare-and-swap lease objects on R2
+  (`work-leases/<source_key>/<uid>.json`) so heterogeneous workers (in-Actions shards today; external
+  Modal/Beam/Mac-mini workers next) can **competitively claim** transcribe work from a shared ledger
+  instead of being handed a static `--shard K/N` slice. Per-item objects have independent ETags, so
+  concurrent claims of different uids never contend (the CAS-retry-storm mitigation, review/17 §6).
+  The module implements the full claim protocol — `claim`/`renew`/`release`/`reap` plus the
+  `run_claim_loop` orchestrator (read discovery index → CAS-claim → injected `transcribe` → durable
+  artifact/record commit → settle), with the neural inference left as the injected seam H14b/H14c
+  fill. `compute reconcile` now also reaps the ledger (expired claim → requeue; artifact present →
+  done), derived from the discovery index. **Cost discipline (review/18 §4.6)** keeps it at ≈1 R2
+  Class-A op per *claimed* item: never list the lease prefix (derive keys from the B2 index),
+  read-before-claim + per-worker scan offset (no failed-claim writes; workers target different items
+  first), infer completion from the artifact (no `done` write), and a generous TTL (renew is the
+  exception). `work-leases/` routes to R2 via `COORDINATION_PREFIXES`. **In-Actions matrix shards keep
+  using the Stage-1 static plan** (review/18 §6) — this PR freezes the contract and lands the
+  substrate so external workers build against it from day one; it changes no scheduled production
+  behavior. No pipeline-version bump, no backfill.
 - **The free-tier GPU budget ledger moved to R2 with an atomic compare-and-swap decrement (H17 PR3,
   [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/17 §3/§5).**
   `state/compute_budget.json` is the first coordination artifact to migrate off the bulk B2 state

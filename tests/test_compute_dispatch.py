@@ -35,6 +35,8 @@ from citypods.storage import CASConflict
 from citypods.storage.local import LocalStorage
 
 NOW = datetime(2026, 6, 14, 12, 0, tzinfo=UTC)
+# Reconcile's work-lease sweep is a no-op on a non-CAS backend (no ledger) → zeroed sub-summary.
+_NO_LEASES = {"completed": 0, "requeued": 0, "in_flight": 0}
 
 
 # ── fakes ──────────────────────────────────────────────────────────────────────
@@ -379,7 +381,7 @@ class TestReconcile:
 
         summary = reconcile_compute(tmp_path, storage=None, now=NOW)
 
-        assert summary == {"reaped": 1, "settled": 0, "in_flight": 0}
+        assert summary == {"reaped": 1, "settled": 0, "in_flight": 0, "leases": _NO_LEASES}
         requeued = load_manifest(tmp_path)[0]
         assert requeued.state == "queued" and requeued.lease_owner == ""
         # Dead worker's reservation returned to the pool.
@@ -399,7 +401,7 @@ class TestReconcile:
 
         summary = reconcile_compute(tmp_path, bucket, now=NOW)
 
-        assert summary == {"reaped": 0, "settled": 1, "in_flight": 0}
+        assert summary == {"reaped": 0, "settled": 1, "in_flight": 0, "leases": _NO_LEASES}
         done = load_manifest(tmp_path)[0]
         assert done.state == "done" and done.lease_owner == ""
         led = load_budget(tmp_path).backends["modal"]
@@ -411,7 +413,7 @@ class TestReconcile:
         save_manifest(tmp_path, [item])
         save_budget(tmp_path, Budget())
         summary = reconcile_compute(tmp_path, storage=None, now=NOW)
-        assert summary == {"reaped": 0, "settled": 0, "in_flight": 1}
+        assert summary == {"reaped": 0, "settled": 0, "in_flight": 1, "leases": _NO_LEASES}
         assert load_manifest(tmp_path)[0].state == "running"
 
     def test_empty_manifest_is_noop(self, tmp_path):
@@ -419,6 +421,7 @@ class TestReconcile:
             "reaped": 0,
             "settled": 0,
             "in_flight": 0,
+            "leases": _NO_LEASES,
         }
 
 
