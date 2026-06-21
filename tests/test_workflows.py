@@ -9,10 +9,13 @@ Asserting the workflow wiring here fails the PR's ``test`` job the moment that r
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 import yaml
+
+_PINNED_SHA = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
@@ -173,6 +176,92 @@ def test_audio_lane_needs_no_whisper():
     runs = " ".join(str(s.get("run", "")) for s in job["steps"])
     assert "prepare_whisper" not in runs
     assert '".[asr' not in runs and "[asr,storage]" not in runs
+
+
+def test_audio_workflow_uploads_shard_evidence_and_builds_h16_report():
+    wf, audio = _job("audio.yml", job_name="audio")
+    _wf, validate = _job("audio.yml", job_name="validate-h16")
+
+    assert validate["needs"] == "audio"
+    assert validate["if"] == "always()"
+    assert wf["permissions"]["actions"] == "read"
+
+    upload = next(
+        step for step in audio["steps"] if step.get("name") == "Upload H16 shard evidence"
+    )
+    assert upload["if"] == "always()"
+    assert (
+        upload["with"]["name"]
+        == "audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}"
+    )
+    assert upload["with"]["path"] == "h16-evidence/*.json"
+    assert upload["with"]["retention-days"] == 14
+    collect = next(step for step in audio["steps"] if step.get("name") == "Collect H16 run event")
+    assert "PYTHONPATH=. python scripts/scan_h16_log.py" in collect["run"]
+
+    download = next(
+        step for step in validate["steps"] if step.get("name") == "Download H16 shard evidence"
+    )
+    assert download["continue-on-error"] is True
+    assert (
+        download["with"]["pattern"] == "audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert download["with"]["merge-multiple"] is True
+
+    report = next(
+        step for step in validate["steps"] if step.get("name") == "Build H16 acceptance report"
+    )
+    assert "citypods h16-report" in report["run"]
+    assert "mkdir -p h16-input" in report["run"]
+    assert '>> "$GITHUB_STEP_SUMMARY"' in report["run"]
+
+    report_upload = next(
+        step for step in validate["steps"] if step.get("name") == "Upload H16 acceptance report"
+    )
+    assert report_upload["if"] == "always()"
+    assert report_upload["with"]["retention-days"] == 30
+
+    # validate-h16 runs repository code (pip install -e .), so its setup actions must be
+    # SHA-pinned and the checkout must not persist the GITHUB_TOKEN into .git/config.
+    checkout = next(
+        step for step in validate["steps"] if "actions/checkout@" in step.get("uses", "")
+    )
+    assert _PINNED_SHA.search(checkout["uses"]), checkout["uses"]
+    assert checkout["with"]["persist-credentials"] is False
+    setup_python = next(
+        step for step in validate["steps"] if "actions/setup-python@" in step.get("uses", "")
+    )
+    assert _PINNED_SHA.search(setup_python["uses"]), setup_python["uses"]
+
+
+def test_checkout_and_setup_python_are_sha_pinned_everywhere():
+    """Blanket supply-chain policy: every checkout/setup-python reference is pinned to a full
+    commit SHA, not a floating ``@v6`` tag. Pinning one job while leaving siblings floating gives
+    a false sense of safety, so this guards the whole workflow directory."""
+    offenders = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        for line in workflow.read_text().splitlines():
+            stripped = line.strip()
+            if "actions/checkout@" in stripped or "actions/setup-python@" in stripped:
+                if not _PINNED_SHA.search(stripped):
+                    offenders.append(f"{workflow.name}: {stripped}")
+    assert not offenders, "unpinned action references:\n" + "\n".join(offenders)
+
+
+def test_checkout_disables_credential_persistence_everywhere():
+    """Every job checks out the repo and then executes its code (pip install -e ., npm test),
+    yet none push via the persisted GITHUB_TOKEN (state lands in B2/R2; Pages deploys via
+    actions/deploy-pages OIDC). So no checkout needs persisted credentials — assert they are all
+    disabled so a compromised setup.py/package script can't read the token."""
+    offenders = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        wf = yaml.safe_load(workflow.read_text())
+        for job_name, job in (wf.get("jobs") or {}).items():
+            for step in job.get("steps", []):
+                if "actions/checkout@" in str(step.get("uses", "")):
+                    if (step.get("with") or {}).get("persist-credentials") is not False:
+                        offenders.append(f"{workflow.name}:{job_name}")
+    assert not offenders, "checkout without persist-credentials: false:\n" + "\n".join(offenders)
 
 
 def test_audio_uses_pinned_runner_image_with_verified_host_fallback():

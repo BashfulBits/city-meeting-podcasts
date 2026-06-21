@@ -313,6 +313,14 @@ Hard-won facts that bite anyone adding/debugging providers:
   logged, the Worker endpoint that ffmpeg echoes in stderr on error is scrubbed before any log line,
   and exceptions expose only the original direct command. Official episode URLs and audio artifact
   identity remain unchanged.
+- **Every scheduled Audio run produces one H16 acceptance artifact after the matrix joins.** Each
+  shard records per-tenant direct Granicus success/403 and truncation telemetry alongside the
+  existing Worker/circuit counters, scans its own log for credential-shaped material, and uploads
+  only the run event plus redacted scan findings. The `validate-h16` job merges all four shards,
+  verifies the configured 1-local / 2-distributed ceiling, and writes JSON plus a GitHub summary.
+  Missing shard activity or the not-yet-implemented PR2 identity check yields
+  `insufficient_activity`; transport or secret findings yield `fail`. The report is observational
+  and does not gate, mutate, or invalidate audio.
 - **Worker deployment is path-scoped.** `granicus-worker-deploy.yml` runs Worker tests and deploys
   only when `main` changes the Worker source, Wrangler config, or deployment workflow (plus a manual
   dispatch escape hatch). A scoped Cloudflare API token/account ID authenticate deployment. The

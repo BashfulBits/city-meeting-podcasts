@@ -339,6 +339,16 @@ def _record_worker_fallback_outcome(
         circuit.record_worker_fallback(rate_limit_urls, outcome=outcome)
 
 
+def _record_direct_fetch_outcome(
+    circuit: MediaRateLimitCircuitBreaker | None,
+    rate_limit_urls: Sequence[str],
+    *,
+    outcome: str,
+) -> None:
+    if circuit is not None:
+        circuit.record_direct_fetch(rate_limit_urls, outcome=outcome)
+
+
 @contextmanager
 def _circuit_admission(
     circuit: MediaRateLimitCircuitBreaker | None,
@@ -425,6 +435,8 @@ def _run_ffmpeg_guarded(
             try:
                 result = subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
             except subprocess.CalledProcessError as exc:
+                if _rate_limited_status(exc.stderr) == "HTTP 403":
+                    _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="403")
                 stderr = _stderr_tail(exc.stderr)
                 detail = f" stderr={stderr}" if stderr else ""
                 _log_ffmpeg_event(
@@ -505,6 +517,8 @@ def _run_ffmpeg_guarded(
                 detail = f" stderr={stderr}" if stderr else ""
                 _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} timeout seconds={timeout}{detail}")
                 raise
+            else:
+                _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="success")
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
         return getattr(result, "stdout", b"") or b"", getattr(result, "stderr", b"") or b""
 
@@ -516,7 +530,7 @@ def _run_ffmpeg_guarded(
         _circuit_admission(rate_limit_circuit, rate_limit_urls),
     ):
         try:
-            return _run_ffmpeg_popen_monitored(
+            result = _run_ffmpeg_popen_monitored(
                 cmd,
                 phase=phase,
                 timeout=timeout,
@@ -529,7 +543,11 @@ def _run_ffmpeg_guarded(
                 child_rss=child_rss,
                 classify_rate_limit=False,
             )
+            _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="success")
+            return result
         except subprocess.CalledProcessError as exc:
+            if _rate_limited_status(exc.stderr) == "HTTP 403":
+                _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="403")
             fallback_cmd = _worker_fallback_for_403(
                 command=cmd,
                 stderr=exc.stderr,
@@ -2305,6 +2323,8 @@ def materialize_audio(
             OSError,
             ProviderError,
         ) as exc:
+            if isinstance(exc, TruncatedAudioError) and rate_limit_circuit is not None:
+                rate_limit_circuit.record_truncation(source_urls)
             if isinstance(exc, RateLimitedMediaFetchError):
                 with lock:
                     stats.rate_limited += 1

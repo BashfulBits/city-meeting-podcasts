@@ -1476,6 +1476,33 @@ def test_run_ffmpeg_guarded_classifies_provider_throttle(monkeypatch):
         )
 
 
+def test_run_ffmpeg_guarded_records_direct_granicus_success(monkeypatch):
+    import citypods.media as media
+
+    archive_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setattr(
+        media.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, b"audio", b""),
+    )
+    circuit = media.MediaRateLimitCircuitBreaker({"granicus.com": {"threshold": 3}})
+
+    media._run_ffmpeg_guarded(
+        ["ffmpeg", "-i", archive_url, "out.m4a"],
+        phase="source-cache",
+        rate_limit_urls=(archive_url,),
+        rate_limit_circuit=circuit,
+        log=lambda *_args: None,
+    )
+
+    telemetry = circuit.telemetry()["granicus.com/tenant:arlingtontx"]
+    assert telemetry["direct_fetch_successes"] == 1
+    assert telemetry["direct_fetch_403s"] == 0
+
+
 def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypatch):
     import citypods.media as media
 
@@ -1525,6 +1552,8 @@ def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypat
     assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_successes"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_failures"] for row in telemetry.values()) == 0
+    assert sum(row["direct_fetch_403s"] for row in telemetry.values()) == 1
+    assert sum(row["direct_fetch_successes"] for row in telemetry.values()) == 0
 
 
 def test_worker_failure_records_provider_throttle_without_leaking_token(monkeypatch):

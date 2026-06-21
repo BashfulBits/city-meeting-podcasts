@@ -64,6 +64,21 @@ def test_record_worker_fallback_counts_per_tenant_and_ignores_non_granicus():
     assert telemetry[FORT_KEY]["rate_limited"] == 0
 
 
+def test_record_h16_direct_fetch_and_truncation_telemetry():
+    breaker = MediaRateLimitCircuitBreaker({"granicus.com": {"threshold": 3}})
+
+    breaker.record_direct_fetch([FORT_WORTH], outcome="success")
+    breaker.record_direct_fetch([FORT_WORTH], outcome="403")
+    breaker.record_truncation([FORT_WORTH])
+    breaker.record_direct_fetch(["https://example.com/video.mp4"], outcome="success")
+
+    telemetry = breaker.telemetry()
+    assert set(telemetry) == {FORT_KEY}
+    assert telemetry[FORT_KEY]["direct_fetch_successes"] == 1
+    assert telemetry[FORT_KEY]["direct_fetch_403s"] == 1
+    assert telemetry[FORT_KEY]["truncations"] == 1
+
+
 def test_failures_from_multiple_shards_trip_one_shared_tenant_circuit(tmp_path):
     store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
     shards = [_circuit(store, shard=f"{n}/4") for n in range(3)]

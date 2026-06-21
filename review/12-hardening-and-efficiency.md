@@ -1676,14 +1676,18 @@ evidence, but manual inspection found three acceptance gaps: no one-shot merged 
 record-level proof of identity stability, and signed Swagit media query credentials appearing in
 generic ffmpeg error output. The implementation sequence is:
 
-1. **PR1 — H16 acceptance report.** Add a post-matrix `validate-h16` job that restores the completed
-   run events and emits one merged JSON artifact plus GitHub step-summary table for the current
+1. **PR1 — H16 acceptance report — Implemented (unreleased).** A post-matrix `validate-h16` job
+   restores the completed run events and emits one merged JSON artifact plus GitHub step-summary
+   table for the current
    `GITHUB_RUN_ID`. Per Granicus tenant it reports direct successes/403s, Worker
    attempts/successes/failures, circuit trips/deferrals/recovery probes, truncation backoffs, lease
    activity, configured local/distributed ceilings, identity-verification status, and secret-scan
-   status. Classification is `pass`, `fail`, or `insufficient activity`; zero Worker attempts can
+   status. Classification is `pass`, `fail`, or `insufficient_activity`; zero Worker attempts can
    pass when direct Granicus fetches succeeded. This creates the compact three-run evidence GH#353
-   requires without treating unrelated-provider warnings as Granicus failures.
+   requires without treating unrelated-provider warnings as Granicus failures. Each shard scans its
+   log locally and uploads only redacted finding metadata plus its run event; raw logs are not copied
+   into the evidence artifact. Until PR2 emits identity results, the explicit `not_reported` identity
+   state keeps the overall verdict at `insufficient_activity`.
 2. **PR2 — identity proof + generic subprocess redaction.** Capture each Granicus record after
    provider merge and before media stages, then verify that transport processing leaves stable UID,
    provider GUID, official/source URL, and source duration unchanged; an existing current-spec
