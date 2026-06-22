@@ -15,6 +15,7 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Changed
+
 - **Audio shard assignment is duration-weighted and availability-aware.** Source-atomic Audio
   planning now sums the expected served duration of pending encodes whose media is available,
   recovered, or not yet classified, using the current Timeline first, then the last served duration,
