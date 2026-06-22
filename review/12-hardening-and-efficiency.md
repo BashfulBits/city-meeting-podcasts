@@ -1728,7 +1728,14 @@ generic ffmpeg error output. The implementation sequence is:
    set, uploads a ZIP workflow artifact with both variants and evidence JSON, and links it from the
    issue. Confirmed unavailable
    meetings leave the audio backlog/ETA, retain prior known-good hosted artifacts, and automatically
-   recover into normal processing if the city later supplies valid media.
+   recover into normal processing if the city later supplies valid media. **PR3b as built:**
+   `citypods/availability_digest.py` holds the pure selection/evidence/issue-rendering core (keyed
+   by uid + source fingerprint + detector version, so a re-classification re-surfaces a candidate),
+   `scripts/availability_digest.py` owns the ffmpeg/network/`gh` side and a
+   `state/availability_digest.json` ledger of already-reviewed candidates, and
+   `.github/workflows/availability-digest.yml` runs it weekly, uploads the ZIP, and posts one
+   rolling issue. Evidence reuses PR2's `redact_subprocess_text`, so no signed/credential-bearing
+   URL is ever stored or linked.
 
 PR3 is a deliberate narrow promotion of the Phase-R durable provider-failure design: the
 episode-level availability state and evidence are needed now to prevent bad enclosures and repeated

@@ -15,6 +15,18 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
 ### Added
+- **Weekly empty-recording review digest emits bounded audio evidence
+  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), H16 PR3b).** A new
+  `availability-digest.yml` workflow (`scripts/availability_digest.py`) scans the persisted
+  media-availability verdicts for meetings classified suspected/confirmed empty, deterministically
+  samples a small set of *new or changed* candidates (keyed by uid + source fingerprint + detector
+  version, so a re-classification re-surfaces), and for each renders an evidence record (durations,
+  sizes, hashes, silence intervals, profile/detector version, canonical watch-page URL, and a
+  **redacted** source identity) plus two low-bitrate mono proxies — the untrimmed source audio and
+  the silence-trimmed candidate. It zips the bundle as a workflow artifact and opens/updates a
+  single rolling digest issue **only when** new/changed candidates exist; an already-reviewed
+  candidate is recorded in a `state/availability_digest.json` ledger so it is not re-digested. The
+  issue body and evidence never carry a signed/credential-bearing URL.
 - **Durable media-availability classification withholds empty/missing recordings from feeds
   ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), H16 PR3a).** A
   meeting whose source media is missing or (near-)totally silent now carries an explicit, versioned
