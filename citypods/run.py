@@ -987,6 +987,15 @@ def _run_enrich_global_queue(
 
                         def _retry_parked(entry):
                             item, deferred_stats = entry
+                            key, ep = item
+                            # GH#353 diagnostic (review/11 H16): this re-runs chapters→timeline→
+                            # remap→audio for an episode that already ran those stages once this
+                            # run (the parked attempt) — a second, independent identity log line
+                            # tags the candidate for the H16 identity-mismatch correlation.
+                            print(
+                                f"[enrich] circuit recovery retry source={key} uid={ep.uid}",
+                                flush=True,
+                            )
                             retry_stats = _audio_task(item)
                             if retry_stats and not any(s.circuit_skipped for s in retry_stats):
                                 pipeline.resolve_parked_stats(deferred_stats)
