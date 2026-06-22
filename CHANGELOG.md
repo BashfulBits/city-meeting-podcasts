@@ -14,6 +14,18 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Changed
+
+- **Audio shard assignment is duration-weighted and availability-aware.** Source-atomic Audio
+  planning now sums the expected served duration of pending encodes whose media is available,
+  recovered, or not yet classified, using the current Timeline first, then the last served duration,
+  then provider duration; unknown durations use their source's known-duration average. Media already
+  classified as withheld contributes only a small recovery-recheck cost because TimelineStage still
+  probes it but AudioStage will not encode it. This replaces flat pending-episode counts, preventing
+  short/empty-media backlogs from monopolizing a shard while sibling shards carry hours of playable
+  audio. This changes scheduling only: audio recipes, pipeline versions, stored artifacts, and
+  backfill behavior are unchanged.
+
 ### Added
 - **Weekly empty-recording review digest emits bounded audio evidence
   ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), H16 PR3b).** A new

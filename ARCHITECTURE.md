@@ -53,7 +53,8 @@ is throttled per source (per-source encode caps, Granicus media leases, the prov
 provider, not the runner, is the ceiling (review/18 §2.3). The **transcribe** lane plans **per
 `(source, uid)` episode** (review/18 §3.1): each episode is independent GPU work, so one skewed
 source (e.g. a 2,000-episode Granicus backlog) spreads across all shards instead of pinning to one.
-Assignment is weighted by each lane's own remaining-work estimate — pending encode count for Audio;
+Assignment is weighted by each lane's own remaining-work estimate — pending playable/unknown
+recording duration plus a small withheld-media recovery-recheck cost for Audio;
 routing-aware runner cost per pending episode for ASR. The ASR estimate separates duration-weighted
 local inference from cheap external dispatch, blocked/deferred inspection, and already-in-flight work;
 `pending_transcribe_items` emits the same per-episode classification so the plan agrees with the

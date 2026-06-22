@@ -11,6 +11,7 @@ from citypods.records import (
     audio_object_key,
     audio_spec_hash,
     episode_to_record,
+    estimate_audio_shard_work,
     estimate_transcribe_shard_work,
     feed_content_hash,
     load_records,
@@ -18,7 +19,6 @@ from citypods.records import (
     merge_preserving_foreign,
     merge_records,
     migrate_legacy_manifests,
-    pending_audio_work,
     pending_transcribe_items,
     protected_blocks_for_lane,
     prune_archive,
@@ -197,7 +197,7 @@ def test_record_store_roundtrip(tmp_path):
     assert raw["schema_version"] >= 1
 
 
-def test_pending_audio_work_counts_only_episodes_still_needing_an_encode(tmp_path):
+def test_estimate_audio_shard_work_weights_pending_encodes_by_duration(tmp_path):
     done = _ep("g-done")
     done.uid = "u-done"
     done.hosted_audio_url = "https://cdn/u-done.m4a"
@@ -205,6 +205,7 @@ def test_pending_audio_work_counts_only_episodes_still_needing_an_encode(tmp_pat
 
     stale_spec = _ep("g-stale")
     stale_spec.uid = "u-stale"
+    stale_spec.duration = 3600
     stale_spec.hosted_audio_url = "https://cdn/u-stale.m4a"
     stale_spec.audio_spec_hash = "an-old-spec-that-no-longer-matches"
 
@@ -215,6 +216,14 @@ def test_pending_audio_work_counts_only_episodes_still_needing_an_encode(tmp_pat
 
     never_attempted = _ep("g-new")
     never_attempted.uid = "u-new"
+    never_attempted.duration = 1800
+
+    errored = _ep("g-errored")
+    errored.uid = "u-errored"
+    errored.duration = 900
+    errored.hosted_audio_url = "https://cdn/u-errored.m4a"
+    errored.audio_spec_hash = audio_spec_hash(errored, max_kbps=96)
+    errored.materialize_error = "duration"
 
     save_records(
         tmp_path,
@@ -224,25 +233,27 @@ def test_pending_audio_work_counts_only_episodes_still_needing_an_encode(tmp_pat
             "u-stale": episode_to_record(stale_spec),
             "u-backoff": episode_to_record(backing_off),
             "u-new": episode_to_record(never_attempted),
+            "u-errored": episode_to_record(errored),
         },
     )
 
-    pending = pending_audio_work(
+    weight = estimate_audio_shard_work(
         tmp_path, "src", extract_audio=True, max_kbps=96, loudness_profile="", processing_profile=""
     )
-    # Only the stale-spec and never-attempted episodes still need an encode: "done" is already
-    # hosted under the current spec, and "backoff" won't be retried this run either.
-    assert pending == 2
+    # The stale-spec, never-attempted, and current-spec-but-errored episodes still need an encode:
+    # "done" is current and healthy, while "backoff" won't be retried this run.
+    assert weight == 6300
 
 
-def test_pending_audio_work_skips_direct_episodes_when_extraction_disabled(tmp_path):
+def test_estimate_audio_shard_work_skips_direct_episodes_when_extraction_disabled(tmp_path):
     direct = _ep("g-direct")
     direct.uid = "u-direct"
     direct.media_kind = "direct"
+    direct.duration = 1200
     save_records(tmp_path, "src", {"u-direct": episode_to_record(direct)})
 
     assert (
-        pending_audio_work(
+        estimate_audio_shard_work(
             tmp_path,
             "src",
             extract_audio=False,
@@ -253,7 +264,7 @@ def test_pending_audio_work_skips_direct_episodes_when_extraction_disabled(tmp_p
         == 0
     )
     assert (
-        pending_audio_work(
+        estimate_audio_shard_work(
             tmp_path,
             "src",
             extract_audio=True,
@@ -261,13 +272,13 @@ def test_pending_audio_work_skips_direct_episodes_when_extraction_disabled(tmp_p
             loudness_profile="",
             processing_profile="",
         )
-        == 1
+        == 1200
     )
 
 
-def test_pending_audio_work_is_zero_for_unknown_source(tmp_path):
+def test_estimate_audio_shard_work_is_zero_for_unknown_source(tmp_path):
     assert (
-        pending_audio_work(
+        estimate_audio_shard_work(
             tmp_path,
             "no-such-src",
             extract_audio=False,
@@ -276,6 +287,92 @@ def test_pending_audio_work_is_zero_for_unknown_source(tmp_path):
             processing_profile="",
         )
         == 0
+    )
+
+
+def test_estimate_audio_shard_work_uses_timeline_and_source_average(tmp_path):
+    from citypods.timeline import Segment, Timeline
+
+    planned = _ep("g-planned")
+    planned.uid = "u-planned"
+    planned.duration = 7200
+    planned.timeline = Timeline(
+        version="trimmed",
+        segments=(
+            Segment(
+                served_start=0,
+                served_end=1800,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=1800,
+            ),
+        ),
+    )
+    unknown = _ep("g-unknown")
+    unknown.uid = "u-unknown"
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-planned": episode_to_record(planned),
+            "u-unknown": episode_to_record(unknown),
+        },
+    )
+
+    assert (
+        estimate_audio_shard_work(
+            tmp_path,
+            "src",
+            extract_audio=True,
+            max_kbps=96,
+            loudness_profile="",
+            processing_profile="",
+        )
+        == 3600
+    )
+
+
+def test_estimate_audio_shard_work_gives_withheld_media_only_recheck_cost(tmp_path):
+    from citypods.availability import MediaAvailability
+    from citypods.records import AUDIO_WITHHELD_RECHECK_WEIGHT_SECONDS
+
+    available = _ep("g-available")
+    available.uid = "u-available"
+    available.duration = 3600
+    available.media_availability = MediaAvailability(state="available")
+
+    recovered = _ep("g-recovered")
+    recovered.uid = "u-recovered"
+    recovered.duration = 1800
+    recovered.media_availability = MediaAvailability(state="recovered")
+
+    withheld = _ep("g-withheld")
+    withheld.uid = "u-withheld"
+    withheld.duration = 8 * 3600
+    withheld.media_availability = MediaAvailability(state="confirmed_empty")
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-available": episode_to_record(available),
+            "u-recovered": episode_to_record(recovered),
+            "u-withheld": episode_to_record(withheld),
+        },
+    )
+
+    assert (
+        estimate_audio_shard_work(
+            tmp_path,
+            "src",
+            extract_audio=True,
+            max_kbps=96,
+            loudness_profile="",
+            processing_profile="",
+        )
+        == 5400 + AUDIO_WITHHELD_RECHECK_WEIGHT_SECONDS
     )
 
 
