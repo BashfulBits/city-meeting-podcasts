@@ -226,6 +226,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **Swagit concat probes no longer deadlock the global Granicus media pool.** The concat duration
+  probe now acquires the process-local host limiter before the cross-shard distributed lease,
+  matching every other ffmpeg/ffprobe media path and the #342 lock-order invariant. The reversed
+  order could let concat probes hold both distributed slots while waiting for a local slot held by
+  source-cache work that was itself waiting for a distributed slot; Audio #51 exposed the cycle by
+  renewing both leases for the full run without launching ffprobe. This changes coordination only:
+  audio bytes, artifact identity, and pipeline versions are unchanged, so **no backfill** is
+  triggered.
 - **Duplicate source views of one stable meeting no longer run the same ASR recipe twice.** The
   per-episode planner now groups matching `(stable uid, ASR recipe)` work, co-locates every
   source-local alias on one shard, and charges the inference weight once. `TranscriptStage` uses a
