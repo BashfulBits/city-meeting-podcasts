@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -296,6 +297,38 @@ class TestChapterConstruction:
 
 
 class TestProbeDurationUrl:
+    def test_acquires_host_slot_before_distributed_lease(self):
+        """Match the global media lock order so concat probes cannot deadlock source-cache work."""
+        events = []
+
+        @contextmanager
+        def held(name):
+            events.append(f"enter:{name}")
+            try:
+                yield
+            finally:
+                events.append(f"exit:{name}")
+
+        host_limiter = MagicMock()
+        host_limiter.slot.side_effect = lambda *a, **k: held("host")
+        lease_pool = MagicMock()
+        lease_pool.slots.side_effect = lambda *a, **k: held("distributed")
+
+        with (
+            patch("citypods.concat.HOST_LIMITER", host_limiter),
+            patch("citypods.concat.DISTRIBUTED_PROVIDER_LEASES", lease_pool),
+            patch("citypods.concat.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.stdout = "3600\n"
+            assert _probe_duration_url(SEG_URL_0) == 3600.0
+
+        assert events == [
+            "enter:host",
+            "enter:distributed",
+            "exit:distributed",
+            "exit:host",
+        ]
+
     def test_returns_float_on_success(self):
         with patch("citypods.concat.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "3600.123456\n"
