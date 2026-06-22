@@ -303,6 +303,7 @@ class TestProbeDurationUrl:
 
         @contextmanager
         def held(name):
+            """Record context-manager acquisition and release order."""
             events.append(f"enter:{name}")
             try:
                 yield
