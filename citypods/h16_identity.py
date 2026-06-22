@@ -179,6 +179,21 @@ class H16IdentityTracker:
                 ):
                     categories.add("current_artifact_changed")
 
+            if categories:
+                # GH#353 diagnostic (review/11 H16): pinpoint which (source, uid) mismatched and
+                # why, so a mismatch can be correlated against the circuit-recovery retry log
+                # lines (which re-run chapters→audio for the same uid) and the provider-lease
+                # stale-reap log lines (a possible concurrent-refetch race) — see h16_report.py.
+                print(
+                    f"[h16-identity] mismatch source={source} uid={ep.uid} "
+                    f"categories={sorted(categories)} "
+                    f"before(key={before.audio_key!r} spec={before.audio_spec_hash!r} "
+                    f"url={before.audio_url!r}) "
+                    f"actual(key={ep.audio_key!r} spec={ep.audio_spec_hash!r} "
+                    f"url={ep.hosted_audio_url!r}) "
+                    f"expected(key={expected_key!r} spec={expected_spec!r} url={expected_url!r})",
+                    flush=True,
+                )
             with self._lock:
                 self._results[identity] = (not categories, frozenset(categories), artifact_checked)
 
