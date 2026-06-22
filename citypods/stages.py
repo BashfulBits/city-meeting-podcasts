@@ -274,9 +274,16 @@ class StageContext:
     asr_artifact_cache: AsrArtifactCache = field(default_factory=AsrArtifactCache)
     # ASR inference is native C++ work and can occasionally stop making visible progress. Bound
     # one item by wall-clock so the run can persist completed work instead of waiting for Actions
-    # to SIGTERM the whole process. The timeout is base + per-audio-hour; <=0 disables it.
+    # to SIGTERM the whole process. The timeout is (base + per-audio-hour) * safety margin;
+    # <=0 base/per-hour disables it.
     asr_timeout_base_seconds: float = 15 * 60
     asr_timeout_per_hour_seconds: float = 30 * 60
+    # Headroom over the assumed real-time ratio baked into the two fields above. Run #32 (review/12
+    # §H6b) showed a real episode finishing at ratio=0.503 against a budget assuming ratio=0.5 —
+    # only ~3% of margin — so a slightly-slower-than-average transcription gets killed mid-flight
+    # even though it was never actually hung. 1.2 gives genuinely-progressing inference ~20% more
+    # runway before the per-item timeout (not the hard backstop) fires.
+    asr_timeout_safety_margin: float = 1.2
     # Monotonic deadline after which no new ASR item should start (285m in production). Active
     # inference is allowed to continue past this cutoff so completed work is not thrown away.
     asr_start_deadline: float | None = None
@@ -371,7 +378,9 @@ def _asr_configured_timeout_seconds(ctx: StageContext, duration_hours: float) ->
     configured = ctx.asr_timeout_base_seconds + max(0.0, duration_hours) * (
         ctx.asr_timeout_per_hour_seconds
     )
-    return configured if configured > 0 else None
+    if configured <= 0:
+        return None
+    return configured * max(1.0, ctx.asr_timeout_safety_margin)
 
 
 def _asr_remaining_backstop_seconds(ctx: StageContext) -> float | None:

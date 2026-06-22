@@ -769,6 +769,26 @@ class TestTranscriptStageASR:
 
         assert timeout == pytest.approx(25, abs=0.25)
 
+    def test_asr_timeout_applies_safety_margin_over_configured_budget(self, tmp_path):
+        ctx = _ctx(tmp_path)
+        ctx.asr_timeout_base_seconds = 120
+        ctx.asr_timeout_per_hour_seconds = 0
+        ctx.asr_timeout_safety_margin = 1.2
+
+        timeout = _asr_timeout_seconds(ctx, 1.0)
+
+        assert timeout == pytest.approx(144)
+
+    def test_asr_timeout_safety_margin_below_one_is_ignored(self, tmp_path):
+        ctx = _ctx(tmp_path)
+        ctx.asr_timeout_base_seconds = 120
+        ctx.asr_timeout_per_hour_seconds = 0
+        ctx.asr_timeout_safety_margin = 0.5
+
+        timeout = _asr_timeout_seconds(ctx, 1.0)
+
+        assert timeout == pytest.approx(120)
+
     def test_asr_runtime_log_uses_default_until_real_samples_and_rolls_previous_100(self, tmp_path):
         path = tmp_path / "asr_runtime_log.json"
         log = AsrRuntimeLog(path, default_ratio=0.75)

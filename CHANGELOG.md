@@ -16,6 +16,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **The per-episode ASR timeout now carries a configurable safety margin
+  (`asr_timeout_safety_margin`, default `1.2`).** ASR run #32 timed out and discarded a 3.4h
+  recording that was actively transcribing, not hung — a sibling episode from the same run
+  finished at ratio=0.503 against a budget computed assuming ratio 0.5, leaving only ~3% of
+  margin. The base+per-audio-hour budget is now multiplied by this margin (values <1.0 are
+  ignored) before being clamped to the existing hard backstop deadline, so routine variance no
+  longer kills genuinely-progressing inference. The hard backstop and timeout-backoff behavior are
+  unchanged.
 - **Audio shard assignment is duration-weighted and availability-aware.** Source-atomic Audio
   planning now sums the expected served duration of pending encodes whose media is available,
   recovered, or not yet classified, using the current Timeline first, then the last served duration,

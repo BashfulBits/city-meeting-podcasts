@@ -1382,6 +1382,7 @@ def _build_impl(
         asr_timeout_base_seconds=float(defaults.get("asr_timeout_base_minutes", 15)) * 60,
         asr_timeout_per_hour_seconds=float(defaults.get("asr_timeout_per_audio_hour_minutes", 30))
         * 60,
+        asr_timeout_safety_margin=float(defaults.get("asr_timeout_safety_margin", 1.2)),
         asr_start_deadline=asr_start_deadline if lane in {"transcribe", "align"} else deadline,
         asr_deadline=asr_backstop_deadline if lane in {"transcribe", "align"} else deadline,
         asr_timeout_budget_reserve_seconds=float(
