@@ -310,10 +310,18 @@ class TestProbeDurationUrl:
             finally:
                 events.append(f"exit:{name}")
 
+        def host_slot(*_args, **_kwargs):
+            """Return the recorded process-local host slot."""
+            return held("host")
+
+        def distributed_slots(*_args, **_kwargs):
+            """Return the recorded cross-shard distributed lease."""
+            return held("distributed")
+
         host_limiter = MagicMock()
-        host_limiter.slot.side_effect = lambda *a, **k: held("host")
+        host_limiter.slot.side_effect = host_slot
         lease_pool = MagicMock()
-        lease_pool.slots.side_effect = lambda *a, **k: held("distributed")
+        lease_pool.slots.side_effect = distributed_slots
 
         with (
             patch("citypods.concat.HOST_LIMITER", host_limiter),
