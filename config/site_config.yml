@@ -186,6 +186,10 @@ defaults:
   # GitHub Actions to terminate the whole process with exit 143.
   asr_timeout_base_minutes: 15
   asr_timeout_per_audio_hour_minutes: 30
+  # Headroom over the base+per-hour budget above. Real run telemetry has shown completions at
+  # ratio~0.503 against a budget assuming ratio 0.5 (~3% margin) — too tight to absorb routine
+  # variance (harder audio, runner contention) without killing genuinely-progressing inference.
+  asr_timeout_safety_margin: 1.2
   asr_timeout_budget_reserve_minutes: 1
   # Local/in-process faster-whisper memory-safety ceiling. This is independent from the rolling
   # runtime estimator above: external dispatch may accept recordings of any duration, but a known
