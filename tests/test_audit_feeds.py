@@ -142,7 +142,7 @@ def test_reconcile_does_not_autoclose_meetings_url_with_needs_human_verification
             "number": 77,
             "title": "[feed-health] somecity: meetings-url-dead",
             "body": "x",
-            "labels": [{"name": "needs-human-verification"}],
+            "labels": [{"name": "needs:human-verification"}],
         }
     }
     calls = _run_reconcile(findings=[], existing_issues=existing)
@@ -170,7 +170,7 @@ def test_reconcile_closes_obsolete_inconclusive_meetings_url_issue():
             "number": 77,
             "title": "[feed-health] somecity: meetings-url-dead",
             "body": "meetings_url returned HTTP 403: https://x.gov/meetings",
-            "labels": [{"name": "needs-human-verification"}],
+            "labels": [{"name": "needs:human-verification"}],
         }
     }
     calls = _run_reconcile(findings=[], existing_issues=existing)
