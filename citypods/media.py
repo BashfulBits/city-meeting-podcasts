@@ -1336,7 +1336,12 @@ class CommandFfmpeg:
         if self.phase_gate is not None:
             acquired = self.phase_gate.acquire(kind=kind, label=label, stop=stop)
             if not acquired:
-                raise subprocess.TimeoutExpired(["ffmpeg", label], self.timeout_seconds)
+                # acquire() only returns False because ``stop`` fired while queued for a gate
+                # slot — not a subprocess hang, so this must not surface as a 2700s ffmpeg
+                # timeout. StopRequested routes it to the same skipped_budget / retry-next-run
+                # path as the other coordination waits (host rate limit, distributed lease,
+                # source cache).
+                raise StopRequested(f"native work gate wait for {label!r} stopped")
         try:
             return run()
         finally:
