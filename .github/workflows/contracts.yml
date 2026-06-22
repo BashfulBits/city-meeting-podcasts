@@ -62,9 +62,28 @@ jobs:
           done
           echo "Timed out after 2 hours. Proceeding anyway."
 
+      # Fail fast if the proxy secrets are missing/empty: without them the production fetch path
+      # silently self-disables the Worker fallback, so the media-fetch check would revert to the
+      # known direct-fetch 403 and report a false break instead of testing the real path.
+      - name: Verify Granicus proxy secrets are configured
+        env:
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+        run: |
+          if [ -z "$GRANICUS_PROXY_BASE_URL" ] || [ -z "$GRANICUS_PROXY_TOKEN" ]; then
+            echo "::error::GRANICUS_PROXY_BASE_URL and GRANICUS_PROXY_TOKEN must both be set as repo secrets; the media-fetch contract check depends on the Worker fallback path."
+            exit 1
+          fi
+
+      # Granicus 403s our User-Agent on direct CDN fetches; the production fetch path falls back to
+      # the Cloudflare Worker proxy when these are set (citypods.media._worker_fallback_for_403).
+      # Wire them in here so the media-fetch check exercises the same path a real audio run uses —
+      # a failure then means upstream *or* the proxy genuinely broke, not the known direct-fetch 403.
       - name: Probe endpoints + reconcile issues
         env:
           GH_TOKEN: ${{ github.token }}
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
         run: >-
           PYTHONPATH=. python scripts/check_endpoints.py --issues
           ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && '--all' || '' }}
