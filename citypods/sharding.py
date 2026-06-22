@@ -18,8 +18,9 @@ from typing import Any
 from citypods.asr import asr_initial_prompt, asr_spec_hash
 from citypods.models import City
 from citypods.records import (
+    AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS,
+    estimate_audio_shard_work,
     load_records,
-    pending_audio_work,
     pending_transcribe_items,
     record_to_episode,
     records_path,
@@ -151,10 +152,10 @@ def create_shard_plan(
 
     def _weight(key: str, city: City) -> float:
         if not records_path(state_dir, key).exists():
-            return 1.0
+            return AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS if lane == "audio" else 1.0
         if lane == "audio":
             return float(
-                pending_audio_work(
+                estimate_audio_shard_work(
                     state_dir,
                     key,
                     extract_audio=city.extract_audio,

@@ -206,6 +206,23 @@ def test_audio_plan_stays_source_atomic(tmp_path):
     assert owned_uids is None  # source-atomic: own every uid in each owned source
 
 
+def test_audio_plan_weights_never_crawled_source_as_unknown_duration(tmp_path):
+    from citypods.records import AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS
+
+    city = _city("new", "https://new")
+    key = source_key(city)
+    plan = create_shard_plan(
+        [city],
+        tmp_path,
+        lane="audio",
+        num_shards=1,
+        defaults={},
+        asr_pipeline_version="3",
+    )
+
+    assert plan.weights[key] == AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS
+
+
 def test_caught_up_source_contributes_no_episode_entries(tmp_path):
     # A synced source at the current ASR version is not pending — it drops out of the plan.
     cities = [_city("done", "https://done")]
