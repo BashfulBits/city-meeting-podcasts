@@ -143,6 +143,20 @@ def test_audio_plan_colocates_distinct_source_keys_for_one_entity(tmp_path):
         _entity_city("combined", "https://example.test/view/1"),
         _entity_city("board", "https://example.test/view/2"),
     ]
+    cities[0].source = {
+        "feed_urls": [
+            "https://example.test/view/1",
+            "https://example.test/view/2",
+        ]
+    }
+    cities[1].source = {
+        "feed_urls": [
+            "https://example.test/view/1",
+            "https://example.test/view/2",
+            "https://example.test/view/3",
+        ],
+        "body": "Audit Committee",
+    }
     keys = [source_key(city) for city in cities]
     assert keys[0] != keys[1]
 
