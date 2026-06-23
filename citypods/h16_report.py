@@ -299,7 +299,7 @@ def to_markdown(report: dict) -> str:
                 f"{row['worker_failures']} | {row['truncations']} |"
             )
     else:
-        lines.append("| _none observed_ | insufficient_activity | 0 | 0 | 0/0 | 0 | 0 | 0 | 0 |")
+        lines.append("| _none observed_ | insufficient_activity | 0 | 0 | 0/0 | 0 | 0 |")
 
     criteria = report["criteria"]
     ceiling = criteria["concurrency_ceiling"]

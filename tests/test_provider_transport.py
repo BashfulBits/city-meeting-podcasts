@@ -89,3 +89,12 @@ def test_invalid_direct_fetch_outcome_rejected():
     except ValueError:
         return
     raise AssertionError("expected ValueError for unsupported outcome")
+
+
+def test_invalid_worker_fallback_outcome_rejected():
+    telemetry = ProviderTransportTelemetry(["granicus.com"])
+    try:
+        telemetry.record_worker_fallback([FORT_WORTH], outcome="nope")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for unsupported worker fallback outcome")

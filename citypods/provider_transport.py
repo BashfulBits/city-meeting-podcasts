@@ -53,13 +53,16 @@ class ProviderTransportTelemetry:
         """Count one Granicus Worker fallback attempt and its outcome on the tenant scope.
 
         ``outcome`` is ``"success"`` or ``"failure"``; per scope, ``worker_fallback_attempts``
-        always equals ``successes`` + ``failures``. Scopes without a configured domain (non-Granicus
-        URLs) are ignored, like the other ``record_*`` methods.
+        always equals ``successes`` + ``failures`` (the attempt and outcome counters are bumped
+        under one lock so a concurrent ``telemetry()`` read never sees them out of step). Scopes
+        without a configured domain (non-Granicus URLs) are ignored, like the other ``record_*``
+        methods.
         """
+        if outcome not in {"success", "failure"}:
+            raise ValueError(f"unsupported worker fallback outcome: {outcome}")
         field = "worker_fallback_successes" if outcome == "success" else "worker_fallback_failures"
         for _domain, tenant_key in self._domain_tenant_pairs(self._scope_keys(urls)):
-            self._increment(tenant_key, "worker_fallback_attempts")
-            self._increment(tenant_key, field)
+            self._increment(tenant_key, "worker_fallback_attempts", field)
 
     def record_direct_fetch(self, urls: Sequence[str], *, outcome: str) -> None:
         """Count a direct Granicus fetch outcome on each configured tenant scope."""
@@ -97,10 +100,11 @@ class ProviderTransportTelemetry:
                     best = domain
         return best
 
-    def _increment(self, key: str, field: str) -> None:
+    def _increment(self, key: str, *fields: str) -> None:
         with self._lock:
             values = self._telemetry.setdefault(key, {})
-            values[field] = int(values.get(field, 0)) + 1
+            for field in fields:
+                values[field] = int(values.get(field, 0)) + 1
 
 
 def _tenant_for(parts, domain: str) -> str | None:
