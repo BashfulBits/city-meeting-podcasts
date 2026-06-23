@@ -111,8 +111,12 @@ jobs:
             gh issue edit "$EXISTING" --body-file gc-audio/issue-body.md
             echo "Updated GC issue #$EXISTING"
           else
-            gh issue create --title "$TITLE" --label operations --body-file gc-audio/issue-body.md
-            echo "Opened a new GC issue"
+            # Create first, then label as a best-effort step: a missing/renamed label must never
+            # drop the report (the original `operations` label did not exist — use the repo taxonomy).
+            URL=$(gh issue create --title "$TITLE" --body-file gc-audio/issue-body.md)
+            echo "Opened a new GC issue: $URL"
+            gh issue edit "$URL" --add-label "area:ops" --add-label "type:operations" \
+              || echo "::warning title=GC issue label::could not add labels (issue still created)"
           fi
 
       # Any manual apply run → close the rolling issue if one is open (the orphans it tracked are
