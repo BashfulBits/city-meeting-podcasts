@@ -168,37 +168,41 @@ def test_legacy_artifact_reuse_is_not_a_mismatch(tmp_path):
     }
 
 
-def test_legacy_artifact_with_named_recipe_still_validated(tmp_path):
-    # A named loudness/processing recipe forces a real re-encode (legacy artifacts are invalid),
-    # so the legacy exemption must NOT apply: a stale ``legacy`` key under an active recipe is a
-    # genuine mismatch.
+def test_upload_failure_retaining_prior_artifact_is_not_a_mismatch(tmp_path):
+    # GH#353 / Audio runs 54 & 56 (the real root cause): an episode's recipe changed this run and
+    # its re-encode probed a new served duration, then the upload failed transiently (B2
+    # ServiceUnavailable). materialize_audio left the record pointing at the prior, valid artifact
+    # (old spec) while the new probed duration had already been written. The duration change trips
+    # the artifact-changed branch, but key/spec/url were not rewritten this run, so the divergence
+    # from the freshly-recomputed expected spec is a pending re-encode, not corruption — and must
+    # not be reported as a mismatch.
     city = _city()
     ep = _episode()
     storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
-    tracker = H16IdentityTracker(
-        storage=storage,
-        max_kbps=96,
-        loudness_profile="podcast",
-        processing_profile="",
-        enabled=True,
-    )
-    ep.audio_spec_hash = "legacy"
-    ep.audio_key = "granicus/example-tx/stable-uid.m4a"
-    ep.hosted_audio_url = "https://cdn.example/granicus/example-tx/stable-uid.m4a"
-    ep.audio_duration_served = 10.0
+    # Prior run's artifact, current at capture (recipe == artifact spec).
+    spec, key, url = _expected(city, ep, storage)
+    ep.audio_spec_hash = spec
+    ep.audio_key = key
+    ep.hosted_audio_url = url
+    ep.audio_duration_served = 3600.0
+    tracker = _tracker(storage)
     tracker.capture(city, [ep])
 
-    ep.audio_duration_served = 3599.5
+    # This run: a pre-audio stage changed the recipe (so expected spec now differs), the re-encode
+    # probed a new served duration, but the upload failed so the artifact pointer stayed put.
+    ep.chapters = [{"start": 0, "title": "Call to order"}]
+    ep.audio_duration_served = 3599.2
     tracker.verify(source_key(city), [ep])
 
-    cats = set(tracker.summary()["mismatch_categories"])
-    assert {"audio_spec_hash", "audio_key", "audio_url"} <= cats
+    # Sanity: the recipe really did change, so a naive content-addressed recompute would diverge.
+    assert audio_spec_hash(ep, max_kbps=96) != spec
+    assert tracker.summary()["mismatches"] == 0
 
 
 def test_legacy_marker_with_changed_key_is_still_a_mismatch(tmp_path):
-    # The legacy exemption covers only genuine reuse (key/url unchanged). A record that still
-    # carries the ``legacy`` spec but whose key/url actually changed is anomalous — reuse leaves
-    # all three untouched — so it must still be reported, not silently exempted.
+    # The exemption covers only artifacts UNCHANGED across the media chain. A record whose key/url
+    # actually changed this run WAS (re)materialized, so its content-addressed identity is checked:
+    # a ``legacy`` spec paired with a changed key/url is reported, not silently exempted.
     city = _city()
     ep = _episode()
     storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")

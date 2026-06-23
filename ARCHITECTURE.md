@@ -329,9 +329,10 @@ Hard-won facts that bite anyone adding/debugging providers:
   verifies the configured 1-local / 2-distributed ceiling, and writes JSON plus a GitHub summary.
   The Audio lane also snapshots every Granicus record immediately after provider/persisted-record
   merge, then verifies post-media stable UID/GUID, official/source URLs, source duration, and
-  deterministic content-addressed artifact identity — exempting reused migrated `legacy` artifacts,
-  whose pre-content-addressing key/spec/url legitimately differ from the recompute (GH#353). Missing
-  shard or Granicus activity yields
+  deterministic content-addressed artifact identity — validating key/spec/url only for an artifact
+  this run actually re-materialized, so an artifact retained unchanged across a transient (a
+  deferred or upload-failed re-encode, or a reused `legacy` object) is not misreported (GH#353).
+  Missing shard or Granicus activity yields
   `insufficient_activity`; transport, identity, concurrency, or secret findings yield `fail`. The
   report is observational and does not gate, mutate, or invalidate audio.
 - **All media subprocess surfaces use generic credential redaction.** Before ffmpeg/ffprobe stderr,
