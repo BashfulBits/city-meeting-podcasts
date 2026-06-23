@@ -262,6 +262,37 @@ def test_legacy_marker_with_changed_key_is_still_a_mismatch(tmp_path):
     assert {"audio_key", "audio_url"} <= set(summary["mismatch_categories"])
 
 
+def test_coalesced_sibling_artifact_is_not_a_mismatch(tmp_path):
+    # GH#421 follow-up / Audio #58: a duplicate meeting coalesced (GH#421) makes the combined feed's
+    # record adopt the canonical SIBLING source's shared object — same uid + spec, different source
+    # prefix, and a re-probed served duration. That is metadata-only; it must not be reported (in
+    # particular it must not trip `current_artifact_changed`).
+    city = _city()
+    ep = _episode()
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
+    spec, key, url = _expected(city, ep, storage)
+    ep.audio_spec_hash = spec
+    ep.audio_key = key
+    ep.hosted_audio_url = url
+    ep.audio_duration_served = 3599.5  # this feed's own probed duration at capture
+    tracker = _tracker(storage)
+    tracker.capture(city, [ep])
+
+    # This run: coalesced onto a sibling source prefix (same uid + spec), duration re-probed.
+    sibling_key = f"granicus/0123456789ab/{ep.uid}-{spec}.m4a"
+    ep.audio_key = sibling_key
+    ep.hosted_audio_url = storage.public_url(sibling_key)
+    ep.audio_duration_served = 3599.4
+    tracker.verify(source_key(city), [ep])
+
+    assert tracker.summary() == {
+        "checked": 1,
+        "mismatches": 0,
+        "artifact_checked": 1,
+        "mismatch_categories": {},
+    }
+
+
 def test_non_granicus_records_are_not_reported(tmp_path):
     city = _city()
     city.provider = "swagit"

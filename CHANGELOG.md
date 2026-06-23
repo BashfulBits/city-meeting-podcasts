@@ -286,6 +286,27 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **The H16 identity check no longer false-fails on coalesced duplicate source views, and a coalesced
+  follower keeps a valid served duration ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)
+  follow-up).** Audio run #58 — the first with the GH#421 duplicate-coalescing active — failed the
+  `identity` criterion on 20 Fort Worth episodes. Coalescing makes a combined feed's record adopt the
+  per-board feed's *canonical* shared object (same `uid` + spec, different source prefix). The
+  `_artifact_matches_recipe` exemption already tolerated that for `audio_key`/`audio_url`, but
+  `current_artifact_changed` still fired on the accompanying served-duration delta. That category now
+  fires only when the artifact no longer resolves to a valid content-addressed object for the recipe —
+  a re-probe or coalesced-sibling adoption is metadata-only, not a changed artifact. Separately, a
+  *credited* canonical winner can carry no probed duration; `_apply_artifact` (`citypods/media.py`) no
+  longer downgrades a follower to `0s` by adopting that — it keeps the shared duration when present and
+  otherwise backfills from the episode's own timeline/source (which fixes the 5 episodes that also
+  tripped `served_duration`). Diagnostics + an in-place metadata fix only — no audio bytes, pipeline
+  versions, or stored artifacts change, so **no backfill**.
+- **The H16 `concurrency_ceiling` criterion's expected ceiling is now configurable.** It was hard-coded
+  to the GH#300 `1`-local / `2`-distributed envelope, so deliberately tuning Granicus concurrency (e.g.
+  bumping `provider_distributed_leases.granicus.com.slots`) made the acceptance report `fail` for an
+  unrelated reason. A new `provider_audio_concurrency_ceiling` config key (default `1`/`2`) declares the
+  intended ceiling; the criterion asserts the operative `provider_rate_limits` + distributed `slots`
+  match it, still catching an accidental drift between the two operative knobs. Update the declared
+  ceiling in lockstep when tuning.
 - **A failed audio upload no longer leaves the record partially mutated, and the H16 identity check
   no longer reports a false mismatch for any artifact retained across a transient failure
   ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** Audio runs #54 and

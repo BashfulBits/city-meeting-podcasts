@@ -646,6 +646,50 @@ def test_audio_artifact_cache_encodes_duplicate_source_views_once(tmp_path):
     assert len(list(store.list_objects(f"{city_a.provider}/"))) == 1
 
 
+def test_coalesced_follower_keeps_valid_served_duration(tmp_path):
+    # GH#421 follow-up / Audio #58: a credited canonical winner can carry no probed duration. A
+    # follower adopting the shared artifact must NOT regress to 0s — it backfills from its own
+    # timeline/source (the audio is identical across the recipe).
+    from citypods.media import AudioArtifact, AudioArtifactCache, audio_spec_hash
+
+    store = _store(tmp_path)
+    ff = FakeFfmpeg()
+    cache = AudioArtifactCache()
+    city = _city(slug="board")
+    ep = _ep("shared")
+    ep.duration = 3600  # the source declares a duration, so _served_duration can backfill
+    src = source_key(city)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    winner_key = f"{city.provider}/{src}/{ep.uid}-{spec}.m4a"
+    cache.register(city.provider, src, ep.uid)
+    # The canonical winner completed WITHOUT a probed duration (e.g. credited from storage).
+    cache.complete(
+        (city.provider, ep.uid, spec),
+        AudioArtifact(
+            key=winner_key,
+            spec=spec,
+            url=store.public_url(winner_key),
+            duration=None,
+            size=123,
+            encoded_at="2026-06-23T00:00:00+00:00",
+        ),
+    )
+
+    materialize_audio(
+        city,
+        [ep],
+        storage=store,
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        audio_artifact_cache=cache,
+    )
+
+    assert ep.audio_key == winner_key  # adopted the shared object
+    assert ep.audio_duration_served == pytest.approx(3600.0)  # NOT downgraded to None/0
+    assert ff.calls == []  # follower did not re-encode
+
+
 def test_global_queue_drain_is_bounded_by_sources_not_episodes(tmp_path):
     """Storage listings scale with the number of sources, not the number of queued episodes —
     the timing/operation-count contract from issue #344. Without ``hosted_keys_cache``, this same

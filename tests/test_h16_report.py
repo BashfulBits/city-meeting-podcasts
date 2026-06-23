@@ -2,7 +2,51 @@ from __future__ import annotations
 
 import json
 
-from citypods.h16_report import build_h16_report, to_markdown, write_h16_report
+from citypods.h16_report import (
+    _configured_ceilings,
+    build_h16_report,
+    to_markdown,
+    write_h16_report,
+)
+
+
+def _ceiling_config(tmp_path, *, slots: int, declared: str = "") -> object:
+    cfg = tmp_path / "site.yml"
+    cfg.write_text(
+        "provider_rate_limits:\n  granicus.com: 1\n"
+        f"provider_distributed_leases:\n  granicus.com:\n    slots: {slots}\n" + declared
+    )
+    return cfg
+
+
+def test_concurrency_ceiling_defaults_to_one_two(tmp_path):
+    # No declared ceiling → the historical 1-local / 2-distributed envelope is expected.
+    result = _configured_ceilings(_ceiling_config(tmp_path, slots=2))
+    assert result["status"] == "pass"
+    assert result["expected"] == {"process_local": 1, "distributed": 2}
+
+
+def test_concurrency_ceiling_accepts_declared_intent(tmp_path):
+    # A deliberate bump to slots=4 passes when the declared ceiling is updated in lockstep.
+    cfg = _ceiling_config(
+        tmp_path,
+        slots=4,
+        declared="provider_audio_concurrency_ceiling:\n  process_local: 1\n  distributed: 4\n",
+    )
+    result = _configured_ceilings(cfg)
+    assert result["status"] == "pass"
+    assert result["distributed"] == 4
+    assert result["expected"] == {"process_local": 1, "distributed": 4}
+
+
+def test_concurrency_ceiling_flags_drift_from_declared(tmp_path):
+    # Operative slots=4 but the declared intent is still 2 → caught (a typo in one of the knobs).
+    cfg = _ceiling_config(
+        tmp_path,
+        slots=4,
+        declared="provider_audio_concurrency_ceiling:\n  process_local: 1\n  distributed: 2\n",
+    )
+    assert _configured_ceilings(cfg)["status"] == "fail"
 
 
 def _write_config(path) -> None:
