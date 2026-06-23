@@ -147,8 +147,16 @@ class H16IdentityTracker:
             # condition; a named recipe would force a re-encode and a real content-addressed key.)
             # GH#353: this is the run-54 false positive — a legacy episode whose served duration
             # was first backfilled that run tripped the artifact-changed branch below.
-            legacy_ok = ep.audio_spec_hash == "legacy" and not (
-                self._loudness_profile or self._processing_profile
+            # Exempt only *genuine* reuse: the artifact must have carried the legacy marker at
+            # capture and still carry it, with its key/url unchanged across the media chain. A
+            # ``legacy`` spec paired with a changed key/url is anomalous (materialize_audio's reuse
+            # path leaves all three untouched) and must still be reported.
+            legacy_ok = (
+                ep.audio_spec_hash == "legacy"
+                and before.audio_spec_hash == "legacy"
+                and ep.audio_key == before.audio_key
+                and ep.hosted_audio_url == before.audio_url
+                and not (self._loudness_profile or self._processing_profile)
             )
             artifact_checked = False
 

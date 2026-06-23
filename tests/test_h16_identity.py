@@ -195,6 +195,30 @@ def test_legacy_artifact_with_named_recipe_still_validated(tmp_path):
     assert {"audio_spec_hash", "audio_key", "audio_url"} <= cats
 
 
+def test_legacy_marker_with_changed_key_is_still_a_mismatch(tmp_path):
+    # The legacy exemption covers only genuine reuse (key/url unchanged). A record that still
+    # carries the ``legacy`` spec but whose key/url actually changed is anomalous — reuse leaves
+    # all three untouched — so it must still be reported, not silently exempted.
+    city = _city()
+    ep = _episode()
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
+    ep.audio_spec_hash = "legacy"
+    ep.audio_key = "granicus/example-tx/stable-uid.m4a"
+    ep.hosted_audio_url = "https://cdn.example/granicus/example-tx/stable-uid.m4a"
+    ep.audio_duration_served = 10.0
+    tracker = _tracker(storage)
+    tracker.capture(city, [ep])
+
+    # Key/url drift away from the captured legacy values while the spec marker stays "legacy".
+    ep.audio_key = "granicus/example-tx/stable-uid-deadbeef.m4a"
+    ep.hosted_audio_url = "https://cdn.example/granicus/example-tx/stable-uid-deadbeef.m4a"
+    tracker.verify(source_key(city), [ep])
+
+    summary = tracker.summary()
+    assert summary["mismatches"] == 1
+    assert {"audio_key", "audio_url"} <= set(summary["mismatch_categories"])
+
+
 def test_non_granicus_records_are_not_reported(tmp_path):
     city = _city()
     city.provider = "swagit"
