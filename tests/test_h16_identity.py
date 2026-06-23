@@ -140,6 +140,85 @@ def test_identity_drift_reports_bounded_categories(tmp_path):
     }
 
 
+def test_legacy_artifact_reuse_is_not_a_mismatch(tmp_path):
+    # GH#353 / Audio run 54: a migrated legacy artifact is reused as-is by materialize_audio
+    # (its ``legacy_ok`` path) — the record keeps ``audio_spec_hash == "legacy"`` and its
+    # legacy key/url, which deliberately do NOT match the content-addressed recompute. The run
+    # that first backfills the served duration trips the artifact-changed branch; that must not
+    # be reported as an identity mismatch.
+    city = _city()
+    ep = _episode()
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
+    ep.audio_spec_hash = "legacy"
+    ep.audio_key = "granicus/example-tx/stable-uid.m4a"
+    ep.hosted_audio_url = "https://cdn.example/granicus/example-tx/stable-uid.m4a"
+    ep.audio_duration_served = None  # not yet backfilled at capture
+    tracker = _tracker(storage)
+    tracker.capture(city, [ep])
+
+    # The reuse pass backfills the served duration this run (one-shot); key/spec/url stay legacy.
+    ep.audio_duration_served = 3599.5
+    tracker.verify(source_key(city), [ep])
+
+    assert tracker.summary() == {
+        "checked": 1,
+        "mismatches": 0,
+        "artifact_checked": 1,
+        "mismatch_categories": {},
+    }
+
+
+def test_legacy_artifact_with_named_recipe_still_validated(tmp_path):
+    # A named loudness/processing recipe forces a real re-encode (legacy artifacts are invalid),
+    # so the legacy exemption must NOT apply: a stale ``legacy`` key under an active recipe is a
+    # genuine mismatch.
+    city = _city()
+    ep = _episode()
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
+    tracker = H16IdentityTracker(
+        storage=storage,
+        max_kbps=96,
+        loudness_profile="podcast",
+        processing_profile="",
+        enabled=True,
+    )
+    ep.audio_spec_hash = "legacy"
+    ep.audio_key = "granicus/example-tx/stable-uid.m4a"
+    ep.hosted_audio_url = "https://cdn.example/granicus/example-tx/stable-uid.m4a"
+    ep.audio_duration_served = 10.0
+    tracker.capture(city, [ep])
+
+    ep.audio_duration_served = 3599.5
+    tracker.verify(source_key(city), [ep])
+
+    cats = set(tracker.summary()["mismatch_categories"])
+    assert {"audio_spec_hash", "audio_key", "audio_url"} <= cats
+
+
+def test_legacy_marker_with_changed_key_is_still_a_mismatch(tmp_path):
+    # The legacy exemption covers only genuine reuse (key/url unchanged). A record that still
+    # carries the ``legacy`` spec but whose key/url actually changed is anomalous — reuse leaves
+    # all three untouched — so it must still be reported, not silently exempted.
+    city = _city()
+    ep = _episode()
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
+    ep.audio_spec_hash = "legacy"
+    ep.audio_key = "granicus/example-tx/stable-uid.m4a"
+    ep.hosted_audio_url = "https://cdn.example/granicus/example-tx/stable-uid.m4a"
+    ep.audio_duration_served = 10.0
+    tracker = _tracker(storage)
+    tracker.capture(city, [ep])
+
+    # Key/url drift away from the captured legacy values while the spec marker stays "legacy".
+    ep.audio_key = "granicus/example-tx/stable-uid-deadbeef.m4a"
+    ep.hosted_audio_url = "https://cdn.example/granicus/example-tx/stable-uid-deadbeef.m4a"
+    tracker.verify(source_key(city), [ep])
+
+    summary = tracker.summary()
+    assert summary["mismatches"] == 1
+    assert {"audio_key", "audio_url"} <= set(summary["mismatch_categories"])
+
+
 def test_non_granicus_records_are_not_reported(tmp_path):
     city = _city()
     city.provider = "swagit"

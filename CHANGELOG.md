@@ -246,6 +246,22 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **The H16 identity check no longer reports a false mismatch for reused legacy audio artifacts
+  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** Audio run #54 failed
+  the `identity` criterion with a single `1/939` mismatch (`audio_key` + `audio_spec_hash` +
+  `audio_url`, with neither `served_duration` nor `current_artifact_changed` firing). Root cause: a
+  migrated legacy artifact is reused as-is by `materialize_audio`'s `legacy_ok` path
+  (`citypods/media.py`) — the record keeps its pre-content-addressing `audio_spec_hash == "legacy"`
+  key/url and is never re-encoded while no explicit loudness/processing recipe is active — but
+  `H16IdentityTracker.verify` (`citypods/h16_identity.py`) recomputed the content-addressed
+  `_expected()` identity and flagged the deliberate divergence. The run that first backfilled that
+  episode's served duration tripped the artifact-changed branch, which is why exactly one episode in
+  one run mismatched (runs #51/#53/#55 were clean) and why the lease `stale_leases_reaped=1`
+  correlation was coincidental. `verify` now mirrors the exact `legacy_ok` reuse condition and skips
+  the key/spec/url comparison for reused legacy artifacts, while still checking `served_duration` and
+  partial-artifact state; a named loudness/processing recipe (which forces a real re-encode) still
+  validates fully. Diagnostics-and-checks only — no audio bytes, pipeline versions, or stored
+  artifacts change, so **no backfill**.
 - **Swagit concat probes no longer deadlock the global Granicus media pool.** The concat duration
   probe now acquires the process-local host limiter before the cross-shard distributed lease,
   matching every other ffmpeg/ffprobe media path and the #342 lock-order invariant. The reversed
