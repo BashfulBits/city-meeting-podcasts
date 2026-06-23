@@ -11,7 +11,7 @@ site_notice: "Feed URLs and details may change before launch — don't rely on t
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
 request_delay_seconds: 0.1               # politeness sleep per worker thread
 max_workers: 8
-max_encodes_per_source: 1                # parallel episode workers within one source (silence + encode)
+max_encodes_per_source: 2                # parallel episode workers within one source (silence + encode)
 
 # Per-provider (per-host) rate limiting (issue #39 / per-provider rate limits). Caps the number of
 # SIMULTANEOUS in-flight requests to each provider host across ALL worker threads in a process —
