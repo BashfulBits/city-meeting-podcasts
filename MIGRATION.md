@@ -68,13 +68,24 @@ build (`_prune_stale_dirs`), so removed feeds stop serving rather than lingering
 
 ## Orphaned audio cleanup
 
-Because audio is content-addressed, regenerating a file (e.g. adding chapters) leaves the old
-object unreferenced. Reap orphans with:
+Because audio is content-addressed, regenerating a file (e.g. adding chapters) or coalescing a
+duplicate source view (GH#421) leaves the old object unreferenced.
 
-```
-PYTHONPATH=. python scripts/gc_audio.py            # dry-run: list orphans
-PYTHONPATH=. python scripts/gc_audio.py --apply    # delete (skips objects < 7 days old)
+**Scheduled (recommended).** The **Audio orphan GC** workflow (`.github/workflows/audio-gc.yml`)
+runs weekly as a **dry-run**: it restores the bucket state, finds orphans, and — if any exist —
+opens/updates one rolling *operations* issue with a per-city summary table (file count + size per
+city, plus a grand total) and attaches the full object list (`orphans.tsv`) as a run artifact. It
+never deletes on a schedule. To actually reclaim the space, trigger the workflow manually
+(**Run workflow**) with **`apply = true`**.
+
+**Manual / local.** Run the script directly:
+
+```bash
+PYTHONPATH=. python scripts/gc_audio.py --pull-state              # dry-run: list orphans
+PYTHONPATH=. python scripts/gc_audio.py --pull-state --apply      # delete (skips objects < 7 days old)
+PYTHONPATH=. python scripts/gc_audio.py --pull-state --out gc/    # dry-run + write the report files
 ```
 
-It deletes only objects not referenced by any record store and older than `--min-age-days`
-(default 7), so an object written by an in-flight build is never reaped prematurely.
+`--pull-state` restores the durable bucket state first so the live set is current (a no-op for the
+sync-less local backend). It deletes only objects not referenced by any record store and older than
+`--min-age-days` (default 7), so an object written by an in-flight build is never reaped prematurely.

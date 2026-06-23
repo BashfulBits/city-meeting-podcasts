@@ -62,6 +62,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   backfill behavior are unchanged.
 
 ### Added
+- **A scheduled Audio orphan-GC workflow reports reclaimable storage and only deletes on demand
+  ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421) follow-up).** Until now
+  `scripts/gc_audio.py` was operator-run only, so superseded content-addressed objects (regenerated
+  artifacts, retired recipes, and the now-coalesced duplicate source views) accumulated until
+  someone swept by hand. A new `audio-gc.yml` workflow runs weekly as a **dry-run**: it restores the
+  bucket state, finds objects no record references, and — when any exist — opens/updates one rolling
+  *operations* issue with a per-city summary table (file count + total size per city, plus a grand
+  total) and attaches the full object list (`orphans.tsv`) as a run artifact. It never deletes on a
+  schedule; reclaiming is a manual **Run workflow** with `apply = true`. `gc_audio.py` gains
+  `--pull-state` (restore the durable state so the live set is current before sweeping), `--out`
+  (write the tsv/json/markdown report), and per-city attribution via `source_key → city` entity;
+  storage backends gain `iter_objects` (a size-bearing listing, free from S3/B2/R2 pagination and the
+  local stat). The GC live set, `--min-age-days` floor, and `state/` exclusion are unchanged.
 - **Weekly empty-recording review digest emits bounded audio evidence
   ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), H16 PR3b).** A new
   `availability-digest.yml` workflow (`scripts/availability_digest.py`) scans the persisted
