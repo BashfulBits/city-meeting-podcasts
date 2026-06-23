@@ -99,6 +99,18 @@ def source_key(city: City) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
+def source_family_key(city: City) -> str:
+    """Shard family for configured feed views of one government entity.
+
+    The entity reference remains stable when one per-board feed needs a wider ``feed_urls`` set
+    than the combined feed. Configurations without an entity retain source-key behavior.
+    """
+    if city.city_entity:
+        raw = f"{city.provider}|entity:{city.city_entity}"
+        return hashlib.sha1(raw.encode()).hexdigest()[:12]
+    return source_key(city)
+
+
 def shard_assignment(
     source_keys: Iterable[str], num_shards: int, *, weights: Mapping[str, float] | None = None
 ) -> dict[str, int]:

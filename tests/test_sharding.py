@@ -28,6 +28,12 @@ def _city(slug: str, feed_url: str) -> City:
     )
 
 
+def _entity_city(slug: str, feed_url: str) -> City:
+    city = _city(slug, feed_url)
+    city.city_entity = "shared-city"
+    return city
+
+
 def _hosted_episode(uid: str, duration: float) -> Episode:
     ep = Episode(
         guid=uid,
@@ -130,6 +136,26 @@ def test_transcribe_plan_colocates_and_charges_duplicate_stable_meeting_once(tmp
     episode_keys = _planned_episode_keys(keys, "shared")
     assert {plan.assignment[key] for key in episode_keys} == {plan.assignment[episode_keys[0]]}
     assert sorted(plan.weights[key] for key in episode_keys) == [0.0, 2 * 3600]
+
+
+def test_audio_plan_colocates_distinct_source_keys_for_one_entity(tmp_path):
+    cities = [
+        _entity_city("combined", "https://example.test/view/1"),
+        _entity_city("board", "https://example.test/view/2"),
+    ]
+    keys = [source_key(city) for city in cities]
+    assert keys[0] != keys[1]
+
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="audio",
+        num_shards=4,
+        defaults={},
+        asr_pipeline_version="3",
+    )
+
+    assert {plan.assignment[key] for key in keys} == {plan.assignment[keys[0]]}
 
 
 def test_transcribe_plan_does_not_dedupe_same_uid_with_different_audio_recipe(tmp_path):

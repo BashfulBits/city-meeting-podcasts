@@ -87,6 +87,7 @@ from citypods.bodies import body_key, canonical_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
 from citypods.media import (
+    AudioArtifactCache,
     CircuitOpenMediaFetchError,
     HostedKeysCache,
     MaterializeStats,
@@ -248,6 +249,8 @@ class StageContext:
     # materialize_audio() would re-list the same source's storage prefix once per episode instead
     # of once per source/pass.
     hosted_keys_cache: HostedKeysCache | None = None
+    # Run-local audio coalescing for stable meetings exposed through distinct source views.
+    audio_artifact_cache: AudioArtifactCache = field(default_factory=AudioArtifactCache)
     # Admission guard for expensive native work. It waits for memory/CPU headroom before
     # starting another ffmpeg encode or ASR inference, preventing runner-level kills.
     resource_admission: ResourceAdmission | None = None
@@ -649,6 +652,7 @@ class AudioStage:
             memory_reservation=ctx.memory_reservation,
             rate_limit_circuit=ctx.rate_limit_circuit,
             hosted_keys_cache=ctx.hosted_keys_cache,
+            audio_artifact_cache=ctx.audio_artifact_cache,
         )
         return StageStats(
             self.name,

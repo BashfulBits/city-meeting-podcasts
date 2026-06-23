@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 from collections import Counter
 from dataclasses import dataclass
@@ -61,6 +62,22 @@ class H16IdentityTracker:
         )
         key = audio_object_key(city, ep, spec)
         return spec, key, self._storage.public_url(key)
+
+    def _artifact_matches_recipe(
+        self,
+        city: City,
+        uid: str,
+        spec: str,
+        key: str | None,
+        url: str | None,
+    ) -> bool:
+        """Accept the record's own prefix or a GH#421 coalesced sibling-source prefix."""
+        if self._storage is None or not key or not url:
+            return False
+        pattern = (
+            rf"^{re.escape(city.provider)}/[0-9a-f]{{12}}/{re.escape(uid)}-{re.escape(spec)}\.m4a$"
+        )
+        return bool(re.fullmatch(pattern, key)) and url == self._storage.public_url(key)
 
     def capture(self, city: City, episodes: list[Episode]) -> None:
         if not self._enabled or city.provider != "granicus":
@@ -132,8 +149,13 @@ class H16IdentityTracker:
             initial_current = (
                 initial_complete
                 and before.audio_spec_hash == before.expected_spec_hash
-                and before.audio_key == before.expected_key
-                and before.audio_url == before.expected_url
+                and self._artifact_matches_recipe(
+                    city,
+                    before.uid or ep.uid,
+                    before.expected_spec_hash,
+                    before.audio_key,
+                    before.audio_url,
+                )
                 and before.audio_duration_served is not None
                 and before.audio_duration_served > 0
             )
@@ -179,9 +201,11 @@ class H16IdentityTracker:
                 if not artifact_identity_unchanged:
                     if ep.audio_spec_hash != expected_spec:
                         categories.add("audio_spec_hash")
-                    if ep.audio_key != expected_key:
+                    artifact_matches_recipe = self._artifact_matches_recipe(
+                        city, ep.uid, expected_spec, ep.audio_key, ep.hosted_audio_url
+                    )
+                    if not artifact_matches_recipe:
                         categories.add("audio_key")
-                    if ep.hosted_audio_url != expected_url:
                         categories.add("audio_url")
                 if not ep.audio_duration_served or ep.audio_duration_served <= 0:
                     categories.add("served_duration")
@@ -189,9 +213,10 @@ class H16IdentityTracker:
                     initial_current
                     and expected_spec == before.expected_spec_hash
                     and (
-                        ep.audio_key != before.audio_key
-                        or ep.hosted_audio_url != before.audio_url
-                        or ep.audio_duration_served != before.audio_duration_served
+                        ep.audio_duration_served != before.audio_duration_served
+                        or not self._artifact_matches_recipe(
+                            city, ep.uid, expected_spec, ep.audio_key, ep.hosted_audio_url
+                        )
                     )
                 ):
                     categories.add("current_artifact_changed")

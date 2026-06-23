@@ -893,6 +893,10 @@ def _run_enrich_global_queue(
 
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
     candidates = _order_global_candidates(prepared, policy)
+    # Register every alias before worker submission so new duplicate artifacts choose one
+    # deterministic source prefix regardless of which candidate thread reaches AudioStage first.
+    for key, ep in candidates:
+        ctx.audio_artifact_cache.register(prepared[key]["city"].provider, key, ep.uid or ep.guid)
     print(
         f"[enrich] global queue: {len(prepared)} source(s), {len(candidates)} candidate episode(s)"
         f"{f', {len(errors)} fetch error(s)' if errors else ''}",

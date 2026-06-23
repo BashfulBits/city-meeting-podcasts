@@ -88,6 +88,25 @@ def test_new_artifact_must_use_deterministic_identity(tmp_path):
     assert tracker.summary()["artifact_checked"] == 1
 
 
+def test_coalesced_sibling_source_artifact_is_valid_identity(tmp_path):
+    city = _city()
+    ep = _episode()
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
+    tracker = _tracker(storage)
+    tracker.capture(city, [ep])
+
+    spec = audio_spec_hash(ep, max_kbps=96)
+    key = f"granicus/deadbeefcafe/{ep.uid}-{spec}.m4a"
+    ep.audio_spec_hash = spec
+    ep.audio_key = key
+    ep.hosted_audio_url = storage.public_url(key)
+    ep.audio_duration_served = 3600.0
+    tracker.verify(source_key(city), [ep])
+
+    assert tracker.summary()["mismatches"] == 0
+    assert tracker.summary()["artifact_checked"] == 1
+
+
 def test_deferred_recipe_change_does_not_claim_artifact_validation(tmp_path):
     city = _city()
     ep = _episode()

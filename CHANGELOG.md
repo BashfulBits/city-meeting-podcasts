@@ -16,6 +16,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Duplicate combined/per-board audio views now share one encode and one CAS object
+  ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)).** Some per-board
+  feeds use a wider `feed_urls` set than their city's combined feed, so stripping only the `body`
+  filter produces distinct `source_key`s for the same stable meeting. Audio shard planning now
+  keeps all source keys for one configured city entity on the same shard, and a thread-safe
+  run-local `(provider, stable uid, audio recipe)` cache lets the first successful alias supply its
+  artifact pointer to every follower. New duplicate work chooses one deterministic source prefix;
+  existing valid artifacts can be adopted as the shared winner, and superseded duplicate objects
+  become ordinary orphan-GC candidates once no record references them. Source keys, episode UIDs,
+  audio recipes, and pipeline versions are unchanged, so this causes **no catalog backfill or
+  re-encode storm**.
 - **The per-episode ASR timeout now carries a configurable safety margin
   (`asr_timeout_safety_margin`, default `1.2`).** ASR run #32 timed out and discarded a 3.4h
   recording that was actively transcribing, not hung — a sibling episode from the same run

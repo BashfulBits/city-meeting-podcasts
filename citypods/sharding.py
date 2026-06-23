@@ -25,6 +25,7 @@ from citypods.records import (
     record_to_episode,
     records_path,
     shard_assignment,
+    source_family_key,
     source_key,
 )
 
@@ -169,7 +170,24 @@ def create_shard_plan(
         return 1.0
 
     weights = {key: _weight(key, city) for key, city in source_city.items()}
-    assignment = shard_assignment(source_city, num_shards, weights=weights)
+    if lane == "audio":
+        # Distinct source keys for one entity must share a process so the run-local artifact cache
+        # can coalesce meetings exposed by both a combined and a per-board provider view (GH#421).
+        family_members: dict[str, list[str]] = {}
+        for key, city in source_city.items():
+            family_members.setdefault(source_family_key(city), []).append(key)
+        family_weights = {
+            family: sum(weights[key] for key in members)
+            for family, members in family_members.items()
+        }
+        family_assignment = shard_assignment(family_members, num_shards, weights=family_weights)
+        assignment = {
+            key: family_assignment[family]
+            for family, members in family_members.items()
+            for key in members
+        }
+    else:
+        assignment = shard_assignment(source_city, num_shards, weights=weights)
     return ShardPlan(
         lane=lane,
         num_shards=num_shards,
