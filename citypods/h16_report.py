@@ -6,7 +6,10 @@ import json
 import re
 from pathlib import Path
 
-REPORT_SCHEMA_VERSION = 1
+# 2: per-tenant rows dropped the rate-limit circuit fields (trips/deferred/recovery_probes/
+# recoveries) when the circuit breaker was removed (GH#353); the transport pass criterion is now
+# direct/Worker/truncation only.
+REPORT_SCHEMA_VERSION = 2
 _TENANT_PREFIX = "granicus.com/tenant:"
 _SECRET_PATTERNS = {
     "signed-query": re.compile(
@@ -184,20 +187,12 @@ def _tenant_results(telemetry: dict[str, dict[str, int | float]]) -> dict[str, d
         attempts = int(values.get("worker_fallback_attempts", 0))
         successes = int(values.get("worker_fallback_successes", 0))
         failures = int(values.get("worker_fallback_failures", 0))
-        trips = int(values.get("circuit_trips", 0))
-        deferred = int(values.get("circuit_deferred", 0))
         truncations = int(values.get("truncations", 0))
         activity = direct_successes + direct_403s + attempts
         status = "insufficient_activity"
         if activity:
             status = (
-                "pass"
-                if failures == 0
-                and attempts == successes
-                and trips == 0
-                and deferred == 0
-                and truncations == 0
-                else "fail"
+                "pass" if failures == 0 and attempts == successes and truncations == 0 else "fail"
             )
         tenants[scope.removeprefix(_TENANT_PREFIX)] = {
             "status": status,
@@ -206,10 +201,6 @@ def _tenant_results(telemetry: dict[str, dict[str, int | float]]) -> dict[str, d
             "worker_attempts": attempts,
             "worker_successes": successes,
             "worker_failures": failures,
-            "circuit_trips": trips,
-            "circuit_deferred": deferred,
-            "recovery_probes": int(values.get("recovery_probes", 0)),
-            "recoveries": int(values.get("recoveries", 0)),
             "truncations": truncations,
         }
     return tenants
@@ -297,16 +288,15 @@ def to_markdown(report: dict) -> str:
         f"- **Shard evidence:** {len(report['shards'])}/{len(report['expected_shards'])}",
         "",
         "| Tenant | Verdict | Direct OK | Direct 403 | Worker OK/attempts | Failures | "
-        "Trips | Deferred | Truncations |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "Truncations |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     if report["tenants"]:
         for tenant, row in report["tenants"].items():
             lines.append(
                 f"| `{tenant}` | {row['status']} | {row['direct_successes']} | "
                 f"{row['direct_403s']} | {row['worker_successes']}/{row['worker_attempts']} | "
-                f"{row['worker_failures']} | {row['circuit_trips']} | "
-                f"{row['circuit_deferred']} | {row['truncations']} |"
+                f"{row['worker_failures']} | {row['truncations']} |"
             )
     else:
         lines.append("| _none observed_ | insufficient_activity | 0 | 0 | 0/0 | 0 | 0 | 0 | 0 |")
