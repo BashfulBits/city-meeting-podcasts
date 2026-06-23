@@ -115,9 +115,10 @@ jobs:
             echo "Opened a new GC issue"
           fi
 
-      # Manual apply run that actually deleted objects → close the rolling issue if one is open.
+      # Any manual apply run → close the rolling issue if one is open (the orphans it tracked are
+      # gone now, whether this run reaped them or a prior one did).
       - name: Close GC issue after apply
-        if: steps.gc.outputs.has_orphans == 'true' && steps.gc.outputs.applied == 'true'
+        if: steps.gc.outputs.applied == 'true'
         run: |
           TITLE="Audio storage GC — reclaimable orphans"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

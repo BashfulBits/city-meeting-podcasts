@@ -80,7 +80,7 @@ never deletes on a schedule. To actually reclaim the space, trigger the workflow
 
 **Manual / local.** Run the script directly:
 
-```
+```bash
 PYTHONPATH=. python scripts/gc_audio.py --pull-state              # dry-run: list orphans
 PYTHONPATH=. python scripts/gc_audio.py --pull-state --apply      # delete (skips objects < 7 days old)
 PYTHONPATH=. python scripts/gc_audio.py --pull-state --out gc/    # dry-run + write the report files

@@ -149,6 +149,15 @@ def _write_report(out_dir: Path, orphans: list[Orphan], summary: dict, *, applie
     (out_dir / "has_orphans").write_text("true" if orphans else "false", encoding="utf-8")
 
 
+def _non_negative_days(value: str) -> float:
+    """A negative ``--min-age-days`` would push the cutoff into the future, making every object
+    look old enough to reap — including freshly written ones. Reject it."""
+    days = float(value)
+    if days < 0:
+        raise argparse.ArgumentTypeError("--min-age-days must be >= 0")
+    return days
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="actually delete (default: dry-run)")
@@ -158,7 +167,12 @@ def main(argv: list[str] | None = None) -> int:
         help="restore the durable bucket state first so the live set is current (no-op for a "
         "sync-less local backend)",
     )
-    ap.add_argument("--min-age-days", type=float, default=7.0, help="skip objects newer than this")
+    ap.add_argument(
+        "--min-age-days",
+        type=_non_negative_days,
+        default=7.0,
+        help="skip objects newer than this (must be >= 0)",
+    )
     ap.add_argument("--prefix", default="", help="limit to keys under this storage prefix")
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config", help="config dir for per-city attribution")

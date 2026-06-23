@@ -53,6 +53,13 @@ def test_render_issue_body_has_per_city_table_and_total():
     assert "apply = true" in body
 
 
+def test_negative_min_age_days_rejected():
+    import pytest
+
+    with pytest.raises(SystemExit):
+        gc_audio.main(["--min-age-days", "-1"])
+
+
 def test_local_iter_objects_returns_size(tmp_path):
     store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
     (tmp_path / "bucket" / "p").mkdir(parents=True)
