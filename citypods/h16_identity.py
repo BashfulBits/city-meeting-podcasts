@@ -138,6 +138,18 @@ class H16IdentityTracker:
                 and before.audio_duration_served > 0
             )
             post_complete = bool(ep.audio_key and ep.hosted_audio_url and ep.audio_spec_hash)
+            # A migrated legacy artifact is reused as-is by ``materialize_audio`` (its
+            # ``legacy_ok`` path, media.py): the record keeps its pre-content-addressing
+            # ``audio_spec_hash == "legacy"`` key/url and is never re-encoded while no explicit
+            # loudness/processing recipe is active. That is the intended steady state, so the
+            # content-addressed ``_expected()`` recompute deliberately won't match — do not count
+            # the key/spec/url divergence as an identity mismatch. (Mirror the exact reuse
+            # condition; a named recipe would force a re-encode and a real content-addressed key.)
+            # GH#353: this is the run-54 false positive — a legacy episode whose served duration
+            # was first backfilled that run tripped the artifact-changed branch below.
+            legacy_ok = ep.audio_spec_hash == "legacy" and not (
+                self._loudness_profile or self._processing_profile
+            )
             artifact_checked = False
 
             if any((ep.audio_key, ep.hosted_audio_url, ep.audio_spec_hash)) and not post_complete:
@@ -160,12 +172,13 @@ class H16IdentityTracker:
                 or (initial_current and expected_spec == before.expected_spec_hash)
             ):
                 artifact_checked = True
-                if ep.audio_spec_hash != expected_spec:
-                    categories.add("audio_spec_hash")
-                if ep.audio_key != expected_key:
-                    categories.add("audio_key")
-                if ep.hosted_audio_url != expected_url:
-                    categories.add("audio_url")
+                if not legacy_ok:
+                    if ep.audio_spec_hash != expected_spec:
+                        categories.add("audio_spec_hash")
+                    if ep.audio_key != expected_key:
+                        categories.add("audio_key")
+                    if ep.hosted_audio_url != expected_url:
+                        categories.add("audio_url")
                 if not ep.audio_duration_served or ep.audio_duration_served <= 0:
                     categories.add("served_duration")
                 if (
