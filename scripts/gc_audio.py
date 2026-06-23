@@ -16,15 +16,19 @@ Safe by default:
   * only deletes objects older than ``--min-age-days`` (default 7) so an object written by a
     build that hasn't yet persisted its record isn't reaped out from under it;
   * refuses to run if no records are found (would look like everything is orphaned);
-  * never touches the durable ``state/`` snapshot.
+  * only ever reaps *managed artifacts* — content-addressed audio (``*.m4a``) and transcripts
+    (``transcripts/…``). Non-artifact infrastructure (the durable ``state/`` snapshot, the
+    ``models/`` ASR-weight mirror, ``clips/``, or any future prefix) is allow-listed out and
+    never touched — see ``is_managed_artifact``.
 
 With ``--out DIR`` it writes a machine-readable report for the scheduled workflow:
 ``orphans.tsv`` (every candidate key + size + city), ``summary.json``, ``issue-body.md`` (a
 per-city table), and ``has_orphans`` (``true``/``false``).
 
-By default it scans the whole bucket (``--prefix ""``); pass ``--prefix`` to scope it. Note:
-clip objects (``clips/…``) are not produced yet — when soundbites land, either reference them
-in the live set or give them their own ephemeral GC policy before running this unscoped.
+By default it scans the whole bucket (``--prefix ""``); pass ``--prefix`` to scope it. The
+allow-list (``is_managed_artifact``) keeps the unscoped sweep safe — only audio/transcript
+objects are deletion candidates. When soundbite clips (``clips/…``) land they must be added to
+the live set or given their own ephemeral GC policy before they can be reaped here.
 
 Usage:
     PYTHONPATH=. python scripts/gc_audio.py [--apply] [--pull-state] [--min-age-days N] \
@@ -49,6 +53,33 @@ from citypods.storage import make_storage
 
 _UNCONFIGURED = "(unconfigured)"
 _OTHER = "(other)"
+
+# Object namespaces the GC *manages* and may delete from:
+#   * AUDIO       — ``<provider>/<source_key>/<uid>-<spec>.m4a`` (and the legacy slug-keyed
+#                   ``<slug>/<digest>.m4a`` predating the source-key rename) — always ``.m4a``;
+#   * TRANSCRIPTS — ``transcripts/<source_key>/<uid>-<spec>.<fmt>``, incl. the ASR word JSON.
+# Everything else in the bucket is infrastructure that must NEVER be reaped: the durable
+# ``state/`` snapshot and the ``models/`` ASR-weight mirror (written by
+# ``scripts/prepare_whisper.py``, depended on by the ASR workers — a stray ``--apply`` that
+# deleted ``models/faster-whisper-large-v3-turbo/model.bin`` would break transcription).
+# ``clips/`` (soundbites) is not produced yet and gets its own ephemeral GC policy when it lands.
+#
+# This is an *allow-list* of managed shapes, deliberately not a deny-list of known infra: a new
+# infrastructure prefix added to the bucket later can then never be reaped by an old copy of this
+# script — it simply isn't a recognized artifact, so it's skipped.
+_TRANSCRIPT_PREFIX = "transcripts/"
+_CLIPS_PREFIX = "clips/"
+
+
+def is_managed_artifact(key: str) -> bool:
+    """True iff ``key`` is an audio or transcript object the orphan GC is allowed to delete.
+
+    Anything that is not a managed artifact (``state/``, ``models/``, ``clips/``, or any future
+    infra prefix) returns ``False`` and is left untouched by the sweep — see the note above.
+    """
+    if key.startswith(_TRANSCRIPT_PREFIX):
+        return True
+    return key.endswith(".m4a") and not key.startswith(_CLIPS_PREFIX)
 
 
 @dataclass(frozen=True)
@@ -206,9 +237,13 @@ def main(argv: list[str] | None = None) -> int:
     cutoff = datetime.now(UTC) - timedelta(days=args.min_age_days)
     orphans: list[Orphan] = []
     kept_young = 0
+    kept_unmanaged = 0
     for key, last_modified, size in storage.iter_objects(args.prefix):
-        if key in referenced or key.startswith(f"{STATE_PREFIX}/"):
-            continue  # never reap the durable state snapshot
+        if key in referenced:
+            continue  # live: referenced by a record
+        if not is_managed_artifact(key):
+            kept_unmanaged += 1
+            continue  # state/, models/, clips/, or any other non-artifact infra — never reap
         if last_modified is not None and last_modified > cutoff:
             kept_young += 1
             continue
@@ -234,7 +269,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"\n{len(referenced)} referenced; {summary['total_files']} {action} "
         f"({human_bytes(summary['total_bytes'])}); "
-        f"{kept_young} skipped (younger than {args.min_age_days}d)."
+        f"{kept_young} skipped (younger than {args.min_age_days}d); "
+        f"{kept_unmanaged} non-artifact objects protected (state/, models/, clips/, …)."
     )
     return 0
 
