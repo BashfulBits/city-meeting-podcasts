@@ -37,6 +37,15 @@ class StorageBackend(Protocol):
         """Yield ``(key, last_modified)`` for every object under ``prefix``."""
         ...
 
+    def iter_objects(self, prefix: str = ""):
+        """Yield ``(key, last_modified, size_bytes)`` for every object under ``prefix``.
+
+        Like :meth:`list_objects` but also carries the object size (free from the listing on
+        S3/B2/R2 and the local stat) so orphan GC can report reclaimable bytes without a HEAD
+        per object. ``size_bytes`` may be ``None`` if a backend cannot supply it.
+        """
+        ...
+
     def delete(self, key: str) -> None:
         """Delete the object at ``key``."""
         ...
