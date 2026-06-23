@@ -112,7 +112,9 @@ def _configured_ceilings(site_config_path: Path) -> dict:
     # envelope) so an operator can tune it without the criterion failing. The check still catches
     # drift between the operative provider_rate_limits/provider_distributed_leases and the declared
     # intent — i.e. a typo in one of the two operative knobs.
-    declared = config.get("provider_audio_concurrency_ceiling") or {}
+    declared = config.get("provider_audio_concurrency_ceiling")
+    if not isinstance(declared, dict):
+        declared = {}  # a malformed (scalar/list) value falls back to the default envelope
     expected_local = declared.get("process_local", 1)
     expected_distributed = declared.get("distributed", 2)
     ok = local == expected_local and distributed == expected_distributed

@@ -49,6 +49,14 @@ def test_concurrency_ceiling_flags_drift_from_declared(tmp_path):
     assert _configured_ceilings(cfg)["status"] == "fail"
 
 
+def test_concurrency_ceiling_tolerates_malformed_declaration(tmp_path):
+    # A scalar/list typo for the declared ceiling must not crash the report — fall back to 1/2.
+    cfg = _ceiling_config(tmp_path, slots=2, declared="provider_audio_concurrency_ceiling: oops\n")
+    result = _configured_ceilings(cfg)
+    assert result["status"] == "pass"
+    assert result["expected"] == {"process_local": 1, "distributed": 2}
+
+
 def _write_config(path) -> None:
     path.write_text(
         """
