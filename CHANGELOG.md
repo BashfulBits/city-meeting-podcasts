@@ -16,6 +16,22 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **The Granicus rate-limit circuit breaker (plus its queue parking and half-open canary recovery)
+  was removed ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** It was
+  built for a hypothesis H16 disproved — the Actions-runner 403s were shared GitHub-egress IP
+  reputation (handled by the authenticated Cloudflare Worker), not request-shape or concurrency
+  throttling — and it never tripped across Audio runs #51–#56 (zero trips/deferrals/recovery probes).
+  `citypods/provider_circuits.py` is replaced by a lean `citypods/provider_transport.py`
+  (`ProviderTransportTelemetry`) that keeps only the per-tenant direct/Worker-fallback/truncation
+  counters feeding the H16 `transport` criterion; the storage-backed open/trip/defer state, the
+  `_run_enrich_global_queue` parking/canary loop (and its latent double-retry race), the
+  `CircuitOpenMediaFetchError` admission gate, and the `circuit_skipped`/`circuit_keys` stage plumbing
+  are gone. Telemetry domains are configured via `provider_transport_telemetry_domains` (replacing
+  `provider_rate_limit_circuit_breakers`); the H16 report schema bumps to v2 (per-tenant rows drop the
+  circuit columns). Aggregate provider load stays bound by the distributed provider-lease ceiling and
+  the per-episode materialize backoff, and rollback to direct-only fetch remains config-only (unset
+  `GRANICUS_PROXY_BASE_URL` / `GRANICUS_PROXY_TOKEN`). Audio bytes, pipeline versions, and stored
+  artifacts are unchanged, so **no backfill**.
 - **Duplicate combined/per-board audio views now share one encode and one CAS object
   ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)).** Some per-board
   feeds use a wider `feed_urls` set than their city's combined feed, so stripping only the `body`

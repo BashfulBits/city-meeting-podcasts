@@ -662,7 +662,6 @@ def _sum_stage_totals(rows: list[dict]) -> dict:
         "bytes",
         "errors",
         "rate_limited",
-        "circuit_skipped",
     )
     for row in rows:
         for name, stage in (row.get("stages") or {}).items():
@@ -694,7 +693,6 @@ def _merge_logical_run_group(group: list[dict]) -> dict:
         "materialized",
         "materialize_encoded",
         "audio_rate_limited_403s",
-        "audio_circuit_skipped",
     ):
         merged[key] = sum(row.get(key, 0) or 0 for row in group)
     merged["materialize_seconds"] = round(

@@ -79,8 +79,8 @@ jobs:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
       # Native Granicus archive media is attempted directly first. An immediate HTTP 403 gets one
-      # authenticated retry through the closed Cloudflare Worker while the same provider lease and
-      # circuit admission remain held.
+      # authenticated retry through the closed Cloudflare Worker while the same provider lease is
+      # held. Unset both secrets below to roll back to direct-only (config-only rollback, GH#353).
       GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
       GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
     steps:

@@ -40,15 +40,16 @@ provider_distributed_leases:
     poll_seconds: 2
     settle_seconds: 0.25
 
-# Run-local storm brake for media throttling. If ffmpeg gets repeated 403/429s for a configured
-# domain, the active run stops starting new work for that domain during the cooldown. This prevents
-# hundreds of identical encode failures while leaving the next scheduled run free to retry.
-provider_rate_limit_circuit_breakers:
-  granicus.com:
-    threshold: 3
-    cooldown_seconds: 1800
-    emergency_tenants: 2  # tenant circuits are isolated; only 2 distinct tenant trips open domain-wide
-    probe_ttl_seconds: 900  # another shard may reclaim an abandoned half-open canary after 15 min
+# Domains for which the Audio lane records per-tenant transport telemetry (direct vs Cloudflare
+# Worker fallback vs truncation). These counters feed the H16 acceptance report's `transport`
+# criterion. The run-local rate-limit *circuit breaker* that used to live here
+# (threshold/cooldown/parking/canary) was removed in GH#353: it never tripped across audio runs
+# #51–#56 — the runner 403s were shared GitHub-egress IP reputation (handled by the Worker), not
+# request-shape or concurrency throttling — and the provider-lease ceiling above plus per-episode
+# materialize backoff already bound aggregate load. Rollback to direct-only stays config-only: unset
+# GRANICUS_PROXY_BASE_URL / GRANICUS_PROXY_TOKEN.
+provider_transport_telemetry_domains:
+  - granicus.com
 
 # Backlog prioritization (H5). An ordered list of comparator keys applied to the work backlog;
 # ties fall through to the next key. With no list set, ordering is the behavior-preserving default.

@@ -34,7 +34,7 @@ from citypods.media import (
     CommandFfmpeg,
     FfmpegRunner,
     HostedKeysCache,
-    MediaRateLimitCircuitBreaker,
+    ProviderTransportTelemetry,
     SourceCache,
 )
 from citypods.models import City, Episode
@@ -165,7 +165,6 @@ class SourcePipeline:
                 "errors": 0,
                 "error_samples": [],
                 "rate_limited": 0,
-                "circuit_skipped": 0,
                 "defer_reasons": {},
             }
         )
@@ -228,7 +227,6 @@ class SourcePipeline:
                 if s.errors and len(t["error_samples"]) < 3:
                     t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
                 t["rate_limited"] += s.rate_limited
-                t["circuit_skipped"] += s.circuit_skipped
                 for reason, count in s.defer_reasons.items():
                     t["defer_reasons"][reason] = t["defer_reasons"].get(reason, 0) + count
 
@@ -264,20 +262,6 @@ class SourcePipeline:
             "withheld": withheld,
             "by_state": dict(sorted(by_state.items())),
         }
-
-    def resolve_parked_stats(self, stats: list) -> None:
-        """Remove backlog counts for circuit-deferred stage results that were retried this run.
-
-        Circuit telemetry remains cumulative—the deferral really happened—but a meeting that later
-        succeeds or directly fails after the recovery canary is no longer queued solely because of
-        that original deferral.
-        """
-        with self._guard:
-            for s in stats:
-                if not s.circuit_skipped or not s.skipped:
-                    continue
-                t = self.stage_totals[s.name]
-                t["backlog"] = max(0, t["backlog"] - s.skipped)
 
     def persist_source(
         self, key: str, episodes: list[Episode], persisted: dict, *, notes: list[str]
@@ -936,85 +920,7 @@ def _run_enrich_global_queue(
         if audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                first_results = list(pool.map(_audio_task, candidates))
-            parked = [
-                (item, stats)
-                for item, stats in zip(candidates, first_results, strict=True)
-                if any(s.circuit_skipped for s in stats)
-            ]
-            if parked and ctx.rate_limit_circuit is not None:
-                parked_by_key: dict[str, list[tuple[tuple[str, Episode], list]]] = (
-                    collections.defaultdict(list)
-                )
-                for entry in parked:
-                    _item, stats = entry
-                    for circuit_key in {
-                        key for stat in stats for key in getattr(stat, "circuit_keys", set())
-                    }:
-                        parked_by_key[circuit_key].append(entry)
-                print(
-                    f"[enrich] circuit parked: {len(parked)} item(s), "
-                    f"{len(parked_by_key)} tenant/domain scope(s); "
-                    "other provider work drained before recovery probe",
-                    flush=True,
-                )
-                remaining_keys = list(parked_by_key)
-                while remaining_keys:
-                    circuit_key = ctx.rate_limit_circuit.wait_for_recovery_probe(
-                        keys=remaining_keys, stop=ctx.stop
-                    )
-                    if circuit_key is None:
-                        break
-                    scoped_parked = parked_by_key.get(circuit_key, [])
-                    if not scoped_parked:
-                        remaining_keys.remove(circuit_key)
-                        continue
-                    canary_item, canary_deferred = scoped_parked[0]
-                    print(
-                        f"[enrich] circuit recovery probe start "
-                        f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key} "
-                        f"source={canary_item[0]} uid={canary_item[1].uid}",
-                        flush=True,
-                    )
-                    canary_result = _audio_task(canary_item)
-                    if canary_result and not any(
-                        s.rate_limited or s.circuit_skipped for s in canary_result
-                    ):
-                        pipeline.resolve_parked_stats(canary_deferred)
-                    if ctx.rate_limit_circuit.recovery_succeeded(circuit_key):
-                        print(
-                            f"[enrich] circuit recovery probe succeeded "
-                            f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key}; "
-                            f"releasing={len(scoped_parked) - 1}",
-                            flush=True,
-                        )
-
-                        def _retry_parked(entry):
-                            item, deferred_stats = entry
-                            key, ep = item
-                            # GH#353 diagnostic (review/11 H16): this re-runs chapters→timeline→
-                            # remap→audio for an episode that already ran those stages once this
-                            # run (the parked attempt) — a second, independent identity log line
-                            # tags the candidate for the H16 identity-mismatch correlation.
-                            print(
-                                f"[enrich] circuit recovery retry source={key} uid={ep.uid}",
-                                flush=True,
-                            )
-                            retry_stats = _audio_task(item)
-                            if retry_stats and not any(s.circuit_skipped for s in retry_stats):
-                                pipeline.resolve_parked_stats(deferred_stats)
-                            return retry_stats
-
-                        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                            list(pool.map(_retry_parked, scoped_parked[1:]))
-                    else:
-                        print(
-                            f"[enrich] circuit recovery probe failed "
-                            f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key}; "
-                            f"remaining_parked={len(scoped_parked) - 1}",
-                            flush=True,
-                        )
-                    remaining_keys.remove(circuit_key)
+                list(pool.map(_audio_task, candidates))
             print("[enrich] audio pass done", flush=True)
             # Persist audio-pass results now, before the decoupled transcript pass — shrinks the
             # window in which a mid-run kill (SIGTERM/OOM/lost-comms) would lose every record update
@@ -1304,14 +1210,15 @@ def _build_impl(
         if time_bounded and not dry_run
         else None
     )
-    _rate_limit_circuit: MediaRateLimitCircuitBreaker | None = MediaRateLimitCircuitBreaker(
-        site_config.get("provider_rate_limit_circuit_breakers", {}),
-        storage=storage if not dry_run else None,
-        log=lambda msg: print(msg, flush=True),
-        shard=f"{shard[0]}/{shard[1]}" if shard is not None else None,
+    # Per-tenant Granicus transport telemetry (direct / Worker-fallback / truncation) for the H16
+    # acceptance report. The rate-limit circuit breaker that previously lived here was removed in
+    # GH#353 — it never tripped across audio runs #51–#56 (the runner 403s were egress IP
+    # reputation, handled by the Worker), and the lease ceiling plus per-episode backoff bound load.
+    _transport_telemetry: ProviderTransportTelemetry | None = ProviderTransportTelemetry(
+        site_config.get("provider_transport_telemetry_domains", [])
     )
-    if not _rate_limit_circuit.has_rules():
-        _rate_limit_circuit = None
+    if not _transport_telemetry.has_domains():
+        _transport_telemetry = None
     owns_ffmpeg = ffmpeg is None
     ffmpeg = ffmpeg or CommandFfmpeg(
         max_kbps=max_kbps,
@@ -1320,7 +1227,7 @@ def _build_impl(
         memory_floor_bytes=ffmpeg_memory_floor_bytes,
         phase_gate=_native_work_gate,
         finalize_workers=int(defaults.get("audio_finalize_workers", 2)),
-        rate_limit_circuit=_rate_limit_circuit,
+        transport_telemetry=_transport_telemetry,
         stop=stop,
     )
     source_cache = (
@@ -1328,7 +1235,7 @@ def _build_impl(
             ffmpeg_binary=getattr(ffmpeg, "binary", "ffmpeg"),
             timeout_seconds=getattr(ffmpeg, "timeout_seconds", None),
             memory_floor_bytes=getattr(ffmpeg, "memory_floor_bytes", None),
-            rate_limit_circuit=_rate_limit_circuit,
+            transport_telemetry=_transport_telemetry,
             stop=stop,
         )
         if not dry_run
@@ -1383,7 +1290,7 @@ def _build_impl(
         ),
         native_work_gate=_native_work_gate,
         memory_reservation=_memory_reservation,
-        rate_limit_circuit=_rate_limit_circuit,
+        transport_telemetry=_transport_telemetry,
         # Global semaphore limiting concurrent ASR inference calls. ASR is CPU-bound;
         # N simultaneous inference calls each get 1/N of available CPU, making each
         # N× slower. asr_workers=1 (default) serialises all ASR, giving each call full
@@ -1532,8 +1439,8 @@ def _build_impl(
             provider_errors[_city.provider] = provider_errors.get(_city.provider, 0) + 1
 
     provider_rate_limit_telemetry = DISTRIBUTED_PROVIDER_LEASES.telemetry()
-    if _rate_limit_circuit is not None:
-        for domain, values in _rate_limit_circuit.telemetry().items():
+    if _transport_telemetry is not None:
+        for domain, values in _transport_telemetry.telemetry().items():
             provider_rate_limit_telemetry.setdefault(domain, {}).update(values)
 
     # Per-stage activity for the run, to stdout (build logs). Makes "did audio actually
@@ -1555,11 +1462,8 @@ def _build_impl(
         )
         for msg in t["error_samples"]:
             print(f"    ! {msg}")
-        if t.get("rate_limited") or t.get("circuit_skipped"):
-            print(
-                f"    ! throttle: {t['rate_limited']} 403/429 errors, "
-                f"{t['circuit_skipped']} circuit-skipped (GH#300)"
-            )
+        if t.get("rate_limited"):
+            print(f"    ! throttle: {t['rate_limited']} 403/429 errors (GH#300)")
     for domain, values in sorted(provider_rate_limit_telemetry.items()):
         if values.get("lease_acquisitions"):
             print(
@@ -1568,19 +1472,6 @@ def _build_impl(
                 f"(max {values.get('lease_max_wait_seconds', 0):.1f}s), "
                 f"{values.get('stale_leases_reaped', 0)} stale reaped, "
                 f"{values.get('lease_renewals', 0)} renewals"
-            )
-        if (
-            values.get("rate_limited")
-            or values.get("circuit_trips")
-            or values.get("circuit_deferred")
-            or values.get("recovery_probes")
-        ):
-            print(
-                f"provider {domain} circuit: {values.get('rate_limited', 0)} throttles, "
-                f"{values.get('circuit_trips', 0)} trips, "
-                f"{values.get('circuit_deferred', 0)} deferred, "
-                f"{values.get('recovery_probes', 0)} recovery probes, "
-                f"{values.get('recoveries', 0)} recoveries"
             )
         # Granicus Worker fallback usage (GH#337): direct-403 → authenticated Cloudflare egress.
         # These per-tenant counts are the post-activation evaluation signal — successes ≈ attempts
@@ -1911,7 +1802,6 @@ def _record_run_history(
             "bytes": t["bytes"],
             "errors": t["errors"],
             "rate_limited": t.get("rate_limited", 0),
-            "circuit_skipped": t.get("circuit_skipped", 0),
             "defer_reasons": dict(sorted((t.get("defer_reasons") or {}).items())),
         }
         for name, t in stage_totals.items()
@@ -1921,7 +1811,6 @@ def _record_run_history(
     # SourceCache prefetch). The legacy key name says "audio", but its value must reconcile every
     # direct media throttle/deferral in the audio work-class chain, not only AudioStage.
     media_rate_limited = sum(stage.get("rate_limited", 0) for stage in stages.values())
-    media_circuit_skipped = sum(stage.get("circuit_skipped", 0) for stage in stages.values())
     summary = {
         "ts": datetime.now(UTC).isoformat(),
         "schema_version": _records.SCHEMA_VERSION,
@@ -1955,10 +1844,8 @@ def _record_run_history(
         "gate_wait_seconds": gate_wait_seconds,
         "provider_errors": provider_errors or {},
         # Per-provider throttle telemetry (GH#300). The legacy convenience key name says 403, but
-        # the counter covers HTTP 403/429 media attempts; circuit_skipped counts breaker deferrals.
-        # work-loss % = circuit_skipped / (audio_ran + rate_limited_403s + circuit_skipped)
+        # the counter covers HTTP 403/429 media attempts that fell through to per-episode backoff.
         "audio_rate_limited_403s": media_rate_limited,
-        "audio_circuit_skipped": media_circuit_skipped,
         "provider_rate_limit_telemetry": rate_limit_telemetry or {},
         "h16_identity": h16_identity or {},
         "h16_availability": h16_availability or {},

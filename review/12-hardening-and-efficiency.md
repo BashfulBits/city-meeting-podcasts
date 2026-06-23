@@ -1468,6 +1468,16 @@ sources by count; a truncated encode backs off instead of hosting.
 
 ## Granicus media reliability follow-up (GH#300 / #39 follow-up)
 
+> **Update (GH#353, unreleased): the rate-limit circuit breaker, queue parking, and half-open canary
+> recovery described below were removed.** Six Audio runs (#51–#56) on the direct-first + single-Worker
+> route showed zero circuit trips/deferrals/recovery probes; the breaker was built for a
+> concurrency-throttle hypothesis H16 disproved (the 403s were shared GitHub-egress IP reputation,
+> handled by the Worker). `provider_circuits.py` became the lean `provider_transport.py`
+> (`ProviderTransportTelemetry`) — only the per-tenant direct/Worker/truncation counters that feed the
+> H16 `transport` criterion remain. Aggregate load stays bound by the provider-lease ceiling and
+> per-episode materialize backoff; rollback to direct-only is config-only (unset the `GRANICUS_PROXY_*`
+> secrets). The circuit/parking/canary narrative below is retained as historical design context.
+
 **Maturity: L1→L3** (detailed sequence below). The endpoint contract test GH#300 reproduces as
 `RateLimitedMediaFetchError` from `archive-video.granicus.com` during concurrent `audio.yml` runs, while
 local serial contracts pass. Diagnosis: **aggregate GitHub-runner Granicus concurrency** (not a dead URL
@@ -1812,7 +1822,9 @@ tenant/domain state, single-attempt accounting, half-open recovery, parked queue
 **Acceptance.** Three scheduled production Audio runs demonstrate successful Worker recovery without
 new truncation/backoff or identity changes; the evidence selects direct-first vs sticky-Worker routing;
 and circuit/parking/canary behavior made redundant by the selected route is removed or explicitly
-retained with a reason.
+retained with a reason. **Status (GH#353, unreleased): circuit/parking/canary removed** — six runs
+(#51–#56) had zero circuit activity (see the banner at the top of this section). The direct-first vs
+sticky-Worker routing choice remains open.
 
 ---
 

@@ -33,7 +33,6 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,8 +42,8 @@ from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_comm
 from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
 from citypods.models import City, Episode
 from citypods.progress import PROGRESS
-from citypods.provider_circuits import MediaRateLimitCircuitBreaker
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
+from citypods.provider_transport import ProviderTransportTelemetry
 from citypods.providers.base import ProviderError
 from citypods.records import (
     _in_backoff,
@@ -200,40 +199,14 @@ class LoudnessMeasurementError(ProviderError):
 
 
 class RateLimitedMediaFetchError(ProviderError):
-    """ffmpeg/ffprobe saw an HTTP throttling response while reading provider media.
+    """ffmpeg/ffprobe saw an HTTP throttling response (403/429) while reading provider media.
 
-    ``circuit_recorded`` is True when the subprocess boundary already updated the circuit breaker
-    (while the provider lease was still held, issue #343) — the higher-level materialization caller
-    must not call ``record_rate_limited`` again for those, or a single failure double-counts.
-    ``opened_domain`` carries the just-opened domain (if any) so the caller can still log the
-    transition without re-deriving it.
+    Raised so the materialization caller records the normal per-episode backoff (#120); the episode
+    retries next run. A Granicus 403 normally never reaches here — the direct-first fetch falls back
+    to the Cloudflare Worker first.
     """
 
     code = "rate_limited"
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        circuit_recorded: bool = False,
-        opened_domain: str | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.circuit_recorded = circuit_recorded
-        self.opened_domain = opened_domain
-
-
-class CircuitOpenMediaFetchError(ProviderError):
-    """Provider media work reached the subprocess boundary after its circuit opened."""
-
-    code = "circuit_open"
-
-    def __init__(self, circuit_key: str):
-        self.circuit_key = circuit_key
-        self.domain = circuit_key.split("/", 1)[0]
-        super().__init__(
-            f"provider throttle circuit open domain={self.domain} circuit={circuit_key}"
-        )
 
 
 def record_materialize_failure(
@@ -264,28 +237,13 @@ def _rate_limited_status(stderr: bytes | str | None) -> str | None:
     return None
 
 
-def _raise_if_rate_limited(
-    *,
-    phase: str,
-    stderr: bytes | str | None,
-    rate_limit_urls: Sequence[str] = (),
-    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
-) -> None:
-    """Classify a failed ffmpeg/ffprobe run as provider throttling and, if so, record it on the
-    circuit breaker *here* — the caller still holds the provider lease at this point, so the circuit
-    opens (if the threshold is crossed) before that lease is released to another waiter (#343)."""
+def _raise_if_rate_limited(*, phase: str, stderr: bytes | str | None) -> None:
+    """Raise :class:`RateLimitedMediaFetchError` if a failed ffmpeg/ffprobe run was provider
+    throttling (HTTP 403/429), so the caller records the per-episode backoff (#120)."""
     status = _rate_limited_status(stderr)
     if status is None:
         return
-    opened = None
-    recorded = rate_limit_circuit is not None
-    if rate_limit_circuit is not None:
-        opened = rate_limit_circuit.record_rate_limited(rate_limit_urls)
-    raise RateLimitedMediaFetchError(
-        f"ffmpeg {phase} hit provider throttle ({status})",
-        circuit_recorded=recorded,
-        opened_domain=opened,
-    )
+    raise RateLimitedMediaFetchError(f"ffmpeg {phase} hit provider throttle ({status})")
 
 
 def _redacted_process_error(
@@ -329,7 +287,7 @@ def _worker_fallback_for_403(
         return worker_fallback_command(command, tuple(rate_limit_urls))
     except ValueError:
         # A half-set/invalid GRANICUS_PROXY_* config must not convert an already-handled provider
-        # 403 (which the circuit/backoff path knows how to absorb) into an uncaught error that
+        # 403 (which the per-episode backoff path knows how to absorb) into an uncaught error that
         # aborts the shard. Disable the fallback for this run and warn once. The message is kept
         # generic so a malformed endpoint value cannot leak into logs.
         global _WORKER_FALLBACK_MISCONFIG_LOGGED
@@ -344,37 +302,24 @@ def _worker_fallback_for_403(
 
 
 def _record_worker_fallback_outcome(
-    circuit: MediaRateLimitCircuitBreaker | None,
+    telemetry: ProviderTransportTelemetry | None,
     rate_limit_urls: Sequence[str],
     *,
     outcome: str,
 ) -> None:
-    """Record one Worker fallback attempt + outcome on the circuit's per-tenant telemetry (#337)."""
-    if circuit is not None:
-        circuit.record_worker_fallback(rate_limit_urls, outcome=outcome)
+    """Record one Worker fallback attempt + outcome on the per-tenant transport telemetry (#337)."""
+    if telemetry is not None:
+        telemetry.record_worker_fallback(rate_limit_urls, outcome=outcome)
 
 
 def _record_direct_fetch_outcome(
-    circuit: MediaRateLimitCircuitBreaker | None,
+    telemetry: ProviderTransportTelemetry | None,
     rate_limit_urls: Sequence[str],
     *,
     outcome: str,
 ) -> None:
-    if circuit is not None:
-        circuit.record_direct_fetch(rate_limit_urls, outcome=outcome)
-
-
-@contextmanager
-def _circuit_admission(
-    circuit: MediaRateLimitCircuitBreaker | None,
-    urls: Sequence[str],
-):
-    """Recheck the breaker after provider slots are held, immediately before subprocess start."""
-    if circuit is not None:
-        circuit_key = circuit.open_for(urls, refresh=True)
-        if circuit_key is not None:
-            raise CircuitOpenMediaFetchError(circuit_key)
-    yield
+    if telemetry is not None:
+        telemetry.record_direct_fetch(rate_limit_urls, outcome=outcome)
 
 
 def _guard_against_truncated_audio(
@@ -406,7 +351,7 @@ def _run_ffmpeg_guarded(
     timeout: float | None = None,
     memory_floor_bytes: int | None = None,
     rate_limit_urls: Sequence[str] = (),
-    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    transport_telemetry: ProviderTransportTelemetry | None = None,
     stop: Callable[[], bool] | None = None,
     poll_seconds: float = _FFMPEG_GUARD_POLL_SECONDS,
     snapshot: Callable[[], ResourceSnapshot] = current_snapshot,
@@ -437,21 +382,17 @@ def _run_ffmpeg_guarded(
     """
     if not memory_floor_bytes:
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} start")
-        # The rate-limit classification/circuit-update must happen *inside* this ``with`` — both
-        # provider slots are still held here. Doing it after the block exits (as a separate
-        # ``except`` below the ``with``) would release the lease before the circuit opens, letting
-        # a queued waiter acquire it, pass the still-closed circuit check, and start ffmpeg anyway
-        # (#343).
         with (
             HOST_LIMITER.slots(rate_limit_urls, stop=stop),
             DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls, stop=stop),
-            _circuit_admission(rate_limit_circuit, rate_limit_urls),
         ):
             try:
                 result = subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
             except subprocess.CalledProcessError as exc:
                 if _rate_limited_status(exc.stderr) == "HTTP 403":
-                    _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="403")
+                    _record_direct_fetch_outcome(
+                        transport_telemetry, rate_limit_urls, outcome="403"
+                    )
                 stderr = _stderr_tail(exc.stderr)
                 detail = f" stderr={stderr}" if stderr else ""
                 _log_ffmpeg_event(
@@ -492,16 +433,11 @@ def _run_ffmpeg_guarded(
                             f"strategy=cloudflare-worker returncode={fallback_exc.returncode}"
                             f"{fallback_detail}",
                         )
-                        _raise_if_rate_limited(
-                            phase=phase,
-                            stderr=fallback_exc.stderr,
-                            rate_limit_urls=rate_limit_urls,
-                            rate_limit_circuit=rate_limit_circuit,
-                        )
+                        _raise_if_rate_limited(phase=phase, stderr=fallback_exc.stderr)
                         raise _redacted_process_error(fallback_exc, cmd) from fallback_exc
                     finally:
                         _record_worker_fallback_outcome(
-                            rate_limit_circuit,
+                            transport_telemetry,
                             rate_limit_urls,
                             outcome="success" if worker_ok else "failure",
                         )
@@ -515,12 +451,7 @@ def _run_ffmpeg_guarded(
                         getattr(result, "stdout", b"") or b"",
                         getattr(result, "stderr", b"") or b"",
                     )
-                _raise_if_rate_limited(
-                    phase=phase,
-                    stderr=exc.stderr,
-                    rate_limit_urls=rate_limit_urls,
-                    rate_limit_circuit=rate_limit_circuit,
-                )
+                _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
                 raise _redacted_process_error(exc, cmd) from exc
             except subprocess.TimeoutExpired as exc:
                 stderr = _stderr_tail(exc.stderr)
@@ -528,7 +459,9 @@ def _run_ffmpeg_guarded(
                 _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} timeout seconds={timeout}{detail}")
                 raise _redacted_timeout_error(exc, cmd) from exc
             else:
-                _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="success")
+                _record_direct_fetch_outcome(
+                    transport_telemetry, rate_limit_urls, outcome="success"
+                )
         _log_ffmpeg_event(log, f"[enrich] ffmpeg {phase} done")
         return getattr(result, "stdout", b"") or b"", getattr(result, "stderr", b"") or b""
 
@@ -537,7 +470,6 @@ def _run_ffmpeg_guarded(
     with (
         HOST_LIMITER.slots(rate_limit_urls, stop=stop),
         DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls, stop=stop),
-        _circuit_admission(rate_limit_circuit, rate_limit_urls),
     ):
         try:
             result = _run_ffmpeg_popen_monitored(
@@ -553,11 +485,11 @@ def _run_ffmpeg_guarded(
                 child_rss=child_rss,
                 classify_rate_limit=False,
             )
-            _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="success")
+            _record_direct_fetch_outcome(transport_telemetry, rate_limit_urls, outcome="success")
             return result
         except subprocess.CalledProcessError as exc:
             if _rate_limited_status(exc.stderr) == "HTTP 403":
-                _record_direct_fetch_outcome(rate_limit_circuit, rate_limit_urls, outcome="403")
+                _record_direct_fetch_outcome(transport_telemetry, rate_limit_urls, outcome="403")
             fallback_cmd = _worker_fallback_for_403(
                 command=cmd,
                 stderr=exc.stderr,
@@ -565,12 +497,7 @@ def _run_ffmpeg_guarded(
                 log=log,
             )
             if fallback_cmd is None:
-                _raise_if_rate_limited(
-                    phase=phase,
-                    stderr=exc.stderr,
-                    rate_limit_urls=rate_limit_urls,
-                    rate_limit_circuit=rate_limit_circuit,
-                )
+                _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
                 raise _redacted_process_error(exc, cmd) from exc
             _log_ffmpeg_event(
                 log,
@@ -591,7 +518,7 @@ def _run_ffmpeg_guarded(
                     popen=popen,
                     child_rss=child_rss,
                     rate_limit_urls=rate_limit_urls,
-                    rate_limit_circuit=rate_limit_circuit,
+                    transport_telemetry=transport_telemetry,
                 )
                 worker_ok = True
             except subprocess.TimeoutExpired as fallback_exc:
@@ -601,9 +528,9 @@ def _run_ffmpeg_guarded(
             finally:
                 # The worker run above uses classify_rate_limit=True, so a Worker 403/429 leaves as
                 # RateLimitedMediaFetchError (not caught here); ``finally`` still records that as a
-                # failure exactly once, alongside the single circuit ``rate_limited`` increment.
+                # Worker-fallback failure in the transport telemetry exactly once.
                 _record_worker_fallback_outcome(
-                    rate_limit_circuit,
+                    transport_telemetry,
                     rate_limit_urls,
                     outcome="success" if worker_ok else "failure",
                 )
@@ -628,13 +555,12 @@ def _run_ffmpeg_popen_monitored(
     popen: Callable[..., subprocess.Popen],
     child_rss: Callable[[int], int | None],
     rate_limit_urls: Sequence[str] = (),
-    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    transport_telemetry: ProviderTransportTelemetry | None = None,
     classify_rate_limit: bool = True,
 ) -> tuple[bytes, bytes]:
     """Popen + poll/sample loop for :func:`_run_ffmpeg_guarded` (memory-floor path). The caller
     holds the per-host rate-limit slot — and the distributed provider lease — for the whole
-    monitored run, so the rate-limit classification below (which updates the circuit breaker) also
-    runs before that lease is released (#343)."""
+    monitored run."""
     started = time.monotonic()
     proc = popen(  # noqa: S603 - command is assembled by this module from validated URLs/paths.
         cmd,
@@ -676,12 +602,7 @@ def _run_ffmpeg_popen_monitored(
                     f"samples={samples}{detail}",
                 )
                 if classify_rate_limit:
-                    _raise_if_rate_limited(
-                        phase=phase,
-                        stderr=stderr,
-                        rate_limit_urls=rate_limit_urls,
-                        rate_limit_circuit=rate_limit_circuit,
-                    )
+                    _raise_if_rate_limited(phase=phase, stderr=stderr)
                 raise subprocess.CalledProcessError(
                     returncode,
                     redact_subprocess_command(cmd),
@@ -759,7 +680,7 @@ def _download_audio(
     memory_floor_bytes: int | None = None,
     max_seconds: float | None = None,
     log: Callable[[str], None] | None = print,
-    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    transport_telemetry: ProviderTransportTelemetry | None = None,
     stop: Callable[[], bool] | None = None,
 ) -> bool:
     """Copy the source audio stream from *url* to *dest* without re-encoding.
@@ -800,7 +721,7 @@ def _download_audio(
             timeout=timeout,
             memory_floor_bytes=memory_floor_bytes,
             rate_limit_urls=(url,),  # the remote source — cap concurrent hits per provider (#39)
-            rate_limit_circuit=rate_limit_circuit,
+            transport_telemetry=transport_telemetry,
             stop=stop,
             log=log,
         )
@@ -828,7 +749,7 @@ class SourceCache:
         ffmpeg_binary: str = "ffmpeg",
         timeout_seconds: float | None = None,
         memory_floor_bytes: int | None = None,
-        rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+        transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
@@ -838,7 +759,7 @@ class SourceCache:
         self.ffmpeg_binary = ffmpeg_binary
         self.timeout_seconds = timeout_seconds
         self.memory_floor_bytes = memory_floor_bytes
-        self.rate_limit_circuit = rate_limit_circuit
+        self.transport_telemetry = transport_telemetry
         # Shared run-budget predicate (set once for the whole run); lets a caller queued behind
         # another thread's fetch of the same uid yield once the budget expires instead of waiting
         # out that fetch's full timeout.
@@ -883,7 +804,7 @@ class SourceCache:
                 self.ffmpeg_binary,
                 self.timeout_seconds,
                 self.memory_floor_bytes,
-                rate_limit_circuit=self.rate_limit_circuit,
+                transport_telemetry=self.transport_telemetry,
                 stop=self._stop,
             ):
                 self._paths[uid] = dest
@@ -1288,7 +1209,7 @@ class CommandFfmpeg:
         memory_floor_bytes: int | None = None,
         phase_gate: NativeWorkGate | None = None,
         finalize_workers: int = 0,
-        rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+        transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
     ):
         self.binary = binary
@@ -1301,7 +1222,7 @@ class CommandFfmpeg:
         self.threads = max(1, int(threads)) if threads is not None else None
         self.memory_floor_bytes = memory_floor_bytes
         self.phase_gate = phase_gate
-        self.rate_limit_circuit = rate_limit_circuit
+        self.transport_telemetry = transport_telemetry
         self.manages_audio_phases = phase_gate is not None
         # Shared run-budget predicate; used for the pre-subprocess coordination waits (phase-gate
         # slot, per-host rate limit, distributed lease) so a queued encode yields once the run's
@@ -1402,7 +1323,7 @@ class CommandFfmpeg:
             source_url,
             self.binary,
             timeout=probe_timeout,
-            rate_limit_circuit=self.rate_limit_circuit,
+            transport_telemetry=self.transport_telemetry,
             stop=self._stop,
         )
         codec_args = encode_args(
@@ -1451,7 +1372,7 @@ class CommandFfmpeg:
                     timeout=self.timeout_seconds,
                     memory_floor_bytes=self.memory_floor_bytes,
                     rate_limit_urls=(source_url,),  # no-op if it's a local cached copy (#39)
-                    rate_limit_circuit=self.rate_limit_circuit,
+                    transport_telemetry=self.transport_telemetry,
                     stop=self._stop,
                 ),
             )
@@ -1607,7 +1528,7 @@ class CommandFfmpeg:
                     # Cap concurrent hits per provider for any remote source inputs (#39); local
                     # cached copies / insert assets resolve to no host → no-op.
                     rate_limit_urls=tuple(sources_by_id[sid] for sid in source_ids),
-                    rate_limit_circuit=self.rate_limit_circuit,
+                    transport_telemetry=self.transport_telemetry,
                     stop=self._stop,
                 ),
             )
@@ -1676,7 +1597,7 @@ class CommandFfmpeg:
                 timeout=_remaining_timeout(),
                 memory_floor_bytes=self.memory_floor_bytes,
                 rate_limit_urls=rate_limit_urls,
-                rate_limit_circuit=self.rate_limit_circuit,
+                transport_telemetry=self.transport_telemetry,
                 stop=self._stop,
             ),
         )
@@ -1768,7 +1689,7 @@ def _probe_audio_stream(
     url: str,
     ffmpeg_binary: str = "ffmpeg",
     timeout: float | None = None,
-    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    transport_telemetry: ProviderTransportTelemetry | None = None,
     stop: Callable[[], bool] | None = None,
 ) -> AudioStreamInfo:
     """Return source audio codec/bitrate via ffprobe, or unknown fields on failure."""
@@ -1777,7 +1698,6 @@ def _probe_audio_stream(
         with (
             HOST_LIMITER.slot(url, stop=stop),
             DISTRIBUTED_PROVIDER_LEASES.slots([url], stop=stop),
-            _circuit_admission(rate_limit_circuit, [url]),
         ):
             out = subprocess.run(
                 [
@@ -1873,8 +1793,6 @@ class MaterializeStats:
     errors: list[str] = field(default_factory=list)
     bytes_written: int = 0  # total bytes of objects uploaded this run (for cost accounting)
     rate_limited: int = 0  # encode attempts that hit HTTP 403 / provider throttle (GH#300)
-    circuit_skipped: int = 0  # encodes skipped because the circuit breaker was open
-    circuit_keys: set[str] = field(default_factory=set)  # tenant/domain scopes that deferred work
 
 
 def _should_host(episode: Episode, city: City) -> bool:
@@ -2088,7 +2006,7 @@ def materialize_audio(
     resource_admission: object | None = None,
     native_work_gate: NativeWorkGate | None = None,
     memory_reservation: MemoryReservation | None = None,
-    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
+    transport_telemetry: ProviderTransportTelemetry | None = None,
     hosted_keys_cache: HostedKeysCache | None = None,
     audio_artifact_cache: AudioArtifactCache | None = None,
 ) -> MaterializeStats:
@@ -2332,21 +2250,6 @@ def materialize_audio(
                 source_urls = [source_url]
                 if ep.sources:
                     source_urls.extend(src.ref for src in ep.sources if src.ref not in source_urls)
-                if rate_limit_circuit is not None:
-                    circuit_key = rate_limit_circuit.record_circuit_deferred(source_urls)
-                    if circuit_key is not None:
-                        with lock:
-                            stats.skipped_budget += 1
-                            stats.circuit_skipped += 1
-                            stats.circuit_keys.add(circuit_key)
-                        print(
-                            f"[enrich] audio encode skipped slug={city.slug} "
-                            f"provider={city.provider} source={src_key} uid={label} "
-                            f"guid={ep.guid}: provider throttle circuit open "
-                            f"domain={circuit_key.split('/', 1)[0]} circuit={circuit_key}",
-                            flush=True,
-                        )
-                        return
                 # For single-source episodes, use a locally cached copy when available so the
                 # encode pass reads from disk rather than re-streaming the rate-limited source.
                 # Multi-source concat episodes use stable .ref URLs from the concat planner and
@@ -2398,8 +2301,6 @@ def materialize_audio(
                 _guard_against_truncated_audio(ep, probed, size_bytes=size)
                 url = storage.put_file(key, dest, CONTENT_TYPE)
                 ep.audio_bytes = size
-            if rate_limit_circuit is not None:
-                rate_limit_circuit.record_success(source_urls)
             # Commit the encode result atomically: the artifact pointer AND the probed served
             # duration are written only after a successful upload. Setting audio_duration_served
             # before put_file (its prior home) left a failed upload partially mutated — the record
@@ -2441,51 +2342,17 @@ def materialize_audio(
                 f"source={src_key} uid={label} guid={ep.guid}: {exc}",
                 flush=True,
             )
-        except CircuitOpenMediaFetchError as exc:
-            if rate_limit_circuit is not None:
-                circuit_key = (
-                    rate_limit_circuit.record_circuit_deferred(source_urls) or exc.circuit_key
-                )
-            else:
-                circuit_key = exc.circuit_key
-            with lock:
-                stats.skipped_budget += 1
-                stats.circuit_skipped += 1
-                stats.circuit_keys.add(circuit_key)
-            print(
-                f"[enrich] audio encode skipped slug={city.slug} provider={city.provider} "
-                f"source={src_key} uid={label} guid={ep.guid}: {exc}",
-                flush=True,
-            )
         except (
             subprocess.TimeoutExpired,
             subprocess.CalledProcessError,
             OSError,
             ProviderError,
         ) as exc:
-            if isinstance(exc, TruncatedAudioError) and rate_limit_circuit is not None:
-                rate_limit_circuit.record_truncation(source_urls)
+            if isinstance(exc, TruncatedAudioError) and transport_telemetry is not None:
+                transport_telemetry.record_truncation(source_urls)
             if isinstance(exc, RateLimitedMediaFetchError):
                 with lock:
                     stats.rate_limited += 1
-                if rate_limit_circuit is not None:
-                    # The subprocess boundary already recorded this failure on the circuit (while
-                    # the provider lease was still held, #343) when ``circuit_recorded`` is set;
-                    # recording it again here would double-count the failure and could re-open an
-                    # already-open circuit's cooldown. Only record here for exceptions raised
-                    # directly by an ``FfmpegRunner`` that bypassed that boundary (e.g. a test
-                    # double, or a future runner implementation).
-                    opened = (
-                        exc.opened_domain
-                        if getattr(exc, "circuit_recorded", False)
-                        else rate_limit_circuit.record_rate_limited(source_urls)
-                    )
-                    if opened is not None:
-                        print(
-                            f"[enrich] provider throttle circuit opened "
-                            f"domain={opened.split('/', 1)[0]} circuit={opened}",
-                            flush=True,
-                        )
             # Record the failed attempt so this episode backs off (exponentially) instead of being
             # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
             # A timeout is transient (the source may recover), so like a generic ``error`` it backs

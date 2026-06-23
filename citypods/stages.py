@@ -88,10 +88,9 @@ from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
 from citypods.media import (
     AudioArtifactCache,
-    CircuitOpenMediaFetchError,
     HostedKeysCache,
     MaterializeStats,
-    MediaRateLimitCircuitBreaker,
+    ProviderTransportTelemetry,
     RateLimitedMediaFetchError,
     SourceCache,
     _probe_duration_secs,
@@ -261,9 +260,9 @@ class StageContext:
     # new encode begins only with real budget headroom (supersedes the instantaneous mem_available
     # gate for audio). See ``citypods/resources.py:MemoryReservation``.
     memory_reservation: MemoryReservation | None = None
-    # Run-local provider throttle circuit. When Granicus starts returning ffmpeg 403/429 errors,
-    # AudioStage stops starting more work for that domain for a cooldown instead of amplifying it.
-    rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None
+    # Per-tenant Granicus transport telemetry (direct vs Worker-fallback vs truncation) for the H16
+    # acceptance report. Observational only — it never defers or gates media work.
+    transport_telemetry: ProviderTransportTelemetry | None = None
     # Global semaphore that caps concurrent ASR inference calls across ALL sources in the run.
     # ASR is CPU-bound and uses all cpu_threads — running N sources' alignment/transcription
     # simultaneously divides effective CPU by N, making each job N× slower.  With max_workers=20
@@ -342,8 +341,6 @@ class StageStats:
     transcribed: int = 0  # Path B: fresh faster-whisper transcription
     dispatched: int = 0  # H14a: handed to an external GPU backend (off-runner); pending next render
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
-    circuit_skipped: int = 0  # audio encodes skipped because the circuit breaker was open
-    circuit_keys: set[str] = field(default_factory=set)  # tenant/domain scopes for queue parking
     defer_reasons: dict[str, int] = field(default_factory=dict)
 
     def defer(self, reason: str, count: int = 1) -> None:
@@ -650,7 +647,7 @@ class AudioStage:
             resource_admission=ctx.resource_admission,
             native_work_gate=ctx.native_work_gate,
             memory_reservation=ctx.memory_reservation,
-            rate_limit_circuit=ctx.rate_limit_circuit,
+            transport_telemetry=ctx.transport_telemetry,
             hosted_keys_cache=ctx.hosted_keys_cache,
             audio_artifact_cache=ctx.audio_artifact_cache,
         )
@@ -664,8 +661,6 @@ class AudioStage:
             encoded=ms.encoded,
             credited=ms.credited,
             rate_limited=ms.rate_limited,
-            circuit_skipped=ms.circuit_skipped,
-            circuit_keys=ms.circuit_keys,
         )
 
 
@@ -791,27 +786,10 @@ class TimelineStage:
                         if result is not None:
                             current = result
                             changed = True
-                except CircuitOpenMediaFetchError as exc:
-                    # A planner's source-cache prefetch (e.g. SilencePlanner) found the provider
-                    # circuit already open. Surface it the same way AudioStage does instead of
-                    # letting it propagate to the global queue's blanket per-item catch, which
-                    # would silently drop this episode for the pass with no stats and no backoff.
-                    with lock:
-                        stats.skipped += 1
-                        stats.circuit_skipped += 1
-                        stats.circuit_keys.add(exc.circuit_key)
-                    return
                 except RateLimitedMediaFetchError as exc:
-                    # A planner's source-cache prefetch hit a provider 403/429 (it records on the
-                    # shared circuit breaker itself; this just makes the failure visible in the
-                    # report instead of vanishing into the global queue's blanket catch).
-                    if exc.opened_domain is not None:
-                        print(
-                            f"[enrich] provider throttle circuit opened "
-                            f"domain={exc.opened_domain.split('/', 1)[0]} "
-                            f"circuit={exc.opened_domain}",
-                            flush=True,
-                        )
+                    # A planner's source-cache prefetch hit a provider 403/429. Record the
+                    # per-episode backoff here so the failure is visible in the stage stats instead
+                    # of vanishing into the global queue's blanket per-item catch.
                     with lock:
                         stats.rate_limited += 1
                         stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
@@ -2121,7 +2099,7 @@ def run_stages(
         out.append(stat)
         # A provider throttle in a planner is the materialization attempt for this item. Continuing
         # to AudioStage would immediately repeat the same source-cache request and double-count one
-        # failure. Circuit-open work is similarly parked by the global queue for a later canary.
-        if stat.rate_limited or stat.circuit_skipped:
+        # failure, so stop after recording the backoff.
+        if stat.rate_limited:
             break
     return out

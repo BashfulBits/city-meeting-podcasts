@@ -852,12 +852,11 @@ def test_scoped_run_merge_aggregates_provider_lease_telemetry():
         {
             "ts": "2026-06-18T12:00:00+00:00",
             "provider_rate_limit_telemetry": {
-                "granicus.com": {
-                    "rate_limited": 3,
-                    "circuit_trips": 1,
-                    "circuit_deferred": 10,
-                    "recovery_probes": 1,
-                    "recoveries": 1,
+                "granicus.com/tenant:fortworthgov": {
+                    "direct_fetch_403s": 3,
+                    "worker_fallback_attempts": 3,
+                    "worker_fallback_successes": 3,
+                    "truncations": 1,
                     "lease_acquisitions": 4,
                     "lease_wait_seconds": 12.5,
                     "lease_max_wait_seconds": 8.0,
@@ -869,12 +868,11 @@ def test_scoped_run_merge_aggregates_provider_lease_telemetry():
         {
             "ts": "2026-06-18T12:01:00+00:00",
             "provider_rate_limit_telemetry": {
-                "granicus.com": {
-                    "rate_limited": 2,
-                    "circuit_trips": 0,
-                    "circuit_deferred": 5,
-                    "recovery_probes": 2,
-                    "recoveries": 1,
+                "granicus.com/tenant:fortworthgov": {
+                    "direct_fetch_403s": 2,
+                    "worker_fallback_attempts": 2,
+                    "worker_fallback_successes": 2,
+                    "truncations": 0,
                     "lease_acquisitions": 3,
                     "lease_wait_seconds": 7.5,
                     "lease_max_wait_seconds": 9.0,
@@ -885,13 +883,13 @@ def test_scoped_run_merge_aggregates_provider_lease_telemetry():
         },
     ]
 
-    values = _merge_logical_run_group(rows)["provider_rate_limit_telemetry"]["granicus.com"]
+    merged = _merge_logical_run_group(rows)["provider_rate_limit_telemetry"]
+    values = merged["granicus.com/tenant:fortworthgov"]
     assert values == {
-        "rate_limited": 5,
-        "circuit_trips": 1,
-        "circuit_deferred": 15,
-        "recovery_probes": 3,
-        "recoveries": 2,
+        "direct_fetch_403s": 5,
+        "worker_fallback_attempts": 5,
+        "worker_fallback_successes": 5,
+        "truncations": 1,
         "lease_acquisitions": 7,
         "lease_wait_seconds": 20.0,
         "lease_max_wait_seconds": 9.0,
