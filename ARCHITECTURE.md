@@ -107,17 +107,21 @@ uids — the cross-*uid* lost update two shards splitting one source would other
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
 pass is *dispatch-not-await-ready* — transcription/diarization will run on external workers and reconcile
 from durable state on a later deploy (design: [`review/12` §H5](review/12-hardening-and-efficiency.md)).
+Audio planning remains source-atomic for record safety, but source keys that reference the same
+configured city entity are assigned to one shard. Within that process, `AudioArtifactCache` coalesces
+identical `(provider, stable uid, audio recipe)` candidates: one alias encodes or reuses the artifact
+and every other source-local record adopts that single CAS pointer (GH#421).
 
 ## Module map (`citypods/`)
 
 | Area | Modules |
 |---|---|
 | **Providers** | `providers/{base,granicus,civicplus,civicclerk,swagit}.py` — `MeetingProvider` Protocol + registry; each normalizes to the episode model. |
-| **Records / identity** | `records.py` — stable `uid`, `source_key`, `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. `availability.py` — versioned `media_availability` classification (H16 PR3). |
+| **Records / identity** | `records.py` — stable `uid`, `source_key`, entity-level `source_family_key` (audio shard affinity only), `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. `availability.py` — versioned `media_availability` classification (H16 PR3). |
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
 | **Scheduling / backlog** | `ops/workqueue.py` — the `backlog_priority` policy (comparator registry: windowed `recency`, `city_order`, `body_order`, `feed_visible_first`, …), the derived **work manifest** (`WorkItem` per episode × output `work_class`, persisted to `state/work.json`), and the `lease`/`release`/`is_leased` API — the coordination substrate for off-runner ASR/diarization workers (H6b/H9). |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
-| **Media / audio** | `media.py` — timeline-aware ffmpeg mastering, pinned threads, sample-accurate bounded-memory single-source timeline cuts, versioned multi-mic speech profile (high-pass → dynamic leveling → gentle compression), two-pass measured **linear** EBU R128 normalization via a temporary FLAC, a constant-gain + 192 kHz short-lookahead limiter fallback for peak-constrained recordings, and content-addressed upload. |
+| **Media / audio** | `media.py` — timeline-aware ffmpeg mastering, pinned threads, sample-accurate bounded-memory single-source timeline cuts, versioned multi-mic speech profile (high-pass → dynamic leveling → gentle compression), two-pass measured **linear** EBU R128 normalization via a temporary FLAC, a constant-gain + 192 kHz short-lookahead limiter fallback for peak-constrained recordings, content-addressed upload, and run-local duplicate-view artifact coalescing. |
 | **Transcripts** | `asr.py` — forced alignment (stable-ts) / fresh transcription (faster-whisper) with align-error fallback; emits a clean **segment-cue VTT** (served via `<podcast:transcript>`) **plus a word-level JSON sidecar** (`…-asr-<recipe>.words.json`) for search/clips/diarization; version-aware re-transcribe on an `ASR_PIPELINE_VERSION` bump (provider transcripts never invalidated); both objects are content-addressed + GC-referenced. `bench.py` — `asr-bench` diagnostic. |
 | **Compute backend** | `compute/{base,local,budget,dispatch}.py` (H13 + H14a, **pre-1.0 lock**) — the pluggable GPU/ASR execution seam, peer of `storage/`. `base.py` defines `InferenceJob(task, inputs, recipe_hash)` (`task` typed for the full §5.5 verb set: ASR `transcribe`/`align`/`diarize` + reserved LLM `summarize`/`tag`/`soundbite-select`), `JobResult`/`JobHandle`, a `runtime_checkable` `Backend` protocol `run_inference(job)`, and (H14a) a `DispatchBackend` protocol (returns a `JobHandle` + `estimate_gpu_seconds`). `local.py` runs faster-whisper/stable-ts in-process (**byte-identical** to the pre-refactor path). **H14a substrate:** `budget.py` is the free-tier ledger (`state/compute_budget.json`, statesync-backed) that makes exceeding a backend's `monthly_gpu_seconds`/`max_inflight` structurally impossible (the **$0 guarantee**); `dispatch.py` adds the router (fill free tiers → consider `local`), a thread-safe `DispatchCoordinator` (records a live `work.json` lease `lease_owner="modal:<job_id>"` + decrements budget), and `reconcile_compute` (reap dead workers → re-queue; settle completed jobs; run at `asr.yml` start via `citypods compute reconcile`). `make_compute` selects by `compute_backend`: `local` (bypass) or `auto` (default). `TranscriptStage` attempts external dispatch first; only a declined job enters local admission. Known recordings above `asr_local_max_duration_hours` (production: 4h; non-positive disables) remain queued with `reason=external-required` instead of starting in-process inference. H14b/H14c register the real Modal/Beam **dispatch** adapters into the coordinator with no protocol change. |
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
@@ -139,6 +143,10 @@ total on `/admin/status`.
 - **Stage Protocol + `default_stages()`** — a new per-episode feature is a new stage.
 - **Split hashes** — `audio_spec_hash` (bytes) and `feed_content_hash` (RSS) invalidate independently.
 - **Content-addressed audio + stable UID** — CDN cache-bust, rollback, and provider-migration safe.
+- **Duplicate source views share audio work without changing durable identity** — feeds under one
+  configured city entity are co-located on an audio shard; identical stable-uid + recipe candidates
+  converge on one CAS object while retaining separate source records. No source-key or pipeline-version
+  migration is required (GH#421).
 - **Append-only archive** — meetings that drop off a provider feed are never lost (#52).
 - **Durable media-availability verdict** — `availability.py` carries a versioned `media_availability`
   projection on the record (available / suspected-or-confirmed empty / missing / invalid / recovered

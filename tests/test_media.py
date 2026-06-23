@@ -604,6 +604,48 @@ def test_hosted_keys_cache_is_per_source(tmp_path):
     assert len(store.list_objects_calls) == 2
 
 
+def test_audio_artifact_cache_encodes_duplicate_source_views_once(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from citypods.media import AudioArtifactCache
+
+    store = _store(tmp_path)
+    cache = AudioArtifactCache()
+    ff = FakeFfmpeg()
+    city_a = _city(slug="combined")
+    city_b = _city(slug="board")
+    ep_a = _ep("shared")
+    ep_b = _ep("shared")
+    source_a = source_key(city_a)
+    source_b = source_key(city_b)
+    assert source_a != source_b
+    for source in (source_a, source_b):
+        cache.register(city_a.provider, source, "uid-shared")
+
+    def _run(city, ep):
+        return materialize_audio(
+            city,
+            [ep],
+            storage=store,
+            ffmpeg=ff,
+            max_kbps=MAX_KBPS,
+            resolve_media_url=lambda e: e.video_url,
+            audio_artifact_cache=cache,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        stats_a, stats_b = list(
+            pool.map(lambda args: _run(*args), [(city_a, ep_a), (city_b, ep_b)])
+        )
+
+    assert len(ff.calls) == 1
+    assert ep_a.audio_key == ep_b.audio_key
+    assert ep_a.audio_key.startswith(f"{city_a.provider}/{min(source_a, source_b)}/")
+    assert sum(stats.encoded for stats in (stats_a, stats_b)) == 1
+    assert sum(stats.reused for stats in (stats_a, stats_b)) == 1
+    assert len(list(store.list_objects(f"{city_a.provider}/"))) == 1
+
+
 def test_global_queue_drain_is_bounded_by_sources_not_episodes(tmp_path):
     """Storage listings scale with the number of sources, not the number of queued episodes —
     the timing/operation-count contract from issue #344. Without ``hosted_keys_cache``, this same

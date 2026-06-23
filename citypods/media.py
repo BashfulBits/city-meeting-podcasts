@@ -48,7 +48,6 @@ from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers.base import ProviderError
 from citypods.records import (
     _in_backoff,
-    audio_object_key,
     audio_spec_hash,
     source_key,
 )
@@ -1926,6 +1925,60 @@ class HostedKeysCache:
             return self._keys[key]
 
 
+@dataclass(frozen=True)
+class AudioArtifact:
+    """Successful audio result shared by duplicate stable-meeting source views."""
+
+    key: str
+    spec: str
+    url: str
+    duration: float | None
+    size: int | None
+    encoded_at: str | None
+
+
+class AudioArtifactCache:
+    """Thread-safe run-local coalescing for identical stable-uid + audio-recipe work."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._canonical_sources: dict[tuple[str, str], str] = {}
+        self._values: dict[tuple[str, str, str], AudioArtifact] = {}
+        self._inflight: set[tuple[str, str, str]] = set()
+
+    def register(self, provider: str, source: str, uid: str) -> None:
+        with self._condition:
+            identity = (provider, uid)
+            current = self._canonical_sources.get(identity)
+            if current is None or source < current:
+                self._canonical_sources[identity] = source
+
+    def canonical_source(self, provider: str, source: str, uid: str) -> str:
+        with self._condition:
+            return self._canonical_sources.get((provider, uid), source)
+
+    def claim(self, key: tuple[str, str, str]) -> tuple[bool, AudioArtifact | None]:
+        with self._condition:
+            while key in self._inflight:
+                self._condition.wait()
+            value = self._values.get(key)
+            if value is not None:
+                return False, value
+            self._inflight.add(key)
+            return True, None
+
+    def complete(self, key: tuple[str, str, str], value: AudioArtifact) -> None:
+        with self._condition:
+            self._values[key] = value
+            self._inflight.discard(key)
+            self._condition.notify_all()
+
+    def abort(self, key: tuple[str, str, str]) -> None:
+        with self._condition:
+            self._inflight.discard(key)
+            self._condition.notify_all()
+
+
 def _sources_by_id(ep: Episode, source_url: str) -> dict[str, str]:
     """Map source_id → resolved URL.
 
@@ -2037,6 +2090,7 @@ def materialize_audio(
     memory_reservation: MemoryReservation | None = None,
     rate_limit_circuit: MediaRateLimitCircuitBreaker | None = None,
     hosted_keys_cache: HostedKeysCache | None = None,
+    audio_artifact_cache: AudioArtifactCache | None = None,
 ) -> MaterializeStats:
     """(Re-)host audio for episodes that need it, content-addressed by audio spec.
 
@@ -2064,6 +2118,9 @@ def materialize_audio(
     ``hosted_keys_cache``, when provided, shares one ``list_objects`` listing per source across
     every call for that source during the cache's lifetime — needed because the global queue
     (H5 PR3) invokes this function once per *episode*, not once per source (issue #344).
+
+    ``audio_artifact_cache`` lets duplicate source views share one successful artifact and encode
+    while leaving their source-scoped records independent (GH#421).
     """
     stats = MaterializeStats()
     hosted_keys = (
@@ -2087,8 +2144,30 @@ def materialize_audio(
     # Cheap pass: handle reuse / credit / backoff inline (always sequential — fast).
     # Collect episodes that need the expensive encode into to_encode.
     to_encode: list[tuple[Episode, str, str]] = []  # (ep, spec, key)
+    encode_cache_keys: dict[int, tuple[str, str, str]] = {}
     ffmpeg_binary = getattr(ffmpeg, "binary", "ffmpeg")
     src_key = source_key(city)
+
+    def _artifact(ep: Episode) -> AudioArtifact:
+        return AudioArtifact(
+            key=str(ep.audio_key),
+            spec=str(ep.audio_spec_hash),
+            url=str(ep.hosted_audio_url),
+            duration=ep.audio_duration_served,
+            size=ep.audio_bytes,
+            encoded_at=ep.audio_encode_time,
+        )
+
+    def _apply_artifact(ep: Episode, artifact: AudioArtifact) -> None:
+        ep.audio_key = artifact.key
+        ep.audio_spec_hash = artifact.spec
+        ep.hosted_audio_url = artifact.url
+        ep.audio_duration_served = artifact.duration
+        ep.audio_bytes = artifact.size
+        ep.audio_encode_time = artifact.encoded_at
+        ep.materialize_attempts = 0
+        ep.materialize_last_attempt = None
+        ep.materialize_error = None
 
     for ep in episodes:
         if not _should_host(ep, city):
@@ -2109,6 +2188,20 @@ def materialize_audio(
             loudness_profile=loudness_profile,
             processing_profile=processing_profile,
         )
+        uid = ep.uid or ep.guid
+        cache_key = (city.provider, uid, spec)
+        if audio_artifact_cache is not None:
+            leader, cached = audio_artifact_cache.claim(cache_key)
+            if not leader:
+                assert cached is not None
+                _apply_artifact(ep, cached)
+                stats.reused += 1
+                print(
+                    f"[enrich] audio reused slug={city.slug} provider={city.provider} "
+                    f"source={src_key} uid={uid} reason=deduplicated-run",
+                    flush=True,
+                )
+                continue
         # Already hosted with a matching spec (or carried over from the legacy manifest while no
         # explicit audio recipe is configured)? A named loudness/processing profile is a real byte
         # recipe, so it intentionally invalidates legacy artifacts that cannot prove how they were
@@ -2127,6 +2220,8 @@ def materialize_audio(
         errored = bool(ep.materialize_error)
         if spec_ok and present and not errored:
             _backfill_served_duration(ep)
+            if audio_artifact_cache is not None:
+                audio_artifact_cache.complete(cache_key, _artifact(ep))
             stats.reused += 1
             continue
         if ep.hosted_audio_url and not present:
@@ -2139,10 +2234,17 @@ def materialize_audio(
         # Recently-failed episodes back off (exponential) so a permanently-broken source (e.g. a
         # Swagit meeting with no usable media — #120) stops re-trying and churning budget/time.
         if _in_backoff(ep, now):
+            if audio_artifact_cache is not None:
+                audio_artifact_cache.abort(cache_key)
             stats.skipped_backoff += 1
             continue
 
-        key = audio_object_key(city, ep, spec)
+        canonical_source = (
+            audio_artifact_cache.canonical_source(city.provider, src_key, uid)
+            if audio_artifact_cache is not None
+            else src_key
+        )
+        key = f"{city.provider}/{canonical_source}/{uid}-{spec}.m4a"
         # Credit path: the object is already in storage (e.g. a prior run uploaded it but the
         # record drifted). (Re)attaching its URL is a near-free metadata op — ~10-100x cheaper than
         # an encode — so it does NOT draw from the budget. The budget meters the expensive encode
@@ -2156,11 +2258,14 @@ def materialize_audio(
             ep.materialize_attempts = 0
             ep.materialize_last_attempt = None
             ep.materialize_error = None
+            if audio_artifact_cache is not None:
+                audio_artifact_cache.complete(cache_key, _artifact(ep))
             stats.hosted += 1
             stats.credited += 1
             continue
 
         to_encode.append((ep, spec, key))
+        encode_cache_keys[id(ep)] = cache_key
 
     if not to_encode:
         return stats
@@ -2171,9 +2276,17 @@ def materialize_audio(
 
     def _encode_one(item: tuple[Episode, str, str]) -> None:
         ep, spec, key = item
+        cache_key = encode_cache_keys.get(id(ep))
+        cache_completed = False
+
+        def _abort_cache() -> None:
+            if audio_artifact_cache is not None and cache_key is not None:
+                audio_artifact_cache.abort(cache_key)
+
         # Re-check stop inside the worker: submitted-but-not-yet-started tasks yield gracefully
         # when the budget expires mid-batch.
         if stop is not None and stop():
+            _abort_cache()
             with lock:
                 stats.skipped_budget += 1
             return
@@ -2191,12 +2304,14 @@ def materialize_audio(
                 processing_profile=processing_profile,
             )
             if not memory_reservation.reserve(reserved_bytes, label=str(label), stop=stop):
+                _abort_cache()
                 with lock:
                     stats.skipped_budget += 1
                 PROGRESS.finish(_progress_entry)
                 return
         elif resource_admission is not None:
             if not resource_admission.wait(kind="audio", label=str(label), stop=stop):
+                _abort_cache()
                 with lock:
                     stats.skipped_budget += 1
                 PROGRESS.finish(_progress_entry)
@@ -2301,6 +2416,9 @@ def materialize_audio(
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None
+            if audio_artifact_cache is not None and cache_key is not None:
+                audio_artifact_cache.complete(cache_key, _artifact(ep))
+                cache_completed = True
             with lock:
                 stats.bytes_written += size
                 stats.hosted += 1
@@ -2390,6 +2508,8 @@ def materialize_audio(
                 flush=True,
             )
         finally:
+            if not cache_completed:
+                _abort_cache()
             if gate_acquired and native_work_gate is not None:
                 native_work_gate.release(kind="audio")
             if memory_reservation is not None and reserved_bytes:
