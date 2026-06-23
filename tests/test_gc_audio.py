@@ -19,6 +19,25 @@ def test_attribute_maps_audio_and_transcript_keys_to_city():
     assert gc_audio.attribute("state/sources/x.json", mapping) == "(other)"
 
 
+def test_is_managed_artifact_allow_lists_audio_and_transcripts():
+    # Audio: new source-key scheme and the legacy slug-keyed scheme are both ``.m4a``.
+    assert gc_audio.is_managed_artifact("swagit/0134e94361a5/uid-spec.m4a")
+    assert gc_audio.is_managed_artifact("dallas-tx-city-council/1df6c281284b3ac7.m4a")
+    # Transcripts (incl. the ASR word JSON) all live under ``transcripts/``.
+    assert gc_audio.is_managed_artifact("transcripts/abc123/uid-spec.vtt")
+    assert gc_audio.is_managed_artifact("transcripts/abc123/uid-asr-r.words.json")
+
+
+def test_is_managed_artifact_protects_infrastructure():
+    # The ASR-weight mirror must never be a deletion candidate (would break transcription).
+    assert not gc_audio.is_managed_artifact("models/faster-whisper-large-v3-turbo/model.bin")
+    assert not gc_audio.is_managed_artifact("models/faster-whisper-large-v3-turbo/config.json")
+    # Durable state snapshot, soundbite clips (own policy), and any other non-artifact infra.
+    assert not gc_audio.is_managed_artifact("state/sources/x/episodes.json")
+    assert not gc_audio.is_managed_artifact("clips/uid1.m4a")
+    assert not gc_audio.is_managed_artifact("backups/2026-05-30.tar")
+
+
 def test_summarize_groups_by_city_with_totals():
     orphans = [
         gc_audio.Orphan("granicus/a/u1-s.m4a", 100, "fort-worth-tx", None),
@@ -102,3 +121,43 @@ def test_gc_out_report_written_on_dry_run(tmp_path):
     assert "p/orphan.m4a" in tsv
     assert "p/kept.m4a" not in tsv  # referenced, not an orphan
     assert "| **Total** | **1** |" in (report / "issue-body.md").read_text()
+
+
+def test_apply_reaps_orphan_audio_but_never_infrastructure(tmp_path):
+    """An --apply sweep must delete an unreferenced ``.m4a`` yet leave the ASR model mirror and
+    the durable state snapshot untouched, even with ``--min-age-days 0``."""
+    out = tmp_path / "docs"
+    root = out / "audio"
+    (root / "p").mkdir(parents=True)
+    (root / "p" / "kept.m4a").write_bytes(b"1")
+    (root / "p" / "orphan.m4a").write_bytes(b"22")
+    # Non-artifact infrastructure that a whole-bucket sweep would otherwise see.
+    model = root / "models" / "faster-whisper-large-v3-turbo"
+    model.mkdir(parents=True)
+    (model / "model.bin").write_bytes(b"weights")
+    (model / "config.json").write_bytes(b"{}")
+    snapshot = root / "state" / "sources" / "x"
+    snapshot.mkdir(parents=True)
+    (snapshot / "episodes.json").write_bytes(b"{}")
+
+    state = tmp_path / "state"
+    save_records(state, "src", {"u1": {"audio": {"key": "p/kept.m4a", "url": "x"}}})
+    (tmp_path / "site.yml").write_text(
+        f"state_dir: {state}\ndefaults:\n  audio_storage_backend: local\n"
+    )
+    argv = [
+        "--site-config",
+        str(tmp_path / "site.yml"),
+        "--output-dir",
+        str(out),
+        "--min-age-days",
+        "0",
+        "--apply",
+    ]
+    assert gc_audio.main(argv) == 0
+    # The orphan audio is gone; the referenced audio and ALL infrastructure survive.
+    assert not (root / "p" / "orphan.m4a").exists()
+    assert (root / "p" / "kept.m4a").exists()
+    assert (model / "model.bin").exists()
+    assert (model / "config.json").exists()
+    assert (snapshot / "episodes.json").exists()

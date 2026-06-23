@@ -286,6 +286,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **The audio orphan GC now allow-lists managed artifacts, so an `--apply` run can no longer delete
+  the ASR model mirror or other bucket infrastructure
+  ([#448](https://github.com/BashfulBits/city-meeting-podcasts/issues/448) investigation).** The
+  unscoped sweep (`--prefix ""`) only protected the `state/` prefix, so the dry-run report flagged
+  `models/faster-whisper-large-v3-turbo/*` — including the 1.6 GB `model.bin` written by
+  `scripts/prepare_whisper.py` and depended on by the ASR workers — as reclaimable orphans; an apply
+  run would have broken transcription. `scripts/gc_audio.py` now treats a key as a deletion candidate
+  only when it is a managed artifact (`is_managed_artifact`: content-addressed audio `*.m4a`, or a
+  `transcripts/…` object); everything else (`state/`, `models/`, `clips/`, or any future infra prefix)
+  is allow-listed out and counted as "protected" in the run summary. This is an allow-list of artifact
+  shapes rather than a deny-list of known infra, so a newly introduced infrastructure prefix can never
+  be reaped by an older copy of the script. Report/scan logic only — no audio bytes or stored artifacts
+  change.
 - **The H16 identity check no longer false-fails on coalesced duplicate source views, and a coalesced
   follower keeps a valid served duration ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)
   follow-up).** Audio run #58 — the first with the GH#421 duplicate-coalescing active — failed the
