@@ -212,13 +212,15 @@ class H16IdentityTracker:
                 if (
                     initial_current
                     and expected_spec == before.expected_spec_hash
-                    and (
-                        ep.audio_duration_served != before.audio_duration_served
-                        or not self._artifact_matches_recipe(
-                            city, ep.uid, expected_spec, ep.audio_key, ep.hosted_audio_url
-                        )
+                    and not self._artifact_matches_recipe(
+                        city, ep.uid, expected_spec, ep.audio_key, ep.hosted_audio_url
                     )
                 ):
+                    # A current-at-capture artifact, same recipe, that no longer resolves to a
+                    # valid content-addressed object for that recipe was genuinely replaced this
+                    # run. A served-duration delta alone is NOT that — the audio is identical across
+                    # a recipe, so a re-probe or a GH#421 coalesced-sibling adoption (record now
+                    # points at the canonical shared object) is metadata-only, not a new artifact.
                     categories.add("current_artifact_changed")
 
             if categories:

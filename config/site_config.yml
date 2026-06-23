@@ -22,7 +22,7 @@ max_encodes_per_source: 1                # parallel episode workers within one s
 # short-names) so the Granicus-owned Swagit CDN (*.granicus.com) is matched by the host the tenant
 # actually sees; a host with no matching key is unlimited. Per-process (each shard is its own runner).
 provider_rate_limits:
-  granicus.com: 1  # Phase 1 GH#300: process-local cap 2→1; combined with slots=2 limits peak aggregate to 4 concurrent fetches
+  granicus.com: 1  # process-local cap per shard (GH#300); aggregate is bounded by the distributed slots below
   swagit.com: 2
   civicclerk.com: 4
 
@@ -39,6 +39,14 @@ provider_distributed_leases:
     ttl_seconds: 900  # GH#378: 3600→900 so a dead holder's slot is reclaimable in ~15min, not 1h. Free: _renew_interval caps the renewal cadence at 60s for any ttl≥180, so 900/3=300→still 60s (unchanged renewal traffic). A legitimate fetch+encode (≤45min audio_encode_timeout) renews well within this.
     poll_seconds: 2
     settle_seconds: 0.25
+
+# Declared Granicus audio concurrency ceiling. The H16 `concurrency_ceiling` acceptance criterion
+# asserts the operative knobs above (provider_rate_limits.granicus.com + the distributed slots) match
+# this intent, so a deliberate tune passes while an accidental drift between the two operative knobs is
+# caught. Update this in lockstep when you change the operative ceiling. (Default if absent: 1 / 2.)
+provider_audio_concurrency_ceiling:
+  process_local: 1
+  distributed: 4
 
 # Domains for which the Audio lane records per-tenant transport telemetry (direct vs Cloudflare
 # Worker fallback vs truncation). These counters feed the H16 acceptance report's `transport`

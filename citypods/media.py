@@ -2080,12 +2080,20 @@ def materialize_audio(
         ep.audio_key = artifact.key
         ep.audio_spec_hash = artifact.spec
         ep.hosted_audio_url = artifact.url
-        ep.audio_duration_served = artifact.duration
         ep.audio_bytes = artifact.size
         ep.audio_encode_time = artifact.encoded_at
+        # The audio is identical across a coalesced recipe, so the served duration is a content
+        # property: adopt the shared artifact's value when it has one, but never downgrade a
+        # follower's own probed duration to a missing/zero one. A *credited* canonical winner can
+        # carry no probe, which previously regressed a follower to 0s and tripped H16
+        # served_duration / current_artifact_changed (GH#421 follow-up). Backfill from the episode's
+        # own timeline/source as a final fallback.
+        if artifact.duration and artifact.duration > 0:
+            ep.audio_duration_served = artifact.duration
         ep.materialize_attempts = 0
         ep.materialize_last_attempt = None
         ep.materialize_error = None
+        _backfill_served_duration(ep)
 
     for ep in episodes:
         if not _should_host(ep, city):
