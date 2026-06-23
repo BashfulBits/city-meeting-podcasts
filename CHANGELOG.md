@@ -246,22 +246,29 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
-- **The H16 identity check no longer reports a false mismatch for reused legacy audio artifacts
-  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** Audio run #54 failed
-  the `identity` criterion with a single `1/939` mismatch (`audio_key` + `audio_spec_hash` +
-  `audio_url`, with neither `served_duration` nor `current_artifact_changed` firing). Root cause: a
-  migrated legacy artifact is reused as-is by `materialize_audio`'s `legacy_ok` path
-  (`citypods/media.py`) — the record keeps its pre-content-addressing `audio_spec_hash == "legacy"`
-  key/url and is never re-encoded while no explicit loudness/processing recipe is active — but
-  `H16IdentityTracker.verify` (`citypods/h16_identity.py`) recomputed the content-addressed
-  `_expected()` identity and flagged the deliberate divergence. The run that first backfilled that
-  episode's served duration tripped the artifact-changed branch, which is why exactly one episode in
-  one run mismatched (runs #51/#53/#55 were clean) and why the lease `stale_leases_reaped=1`
-  correlation was coincidental. `verify` now mirrors the exact `legacy_ok` reuse condition and skips
-  the key/spec/url comparison for reused legacy artifacts, while still checking `served_duration` and
-  partial-artifact state; a named loudness/processing recipe (which forces a real re-encode) still
-  validates fully. Diagnostics-and-checks only — no audio bytes, pipeline versions, or stored
-  artifacts change, so **no backfill**.
+- **A failed audio upload no longer leaves the record partially mutated, and the H16 identity check
+  no longer reports a false mismatch for any artifact retained across a transient failure
+  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** Audio runs #54 and
+  #56 failed the `identity` criterion with a single `1/~939` mismatch (`audio_key` + `audio_spec_hash`
+  + `audio_url`, with neither `served_duration` nor `current_artifact_changed` firing). Root cause
+  (proven from run #56's per-shard log): an episode's recipe changed during the run and its re-encode
+  probed a new served duration, then the **upload failed transiently** (B2 `ServiceUnavailable`).
+  `materialize_audio` (`citypods/media.py`) had already written `audio_duration_served` *before* the
+  `put_file`, so the failed upload left the record carrying the new artifact's duration while still
+  pointing at the prior, valid artifact (old spec). `H16IdentityTracker.verify`
+  (`citypods/h16_identity.py`) saw the duration change, entered the artifact-comparison branch, and
+  flagged the legitimately-retained old key/spec/url against the freshly-recomputed `_expected()`
+  spec. Two fixes: (1) the encode now commits `audio_duration_served` **atomically with the artifact
+  pointer, only after a successful upload**, so a failed upload leaves the episode untouched and
+  simply retries next run; (2) `verify` no longer compares key/spec/url when the artifact identity is
+  **unchanged from capture** (no successful re-materialization this run) — a divergence from the
+  recompute is then a pending re-encode, not corruption — which also covers budget-deferred re-encodes
+  and reused migrated `legacy` artifacts (generalizing the earlier `legacy_ok` exemption). A freshly
+  *written* artifact is still validated, so genuine content-addressing drift is still caught. The
+  earlier same-issue entry attributing this to legacy reuse was incorrect — the mismatching artifact
+  carried a real content-addressed spec, not `"legacy"`, and the lease `stale_leases_reaped`
+  correlation was common-cause (infra-troubled runs), not causal. No audio bytes, pipeline versions,
+  or stored artifacts change, so **no backfill**.
 - **Swagit concat probes no longer deadlock the global Granicus media pool.** The concat duration
   probe now acquires the process-local host limiter before the cross-shard distributed lease,
   matching every other ffmpeg/ffprobe media path and the #342 lock-order invariant. The reversed

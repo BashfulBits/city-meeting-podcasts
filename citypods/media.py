@@ -2271,8 +2271,6 @@ def materialize_audio(
                 probed: float | None = None
                 try:
                     probed = _probe_duration_secs(dest, ffmpeg_binary)
-                    if probed is not None:
-                        ep.audio_duration_served = probed
                 except Exception:  # noqa: BLE001
                     pass
                 try:
@@ -2287,10 +2285,18 @@ def materialize_audio(
                 ep.audio_bytes = size
             if rate_limit_circuit is not None:
                 rate_limit_circuit.record_success(source_urls)
+            # Commit the encode result atomically: the artifact pointer AND the probed served
+            # duration are written only after a successful upload. Setting audio_duration_served
+            # before put_file (its prior home) left a failed upload partially mutated — the record
+            # carried the new artifact's duration while still pointing at the prior artifact — which
+            # H16IdentityTracker.verify then misreported as an identity mismatch (GH#353, Audio
+            # #54/#56: a transient B2 ServiceUnavailable on a recipe-changed re-encode).
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
             ep.audio_encode_time = now.isoformat()
+            if probed is not None:
+                ep.audio_duration_served = probed
             _backfill_served_duration(ep)
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None

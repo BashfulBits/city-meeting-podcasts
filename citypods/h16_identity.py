@@ -138,25 +138,21 @@ class H16IdentityTracker:
                 and before.audio_duration_served > 0
             )
             post_complete = bool(ep.audio_key and ep.hosted_audio_url and ep.audio_spec_hash)
-            # A migrated legacy artifact is reused as-is by ``materialize_audio`` (its
-            # ``legacy_ok`` path, media.py): the record keeps its pre-content-addressing
-            # ``audio_spec_hash == "legacy"`` key/url and is never re-encoded while no explicit
-            # loudness/processing recipe is active. That is the intended steady state, so the
-            # content-addressed ``_expected()`` recompute deliberately won't match — do not count
-            # the key/spec/url divergence as an identity mismatch. (Mirror the exact reuse
-            # condition; a named recipe would force a re-encode and a real content-addressed key.)
-            # GH#353: this is the run-54 false positive — a legacy episode whose served duration
-            # was first backfilled that run tripped the artifact-changed branch below.
-            # Exempt only *genuine* reuse: the artifact must have carried the legacy marker at
-            # capture and still carry it, with its key/url unchanged across the media chain. A
-            # ``legacy`` spec paired with a changed key/url is anomalous (materialize_audio's reuse
-            # path leaves all three untouched) and must still be reported.
-            legacy_ok = (
-                ep.audio_spec_hash == "legacy"
-                and before.audio_spec_hash == "legacy"
-                and ep.audio_key == before.audio_key
+            # The content-addressed key/spec/url comparison is only meaningful for an artifact this
+            # run actually (re)materialized. When the persisted pointer is byte-identical to what
+            # was captured before the media chain, this run did not write a new artifact — the
+            # record legitimately retains its prior, valid object — so a divergence from the freshly
+            # recomputed ``_expected()`` is a *pending* re-encode, not corruption. This covers the
+            # transients that all leave the old pointer in place: a recipe change whose re-encode
+            # was deferred by the run budget, a reused migrated ``legacy`` artifact, and a re-encode
+            # whose upload failed transiently (GH#353, Audio #54/#56: a B2 ServiceUnavailable left
+            # the new probed duration on the record while the pointer stayed at the prior object,
+            # tripping the duration-change branch below). A freshly *written* artifact is still
+            # validated, so real content-addressing drift is still caught.
+            artifact_identity_unchanged = (
+                ep.audio_key == before.audio_key
+                and ep.audio_spec_hash == before.audio_spec_hash
                 and ep.hosted_audio_url == before.audio_url
-                and not (self._loudness_profile or self._processing_profile)
             )
             artifact_checked = False
 
@@ -180,7 +176,7 @@ class H16IdentityTracker:
                 or (initial_current and expected_spec == before.expected_spec_hash)
             ):
                 artifact_checked = True
-                if not legacy_ok:
+                if not artifact_identity_unchanged:
                     if ep.audio_spec_hash != expected_spec:
                         categories.add("audio_spec_hash")
                     if ep.audio_key != expected_key:
