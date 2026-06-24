@@ -29,6 +29,28 @@ from pathlib import Path
 STATE_PREFIX = "state"
 # JSON-typed; everything we persist is text. Kept conservative so a stray binary never syncs.
 _SUFFIXES = {".json", ".jsonl"}
+
+
+def _is_cas_managed(storage, key: str) -> bool:
+    """True if ``key`` is a coordination object this ``storage`` manages by compare-and-swap.
+
+    Such keys are read/written by CAS (review/17 §5), so the bulk state sync must skip them on both
+    legs: ``pull_state`` would shadow the CAS object with a stale local copy, and ``push_state``
+    would clobber it with a non-conditional ``put_file``. The storage is the authority: a
+    ``RoutingStorage`` answers from its own configured prefixes (which can differ from the module
+    constant). A non-routing CAS backend (e.g. a plain ``r2``) has no per-instance prefix list, so
+    fall back to the module table. A non-CAS backend (plain B2 / local) keeps bulk-syncing the file
+    as before (the local-file fallback path)."""
+    predicate = getattr(storage, "is_cas_managed_key", None)
+    if callable(predicate):
+        return bool(predicate(key))
+    if not getattr(storage, "cas_capable", False):
+        return False
+    from citypods.storage.routing import COORDINATION_PREFIXES
+
+    return bool(COORDINATION_PREFIXES) and key.startswith(COORDINATION_PREFIXES)
+
+
 # Mirror gc_audio's safety floor: a remote state object with no local counterpart is only
 # reaped once it is older than this, so an object written by a build that hasn't yet produced
 # its local copy isn't deleted out from under it.
@@ -49,6 +71,8 @@ def pull_state(storage, state_dir: Path) -> int:
     for key, _ in storage.list_objects(f"{STATE_PREFIX}/"):
         rel = key[len(STATE_PREFIX) + 1 :]
         if not rel or Path(rel).suffix not in _SUFFIXES:
+            continue
+        if _is_cas_managed(storage, key):  # CAS-managed on R2; not part of the bulk snapshot
             continue
         if storage.get_file(key, state_dir / rel):
             restored += 1
@@ -78,6 +102,8 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None) -> int:
             continue
         rel = path.relative_to(state_dir).as_posix()
         if prefixes is not None and not rel.startswith(prefixes):
+            continue
+        if _is_cas_managed(storage, f"{STATE_PREFIX}/{rel}"):  # CAS-managed on R2; never bulk-push
             continue
         storage.put_file(f"{STATE_PREFIX}/{rel}", path, "application/json")
         pushed += 1

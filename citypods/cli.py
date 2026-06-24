@@ -619,33 +619,48 @@ def _compute_reconcile(args) -> int:
     from pathlib import Path
 
     from citypods.compute import reconcile_compute
-    from citypods.compute.budget import load_budget
+    from citypods.compute.budget import load_budget, load_budget_cas, storage_supports_cas
     from citypods.ops.workqueue import is_leased, load_manifest
     from citypods.state import resolve_state_dir
+    from citypods.statesync import pull_state, push_state
+    from citypods.storage import make_storage
 
     site_config = load_site_config(args.site_config)
     output_dir = Path(args.output_dir)
     state_dir = resolve_state_dir(site_config, output_dir)
+    base_url = getattr(args, "base_url", None) or site_config.get("base_url", "")
+    storage = make_storage(site_config, base_url, output_dir)
 
     if args.dry_run:
-        # Read-only: no storage, no mutation. Report what a real run would reap.
+        # Predict what a real run would reap WITHOUT touching durable or real local state. A real
+        # reconcile pulls the durable snapshot first, so mirror it: pull into a throwaway dir and
+        # read the manifest there; read the budget from R2 (CAS) when available, else from the same
+        # pulled snapshot. Keeps the manifest and budget views consistent (both durable) instead of
+        # mixing a durable budget with a possibly-stale local work.json.
+        import tempfile
+
         now = datetime.now(UTC)
-        leased = [wi for wi in load_manifest(state_dir) if wi.lease_owner]
+        with tempfile.TemporaryDirectory() as td:
+            snapshot = Path(td)
+            pull_state(storage, snapshot)
+            leased = [wi for wi in load_manifest(snapshot) if wi.lease_owner]
+            budget = (
+                load_budget_cas(storage)[0]
+                if storage_supports_cas(storage)
+                else load_budget(snapshot)
+            )
         expired = sum(1 for wi in leased if not is_leased(wi, now=now))
-        reservations = sum(led.inflight_count for led in load_budget(state_dir).backends.values())
+        reservations = sum(led.inflight_count for led in budget.backends.values())
         print(
             f"compute reconcile (dry run): {len(leased)} leased "
             f"({expired} expired → would reap), {reservations} budget reservation(s)"
         )
         return 0
 
-    from citypods.statesync import pull_state, push_state
-    from citypods.storage import make_storage
-
-    base_url = getattr(args, "base_url", None) or site_config.get("base_url", "")
-    storage = make_storage(site_config, base_url, output_dir)
-    # Operate on the durable (bucket) state: pull the snapshot, reconcile, push back only the two
-    # files reconcile owns (so it never clobbers records). No-ops for a sync-less local backend.
+    # Operate on the durable (bucket) state: pull the snapshot, reconcile, push back only the
+    # files reconcile owns (so it never clobbers records). On a CAS backend the budget ledger is
+    # written directly by reconcile via CAS and push_state skips it (CAS-managed); on a non-CAS
+    # backend (plain B2 / local) it rides this bulk push as before. No-op for a sync-less backend.
     pull_state(storage, state_dir)
     summary = reconcile_compute(state_dir, storage)
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])

@@ -127,6 +127,21 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on each shard and represented only by redacted category/file/line metadata. This adds telemetry
   and workflow evidence only: no audio bytes, pipeline versions, artifact identities, or backfill
   behavior change ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).
+- **The free-tier GPU budget ledger moved to R2 with an atomic compare-and-swap decrement (H17 PR3,
+  [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/17 §3/§5).**
+  `state/compute_budget.json` is the first coordination artifact to migrate off the bulk B2 state
+  sync onto the R2 CAS path: `RoutingStorage` now routes it to R2 (`COORDINATION_PREFIXES`), and
+  every `reserve`/`settle`/`release` is a compare-and-swap read-modify-write (`budget.mutate_budget`:
+  GET ETag → apply → `put_cas(if_match=…)` → re-read and retry with bounded backoff + jitter on a
+  412). Concurrent shards can no longer lose each other's reservations or overspend the monthly
+  free-tier cap — the dispatch availability check reads the authoritative R2 ledger, not a stale
+  in-memory snapshot. `statesync` excludes CAS-managed keys from `pull_state`/`push_state` (so a
+  plain `put_file` can't clobber the CAS object), gated on a new `cas_capable` flag set **only for
+  R2** (B2 silently ignores conditional headers); a plain-B2 / local / dry-run backend keeps the
+  prior local-file ledger behavior byte-for-byte. External dispatch is still dormant (no adapter
+  registered), so this is a no-op in production today — it proves the router + CAS helper on the
+  lowest-stakes coordination key before the throttle-path migration. No pipeline-version bump, no
+  backfill (a pre-existing B2 `compute_budget.json`, if any, is simply superseded by the R2 ledger).
 - **Per-episode transcribe sharding so one skewed source spreads across all shards (H17 Stage 1,
   [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/18 §3).** The
   transcribe lane now plans per `(source, uid)` episode instead of per source: a Granicus source with

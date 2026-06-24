@@ -52,9 +52,15 @@ def register_dispatch_backend(name: str, factory: DispatchFactory) -> None:
     _DISPATCH_REGISTRY[name] = factory
 
 
-def _make_auto(site_config: dict, *, state_dir: str | Path | None) -> DispatchCoordinator:
+def _make_auto(
+    site_config: dict, *, state_dir: str | Path | None, storage=None
+) -> DispatchCoordinator:
     """Build the dispatcher: registered backends (in config order) with budget, overflowing to
-    ``local``. Backends named in config but not yet registered are skipped (no adapter yet)."""
+    ``local``. Backends named in config but not yet registered are skipped (no adapter yet).
+
+    ``storage``, when CAS-capable (R2), makes the budget ledger an atomic compare-and-swap object so
+    concurrent shards can't overspend the free-tier cap (H17); otherwise the local-file ledger is
+    used (review/17 §3)."""
     if state_dir is None:
         raise ValueError("compute_backend 'auto' requires a state_dir for the budget ledger")
     defaults = site_config.get("defaults", {})
@@ -74,21 +80,28 @@ def _make_auto(site_config: dict, *, state_dir: str | Path | None) -> DispatchCo
     budget = load_budget(state_dir)
     budget.roll_month()
     return DispatchCoordinator(
-        local=ProcessLocalBackend(), targets=targets, budget=budget, state_dir=state_dir
+        local=ProcessLocalBackend(),
+        targets=targets,
+        budget=budget,
+        state_dir=state_dir,
+        storage=storage,
     )
 
 
-def make_compute(site_config: dict, *, state_dir: str | Path | None = None) -> Backend:
+def make_compute(
+    site_config: dict, *, state_dir: str | Path | None = None, storage=None
+) -> Backend:
     """Return the configured execution backend (defaults to ``local``).
 
     ``state_dir`` is required for ``auto`` (it backs the budget ledger) and ignored for ``local``.
+    ``storage`` (when CAS-capable) makes the ``auto`` budget ledger an atomic R2 object (H17).
     """
     defaults = site_config.get("defaults", {})
     backend = os.environ.get("COMPUTE_BACKEND") or defaults.get("compute_backend", "local")
     if backend == "local":
         return ProcessLocalBackend()
     if backend == "auto":
-        return _make_auto(site_config, state_dir=state_dir)
+        return _make_auto(site_config, state_dir=state_dir, storage=storage)
     raise ValueError(f"unknown compute_backend: {backend!r}")
 
 
