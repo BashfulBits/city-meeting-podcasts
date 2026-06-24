@@ -8,11 +8,32 @@ from citypods.security import (
     SecurityError,
     allowed_hosts_for_city,
     iter_source_urls,
+    redact_subprocess_command,
+    redact_subprocess_text,
     validate_city_sources,
     validate_source_url,
 )
 
 GRANICUS = ("*.granicus.com",)
+
+
+def test_subprocess_redaction_strips_signed_queries_and_bearer_values():
+    signed = "https://media.example/video.mp4?X-Amz-Credential=secret&X-Amz-Signature=also-secret"
+    text = f"{signed}: Server returned 403; token=plain-secret Authorization: Bearer bearer-secret"
+
+    redacted = redact_subprocess_text(text)
+    command = redact_subprocess_command(
+        ["ffmpeg", "-headers", "Authorization: Bearer bearer-secret\r\n", "-i", signed]
+    )
+
+    assert redacted == (
+        "https://media.example/video.mp4: Server returned 403; token=<redacted> "
+        "Authorization: Bearer <redacted>"
+    )
+    rendered_command = " ".join(command)
+    assert "media.example/video.mp4" in rendered_command
+    assert "secret" not in rendered_command
+    assert "Bearer <redacted>" in rendered_command
 
 
 def _resolver(ip):

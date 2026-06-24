@@ -6,7 +6,13 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
-from citypods.feeds import build_rss
+from citypods.availability import (
+    AVAILABLE,
+    CONFIRMED_EMPTY,
+    MediaAvailability,
+    with_operator_override,
+)
+from citypods.feeds import build_rss, enclosure_url
 
 
 def _items(xml: str):
@@ -17,6 +23,34 @@ def test_audio_uses_audio_mime(sample_city, sample_episodes):
     xml = build_rss(sample_city, sample_episodes, "audio", "https://x")
     enc = _items(xml)[0].find("enclosure")
     assert enc.get("type") == "audio/mp4"
+
+
+def test_withheld_availability_omits_enclosure_from_both_kinds(sample_episodes):
+    ep = sample_episodes[0]
+    ep.media_availability = MediaAvailability(state=CONFIRMED_EMPTY)
+    assert enclosure_url(ep, "audio") is None
+    assert enclosure_url(ep, "video") is None
+
+
+def test_available_verdict_still_yields_enclosure(sample_episodes):
+    ep = sample_episodes[0]
+    ep.media_availability = MediaAvailability(state=AVAILABLE)
+    assert enclosure_url(ep, "video") == ep.video_url
+
+
+def test_operator_override_to_available_re_enables_enclosure(sample_episodes):
+    ep = sample_episodes[0]
+    confirmed = MediaAvailability(state=CONFIRMED_EMPTY)
+    ep.media_availability = with_operator_override(confirmed, AVAILABLE, "verified good")
+    assert enclosure_url(ep, "video") == ep.video_url
+
+
+def test_withheld_episode_dropped_from_built_feed(sample_city, sample_episodes):
+    sample_episodes[0].media_availability = MediaAvailability(state=CONFIRMED_EMPTY)
+    xml = build_rss(sample_city, sample_episodes, "video", "https://x")
+    titles = [it.find("title").text for it in _items(xml)]
+    assert all("Regular" not in (t or "") for t in titles)  # the withheld episode is gone
+    assert any("Earlier" in (t or "") for t in titles)  # the playable one remains
 
 
 def test_video_uses_video_mime(sample_city, sample_episodes):

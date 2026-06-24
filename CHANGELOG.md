@@ -14,7 +14,119 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Changed
+
+- **The Granicus rate-limit circuit breaker (plus its queue parking and half-open canary recovery)
+  was removed ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** It was
+  built for a hypothesis H16 disproved — the Actions-runner 403s were shared GitHub-egress IP
+  reputation (handled by the authenticated Cloudflare Worker), not request-shape or concurrency
+  throttling — and it never tripped across Audio runs #51–#56 (zero trips/deferrals/recovery probes).
+  `citypods/provider_circuits.py` is replaced by a lean `citypods/provider_transport.py`
+  (`ProviderTransportTelemetry`) that keeps only the per-tenant direct/Worker-fallback/truncation
+  counters feeding the H16 `transport` criterion; the storage-backed open/trip/defer state, the
+  `_run_enrich_global_queue` parking/canary loop (and its latent double-retry race), the
+  `CircuitOpenMediaFetchError` admission gate, and the `circuit_skipped`/`circuit_keys` stage plumbing
+  are gone. Telemetry domains are configured via `provider_transport_telemetry_domains` (replacing
+  `provider_rate_limit_circuit_breakers`); the H16 report schema bumps to v2 (per-tenant rows drop the
+  circuit columns). Aggregate provider load stays bound by the distributed provider-lease ceiling and
+  the per-episode materialize backoff, and rollback to direct-only fetch remains config-only (unset
+  `GRANICUS_PROXY_BASE_URL` / `GRANICUS_PROXY_TOKEN`). Audio bytes, pipeline versions, and stored
+  artifacts are unchanged, so **no backfill**.
+- **Duplicate combined/per-board audio views now share one encode and one CAS object
+  ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)).** Some per-board
+  feeds use a wider `feed_urls` set than their city's combined feed, so stripping only the `body`
+  filter produces distinct `source_key`s for the same stable meeting. Audio shard planning now
+  keeps all source keys for one configured city entity on the same shard, and a thread-safe
+  run-local `(provider, stable uid, audio recipe)` cache lets the first successful alias supply its
+  artifact pointer to every follower. New duplicate work chooses one deterministic source prefix;
+  existing valid artifacts can be adopted as the shared winner, and superseded duplicate objects
+  become ordinary orphan-GC candidates once no record references them. Source keys, episode UIDs,
+  audio recipes, and pipeline versions are unchanged, so this causes **no catalog backfill or
+  re-encode storm**.
+- **The per-episode ASR timeout now carries a configurable safety margin
+  (`asr_timeout_safety_margin`, default `1.2`).** ASR run #32 timed out and discarded a 3.4h
+  recording that was actively transcribing, not hung — a sibling episode from the same run
+  finished at ratio=0.503 against a budget computed assuming ratio 0.5, leaving only ~3% of
+  margin. The base+per-audio-hour budget is now multiplied by this margin (values <1.0 are
+  ignored) before being clamped to the existing hard backstop deadline, so routine variance no
+  longer kills genuinely-progressing inference. The hard backstop and timeout-backoff behavior are
+  unchanged.
+- **Audio shard assignment is duration-weighted and availability-aware.** Source-atomic Audio
+  planning now sums the expected served duration of pending encodes whose media is available,
+  recovered, or not yet classified, using the current Timeline first, then the last served duration,
+  then provider duration; unknown durations use their source's known-duration average. Media already
+  classified as withheld contributes only a small recovery-recheck cost because TimelineStage still
+  probes it but AudioStage will not encode it. This replaces flat pending-episode counts, preventing
+  short/empty-media backlogs from monopolizing a shard while sibling shards carry hours of playable
+  audio. This changes scheduling only: audio recipes, pipeline versions, stored artifacts, and
+  backfill behavior are unchanged.
+
 ### Added
+- **A scheduled Audio orphan-GC workflow reports reclaimable storage and only deletes on demand
+  ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421) follow-up).** Until now
+  `scripts/gc_audio.py` was operator-run only, so superseded content-addressed objects (regenerated
+  artifacts, retired recipes, and the now-coalesced duplicate source views) accumulated until
+  someone swept by hand. A new `audio-gc.yml` workflow runs weekly as a **dry-run**: it restores the
+  bucket state, finds objects no record references, and — when any exist — opens/updates one rolling
+  *operations* issue with a per-city summary table (file count + total size per city, plus a grand
+  total) and attaches the full object list (`orphans.tsv`) as a run artifact. It never deletes on a
+  schedule; reclaiming is a manual **Run workflow** with `apply = true`. `gc_audio.py` gains
+  `--pull-state` (restore the durable state so the live set is current before sweeping), `--out`
+  (write the tsv/json/markdown report), and per-city attribution via `source_key → city` entity;
+  storage backends gain `iter_objects` (a size-bearing listing, free from S3/B2/R2 pagination and the
+  local stat). The GC live set, `--min-age-days` floor, and `state/` exclusion are unchanged.
+- **Weekly empty-recording review digest emits bounded audio evidence
+  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), H16 PR3b).** A new
+  `availability-digest.yml` workflow (`scripts/availability_digest.py`) scans the persisted
+  media-availability verdicts for meetings classified suspected/confirmed empty, deterministically
+  samples a small set of *new or changed* candidates (keyed by uid + source fingerprint + detector
+  version, so a re-classification re-surfaces), and for each renders an evidence record (durations,
+  sizes, hashes, silence intervals, profile/detector version, canonical watch-page URL, and a
+  **redacted** source identity) plus two low-bitrate mono proxies — the untrimmed source audio and
+  the silence-trimmed candidate. It zips the bundle as a workflow artifact and opens/updates a
+  single rolling digest issue **only when** new/changed candidates exist; an already-reviewed
+  candidate is recorded in a `state/availability_digest.json` ledger so it is not re-digested. The
+  issue body and evidence never carry a signed/credential-bearing URL.
+- **Durable media-availability classification withholds empty/missing recordings from feeds
+  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), H16 PR3a).** A
+  meeting whose source media is missing or (near-)totally silent now carries an explicit, versioned
+  `media_availability` verdict on its record (`available` / `suspected_empty` / `confirmed_empty` /
+  `missing` / `invalid` / `recovered`, plus operator overrides) instead of being re-attempted every
+  run with no durable outcome. The verdict rides the audio lane's existing silence-detection decode
+  (no extra ffmpeg pass): a successful decode that is near-totally silent is *suspected* and, after
+  a second independent successful silent fetch, *confirmed*; a transport failure (403/429/timeout/
+  truncation) can never confirm silence or flip a known-good episode. Withheld verdicts are kept out
+  of both audio and video feeds and out of `AudioStage`, so a bad/empty enclosure is never published
+  and a confirmed-unavailable meeting keeps its prior known-good artifact — while metadata stages
+  (chapters/links) keep running so agenda/minutes still reach the meeting page. Classification is
+  re-evaluable via a dedicated detector version, a query-stripped source fingerprint, the detection
+  profile, and operator overrides, and recovers automatically when the city later supplies playable
+  media — none of which bumps the audio pipeline version or backfills the catalog. Per-run
+  availability counts flow through each shard run event into the H16 acceptance report as
+  informational observability (not a transport pass/fail criterion).
+- **H16 Audio acceptance now proves Granicus record and artifact identity and generically redacts
+  subprocess diagnostics ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).**
+  The audio lane snapshots each Granicus meeting after provider/persisted-record merge and verifies
+  after media processing that stable UID, provider GUID, official/source URLs, canonical video URL,
+  and source duration did not drift. Reused current-spec artifacts must retain key, public URL, and
+  served duration; newly materialized or refreshed artifacts must match the deterministic
+  content-addressed spec/key/public URL and report a positive served duration. Aggregate checked,
+  artifact-checked, mismatch, and bounded category counts flow through each shard run event into
+  the existing H16 report. ffmpeg/ffprobe stderr, timeout/error payloads, and exception command
+  arguments now strip all media URL queries and redact bearer or credential-shaped values while
+  preserving host/path/status diagnostics. This is transport/observability only: no audio bytes,
+  pipeline versions, artifact recipes, or backfill behavior change.
+- **Audio runs now publish a machine-readable GH#353/H16 acceptance report after all four shards
+  finish.** Each shard uploads only its run event plus redacted secret-scan metadata—never the raw
+  log—to a post-matrix `validate-h16` job. The merged JSON artifact and GitHub step-summary table
+  classify transport recovery per Granicus tenant, including direct successes/403s, Worker
+  successes/failures, circuit activity, truncations, lease behavior, and the unchanged 1-local /
+  2-distributed ceiling. Identity stability consumes the record/artifact invariant checks described
+  above; a run without applicable identity activity is `insufficient_activity`, not a false pass.
+  Credential-shaped query strings, bearer values, and Worker endpoint paths are detected locally
+  on each shard and represented only by redacted category/file/line metadata. This adds telemetry
+  and workflow evidence only: no audio bytes, pipeline versions, artifact identities, or backfill
+  behavior change ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).
 - **Stage-2 pull-based work-lease ledger — the frozen contract distributed ASR workers claim against
   (H17 PR4, [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/18 §4).**
   New `citypods/ops/work_leases.py` adds per-item compare-and-swap lease objects on R2
@@ -211,6 +323,83 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on quiet ticks (GH#376). Observability-only — no change to gate/lease admission logic.
 
 ### Fixed
+- **The audio orphan GC now allow-lists managed artifacts, so an `--apply` run can no longer delete
+  the ASR model mirror or other bucket infrastructure
+  ([#448](https://github.com/BashfulBits/city-meeting-podcasts/issues/448) investigation).** The
+  unscoped sweep (`--prefix ""`) only protected the `state/` prefix, so the dry-run report flagged
+  `models/faster-whisper-large-v3-turbo/*` — including the 1.6 GB `model.bin` written by
+  `scripts/prepare_whisper.py` and depended on by the ASR workers — as reclaimable orphans; an apply
+  run would have broken transcription. `scripts/gc_audio.py` now treats a key as a deletion candidate
+  only when it is a managed artifact (`is_managed_artifact`: content-addressed audio `*.m4a`, or a
+  `transcripts/…` object); everything else (`state/`, `models/`, `clips/`, or any future infra prefix)
+  is allow-listed out and counted as "protected" in the run summary. This is an allow-list of artifact
+  shapes rather than a deny-list of known infra, so a newly introduced infrastructure prefix can never
+  be reaped by an older copy of the script. Report/scan logic only — no audio bytes or stored artifacts
+  change.
+- **The H16 identity check no longer false-fails on coalesced duplicate source views, and a coalesced
+  follower keeps a valid served duration ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)
+  follow-up).** Audio run #58 — the first with the GH#421 duplicate-coalescing active — failed the
+  `identity` criterion on 20 Fort Worth episodes. Coalescing makes a combined feed's record adopt the
+  per-board feed's *canonical* shared object (same `uid` + spec, different source prefix). The
+  `_artifact_matches_recipe` exemption already tolerated that for `audio_key`/`audio_url`, but
+  `current_artifact_changed` still fired on the accompanying served-duration delta. That category now
+  fires only when the artifact no longer resolves to a valid content-addressed object for the recipe —
+  a re-probe or coalesced-sibling adoption is metadata-only, not a changed artifact. Separately, a
+  *credited* canonical winner can carry no probed duration; `_apply_artifact` (`citypods/media.py`) no
+  longer downgrades a follower to `0s` by adopting that — it keeps the shared duration when present and
+  otherwise backfills from the episode's own timeline/source (which fixes the 5 episodes that also
+  tripped `served_duration`). Diagnostics + an in-place metadata fix only — no audio bytes, pipeline
+  versions, or stored artifacts change, so **no backfill**.
+- **The H16 `concurrency_ceiling` criterion's expected ceiling is now configurable.** It was hard-coded
+  to the GH#300 `1`-local / `2`-distributed envelope, so deliberately tuning Granicus concurrency (e.g.
+  bumping `provider_distributed_leases.granicus.com.slots`) made the acceptance report `fail` for an
+  unrelated reason. A new `provider_audio_concurrency_ceiling` config key (default `1`/`2`) declares the
+  intended ceiling; the criterion asserts the operative `provider_rate_limits` + distributed `slots`
+  match it, still catching an accidental drift between the two operative knobs. Update the declared
+  ceiling in lockstep when tuning.
+- **A failed audio upload no longer leaves the record partially mutated, and the H16 identity check
+  no longer reports a false mismatch for any artifact retained across a transient failure
+  ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** Audio runs #54 and
+  #56 failed the `identity` criterion with a single `1/~939` mismatch (`audio_key` + `audio_spec_hash`
+  + `audio_url`, with neither `served_duration` nor `current_artifact_changed` firing). Root cause
+  (proven from run #56's per-shard log): an episode's recipe changed during the run and its re-encode
+  probed a new served duration, then the **upload failed transiently** (B2 `ServiceUnavailable`).
+  `materialize_audio` (`citypods/media.py`) had already written `audio_duration_served` *before* the
+  `put_file`, so the failed upload left the record carrying the new artifact's duration while still
+  pointing at the prior, valid artifact (old spec). `H16IdentityTracker.verify`
+  (`citypods/h16_identity.py`) saw the duration change, entered the artifact-comparison branch, and
+  flagged the legitimately-retained old key/spec/url against the freshly-recomputed `_expected()`
+  spec. Two fixes: (1) the encode now commits `audio_duration_served` **atomically with the artifact
+  pointer, only after a successful upload**, so a failed upload leaves the episode untouched and
+  simply retries next run; (2) `verify` no longer compares key/spec/url when the artifact identity is
+  **unchanged from capture** (no successful re-materialization this run) — a divergence from the
+  recompute is then a pending re-encode, not corruption — which also covers budget-deferred re-encodes
+  and reused migrated `legacy` artifacts (generalizing the earlier `legacy_ok` exemption). A freshly
+  *written* artifact is still validated, so genuine content-addressing drift is still caught. The
+  earlier same-issue entry attributing this to legacy reuse was incorrect — the mismatching artifact
+  carried a real content-addressed spec, not `"legacy"`, and the lease `stale_leases_reaped`
+  correlation was common-cause (infra-troubled runs), not causal. No audio bytes, pipeline versions,
+  or stored artifacts change, so **no backfill**.
+- **Swagit concat probes no longer deadlock the global Granicus media pool.** The concat duration
+  probe now acquires the process-local host limiter before the cross-shard distributed lease,
+  matching every other ffmpeg/ffprobe media path and the #342 lock-order invariant. The reversed
+  order could let concat probes hold both distributed slots while waiting for a local slot held by
+  source-cache work that was itself waiting for a distributed slot; Audio #51 exposed the cycle by
+  renewing both leases for the full run without launching ffprobe. This changes coordination only:
+  audio bytes, artifact identity, and pipeline versions are unchanged, so **no backfill** is
+  triggered.
+- **Duplicate source views of one stable meeting no longer run the same ASR recipe twice.** The
+  per-episode planner now groups matching `(stable uid, ASR recipe)` work, co-locates every
+  source-local alias on one shard, and charges the inference weight once. `TranscriptStage` uses a
+  thread-safe run-local result cache with per-key in-flight reservations, so concurrent aliases fan
+  one completed VTT/word-JSON result out to their existing source-scoped object keys instead of both
+  entering native inference — even if multiple ASR worker permits are configured. Fresh-ASR recipes
+  now include the stable `author + body + title` prompt plus language, compute type, and beam size;
+  different inference inputs remain independent. Existing current-version transcripts are still
+  accepted before recipe recomputation, and `ASR_PIPELINE_VERSION` is unchanged, so already-stored
+  artifacts are **left as-is** and no catalog backfill is queued. Pending items use the complete recipe.
+  The ASR workflow also suppresses the known upstream Node `Buffer()` deprecation only for the pinned
+  `actions/download-artifact` step; application warnings remain visible.
 - **A busy ASR shard transcribing a multi-hour recording no longer looks idle/stalled, errored
   audio no longer wastes scarce ASR slots, and one unprobed source no longer skews shard weighting
   into the thousands of hours.** Investigating a run where three shards appeared to have "no work"

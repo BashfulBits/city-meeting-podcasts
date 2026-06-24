@@ -286,10 +286,9 @@ def test_run_history_counts_planner_and_audio_throttles_once(tmp_path):
         "bytes": 0,
         "errors": 0,
         "rate_limited": 0,
-        "circuit_skipped": 0,
     }
-    timeline = {**base, "rate_limited": 2, "circuit_skipped": 3, "errors": 2}
-    audio = {**base, "rate_limited": 1, "circuit_skipped": 4, "errors": 1}
+    timeline = {**base, "rate_limited": 2, "errors": 2}
+    audio = {**base, "rate_limited": 1, "errors": 1}
 
     run._record_run_history(
         tmp_path,
@@ -300,7 +299,26 @@ def test_run_history_counts_planner_and_audio_throttles_once(tmp_path):
 
     summary = json.loads((tmp_path / "run_summary.json").read_text())
     assert summary["audio_rate_limited_403s"] == 3
-    assert summary["audio_circuit_skipped"] == 7
+
+
+def test_run_history_records_h16_identity_summary(tmp_path):
+    identity = {
+        "checked": 12,
+        "mismatches": 1,
+        "artifact_checked": 8,
+        "mismatch_categories": {"audio_key": 1},
+    }
+
+    run._record_run_history(
+        tmp_path,
+        [],
+        {},
+        h16_identity=identity,
+        scope={"phase": "enrich", "lane": "audio"},
+    )
+
+    summary = json.loads((tmp_path / "run_summary.json").read_text())
+    assert summary["h16_identity"] == identity
 
 
 def test_run_history_records_logical_run_id_and_defer_reasons(tmp_path, monkeypatch):
@@ -318,7 +336,6 @@ def test_run_history_records_logical_run_id_and_defer_reasons(tmp_path, monkeypa
         "bytes": 0,
         "errors": 0,
         "rate_limited": 0,
-        "circuit_skipped": 0,
         "defer_reasons": {"insufficient-budget": 2, "timeout-backoff": 1},
     }
 
@@ -574,102 +591,6 @@ def test_heartbeat_no_dump_when_nothing_tracked(tmp_path):
     )
     hb._maybe_dump_stalled_threads()
     assert hb._last_stall_dump is None
-
-
-def test_global_queue_parks_circuit_items_then_releases_after_canary(tmp_path, monkeypatch):
-    city = City(
-        slug="granicus-city",
-        provider="granicus",
-        source={"feed_url": "https://example.granicus.com/feed"},
-        podcast_title="Granicus City",
-        podcast_author="City",
-        podcast_email="",
-        podcast_description="",
-        extract_audio=True,
-    )
-    episodes = [_ep("parked-1"), _ep("healthy"), _ep("parked-2")]
-    calls: list[str] = []
-
-    class _Circuit:
-        def wait_for_recovery_probe(self, **_kwargs):
-            calls.append("wait")
-            return "granicus.com"
-
-        def recovery_succeeded(self, domain):
-            assert domain == "granicus.com"
-            return True
-
-    class _Stage:
-        name = "audio"
-
-    class _Pipeline:
-        def __init__(self):
-            self.ctx = StageContext(
-                storage=None,
-                ffmpeg=None,
-                max_kbps=96,
-                dry_run=False,
-                lane="audio",
-                rate_limit_circuit=_Circuit(),
-            )
-            self.stages = [_Stage()]
-            self.resolved = 0
-
-        def fetch_merge(self, _city, _key):
-            return object(), episodes, {}, 0
-
-        def accumulate_stats(self, _stats):
-            pass
-
-        def resolve_parked_stats(self, stats):
-            assert any(s.circuit_skipped for s in stats)
-            self.resolved += 1
-
-        def persist_source(self, _key, eps, _persisted, *, notes):
-            assert eps is episodes
-            assert notes == []
-
-    attempts: dict[str, int] = {}
-
-    def _run_stages(_provider, _city, batch, _stages, _ctx, *, quiet):
-        assert quiet is True
-        uid = batch[0].uid
-        attempts[uid] = attempts.get(uid, 0) + 1
-        calls.append(uid)
-        if uid in {"uid-parked-1", "uid-parked-2"} and attempts[uid] == 1:
-            return [
-                StageStats(
-                    "audio",
-                    skipped=1,
-                    circuit_skipped=1,
-                    circuit_keys={"granicus.com"},
-                )
-            ]
-        return [StageStats("audio", ran=1, encoded=1)]
-
-    monkeypatch.setattr(run, "run_stages", _run_stages)
-    pipeline = _Pipeline()
-
-    results = run._run_enrich_global_queue(
-        pipeline,
-        [city],
-        source_cache=None,
-        max_workers=1,
-        policy=None,
-    )
-
-    # The healthy item runs before the queue waits. One parked item is then the canary; its success
-    # releases the remaining parked item in the same run.
-    assert calls == [
-        "uid-parked-1",
-        "uid-healthy",
-        "uid-parked-2",
-        "wait",
-        "uid-parked-1",
-        "uid-parked-2",
-    ]
-    assert pipeline.resolved == 2
-    assert results[0].status == "built"
 
 
 def test_stop_signal_fires_on_deadline():
@@ -1440,7 +1361,13 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
     monkeypatch.setattr(run, "reconcile_state", lambda *a, **k: 0)
 
     _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2), lane="transcribe")
-    assert captured["protected"] == protected_blocks_for_lane("transcribe") == frozenset({"audio"})
+    # The transcribe lane preserves the audio-owned blocks it does not write: the hosted audio and
+    # the media-availability verdict the audio lane derives (H16 PR3).
+    assert (
+        captured["protected"]
+        == protected_blocks_for_lane("transcribe")
+        == frozenset({"audio", "media_availability"})
+    )
     # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).
     assert isinstance(captured["owned_uids"], dict)
 

@@ -1,0 +1,134 @@
+name: Audio orphan GC
+
+# Reports (and, on demand, deletes) content-addressed audio/transcript objects in the bucket that no
+# record references — regenerated artifacts, retired recipes, and coalesced duplicate source views
+# (GH#421). Scheduled runs are ALWAYS dry-run: they only open/update an operations issue with a
+# per-city summary and attach the full object list as an artifact. To actually reclaim the space, run
+# this workflow manually (Run workflow) with `apply = true`.
+#
+# Maintenance job, not part of PR CI. Like the availability digest, it restores the durable bucket
+# state first so the live set is current — it never reaps against a stale/partial set of records.
+
+on:
+  schedule:
+    - cron: "30 7 * * 1" # Mondays 07:30 UTC (before the availability digest at 08:00)
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Actually delete the orphans (default: dry-run report only)"
+        type: boolean
+        default: false
+      min_age_days:
+        description: "Skip objects newer than this many days"
+        type: string
+        default: "7"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: audio-gc
+  cancel-in-progress: false
+
+jobs:
+  gc:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e ".[storage]"
+
+      # Never reap while an audio.yml run might be writing fresh objects whose records aren't
+      # persisted yet. The --min-age-days floor already protects new objects; this just avoids racing
+      # the state pull. Best-effort: proceed after the window so a stuck run never blocks GC forever.
+      - name: Wait for active audio runs to finish
+        run: |
+          for i in $(seq 1 15); do
+            ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
+            if [ "$ACTIVE" = "[]" ]; then echo "No active audio runs. Proceeding."; exit 0; fi
+            echo "[$i/15] audio.yml is running. Waiting 2 minutes..."
+            sleep 120
+          done
+          echo "Timed out after 30 minutes. Proceeding anyway."
+
+      - name: Run orphan GC
+        id: gc
+        run: |
+          APPLY=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.apply }}" = "true" ]; then
+            APPLY="--apply"
+            echo "::warning title=Audio GC apply mode::Deleting orphaned objects (manual apply run)."
+          fi
+          python scripts/gc_audio.py \
+            --pull-state \
+            --min-age-days "${{ github.event_name == 'workflow_dispatch' && inputs.min_age_days || '7' }}" \
+            --out gc-audio \
+            $APPLY
+          echo "has_orphans=$(cat gc-audio/has_orphans 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
+          echo "applied=$([ -n "$APPLY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload object list
+        if: steps.gc.outputs.has_orphans == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: gc-audio-report-${{ github.run_id }}
+          path: |
+            gc-audio/orphans.tsv
+            gc-audio/summary.json
+          if-no-files-found: warn
+
+      # Dry-run with orphans → open or update ONE rolling operations issue. The per-city table is in
+      # issue-body.md; the artifact URL (full object list) is appended here.
+      - name: Open or update GC issue
+        if: steps.gc.outputs.has_orphans == 'true' && steps.gc.outputs.applied == 'false'
+        run: |
+          TITLE="Audio storage GC — reclaimable orphans"
+          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          printf '\n\n> Full object list (`orphans.tsv`): %s\n' "$ARTIFACT_URL" >> gc-audio/issue-body.md
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --body-file gc-audio/issue-body.md
+            echo "Updated GC issue #$EXISTING"
+          else
+            # Create first, then label as a best-effort step: a missing/renamed label must never
+            # drop the report (the original `operations` label did not exist — use the repo taxonomy).
+            URL=$(gh issue create --title "$TITLE" --body-file gc-audio/issue-body.md)
+            echo "Opened a new GC issue: $URL"
+            gh issue edit "$URL" --add-label "area:ops" --add-label "type:operations" \
+              || echo "::warning title=GC issue label::could not add labels (issue still created)"
+          fi
+
+      # Any manual apply run → close the rolling issue if one is open (the orphans it tracked are
+      # gone now, whether this run reaped them or a prior one did).
+      - name: Close GC issue after apply
+        if: steps.gc.outputs.applied == 'true'
+        run: |
+          TITLE="Audio storage GC — reclaimable orphans"
+          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Reaped by apply run: ${ARTIFACT_URL}"
+            gh issue close "$EXISTING"
+            echo "Closed GC issue #$EXISTING"
+          fi

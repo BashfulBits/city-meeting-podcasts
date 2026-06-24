@@ -49,20 +49,26 @@ runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two
 `audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription), each on its
 own concurrency group **sharded** (`strategy.matrix.shard`). The **Audio** (and unscheduled
 **align**) lane is **source-atomic** — a `source_key` goes to exactly one shard — because that lane
-is throttled per source (per-source encode caps, Granicus media leases, the provider circuit), so the
+is throttled per source (per-source encode caps, Granicus media leases), so the
 provider, not the runner, is the ceiling (review/18 §2.3). The **transcribe** lane plans **per
 `(source, uid)` episode** (review/18 §3.1): each episode is independent GPU work, so one skewed
 source (e.g. a 2,000-episode Granicus backlog) spreads across all shards instead of pinning to one.
-Assignment is weighted by each lane's own remaining-work estimate — pending encode count for Audio;
+Assignment is weighted by each lane's own remaining-work estimate — pending playable/unknown
+recording duration plus a small withheld-media recovery-recheck cost for Audio;
 routing-aware runner cost per pending episode for ASR. The ASR estimate separates duration-weighted
 local inference from cheap external dispatch, blocked/deferred inspection, and already-in-flight work;
 `pending_transcribe_items` emits the same per-episode classification so the plan agrees with the
-aggregate weight. Until H14 registers a real external backend, recordings above the local duration
-ceiling contribute only the cheap blocked cost rather than their full audio duration. `asr.yml`
-restores durable B2 state once in its reconcile/planner job, computes a versioned `unit=episode`
-assignment from that canonical snapshot, and uploads the snapshot plus plan as an immutable workflow
-artifact. Every matrix shard consumes that same artifact and skips its own full B2
-restore. H14 extends the planner's route classifier with one budget/capacity snapshot; individual
+aggregate weight. When the same stable meeting appears in multiple configured source views, matching
+`(uid, ASR recipe)` items are assigned to one shard and charged once; a thread-safe run-local result
+cache reserves each in-flight recipe and writes that one inference result to each source-scoped
+transcript key, preserving the durable blob layout while avoiding duplicate native ASR. The recipe
+includes the stable author/body/title prompt and decoding hints in addition to audio/model/version.
+Until H14 registers a real external backend,
+recordings above the local duration ceiling contribute only the cheap blocked cost rather than their
+full audio duration. `asr.yml` restores durable B2 state once in its reconcile/planner job, computes a
+versioned `unit=episode` assignment from that canonical snapshot, and uploads the snapshot plus plan as
+an immutable workflow artifact. Every matrix shard consumes that same artifact and skips its own full
+B2 restore. H14 extends the planner's route classifier with one budget/capacity snapshot; individual
 matrix shards must not race to predict changing GPU availability.
 The Audio lane runs its CLI inside the version-pinned
 `ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1` image. That image is built weekly and on
@@ -101,17 +107,21 @@ uids — the cross-*uid* lost update two shards splitting one source would other
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
 pass is *dispatch-not-await-ready* — transcription/diarization will run on external workers and reconcile
 from durable state on a later deploy (design: [`review/12` §H5](review/12-hardening-and-efficiency.md)).
+Audio planning remains source-atomic for record safety, but source keys that reference the same
+configured city entity are assigned to one shard. Within that process, `AudioArtifactCache` coalesces
+identical `(provider, stable uid, audio recipe)` candidates: one alias encodes or reuses the artifact
+and every other source-local record adopts that single CAS pointer (GH#421).
 
 ## Module map (`citypods/`)
 
 | Area | Modules |
 |---|---|
 | **Providers** | `providers/{base,granicus,civicplus,civicclerk,swagit}.py` — `MeetingProvider` Protocol + registry; each normalizes to the episode model. |
-| **Records / identity** | `records.py` — stable `uid`, `source_key`, `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. |
+| **Records / identity** | `records.py` — stable `uid`, `source_key`, entity-level `source_family_key` (audio shard affinity only), `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs. `models.py` — `Episode`/`City`. `availability.py` — versioned `media_availability` classification (H16 PR3). |
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
 | **Scheduling / backlog** | `ops/workqueue.py` — the `backlog_priority` policy (comparator registry: windowed `recency`, `city_order`, `body_order`, `feed_visible_first`, …), the derived **work manifest** (`WorkItem` per episode × output `work_class`, persisted to `state/work.json`), and the `lease`/`release`/`is_leased` API — the coordination substrate for off-runner ASR/diarization workers (H6b/H9). `ops/work_leases.py` (H17 Stage 2, review/18 §4) — the **pull-based lease ledger**: per-item CAS objects `work-leases/<source>/<uid>.json` on R2 + `claim`/`renew`/`release`/`reap` + the `run_claim_loop` contract that distributed transcribe workers (H14b/H14c) pull against (read discovery index → CAS-claim → infer → durable commit → settle/reap). In-Actions shards still use the Stage-1 static plan; this is the frozen external-worker contract, kept ≈1 R2 Class-A op per claim (review/18 §4.6). |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
-| **Media / audio** | `media.py` — timeline-aware ffmpeg mastering, pinned threads, sample-accurate bounded-memory single-source timeline cuts, versioned multi-mic speech profile (high-pass → dynamic leveling → gentle compression), two-pass measured **linear** EBU R128 normalization via a temporary FLAC, a constant-gain + 192 kHz short-lookahead limiter fallback for peak-constrained recordings, and content-addressed upload. |
+| **Media / audio** | `media.py` — timeline-aware ffmpeg mastering, pinned threads, sample-accurate bounded-memory single-source timeline cuts, versioned multi-mic speech profile (high-pass → dynamic leveling → gentle compression), two-pass measured **linear** EBU R128 normalization via a temporary FLAC, a constant-gain + 192 kHz short-lookahead limiter fallback for peak-constrained recordings, content-addressed upload, and run-local duplicate-view artifact coalescing. |
 | **Transcripts** | `asr.py` — forced alignment (stable-ts) / fresh transcription (faster-whisper) with align-error fallback; emits a clean **segment-cue VTT** (served via `<podcast:transcript>`) **plus a word-level JSON sidecar** (`…-asr-<recipe>.words.json`) for search/clips/diarization; version-aware re-transcribe on an `ASR_PIPELINE_VERSION` bump (provider transcripts never invalidated); both objects are content-addressed + GC-referenced. `bench.py` — `asr-bench` diagnostic. |
 | **Compute backend** | `compute/{base,local,budget,dispatch}.py` (H13 + H14a, **pre-1.0 lock**) — the pluggable GPU/ASR execution seam, peer of `storage/`. `base.py` defines `InferenceJob(task, inputs, recipe_hash)` (`task` typed for the full §5.5 verb set: ASR `transcribe`/`align`/`diarize` + reserved LLM `summarize`/`tag`/`soundbite-select`), `JobResult`/`JobHandle`, a `runtime_checkable` `Backend` protocol `run_inference(job)`, and (H14a) a `DispatchBackend` protocol (returns a `JobHandle` + `estimate_gpu_seconds`). `local.py` runs faster-whisper/stable-ts in-process (**byte-identical** to the pre-refactor path). **H14a substrate:** `budget.py` is the free-tier ledger (`state/compute_budget.json`) that makes exceeding a backend's `monthly_gpu_seconds`/`max_inflight` structurally impossible (the **$0 guarantee**); on an R2 (`cas_capable`) backend it is **CAS-backed** — `reserve`/`settle`/`release` are compare-and-swap read-modify-writes (`mutate_budget`), so concurrent shards can't lose a reservation or overspend the cap (H17, review/17 §5; `statesync` excludes it from the bulk sync), with a local-file fallback for non-R2/local/dry-run; `dispatch.py` adds the router (fill free tiers → consider `local`), a thread-safe `DispatchCoordinator` (records a live `work.json` lease `lease_owner="modal:<job_id>"` + decrements budget), and `reconcile_compute` (reap dead workers → re-queue; settle completed jobs; run at `asr.yml` start via `citypods compute reconcile`). `make_compute` selects by `compute_backend`: `local` (bypass) or `auto` (default). `TranscriptStage` attempts external dispatch first; only a declined job enters local admission. Known recordings above `asr_local_max_duration_hours` (production: 4h; non-positive disables) remain queued with `reason=external-required` instead of starting in-process inference. H14b/H14c register the real Modal/Beam **dispatch** adapters into the coordinator with no protocol change. |
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
@@ -133,7 +143,19 @@ total on `/admin/status`.
 - **Stage Protocol + `default_stages()`** — a new per-episode feature is a new stage.
 - **Split hashes** — `audio_spec_hash` (bytes) and `feed_content_hash` (RSS) invalidate independently.
 - **Content-addressed audio + stable UID** — CDN cache-bust, rollback, and provider-migration safe.
+- **Duplicate source views share audio work without changing durable identity** — feeds under one
+  configured city entity are co-located on an audio shard; identical stable-uid + recipe candidates
+  converge on one CAS object while retaining separate source records. No source-key or pipeline-version
+  migration is required (GH#421).
 - **Append-only archive** — meetings that drop off a provider feed are never lost (#52).
+- **Durable media-availability verdict** — `availability.py` carries a versioned `media_availability`
+  projection on the record (available / suspected-or-confirmed empty / missing / invalid / recovered
+  + operator override). It rides the audio lane's `SilencePlanner` decode (no extra ffmpeg pass);
+  withheld verdicts drop the episode from both feeds (`feeds.enclosure_url`) and from `AudioStage`,
+  so an empty/missing source is never published while metadata stages keep flowing to the meeting
+  page. Confirmation needs two independent successful silent fetches — a transport failure never
+  confirms — and re-evaluation (detector version / source fingerprint / detect profile / operator
+  override) is decoupled from `AUDIO_PIPELINE_VERSION`, so re-classifying never re-encodes (H16 PR3).
 - **Timeline served↔source EDL** — silence-trim/concat/intro/transcripts/clips all reduce to one
   served-vs-source time map (see [`review/08`](review/08-timeline-and-content-transforms.md)).
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.
@@ -250,37 +272,25 @@ Hard-won facts that bite anyone adding/debugging providers:
   before the wait acquires its slot/lease/lock — so a worker idle past the run's wall-clock budget
   yields immediately instead of blocking out a full queue/lease cycle. `CommandFfmpeg` and
   `SourceCache` bind `stop` once at construction; `_encode_one`, `SwagitConcatPlanner`, and
-  `SilencePlanner` treat `StopRequested` as a non-failure defer, the same as a circuit deferral. The
+  `SilencePlanner` treat `StopRequested` as a non-failure budget defer (retried next run). The
   ffmpeg subprocess call itself remains out of scope — `stop()` can't preempt a thread parked in
   `subprocess.run`, only `audio_encode_timeout_minutes` bounds that.
-- **Provider circuit admission happens at the subprocess boundary and is shared across Audio
-  shards.** Audio first checks the circuit before entering expensive work, then refreshes its
-  authoritative storage marker after distributed and process-local provider slots are acquired and
-  immediately before ffmpeg/ffprobe starts. Circuit counters/open markers use deterministic ordinary
-  storage objects; a separate one-slot FIFO provider lease serializes mutations because the storage
-  API has no compare-and-swap primitive. A circuit that opens while a worker waits therefore defers
-  that item without recording a materialization failure/backoff, and all shards observe the same
-  threshold/cooldown state.
-- **Granicus circuits isolate tenants before escalating domain-wide.** Native archive paths identify
-  their tenant (`archive-video.granicus.com/<tenant>/…`); tenant subdomains and the Granicus-owned
-  Swagit media host receive stable tenant keys under the shared `granicus.com` domain. Three direct
-  throttles open only that tenant's circuit. Two distinct tenant trips within the cooldown window open
-  the emergency domain circuit. A domain marker supersedes tenant markers until one storage-claimed
-  half-open canary succeeds; an abandoned canary can be reclaimed after its probe TTL. Per-scope run
-  telemetry records direct throttles, trips, circuit deferrals, recovery probes/recoveries, while the
-  existing domain entry continues to carry lease acquisition/wait/renewal and stale-owner cleanup.
+- **Granicus transport telemetry is recorded per tenant (no rate-limit circuit breaker).** Native
+  archive paths identify their tenant (`archive-video.granicus.com/<tenant>/…`); tenant subdomains and
+  the Granicus-owned Swagit media host receive stable tenant keys under the shared `granicus.com`
+  domain. For each configured domain (`provider_transport_telemetry_domains`) the Audio lane counts,
+  per tenant, direct-fetch success/403, Worker-fallback attempts/successes/failures, and truncations,
+  and folds them into the H16 acceptance report's `transport` criterion. This is observational only —
+  it never defers or gates media work. The storage-backed *circuit breaker* that used to trip / park /
+  canary-recover here was removed in GH#353: it never tripped across Audio runs #51–#56 (the runner
+  403s were shared GitHub-egress IP reputation, handled by the Worker, not request-shape or concurrency
+  throttling), and aggregate load is already bound by the provider-lease ceiling and per-episode
+  materialize backoff. Rollback to direct-only stays config-only (unset the two `GRANICUS_PROXY_*`
+  secrets).
 - **Planner throttles are the materialization attempt; Audio does not immediately repeat them.**
   `TimelineStage` can fetch provider media through `SilencePlanner`/`SourceCache` before `AudioStage`.
   A typed 403/429 there records one episode materialization attempt/backoff and halts that episode's
-  remaining audio-stage chain. Circuit-open planner work remains a non-failure: it is queued with no
-  attempt history, exactly like an AudioStage circuit deferral.
-- **Circuit-deferred work is parked and can recover inside the same Audio run.** The global audio queue
-  first lets every ordinary candidate—including other providers—drain, retaining circuit-open items
-  as a parked set. When the configured cooldown expires (unless the wall-clock/supersession stop signal
-  fires), exactly one parked item runs as a half-open canary. A 403/429 immediately reopens the circuit;
-  a complete materialization closes it and releases the remaining parked work through the existing
-  process-local and distributed provider limits. Deferral telemetry remains cumulative, while recovered
-  items are removed from the run's final backlog count.
+  remaining audio-stage chain, so AudioStage does not re-issue the same provider request that run.
 - **Manual Granicus probes share Audio's workflow queue.** `granicus-probe.yml` uses the same `audio`
   concurrency group with cancellation disabled, then verifies no active/queued Audio run before
   touching provider media. Its low-volume transport mode alternates curl/ffmpeg ordering against the
@@ -299,15 +309,32 @@ Hard-won facts that bite anyone adding/debugging providers:
   requests the validated canonical `archive-video.granicus.com` object normally. Only an HTTP 403
   can rewrite that strict tenant/filename input to the authenticated Worker; malformed/query URLs,
   other hosts, and other errors never route through it. The retry remains inside the original
-  Granicus local limiter, distributed lease, and circuit admission. Worker success does not trip the
-  circuit; Worker throttling is recorded once before releasing the lease. Each attempt and its
-  outcome are counted per tenant on the circuit (`worker_fallback_attempts`/`successes`/`failures`),
+  Granicus local limiter and distributed lease. Each attempt and its outcome are counted per tenant
+  in the transport telemetry (`worker_fallback_attempts`/`successes`/`failures`),
   flowing through the per-run summary and cross-shard report merge so activation is measurable. A
   half-set or invalid `GRANICUS_PROXY_*` configuration disables the fallback for the run (warned once)
   rather than turning an already-handled 403 into a shard-aborting error. The bearer header is never
   logged, the Worker endpoint that ffmpeg echoes in stderr on error is scrubbed before any log line,
   and exceptions expose only the original direct command. Official episode URLs and audio artifact
   identity remain unchanged.
+- **Every scheduled Audio run produces one H16 acceptance artifact after the matrix joins.** Each
+  shard records per-tenant direct Granicus success/403 and truncation telemetry alongside the
+  Worker-fallback counters, scans its own log for credential-shaped material, and uploads
+  only the run event plus redacted scan findings. The `validate-h16` job merges all four shards,
+  verifies the configured 1-local / 2-distributed ceiling, and writes JSON plus a GitHub summary.
+  The Audio lane also snapshots every Granicus record immediately after provider/persisted-record
+  merge, then verifies post-media stable UID/GUID, official/source URLs, source duration, and
+  deterministic content-addressed artifact identity — validating key/spec/url only for an artifact
+  this run actually re-materialized, so an artifact retained unchanged across a transient (a
+  deferred or upload-failed re-encode, or a reused `legacy` object) is not misreported (GH#353).
+  Missing shard or Granicus activity yields
+  `insufficient_activity`; transport, identity, concurrency, or secret findings yield `fail`. The
+  report is observational and does not gate, mutate, or invalidate audio.
+- **All media subprocess surfaces use generic credential redaction.** Before ffmpeg/ffprobe stderr,
+  timeout/error payloads, or command arguments can reach a log or higher-level exception, media URL
+  query strings are removed and bearer/credential-shaped values are replaced. Host, path, process
+  status, and HTTP status remain visible for diagnosis. Worker endpoint redaction remains an
+  additional layer because that origin is itself secret.
 - **Worker deployment is path-scoped.** `granicus-worker-deploy.yml` runs Worker tests and deploys
   only when `main` changes the Worker source, Wrangler config, or deployment workflow (plus a manual
   dispatch escape hatch). A scoped Cloudflare API token/account ID authenticate deployment. The
@@ -318,15 +345,11 @@ Hard-won facts that bite anyone adding/debugging providers:
   process's local cap must never already hold a cross-shard slot — acquiring distributed-first let one
   early-starting process's other threads win every distributed candidate while they waited locally,
   starving other shards of capacity they could otherwise use.
-- **The circuit is recorded/opened at the subprocess boundary, before its provider lease is released
-  (issue #343).** `_raise_if_rate_limited` classifies a throttled ffmpeg/ffprobe exit and updates the
-  shared circuit breaker from inside the same `with` that still holds the `HOST_LIMITER` and
-  distributed-lease slots, for both the `subprocess.run` and monitored/`Popen` paths. Recording it only
-  at the higher-level materialization caller — after that `with` had already exited — left a window
-  where a queued waiter could acquire the just-released lease, pass the still-closed circuit check, and
-  start one extra ffmpeg process per threshold crossing. `RateLimitedMediaFetchError` carries
-  `circuit_recorded`/`opened_domain` so the caller does not double-record a failure the boundary already
-  handled.
+- **A throttled media fetch records the per-episode backoff at the subprocess boundary.**
+  `_raise_if_rate_limited` classifies a throttled ffmpeg/ffprobe exit (HTTP 403/429) and raises
+  `RateLimitedMediaFetchError` so the materialization caller records the normal exponential backoff
+  (#120) and the episode retries next run. (A Granicus 403 normally never reaches here — the
+  direct-first fetch falls back to the Worker first.)
 - **`403` is retried as a rate-limit signal** by the shared session (`403` in `_ClampedRetry`'s
   `status_forcelist`): media bytes never go through `requests`, so a `403` a `requests` call sees is a
   provider throttle, not auth — retrying with backoff generalizes the old bespoke Granicus loop.

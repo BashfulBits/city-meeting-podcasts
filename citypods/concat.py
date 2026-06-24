@@ -44,7 +44,10 @@ def _probe_duration_url(
     wall-clock budget expires while queued on the rate-limit/lease wait — the caller distinguishes
     that from a genuine probe failure so it doesn't record a materialize-failure backoff for it.
     """
-    with DISTRIBUTED_PROVIDER_LEASES.slots([url], stop=stop), HOST_LIMITER.slot(url, stop=stop):
+    # Keep the acquisition order identical to every other media subprocess path (#342). Acquiring
+    # the distributed lease first can deadlock against a source-cache worker that already holds the
+    # process-local slot while waiting for that lease.
+    with HOST_LIMITER.slot(url, stop=stop), DISTRIBUTED_PROVIDER_LEASES.slots([url], stop=stop):
         try:
             out = subprocess.run(
                 [

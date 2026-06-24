@@ -604,6 +604,92 @@ def test_hosted_keys_cache_is_per_source(tmp_path):
     assert len(store.list_objects_calls) == 2
 
 
+def test_audio_artifact_cache_encodes_duplicate_source_views_once(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from citypods.media import AudioArtifactCache
+
+    store = _store(tmp_path)
+    cache = AudioArtifactCache()
+    ff = FakeFfmpeg()
+    city_a = _city(slug="combined")
+    city_b = _city(slug="board")
+    ep_a = _ep("shared")
+    ep_b = _ep("shared")
+    source_a = source_key(city_a)
+    source_b = source_key(city_b)
+    assert source_a != source_b
+    for source in (source_a, source_b):
+        cache.register(city_a.provider, source, "uid-shared")
+
+    def _run(city, ep):
+        return materialize_audio(
+            city,
+            [ep],
+            storage=store,
+            ffmpeg=ff,
+            max_kbps=MAX_KBPS,
+            resolve_media_url=lambda e: e.video_url,
+            audio_artifact_cache=cache,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        stats_a, stats_b = list(
+            pool.map(lambda args: _run(*args), [(city_a, ep_a), (city_b, ep_b)])
+        )
+
+    assert len(ff.calls) == 1
+    assert ep_a.audio_key == ep_b.audio_key
+    assert ep_a.audio_key.startswith(f"{city_a.provider}/{min(source_a, source_b)}/")
+    assert sum(stats.encoded for stats in (stats_a, stats_b)) == 1
+    assert sum(stats.reused for stats in (stats_a, stats_b)) == 1
+    assert len(list(store.list_objects(f"{city_a.provider}/"))) == 1
+
+
+def test_coalesced_follower_keeps_valid_served_duration(tmp_path):
+    # GH#421 follow-up / Audio #58: a credited canonical winner can carry no probed duration. A
+    # follower adopting the shared artifact must NOT regress to 0s — it backfills from its own
+    # timeline/source (the audio is identical across the recipe).
+    from citypods.media import AudioArtifact, AudioArtifactCache, audio_spec_hash
+
+    store = _store(tmp_path)
+    ff = FakeFfmpeg()
+    cache = AudioArtifactCache()
+    city = _city(slug="board")
+    ep = _ep("shared")
+    ep.duration = 3600  # the source declares a duration, so _served_duration can backfill
+    src = source_key(city)
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    winner_key = f"{city.provider}/{src}/{ep.uid}-{spec}.m4a"
+    cache.register(city.provider, src, ep.uid)
+    # The canonical winner completed WITHOUT a probed duration (e.g. credited from storage).
+    cache.complete(
+        (city.provider, ep.uid, spec),
+        AudioArtifact(
+            key=winner_key,
+            spec=spec,
+            url=store.public_url(winner_key),
+            duration=None,
+            size=123,
+            encoded_at="2026-06-23T00:00:00+00:00",
+        ),
+    )
+
+    materialize_audio(
+        city,
+        [ep],
+        storage=store,
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        audio_artifact_cache=cache,
+    )
+
+    assert ep.audio_key == winner_key  # adopted the shared object
+    assert ep.audio_duration_served == pytest.approx(3600.0)  # NOT downgraded to None/0
+    assert ff.calls == []  # follower did not re-encode
+
+
 def test_global_queue_drain_is_bounded_by_sources_not_episodes(tmp_path):
     """Storage listings scale with the number of sources, not the number of queued episodes —
     the timing/operation-count contract from issue #344. Without ``hosted_keys_cache``, this same
@@ -1476,6 +1562,63 @@ def test_run_ffmpeg_guarded_classifies_provider_throttle(monkeypatch):
         )
 
 
+def test_run_ffmpeg_guarded_redacts_signed_url_from_logs_and_exception(monkeypatch):
+    import citypods.media as media
+
+    signed = (
+        "https://swagit-video.granicus.com/archive/video.mp4"
+        "?X-Amz-Credential=secret&X-Amz-Signature=also-secret"
+    )
+    err = subprocess.CalledProcessError(
+        1,
+        ["ffmpeg", "-i", signed],
+        stderr=f"{signed}: Invalid data found".encode(),
+    )
+    monkeypatch.setattr(media.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(err))
+    logs: list[str] = []
+
+    with pytest.raises(subprocess.CalledProcessError) as excinfo:
+        media._run_ffmpeg_guarded(
+            ["ffmpeg", "-i", signed],
+            phase="source-cache",
+            rate_limit_urls=(signed,),
+            log=logs.append,
+        )
+
+    rendered = f"{excinfo.value} {excinfo.value.cmd} {excinfo.value.stderr} {' '.join(logs)}"
+    assert "swagit-video.granicus.com/archive/video.mp4" in rendered
+    assert "Invalid data found" in rendered
+    assert "X-Amz-" not in rendered
+    assert "secret" not in rendered
+
+
+def test_run_ffmpeg_guarded_records_direct_granicus_success(monkeypatch):
+    import citypods.media as media
+
+    archive_url = (
+        "https://archive-video.granicus.com/arlingtontx/"
+        "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
+    )
+    monkeypatch.setattr(
+        media.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, b"audio", b""),
+    )
+    circuit = media.ProviderTransportTelemetry({"granicus.com": {"threshold": 3}})
+
+    media._run_ffmpeg_guarded(
+        ["ffmpeg", "-i", archive_url, "out.m4a"],
+        phase="source-cache",
+        rate_limit_urls=(archive_url,),
+        transport_telemetry=circuit,
+        log=lambda *_args: None,
+    )
+
+    telemetry = circuit.telemetry()["granicus.com/tenant:arlingtontx"]
+    assert telemetry["direct_fetch_successes"] == 1
+    assert telemetry["direct_fetch_403s"] == 0
+
+
 def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypatch):
     import citypods.media as media
 
@@ -1500,7 +1643,7 @@ def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypat
 
     monkeypatch.setattr(media.subprocess, "run", _run)
     logs: list[str] = []
-    circuit = media.MediaRateLimitCircuitBreaker(
+    circuit = media.ProviderTransportTelemetry(
         {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
     )
 
@@ -1508,7 +1651,7 @@ def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypat
         ["ffmpeg", "-i", archive_url, "out.m4a"],
         phase="source-cache",
         rate_limit_urls=(archive_url,),
-        rate_limit_circuit=circuit,
+        transport_telemetry=circuit,
         log=logs.append,
     )
 
@@ -1517,7 +1660,6 @@ def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypat
     assert calls[0][calls[0].index("-i") + 1] == archive_url
     assert calls[1][calls[1].index("-i") + 1].startswith("https://worker.example/")
     assert "Authorization: Bearer secret-token\r\n" in calls[1]
-    assert sum(row["rate_limited"] for row in circuit.telemetry().values()) == 0
     assert any("strategy=cloudflare-worker" in line for line in logs)
     assert all("secret-token" not in line for line in logs)
     # GH#337 telemetry: one fallback attempt, recovered, on the Arlington tenant scope.
@@ -1525,6 +1667,8 @@ def test_run_ffmpeg_guarded_uses_worker_once_after_direct_granicus_403(monkeypat
     assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_successes"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_failures"] for row in telemetry.values()) == 0
+    assert sum(row["direct_fetch_403s"] for row in telemetry.values()) == 1
+    assert sum(row["direct_fetch_successes"] for row in telemetry.values()) == 0
 
 
 def test_worker_failure_records_provider_throttle_without_leaking_token(monkeypatch):
@@ -1546,7 +1690,7 @@ def test_worker_failure_records_provider_throttle_without_leaking_token(monkeypa
         )
 
     monkeypatch.setattr(media.subprocess, "run", _run)
-    circuit = media.MediaRateLimitCircuitBreaker(
+    circuit = media.ProviderTransportTelemetry(
         {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
     )
 
@@ -1555,13 +1699,12 @@ def test_worker_failure_records_provider_throttle_without_leaking_token(monkeypa
             ["ffmpeg", "-i", archive_url, "out.m4a"],
             phase="source-cache",
             rate_limit_urls=(archive_url,),
-            rate_limit_circuit=circuit,
+            transport_telemetry=circuit,
             log=lambda _line: None,
         )
 
     assert "secret-token" not in str(excinfo.value)
     telemetry = circuit.telemetry()
-    assert sum(row["rate_limited"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_failures"] for row in telemetry.values()) == 1
 
@@ -1597,7 +1740,7 @@ def test_monitored_source_cache_uses_worker_after_direct_granicus_403(monkeypatc
         commands.append(command)
         return _Process(command)
 
-    circuit = media.MediaRateLimitCircuitBreaker(
+    circuit = media.ProviderTransportTelemetry(
         {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
     )
     stdout, _stderr = media._run_ffmpeg_guarded(
@@ -1605,7 +1748,7 @@ def test_monitored_source_cache_uses_worker_after_direct_granicus_403(monkeypatc
         phase="source-cache",
         memory_floor_bytes=1,
         rate_limit_urls=(archive_url,),
-        rate_limit_circuit=circuit,
+        transport_telemetry=circuit,
         snapshot=_snap,
         sleep=lambda _seconds: None,
         log=lambda _line: None,
@@ -1617,7 +1760,6 @@ def test_monitored_source_cache_uses_worker_after_direct_granicus_403(monkeypatc
     assert len(commands) == 2
     assert commands[1][commands[1].index("-i") + 1].startswith("https://worker.example/")
     telemetry = circuit.telemetry()
-    assert sum(row["rate_limited"] for row in telemetry.values()) == 0
     assert sum(row["worker_fallback_successes"] for row in telemetry.values()) == 1
 
 
@@ -1660,7 +1802,7 @@ def test_monitored_worker_failure_records_throttle_and_redacts_endpoint(monkeypa
         return _Process(command)
 
     logs: list[str] = []
-    circuit = media.MediaRateLimitCircuitBreaker(
+    circuit = media.ProviderTransportTelemetry(
         {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
     )
 
@@ -1670,7 +1812,7 @@ def test_monitored_worker_failure_records_throttle_and_redacts_endpoint(monkeypa
             phase="source-cache",
             memory_floor_bytes=1,
             rate_limit_urls=(archive_url,),
-            rate_limit_circuit=circuit,
+            transport_telemetry=circuit,
             snapshot=_snap,
             sleep=lambda _seconds: None,
             log=logs.append,
@@ -1681,7 +1823,6 @@ def test_monitored_worker_failure_records_throttle_and_redacts_endpoint(monkeypa
     assert len(commands) == 2  # one direct, one Worker — no third attempt
     assert "secret-token" not in str(excinfo.value)
     telemetry = circuit.telemetry()
-    assert sum(row["rate_limited"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_failures"] for row in telemetry.values()) == 1
     assert all("secret-token" not in line for line in logs)
@@ -1705,7 +1846,7 @@ def test_half_configured_worker_secret_does_not_mask_direct_403(monkeypatch):
         raise subprocess.CalledProcessError(1, command, stderr=b"Server returned 403 Forbidden")
 
     monkeypatch.setattr(media.subprocess, "run", _run)
-    circuit = media.MediaRateLimitCircuitBreaker(
+    circuit = media.ProviderTransportTelemetry(
         {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
     )
 
@@ -1714,12 +1855,11 @@ def test_half_configured_worker_secret_does_not_mask_direct_403(monkeypatch):
             ["ffmpeg", "-i", archive_url, "out.m4a"],
             phase="source-cache",
             rate_limit_urls=(archive_url,),
-            rate_limit_circuit=circuit,
+            transport_telemetry=circuit,
             log=lambda _line: None,
         )
 
     telemetry = circuit.telemetry()
-    assert sum(row["rate_limited"] for row in telemetry.values()) == 1
     assert sum(row["worker_fallback_attempts"] for row in telemetry.values()) == 0
 
 
@@ -1902,255 +2042,6 @@ def test_source_cache_rate_limit_does_not_immediately_retry_direct_render(tmp_pa
     assert ff.calls == []
     assert ep.materialize_error == "rate_limited"
     assert len(stats.errors) == 1
-
-
-def test_rate_limit_circuit_skips_later_same_domain_after_threshold(tmp_path):
-    import citypods.media as media
-
-    class _RateLimitFfmpeg(FakeFfmpeg):
-        def extract_audio(self, *args, **kwargs):
-            super().extract_audio(*args, **kwargs)
-            raise media.RateLimitedMediaFetchError("ffmpeg filter-render hit provider throttle")
-
-    eps = [
-        _ep("g1", kind="direct", url="https://archive-video.granicus.com/one.mp4"),
-        _ep("g2", kind="direct", url="https://archive-video.granicus.com/two.mp4"),
-    ]
-    city = _city(extract_audio=True)
-    ff = _RateLimitFfmpeg()
-
-    stats = materialize_audio(
-        city,
-        eps,
-        storage=_store(tmp_path),
-        ffmpeg=ff,
-        max_kbps=MAX_KBPS,
-        resolve_media_url=lambda e: e.video_url,
-        rate_limit_circuit=media.MediaRateLimitCircuitBreaker(
-            {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
-        ),
-    )
-
-    assert len(ff.calls) == 1
-    assert eps[0].materialize_error == "rate_limited"
-    assert eps[1].materialize_attempts == 0
-    assert stats.skipped_budget == 1
-
-
-def test_rate_limit_circuit_opens_once_under_concurrent_failures():
-    import citypods.media as media
-
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
-    )
-    urls = ["https://archive-video.granicus.com/x.mp4"]
-    opened: list[str | None] = []
-    lock = threading.Lock()
-
-    def _fail():
-        result = circuit.record_rate_limited(urls)
-        with lock:
-            opened.append(result)
-
-    threads = [threading.Thread(target=_fail) for _ in range(8)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-
-    assert opened.count("granicus.com") == 1
-    telemetry = circuit.telemetry()["granicus.com"]
-    assert telemetry["rate_limited"] == 8
-    assert telemetry["circuit_trips"] == 1
-
-
-def test_ffmpeg_rechecks_circuit_after_provider_lease_acquisition(monkeypatch):
-    import citypods.media as media
-
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
-    )
-    urls = ("https://archive-video.granicus.com/x.mp4",)
-    subprocess_started = False
-
-    @contextmanager
-    def _lease_that_observes_failure(_urls, *, stop=None):
-        circuit.record_rate_limited(urls)
-        yield
-
-    def _unexpected_run(*args, **kwargs):
-        nonlocal subprocess_started
-        subprocess_started = True
-        raise AssertionError("ffmpeg must not start after the circuit opens")
-
-    monkeypatch.setattr(media.DISTRIBUTED_PROVIDER_LEASES, "slots", _lease_that_observes_failure)
-    monkeypatch.setattr(media.subprocess, "run", _unexpected_run)
-
-    with pytest.raises(media.CircuitOpenMediaFetchError, match="granicus.com"):
-        media._run_ffmpeg_guarded(
-            ["ffmpeg", "-version"],
-            phase="test",
-            rate_limit_urls=urls,
-            rate_limit_circuit=circuit,
-            log=None,
-        )
-
-    assert subprocess_started is False
-
-
-def test_run_ffmpeg_guarded_opens_circuit_before_releasing_lease(monkeypatch):
-    """#343: a threshold-crossing 403 must open the circuit *before* the distributed lease this
-    failing attempt held is released. Recording it only at the higher-level caller (after the
-    ``with`` that holds the lease has already exited) leaves a window where a queued waiter can
-    acquire the just-released lease, see a still-closed circuit, and start ffmpeg anyway."""
-    import citypods.media as media
-
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
-    )
-    urls = ("https://archive-video.granicus.com/x.mp4",)
-    observed_open_before_release: list[bool] = []
-
-    @contextmanager
-    def _observing_slots(_urls, *, stop=None):
-        try:
-            yield
-        finally:
-            # The lease releases here (on context exit) — even when the body raised — so the
-            # circuit must already be open by now.
-            observed_open_before_release.append(circuit.open_for(urls) is not None)
-
-    monkeypatch.setattr(media.DISTRIBUTED_PROVIDER_LEASES, "slots", _observing_slots)
-    err = subprocess.CalledProcessError(1, ["ffmpeg"], stderr=b"Server returned 403 Forbidden")
-    monkeypatch.setattr(media.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(err))
-
-    with pytest.raises(media.RateLimitedMediaFetchError) as excinfo:
-        media._run_ffmpeg_guarded(
-            ["ffmpeg"],
-            phase="source-cache",
-            rate_limit_urls=urls,
-            rate_limit_circuit=circuit,
-            log=lambda *a, **k: None,
-        )
-
-    assert observed_open_before_release == [True]
-    assert excinfo.value.circuit_recorded is True
-    assert excinfo.value.opened_domain == "granicus.com"
-
-
-def test_materialize_does_not_double_count_subprocess_boundary_failure(tmp_path):
-    """#343: when the subprocess boundary already recorded the failure on the circuit (while the
-    lease was held), the higher-level materialization caller must not record it a second time —
-    otherwise a single threshold-crossing failure would be double-counted in telemetry."""
-    import citypods.media as media
-
-    class _BoundaryRecordedFfmpeg(FakeFfmpeg):
-        def extract_audio(self, *args, **kwargs):
-            super().extract_audio(*args, **kwargs)
-            raise media.RateLimitedMediaFetchError(
-                "ffmpeg filter-render hit provider throttle",
-                circuit_recorded=True,
-                opened_domain="granicus.com",
-            )
-
-    eps = [_ep("g1", kind="direct", url="https://archive-video.granicus.com/one.mp4")]
-    city = _city(extract_audio=True)
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
-    )
-
-    materialize_audio(
-        city,
-        eps,
-        storage=_store(tmp_path),
-        ffmpeg=_BoundaryRecordedFfmpeg(),
-        max_kbps=MAX_KBPS,
-        resolve_media_url=lambda e: e.video_url,
-        rate_limit_circuit=circuit,
-    )
-
-    # The boundary already recorded the failure (simulated by ``circuit_recorded=True`` above), so
-    # the caller must not have touched this circuit at all — no domain entry should appear.
-    assert "granicus.com" not in circuit.telemetry()
-
-
-def test_circuit_deferred_telemetry_is_counted_by_media_domain():
-    import citypods.media as media
-
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 1, "cooldown_seconds": 60}}
-    )
-    urls = ["https://swagit-video.granicus.com/archive/x.mp4"]
-    circuit.record_rate_limited(urls)
-
-    key = "granicus.com/tenant:swagit-video"
-    assert circuit.record_circuit_deferred(urls) == key
-    assert circuit.telemetry()[key]["circuit_deferred"] == 1
-
-
-def test_circuit_recovery_probe_success_releases_half_open_domain(monkeypatch):
-    import citypods.media as media
-    import citypods.provider_circuits as circuits
-
-    clock = [100.0]
-    monkeypatch.setattr(circuits.time, "monotonic", lambda: clock[0])
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 1, "cooldown_seconds": 30}}
-    )
-    urls = ["https://archive-video.granicus.com/x.mp4"]
-    assert circuit.record_rate_limited(urls) == "granicus.com"
-
-    def _sleep(seconds):
-        clock[0] += seconds
-
-    assert circuit.wait_for_recovery_probe(sleep=_sleep, poll_seconds=10) == "granicus.com"
-    assert circuit.recovery_succeeded("granicus.com") is False
-
-    circuit.record_success(urls)
-
-    assert circuit.recovery_succeeded("granicus.com") is True
-    telemetry = circuit.telemetry()["granicus.com"]
-    assert telemetry["recovery_probes"] == 1
-    assert telemetry["recoveries"] == 1
-
-
-def test_circuit_half_open_failure_reopens_immediately(monkeypatch):
-    import citypods.media as media
-    import citypods.provider_circuits as circuits
-
-    clock = [100.0]
-    monkeypatch.setattr(circuits.time, "monotonic", lambda: clock[0])
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 3, "cooldown_seconds": 30}}
-    )
-    urls = ["https://archive-video.granicus.com/x.mp4"]
-    for _ in range(2):
-        assert circuit.record_rate_limited(urls) is None
-    assert circuit.record_rate_limited(urls) == "granicus.com"
-    clock[0] += 30
-
-    assert circuit.wait_for_recovery_probe(sleep=lambda _seconds: None) == "granicus.com"
-    assert circuit.record_rate_limited(urls) == "granicus.com"
-    assert circuit.open_for(urls) == "granicus.com"
-    telemetry = circuit.telemetry()["granicus.com"]
-    assert telemetry["rate_limited"] == 4
-    assert telemetry["circuit_trips"] == 2
-    assert telemetry["recovery_probes"] == 1
-    assert telemetry["recoveries"] == 0
-
-
-def test_circuit_recovery_wait_respects_stop(monkeypatch):
-    import citypods.media as media
-    import citypods.provider_circuits as circuits
-
-    monkeypatch.setattr(circuits.time, "monotonic", lambda: 100.0)
-    circuit = media.MediaRateLimitCircuitBreaker(
-        {"granicus.com": {"threshold": 1, "cooldown_seconds": 30}}
-    )
-    circuit.record_rate_limited(["https://archive-video.granicus.com/x.mp4"])
-
-    assert circuit.wait_for_recovery_probe(stop=lambda: True, sleep=lambda _: None) is None
-    assert circuit.telemetry()["granicus.com"]["recovery_probes"] == 0
 
 
 def test_probe_audio_bitrate_sends_browser_user_agent(monkeypatch):

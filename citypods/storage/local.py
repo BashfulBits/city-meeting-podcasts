@@ -56,5 +56,15 @@ class LocalStorage:
                 if key.startswith(prefix):
                     yield key, datetime.fromtimestamp(p.stat().st_mtime, tz=UTC)
 
+    def iter_objects(self, prefix: str = "") -> Iterator[tuple[str, datetime, int]]:
+        if not self.root.exists():
+            return
+        for p in self.root.rglob("*"):
+            if p.is_file():
+                key = p.relative_to(self.root).as_posix()
+                if key.startswith(prefix):
+                    stat = p.stat()
+                    yield key, datetime.fromtimestamp(stat.st_mtime, tz=UTC), stat.st_size
+
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)

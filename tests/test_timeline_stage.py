@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.media import CircuitOpenMediaFetchError, RateLimitedMediaFetchError
+from citypods.media import RateLimitedMediaFetchError
 from citypods.models import City, Episode
 from citypods.stages import (
     StageContext,
@@ -211,8 +211,8 @@ class TestTimelineStageNoPlanner:
 
 # ---------------------------------------------------------------------------
 # TimelineStage — planner raises a provider-throttle error (e.g. SilencePlanner's
-# source-cache prefetch hits the circuit breaker). Must be counted in stats, not
-# silently swallowed by the global queue's blanket per-item catch.
+# source-cache prefetch hits a 403). Must be counted in stats + record the per-episode
+# backoff, not silently swallowed by the global queue's blanket per-item catch.
 # ---------------------------------------------------------------------------
 
 
@@ -222,14 +222,6 @@ class _RateLimitedPlanner:
 
     def plan(self, provider, city, ep, ctx, current):
         raise RateLimitedMediaFetchError("ffmpeg speech-measure hit provider throttle (HTTP 403)")
-
-
-class _CircuitOpenPlanner:
-    name = "circuit-open-fake"
-    version = "1"
-
-    def plan(self, provider, city, ep, ctx, current):
-        raise CircuitOpenMediaFetchError("granicus.com")
 
 
 class TestTimelineStagePlannerThrottle:
@@ -243,15 +235,6 @@ class TestTimelineStagePlannerThrottle:
         assert ep.materialize_error == "rate_limited"
         assert ep.materialize_last_attempt is not None
         assert ep.timeline is None  # episode left untouched, not crashed
-
-    def test_circuit_open_planner_counted_not_raised(self, tmp_path):
-        ep = _ep()
-        stage = TimelineStage(planners=[_CircuitOpenPlanner()])
-        stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
-        assert stats.circuit_skipped == 1
-        assert stats.skipped == 1
-        assert ep.materialize_attempts == 0
-        assert ep.timeline is None
 
     def test_throttle_in_second_planner_does_not_lose_first_planner_result(self, tmp_path):
         # The first planner's result is discarded on a later throttle (no partial timeline is

@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body
 from citypods.models import City, Episode
 from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
@@ -49,6 +50,14 @@ BACKOFF_BASE = timedelta(days=1)
 BACKOFF_MAX = timedelta(days=30)
 TRANSCRIPT_TIMEOUT_BACKOFF_BASE = timedelta(days=1)
 TRANSCRIPT_TIMEOUT_BACKOFF_MAX = timedelta(days=30)
+
+# Audio shard planning uses recording seconds as its common cost proxy. A withheld recording still
+# reaches TimelineStage so it can recover, but it does not enter AudioStage; give that cheap recheck
+# a small non-zero cost without letting known-empty media dominate a shard. Unknown-duration
+# playable work uses the source's own known-duration average, matching the ASR planner's anti-skew
+# behavior.
+AUDIO_WITHHELD_RECHECK_WEIGHT_SECONDS = 5.0
+AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS = 2 * 3600.0
 
 
 def _in_backoff(ep: Episode, now: datetime) -> bool:
@@ -90,6 +99,18 @@ def source_key(city: City) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
+def source_family_key(city: City) -> str:
+    """Shard family for configured feed views of one government entity.
+
+    The entity reference remains stable when one per-board feed needs a wider ``feed_urls`` set
+    than the combined feed. Configurations without an entity retain source-key behavior.
+    """
+    if city.city_entity:
+        raw = f"{city.provider}|entity:{city.city_entity}"
+        return hashlib.sha1(raw.encode()).hexdigest()[:12]
+    return source_key(city)
+
+
 def shard_assignment(
     source_keys: Iterable[str], num_shards: int, *, weights: Mapping[str, float] | None = None
 ) -> dict[str, int]:
@@ -102,11 +123,11 @@ def shard_assignment(
     until ``#sources < num_shards``.
 
     ``weights`` are advisory estimates of source work, not durable identity. ``run.py`` currently
-    passes each source's *remaining* audio backlog (episodes still needing an encode under the
-    current spec, via ``pending_audio_work``), falling back to ``1.0`` for a never-crawled source
-    whose backlog is unknown — so a source that's mostly caught up doesn't keep crowding out one
-    with a real backlog, and every matrix job still computes the same partition from local state
-    even if a sibling shard pushes state while this workflow is running.
+    passes each source's duration-weighted remaining audio work (playable/unknown episodes still
+    needing an encode under the current spec, plus a small fixed cost for withheld-media recovery
+    rechecks, via ``estimate_audio_shard_work``), falling back to a conservative unknown-duration
+    recording for a never-crawled source whose backlog is unknown. Every matrix job computes the
+    same partition from local state even if a sibling shard pushes state while this workflow runs.
 
     Tradeoff vs. hash-mod: adding a source or changing weights can move keys to different shards.
     Harmless — records are keyed by ``source_key`` (not by shard) and the push is scoped per
@@ -281,7 +302,7 @@ def save_records(state_dir: Path, src_key: str, records: dict) -> None:
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
 
 
-def pending_audio_work(
+def estimate_audio_shard_work(
     state_dir: Path,
     src_key: str,
     *,
@@ -290,8 +311,8 @@ def pending_audio_work(
     loudness_profile: str,
     processing_profile: str,
     now: datetime | None = None,
-) -> int:
-    """Count this source's episodes that still need an audio encode, for sharding weight.
+) -> float:
+    """Estimate this source's audio-lane work in recording seconds, for shard assignment.
 
     Mirrors only the local half of ``media.py``'s cheap-pass reuse check (spec match +
     ``hosted_audio_url`` set + not backing off) — it deliberately skips that check's
@@ -299,9 +320,18 @@ def pending_audio_work(
     that already has a matching, hosted spec is "finished" and shouldn't inflate the weight
     of a source that's actually almost caught up; one that's in backoff won't be retried this
     run either, so it's not pending work right now.
+
+    Pending playable or not-yet-classified media is weighted by its expected served duration:
+    the current Timeline when available, then the last hosted served duration, then the provider
+    duration. Unknown durations use this source's average known pending duration (or a conservative
+    fallback when the whole source is unknown). Availability-withheld media does not enter
+    ``AudioStage`` but is deliberately rechecked by ``TimelineStage`` for recovery, so it
+    contributes only a small fixed cost instead of its often-misleading declared duration.
     """
     now = now or datetime.now(UTC)
-    pending = 0
+    known_seconds: list[float] = []
+    unknown_items = 0
+    withheld_items = 0
     for rec in load_records(state_dir, src_key).values():
         ep = record_to_episode(rec)
         if ep.media_kind != "hls" and not extract_audio:
@@ -314,12 +344,36 @@ def pending_audio_work(
         )
         legacy_ok = ep.audio_spec_hash == "legacy" and not (loudness_profile or processing_profile)
         spec_ok = bool(ep.hosted_audio_url) and (ep.audio_spec_hash == spec or legacy_ok)
-        if spec_ok:
+        if spec_ok and not ep.materialize_error:
             continue
         if _in_backoff(ep, now):
             continue
-        pending += 1
-    return pending
+        if ep.media_availability is not None and ep.media_availability.is_withheld():
+            withheld_items += 1
+            continue
+
+        duration: float | None = None
+        if ep.timeline is not None and ep.timeline.segments:
+            duration = float(ep.timeline.segments[-1].served_end)
+        elif ep.audio_duration_served and ep.audio_duration_served > 0:
+            duration = float(ep.audio_duration_served)
+        elif ep.duration and ep.duration > 0:
+            duration = float(ep.duration)
+        if duration is None or duration <= 0:
+            unknown_items += 1
+        else:
+            known_seconds.append(duration)
+
+    unknown_weight = (
+        sum(known_seconds) / len(known_seconds)
+        if known_seconds
+        else AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS
+    )
+    return (
+        sum(known_seconds)
+        + unknown_items * unknown_weight
+        + withheld_items * AUDIO_WITHHELD_RECHECK_WEIGHT_SECONDS
+    )
 
 
 TranscribeRoute = Literal["local", "dispatch", "blocked", "inflight"]
@@ -389,12 +443,12 @@ def estimate_transcribe_shard_work(
     Mirrors only the local, I/O-free half of ``TranscriptStage.process``'s ``lane="transcribe"``
     reuse check (the audio-readiness gate + the synced/stale-ASR-version check): it skips that
     stage's ``storage.exists()`` probes and provider-transcript fetch, the same tradeoff
-    ``pending_audio_work`` makes for the audio lane. One known overestimate follows from skipping
-    the fetch: an episode with an unfetched provider transcript URL that *would* resolve to an
-    already-timed transcript (skipping ASR entirely) still counts as pending here. Advisory only,
-    same as ``pending_audio_work`` — it sizes a shard, it doesn't gate what that shard transcribes.
-    An episode without hosted audio yet contributes nothing: it isn't transcribable this run
-    regardless of lane.
+    ``estimate_audio_shard_work`` makes for the audio lane. One known overestimate follows from
+    skipping the fetch: an episode with an unfetched provider transcript URL that *would* resolve
+    to an already-timed transcript (skipping ASR entirely) still counts as pending here. Advisory
+    only, same as ``estimate_audio_shard_work`` — it sizes a shard, it doesn't gate what that shard
+    transcribes. An episode without hosted audio yet contributes nothing: it isn't transcribable
+    this run regardless of lane.
     """
     local_seconds = 0.0
     local_items = 0
@@ -635,6 +689,9 @@ def episode_to_record(ep: Episode) -> dict:
             "last_attempt": ep.materialize_last_attempt,
             "error": ep.materialize_error,
         },
+        # Durable media-availability verdict (H16 PR3): omitted when never classified so the
+        # record stays clean for direct enclosures we don't re-host and for pre-PR3 records.
+        "media_availability": _availability_to_dict(ep.media_availability),
     }
 
 
@@ -665,6 +722,23 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
     }
+
+
+def _availability_to_dict(av: MediaAvailability | None) -> dict | None:
+    """Serialize the durable availability verdict (H16 PR3), or ``None`` to omit the block."""
+    if av is None:
+        return None
+    return dataclasses.asdict(av)
+
+
+def _availability_from_rec(rec: dict) -> MediaAvailability | None:
+    """Rebuild the availability verdict from a record. Older records lack the block -> ``None``
+    (the episode is simply re-classified on the next audio run)."""
+    block = rec.get("media_availability")
+    if not isinstance(block, dict) or not block.get("state"):
+        return None
+    known = {f.name for f in dataclasses.fields(MediaAvailability)}
+    return MediaAvailability(**{k: v for k, v in block.items() if k in known})
 
 
 def _source_media_from_dict(d: dict) -> SourceMedia:
@@ -728,6 +802,7 @@ def record_to_episode(rec: dict) -> Episode:
         audio_rebuild=audio.get("rebuild") or "",
         audio_encode_time=audio.get("encode_time"),
         audio_duration_served=audio.get("duration_served"),
+        media_availability=_availability_from_rec(rec),
     )
 
 
@@ -756,13 +831,16 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 # ``"diarize": frozenset({"speakers"})`` in ``_LANE_OWNED_BLOCKS``. The merge/push logic is
 # block-set-driven and needs no other change; ``episode_to_record`` / ``record_to_episode`` /
 # ``referenced_audio_keys`` gain the new block alongside the existing ``audio`` / ``transcript``.
-ARTIFACT_BLOCKS: frozenset[str] = frozenset({"audio", "transcript"})
+# ``media_availability`` (H16 PR3) is produced by the audio lane's detection pass, so it is an
+# audio-owned artifact block: a sibling ``transcribe``/``align`` push must preserve it, exactly like
+# the ``audio`` block, or it would regress a freshly-written availability verdict.
+ARTIFACT_BLOCKS: frozenset[str] = frozenset({"audio", "transcript", "media_availability"})
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
 # full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
 # it preserves nothing (behaves like the legacy whole-record push).
 _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
-    "audio": frozenset({"audio"}),
+    "audio": frozenset({"audio", "media_availability"}),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
 }
