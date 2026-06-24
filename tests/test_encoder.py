@@ -859,6 +859,31 @@ class TestCommandFfmpegFilterPath:
             ("release", "audio-finalize"),
         ]
 
+    def test_native_gate_stop_raises_stop_requested_not_timeout(self, monkeypatch, tmp_path):
+        """A gate slot denied because the run's wall-clock budget fired must surface as
+        StopRequested — deferred work to retry next run — not a fabricated 2700s ffmpeg
+        timeout that gets recorded as a real encode failure."""
+        import citypods.media as media
+        from citypods.http import StopRequested
+
+        class _StoppedGate:
+            def acquire(self, *, kind, label, stop=None):
+                return False
+
+            def release(self, *, kind):
+                raise AssertionError("release should not be called when acquire failed")
+
+        runner = media.CommandFfmpeg(max_kbps=96, threads=1, phase_gate=_StoppedGate())
+        try:
+            with pytest.raises(StopRequested):
+                runner.extract_audio(
+                    timeline=self._trim_timeline(),
+                    sources_by_id={"s0": "https://s/v.mp4"},
+                    dest=tmp_path / "out.m4a",
+                )
+        finally:
+            runner.close()
+
     def test_podcast_speech_profile_rejects_subsecond_timeline(self, tmp_path):
         import pytest
 

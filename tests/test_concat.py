@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -296,6 +297,47 @@ class TestChapterConstruction:
 
 
 class TestProbeDurationUrl:
+    def test_acquires_host_slot_before_distributed_lease(self):
+        """Match the global media lock order so concat probes cannot deadlock source-cache work."""
+        events = []
+
+        @contextmanager
+        def held(name):
+            """Record context-manager acquisition and release order."""
+            events.append(f"enter:{name}")
+            try:
+                yield
+            finally:
+                events.append(f"exit:{name}")
+
+        def host_slot(*_args, **_kwargs):
+            """Return the recorded process-local host slot."""
+            return held("host")
+
+        def distributed_slots(*_args, **_kwargs):
+            """Return the recorded cross-shard distributed lease."""
+            return held("distributed")
+
+        host_limiter = MagicMock()
+        host_limiter.slot.side_effect = host_slot
+        lease_pool = MagicMock()
+        lease_pool.slots.side_effect = distributed_slots
+
+        with (
+            patch("citypods.concat.HOST_LIMITER", host_limiter),
+            patch("citypods.concat.DISTRIBUTED_PROVIDER_LEASES", lease_pool),
+            patch("citypods.concat.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.stdout = "3600\n"
+            assert _probe_duration_url(SEG_URL_0) == 3600.0
+
+        assert events == [
+            "enter:host",
+            "enter:distributed",
+            "exit:distributed",
+            "exit:host",
+        ]
+
     def test_returns_float_on_success(self):
         with patch("citypods.concat.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "3600.123456\n"

@@ -258,6 +258,10 @@ def _make_episode(media_kind="hls", duration=3600, sources=None, video_url="http
     ep.links = {}
     ep.audio_key = None
     ep.hosted_audio_url = None
+    # H16 PR3: the planner now reads these to fingerprint and stamp the availability verdict.
+    ep.audio_url = None
+    ep.resolved_audio_url.return_value = video_url
+    ep.media_availability = None
     return ep
 
 
@@ -491,6 +495,65 @@ class TestSilencePlanner:
             mock_detect.return_value = ([(0.0, 3599.99)], 3600.0)
             result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, prior)
         assert result is None
+
+
+class TestSilencePlannerAvailability:
+    """H16 PR3: the silence decode pass also stamps the durable media-availability verdict."""
+
+    @staticmethod
+    def _plan(detect_return, *, ep=None, prior_timeline=None):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = ep or _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = detect_return
+            planner.plan(provider, _make_city(), ep, ctx, prior_timeline)
+        return ep.media_availability
+
+    def test_real_audio_is_available(self):
+        from citypods.availability import AVAILABLE
+
+        av = self._plan(([(0.0, 5.0)], 3600.0))
+        assert av is not None and av.state == AVAILABLE and not av.is_withheld()
+
+    def test_near_total_silence_is_suspected_then_confirmed(self):
+        from citypods.availability import CONFIRMED_EMPTY, SUSPECTED_EMPTY
+
+        ep = _make_episode(duration=3600)
+        first = self._plan(([(0.0, 3599.99)], 3600.0), ep=ep)
+        assert first.state == SUSPECTED_EMPTY and first.is_withheld()
+        ep.media_availability = first  # carry the verdict into the next independent run
+        second = self._plan(([(0.0, 3599.99)], 3600.0), ep=ep)
+        assert second.state == CONFIRMED_EMPTY and second.silent_confirmations == 2
+
+    def test_missing_probe_duration_is_transport_not_silence(self):
+        from citypods.availability import AVAILABLE
+
+        ep = _make_episode(duration=3600)
+        ep.media_availability = self._plan(([(0.0, 5.0)], 3600.0), ep=ep)
+        assert ep.media_availability.state == AVAILABLE
+        # A later run whose fetch fails to decode (no probe duration) must NOT flip it to empty.
+        after = self._plan(([], None), ep=ep)
+        assert after.state == AVAILABLE and not after.is_withheld()
+
+    def test_dead_media_is_classified_missing(self):
+        from citypods.availability import MISSING
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
+
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.side_effect = MediaUnavailable("gone", code=MEDIA_DEAD)
+        ep = _make_episode(duration=3600)
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            planner.plan(provider, _make_city(), ep, ctx, None)
+        assert ep.media_availability is not None
+        assert ep.media_availability.state == MISSING and ep.media_availability.is_withheld()
 
 
 # ---------------------------------------------------------------------------

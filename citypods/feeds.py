@@ -98,7 +98,14 @@ def enclosure_url(episode: Episode, kind: str) -> str | None:
     - audio: a hosted/materialized M4A if present, else the direct source (Granicus).
       HLS episodes with no hosted audio yet are omitted (picked up a later run).
     - video: only direct-MP4 sources; HLS sources are audio-only (not re-hosted as video).
+
+    A withheld media-availability verdict (suspected/confirmed empty, missing, invalid — H16 PR3)
+    omits the episode from *both* feed kinds so a bad/empty enclosure is never published; its
+    metadata (canonical watch page, agenda/minutes) still renders on the meeting page via ``links``.
     """
+    av = episode.media_availability
+    if av is not None and av.is_withheld():
+        return None
     if kind == "audio":
         if episode.hosted_audio_url:
             return episode.hosted_audio_url

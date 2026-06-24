@@ -27,10 +27,11 @@ from citypods.audit import Finding, audit_all
 from citypods.config import load_city_configs, load_site_config
 
 LABELS = {
-    "feed-health": ("0E8A16", "Automated feed-health finding"),
+    "signal:feed-health": ("0E8A16", "Automated feed-health finding"),
+    "type:operations": ("5319E7", "Operational work, not a feature or bug"),
     "severity:error": ("B60205", "A feed is broken (no/dead episodes)"),
     "severity:warn": ("FBCA04", "A feed may be degraded or incomplete"),
-    "needs-human-verification": ("C5DEF5", "Requires manual investigation before auto-closing"),
+    "needs:human-verification": ("C5DEF5", "Requires manual investigation before auto-closing"),
 }
 TITLE_PREFIX = "[feed-health]"
 MARKER = "<!-- citypods:feed-health -->"
@@ -60,7 +61,7 @@ def _body(message: str, severity: str, check: str = "") -> str:
     footer = (
         "**Action required:** verify the city's current meeting archive page and update "
         "`meetings_url` in the city YAML. This issue will NOT auto-close while it has "
-        "the `needs-human-verification` label — remove the label once the YAML has "
+        "the `needs:human-verification` label — remove the label once the YAML has "
         "been updated and verified."
         if check in _MEETINGS_URL_CHECKS
         else "_Filed automatically by the feed-health audit. It auto-closes when the check "
@@ -88,7 +89,7 @@ def _open_issues() -> dict[str, dict]:
         "issue",
         "list",
         "--label",
-        "feed-health",
+        "signal:feed-health",
         "--state",
         "open",
         "--json",
@@ -141,12 +142,19 @@ def reconcile(findings, *, dry_run: bool) -> int:
                 updated += 1
         else:
             needs_human = finding.check in _MEETINGS_URL_CHECKS
-            extra_labels = ["needs-human-verification"] if needs_human else []
+            extra_labels = ["needs:human-verification"] if needs_human else []
             if dry_run:
-                suffix = " [needs-human-verification]" if needs_human else ""
+                suffix = " [needs:human-verification]" if needs_human else ""
                 print(f"CREATE  {title}  [{sev_label}]{suffix}")
             else:
-                label_args = ["--label", "feed-health", "--label", sev_label]
+                label_args = [
+                    "--label",
+                    "signal:feed-health",
+                    "--label",
+                    "type:operations",
+                    "--label",
+                    sev_label,
+                ]
                 for lbl in extra_labels:
                     label_args += ["--label", lbl]
                 _gh("issue", "create", "--title", title, "--body", body, *label_args)
@@ -156,18 +164,18 @@ def reconcile(findings, *, dry_run: bool) -> int:
         if title not in wanted:
             # meetings-url issues require human verification — don't auto-close even when the
             # probe passes again (the URL may have come back up without the right content).
-            # A human removes the needs-human-verification label when they've verified the YAML.
+            # A human removes the needs:human-verification label when they've verified the YAML.
             # Legacy 403/429/5xx issues are not valid findings under the current browser-visible
             # meetings_url policy, so let the next reconcile sweep them.
             suffix = title.removeprefix(TITLE_PREFIX)
             check_name = suffix.split(":", 1)[-1].strip() if ":" in suffix else ""
             if (
                 check_name in _MEETINGS_URL_CHECKS
-                and "needs-human-verification" in _label_names(issue)
+                and "needs:human-verification" in _label_names(issue)
                 and not _is_obsolete_meetings_url_issue(issue, check_name)
             ):
                 if dry_run:
-                    print(f"SKIP-CLOSE (needs-human-verification)  {title}")
+                    print(f"SKIP-CLOSE (needs:human-verification)  {title}")
                 continue
             if dry_run:
                 print(f"CLOSE   {title}")
