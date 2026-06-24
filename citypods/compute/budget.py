@@ -189,9 +189,11 @@ def load_budget_cas(storage) -> tuple[Budget, str | None]:
     data, etag = got
     try:
         parsed = json.loads(data)
-    except ValueError:
+        return Budget.from_dict(parsed if isinstance(parsed, dict) else {}), etag
+    except (AttributeError, TypeError, ValueError):
+        # Corrupt object (bad JSON *or* valid JSON with a malformed schema) is treated as empty,
+        # not fatal — keep the ETag so the next CAS write cleanly replaces it.
         return Budget(), etag
-    return Budget.from_dict(parsed if isinstance(parsed, dict) else {}), etag
 
 
 def mutate_budget(

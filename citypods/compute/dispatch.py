@@ -235,6 +235,13 @@ class DispatchCoordinator:
                     release_reservation(self._storage, owner, target.backend.name, now=now)
                     return None  # a dispatch backend must return a JobHandle; treat as no-dispatch
                 self._budget = load_budget_cas(self._storage)[0]  # refresh the in-memory view
+                # KNOWN BOUNDED GAP (H14 go-live): the reservation is durable here, but the
+                # owner→item link only becomes durable when work.json is saved at run end (lease
+                # overlay). A crash in this window orphans an inflight reservation reconcile can't
+                # attribute — it leaks until the monthly roll_month resets the ledger. Acceptable
+                # while external dispatch is dormant (no adapter); recovering it (e.g. an
+                # owner-encoded source/uid + a reconcile sweep, or unifying with the Stage-2
+                # work-lease ledger) is H14b/c work.
             else:
                 # Single-process, lock-guarded: no cross-shard race, so submit-then-reserve is safe.
                 result = backend.run_inference(job)

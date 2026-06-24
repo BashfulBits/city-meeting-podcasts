@@ -1,0 +1,76 @@
+name: Validate R2/CAS control plane
+
+# Validates the H17 R2/CAS control-plane plumbing (review/17 + review/18) against LIVE B2 + R2 —
+# RoutingStorage routing, native R2 compare-and-swap (put_cas/get_bytes), and the Stage-2 work-lease
+# ledger (claim/renew/release/reap) — end-to-end, WITHOUT touching production data.
+#
+# How to validate the new plumbing before production cutover (recommended order):
+#   1. Ensure these repo secrets are set (Settings → Secrets and variables → Actions):
+#        CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL
+#        B2_ENDPOINT, B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_PUBLIC_BASE_URL
+#      (R2_ENDPOINT is optional — only for jurisdiction-specific buckets.)
+#   2. Actions → "Validate R2/CAS control plane" → Run workflow. Leave defaults.
+#   3. Confirm the job is green and download the `control-plane-validation` artifact; every check in
+#      the JSON report must be `"pass": true` and `overall_pass` must be true.
+#   4. Only then flip production to the routing backend: set `defaults.audio_storage_backend: routing`
+#      in config/site_config.yml (B2 primary + R2 coordination). Watch the next scheduled audio/asr
+#      run; the budget/lease coordination keys begin living on R2.
+#
+# Safe by construction: all objects are written under a unique scratch namespace
+# (work-leases/__validate__/<run-id>/…) and deleted on exit. It never reads or writes the real
+# budget/lease keys, and the production discovery index never references __validate__, so reconcile
+# never sweeps these. Re-runnable any time; also runs weekly as a control-plane health check.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC (ahead of the weekly endpoint-contracts check)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-control-plane
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Actions pinned to commit SHAs (not mutable tags) + no persisted git credentials: this is a
+      # scheduled, secrets-bearing workflow (B2/R2 access), so it's hardened against a supply-chain
+      # tag-move and against the checkout token leaking via the uploaded artifact (zizmor).
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install (with storage extra for boto3)
+        run: pip install -e ".[storage]"
+
+      - name: Validate control plane on live B2 + R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          # R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}  # uncomment for jurisdiction-specific buckets
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+        run: python scripts/validate_control_plane.py --output control-plane-validation.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: control-plane-validation
+          path: control-plane-validation.json

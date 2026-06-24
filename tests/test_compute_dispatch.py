@@ -478,6 +478,15 @@ class TestBudgetCAS:
         # The durable object is the CAS key (so RoutingStorage sends it to R2).
         assert BUDGET_STATE_KEY in bucket.objs
 
+    def test_load_budget_cas_treats_malformed_schema_as_empty(self):
+        # Valid JSON, invalid schema (backends is a string) must not crash dispatch/reconcile —
+        # treat as empty and keep the ETag so the next CAS write cleanly replaces it.
+        bucket = _MemBucket()
+        bucket.objs[BUDGET_STATE_KEY] = b'{"month": "2026-06", "backends": "oops"}'
+        bucket.etags[BUDGET_STATE_KEY] = '"e1"'
+        budget, etag = load_budget_cas(bucket)
+        assert budget.backends == {} and etag == '"e1"'
+
     def test_mutate_budget_first_write_uses_if_none_match(self):
         bucket = _MemBucket()
         calls = []

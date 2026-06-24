@@ -375,6 +375,23 @@ python scripts/spike_r2_cas.py --latency-iterations 20 --output r2-cas-spike-res
 rate under throttle storms exceeds a set threshold (instrument during step 4). Only then design the KV/DO
 adapter.
 
+### §8.1 Validating live before production cutover
+
+Before flipping `defaults.audio_storage_backend` to `routing` (B2 primary + R2 coordination), confirm
+the plumbing works against the **live** services without risking production data:
+
+1. Set the repo Action secrets for **both** backends (`CLOUDFLARE_ACCOUNT_ID`, `R2_*`, `B2_*`).
+2. Run **Actions → "Validate R2/CAS control plane"** (`.github/workflows/validate-control-plane.yml`;
+   also runs weekly as a health check). It exercises `RoutingStorage` routing, R2 CAS
+   (`put_cas`/`get_bytes`: create-if-absent / conditional update / stale rejection), and the
+   work-lease ledger (`claim`/contend/`renew`/`release`/`reap`) via
+   [`scripts/validate_control_plane.py`](../scripts/validate_control_plane.py).
+3. Confirm the job is green and every check in the `control-plane-validation` artifact is
+   `"pass": true`. **Safe by construction:** all writes live under a scratch
+   `work-leases/__validate__/<run-id>/…` namespace and are deleted on exit; the real budget/lease
+   keys are never touched.
+4. Only then flip the backend and watch the next scheduled audio/asr run.
+
 ---
 
 ## §9. Roadmap impact & doc-update contract
