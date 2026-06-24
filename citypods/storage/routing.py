@@ -111,6 +111,12 @@ class RoutingStorage:
             self._class_a += 1  # listing is a Class-A op on R2
         return self._route(prefix).list_objects(prefix)
 
+    def iter_objects(self, prefix: str = ""):
+        """Size-bearing listing on the backend that owns ``prefix`` (see ``list_objects``)."""
+        if self._is_coordination(prefix):
+            self._class_a += 1  # listing is a Class-A op on R2
+        return self._route(prefix).iter_objects(prefix)
+
     def delete(self, key: str) -> None:
         if self._is_coordination(key):
             self._class_a += 1

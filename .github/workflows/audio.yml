@@ -79,14 +79,16 @@ jobs:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
       # Native Granicus archive media is attempted directly first. An immediate HTTP 403 gets one
-      # authenticated retry through the closed Cloudflare Worker while the same provider lease and
-      # circuit admission remain held.
+      # authenticated retry through the closed Cloudflare Worker while the same provider lease is
+      # held. Unset both secrets below to roll back to direct-only (config-only rollback, GH#353).
       GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
       GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -145,7 +147,8 @@ jobs:
         run: |
           # Contract marker for workflow tests: citypods enrich --lane audio --shard ${{ matrix.shard }}/4
           set +e
-          log="${RUNNER_TEMP:-/tmp}/citypods-audio.log"
+          mkdir -p h16-evidence
+          log="${GITHUB_WORKSPACE}/h16-evidence/audio-${{ matrix.shard }}.log"
           if [ "${{ steps.runtime.outputs.mode }}" = "container" ]; then
             docker run --rm --init \
               --user "$(id -u):$(id -g)" \
@@ -187,3 +190,67 @@ jobs:
             exit 0
           fi
           exit "$code"
+
+      - name: Collect H16 run event
+        if: always()
+        run: |
+          mkdir -p h16-evidence
+          PYTHONPATH=. python scripts/scan_h16_log.py \
+            --log "h16-evidence/audio-${{ matrix.shard }}.log" \
+            --output "h16-evidence/secret-scan-${{ matrix.shard }}.json"
+          find .citypods-state/run_events -type f \
+            -name "*-${GITHUB_RUN_ID}-enrich-audio-${{ matrix.shard }}_4.json" \
+            -exec cp {} h16-evidence/ \; 2>/dev/null || true
+
+      - name: Upload H16 shard evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: h16-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  validate-h16:
+    if: always()
+    needs: audio
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install report dependencies
+        run: pip install -e .
+
+      - name: Download H16 shard evidence
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: audio-h16-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: h16-input
+          merge-multiple: true
+
+      - name: Build H16 acceptance report
+        run: |
+          mkdir -p h16-input
+          citypods h16-report \
+            --input-dir h16-input \
+            --output-dir h16-report \
+            --run-id "${GITHUB_RUN_ID}" \
+            --expected-shards 4 \
+            --markdown >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload H16 acceptance report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audio-h16-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: h16-report
+          if-no-files-found: error
+          retention-days: 30

@@ -1,9 +1,10 @@
-"""Canonical source-atomic shard plans for heavy workflow matrix jobs.
+"""Canonical shard plans for heavy workflow matrix jobs.
 
 The ASR workflow plans once from the durable state snapshot restored by its reconcile job, uploads
 that snapshot plus this plan as one immutable workflow artifact, and has every matrix shard consume
 the same assignment. This prevents sibling jobs from deriving different ownership while durable
-state, leases, or future external-GPU capacity change during the run.
+state, leases, or future external-GPU capacity change during the run. Audio/align remain
+source-atomic; transcribe ownership is per episode with matching cross-source ASR work co-located.
 """
 
 from __future__ import annotations
@@ -14,12 +15,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from citypods.asr import asr_initial_prompt, asr_spec_hash
 from citypods.models import City
 from citypods.records import (
-    pending_audio_work,
+    AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS,
+    estimate_audio_shard_work,
+    load_records,
     pending_transcribe_items,
+    record_to_episode,
     records_path,
     shard_assignment,
+    source_family_key,
     source_key,
 )
 
@@ -88,10 +94,16 @@ def create_shard_plan(
     # Each episode is independent GPU work with no per-source coupling, so the source is not the
     # right unit. audio/align stay source-atomic (per-source provider leases / rate limits, §2.3).
     if lane == "transcribe":
-        weights: dict[str, float] = {}
+        # A stable meeting can appear in more than one configured source/feed view. ASR output is
+        # identical when both the stable uid and recipe match, so charge that inference once and
+        # co-locate every source-local record on one shard. TranscriptStage's run-local artifact
+        # cache then fans the one result back out to each source-scoped object/record without
+        # changing the durable blob layout.
+        grouped: dict[str, list[tuple[str, float]]] = {}
         for key, city in source_city.items():
             if not records_path(state_dir, key).exists():
                 continue
+            records = load_records(state_dir, key)
             for uid, weight in pending_transcribe_items(
                 state_dir,
                 key,
@@ -99,8 +111,38 @@ def create_shard_plan(
                 asr_pipeline_version=asr_pipeline_version,
                 local_max_duration_hours=local_max_hours,
             ):
-                weights[_episode_key(key, uid)] = weight
-        assignment = shard_assignment(weights.keys(), num_shards, weights=weights)
+                ep = record_to_episode(records[uid])
+                recipe = asr_spec_hash(
+                    ep.audio_spec_hash or "",
+                    city.asr_model,
+                    None,
+                    asr_pipeline_version,
+                    language=city.asr_language or None,
+                    compute_type=city.asr_compute_type,
+                    beam_size=city.asr_beam_size,
+                    initial_prompt=asr_initial_prompt(
+                        city.podcast_author,
+                        ep.body,
+                        ep.title,
+                    ),
+                )
+                grouped.setdefault(f"{uid}/{recipe}", []).append((_episode_key(key, uid), weight))
+
+        group_weights = {
+            work_key: max(weight for _episode, weight in members)
+            for work_key, members in grouped.items()
+        }
+        group_assignment = shard_assignment(group_weights.keys(), num_shards, weights=group_weights)
+        assignment: dict[str, int] = {}
+        weights: dict[str, float] = {}
+        for work_key, members in sorted(grouped.items()):
+            owner = group_assignment[work_key]
+            # Keep every episode key in the plan so each source-local record is owned and updated.
+            # Only the deterministic first member carries the inference weight; aliases are free
+            # fan-out writes from the shard-local result cache.
+            for index, (episode_key, _weight) in enumerate(sorted(members)):
+                assignment[episode_key] = owner
+                weights[episode_key] = group_weights[work_key] if index == 0 else 0.0
         return ShardPlan(
             lane=lane,
             num_shards=num_shards,
@@ -111,10 +153,10 @@ def create_shard_plan(
 
     def _weight(key: str, city: City) -> float:
         if not records_path(state_dir, key).exists():
-            return 1.0
+            return AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS if lane == "audio" else 1.0
         if lane == "audio":
             return float(
-                pending_audio_work(
+                estimate_audio_shard_work(
                     state_dir,
                     key,
                     extract_audio=city.extract_audio,
@@ -128,7 +170,24 @@ def create_shard_plan(
         return 1.0
 
     weights = {key: _weight(key, city) for key, city in source_city.items()}
-    assignment = shard_assignment(source_city, num_shards, weights=weights)
+    if lane == "audio":
+        # Distinct source keys for one entity must share a process so the run-local artifact cache
+        # can coalesce meetings exposed by both a combined and a per-board provider view (GH#421).
+        family_members: dict[str, list[str]] = {}
+        for key, city in source_city.items():
+            family_members.setdefault(source_family_key(city), []).append(key)
+        family_weights = {
+            family: sum(weights[key] for key in members)
+            for family, members in family_members.items()
+        }
+        family_assignment = shard_assignment(family_members, num_shards, weights=family_weights)
+        assignment = {
+            key: family_assignment[family]
+            for family, members in family_members.items()
+            for key in members
+        }
+    else:
+        assignment = shard_assignment(source_city, num_shards, weights=weights)
     return ShardPlan(
         lane=lane,
         num_shards=num_shards,

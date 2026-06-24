@@ -27,7 +27,7 @@ import re
 import socket
 from collections.abc import Iterable, Iterator
 from fnmatch import fnmatch
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 # https only — no http, file, ftp, gopher, data, ...
 ALLOWED_SCHEMES = frozenset({"https"})
@@ -52,6 +52,12 @@ PROVIDER_HOST_ALLOWLIST: dict[str, tuple[str, ...]] = {
 }
 
 _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://")
+_URL_IN_TEXT_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_CREDENTIAL_VALUE_RE = re.compile(
+    r"(?i)(\b(?:x-amz-[a-z0-9-]+|signature|credential|token|key)\s*[=:]\s*)"
+    r"([^\s&,;\"']+)"
+)
+_BEARER_RE = re.compile(r"(?i)(authorization\s*:\s*bearer\s+)\S+")
 
 
 class SecurityError(ValueError):
@@ -63,6 +69,44 @@ class SecurityError(ValueError):
     ``ProviderError`` on purpose: that would make ``security`` import the providers package
     and form an import cycle with ``citypods.http``.)
     """
+
+
+def redact_subprocess_text(value: bytes | str | None) -> bytes | str | None:
+    """Redact credentials and URL queries from subprocess diagnostics.
+
+    Provider media URLs often carry short-lived signed query strings. ffmpeg/ffprobe echo inputs
+    in stderr, while ``CalledProcessError`` also renders command arguments. Preserve the useful
+    scheme/host/path/status context but never retain a URL query, bearer value, or standalone
+    credential-shaped assignment.
+    """
+    if value is None:
+        return None
+    was_bytes = isinstance(value, bytes)
+    text = value.decode("utf-8", errors="replace") if was_bytes else str(value)
+
+    def _strip_query(match: re.Match[str]) -> str:
+        raw = match.group(0)
+        trailing = ""
+        while raw and raw[-1] in ".,:);]":
+            trailing = raw[-1] + trailing
+            raw = raw[:-1]
+        parts = urlsplit(raw)
+        if not parts.scheme or not parts.netloc:
+            return match.group(0)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", "")) + trailing
+
+    text = _URL_IN_TEXT_RE.sub(_strip_query, text)
+    text = _BEARER_RE.sub(r"\1<redacted>", text)
+    text = _CREDENTIAL_VALUE_RE.sub(r"\1<redacted>", text)
+    return text.encode("utf-8") if was_bytes else text
+
+
+def redact_subprocess_command(command: object) -> object:
+    """Return a command safe to retain on a subprocess exception."""
+    if isinstance(command, (list, tuple)):
+        cleaned = [redact_subprocess_text(str(arg)) for arg in command]
+        return tuple(cleaned) if isinstance(command, tuple) else cleaned
+    return redact_subprocess_text(str(command))
 
 
 def _hostname(url: str) -> str:

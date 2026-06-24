@@ -1468,6 +1468,16 @@ sources by count; a truncated encode backs off instead of hosting.
 
 ## Granicus media reliability follow-up (GH#300 / #39 follow-up)
 
+> **Update (GH#353, unreleased): the rate-limit circuit breaker, queue parking, and half-open canary
+> recovery described below were removed.** Six Audio runs (#51–#56) on the direct-first + single-Worker
+> route showed zero circuit trips/deferrals/recovery probes; the breaker was built for a
+> concurrency-throttle hypothesis H16 disproved (the 403s were shared GitHub-egress IP reputation,
+> handled by the Worker). `provider_circuits.py` became the lean `provider_transport.py`
+> (`ProviderTransportTelemetry`) — only the per-tenant direct/Worker/truncation counters that feed the
+> H16 `transport` criterion remain. Aggregate load stays bound by the provider-lease ceiling and
+> per-episode materialize backoff; rollback to direct-only is config-only (unset the `GRANICUS_PROXY_*`
+> secrets). The circuit/parking/canary narrative below is retained as historical design context.
+
 **Maturity: L1→L3** (detailed sequence below). The endpoint contract test GH#300 reproduces as
 `RateLimitedMediaFetchError` from `archive-video.granicus.com` during concurrent `audio.yml` runs, while
 local serial contracts pass. Diagnosis: **aggregate GitHub-runner Granicus concurrency** (not a dead URL
@@ -1671,6 +1681,77 @@ for every Granicus tenant that materialized audio:
   produced a complete encode within the production encode timeout);
 - published episode URLs, artifact keys, and durations are unchanged versus pre-activation.
 
+**Three-PR closure sequence (chosen 2026-06-21).** Audio #46/#47 supplied favorable transport
+evidence, but manual inspection found three acceptance gaps: no one-shot merged H16 verdict, no
+record-level proof of identity stability, and signed Swagit media query credentials appearing in
+generic ffmpeg error output. The implementation sequence is:
+
+1. **PR1 — H16 acceptance report — Shipped ([PR #405](https://github.com/BashfulBits/city-meeting-podcasts/pull/405)).** A post-matrix `validate-h16` job
+   restores the completed run events and emits one merged JSON artifact plus GitHub step-summary
+   table for the current
+   `GITHUB_RUN_ID`. Per Granicus tenant it reports direct successes/403s, Worker
+   attempts/successes/failures, circuit trips/deferrals/recovery probes, truncation backoffs, lease
+   activity, configured local/distributed ceilings, identity-verification status, and secret-scan
+   status. Classification is `pass`, `fail`, or `insufficient_activity`; zero Worker attempts can
+   pass when direct Granicus fetches succeeded. This creates the compact three-run evidence GH#353
+   requires without treating unrelated-provider warnings as Granicus failures. Each shard scans its
+   log locally and uploads only redacted finding metadata plus its run event; raw logs are not copied
+   into the evidence artifact. Before PR2, the explicit `not_reported` identity state kept the
+   overall verdict at `insufficient_activity`.
+2. **PR2 — identity proof + generic subprocess redaction — Implemented (unreleased).** Each
+   Granicus record is captured after provider/persisted-record merge and before media stages, then
+   verified at the persistence boundary: stable UID, provider GUID, official/source/canonical video
+   URLs, and source duration must remain unchanged. An existing current-spec artifact retains its
+   key/URL/served duration; newly materialized or refreshed audio must use the deterministic
+   expected content-addressed spec/key/public URL and a positive served duration. A recipe changed
+   by pre-audio stages but deferred by the run budget is explicitly not claimed as artifact-checked,
+   avoiding a false failure. Aggregate counts and bounded mismatch categories flow through the
+   existing run event into PR1's H16 verdict. Generic subprocess sanitization removes media query
+   strings and redacts bearer/credential-shaped parameters (`X-Amz-*`, signature, credential,
+   token, key) from stderr, timeout/error payloads, and exception commands while retaining
+   host/path/status diagnostics; Worker-origin redaction remains layered on top. This is
+   transport/observability only: no audio pipeline-version bump or artifact backfill.
+3. **PR3 — durable unavailable/empty recording classification.** Split into **PR3a** (durable
+   classification + record projection + feed/stage gating + auto-recovery + H16 report surfacing —
+   *implemented, unreleased*) and **PR3b** (bounded proxy evidence + weekly review digest). Replace
+   repeated ambiguous Swagit
+   failures with an explicit, versioned media-availability projection while preserving the
+   append-only meeting record and canonical city watch-page URL. States distinguish available,
+   suspected/confirmed empty, missing, invalid, recovered, and operator overrides. Suspected or
+   unavailable media is withheld from audio/video feeds and media-dependent stages, but metadata
+   stages continue so agenda/minutes/chapters/resources and future vote-result fields remain usable
+   by Phase-R meeting pages. Automatic confirmation requires two independent successful source
+   fetches; transport/truncation failures cannot confirm silence. A dedicated detector version,
+   source fingerprint, profile/threshold changes, periodic recovery checks, and operator requests
+   make every classification re-evaluable without bumping the audio pipeline version. **PR3a as
+   built:** the verdict rides the audio lane's existing `SilencePlanner` decode (no extra ffmpeg
+   pass) — `citypods/availability.py` holds the pure state machine and fingerprint; the
+   `media_availability` record block is an audio-lane-owned artifact (sibling transcribe/align
+   pushes preserve it); `feeds.enclosure_url` and `AudioStage` enforce withholding while
+   `TimelineStage` keeps running so a withheld episode is re-examined and can recover; and a per-run
+   availability census flows into the H16 report as informational observability.
+
+   PR3b also emits bounded, low-bitrate diagnostic evidence: an untrimmed source-audio review proxy
+   and the candidate silence-trimmed result, plus durations, sizes, hashes, silence intervals,
+   profile/version, canonical source-page URL, and redacted source identity. A weekly workflow opens
+   or updates one digest issue only when new/changed candidates exist, samples a small deterministic
+   set, uploads a ZIP workflow artifact with both variants and evidence JSON, and links it from the
+   issue. Confirmed unavailable
+   meetings leave the audio backlog/ETA, retain prior known-good hosted artifacts, and automatically
+   recover into normal processing if the city later supplies valid media. **PR3b as built:**
+   `citypods/availability_digest.py` holds the pure selection/evidence/issue-rendering core (keyed
+   by uid + source fingerprint + detector version, so a re-classification re-surfaces a candidate),
+   `scripts/availability_digest.py` owns the ffmpeg/network/`gh` side and a
+   `state/availability_digest.json` ledger of already-reviewed candidates, and
+   `.github/workflows/availability-digest.yml` runs it weekly, uploads the ZIP, and posts one
+   rolling issue. Evidence reuses PR2's `redact_subprocess_text`, so no signed/credential-bearing
+   URL is ever stored or linked.
+
+PR3 is a deliberate narrow promotion of the Phase-R durable provider-failure design: the
+episode-level availability state and evidence are needed now to prevent bad enclosures and repeated
+work. The presentation, archive browsing, search/filtering, admin review UI, and broader query API
+remain Phase R in `review/13`, `review/17`, and the `review/11` Phase-R catalog.
+
 **Routing decision the data drives.** If `worker_fallback_attempts` ≈ the Granicus fetch count on
 *every* run (direct is reliably 403, as the transport artifact found), evaluate making the Worker
 *sticky* within a run — preferred after the first confirmed direct-403→Worker-success — to stop
@@ -1741,7 +1822,9 @@ tenant/domain state, single-attempt accounting, half-open recovery, parked queue
 **Acceptance.** Three scheduled production Audio runs demonstrate successful Worker recovery without
 new truncation/backoff or identity changes; the evidence selects direct-first vs sticky-Worker routing;
 and circuit/parking/canary behavior made redundant by the selected route is removed or explicitly
-retained with a reason.
+retained with a reason. **Status (GH#353, unreleased): circuit/parking/canary removed** — six runs
+(#51–#56) had zero circuit activity (see the banner at the top of this section). The direct-first vs
+sticky-Worker routing choice remains open.
 
 ---
 

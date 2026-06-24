@@ -111,6 +111,14 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--config-dir", default="config")
     r.add_argument("--output-dir", default="docs")
 
+    h16 = sub.add_parser("h16-report", help="build the GH#353 Audio acceptance report")
+    h16.add_argument("--input-dir", required=True, help="downloaded shard evidence directory")
+    h16.add_argument("--output-dir", required=True, help="directory for JSON and Markdown reports")
+    h16.add_argument("--run-id", required=True, help="GitHub Actions run ID to aggregate")
+    h16.add_argument("--site-config", default="config/site_config.yml")
+    h16.add_argument("--expected-shards", type=int, default=4)
+    h16.add_argument("--markdown", action="store_true", help="also print Markdown to stdout")
+
     ra = sub.add_parser(
         "rebuild-audio",
         help="stamp the audio_rebuild nonce on a predicate-selected set of episodes "
@@ -246,6 +254,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "report":
         return _report(args)
 
+    if args.command == "h16-report":
+        return _h16_report(args)
+
     if args.command == "build":
         return _run_build(args, phase=args.phase, dry_run=args.dry_run)
 
@@ -369,6 +380,23 @@ def _report(args) -> int:
             f"(${c['monthly_cost_usd']:.2f}/mo) · {c['per_run_throughput']}/run · "
             f"backfill {c['full_backfill_days']:.0f}d → wrote {admin}/index.html + report.json"
         )
+    return 0
+
+
+def _h16_report(args) -> int:
+    from pathlib import Path
+
+    from citypods.h16_report import build_h16_report, to_markdown, write_h16_report
+
+    report = build_h16_report(
+        Path(args.input_dir),
+        run_id=args.run_id,
+        site_config_path=Path(args.site_config),
+        expected_shards=args.expected_shards,
+    )
+    write_h16_report(report, Path(args.output_dir))
+    if args.markdown:
+        print(to_markdown(report), end="")
     return 0
 
 

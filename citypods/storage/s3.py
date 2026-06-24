@@ -152,6 +152,12 @@ class S3CompatibleStorage:
             for obj in page.get("Contents", []):
                 yield obj["Key"], obj.get("LastModified")
 
+    def iter_objects(self, prefix: str = ""):
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                yield obj["Key"], obj.get("LastModified"), obj.get("Size")
+
     def delete(self, key: str) -> None:
         self._client.delete_object(Bucket=self.bucket, Key=key)
 

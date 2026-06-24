@@ -1,7 +1,7 @@
 # review/13 — Per-Meeting Pages & Static Transcript Search (Phase R)
 
 **Maturity: L2→L3 · breakout of [`review/11`](11-technical-design-roadmap.md) Phase R · last updated
-2026-06-10**
+2026-06-21**
 
 > Two tightly-coupled initiatives: per-meeting permalink pages (#46/GH#157) and static client-side
 > transcript search (#6). Pages are the **product hinge** from "podcast feeds" to "civic research
@@ -27,20 +27,27 @@ render/enrich split means pages render cheaply from known state.
 
 A new render output, mirroring the existing chapter-sidecar pattern (review/02 Change 7):
 `render_meeting_page(city, ep) -> docs/<slug>/<uid>/index.html`, written in `_process_city` **alongside
-the chapter sidecars**, governed by the **same `feed_content_hash` skip + prune logic** so it costs
-nothing on unchanged meetings and is GC'd with the feed. Gated by a config flag (`meeting_pages: true`)
-so forks can opt out. The page URL is stable (keyed on the stable `uid`) and is linked from the feed
-`<item>` (`<link>`) and the city page.
+the chapter sidecars**, governed by a per-meeting render hash so it costs nothing on unchanged
+meetings. Pages project the **append-only meeting archive**, not merely the current feed window:
+confirmed-empty/missing/invalid recordings are intentionally absent from podcast feeds but must retain
+their research/posterity page. Pruning therefore removes a page only when the durable meeting record is
+explicitly removed under an archive policy, never because it fell outside `max_episodes` or lacks an
+enclosure. Gated by a config flag (`meeting_pages: true`) so forks can opt out. The page URL is stable
+(keyed on the stable `uid`) and is linked from playable feed `<item>` entries, city/archive views, and
+search results.
 
 **Page contents** (all already in the record or derivable):
-- **Audio player** (the hosted M4A or the source video audio track via range) — reuse the city-page
-  inline `<audio>` component.
+- **Audio player when playable** (the hosted M4A or the source video audio track via range) — reuse
+  the city-page inline `<audio>` component. For suspected/confirmed empty, missing, or invalid media,
+  render no player and show a clear availability notice with reason, last-check date, and recovery/
+  operator-review state; never imply that the meeting itself did not occur.
 - **Synced transcript** — render the served-time VTT/JSON; clicking a line seeks the player; the player
   position highlights the line.
 - **Chapters / agenda items** — the served-time chapters; each links to its agenda-packet page where
   available.
 - **Official links** — agenda / minutes / canonical video (from `links`), plus the city's
-  `meetings_url`/`city_website` (#51, shipped).
+  `meetings_url`/`city_website` (#51, shipped). The canonical city watch page remains visible for an
+  unavailable recording as provenance/manual confirmation, while expiring signed media URLs do not.
 - **Source-time deep-links** — "watch this moment on the city's archive" via the provider
   `video_deeplink(ref, t)` capability, forward-mapping served→source time through the EDL
   (`timeline.served_to_source`).
@@ -50,11 +57,12 @@ so forks can opt out. The page URL is stable (keyed on the stable `uid`) and is 
 
 ### Data model / module plan
 
-- No record-schema change required — the page is a pure projection of an existing `EpisodeRecord`
-  (audio, transcript, chapters, links, timeline). If a page needs the served-time transcript inline and
-  the transcript is stored in the bucket (not `docs/`), the page either (a) references the bucket URL and
-  fetches client-side, or (b) inlines a compact transcript JSON at render. **Lean: (a)** for large
-  transcripts (keeps `docs/` small), with a small inline excerpt for SEO/no-JS.
+- H16 PR3 adds the optional versioned `media_availability` projection and redacted evidence pointer;
+  the page is otherwise a pure projection of the existing `EpisodeRecord` (audio, transcript,
+  chapters, links, timeline). The page does not fetch or expose private diagnostic evidence. If a page
+  needs the served-time transcript inline and the transcript is stored in the bucket (not `docs/`),
+  it either (a) references the bucket URL and fetches client-side, or (b) inlines a compact transcript
+  JSON at render. **Lean: (a)** for large transcripts, with a small inline excerpt for SEO/no-JS.
 - Files: `citypods/render.py`/`site.py` (`render_meeting_page`), new `templates/meeting.html.j2`
   (extends `base.html.j2`), `citypods/run.py` (`_process_city` writes/prunes the page under the existing
   skip logic), `citypods/feeds.py`/`feed.xml.j2` (point `<item><link>` at the page), `citypods/config.py`
@@ -73,15 +81,19 @@ so forks can opt out. The page URL is stable (keyed on the stable `uid`) and is 
 
 ### Tests
 
-`tests/test_render.py`/snapshot: a meeting page renders with player, chapters, links, deep-links;
-skip/prune respects `feed_content_hash`; `meeting_pages: false` writes nothing; deep-link maps a served
-timestamp to the correct source time through a non-identity EDL (trimmed meeting).
+`tests/test_render.py`/snapshot: a playable meeting page renders with player, chapters, links, and
+deep-links; an unavailable-media archive record renders the notice plus metadata and canonical source
+page with no player; unavailable meetings remain absent from podcast feeds; an unchanged page skips
+render and archive retention—not feed capping—governs pruning; `meeting_pages: false` writes nothing;
+a deep-link maps served time to source time through a non-identity EDL.
 
 ### Acceptance
 
-Every rendered feed item has a stable `…/<uid>/` page with working player, synced transcript, agenda +
-official links, a source-time deep-link verified against a trimmed-audio EDL, and a report-a-problem
-link; unchanged meetings don't re-render; forks can disable it.
+Every retained meeting record has a stable `…/<uid>/` page. Playable meetings provide the working
+player, synced transcript, agenda/official links, source-time deep-link, and report-a-problem link.
+Unavailable-media meetings provide the same known civic metadata and canonical provenance link, a
+clear no-recording notice, and no broken player or podcast enclosure. Unchanged meetings do not
+re-render, feed-window changes do not delete archive pages, and forks can disable the feature.
 
 ---
 
@@ -90,10 +102,26 @@ link; unchanged meetings don't re-render; forks can disable it.
 ### Design (chosen approach)
 
 A **client-side** search over a generated JSON index — no server until proven insufficient. Index
-documents = meetings, with fields: `title`, `body`, `city`, `date`, `agenda/resource link text`,
+documents = all retained meetings, including metadata-only unavailable recordings, with fields:
+`title`, `body`, `city`, `date`, `media_availability`, `agenda/resource link text`,
 `topic tags` (#4 when available), and **transcript text** (tokenized). Results show snippets with
 **transcript timestamps** that deep-link into the meeting page (`…/<uid>/#t=<seconds>`). Filters: city,
-body, date range, topic.
+body, date range, topic, and recording availability. A meeting without a transcript remains
+discoverable from its civic metadata; its result does not advertise playback or transcript seeking.
+
+### Availability review and future query surfaces
+
+H16 PR3 supplies the current availability projection, versioned re-evaluation inputs, redacted
+evidence pointer, and weekly GitHub digest. Phase R adds the product/operations surfaces deliberately
+left out of that pipeline PR:
+
+- `/admin/status` counts and drill-down by availability reason/state, due-for-recheck status, and
+  recovered/overridden outcome;
+- auditable operator actions to confirm empty, mark valid, request immediate re-evaluation, or record
+  a city-side correction;
+- availability/history browsing and evidence comparison without exposing private diagnostic objects
+  on public meeting pages;
+- the storage-neutral event/history query path described in `review/11` and `review/17`.
 
 ### Index source: built from records, not scraped from HTML
 
