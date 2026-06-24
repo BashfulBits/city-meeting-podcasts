@@ -516,6 +516,22 @@ class TestTranscriptStopAndStorage:
         assert ep.transcript_key in refs
         assert ep.transcript_words_key in refs
 
+    def test_referenced_keys_protect_provider_transcript_registry_from_gc(self, tmp_path):
+        ep = _ep()
+        ep.provider_transcript = {
+            "known_good": {"key": "transcripts/src/uid-g1-provider-old.pdf"},
+            "candidate": {"key": "transcripts/src/uid-g1-provider-new.pdf"},
+            "history": [{"key": "transcripts/src/uid-g1-provider-history.pdf"}],
+        }
+        state_dir = tmp_path / "state"
+        save_records(state_dir, source_key(_city()), {ep.uid: episode_to_record(ep)})
+        refs = referenced_audio_keys(state_dir)
+        assert refs >= {
+            "transcripts/src/uid-g1-provider-old.pdf",
+            "transcripts/src/uid-g1-provider-new.pdf",
+            "transcripts/src/uid-g1-provider-history.pdf",
+        }
+
 
 # ---------------------------------------------------------------------------
 # ASR slot (issue #110)

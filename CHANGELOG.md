@@ -62,6 +62,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   backfill behavior are unchanged.
 
 ### Added
+
+- **Provider transcript retention schema added for the H15 rollout.** Episode records can now carry a
+  separate `provider_transcript` registry (`known_good`, `candidate`, and `history`) for city-supplied
+  transcript documents while the existing `transcript` block remains the active podcast transcript. The
+  schema stores URL/B2-key/content-hash/format/basis/confidence metadata for later provider-transcript
+  fetch, alignment, diarization, and rollback work; referenced provider transcript objects are included
+  in the GC live set. This is schema-only and does not change transcript recipes or invalidate existing
+  ASR artifacts, so **no ASR backfill or regeneration** is triggered.
 - **A scheduled Audio orphan-GC workflow reports reclaimable storage and only deletes on demand
   ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421) follow-up).** Until now
   `scripts/gc_audio.py` was operator-run only, so superseded content-addressed objects (regenerated

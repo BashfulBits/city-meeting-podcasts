@@ -639,6 +639,15 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             words_key = transcript.get("words_key")
             if words_key:
                 keys.add(words_key)
+            provider_transcript = rec.get("provider_transcript") or {}
+            if isinstance(provider_transcript, dict):
+                for slot in ("known_good", "candidate"):
+                    artifact = provider_transcript.get(slot) or {}
+                    if isinstance(artifact, dict) and artifact.get("key"):
+                        keys.add(artifact["key"])
+                for artifact in provider_transcript.get("history") or []:
+                    if isinstance(artifact, dict) and artifact.get("key"):
+                        keys.add(artifact["key"])
     return keys
 
 
@@ -673,6 +682,10 @@ def episode_to_record(ep: Episode) -> dict:
         }
         if ep.transcript_key or ep.transcript_timeout_attempts
         else None,
+        # Provider/city-supplied source transcript registry.  Separate from the active
+        # transcript block so ASR/alignment can be the podcast transcript while the original
+        # city document remains downloadable and eligible for refresh/re-alignment.
+        "provider_transcript": ep.provider_transcript or None,
         # v2: source-media registry and timeline EDL (omitted when empty/identity).
         "sources": [dataclasses.asdict(s) for s in ep.sources] if ep.sources else [],
         "timeline": dataclasses.asdict(ep.timeline) if ep.timeline is not None else None,
@@ -792,6 +805,11 @@ def record_to_episode(rec: dict) -> Episode:
         audio_bytes=audio.get("bytes"),
         links=rec.get("links") or {},
         chapters=rec.get("chapters") or [],
+        provider_transcript=(
+            rec.get("provider_transcript")
+            if isinstance(rec.get("provider_transcript"), dict)
+            else {}
+        ),
         summary=rec.get("summary") or "",
         # v2 transcript block (INFRA-8); v1 records with old transcript_url silently dropped.
         **_transcript_fields_from_rec(rec),
@@ -965,6 +983,10 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
                 ep.transcript_synced = bool(t.get("synced", False))
             ep.transcript_timeout_attempts = _coerce_non_negative_int(t.get("timeout_attempts"))
             ep.transcript_timeout_last_attempt = t.get("timeout_last_attempt")
+        provider_transcript = rec.get("provider_transcript")
+        ep.provider_transcript = (
+            provider_transcript if isinstance(provider_transcript, dict) else {}
+        )
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)

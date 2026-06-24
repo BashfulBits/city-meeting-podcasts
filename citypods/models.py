@@ -69,9 +69,10 @@ class Episode:
     summary: str = ""
 
     # --- content-addressed transcript artifact (INFRA-8, #149) ---------------------
-    # Replaces the old external-URL transcript_url field. Provider transcript links
-    # that the ChaptersStage scrapes are still stored in ep.links["transcript"];
-    # TranscriptStage fetches, stores, and remaps them into these hosted-artifact fields.
+    # Active podcast transcript artifact.  ASR / provider-aligned served-time transcripts live
+    # here and drive <podcast:transcript>.  Provider-supplied source documents are retained
+    # separately in ``provider_transcript`` below so ASR/alignment can supersede the podcast
+    # tag without losing the city-provided download or its re-alignment/rollback history.
     transcript_key: str | None = None  # storage object key
     transcript_hosted_url: str | None = None  # public CDN URL
     transcript_spec_hash: str | None = None  # invalidation hash (source + version)
@@ -94,6 +95,18 @@ class Episode:
     # repeatedly consuming the full item timeout. Reset after successful local inference.
     transcript_timeout_attempts: int = 0
     transcript_timeout_last_attempt: str | None = None
+
+    # City/provider supplied transcript document registry (PR1 schema).  Shape is intentionally
+    # record-compatible and implementation-neutral until the follow-up stages consume it:
+    # {
+    #   "known_good": {url, key, spec_hash, format, basis, synced, confidence, checked_at, ...},
+    #   "candidate": {same shape, queued for provider-transcript-align review},
+    #   "history": [{prior known_good/candidate entries, newest first}],
+    # }
+    # The active transcript fields above remain the feed-facing transcript.  This block backs the
+    # separate "Original city-provided transcript" download link and prevents ASR/alignment from
+    # erasing provider source material.
+    provider_transcript: dict = field(default_factory=dict)
     # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
     # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
     # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs
