@@ -1395,6 +1395,61 @@ across execution homes) — those measure *speed/cost*; H15 measures *correctnes
 mix + report WER / alignment-failure" machinery and the **H13** backend interface, and the per-source
 `caption_trust` is diarization-adjacent metadata (Phase R #7).
 
+**Provider-transcript retention + artifact migration rollout (GH#391 follow-up issue).** This rollout
+keeps city-provided transcripts as durable source documents while letting ASR/alignment own the active
+`<podcast:transcript>` once complete. It also preserves already-computed ASR work during the key/recipe
+migration.
+
+- **Invalidation invariant.** Do **not** invalidate the existing ASR catalog merely because audio
+  materialization keys or audio processing recipes change. ASR, provider-transcript-align, and diarize
+  artifacts are invalidated only when either (a) the timeline plan changes, or (b) that artifact's own
+  transcript/diarize recipe changes. If the migration changes key shape, recompute the new key and copy
+  or alias the existing object into place; regenerating the ~1000 completed ASR episodes is explicitly
+  out of scope because that would cost roughly two weeks at current throughput.
+- **PR1 — docs + schema only.** Add a separate provider-transcript registry to episode records:
+  `provider_transcript.known_good`, optional `provider_transcript.candidate`, and bounded `history`, with
+  fields for source URL, stored B2 key, content/spec hash, format, basis (`source:<id>` for provider
+  timings), synced flag, confidence (`0.0` low → `1.0` high, `null` unknown), checked/fetched timestamps,
+  and status/error metadata. Add no processing behavior beyond round-trip persistence and GC protection.
+- **PR2 — aggressive provider-source fetch/backfill.** On scraping, keep the current best URL in
+  `links["transcript"]` and never clear it merely because ASR exists. Fetch the URL every suitable
+  provider-check pass, store the bytes in B2, and treat a non-empty non-error changed artifact as a
+  `candidate` even when the URL string is unchanged. Promote only after the follow-up alignment/scoring
+  path proves it is at least as good as the current `known_good`; retain rollback history.
+- **PR3 — UI/feed exposure.** Emit the provider transcript as the active `<podcast:transcript>` only when
+  no ASR/provider-aligned transcript is complete. Always expose the known-good provider document as a
+  separate download link labeled **Original city-provided transcript**. Once ASR or alignment exists, that
+  active artifact owns `<podcast:transcript>` while the original download link remains.
+- **PR4 — migration-safe ASR key rebase.** Introduce timeline/recipe-based transcript keys and migrate
+  existing ASR VTT + word JSON objects by copy/alias from old keys to new keys without inference. The
+  migration report must state copied, already-present, missing, and regenerated counts; expected
+  regenerated count is zero except for genuinely missing/corrupt artifacts.
+- **PR5 — provider-transcript-align queue + confidence.** Add the `provider-transcript-align` work class.
+  Alignment uses the provider document in source-time, translates timestamps through the timeline module
+  before serving, writes confidence as `float | null`, and can compare a new candidate against the
+  previous known-good artifact before promotion. Backfill priority is moderate: aim for roughly a 1/3
+  split of completed artifacts between provider-transcript-align and ASR-transcript-align per ASR run.
+  Because alignment is faster than full ASR, this should reduce fresh-ASR completions only modestly
+  (target ≈10%).
+- **PR6 — provider-transcript-diarize + rollback wiring.** Queue diarization from the selected
+  provider-aligned transcript without discarding successful transcript text if diarization fails. If a
+  candidate align/diarize score is worse than known-good, retain it in history and keep serving
+  known-good.
+- **PR7 — router/status/admin polish.** Add backlog/status slices for provider transcript fetch, align,
+  and diarize; expose confidence distributions and candidate/rollback counts; document operator recovery
+  actions.
+
+**Suggested phasing with adjacent work.** PR1 can land before backend work because it is schema-only. PR2
+and PR3 should land before H15 so quality scoring has durable provider-source artifacts and the product
+contract is clear. PR4 should land before any large H14b/H15c worker expansion so Modal/Beam do not
+consume budget regenerating artifacts that can be migrated. PR5 can run in parallel with H14b (Modal)
+once H17's claim substrate is available; it supplies the provider-alignment samples H15 needs. H15c
+(Beam transcription provider) should follow the same no-regeneration invariant and consume the PR4 key
+shape. Full H15 trust scoring then consumes PR5 confidence signals plus ASR samples; it defines the exact
+confidence algorithms and thresholds. PR6/PR7 may follow H15's initial scoring implementation or land in
+parallel if they only consume the `float | null` confidence contract.
+
+
 **Acceptance.**
 - L1 recorded every run: `state/transcript_quality_log.json` accrues per-source coverage + word-logprob,
   merge-pushed without cross-shard clobber (test mirrors `test_push_asr_runtime_log_merged_*`).

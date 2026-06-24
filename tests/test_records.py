@@ -737,6 +737,17 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
     ep.materialize_last_attempt = "2026-06-01T00:00:00+00:00"
     ep.transcript_timeout_attempts = 3
     ep.transcript_timeout_last_attempt = "2026-06-02T00:00:00+00:00"
+    ep.provider_transcript = {
+        "known_good": {
+            "url": "https://city.example/transcript.pdf",
+            "key": "transcripts/src/u1-provider-abc.pdf",
+            "spec_hash": "abc",
+            "format": "pdf",
+            "basis": "source:s0",
+            "synced": False,
+            "confidence": None,
+        }
+    }
 
     back = record_to_episode(episode_to_record(ep))
     for attr in (
@@ -759,8 +770,43 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "materialize_last_attempt",
         "transcript_timeout_attempts",
         "transcript_timeout_last_attempt",
+        "provider_transcript",
     ):
         assert getattr(back, attr) == getattr(ep, attr), attr
+
+
+def test_provider_transcript_registry_persists_and_merges():
+    ep = _ep("g-provider-transcript")
+    ep.uid = "u-provider-transcript"
+    ep.provider_transcript = {
+        "known_good": {
+            "url": "https://city.example/transcript.pdf",
+            "key": "transcripts/src/u-provider-transcript-provider-abc.pdf",
+            "spec_hash": "abc",
+            "format": "pdf",
+            "basis": "source:s0",
+            "synced": False,
+            "confidence": 0.8,
+        },
+        "candidate": {
+            "url": "https://city.example/transcript.pdf",
+            "key": "transcripts/src/u-provider-transcript-provider-def.pdf",
+            "spec_hash": "def",
+            "format": "pdf",
+            "basis": "source:s0",
+            "synced": False,
+            "confidence": None,
+        },
+    }
+
+    rec = episode_to_record(ep)
+    assert rec["provider_transcript"] == ep.provider_transcript
+    assert record_to_episode(rec).provider_transcript == ep.provider_transcript
+
+    fresh = _ep("g-provider-transcript")
+    fresh.uid = ep.uid
+    merge_persisted([fresh], {ep.uid: rec})
+    assert fresh.provider_transcript == ep.provider_transcript
 
 
 def test_timeout_backoff_persists_without_a_transcript_artifact():
