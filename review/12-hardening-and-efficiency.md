@@ -1407,8 +1407,10 @@ migration.
   or alias the existing object into place; regenerating the ~1000 completed ASR episodes is explicitly
   out of scope because that would cost roughly two weeks at current throughput.
 > **PR numbering.** This rollout is numbered **PT-PR1…PT-PR7** (provider-transcript) to avoid collision
-> with the merged **H17 R2-CAS** stack (PR1–PR7) and `review/16`'s "Review PR 1–7." Cross-references to
-> "PR6/PR7" below mean **H17** PRs (provider-lease pool / record-store → R2-CAS), not these.
+> with the **H17 R2-CAS** PR stack (PR1–PR6) and `review/16`'s "Review PR 1–7." H17 is a separate
+> control-plane effort; the only H17 dependency this rollout has is the **already-shipped** Stage-1
+> owned-block record merge (see the substrate note below) — *not* H17 PR6 (provider-lease pool → R2-CAS),
+> and there is no record-store → R2 migration in the path.
 
 - **PT-PR1 — docs + schema only.** Add a separate provider-transcript registry to episode records:
   `provider_transcript.known_good`, optional `provider_transcript.candidate`, and bounded `history`, with
@@ -1444,26 +1446,30 @@ migration.
   and diarize; expose confidence distributions and candidate/rollback counts; document operator recovery
   actions.
 
-**Concurrent-write dependency (record store → R2-CAS).** PT-PR5 and PT-PR6 add new *uncoordinated* writers
-of per-episode align/diarize/confidence results to the `state/sources/<key>/episodes.json` record store —
-the artifact `review/17` flags as the **swing case** that should move to R2-CAS *before external workers
-write records directly* ([review/17 §Swing case](17-state-store-backend-evaluation.md)). That migration is
-the natural **H17 PR7** (the record-store CAS step), distinct from **H17 PR6** (the provider-*lease pool* →
-R2-CAS, an audio-throttle concern unrelated to transcripts). H17 PR7 therefore gates both H14b/H14c and
-PT-PR5/PT-PR6. PT-PR1–PT-PR4 introduce no new uncoordinated record writers and may land on the current B2
-record store independent of the R2 work.
+**Concurrent-write substrate (records stay on B2).** PT-PR5 and PT-PR6 write per-episode
+align/diarize/confidence results into `state/sources/<key>/episodes.json`. Records **stay on B2** and
+migrate straight to a managed, search-capable database at Phase R — *not* R2-CAS — to avoid a
+B2 → R2 → DB double migration ([review/17 §Swing case](17-state-store-backend-evaluation.md), decided).
+Safe concurrency here does **not** need CAS: under H17 Stage 2 exactly one worker holds a uid's lease, so
+its record block has a single writer, and the **already-shipped** Stage-1 owned-block foreign-preserving
+merge (`merge_preserving_foreign(owned_uids=)`, [#394](https://github.com/BashfulBits/city-meeting-podcasts/pull/394))
+commits it without clobbering siblings; `review/16` **S2** dirty-only writes / targeted reads keep
+`episodes.json` read/write volume bounded. So PT-PR5/PT-PR6 — like H14b/H14c — depend only on that
+already-shipped B2 ownership substrate, with **no R2 record migration in the path**. PT-PR1–PT-PR4 add no
+new uncoordinated writers at all.
 
 **Suggested phasing with adjacent work.** PT-PR1 (shipped, #452) landed before any backend work because it
 is schema-only. PT-PR2 and PT-PR3 should land before the **H15 trust-scoring core (L2/L3)** so quality
 scoring has durable provider-source artifacts and the product contract is clear. PT-PR4 should land before
 any large H14b/H14c worker expansion so Modal/Beam do not consume budget regenerating artifacts that can be
-migrated. PT-PR5 and PT-PR6 (the concurrent record-write lanes) land **after the H17 record-store → R2-CAS
-migration (H17 PR7) and before/parallel with H14b/H14c**, per the dependency above. PT-PR5 then supplies the
-provider-alignment samples H15 needs and can run in parallel with H14b (Modal); H14c (Beam) follows the
-same no-regeneration invariant and consumes the PT-PR4 key shape. Full H15 trust scoring then consumes
-PT-PR5 confidence signals plus ASR samples; it defines the exact confidence algorithms and thresholds.
-PT-PR7 may follow H15's initial scoring implementation or land in parallel if it only consumes the
-`float | null` confidence contract.
+migrated. PT-PR5 and PT-PR6 (the concurrent record-write lanes) ride the **already-shipped** H17 Stage-1
+owned-block merge + Stage-2 lease ledger on B2 (see the substrate note above), so they carry **no R2
+predecessor** and can land in parallel with — or after — H14b/H14c, with which they share the
+external-worker write path. PT-PR5 supplies the provider-alignment samples H15 needs and can run in
+parallel with H14b (Modal); H14c (Beam) follows the same no-regeneration invariant and consumes the
+PT-PR4 key shape. Full H15 trust scoring then consumes PT-PR5 confidence signals plus ASR samples; it
+defines the exact confidence algorithms and thresholds. PT-PR7 may follow H15's initial scoring or land in
+parallel if it only consumes the `float | null` confidence contract.
 
 **Acceptance.**
 - L1 recorded every run: `state/transcript_quality_log.json` accrues per-source coverage + word-logprob,

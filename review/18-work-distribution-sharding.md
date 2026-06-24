@@ -307,14 +307,19 @@ already draining the same queue, while allowing manual/code-changing work to sup
 schedules and refusing to let stale runs suppress future work. That optimization reduces runner setup
 cost; it does not issue ownership tokens and is not required before H14.
 
-### 4.5 End-state with R2-CAS on records (review/17 swing case)
+### 4.5 Records stay on B2 (review/17 swing case — decided) — and why the merge already suffices
 
-If review/17's `episodes.json`→R2-CAS (or the §6 "per-stage object files",
-`transcript/<source>/<uid>.json`) lands, the §4.2 commit becomes a CAS read-modify-write of just the
-owning uid's transcript object. The cross-**uid** preservation in §3.2 then becomes unnecessary (each
-uid's transcript is written only by its lease-holder, on its own ETag); only the cross-**block** rule
-remains, and even that dissolves under per-stage object files. This is review/17's "CAS lets us simplify
-the foreign-block merge," reached incrementally rather than as a big-bang rewrite.
+The `episodes.json`→R2-CAS option is **not the chosen path**: review/17's swing case is decided in favor of
+**records on B2 → managed search-DB at Phase R** (no B2→R2→DB double migration). The reason it is safe
+without CAS is exactly the ownership model below: under Stage 2 each uid's record block has a **single
+writer** (its lease-holder), so the §3.2 owned-block foreign-preserving merge commits it race-free on B2 —
+the cross-**uid** race CAS would have guarded against cannot occur. The lease **ledger** is control-plane
+and lives on R2; only the **record write** stays on B2.
+
+*Historical note (not the chosen path):* had `episodes.json`→R2-CAS (or the §6 "per-stage object files",
+`transcript/<source>/<uid>.json`) landed, the §4.2 commit would have become a CAS read-modify-write of just
+the owning uid's object, dissolving the cross-block rule entirely. Retained only to document the discarded
+end-state.
 
 ### 4.6 Keeping R2 Class A low with per-item leases
 
@@ -399,10 +404,12 @@ writes) so nothing else leaks Class A.
 
 - **Relationship to existing items.** This is the concrete design for H5's deferred "competitive lease
   acquisition + per-item persistence" and H6b's deferred "per-stage object files," and it resolves
-  [`review/17`](17-state-store-backend-evaluation.md) §3's `episodes.json` **swing case**: Stage 2 is the
-  "external workers read/write records directly" branch, so it tips that decision toward **R2-CAS now**
-  for the transcript path. It is the work-distribution half of **H14b/H14c**; H13's backend interface and
-  H14a's lease lifecycle are reused unchanged.
+  [`review/17`](17-state-store-backend-evaluation.md) §3's `episodes.json` **swing case** — **decided:
+  records stay on B2** (→ managed search-DB at Phase R). Stage 2 is the "external workers read/write records
+  directly" branch, but per-uid leasing makes each block single-writer, so that write commits through the
+  §3.2 owned-block merge **on B2** without CAS (§4.5); only the lease ledger is R2 control-plane. It is the
+  work-distribution half of **H14b/H14c**; H13's backend interface and H14a's lease lifecycle are reused
+  unchanged.
 - **review/11 catalog:** H17 + [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)
   are the single active implementation entry for review/17 + review/18.
 - **At Stage-1 ship time** (per [`review/11`](11-technical-design-roadmap.md) §2), update

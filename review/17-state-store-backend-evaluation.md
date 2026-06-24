@@ -15,7 +15,7 @@ cross-cutting infra · last updated 2026-06-19**
 |---|---|---|
 | R2-CAS spike (boto3 conditional writes against R2) | **L3 · Shipped** | Run 2026-06-19; all 4 tests PASS; native params (boto3 1.43); see §7 |
 | Coordination control-plane → R2 (CAS) | L2 → L3 | **H17 do-next** — spike unblocked; one consolidated implementation issue with review/18 |
-| `episodes.json` records → R2 vs hold-for-SQL | L2 (swing) | Recommend per access-model; see §3 |
+| `episodes.json` records → R2 vs hold-for-DB | **Decided** | **Stay on B2** (per-uid lease ⇒ single-writer; no CAS need) → managed search-DB @ Phase R; skip R2 to avoid a double migration; see §3 |
 | Records → managed SQL (D1/Turso) | L1 (Phase R) | Trigger-gated; supersedes the "no hosted DB" note for this scope |
 | Coordination → dedicated KV/DO (fallback) | L1 | Deferred; trigger in §8 |
 | Immutable blobs + append-only logs | — | **Stay on B2** (settled) |
@@ -147,7 +147,7 @@ wins on "no new dependency, already wired, $0," the KV/DO option is held as a tr
 | `audio/**.m4a` | audio lane; immutable content-addressed | **yes** (fetch to transcribe) | none | **Stay B2** |
 | `transcripts/**.vtt` + `.words.json` | ASR lane / **external workers write results**; immutable | yes (downstream) | none | **Stay B2** |
 | rendered HTML `docs/**` | render lane; rebuilt from records | no | none | **GitHub Pages** (not B2) |
-| `state/sources/<key>/episodes.json` | audio + ASR lanes; **RMW + foreign-block merge** | **yes (near-term)** | **yes** (lost-update race) | **Swing — see below** |
+| `state/sources/<key>/episodes.json` | audio + ASR lanes; **RMW + foreign-block merge** | **yes (near-term)** | no (per-uid lease ⇒ single writer) | **Stay B2 → managed search-DB @ Phase R** (decided; see below) |
 | `state/work.json` (H5 manifest) | reconcile + lanes; merge | **yes** (claim work) | **yes** (lease claims) | **→ R2 now** → SQL at Phase R |
 | `state/compute_budget.json` | reconcile + dispatch coordinator | **yes** | **yes** (atomic decrement) | **→ R2 now** (overspend risk) |
 | `provider-circuits/**` + `-locks/**` | all audio shards; high-freq under throttle | yes (future media workers) | **yes** (PR358's purpose) | **→ R2 now** (retire FIFO emulation) |
@@ -158,25 +158,31 @@ wins on "no new dependency, already wired, $0," the KV/DO option is held as a tr
 **Settled:** the **coordination + dispatch control plane** (`provider-circuits`, `provider-leases`,
 `work.json`, `compute_budget.json`) → **R2** for CAS; **immutable blobs + append-only logs stay on B2**.
 
-**Swing case — `episodes.json`.** Records are the one artifact where the right answer depends on the H14
-external-worker access model:
-- **If external GPU/media workers will read/write records *directly* in the near term**, prefer
-  **R2-CAS now** — object-storage RMW of a monolithic JSON from many uncoordinated writers is exactly the
-  race we want to avoid, and CAS lets us *simplify* the foreign-block merge. This directly serves the
-  "reliability as we add external runners" goal.
-- **Otherwise keep records on B2** (writes are free, already strongly consistent, the merge race is
-  already mitigated) and **migrate straight to SQL at Phase R** — avoiding a double migration of the same
-  data (B2 → R2 → SQL).
+**Swing case — `episodes.json` — DECIDED: stay on B2, migrate straight to a managed search-DB at Phase R.**
+Records were the one artifact whose backend depended on the H14 external-worker access model. The decision
+is **not R2-CAS**, for two reasons:
+- **Per-uid lease ownership removes the race CAS was for.** The R2-CAS argument was "uncoordinated RMW of a
+  monolithic JSON from many writers." But under [`review/18`](18-work-distribution-sharding.md) **Stage 2**
+  exactly **one** worker holds a uid's lease, so that uid's record block has a **single writer**. The
+  **shipped** Stage-1 owned-block foreign-preserving merge (`merge_preserving_foreign(owned_uids=)`, #394)
+  commits each owned block without clobbering siblings, on B2, race-free — no CAS needed. `review/16` **S2**
+  (dirty-only writes / targeted reads) keeps `episodes.json` volume bounded as cities scale (§4).
+- **Avoid a double migration.** B2 writes are free and strongly consistent today; the long-term home for
+  records is a **managed, search-capable database** (DBaaS) adopted at **Phase R** to scale search. Moving
+  records B2 → R2 → DB would migrate the same data twice for no interim benefit, so we **skip R2 for
+  records** and go B2 → DB once.
 
-Recommended default: dispatch (work/budget) moves to R2 with the rest of the control-plane; **hold
-`episodes.json` on B2 until the H14 access model is decided**, then either move to R2-CAS or skip to SQL.
+Net: the control-plane (work/budget/leases) moves to R2 for CAS (PR1–PR6); **records stay on B2** and are
+the only state that defers straight to the Phase-R database. A near-term design goal is to **reduce
+`episodes.json` read/writes** (S2 access patterns + dirty-only commits) so B2 remains comfortable at scale
+until that migration.
 
-> **Cross-ref:** the H14 access model is designed in [`review/18`](18-work-distribution-sharding.md)
-> (work distribution for distributed ASR workers). Its Stage 2 — external workers **claim** episodes from
-> a CAS lease ledger and write transcript records directly — is the "external workers read/write records
-> directly in the near term" branch above, i.e. it tips this swing case toward **R2-CAS now** for the
-> transcript path. Its Stage 1 (ownership-keyed per-episode merge) is the write path both in-Actions
-> shards and external workers commit through, and it composes onto this doc's `put_cas` substrate (§5).
+> **Cross-ref:** [`review/18`](18-work-distribution-sharding.md) Stage 2 — external workers **claim**
+> episodes from the lease ledger and write transcript records — is the "external workers read/write records
+> directly" case. With per-uid leasing each block is single-writer, so that path commits through the
+> Stage-1 owned-block merge **on B2** (not R2-CAS). Stage 2's lease ledger itself is control-plane and
+> lives on R2; only the *record write* stays on B2. (§4.5 of review/18 documents the now-unused R2-CAS-on-
+> records end-state for completeness; it is not the chosen path.)
 
 ---
 
@@ -367,8 +373,9 @@ python scripts/spike_r2_cas.py --latency-iterations 20 --output r2-cas-spike-res
    [`review/16`](16-scaling-review-plan.md) **S2** access-pattern work to keep R2 Class A free.
 4. **Migrate the coordination control-plane → R2** — start with `work.json`/`compute_budget.json` to prove
    the router + CAS helper; move `provider-circuits`/`provider-leases` **after PR358**.
-5. **`episodes.json`** per §3 — R2-CAS now *iff* external workers will access records directly near-term,
-   else hold for **SQL at Phase R**.
+5. **`episodes.json`** per §3 — **decided: stay on B2** (per-uid lease ownership makes each block
+   single-writer, so the shipped owned-block merge is race-free without CAS) and **migrate straight to a
+   managed search-DB at Phase R** — skipping R2 for records to avoid a B2→R2→DB double migration.
 
 **Deferred fallback (L1, no L3): coordination → dedicated KV/DO** (Upstash / Durable Objects / DynamoDB).
 **Trigger:** R2 Class A attributable to coordination approaches the free tier, **or** CAS-mismatch retry
