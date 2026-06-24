@@ -1406,49 +1406,64 @@ migration.
   transcript/diarize recipe changes. If the migration changes key shape, recompute the new key and copy
   or alias the existing object into place; regenerating the ~1000 completed ASR episodes is explicitly
   out of scope because that would cost roughly two weeks at current throughput.
-- **PR1 — docs + schema only.** Add a separate provider-transcript registry to episode records:
+> **PR numbering.** This rollout is numbered **PT-PR1…PT-PR7** (provider-transcript) to avoid collision
+> with the merged **H17 R2-CAS** stack (PR1–PR7) and `review/16`'s "Review PR 1–7." Cross-references to
+> "PR6/PR7" below mean **H17** PRs (provider-lease pool / record-store → R2-CAS), not these.
+
+- **PT-PR1 — docs + schema only.** Add a separate provider-transcript registry to episode records:
   `provider_transcript.known_good`, optional `provider_transcript.candidate`, and bounded `history`, with
   fields for source URL, stored B2 key, content/spec hash, format, basis (`source:<id>` for provider
   timings), synced flag, confidence (`0.0` low → `1.0` high, `null` unknown), checked/fetched timestamps,
   and status/error metadata. Add no processing behavior beyond round-trip persistence and GC protection.
-- **PR2 — aggressive provider-source fetch/backfill.** On scraping, keep the current best URL in
+  **Shipped in [#452](https://github.com/BashfulBits/city-meeting-podcasts/pull/452).**
+- **PT-PR2 — aggressive provider-source fetch/backfill.** On scraping, keep the current best URL in
   `links["transcript"]` and never clear it merely because ASR exists. Fetch the URL every suitable
   provider-check pass, store the bytes in B2, and treat a non-empty non-error changed artifact as a
   `candidate` even when the URL string is unchanged. Promote only after the follow-up alignment/scoring
   path proves it is at least as good as the current `known_good`; retain rollback history.
-- **PR3 — UI/feed exposure.** Emit the provider transcript as the active `<podcast:transcript>` only when
+- **PT-PR3 — UI/feed exposure.** Emit the provider transcript as the active `<podcast:transcript>` only when
   no ASR/provider-aligned transcript is complete. Always expose the known-good provider document as a
   separate download link labeled **Original city-provided transcript**. Once ASR or alignment exists, that
   active artifact owns `<podcast:transcript>` while the original download link remains.
-- **PR4 — migration-safe ASR key rebase.** Introduce timeline/recipe-based transcript keys and migrate
+- **PT-PR4 — migration-safe ASR key rebase.** Introduce timeline/recipe-based transcript keys and migrate
   existing ASR VTT + word JSON objects by copy/alias from old keys to new keys without inference. The
   migration report must state copied, already-present, missing, and regenerated counts; expected
   regenerated count is zero except for genuinely missing/corrupt artifacts.
-- **PR5 — provider-transcript-align queue + confidence.** Add the `provider-transcript-align` work class.
+- **PT-PR5 — provider-transcript-align queue + confidence.** Add the `provider-transcript-align` work class.
   Alignment uses the provider document in source-time, translates timestamps through the timeline module
   before serving, writes confidence as `float | null`, and can compare a new candidate against the
   previous known-good artifact before promotion. Backfill priority is moderate: aim for roughly a 1/3
   split of completed artifacts between provider-transcript-align and ASR-transcript-align per ASR run.
   Because alignment is faster than full ASR, this should reduce fresh-ASR completions only modestly
-  (target ≈10%).
-- **PR6 — provider-transcript-diarize + rollback wiring.** Queue diarization from the selected
+  (target ≈10%). **Concurrent record writer — see the record-store dependency below.**
+- **PT-PR6 — provider-transcript-diarize + rollback wiring.** Queue diarization from the selected
   provider-aligned transcript without discarding successful transcript text if diarization fails. If a
   candidate align/diarize score is worse than known-good, retain it in history and keep serving
-  known-good.
-- **PR7 — router/status/admin polish.** Add backlog/status slices for provider transcript fetch, align,
+  known-good. **Concurrent record writer — see the record-store dependency below.**
+- **PT-PR7 — router/status/admin polish.** Add backlog/status slices for provider transcript fetch, align,
   and diarize; expose confidence distributions and candidate/rollback counts; document operator recovery
   actions.
 
-**Suggested phasing with adjacent work.** PR1 can land before backend work because it is schema-only. PR2
-and PR3 should land before H15 so quality scoring has durable provider-source artifacts and the product
-contract is clear. PR4 should land before any large H14b/H15c worker expansion so Modal/Beam do not
-consume budget regenerating artifacts that can be migrated. PR5 can run in parallel with H14b (Modal)
-once H17's claim substrate is available; it supplies the provider-alignment samples H15 needs. H15c
-(Beam transcription provider) should follow the same no-regeneration invariant and consume the PR4 key
-shape. Full H15 trust scoring then consumes PR5 confidence signals plus ASR samples; it defines the exact
-confidence algorithms and thresholds. PR6/PR7 may follow H15's initial scoring implementation or land in
-parallel if they only consume the `float | null` confidence contract.
+**Concurrent-write dependency (record store → R2-CAS).** PT-PR5 and PT-PR6 add new *uncoordinated* writers
+of per-episode align/diarize/confidence results to the `state/sources/<key>/episodes.json` record store —
+the artifact `review/17` flags as the **swing case** that should move to R2-CAS *before external workers
+write records directly* ([review/17 §Swing case](17-state-store-backend-evaluation.md)). That migration is
+the natural **H17 PR7** (the record-store CAS step), distinct from **H17 PR6** (the provider-*lease pool* →
+R2-CAS, an audio-throttle concern unrelated to transcripts). H17 PR7 therefore gates both H14b/H14c and
+PT-PR5/PT-PR6. PT-PR1–PT-PR4 introduce no new uncoordinated record writers and may land on the current B2
+record store independent of the R2 work.
 
+**Suggested phasing with adjacent work.** PT-PR1 (shipped, #452) landed before any backend work because it
+is schema-only. PT-PR2 and PT-PR3 should land before the **H15 trust-scoring core (L2/L3)** so quality
+scoring has durable provider-source artifacts and the product contract is clear. PT-PR4 should land before
+any large H14b/H14c worker expansion so Modal/Beam do not consume budget regenerating artifacts that can be
+migrated. PT-PR5 and PT-PR6 (the concurrent record-write lanes) land **after the H17 record-store → R2-CAS
+migration (H17 PR7) and before/parallel with H14b/H14c**, per the dependency above. PT-PR5 then supplies the
+provider-alignment samples H15 needs and can run in parallel with H14b (Modal); H14c (Beam) follows the
+same no-regeneration invariant and consumes the PT-PR4 key shape. Full H15 trust scoring then consumes
+PT-PR5 confidence signals plus ASR samples; it defines the exact confidence algorithms and thresholds.
+PT-PR7 may follow H15's initial scoring implementation or land in parallel if it only consumes the
+`float | null` confidence contract.
 
 **Acceptance.**
 - L1 recorded every run: `state/transcript_quality_log.json` accrues per-source coverage + word-logprob,
