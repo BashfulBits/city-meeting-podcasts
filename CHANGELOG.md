@@ -127,6 +127,25 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   on each shard and represented only by redacted category/file/line metadata. This adds telemetry
   and workflow evidence only: no audio bytes, pipeline versions, artifact identities, or backfill
   behavior change ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).
+- **Stage-2 pull-based work-lease ledger — the frozen contract distributed ASR workers claim against
+  (H17 PR4, [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/18 §4).**
+  New `citypods/ops/work_leases.py` adds per-item compare-and-swap lease objects on R2
+  (`work-leases/<source_key>/<uid>.json`) so heterogeneous workers (in-Actions shards today; external
+  Modal/Beam/Mac-mini workers next) can **competitively claim** transcribe work from a shared ledger
+  instead of being handed a static `--shard K/N` slice. Per-item objects have independent ETags, so
+  concurrent claims of different uids never contend (the CAS-retry-storm mitigation, review/17 §6).
+  The module implements the full claim protocol — `claim`/`renew`/`release`/`reap` plus the
+  `run_claim_loop` orchestrator (read discovery index → CAS-claim → injected `transcribe` → durable
+  artifact/record commit → settle), with the neural inference left as the injected seam H14b/H14c
+  fill. `compute reconcile` now also reaps the ledger (expired claim → requeue; artifact present →
+  done), derived from the discovery index. **Cost discipline (review/18 §4.6)** keeps it at ≈1 R2
+  Class-A op per *claimed* item: never list the lease prefix (derive keys from the B2 index),
+  read-before-claim + per-worker scan offset (no failed-claim writes; workers target different items
+  first), infer completion from the artifact (no `done` write), and a generous TTL (renew is the
+  exception). `work-leases/` routes to R2 via `COORDINATION_PREFIXES`. **In-Actions matrix shards keep
+  using the Stage-1 static plan** (review/18 §6) — this PR freezes the contract and lands the
+  substrate so external workers build against it from day one; it changes no scheduled production
+  behavior. No pipeline-version bump, no backfill.
 - **The free-tier GPU budget ledger moved to R2 with an atomic compare-and-swap decrement (H17 PR3,
   [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); review/17 §3/§5).**
   `state/compute_budget.json` is the first coordination artifact to migrate off the bulk B2 state
@@ -134,8 +153,11 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   every `reserve`/`settle`/`release` is a compare-and-swap read-modify-write (`budget.mutate_budget`:
   GET ETag → apply → `put_cas(if_match=…)` → re-read and retry with bounded backoff + jitter on a
   412). Concurrent shards can no longer lose each other's reservations or overspend the monthly
-  free-tier cap — the dispatch availability check reads the authoritative R2 ledger, not a stale
-  in-memory snapshot. `statesync` excludes CAS-managed keys from `pull_state`/`push_state` (so a
+  free-tier cap: the reservation is an **atomic check-and-reserve** (`reserve_if_available`) that
+  re-evaluates availability against the freshest ledger on every CAS retry, taken **before** the
+  irreversible remote submit (released if the submit fails) — so two shards selecting the same
+  backend from a stale snapshot can't both commit. `statesync` excludes CAS-managed keys from
+  `pull_state`/`push_state` (so a
   plain `put_file` can't clobber the CAS object), gated on a new `cas_capable` flag set **only for
   R2** (B2 silently ignores conditional headers); a plain-B2 / local / dry-run backend keeps the
   prior local-file ledger behavior byte-for-byte. External dispatch is still dormant (no adapter

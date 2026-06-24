@@ -28,6 +28,7 @@ from citypods.compute.budget import (
     load_budget_cas,
     month_key,
     mutate_budget,
+    reserve_if_available,
     save_budget,
 )
 from citypods.ops.workqueue import WorkItem, is_leased, lease, load_manifest, save_manifest
@@ -35,6 +36,8 @@ from citypods.storage import CASConflict
 from citypods.storage.local import LocalStorage
 
 NOW = datetime(2026, 6, 14, 12, 0, tzinfo=UTC)
+# Reconcile's work-lease sweep is a no-op on a non-CAS backend (no ledger) → zeroed sub-summary.
+_NO_LEASES = {"completed": 0, "requeued": 0, "in_flight": 0}
 
 
 # ── fakes ──────────────────────────────────────────────────────────────────────
@@ -379,7 +382,7 @@ class TestReconcile:
 
         summary = reconcile_compute(tmp_path, storage=None, now=NOW)
 
-        assert summary == {"reaped": 1, "settled": 0, "in_flight": 0}
+        assert summary == {"reaped": 1, "settled": 0, "in_flight": 0, "leases": _NO_LEASES}
         requeued = load_manifest(tmp_path)[0]
         assert requeued.state == "queued" and requeued.lease_owner == ""
         # Dead worker's reservation returned to the pool.
@@ -399,7 +402,7 @@ class TestReconcile:
 
         summary = reconcile_compute(tmp_path, bucket, now=NOW)
 
-        assert summary == {"reaped": 0, "settled": 1, "in_flight": 0}
+        assert summary == {"reaped": 0, "settled": 1, "in_flight": 0, "leases": _NO_LEASES}
         done = load_manifest(tmp_path)[0]
         assert done.state == "done" and done.lease_owner == ""
         led = load_budget(tmp_path).backends["modal"]
@@ -411,7 +414,7 @@ class TestReconcile:
         save_manifest(tmp_path, [item])
         save_budget(tmp_path, Budget())
         summary = reconcile_compute(tmp_path, storage=None, now=NOW)
-        assert summary == {"reaped": 0, "settled": 0, "in_flight": 1}
+        assert summary == {"reaped": 0, "settled": 0, "in_flight": 1, "leases": _NO_LEASES}
         assert load_manifest(tmp_path)[0].state == "running"
 
     def test_empty_manifest_is_noop(self, tmp_path):
@@ -419,6 +422,7 @@ class TestReconcile:
             "reaped": 0,
             "settled": 0,
             "in_flight": 0,
+            "leases": _NO_LEASES,
         }
 
 
@@ -515,6 +519,41 @@ class TestBudgetCAS:
         led = result.backends["modal"]
         assert set(led.inflight) == {"modal:sibling", "modal:me"}  # no lost update
         assert led.used_gpu_seconds == 140.0
+
+    def test_reserve_if_available_refuses_on_retry_after_sibling_takes_last_slot(self):
+        # The real overspend race: two shards select the same backend from a stale (empty) snapshot,
+        # both try to reserve. cap fits ONE 90s job. The loser's CAS conflicts, and on retry it
+        # MUST re-check availability against the fresh ledger and refuse — not blindly merge to
+        # 180/100. (mutate_budget alone would merge; reserve_if_available re-checks.)
+        bucket = _MemBucket()
+        mutate_budget(bucket, lambda b: None)  # seed an empty ledger (ETag exists)
+        real = bucket.put_cas
+        fired = {"n": 0}
+
+        def flaky(key, data, ct, *, if_none_match=None, if_match=None):
+            fired["n"] += 1
+            if fired["n"] == 1:  # a sibling grabs the only slot first, between our read and write
+                b, etag = load_budget_cas(bucket)
+                b.reserve("modal:sibling", "modal", 90.0)
+                real(key, _serialize_budget(b), "application/json", if_match=etag)
+                raise CASConflict(key)
+            return real(key, data, ct, if_none_match=if_none_match, if_match=if_match)
+
+        bucket.put_cas = flaky
+        ok = reserve_if_available(
+            bucket,
+            "modal:me",
+            "modal",
+            est=90.0,
+            cap=100.0,
+            max_inflight=8,
+            now=NOW,
+            sleep=lambda _s: None,
+        )
+        assert ok is False  # re-check on retry saw 90 used → refused (overflow to local)
+        led = load_budget_cas(bucket)[0].backends["modal"]
+        assert led.used_gpu_seconds == 90.0  # only the sibling — cap not breached
+        assert set(led.inflight) == {"modal:sibling"}
 
     def test_mutate_budget_raises_after_max_attempts(self):
         bucket = _MemBucket()

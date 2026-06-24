@@ -235,3 +235,58 @@ def mutate_budget(
             sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
     assert last is not None
     raise last
+
+
+def reserve_if_available(
+    storage,
+    owner: str,
+    backend: str,
+    *,
+    est: float,
+    cap: float,
+    max_inflight: int,
+    now: datetime | None = None,
+    max_attempts: int = 8,
+    base_sleep: float = 0.05,
+    max_sleep: float = 1.0,
+    sleep=time.sleep,
+    rng: random.Random | None = None,
+) -> bool:
+    """Atomic **check-and-reserve** against the durable ledger: reserve ``est`` GPU-seconds for
+    ``owner`` on ``backend`` iff the *freshest* ledger still has cap + an open slot. Returns True if
+    reserved, False if not (caller overflows to local).
+
+    The availability check is re-evaluated **on every CAS attempt** against the reloaded ledger, so
+    two shards selecting the same backend from a stale snapshot cannot both commit — the loser's
+    re-check sees the winner's reservation and refuses, instead of blindly merging both and
+    breaching the cap (the overspend race ``mutate_budget`` alone does not close). This keeps the
+    free-tier ``$0`` guarantee holding across concurrent shards; callers therefore reserve *before*
+    the irreversible remote submit and :func:`release_reservation` on a submit failure.
+    """
+    from citypods.storage import CASConflict
+
+    rng = rng or random
+    for attempt in range(max_attempts):
+        budget, etag = load_budget_cas(storage)
+        budget.roll_month(now)
+        if not budget.available(backend, cap=cap, max_inflight=max_inflight, est=est):
+            return False  # authoritative fresh check → no room; no write spent
+        budget.reserve(owner, backend, est)
+        body = _serialize(budget).encode()
+        try:
+            if etag is None:
+                storage.put_cas(BUDGET_STATE_KEY, body, "application/json", if_none_match="*")
+            else:
+                storage.put_cas(BUDGET_STATE_KEY, body, "application/json", if_match=etag)
+            return True
+        except CASConflict:
+            sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
+    return False  # exhausted retries → treat as no reservation (overflow to local)
+
+
+def release_reservation(
+    storage, owner: str, backend: str, *, now: datetime | None = None, **retry
+) -> Budget:
+    """Return ``owner``'s reservation to the pool (a submit that failed after a successful
+    :func:`reserve_if_available`). CAS read-modify-write; idempotent if already gone."""
+    return mutate_budget(storage, lambda b: b.release(owner, backend), now=now, **retry)

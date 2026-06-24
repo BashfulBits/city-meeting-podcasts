@@ -639,21 +639,40 @@ def _compute_reconcile(args) -> int:
         # mixing a durable budget with a possibly-stale local work.json.
         import tempfile
 
+        from citypods.compute.dispatch import _asr_artifact_present
+        from citypods.ops.work_leases import reap as reap_work_leases
+
         now = datetime.now(UTC)
+        cas = storage_supports_cas(storage)
+        lease_preview = {"completed": 0, "requeued": 0, "in_flight": 0}
         with tempfile.TemporaryDirectory() as td:
             snapshot = Path(td)
             pull_state(storage, snapshot)
-            leased = [wi for wi in load_manifest(snapshot) if wi.lease_owner]
-            budget = (
-                load_budget_cas(storage)[0]
-                if storage_supports_cas(storage)
-                else load_budget(snapshot)
-            )
+            manifest = load_manifest(snapshot)
+            leased = [wi for wi in manifest if wi.lease_owner]
+            budget = load_budget_cas(storage)[0] if cas else load_budget(snapshot)
+            if cas:
+                # Read-only preview of the Stage-2 work-lease sweep the real reconcile would do, so
+                # the dry-run output matches it (not just legacy work.json leases).
+                candidates = [
+                    (wi.source_key, wi.episode_uid)
+                    for wi in manifest
+                    if wi.work_class == "transcript-asr" and wi.state != "done"
+                ]
+                lease_preview = reap_work_leases(
+                    storage,
+                    candidates,
+                    artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                    now=now,
+                    dry_run=True,
+                )
         expired = sum(1 for wi in leased if not is_leased(wi, now=now))
         reservations = sum(led.inflight_count for led in budget.backends.values())
         print(
             f"compute reconcile (dry run): {len(leased)} leased "
-            f"({expired} expired → would reap), {reservations} budget reservation(s)"
+            f"({expired} expired → would reap), {reservations} budget reservation(s); "
+            f"work-leases would: {lease_preview['requeued']} requeue, "
+            f"{lease_preview['completed']} settle ({lease_preview['in_flight']} in-flight)"
         )
         return 0
 
@@ -664,9 +683,16 @@ def _compute_reconcile(args) -> int:
     pull_state(storage, state_dir)
     summary = reconcile_compute(state_dir, storage)
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
+    leases = summary.get("leases", {})
+    lease_note = (
+        f"; work-leases: {leases.get('requeued', 0)} requeued, "
+        f"{leases.get('completed', 0)} settled, {leases.get('in_flight', 0)} in-flight"
+        if leases
+        else ""
+    )
     print(
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
-        f"{summary['in_flight']} in-flight"
+        f"{summary['in_flight']} in-flight{lease_note}"
     )
     return 0
 

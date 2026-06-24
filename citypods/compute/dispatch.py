@@ -24,6 +24,7 @@ consulted (a fake backend exercises the dispatch path in tests).
 from __future__ import annotations
 
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,8 @@ from citypods.compute.budget import (
     load_budget,
     load_budget_cas,
     mutate_budget,
+    release_reservation,
+    reserve_if_available,
     save_budget,
     storage_supports_cas,
 )
@@ -186,8 +189,14 @@ class DispatchCoordinator:
         synchronous on-runner path itself, so that path stays untouched.
 
         The remote submit is a cheap async hand-off (the GPU runs remotely), so it is kept under the
-        lock to make the budget check-and-reserve atomic with it; the heavy synchronous fallback
-        runs in the caller, outside the lock, fully concurrent."""
+        lock; the heavy synchronous fallback runs in the caller, outside the lock, fully concurrent.
+
+        **CAS path: reserve *before* submitting.** The budget gates the irreversible side effect,
+        so we atomically check-and-reserve against the freshest durable ledger first
+        (:func:`reserve_if_available`, which re-checks availability on every CAS retry — two shards
+        selecting the same backend from a stale snapshot can't both commit). Only on a successful
+        reservation do we submit; if the submit fails we release it. This is what keeps the
+        free-tier ``$0`` cap holding across concurrent shards (review/17 §5)."""
         now = now or datetime.now(UTC)
         with self._lock:
             # Read the authoritative ledger so the availability check sees other shards' spend
@@ -200,22 +209,41 @@ class DispatchCoordinator:
             )
             if target is None:
                 return None  # overflow to local — caller owns the synchronous path
-            result = backend.run_inference(job)
-            if not isinstance(result, JobHandle):
-                return None  # a dispatch backend must hand back a JobHandle; treat as no-dispatch
-            owner = lease_owner_for(result)
             est = backend.estimate_gpu_seconds(job)
-            # Persist the decrement eagerly: a crash mid-run must not lose the spend, or the
-            # free-tier cap could be breached on the next run. Leases ride the run-end manifest
-            # overlay (work.json is rebuilt from records there).
+
             if self._cas:
-                # Atomic compare-and-swap RMW: concurrent shards serialize, no lost reservation.
-                self._budget = mutate_budget(
-                    self._storage, lambda b: b.reserve(owner, result.backend, est), now=now
-                )
+                # A locally-minted owner so the reservation can precede the submit (the real job ref
+                # is on the returned handle / logs). reserve_if_available is the atomic, fresh check
+                # + decrement; a failure here means another shard took the slot → overflow to local.
+                owner = f"{target.backend.name}:{uuid.uuid4().hex}"
+                if not reserve_if_available(
+                    self._storage,
+                    owner,
+                    target.backend.name,
+                    est=est,
+                    cap=target.monthly_gpu_seconds,
+                    max_inflight=target.max_inflight,
+                    now=now,
+                ):
+                    return None
+                try:
+                    result = backend.run_inference(job)
+                except Exception:
+                    release_reservation(self._storage, owner, target.backend.name, now=now)
+                    raise
+                if not isinstance(result, JobHandle):
+                    release_reservation(self._storage, owner, target.backend.name, now=now)
+                    return None  # a dispatch backend must return a JobHandle; treat as no-dispatch
+                self._budget = load_budget_cas(self._storage)[0]  # refresh the in-memory view
             else:
+                # Single-process, lock-guarded: no cross-shard race, so submit-then-reserve is safe.
+                result = backend.run_inference(job)
+                if not isinstance(result, JobHandle):
+                    return None
+                owner = lease_owner_for(result)
                 self._budget.reserve(owner, result.backend, est)
                 save_budget(self._state_dir, self._budget)
+
             lease(item, owner, ttl_seconds=self._lease_ttl, now=now)
             self._leases[(item.source_key, item.episode_uid, item.work_class)] = (
                 owner,
@@ -317,4 +345,24 @@ def reconcile_compute(state_dir: str | Path, storage, *, now: datetime | None = 
         save_budget(state_dir, budget)
     if manifest_changed:
         save_manifest(state_dir, items)
-    return {"reaped": reaped, "settled": settled, "in_flight": in_flight}
+
+    # Stage-2 work-lease ledger reaping (review/18 §4.2): reclaim expired claims and settle done
+    # ones, derived from the discovery index — never listing the R2 lease prefix. CAS-only (the
+    # ledger lives on R2); a non-CAS backend has no ledger, so this is skipped. Candidates are the
+    # not-yet-done transcript-asr items, so the sweep tracks backlog, not the whole catalog.
+    leases = {"completed": 0, "requeued": 0, "in_flight": 0}
+    if cas:
+        from citypods.ops.work_leases import reap as reap_work_leases
+
+        candidates = [
+            (wi.source_key, wi.episode_uid)
+            for wi in items
+            if wi.work_class == "transcript-asr" and wi.state != "done"
+        ]
+        leases = reap_work_leases(
+            storage,
+            candidates,
+            artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+            now=now,
+        )
+    return {"reaped": reaped, "settled": settled, "in_flight": in_flight, "leases": leases}
