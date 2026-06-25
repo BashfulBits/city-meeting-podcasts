@@ -1422,7 +1422,11 @@ migration.
   `links["transcript"]` and never clear it merely because ASR exists. Fetch the URL every suitable
   provider-check pass, store the bytes in B2, and treat a non-empty non-error changed artifact as a
   `candidate` even when the URL string is unchanged. Promote only after the follow-up alignment/scoring
-  path proves it is at least as good as the current `known_good`; retain rollback history.
+  path proves it is at least as good as the current `known_good`; retain rollback history. **Implemented
+  in PT-PR2 ([#456](https://github.com/BashfulBits/city-meeting-podcasts/pull/456)):**
+  provider-source bytes now store under content-addressed `provider-` transcript keys,
+  unchanged bytes refresh `checked_at`, and changed candidates retain bounded rollback history. No ASR or
+  transcript pipeline version was bumped, so no ASR backfill/regeneration is triggered.
 - **PT-PR3 — UI/feed exposure.** Emit the provider transcript as the active `<podcast:transcript>` only when
   no ASR/provider-aligned transcript is complete. Always expose the known-good provider document as a
   separate download link labeled **Original city-provided transcript**. Once ASR or alignment exists, that

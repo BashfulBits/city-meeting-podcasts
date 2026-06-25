@@ -16,6 +16,15 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Provider transcript source documents are now fetched into the H15 provider registry
+  ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR2).**
+  `TranscriptStage` keeps the current provider transcript URL in `links["transcript"]` and stores
+  each non-empty provider document under a content-addressed `provider-` transcript key in
+  `provider_transcript.candidate`. Re-fetching identical bytes refreshes `checked_at`; changed bytes
+  become the new candidate and the superseded candidate is retained in bounded history for
+  later rollback. Candidates are **not** promoted to `known_good` and do not replace the active
+  podcast transcript until the follow-up provider-alignment/scoring path proves them at least as good.
+  No ASR or transcript pipeline version changes, so **no ASR backfill or regeneration** is triggered.
 - **The distributed provider concurrency-slot pool moved to per-slot R2 compare-and-swap (H17 PR6,
   the final H17 PR; [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)).**
   `DistributedProviderLeasePool` (the cross-process Granicus/ffmpeg throttle that caps aggregate

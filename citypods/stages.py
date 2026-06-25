@@ -102,6 +102,7 @@ from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workit
 from citypods.progress import PROGRESS
 from citypods.records import AUDIO_PIPELINE_VERSION, transcript_timeout_backoff_until
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
+from citypods.security import validate_source_url
 from citypods.timeline import Timeline, remap, timeline_digest
 
 
@@ -1025,8 +1026,104 @@ def _transcript_spec_hash(content: bytes) -> str:
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
 
+def _provider_transcript_spec_hash(content: bytes) -> str:
+    """Raw provider document byte identity, deliberately independent of transcript recipes."""
+    import hashlib
+
+    return hashlib.sha1(content).hexdigest()[:12]
+
+
 def _transcript_object_key(src_key: str, uid: str, spec: str, fmt: str) -> str:
     return f"transcripts/{src_key}/{uid}-{spec}.{fmt}"
+
+
+def _provider_transcript_object_key(src_key: str, uid: str, spec: str, fmt: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-{spec}.{fmt}"
+
+
+def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dict]:
+    if not isinstance(history, list):
+        return []
+    return [item for item in history if isinstance(item, dict)][:limit]
+
+
+def _provider_transcript_artifact(
+    *,
+    source_url: str,
+    key: str,
+    hosted_url: str,
+    spec: str,
+    fmt: str,
+    synced: bool,
+    now: str,
+    status: str,
+) -> dict:
+    return {
+        "url": source_url,
+        "key": key,
+        "hosted_url": hosted_url,
+        "spec_hash": spec,
+        "format": fmt,
+        "basis": "source:s0",
+        "synced": synced,
+        "confidence": None,
+        "checked_at": now,
+        "fetched_at": now,
+        "status": status,
+    }
+
+
+def _provider_transcript_promote_candidate(ep: Episode, artifact: dict) -> None:
+    """Attach a newly-fetched provider document as the current candidate.
+
+    PT-PR2 deliberately does not promote candidates to ``known_good``; PT-PR5's
+    alignment/scoring path owns that decision. Keep replaced candidates in bounded history so
+    operators can roll back once the scoring stages exist.
+    """
+    registry = dict(ep.provider_transcript or {})
+    current_candidate = registry.get("candidate")
+    history = _provider_transcript_history(registry.get("history"))
+    if (
+        isinstance(current_candidate, dict)
+        and current_candidate.get("key")
+        and current_candidate.get("spec_hash") != artifact.get("spec_hash")
+    ):
+        history.insert(0, current_candidate)
+    registry["candidate"] = artifact
+    registry["history"] = history[:5]
+    ep.provider_transcript = registry
+
+
+def _provider_transcript_note_checked(
+    ep: Episode, spec_hash: str, source_url: str, *, now: str
+) -> bool:
+    """Update checked_at for an unchanged provider transcript registry entry.
+
+    Returns True when an existing current entry covered ``spec_hash``.
+    """
+    registry = dict(ep.provider_transcript or {})
+    for slot in ("candidate", "known_good"):
+        artifact = registry.get(slot)
+        if isinstance(artifact, dict) and artifact.get("spec_hash") == spec_hash:
+            artifact = dict(artifact)
+            artifact["url"] = source_url
+            artifact["checked_at"] = now
+            artifact["status"] = "unchanged"
+            registry[slot] = artifact
+            if slot == "known_good":
+                candidate = registry.get("candidate")
+                if (
+                    isinstance(candidate, dict)
+                    and candidate.get("key")
+                    and candidate.get("spec_hash") != spec_hash
+                ):
+                    history = _provider_transcript_history(registry.get("history"))
+                    history.insert(0, candidate)
+                    registry["history"] = history[:5]
+                    registry.pop("candidate", None)
+            ep.provider_transcript = registry
+            return True
+    return False
 
 
 def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:
@@ -1189,7 +1286,6 @@ class TranscriptStage:
         import tempfile as _tmp
 
         from citypods.records import source_key as _src_key
-        from citypods.timeline import timeline_digest as _td
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -1273,6 +1369,8 @@ class TranscriptStage:
                 f"uid={label} guid={ep.guid}"
             )
             redo_stale_asr = False
+            active_synced_reused = False
+            provider_url = (ep.links or {}).get("transcript")
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
             #    Version-aware (H12): an ASR transcript (key carries the ``-asr-`` infix) from an
@@ -1292,7 +1390,9 @@ class TranscriptStage:
                         ep.transcript_words_url = ctx.storage.public_url(ep.transcript_words_key)
                     _reset_asr_timeout_backoff(ep)
                     stats.reused += 1
-                    continue
+                    active_synced_reused = True
+                    if not provider_url:
+                        continue
 
             # 1b. Untimed stored transcript: re-attach URL so the feed still shows it as a
             #     text note, then fall through to the ASR slot to attempt an upgrade.
@@ -1300,11 +1400,13 @@ class TranscriptStage:
                 ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                 # fall through to step 3
 
-            # 2. Provider transcript slot: fetch + store if we don't have it yet.
-            provider_url = (ep.links or {}).get("transcript")
-            if provider_url and not ep.transcript_key:
+            # 2. Provider source transcript slot: fetch every pass that reaches the item and
+            #    retain changed bytes as a candidate. PT-PR2 does not promote to known_good; the
+            #    later provider-transcript-align/scoring path owns that decision.
+            if provider_url:
                 if ctx.stop is not None and ctx.stop():
-                    stats.defer("stop-signal")
+                    if not active_synced_reused:
+                        stats.defer("stop-signal")
                     continue
 
                 try:
@@ -1314,6 +1416,7 @@ class TranscriptStage:
                         f"[enrich] transcript provider-fetch start {ep_ref}",
                         flush=True,
                     )
+                    validate_source_url(provider_url, resolve=True)
                     with make_session() as sess:
                         resp = sess.get(provider_url, timeout=30)
                     if resp.status_code >= 400:
@@ -1321,44 +1424,74 @@ class TranscriptStage:
                         continue
 
                     content = resp.content
+                    if not content.strip():
+                        stats.errors.append(
+                            f"{ep.uid}: empty provider transcript for {provider_url}"
+                        )
+                        continue
+
                     fmt = _detect_format(content)
                     timed = is_timed_transcript(content)
-                    spec = _transcript_spec_hash(content)
-                    key = _transcript_object_key(src_key, ep.uid or ep.guid, spec, fmt)
+                    spec = _provider_transcript_spec_hash(content)
+                    key = _provider_transcript_object_key(src_key, ep.uid or ep.guid, spec, fmt)
 
-                    is_identity = ep.timeline is None or _td(ep.timeline) == ""
-                    if timed and is_identity:
-                        basis = "served"
-                        synced = True
-                    elif timed:
-                        basis = "source:s0"
-                        synced = False
-                    else:
-                        basis = "source:s0"
-                        synced = False
-
-                    with _tmp.TemporaryDirectory() as t:
-                        dest = Path(t) / f"transcript.{fmt}"
-                        dest.write_bytes(content)
-                        mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
-                        url = ctx.storage.put_file(key, dest, mime)
-
-                    ep.transcript_key = key
-                    ep.transcript_hosted_url = url
-                    ep.transcript_spec_hash = spec
-                    ep.transcript_format = fmt
-                    ep.transcript_basis = basis
-                    ep.transcript_synced = synced
-                    stats.ran += 1
-                    print(
-                        f"[enrich] transcript provider-fetch done {ep_ref} "
-                        f"fmt={fmt} synced={synced}",
-                        flush=True,
+                    registry = ep.provider_transcript or {}
+                    candidate = registry.get("candidate") if isinstance(registry, dict) else None
+                    known_good = registry.get("known_good") if isinstance(registry, dict) else None
+                    matched_current = next(
+                        (
+                            artifact
+                            for artifact in (candidate, known_good)
+                            if isinstance(artifact, dict)
+                            and artifact.get("spec_hash") == spec
+                            and artifact.get("key")
+                            and _present(artifact["key"])
+                        ),
+                        None,
                     )
+                    if matched_current is not None:
+                        if _provider_transcript_note_checked(
+                            ep,
+                            spec,
+                            provider_url,
+                            now=datetime.now(UTC).isoformat(),
+                        ):
+                            stats.reused += 1
+                            print(
+                                f"[enrich] transcript provider-fetch unchanged {ep_ref} fmt={fmt}",
+                                flush=True,
+                            )
+                            # A pre-existing active transcript, if any, still drives ASR decisions
+                            # below. The provider-source registry is intentionally separate.
+                            content = b""
 
-                    if synced:
-                        _reset_asr_timeout_backoff(ep)
-                        continue  # timed VTT already stored — skip ASR
+                    if content:
+                        with _tmp.TemporaryDirectory() as t:
+                            dest = Path(t) / f"transcript.{fmt}"
+                            dest.write_bytes(content)
+                            mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
+                            url = ctx.storage.put_file(key, dest, mime)
+
+                        artifact = _provider_transcript_artifact(
+                            source_url=provider_url,
+                            key=key,
+                            hosted_url=url,
+                            spec=spec,
+                            fmt=fmt,
+                            synced=timed,
+                            now=datetime.now(UTC).isoformat(),
+                            status="candidate",
+                        )
+                        _provider_transcript_promote_candidate(ep, artifact)
+                        stats.ran += 1
+                        print(
+                            f"[enrich] transcript provider-fetch done {ep_ref} "
+                            f"fmt={fmt} candidate=true",
+                            flush=True,
+                        )
+                        # Do not promote or switch the active <podcast:transcript> here. If an
+                        # ASR/provider-aligned transcript is already active, it keeps serving;
+                        # PT-PR3 decides temporary feed exposure for provider documents.
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: {exc}")
                     print(
@@ -1366,6 +1499,30 @@ class TranscriptStage:
                         flush=True,
                     )
                     continue
+
+            if provider_url:
+                registry = ep.provider_transcript or {}
+                active_provider = registry.get("known_good") or registry.get("candidate")
+                if (
+                    not ep.transcript_hosted_url
+                    and isinstance(active_provider, dict)
+                    and active_provider.get("hosted_url")
+                    and active_provider.get("format") == "txt"
+                ):
+                    ep.transcript_hosted_url = active_provider["hosted_url"]
+                    ep.transcript_format = "txt"
+
+            # Legacy active provider transcripts remain valid input for alignment. They are not
+            # invalidated by PT-PR2; future PT-PR3 exposure logic will decide whether they should
+            # keep driving <podcast:transcript>.
+            if ep.transcript_key and not ep.transcript_synced and _present(ep.transcript_key):
+                ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+
+            # A freshly-captured provider source document is not an active synced transcript yet.
+            # Continue to the ASR slot unless a prior active synced transcript already exists.
+            if active_synced_reused or (ep.transcript_synced and not redo_stale_asr):
+                _reset_asr_timeout_backoff(ep)
+                continue
 
             # 3. ASR slot (issue #110): produce a timed VTT from hosted audio.
             #    Guards: model must be loaded (skip gracefully if load failed), need hosted
