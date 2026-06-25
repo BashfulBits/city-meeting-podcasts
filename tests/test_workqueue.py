@@ -379,8 +379,29 @@ def _rec(
     return rec
 
 
+def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None):
+    rec = _rec(days_ago, hosted=True)
+    rec["provider_transcript"] = {
+        "candidate": {
+            "key": "transcripts/s/u-provider-abc.vtt",
+            "spec_hash": "abc",
+            "format": "vtt",
+            "synced": True,
+            "align_spec_hash": align_spec,
+        }
+    }
+    if transcript_spec is not None:
+        rec["transcript"] = {
+            "key": f"transcripts/s/u-provider-align-{transcript_spec}.vtt",
+            "spec_hash": transcript_spec,
+            "basis": "served",
+            "synced": True,
+        }
+    return rec
+
+
 def _tx_items(items):
-    return [it for it in items if it.work_class.startswith("transcript")]
+    return [it for it in items if "transcript" in it.work_class]
 
 
 def test_build_manifest_audio_queued_vs_done():
@@ -414,6 +435,20 @@ def test_build_manifest_align_queued_when_enabled():
     recs = {"u": _rec(1, hosted=True, provider_text=True)}
     tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), recs)]))
     assert tx[0].work_class == "transcript-align" and tx[0].state == "queued"
+
+
+def test_build_manifest_provider_transcript_align_queued_for_timed_registry():
+    recs = {"u": _provider_rec(1)}
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert tx[0].work_class == "provider-transcript-align"
+    assert tx[0].state == "queued"
+
+
+def test_build_manifest_provider_transcript_align_done_when_active_spec_matches():
+    recs = {"u": _provider_rec(1, align_spec="align-new", transcript_spec="align-new")}
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert tx[0].work_class == "provider-transcript-align"
+    assert tx[0].state == "done"
 
 
 def test_build_manifest_transcript_done():
