@@ -345,9 +345,12 @@ into its own workflow (H6).
     clobber fix — §H6).** When the `diarize` lane lands, wire it through the same three registries and
     nothing else changes in the merge/push/gating machinery:
       1. `records.ARTIFACT_BLOCKS` — add `"speakers"` (the new independently-owned record block).
-      2. `records._LANE_OWNED_BLOCKS` — add `"diarize": frozenset({"speakers"})`. `protected_blocks_for_lane`
-         then automatically makes every *other* lane preserve a concurrently-written `speakers` block, and
-         makes the `diarize` lane preserve the `audio`/`transcript` blocks it doesn't own.
+      2. `records._LANE_OWNED_BLOCKS` — add `"diarize": frozenset({"speakers", "provider_transcript"})`.
+         `protected_blocks_for_lane` then automatically makes every *other* lane preserve a
+         concurrently-written `speakers` block, and makes the `diarize` lane preserve the
+         `audio`/`transcript` blocks it doesn't own. PT-PR6 also annotates
+         `provider_transcript.known_good` with diarize status/spec/confidence, so the provider registry is
+         owned by the transcript/align/diarize lanes and protected from audio-lane pushes.
       3. `stages.LANE_STAGES` — add `"diarize": frozenset({"diarize"})` (the global-queue pass split and
          `run_stages` both read this) so the diarize lane runs only its own stage.
     Also extend `episode_to_record` / `record_to_episode` / `referenced_audio_keys` with the `speakers`
@@ -1462,7 +1465,13 @@ migration.
 - **PT-PR6 — provider-transcript-diarize + rollback wiring.** Queue diarization from the selected
   provider-aligned transcript without discarding successful transcript text if diarization fails. If a
   candidate align/diarize score is worse than known-good, retain it in history and keep serving
-  known-good. **Concurrent record writer — see the record-store dependency below.**
+  known-good. **Concurrent record writer — see the record-store dependency below.** **Implemented in
+  PT-PR6 ([#460](https://github.com/BashfulBits/city-meeting-podcasts/pull/460)):** the work manifest emits `provider-transcript-diarize` once a provider-align VTT is
+  active, `ProviderTranscriptDiarizeStage` extracts existing `SPEAKER: text` labels into a served-time,
+  content-addressed `speakers.json`, and failure/no-label cases record a speakers error plus provider
+  registry diarize status without replacing or clearing the active transcript. The `speakers` block is
+  diarize-lane-owned and protected by the shipped Stage-1 foreign-block merge; `PROVIDER_DIARIZE_PIPELINE_VERSION`
+  is independent of `ASR_PIPELINE_VERSION`, so this does not invalidate or regenerate ASR artifacts.
 - **PT-PR7 — router/status/admin polish.** Add backlog/status slices for provider transcript fetch, align,
   and diarize; expose confidence distributions and candidate/rollback counts; document operator recovery
   actions.

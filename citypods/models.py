@@ -107,6 +107,17 @@ class Episode:
     # separate "Original city-provided transcript" download link and prevents ASR/alignment from
     # erasing provider source material.
     provider_transcript: dict = field(default_factory=dict)
+
+    # Speaker/diarization artifact. PT-PR6 starts with provider-transcript-derived speaker turns;
+    # later ML diarization writes the same independent block without disturbing transcript text.
+    speakers_key: str | None = None
+    speakers_url: str | None = None
+    speakers_spec_hash: str | None = None
+    speakers_format: str | None = None
+    speakers_synced: bool = False
+    speakers_confidence: float | None = None
+    speakers_pipeline_version: str | None = None
+    speakers_error: str | None = None
     # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
     # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
     # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs

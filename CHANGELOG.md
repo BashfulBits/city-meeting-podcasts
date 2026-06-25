@@ -16,6 +16,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Selected provider-aligned transcripts now produce independent speaker-turn artifacts
+  ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR6).**
+  The work manifest emits `provider-transcript-diarize` after a provider-aligned transcript is active.
+  `ProviderTranscriptDiarizeStage` conservatively extracts `SPEAKER: text` cues from the served-time
+  provider-align VTT into a content-addressed `speakers.json` block and records diarization status on
+  the provider registry. If speaker extraction fails or finds no labels, the successful transcript text
+  remains active and the episode records only a speakers error/status for retry/operator inspection.
+  The new `speakers` block is owned by the `diarize` lane and protected from audio/transcript pushes.
+  This adds `PROVIDER_DIARIZE_PIPELINE_VERSION` but does **not** bump `ASR_PIPELINE_VERSION`; no ASR
+  artifacts are invalidated or regenerated.
 - **Timed provider transcript documents now have a provider-align queue and confidence gate
   ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR5).**
   Hosted episodes with a synced provider VTT/SRT registry entry now surface as

@@ -1361,12 +1361,12 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
     monkeypatch.setattr(run, "reconcile_state", lambda *a, **k: 0)
 
     _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2), lane="transcribe")
-    # The transcribe lane preserves the audio-owned blocks it does not write: the hosted audio and
-    # the media-availability verdict the audio lane derives (H16 PR3).
+    # The transcribe lane preserves the artifact blocks it does not write: hosted audio,
+    # audio-derived media availability, and diarize-owned speakers.
     assert (
         captured["protected"]
         == protected_blocks_for_lane("transcribe")
-        == frozenset({"audio", "media_availability"})
+        == frozenset({"audio", "media_availability", "speakers"})
     )
     # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).
     assert isinstance(captured["owned_uids"], dict)

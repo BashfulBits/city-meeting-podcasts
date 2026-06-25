@@ -71,6 +71,7 @@ import collections
 import hashlib
 import json
 import re
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -1008,6 +1009,7 @@ class LinksStage:
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
 PROVIDER_ALIGN_PIPELINE_VERSION = "1"
+PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
@@ -1063,6 +1065,20 @@ def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
 
 def _provider_align_object_key(src_key: str, uid: str, spec: str) -> str:
     return f"transcripts/{src_key}/{uid}-provider-align-{spec}.vtt"
+
+
+def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
+    spec = {
+        "v": PROVIDER_DIARIZE_PIPELINE_VERSION,
+        "transcript": ep.transcript_spec_hash,
+        "provider_align": artifact.get("align_spec_hash"),
+    }
+    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha1(blob.encode()).hexdigest()[:12]
+
+
+def _provider_diarize_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-diarize-{spec}.speakers.json"
 
 
 def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dict]:
@@ -1245,6 +1261,35 @@ def _provider_cues_to_vtt(cues: list[dict]) -> bytes:
         lines.extend(str(cue.get("text") or "").splitlines() or [""])
         lines.append("")
     return ("\n".join(lines)).encode("utf-8")
+
+
+_SPEAKER_PREFIX_RE = re.compile(r"^\s*([A-Z][A-Za-z0-9 .,'&/-]{1,80}?):\s+(.+)$")
+
+
+def _speaker_turns_from_cues(cues: list[dict]) -> tuple[list[dict], float | None]:
+    turns: list[dict] = []
+    for cue in cues:
+        text = str(cue.get("text") or "").strip()
+        if not text:
+            continue
+        match = _SPEAKER_PREFIX_RE.match(text.replace("\n", " "))
+        if not match:
+            continue
+        speaker = re.sub(r"\s+", " ", match.group(1)).strip()
+        spoken = match.group(2).strip()
+        if not speaker or not spoken:
+            continue
+        turns.append(
+            {
+                "speaker": speaker,
+                "start": round(float(cue["start"]), 3),
+                "end": round(float(cue["end"]), 3),
+                "text": spoken,
+            }
+        )
+    if not cues:
+        return [], None
+    return turns, max(0.0, min(1.0, len(turns) / len(cues)))
 
 
 def _confidence_rank(value: object) -> float:
@@ -2558,6 +2603,116 @@ class TranscriptStage:
         return stats
 
 
+class ProviderTranscriptDiarizeStage:
+    """Derive speaker turns from selected provider-aligned transcripts.
+
+    PT-PR6 keeps this deliberately conservative: provider transcripts that already encode
+    speaker labels (`SPEAKER: words`) produce a content-addressed `speakers.json`; transcripts
+    without usable speaker labels record a speakers error but keep serving the successful
+    transcript text.
+    """
+
+    name = "diarize"
+    version = PROVIDER_DIARIZE_PIPELINE_VERSION
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.records import source_key as _src_key
+
+        stats = StageStats(self.name)
+        if ctx.dry_run or ctx.storage is None:
+            return stats
+
+        src_key = _src_key(city)
+        for ep in _materialize_set(
+            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+        ):
+            label = ep.uid or ep.guid
+            registry = ep.provider_transcript or {}
+            known_good = registry.get("known_good") if isinstance(registry, dict) else None
+            if not (
+                isinstance(known_good, dict)
+                and ep.transcript_key
+                and ep.transcript_synced
+                and "-provider-align-" in ep.transcript_key
+            ):
+                continue
+            spec = _provider_diarize_spec_hash(ep, known_good)
+            key = _provider_diarize_object_key(src_key, label, spec)
+            if (
+                ep.speakers_key == key
+                and ep.speakers_synced
+                and ctx.storage.exists(ep.speakers_key)
+            ):
+                ep.speakers_url = ctx.storage.public_url(key)
+                stats.reused += 1
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("stop-signal")
+                continue
+
+            content = _read_storage_bytes(ctx.storage, ep.transcript_key)
+            if content is None:
+                ep.speakers_error = "missing-provider-aligned-transcript"
+                stats.errors.append(f"{label}: missing provider-aligned transcript")
+                continue
+            try:
+                cues = _parse_timed_transcript(content, ep.transcript_format or "vtt")
+                turns, confidence = _speaker_turns_from_cues(cues)
+            except Exception as exc:  # noqa: BLE001
+                ep.speakers_error = f"parse-error: {exc}"
+                stats.errors.append(f"{label}: speaker parse: {exc}")
+                continue
+            if not turns:
+                ep.speakers_key = None
+                ep.speakers_url = None
+                ep.speakers_spec_hash = spec
+                ep.speakers_format = "json"
+                ep.speakers_synced = False
+                ep.speakers_confidence = confidence
+                ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
+                ep.speakers_error = "no-speaker-labels"
+                known_good = {**known_good, "diarize_status": "no-speaker-labels"}
+                registry = dict(ep.provider_transcript or {})
+                registry["known_good"] = known_good
+                ep.provider_transcript = registry
+                stats.defer("no-speaker-labels")
+                continue
+
+            payload = {
+                "schema": "1",
+                "basis": "served",
+                "source": "provider-transcript",
+                "confidence": confidence,
+                "turns": turns,
+            }
+            with tempfile.TemporaryDirectory() as t:
+                dest = Path(t) / "speakers.json"
+                dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+                url = ctx.storage.put_file(key, dest, "application/json")
+
+            ep.speakers_key = key
+            ep.speakers_url = url
+            ep.speakers_spec_hash = spec
+            ep.speakers_format = "json"
+            ep.speakers_synced = True
+            ep.speakers_confidence = confidence
+            ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
+            ep.speakers_error = None
+            known_good = {
+                **known_good,
+                "diarize_spec_hash": spec,
+                "diarize_confidence": confidence,
+                "diarize_status": "known_good",
+            }
+            registry = dict(ep.provider_transcript or {})
+            registry["known_good"] = known_good
+            ep.provider_transcript = registry
+            stats.ran += 1
+        return stats
+
+
 def default_stages() -> list[EnrichmentStage]:
     """Ordered: audio-affecting stages must precede ``audio`` so a change re-encodes;
     feed-only stages (``links``) follow it. This is the full list — used by a one-shot
@@ -2576,6 +2731,7 @@ def default_stages() -> list[EnrichmentStage]:
         RemapStage(),
         AudioStage(),
         TranscriptStage(),
+        ProviderTranscriptDiarizeStage(),
         LinksStage(),
     ]
 
@@ -2605,6 +2761,7 @@ def enrich_stages() -> list[EnrichmentStage]:
         RemapStage(),
         AudioStage(),
         TranscriptStage(),
+        ProviderTranscriptDiarizeStage(),
     ]
 
 
@@ -2619,6 +2776,7 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "audio": frozenset({"chapters", "timeline", "remap", "audio"}),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
+    "diarize": frozenset({"diarize"}),
 }
 
 

@@ -36,6 +36,7 @@ from citypods.stages import (
     ASR_PIPELINE_VERSION,
     AsrArtifactCache,
     AsrRuntimeLog,
+    ProviderTranscriptDiarizeStage,
     StageContext,
     TranscriptStage,
     _asr_fits_remaining_budget,
@@ -565,6 +566,82 @@ class TestTranscriptStageVTT:
         assert ep.provider_transcript["history"][0]["status"] == "rejected"
 
 
+def _provider_aligned_ep(tmp_path: Path, content: bytes) -> Episode:
+    ep = _ep(links={"transcript": "https://provider/t.vtt"})
+    ep.audio_key = "audio/src/uid-g1-a.m4a"
+    ep.hosted_audio_url = "https://cdn/audio/src/uid-g1-a.m4a"
+    ep.transcript_key = "transcripts/t-tx/uid-g1-provider-align-align123.vtt"
+    ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+    ep.transcript_spec_hash = "align123"
+    ep.transcript_format = "vtt"
+    ep.transcript_basis = "served"
+    ep.transcript_synced = True
+    ep.transcript_pipeline_version = "provider-align:1"
+    ep.provider_transcript = {
+        "known_good": {
+            "key": "transcripts/t-tx/uid-g1-provider-source.vtt",
+            "url": "https://cdn/transcripts/t-tx/uid-g1-provider-source.vtt",
+            "spec_hash": "source123",
+            "format": "vtt",
+            "basis": "source:s0",
+            "synced": True,
+            "confidence": 1.0,
+            "align_spec_hash": "align123",
+        }
+    }
+    target = tmp_path / "audio" / ep.transcript_key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+    return ep
+
+
+class TestProviderTranscriptDiarizeStage:
+    def test_provider_aligned_transcript_writes_speaker_turns(self, tmp_path):
+        content = (
+            b"WEBVTT\n\n"
+            b"00:00:01.000 --> 00:00:04.000\nMAYOR: We are in session.\n\n"
+            b"00:00:04.000 --> 00:00:06.000\nCOUNCIL MEMBER: Thank you.\n"
+        )
+        ep = _provider_aligned_ep(tmp_path, content)
+
+        stats = ProviderTranscriptDiarizeStage().process(
+            FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
+        )
+
+        assert stats.ran == 1
+        assert ep.transcript_key == "transcripts/t-tx/uid-g1-provider-align-align123.vtt"
+        assert ep.speakers_key.endswith(".speakers.json")
+        assert ep.speakers_synced is True
+        assert ep.speakers_confidence == 1.0
+        assert ep.provider_transcript["known_good"]["diarize_status"] == "known_good"
+        assert ep.provider_transcript["known_good"]["diarize_spec_hash"] == ep.speakers_spec_hash
+
+        stored = json.loads((tmp_path / "audio" / ep.speakers_key).read_text())
+        assert stored["basis"] == "served"
+        assert stored["source"] == "provider-transcript"
+        assert stored["turns"] == [
+            {"end": 4.0, "speaker": "MAYOR", "start": 1.0, "text": "We are in session."},
+            {"end": 6.0, "speaker": "COUNCIL MEMBER", "start": 4.0, "text": "Thank you."},
+        ]
+
+    def test_diarize_failure_keeps_provider_aligned_transcript(self, tmp_path):
+        content = b"WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nNo speaker labels here.\n"
+        ep = _provider_aligned_ep(tmp_path, content)
+        original_key = ep.transcript_key
+
+        stats = ProviderTranscriptDiarizeStage().process(
+            FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
+        )
+
+        assert stats.defer_reasons == {"no-speaker-labels": 1}
+        assert ep.transcript_key == original_key
+        assert ep.transcript_synced is True
+        assert ep.speakers_key is None
+        assert ep.speakers_synced is False
+        assert ep.speakers_error == "no-speaker-labels"
+        assert ep.provider_transcript["known_good"]["diarize_status"] == "no-speaker-labels"
+
+
 # ---------------------------------------------------------------------------
 # feeds.py — <podcast:transcript> tag emission
 # ---------------------------------------------------------------------------
@@ -635,6 +712,7 @@ class TestTranscriptStageOrdering:
             "remap",
             "audio",
             "transcript",
+            "diarize",
             "links",
         ]
 
@@ -645,6 +723,7 @@ class TestTranscriptStageOrdering:
             "remap",
             "audio",
             "transcript",
+            "diarize",
         ]
 
 

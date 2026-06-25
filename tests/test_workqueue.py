@@ -379,7 +379,7 @@ def _rec(
     return rec
 
 
-def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None):
+def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None, diarize_spec=None):
     rec = _rec(days_ago, hosted=True)
     rec["provider_transcript"] = {
         "candidate": {
@@ -390,11 +390,19 @@ def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None):
             "align_spec_hash": align_spec,
         }
     }
+    if diarize_spec is not None:
+        rec["provider_transcript"]["candidate"]["diarize_spec_hash"] = diarize_spec
     if transcript_spec is not None:
         rec["transcript"] = {
             "key": f"transcripts/s/u-provider-align-{transcript_spec}.vtt",
             "spec_hash": transcript_spec,
             "basis": "served",
+            "synced": True,
+        }
+    if diarize_spec is not None:
+        rec["speakers"] = {
+            "key": f"transcripts/s/u-provider-diarize-{diarize_spec}.speakers.json",
+            "spec_hash": diarize_spec,
             "synced": True,
         }
     return rec
@@ -449,6 +457,37 @@ def test_build_manifest_provider_transcript_align_done_when_active_spec_matches(
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
     assert tx[0].work_class == "provider-transcript-align"
     assert tx[0].state == "done"
+
+
+def test_build_manifest_provider_transcript_diarize_queued_after_align_selected():
+    recs = {"u": _provider_rec(1, align_spec="align-new", transcript_spec="align-new")}
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert [(it.work_class, it.state) for it in tx] == [
+        ("provider-transcript-align", "done"),
+        ("provider-transcript-diarize", "queued"),
+    ]
+
+
+def test_build_manifest_provider_transcript_diarize_waits_for_selected_align():
+    recs = {"u": _provider_rec(1, align_spec="align-new", transcript_spec="align-old")}
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert [(it.work_class, it.state) for it in tx] == [("provider-transcript-align", "queued")]
+
+
+def test_build_manifest_provider_transcript_diarize_done_when_spec_matches():
+    recs = {
+        "u": _provider_rec(
+            1,
+            align_spec="align-new",
+            transcript_spec="align-new",
+            diarize_spec="speaker-new",
+        )
+    }
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert [(it.work_class, it.state) for it in tx] == [
+        ("provider-transcript-align", "done"),
+        ("provider-transcript-diarize", "done"),
+    ]
 
 
 def test_build_manifest_transcript_done():

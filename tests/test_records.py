@@ -774,6 +774,13 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
             "confidence": None,
         }
     }
+    ep.speakers_key = "transcripts/src/u1-provider-diarize-abc.speakers.json"
+    ep.speakers_url = "https://cdn/transcripts/src/u1-provider-diarize-abc.speakers.json"
+    ep.speakers_spec_hash = "speaker-spec"
+    ep.speakers_format = "json"
+    ep.speakers_synced = True
+    ep.speakers_confidence = 0.9
+    ep.speakers_pipeline_version = "1"
 
     back = record_to_episode(episode_to_record(ep))
     for attr in (
@@ -797,6 +804,13 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "transcript_timeout_attempts",
         "transcript_timeout_last_attempt",
         "provider_transcript",
+        "speakers_key",
+        "speakers_url",
+        "speakers_spec_hash",
+        "speakers_format",
+        "speakers_synced",
+        "speakers_confidence",
+        "speakers_pipeline_version",
     ):
         assert getattr(back, attr) == getattr(ep, attr), attr
 
@@ -915,9 +929,18 @@ def test_prune_archive_keeps_undated_records():
 def test_protected_blocks_for_lane():
     # A lane preserves the artifact block(s) it does NOT own from the freshest remote. The audio
     # lane owns both the audio bytes and the media-availability verdict it derives (H16 PR3).
-    assert protected_blocks_for_lane("audio") == frozenset({"transcript", "provider_transcript"})
-    assert protected_blocks_for_lane("transcribe") == frozenset({"audio", "media_availability"})
-    assert protected_blocks_for_lane("align") == frozenset({"audio", "media_availability"})
+    assert protected_blocks_for_lane("audio") == frozenset(
+        {"transcript", "provider_transcript", "speakers"}
+    )
+    assert protected_blocks_for_lane("transcribe") == frozenset(
+        {"audio", "speakers", "media_availability"}
+    )
+    assert protected_blocks_for_lane("align") == frozenset(
+        {"audio", "speakers", "media_availability"}
+    )
+    assert protected_blocks_for_lane("diarize") == frozenset(
+        {"audio", "transcript", "media_availability"}
+    )
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
     assert protected_blocks_for_lane(None) == frozenset()
     assert protected_blocks_for_lane("mystery") == frozenset()
@@ -974,6 +997,22 @@ def test_merge_preserving_foreign_transcribe_lane_keeps_remote_availability():
     merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("transcribe"))
     assert merged["u1"]["media_availability"] == {"state": "confirmed_empty"}
     assert merged["u1"]["transcript"] == {"key": "t1"}
+
+
+def test_merge_preserving_foreign_transcribe_lane_keeps_remote_speakers():
+    remote = {"u1": {"uid": "u1", "speakers": {"key": "speaker-json", "synced": True}}}
+    local = {"u1": {"uid": "u1", "speakers": None, "transcript": {"key": "t1"}}}
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("transcribe"))
+    assert merged["u1"]["speakers"] == {"key": "speaker-json", "synced": True}
+    assert merged["u1"]["transcript"] == {"key": "t1"}
+
+
+def test_merge_preserving_foreign_diarize_lane_keeps_remote_transcript():
+    remote = {"u1": {"uid": "u1", "transcript": {"key": "provider-align", "synced": True}}}
+    local = {"u1": {"uid": "u1", "transcript": None, "speakers": {"key": "speaker-json"}}}
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("diarize"))
+    assert merged["u1"]["transcript"] == {"key": "provider-align", "synced": True}
+    assert merged["u1"]["speakers"] == {"key": "speaker-json"}
 
 
 def test_availability_block_round_trips():
