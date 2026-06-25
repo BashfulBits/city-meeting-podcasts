@@ -1007,6 +1007,7 @@ class LinksStage:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
+PROVIDER_ALIGN_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
@@ -1047,6 +1048,21 @@ def _transcript_object_key(src_key: str, uid: str, spec: str, fmt: str) -> str:
 
 def _provider_transcript_object_key(src_key: str, uid: str, spec: str, fmt: str) -> str:
     return f"transcripts/{src_key}/{uid}-provider-{spec}.{fmt}"
+
+
+def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
+    tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
+    spec = {
+        "v": PROVIDER_ALIGN_PIPELINE_VERSION,
+        "provider": artifact.get("spec_hash"),
+        "timeline": tl_digest,
+    }
+    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha1(blob.encode()).hexdigest()[:12]
+
+
+def _provider_align_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-align-{spec}.vtt"
 
 
 def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dict]:
@@ -1132,6 +1148,158 @@ def _provider_transcript_note_checked(
             ep.provider_transcript = registry
             return True
     return False
+
+
+def _parse_transcript_time(raw: str) -> float:
+    raw = raw.strip().replace(",", ".")
+    parts = raw.split(":")
+    if len(parts) == 2:
+        hours = 0
+        minutes, seconds = parts
+    elif len(parts) == 3:
+        hours, minutes, seconds = parts
+    else:
+        raise ValueError(f"invalid transcript timestamp {raw!r}")
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _format_vtt_time(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
+
+
+def _parse_timed_transcript(content: bytes, fmt: str) -> list[dict]:
+    text = content.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+    cues: list[dict] = []
+    pending: dict | None = None
+    cue_text: list[str] = []
+
+    def flush() -> None:
+        nonlocal pending, cue_text
+        if pending is not None and cue_text:
+            cues.append({**pending, "text": "\n".join(cue_text).strip()})
+        pending = None
+        cue_text = []
+
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line:
+            flush()
+            continue
+        if line == "WEBVTT" or line.startswith(("NOTE", "STYLE", "REGION")):
+            continue
+        if fmt == "srt" and line.isdigit() and pending is None:
+            continue
+        if "-->" in line:
+            flush()
+            start_raw, end_raw = line.split("-->", 1)
+            end_raw = end_raw.strip().split()[0]
+            pending = {
+                "start": _parse_transcript_time(start_raw.strip().split()[-1]),
+                "end": _parse_transcript_time(end_raw),
+            }
+            continue
+        if pending is not None:
+            cue_text.append(raw.rstrip())
+    flush()
+    return cues
+
+
+def _served_duration_hint(ep: Episode) -> float | None:
+    if ep.timeline is not None and ep.timeline.segments:
+        return ep.timeline.segments[-1].served_end
+    if ep.audio_duration_served:
+        return float(ep.audio_duration_served)
+    return float(ep.duration) if ep.duration else None
+
+
+def _remap_provider_cues(ep: Episode, cues: list[dict]) -> tuple[list[dict], float | None]:
+    if not cues:
+        return [], None
+    total_duration = sum(max(0.0, c.get("end", 0.0) - c.get("start", 0.0)) for c in cues)
+    if ep.timeline is None or timeline_digest(ep.timeline) == "":
+        return [dict(c) for c in cues], 1.0
+    source_id = ep.sources[0].id if ep.sources else "s0"
+    remapped = remap(
+        ep.timeline,
+        cues,
+        source_id=source_id,
+        clamp_to=_served_duration_hint(ep),
+    )
+    remapped = [c for c in remapped if c.get("end") is not None and c["end"] > c["start"]]
+    if total_duration > 0:
+        kept_duration = sum(max(0.0, c["end"] - c["start"]) for c in remapped)
+        confidence = max(0.0, min(1.0, kept_duration / total_duration))
+    else:
+        confidence = max(0.0, min(1.0, len(remapped) / len(cues)))
+    return remapped, confidence
+
+
+def _provider_cues_to_vtt(cues: list[dict]) -> bytes:
+    lines = ["WEBVTT", ""]
+    for cue in cues:
+        lines.append(f"{_format_vtt_time(cue['start'])} --> {_format_vtt_time(cue['end'])}")
+        lines.extend(str(cue.get("text") or "").splitlines() or [""])
+        lines.append("")
+    return ("\n".join(lines)).encode("utf-8")
+
+
+def _confidence_rank(value: object) -> float:
+    if value is None:
+        return -1.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return -1.0
+
+
+def _provider_align_candidate_wins(candidate: dict, known_good: dict | None) -> bool:
+    if not known_good:
+        return True
+    return _confidence_rank(candidate.get("confidence")) >= _confidence_rank(
+        known_good.get("confidence")
+    )
+
+
+def _provider_transcript_set_known_good(ep: Episode, artifact: dict) -> None:
+    registry = dict(ep.provider_transcript or {})
+    history = _provider_transcript_history(registry.get("history"))
+    current_known = registry.get("known_good")
+    if (
+        isinstance(current_known, dict)
+        and current_known.get("key")
+        and current_known.get("spec_hash") != artifact.get("spec_hash")
+    ):
+        history.insert(0, current_known)
+    registry["known_good"] = artifact
+    registry.pop("candidate", None)
+    registry["history"] = history[:5]
+    ep.provider_transcript = registry
+
+
+def _provider_transcript_reject_candidate(ep: Episode, artifact: dict) -> None:
+    registry = dict(ep.provider_transcript or {})
+    history = _provider_transcript_history(registry.get("history"))
+    rejected = {**artifact, "status": "rejected"}
+    history.insert(0, rejected)
+    registry["history"] = history[:5]
+    registry.pop("candidate", None)
+    ep.provider_transcript = registry
+
+
+def _read_storage_bytes(storage, key: str) -> bytes | None:
+    if not key or not storage.exists(key) or not hasattr(storage, "get_file"):
+        return None
+    import tempfile as _tmp
+
+    with _tmp.TemporaryDirectory() as t:
+        local_path = Path(t) / "provider-transcript"
+        if not storage.get_file(key, local_path):
+            return None
+        return local_path.read_bytes()
 
 
 def _asr_object_key(src_key: str, uid: str, recipe: str) -> str:
@@ -1376,6 +1544,108 @@ class TranscriptStage:
             ep.transcript_synced = True
             _reset_asr_timeout_backoff(ep)
 
+        def _maybe_align_provider_transcript(
+            ep: Episode,
+            *,
+            ep_ref: str,
+            allow_active: bool,
+        ) -> bool:
+            """Promote and optionally publish a timed provider document as served-time VTT."""
+            if not (ep.audio_key and ep.hosted_audio_url):
+                return False
+            registry = ep.provider_transcript or {}
+            if not isinstance(registry, dict):
+                return False
+            candidate = registry.get("candidate")
+            known_good = registry.get("known_good")
+            selected = None
+            for artifact in (candidate, known_good):
+                if (
+                    isinstance(artifact, dict)
+                    and artifact.get("key")
+                    and artifact.get("synced")
+                    and artifact.get("format") in {"vtt", "srt"}
+                ):
+                    selected = dict(artifact)
+                    break
+            if selected is None:
+                return False
+
+            content = _read_storage_bytes(ctx.storage, selected["key"])
+            if content is None:
+                return False
+            cues = _parse_timed_transcript(content, selected.get("format") or "vtt")
+            remapped_cues, confidence = _remap_provider_cues(ep, cues)
+            if not remapped_cues:
+                return False
+
+            align_spec = _provider_align_spec_hash(ep, selected)
+            selected = {
+                **selected,
+                "confidence": confidence,
+                "align_spec_hash": align_spec,
+                "aligned_at": datetime.now(UTC).isoformat(),
+            }
+
+            if isinstance(candidate, dict) and selected.get("spec_hash") == candidate.get(
+                "spec_hash"
+            ):
+                if _provider_align_candidate_wins(selected, known_good):
+                    selected["status"] = "known_good"
+                    _provider_transcript_set_known_good(ep, selected)
+                else:
+                    _provider_transcript_reject_candidate(ep, selected)
+                    if not isinstance(known_good, dict):
+                        return False
+                    return _maybe_align_provider_transcript(
+                        ep, ep_ref=ep_ref, allow_active=allow_active
+                    )
+            else:
+                registry = dict(ep.provider_transcript or {})
+                selected["status"] = "known_good"
+                registry["known_good"] = selected
+                ep.provider_transcript = registry
+
+            if not allow_active:
+                return False
+
+            key = _provider_align_object_key(src_key, ep.uid or ep.guid, align_spec)
+            if ep.transcript_key == key and ep.transcript_synced and _present(key):
+                ep.transcript_hosted_url = ctx.storage.public_url(key)
+                stats.reused += 1
+                return True
+
+            with _tmp.TemporaryDirectory() as t:
+                dest = Path(t) / "provider-aligned.vtt"
+                dest.write_bytes(_provider_cues_to_vtt(remapped_cues))
+                url = ctx.storage.put_file(key, dest, TRANSCRIPT_MIME["vtt"])
+
+            provider_registry = dict(ep.provider_transcript or {})
+            known = dict(provider_registry.get("known_good") or selected)
+            known["aligned_key"] = key
+            known["aligned_url"] = url
+            provider_registry["known_good"] = known
+            ep.provider_transcript = provider_registry
+
+            ep.transcript_key = key
+            ep.transcript_hosted_url = url
+            ep.transcript_spec_hash = align_spec
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            ep.transcript_words_key = None
+            ep.transcript_words_url = None
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            _reset_asr_timeout_backoff(ep)
+            stats.ran += 1
+            stats.aligned += 1
+            print(
+                f"[enrich] transcript provider-align done {ep_ref} "
+                f"confidence={confidence if confidence is not None else 'unknown'}",
+                flush=True,
+            )
+            return True
+
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
         runtime_log = AsrRuntimeLog(ctx.asr_runtime_log_path, default_ratio=_asr_default_ratio(ctx))
 
@@ -1587,6 +1857,17 @@ class TranscriptStage:
                 ):
                     ep.transcript_hosted_url = active_provider["hosted_url"]
                     ep.transcript_format = "txt"
+
+            # PT-PR5: timed provider source documents are evaluated in source time, remapped
+            # through the canonical timeline, and promoted to known_good only when their
+            # confidence is at least the previous known_good. Do not replace an already-active
+            # ASR/provider transcript in this rollout; the H15 trust router owns that policy.
+            if _maybe_align_provider_transcript(
+                ep,
+                ep_ref=ep_ref,
+                allow_active=not active_synced_reused,
+            ):
+                continue
 
             # Legacy active provider transcripts remain valid input for alignment. They are not
             # invalidated by PT-PR2; future PT-PR3 exposure logic will decide whether they should

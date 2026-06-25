@@ -1452,7 +1452,13 @@ migration.
   previous known-good artifact before promotion. Backfill priority is moderate: aim for roughly a 1/3
   split of completed artifacts between provider-transcript-align and ASR-transcript-align per ASR run.
   Because alignment is faster than full ASR, this should reduce fresh-ASR completions only modestly
-  (target ≈10%). **Concurrent record writer — see the record-store dependency below.**
+  (target ≈10%). **Implemented in PT-PR5 ([#459](https://github.com/BashfulBits/city-meeting-podcasts/pull/459)):** the work manifest now emits
+  `provider-transcript-align` for hosted episodes with a timed provider registry entry; `TranscriptStage`
+  parses provider VTT/SRT in source time, remaps cues via `timeline.py`, publishes a served-time
+  `provider-align` VTT when no active transcript already owns the episode, records confidence, and
+  rejects worse candidates to bounded history instead of replacing `known_good`. The provider registry is
+  transcript-lane-owned for the Stage-1 foreign-block-preserving merge. `ASR_PIPELINE_VERSION` is
+  unchanged; provider-align has its own recipe version and does not invalidate ASR.
 - **PT-PR6 — provider-transcript-diarize + rollback wiring.** Queue diarization from the selected
   provider-aligned transcript without discarding successful transcript text if diarization fails. If a
   candidate align/diarize score is worse than known-good, retain it in history and keep serving

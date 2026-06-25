@@ -36,7 +36,7 @@ MANIFEST_NAME = "work.json"
 MANIFEST_VERSION = 1
 
 # Work classes are keyed by OUTPUT ARTIFACT (diarization-forward; review/12 §H5).
-WORK_CLASSES = ("audio", "transcript-asr", "transcript-align")
+WORK_CLASSES = ("audio", "transcript-asr", "transcript-align", "provider-transcript-align")
 # Reserved — recognized but not emitted in H5 (reserve-now, no migration later).
 RESERVED_WORK_CLASSES = ("diarization", "transcript-merge")
 
@@ -322,9 +322,24 @@ def _episode_buckets(recs: dict, max_per_body: int) -> dict[str, str]:
     return buckets
 
 
+def _provider_transcript_entry(registry: object) -> dict | None:
+    if not isinstance(registry, dict):
+        return None
+    for slot in ("candidate", "known_good"):
+        entry = registry.get(slot)
+        if isinstance(entry, dict) and entry.get("key") and entry.get("synced"):
+            return entry
+    return None
+
+
 def _transcript_class(rec: dict) -> str:
-    """A hosted episode with a provider transcript link is an *alignment* candidate; otherwise
-    it needs fresh ASR."""
+    """Classify the next transcript artifact this episode can produce.
+
+    A stored timed city/provider document is the provider-alignment lane. A bare provider
+    text/link remains the ASR forced-alignment lane; otherwise the item needs fresh ASR.
+    """
+    if _provider_transcript_entry(rec.get("provider_transcript")) is not None:
+        return "provider-transcript-align"
     has_source_text = bool((rec.get("links") or {}).get("transcript"))
     return "transcript-align" if has_source_text else "transcript-asr"
 
@@ -349,7 +364,13 @@ def _episode_work_items(
 
     if audio_done and city.asr_enabled:
         work_class = _transcript_class(rec)
-        if (rec.get("transcript") or {}).get("key"):
+        transcript = rec.get("transcript") or {}
+        if transcript.get("key") and not (
+            work_class == "provider-transcript-align"
+            and "-provider-align-" in str(transcript.get("key"))
+            and transcript.get("spec_hash")
+            != _provider_transcript_entry(rec.get("provider_transcript")).get("align_spec_hash")
+        ):
             items.append(WorkItem(work_class=work_class, state="done", **base))
         elif work_class == "transcript-align" and not city.asr_alignment_enabled:
             items.append(

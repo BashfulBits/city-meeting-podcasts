@@ -16,6 +16,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Timed provider transcript documents now have a provider-align queue and confidence gate
+  ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR5).**
+  Hosted episodes with a synced provider VTT/SRT registry entry now surface as
+  `provider-transcript-align` work. `TranscriptStage` parses the provider document in source time,
+  remaps cues through the canonical timeline, publishes a served-time `provider-align` VTT when no
+  active transcript already owns the episode, and records a `float | null` confidence on the provider
+  registry. Changed candidates promote to `known_good` only when their confidence is at least the
+  prior known-good artifact; worse candidates move to bounded history and the known-good remains active.
+  The provider registry is now a transcript-lane-owned record block so audio-lane pushes preserve
+  concurrent confidence/promotion updates. This adds `PROVIDER_ALIGN_PIPELINE_VERSION` but does **not**
+  bump `ASR_PIPELINE_VERSION`; no ASR artifacts are invalidated or regenerated.
 - **ASR transcript keys now use a timeline/recipe transcript media hash instead of the audio-byte
   recipe hash ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR4).**
   ASR VTT and word JSON keys are now based on source media identity plus the served timeline and ASR

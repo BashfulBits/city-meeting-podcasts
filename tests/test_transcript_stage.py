@@ -44,6 +44,7 @@ from citypods.stages import (
     enrich_stages,
 )
 from citypods.storage.local import LocalStorage
+from citypods.timeline import Segment, SourceMedia, Timeline
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -457,6 +458,111 @@ class TestTranscriptStageVTT:
         self._run_with_content(tmp_path, VTT_CONTENT, url="https://provider/t.vtt")
 
         assert calls == [("https://provider/t.vtt", {"resolve": True})]
+
+    def test_hosted_timed_provider_candidate_aligns_to_active_transcript(self, tmp_path):
+        ep = _ep(links={"transcript": "https://provider/t.vtt"})
+        ep.audio_key = "audio/src/uid-g1-a.m4a"
+        ep.hosted_audio_url = "https://cdn/audio/src/uid-g1-a.m4a"
+
+        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+            stats = TranscriptStage().process(
+                FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
+            )
+
+        assert stats.ran == 2  # provider-source fetch + provider-align publish
+        assert stats.aligned == 1
+        assert ep.transcript_key.endswith(".vtt")
+        assert "-provider-align-" in ep.transcript_key
+        assert ep.transcript_synced is True
+        assert ep.transcript_basis == "served"
+        assert ep.transcript_pipeline_version == "provider-align:1"
+        assert "candidate" not in ep.provider_transcript
+        known_good = ep.provider_transcript["known_good"]
+        assert known_good["confidence"] == 1.0
+        assert known_good["align_spec_hash"] == ep.transcript_spec_hash
+
+    def test_provider_align_remaps_source_time_through_timeline(self, tmp_path):
+        ep = _ep(links={"transcript": "https://provider/t.vtt"})
+        ep.audio_key = "audio/src/uid-g1-a.m4a"
+        ep.hosted_audio_url = "https://cdn/audio/src/uid-g1-a.m4a"
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+        content = b"WEBVTT\n\n00:00:12.000 --> 00:00:15.000\nKept cue\n"
+
+        with patch("citypods.http.make_session", return_value=_fetch(content)):
+            TranscriptStage().process(
+                FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
+            )
+
+        stored = (tmp_path / "audio" / ep.transcript_key).read_text()
+        assert "00:00:02.000 --> 00:00:05.000" in stored
+        assert ep.provider_transcript["known_good"]["confidence"] == 1.0
+
+    def test_worse_provider_candidate_moves_to_history_and_keeps_known_good(self, tmp_path):
+        ep = _ep(links={"transcript": "https://provider/t.vtt"})
+        ep.audio_key = "audio/src/uid-g1-a.m4a"
+        ep.hosted_audio_url = "https://cdn/audio/src/uid-g1-a.m4a"
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=5.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=5.0,
+                    source_end=10.0,
+                ),
+            ),
+        )
+        known_content = b"WEBVTT\n\n00:00:06.000 --> 00:00:08.000\nKnown\n"
+        ctx = _ctx(tmp_path)
+        with patch("citypods.http.make_session", return_value=_fetch(known_content)):
+            TranscriptStage().process(FakeProvider(), _city(asr_enabled=False), [ep], ctx)
+        known_spec = ep.provider_transcript["known_good"]["spec_hash"]
+        known_key = ep.transcript_key
+
+        worse_content = (
+            b"WEBVTT\n\n00:00:06.000 --> 00:00:07.000\nKept\n\n00:00:20.000 --> 00:00:22.000\nCut\n"
+        )
+        with patch("citypods.http.make_session", return_value=_fetch(worse_content)):
+            TranscriptStage().process(FakeProvider(), _city(asr_enabled=False), [ep], ctx)
+
+        assert ep.provider_transcript["known_good"]["spec_hash"] == known_spec
+        assert ep.transcript_key == known_key
+        assert "candidate" not in ep.provider_transcript
+        assert ep.provider_transcript["history"][0]["status"] == "rejected"
 
 
 # ---------------------------------------------------------------------------

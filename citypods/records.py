@@ -881,16 +881,20 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 # ``referenced_audio_keys`` gain the new block alongside the existing ``audio`` / ``transcript``.
 # ``media_availability`` (H16 PR3) is produced by the audio lane's detection pass, so it is an
 # audio-owned artifact block: a sibling ``transcribe``/``align`` push must preserve it, exactly like
-# the ``audio`` block, or it would regress a freshly-written availability verdict.
-ARTIFACT_BLOCKS: frozenset[str] = frozenset({"audio", "transcript", "media_availability"})
+# the ``audio`` block, or it would regress a freshly-written availability verdict. The
+# ``provider_transcript`` registry is a transcript-lane artifact: PT-PR5/PT-PR6 update candidate /
+# known-good confidence and must preserve it from audio-lane snapshots.
+ARTIFACT_BLOCKS: frozenset[str] = frozenset(
+    {"audio", "transcript", "provider_transcript", "media_availability"}
+)
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
 # full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
 # it preserves nothing (behaves like the legacy whole-record push).
 _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "audio": frozenset({"audio", "media_availability"}),
-    "transcribe": frozenset({"transcript"}),
-    "align": frozenset({"transcript"}),
+    "transcribe": frozenset({"transcript", "provider_transcript"}),
+    "align": frozenset({"transcript", "provider_transcript"}),
 }
 
 

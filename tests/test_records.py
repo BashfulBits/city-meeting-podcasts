@@ -915,7 +915,7 @@ def test_prune_archive_keeps_undated_records():
 def test_protected_blocks_for_lane():
     # A lane preserves the artifact block(s) it does NOT own from the freshest remote. The audio
     # lane owns both the audio bytes and the media-availability verdict it derives (H16 PR3).
-    assert protected_blocks_for_lane("audio") == frozenset({"transcript"})
+    assert protected_blocks_for_lane("audio") == frozenset({"transcript", "provider_transcript"})
     assert protected_blocks_for_lane("transcribe") == frozenset({"audio", "media_availability"})
     assert protected_blocks_for_lane("align") == frozenset({"audio", "media_availability"})
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
@@ -949,6 +949,21 @@ def test_merge_preserving_foreign_audio_lane_keeps_remote_transcript():
     merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
     assert merged["u1"]["transcript"] == {"key": "tNEW"}  # remote transcript preserved
     assert merged["u1"]["audio"]["url"] == "NEW"  # local audio written (this lane owns it)
+
+
+def test_merge_preserving_foreign_audio_lane_keeps_remote_provider_transcript():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "provider_transcript": {"known_good": {"key": "provider", "confidence": 0.8}},
+        }
+    }
+    local = {"u1": {"uid": "u1", "audio": {"url": "NEW"}, "provider_transcript": None}}
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+    assert merged["u1"]["provider_transcript"] == {
+        "known_good": {"key": "provider", "confidence": 0.8}
+    }
+    assert merged["u1"]["audio"]["url"] == "NEW"
 
 
 def test_merge_preserving_foreign_transcribe_lane_keeps_remote_availability():
