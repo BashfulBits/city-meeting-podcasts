@@ -218,6 +218,12 @@ defaults:
   compute_backends:
     modal: { monthly_gpu_seconds: 108000, max_inflight: 8 }   # ≈ free credits — pin to the live plan
     beam:  { monthly_gpu_seconds: 108000, max_inflight: 8 }
+  # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull
+  # workers (H14b/H14c) claim against is DORMANT until those workers exist, so `compute reconcile`
+  # skips its sweep by default — otherwise it spends one R2 GET per pending transcript item only to
+  # find every lease absent (cheap Class-B, but pointless and backlog-scaled). Flip to true when
+  # external pull workers are live so a crashed worker's claim is reclaimed/requeued.
+  work_lease_reaper_enabled: false
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

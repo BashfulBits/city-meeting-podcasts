@@ -2,15 +2,17 @@
 """Live validation of the H17 R2/CAS control plane (review/17 + review/18).
 
 Exercises the *real* plumbing — ``RoutingStorage`` routing, native R2 compare-and-swap
-(``put_cas``/``get_bytes``), and the Stage-2 work-lease ledger (``claim``/``renew``/``release``/
-``reap``) — against **live B2 + R2** from a runner, so you can confirm credentials, routing, and CAS
-semantics work end-to-end **before** any production data flows through the new pipeline (i.e. before
+(``put_cas``/``get_bytes``), the Stage-2 work-lease ledger (``claim``/``renew``/``release``/
+``reap``), and the provider concurrency-slot pool (``DistributedProviderLeasePool``) — against
+**live B2 + R2** from a runner, so you can confirm credentials, routing, and CAS semantics work
+end-to-end **before** any production data flows through the new pipeline (i.e. before / right after
 flipping ``audio_storage_backend`` to ``routing``).
 
-**It never touches production data.** All objects are written under a unique scratch namespace —
-``work-leases/__validate__/<run-id>/…`` (a coordination prefix, so the router sends them to R2) and
-deleted on exit. The production discovery index never references ``__validate__``, so ``reconcile``
-never sweeps these, and the real budget/lease keys are not read or written.
+**It never touches production data.** All objects are written under unique scratch namespaces —
+``work-leases/__validate__/<run-id>/…`` and ``provider-leases/__validate__-<run-id>…/…`` (both
+coordination prefixes, so the router sends them to R2) and deleted on exit. The production discovery
+index never references ``__validate__``, so ``reconcile`` never sweeps these, and the real
+budget/lease/slot keys are not read or written.
 
 Required env (same as ``r2_from_env`` + ``b2_from_env``):
   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL
@@ -28,6 +30,7 @@ import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from citypods.http import StopRequested
 from citypods.ops import work_leases as wl
 from citypods.storage import CASConflict
 
@@ -113,6 +116,94 @@ def validate(storage, *, run_id: str, now: datetime | None = None) -> dict:
         _check(results, "lease_reaper_requeues_expired", reaped["requeued"] == 1, str(reaped))
     except Exception as exc:  # noqa: BLE001
         _check(results, "lease_ledger", False, f"unexpected error: {exc!r}")
+
+    # 4) Provider concurrency slots: drive the real pool end-to-end on R2. Two pools fill a 2-slot
+    #    domain (independent slot objects / ETags), a third caller cannot acquire while both are
+    #    held, and releasing frees the slot — proof of the per-slot CAS protocol over live routing.
+    from citypods.provider_leases import DistributedProviderLeasePool
+
+    lease_domain = f"validate-{run_id}.example".lower()
+    lease_url = f"https://{lease_domain}/probe"
+    lease_cfg = {lease_domain: {"slots": 2, "ttl_seconds": 3600, "poll_seconds": 0.01}}
+    pool_a = DistributedProviderLeasePool()
+    pool_b = DistributedProviderLeasePool()
+    pool_c = DistributedProviderLeasePool()
+    for pool in (pool_a, pool_b, pool_c):
+        pool.configure(storage, lease_cfg)
+    created.append(pool_a._slot_key(lease_domain, 0))
+    created.append(pool_a._slot_key(lease_domain, 1))
+
+    def _held_slots() -> int:
+        # Release is an atomic CAS tombstone (``state=released``), not a delete, so a freed slot
+        # persists as an object — count only those still HELD (compare by state, which is
+        # independent of the validator's logical ``now`` vs the pool's wall-clock expiry).
+        held = 0
+        for i in (0, 1):
+            got = storage.get_bytes(pool_a._slot_key(lease_domain, i))
+            if got is None:
+                continue
+            try:
+                if json.loads(got[0]).get("state") != "released":
+                    held += 1
+            except (ValueError, TypeError):
+                held += 1
+        return held
+
+    try:
+        # held_a stays held across the cap check; held_b is released first to observe the staged
+        # held→1→0 transition. try/finally guarantees both are released even if a check throws, so
+        # a failure never leaves a live holder (whose renewal thread keeps re-claiming) behind for
+        # cleanup to race.
+        held_a = pool_a.slots([lease_url])
+        held_a.__enter__()
+        try:
+            held_b = pool_b.slots([lease_url])
+            held_b.__enter__()
+            try:
+                _check(
+                    results,
+                    "provider_slots_acquire",
+                    _held_slots() == 2,
+                    f"{_held_slots()}/2 slots held",
+                )
+
+                # A third caller, given a stop budget that fires after one full sweep, must not
+                # acquire while both slots are held — proof the distributed cap holds across pools.
+                sweeps = {"n": 0}
+
+                def _stop_after_one_sweep() -> bool:
+                    sweeps["n"] += 1
+                    return sweeps["n"] > 1
+
+                try:
+                    with pool_c.slots([lease_url], stop=_stop_after_one_sweep):
+                        _check(
+                            results,
+                            "provider_slots_cap_blocks",
+                            False,
+                            "third caller wrongly acquired",
+                        )
+                except StopRequested:
+                    _check(
+                        results,
+                        "provider_slots_cap_blocks",
+                        True,
+                        "third caller blocked while full",
+                    )
+            finally:
+                held_b.__exit__(None, None, None)
+            after_one = _held_slots()  # one released → exactly one slot object remains
+        finally:
+            held_a.__exit__(None, None, None)
+        after_both = _held_slots()  # both released → no slot objects remain
+        _check(
+            results,
+            "provider_slots_release",
+            after_one == 1 and after_both == 0,
+            f"held→{after_one}→{after_both} as slots release",
+        )
+    except Exception as exc:  # noqa: BLE001
+        _check(results, "provider_slots", False, f"unexpected error: {exc!r}")
 
     # Cleanup: delete every scratch object we created (best-effort; never fail the run on cleanup).
     cleaned = 0

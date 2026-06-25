@@ -1,24 +1,44 @@
-"""Storage-backed provider leases shared by sharded workflow jobs.
+"""Cross-process provider concurrency slots, held as per-slot CAS objects (H17 PR6).
 
 The in-process ``HostRateLimiter`` is still useful for threads inside one Python process, but
-GitHub Actions audio shards are separate processes and cannot see each other's semaphores.  This
-module adds a tiny object-storage soft lease: a worker writes a unique candidate object, lists the
-active candidates, and proceeds only when its candidate sorts into the configured winner set.
+GitHub Actions audio shards are separate processes and cannot see each other's semaphores. This
+module adds a small object-storage lease so an N-slot host cap (e.g. "≤6 concurrent fetches to
+granicus.com") holds *across* those processes.
+
+**Model — per-slot compare-and-swap (review/17 §5, review/18 §4).** A domain's N slots are N fixed
+keys ``provider-leases/<domain>/slot-<i>.json`` (``i`` in ``0..N-1``), each an independent CAS
+object. To acquire, a worker walks the slots from a per-owner offset and ``get_bytes`` each (a cheap
+Class-B read); it claims a free slot with ``put_cas(if_none_match="*")`` or an *expired* slot (a
+dead worker) with ``put_cas(if_match=<etag>)``. The independent ETags mean two workers claiming two
+*different* slots never contend — the same retry-storm mitigation the Stage-2 ledger uses for
+per-item leases, applied here to a fixed slot set. A held slot is renewed by a background CAS
+rewrite and released by a delete.
+
+This replaces the previous list-and-sort FIFO emulation (write a candidate object per waiter, then
+**list** the prefix every poll to find the winners). Listing is itself a Class-A op on R2, so a
+blocked waiter used to burn Class-A continuously; the CAS model spends Class-A only on a *claim*,
+*renewal*, or *release* — never while merely waiting. The trade-off is that waiters no longer
+acquire in strict FIFO arrival order (they poll and take whatever frees); the contract is the
+concurrency *cap*, not fairness, so this is intended. The cap is **soft**: a reap-vs-release race
+can briefly allow N+1 holders, which is acceptable for a rate limiter.
+
+The pool needs a CAS-capable backend (R2, via ``RoutingStorage`` routing the ``provider-leases/``
+prefix). On a non-CAS backend (b2-only / local dev) the distributed layer disables and only the
+in-process ``HostRateLimiter`` applies — typically single-process there, so the cap still holds.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
-import tempfile
 import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from citypods.http import StopRequested
@@ -30,13 +50,15 @@ class ProviderLeaseRule:
     slots: int
     ttl_seconds: float = 3600.0
     poll_seconds: float = 2.0
+    # ``settle_seconds`` is retained for config back-compat but is unused by the CAS model (there is
+    # no write-then-settle race to absorb — a claim is a single atomic compare-and-swap).
     settle_seconds: float = 0.25
 
 
 @dataclass(frozen=True)
 class _LeaseMetadata:
-    """Ownership/run context for a lease candidate, parsed from its payload (or ``None`` fields for
-    a legacy/unreadable payload)."""
+    """Ownership/run context for a slot holder, parsed from its payload (or ``None`` fields for a
+    legacy/unreadable payload). Used only to enrich stale-reap log lines."""
 
     owner: str | None = None
     state: str | None = None
@@ -64,15 +86,17 @@ class _LeaseMetadata:
 
 @dataclass
 class ProviderLease:
-    """One acquired distributed slot with a renewable storage-backed claim."""
+    """One acquired distributed slot with a renewable CAS-backed claim."""
 
     pool: DistributedProviderLeasePool
     domain: str
     key: str
+    etag: str | None
     rule: ProviderLeaseRule
     wait_seconds: float
     _stop: threading.Event = field(default_factory=threading.Event)
     _thread: threading.Thread | None = None
+    _lost: bool = False
 
     def start_renewal(self) -> None:
         if not self.key:
@@ -94,7 +118,7 @@ class ProviderLease:
 
 
 class DistributedProviderLeasePool:
-    """Cross-process provider concurrency slots stored as object-storage lease files."""
+    """Cross-process provider concurrency slots, held as per-slot CAS objects on R2."""
 
     def __init__(self, *, prefix: str = "provider-leases") -> None:
         self._prefix = prefix.strip("/")
@@ -106,9 +130,6 @@ class DistributedProviderLeasePool:
         self._guard = threading.Lock()
         self._telemetry: dict[str, dict[str, int | float]] = {}
         self._waiting: dict[str, int] = {}
-        self._expiry_cache: dict[
-            str, tuple[datetime | None, datetime | None, _LeaseMetadata | None]
-        ] = {}
 
     def configure(
         self,
@@ -121,13 +142,13 @@ class DistributedProviderLeasePool:
         """Replace lease configuration.
 
         ``config`` accepts either ``{"granicus.com": 6}`` or
-        ``{"granicus.com": {"slots": 6, "ttl_seconds": 3600, "poll_seconds": 2}}``. Missing
-        storage or a backend without the required methods disables the pool. The protocol uses only
-        ordinary object upload/list/delete operations so it works with B2's S3-compatible API.
-        ``get_file`` is optional: when available it makes payload expiry authoritative; otherwise
-        object modification time plus TTL is the compatibility fallback. ``shard`` is this process's
-        ``K/N`` matrix shard label (the H6b sharded workflows), recorded in lease payloads/logs
-        alongside the GitHub run/job env vars.
+        ``{"granicus.com": {"slots": 6, "ttl_seconds": 3600, "poll_seconds": 2}}``. The distributed
+        layer needs a **CAS-capable** backend (``get_bytes``/``put_cas``/``delete`` and a truthy
+        ``cas_capable``) — in production that is R2 via ``RoutingStorage`` routing the
+        ``provider-leases/`` prefix. A missing storage, a backend without those methods, or a
+        non-CAS backend disables the pool, and only the in-process ``HostRateLimiter`` applies.
+        ``shard`` is this process's ``K/N`` matrix shard label (the H6b sharded workflows), recorded
+        in slot payloads/logs alongside the GitHub run/job env vars.
         """
         rules: dict[str, ProviderLeaseRule] = {}
         for domain, raw in (config or {}).items():
@@ -135,9 +156,12 @@ class DistributedProviderLeasePool:
             if rule is not None:
                 rules[str(domain).strip().lower()] = rule
 
-        required = ("put_file", "list_objects", "delete")
+        required = ("get_bytes", "put_cas", "delete")
+        cas_ok = bool(getattr(storage, "cas_capable", False))
         usable_storage = (
-            storage if storage is not None and all(hasattr(storage, m) for m in required) else None
+            storage
+            if storage is not None and cas_ok and all(hasattr(storage, m) for m in required)
+            else None
         )
         with self._guard:
             self._storage = usable_storage
@@ -146,15 +170,14 @@ class DistributedProviderLeasePool:
             self._shard = shard
             self._telemetry = {}
             self._waiting = {}
-            self._expiry_cache = {}
         if rules and usable_storage is None and log is not None:
-            _emit(log, "[enrich] provider lease disabled: storage backend lacks lease support")
+            _emit(log, "[enrich] provider lease disabled: storage backend lacks CAS support")
 
     def slots(
         self, urls: Iterable[str], *, stop: Callable[[], bool] | None = None
     ) -> _DistributedSlots:
-        """``stop``, if given, is polled once per fairness-queue iteration (every
-        ``rule.poll_seconds``); if it fires before this process's candidate wins, raises
+        """``stop``, if given, is polled once per acquire iteration (every ``rule.poll_seconds``);
+        if it fires before this process claims a slot, raises
         :class:`~citypods.http.StopRequested` instead of waiting out the queue."""
         keys: set[str] = set()
         for url in urls:
@@ -198,9 +221,7 @@ class DistributedProviderLeasePool:
             return {domain: count for domain, count in self._waiting.items() if count > 0}
 
     def _acquire(self, domain: str, *, stop: Callable[[], bool] | None = None) -> ProviderLease:
-        key: str | None = None
         started = time.monotonic()
-        last_renewed = started
         waiting_logged = False
         counted = False
         try:
@@ -212,38 +233,14 @@ class DistributedProviderLeasePool:
                     rule = self._rules[domain]
                     log = self._log
                 if storage is None:
-                    return ProviderLease(self, domain, "", rule, 0.0)
+                    return ProviderLease(self, domain, "", None, rule, 0.0)
                 if not counted:
                     with self._guard:
                         self._waiting[domain] = self._waiting.get(domain, 0) + 1
                     counted = True
 
-                if key is None:
-                    key = self._candidate_key(domain)
-                    self._write_candidate(storage, key, self._payload(domain, rule, acquired=False))
-                    if rule.settle_seconds > 0:
-                        time.sleep(rule.settle_seconds)
-
-                now = time.monotonic()
-                if now - last_renewed >= self._renew_interval(rule):
-                    self._write_candidate(storage, key, self._payload(domain, rule, acquired=False))
-                    self._increment(domain, "lease_renewals")
-                    last_renewed = now
-
-                self._drop_stale(storage, domain, rule)
-                winners = self._winners(storage, domain, rule)
-                if key in winners:
-                    wait_seconds = time.monotonic() - started
-                    lease = ProviderLease(self, domain, key, rule, wait_seconds)
-                    self._write_candidate(storage, key, self._payload(domain, rule, acquired=True))
-                    self._record_acquisition(domain, wait_seconds)
-                    if log is not None:
-                        _emit(
-                            log,
-                            f"[enrich] provider lease acquired domain={domain} "
-                            f"wait_seconds={wait_seconds:.1f}",
-                        )
-                    lease.start_renewal()
+                lease = self._try_one_pass(storage, domain, rule, started, log)
+                if lease is not None:
                     return lease
 
                 if not waiting_logged and log is not None:
@@ -252,21 +249,91 @@ class DistributedProviderLeasePool:
                         f"[enrich] provider lease wait domain={domain} slots={rule.slots}",
                     )
                     waiting_logged = True
-                time.sleep(max(0.1, rule.poll_seconds))
-        except BaseException:
-            if key is not None:
-                self._delete_key(key)
-            raise
+                time.sleep(max(0.05, rule.poll_seconds))
         finally:
             if counted:
                 with self._guard:
                     self._waiting[domain] = max(0, self._waiting.get(domain, 0) - 1)
 
-    def _write_candidate(self, storage: StorageBackend, key: str, payload: str) -> None:
-        with tempfile.TemporaryDirectory(prefix="citypods_lease_") as tmp:
-            path = Path(tmp) / "lease.json"
-            path.write_text(payload, encoding="utf-8")
-            storage.put_file(key, path, "application/json; charset=utf-8")
+    def _try_one_pass(
+        self,
+        storage: StorageBackend,
+        domain: str,
+        rule: ProviderLeaseRule,
+        started: float,
+        log: Callable[[str], None] | None,
+    ) -> ProviderLease | None:
+        """One sweep over the domain's slots from this owner's offset; claims the first free or
+        expired slot via CAS. Returns the held lease, or ``None`` if every slot is occupied."""
+        offset = self._scan_offset(domain, rule.slots)
+        now = datetime.now(UTC)
+        for j in range(rule.slots):
+            index = (offset + j) % rule.slots
+            key = self._slot_key(domain, index)
+            got = storage.get_bytes(key)  # Class-B read-before-claim
+            if got is None:
+                etag = self._try_claim(storage, key, domain, rule, if_none_match="*")
+                if etag is not None:
+                    return self._finish(domain, key, etag, rule, started, log)
+                continue  # a sibling claimed this empty slot first
+            data, current_etag = got
+            expired, metadata = self._expiry(data, now, rule)
+            if not expired:
+                continue  # held by a live worker
+            etag = self._try_claim(storage, key, domain, rule, if_match=current_etag)
+            if etag is not None:
+                self._increment(domain, "stale_leases_reaped")
+                if log is not None:
+                    detail = metadata.detail() if metadata is not None else ""
+                    _emit(log, f"[enrich] provider lease stale reaped domain={domain}{detail}")
+                return self._finish(domain, key, etag, rule, started, log)
+        return None
+
+    def _finish(
+        self,
+        domain: str,
+        key: str,
+        etag: str,
+        rule: ProviderLeaseRule,
+        started: float,
+        log: Callable[[str], None] | None,
+    ) -> ProviderLease:
+        wait_seconds = time.monotonic() - started
+        lease = ProviderLease(self, domain, key, etag, rule, wait_seconds)
+        self._record_acquisition(domain, wait_seconds)
+        if log is not None:
+            _emit(
+                log,
+                f"[enrich] provider lease acquired domain={domain} wait_seconds={wait_seconds:.1f}",
+            )
+        lease.start_renewal()
+        return lease
+
+    def _try_claim(
+        self,
+        storage: StorageBackend,
+        key: str,
+        domain: str,
+        rule: ProviderLeaseRule,
+        *,
+        if_none_match: str | None = None,
+        if_match: str | None = None,
+    ) -> str | None:
+        """Write our claim to ``key`` via CAS; return the new ETag, or ``None`` on a 412 conflict
+        (a sibling won the slot between our read and our write)."""
+        from citypods.storage import CASConflict
+
+        try:
+            _url, etag = storage.put_cas(
+                key,
+                self._payload(domain, rule),
+                "application/json",
+                if_none_match=if_none_match,
+                if_match=if_match,
+            )
+            return etag
+        except CASConflict:
+            return None
 
     def _release(self, lease: ProviderLease) -> None:
         if not lease.key:
@@ -276,13 +343,47 @@ class DistributedProviderLeasePool:
             log = self._log
         if storage is None:
             return
+        if lease._lost:
+            # The renewal thread observed a CAS conflict — the slot was reaped and re-claimed by
+            # another worker, so it is no longer ours to release.
+            if log is not None:
+                detail = self._self_metadata(state="released").detail()
+                _emit(
+                    log,
+                    f"[enrich] provider lease release skipped (slot reaped) "
+                    f"domain={lease.domain}{detail}",
+                )
+            return
+        from citypods.storage import CASConflict
+
         try:
-            storage.delete(lease.key)
-            with self._guard:
-                self._expiry_cache.pop(lease.key, None)
+            # Atomic ownership-checked release: CAS-write an immediately-expired "released"
+            # tombstone guarded by our ETag (a single conditional PUT, not a read-then-delete that
+            # races). If we still own the slot, this frees it — the next acquirer reclaims the
+            # expired object via if_match. If ownership lapsed (over-TTL renewal error/stall) and
+            # another worker reclaimed it, the if_match fails and we leave their live lease alone.
+            # We do NOT delete: there is no conditional-DELETE primitive (a blind delete could evict
+            # a fresh holder), the tombstone reuses the conditional PUT that R2 is validated to
+            # honor, and at most N tombstones (one per slot) ever exist per domain — each reclaimed
+            # /overwritten on the next acquire, so they don't accumulate.
+            storage.put_cas(
+                lease.key,
+                self._released_payload(lease.domain),
+                "application/json; charset=utf-8",
+                if_match=lease.etag,
+            )
             if log is not None:
                 detail = self._self_metadata(state="released").detail()
                 _emit(log, f"[enrich] provider lease released domain={lease.domain}{detail}")
+        except CASConflict:
+            # Another worker reclaimed the slot during an over-TTL lapse — not ours to free.
+            if log is not None:
+                detail = self._self_metadata(state="released").detail()
+                _emit(
+                    log,
+                    f"[enrich] provider lease release skipped (slot reclaimed by another owner) "
+                    f"domain={lease.domain}{detail}",
+                )
         except Exception as exc:  # noqa: BLE001 - release should not mask the encode result
             if log is not None:
                 detail = self._self_metadata(state="released").detail()
@@ -291,18 +392,9 @@ class DistributedProviderLeasePool:
                     f"[enrich] provider lease release failed domain={lease.domain}{detail}: {exc}",
                 )
 
-    def _delete_key(self, key: str) -> None:
-        with self._guard:
-            storage = self._storage
-        if storage is not None:
-            try:
-                storage.delete(key)
-                with self._guard:
-                    self._expiry_cache.pop(key, None)
-            except Exception:  # noqa: BLE001 - cleanup must preserve the original exception
-                pass
-
     def _renew_while_held(self, lease: ProviderLease) -> None:
+        from citypods.storage import CASConflict
+
         interval = self._renew_interval(lease.rule)
         while not lease._stop.wait(interval):
             with self._guard:
@@ -311,12 +403,27 @@ class DistributedProviderLeasePool:
             if storage is None:
                 return
             try:
-                self._write_candidate(
-                    storage,
+                _url, etag = storage.put_cas(
                     lease.key,
-                    self._payload(lease.domain, lease.rule, acquired=True),
+                    self._payload(lease.domain, lease.rule),
+                    "application/json",
+                    if_match=lease.etag,
                 )
+                lease.etag = etag
                 self._increment(lease.domain, "lease_renewals")
+            except CASConflict:
+                # We over-ran the TTL: a reaper declared us stale and another worker took the slot.
+                # Stop renewing and flag the lease so ``release`` does not delete a slot we no
+                # longer own. (Generous TTL + a renew cadence of TTL/3 makes this rare.)
+                lease._lost = True
+                if log is not None:
+                    detail = self._self_metadata(state="acquired").detail()
+                    _emit(
+                        log,
+                        f"[enrich] provider lease renewal lost slot (reaped) "
+                        f"domain={lease.domain}{detail}",
+                    )
+                return
             except Exception as exc:  # noqa: BLE001 - the holder continues until normal release
                 if log is not None:
                     detail = self._self_metadata(state="acquired").detail()
@@ -330,75 +437,34 @@ class DistributedProviderLeasePool:
     def _renew_interval(rule: ProviderLeaseRule) -> float:
         return max(0.05, min(60.0, max(0.15, rule.ttl_seconds) / 3.0))
 
-    def _drop_stale(self, storage: StorageBackend, domain: str, rule: ProviderLeaseRule) -> None:
-        now = datetime.now(UTC)
-        prefix = self._domain_prefix(domain)
-        for key, modified in storage.list_objects(prefix):
-            expires_at, metadata = self._candidate_expiry(storage, key, modified, rule)
-            if expires_at is not None and expires_at < now:
-                storage.delete(key)
-                with self._guard:
-                    self._expiry_cache.pop(key, None)
-                self._increment(domain, "stale_leases_reaped")
-                with self._guard:
-                    log = self._log
-                if log is not None:
-                    detail = metadata.detail() if metadata is not None else ""
-                    _emit(
-                        log,
-                        f"[enrich] provider lease stale reaped domain={domain}{detail}",
-                    )
-
-    def _winners(self, storage: StorageBackend, domain: str, rule: ProviderLeaseRule) -> set[str]:
-        prefix = self._domain_prefix(domain)
-        # Candidate keys begin with time.time_ns(), so key order is stable FIFO order. Renewal
-        # rewrites the object and changes its modification time; sorting by modification time would
-        # incorrectly demote an active holder behind waiters and allow overlapping winners.
-        candidates = sorted(key for key, _modified in storage.list_objects(prefix))
-        return set(candidates[: rule.slots])
-
-    def _candidate_expiry(
-        self,
-        storage: StorageBackend,
-        key: str,
-        modified: datetime | None,
-        rule: ProviderLeaseRule,
-    ) -> tuple[datetime | None, _LeaseMetadata | None]:
-        if hasattr(storage, "get_file"):
-            with self._guard:
-                cached = self._expiry_cache.get(key)
-            if cached is not None and modified is not None and cached[0] == modified:
-                return cached[1], cached[2]
-            try:
-                with tempfile.TemporaryDirectory(prefix="citypods_lease_read_") as tmp:
-                    path = Path(tmp) / "lease.json"
-                    if storage.get_file(key, path):
-                        payload = json.loads(path.read_text(encoding="utf-8"))
-                        expires_raw = payload.get("expires_at")
-                        expires = datetime.fromisoformat(expires_raw) if expires_raw else None
-                        if expires is not None and expires.tzinfo is None:
-                            expires = expires.replace(tzinfo=UTC)
-                        metadata = _LeaseMetadata(
-                            owner=str(payload.get("owner") or "") or None,
-                            state=str(payload.get("state") or "") or None,
-                            run_id=str(payload.get("github_run_id") or "") or None,
-                            run_attempt=str(payload.get("github_run_attempt") or "") or None,
-                            job=str(payload.get("github_job") or "") or None,
-                            shard=str(payload.get("github_shard") or "") or None,
-                        )
-                        with self._guard:
-                            self._expiry_cache[key] = (modified, expires, metadata)
-                        return expires, metadata
-            except Exception:  # noqa: BLE001 - optional payload read falls back to object metadata
-                pass
-        if modified is None:
-            return None, None
-        if modified.tzinfo is None:
-            modified = modified.replace(tzinfo=UTC)
-        return modified + timedelta(seconds=max(0.1, rule.ttl_seconds)), None
+    def _expiry(
+        self, data: bytes, now: datetime, rule: ProviderLeaseRule
+    ) -> tuple[bool, _LeaseMetadata | None]:
+        """Decide whether a slot payload represents an expired (reclaimable) holder, and parse its
+        ownership metadata for logging. An unreadable payload or one missing ``expires_at`` is
+        treated as expired so a corrupt slot can never wedge the domain forever."""
+        try:
+            payload = json.loads(data)
+            raw = payload.get("expires_at")
+            expires = datetime.fromisoformat(raw) if raw else None
+            if expires is not None and expires.tzinfo is None:
+                expires = expires.replace(tzinfo=UTC)
+            metadata = _LeaseMetadata(
+                owner=str(payload.get("owner") or "") or None,
+                state=str(payload.get("state") or "") or None,
+                run_id=str(payload.get("github_run_id") or "") or None,
+                run_attempt=str(payload.get("github_run_attempt") or "") or None,
+                job=str(payload.get("github_job") or "") or None,
+                shard=str(payload.get("github_shard") or "") or None,
+            )
+        except (AttributeError, TypeError, ValueError):
+            return True, None
+        if expires is None:
+            return True, metadata
+        return expires <= now, metadata
 
     def _self_metadata(self, *, state: str) -> _LeaseMetadata:
-        """Ownership/run context for a candidate this process writes or just released."""
+        """Ownership/run context for a slot this process holds or just released."""
         with self._guard:
             shard = self._shard
         return _LeaseMetadata(
@@ -410,15 +476,27 @@ class DistributedProviderLeasePool:
             shard=shard,
         )
 
-    def _payload(self, domain: str, rule: ProviderLeaseRule, *, acquired: bool) -> str:
+    def _payload(self, domain: str, rule: ProviderLeaseRule) -> bytes:
         now = datetime.now(UTC)
-        metadata = self._self_metadata(state="acquired" if acquired else "waiting")
+        return self._encode_payload(
+            domain, state="acquired", expires_at=now + timedelta(seconds=rule.ttl_seconds)
+        )
+
+    def _released_payload(self, domain: str) -> bytes:
+        """A tombstone for an explicitly released slot: ``state=released`` and an already-past
+        expiry, so the next acquirer treats it as a free/reclaimable slot."""
+        now = datetime.now(UTC)
+        return self._encode_payload(domain, state="released", expires_at=now)
+
+    def _encode_payload(self, domain: str, *, state: str, expires_at: datetime) -> bytes:
+        now = datetime.now(UTC)
+        metadata = self._self_metadata(state=state)
         fields = {
             "owner": metadata.owner,
             "domain": domain,
             "state": metadata.state,
             "renewed_at": now.isoformat(),
-            "expires_at": (now + timedelta(seconds=rule.ttl_seconds)).isoformat(),
+            "expires_at": expires_at.isoformat(),
         }
         extra = {
             "github_run_id": metadata.run_id,
@@ -427,7 +505,7 @@ class DistributedProviderLeasePool:
             "github_shard": metadata.shard,
         }
         fields.update({key: value for key, value in extra.items() if value})
-        return json.dumps(fields, sort_keys=True)
+        return json.dumps(fields, sort_keys=True).encode("utf-8")
 
     def _record_acquisition(self, domain: str, wait_seconds: float) -> None:
         with self._guard:
@@ -448,9 +526,16 @@ class DistributedProviderLeasePool:
     def _domain_prefix(self, domain: str) -> str:
         return f"{self._prefix}/{quote(domain, safe='')}/"
 
-    def _candidate_key(self, domain: str) -> str:
-        token = quote(f"{time.time_ns()}:{self._owner}:{uuid.uuid4().hex}", safe="")
-        return f"{self._domain_prefix(domain)}{token}.json"
+    def _slot_key(self, domain: str, index: int) -> str:
+        return f"{self._domain_prefix(domain)}slot-{index}.json"
+
+    def _scan_offset(self, domain: str, slots: int) -> int:
+        """Per-owner start offset over the slot set, so N workers target N different slots first
+        instead of all colliding on slot 0 (review/18 §4.6 lever 2, applied to slots)."""
+        if slots <= 1:
+            return 0
+        digest = hashlib.sha1(f"{self._owner}:{domain}".encode()).hexdigest()
+        return int(digest, 16) % slots
 
 
 class _DistributedSlots:

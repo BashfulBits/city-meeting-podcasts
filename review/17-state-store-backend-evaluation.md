@@ -151,7 +151,7 @@ wins on "no new dependency, already wired, $0," the KV/DO option is held as a tr
 | `state/sources/<key>/episodes.json` | audio + ASR lanes; **RMW + foreign-block merge** | **yes (near-term)** | no (per-uid lease ⇒ single writer) | **Stay B2 → managed search-DB @ Phase R** (decided; see below) |
 | `state/work.json` (H5 manifest) | reconcile + lanes; merge | **yes** (claim work) | **yes** (lease claims) | **→ R2 now** → SQL at Phase R |
 | `state/compute_budget.json` | reconcile + dispatch coordinator | **yes** | **yes** (atomic decrement) | **→ R2 now** (overspend risk) |
-| `provider-leases/**` | all shards; high-freq | yes | **yes** (atomic FIFO) | **→ R2 now** |
+| `provider-leases/**` | all shards; high-freq | yes | **yes** (per-slot CAS) | **→ R2 (H17 PR6, done)** — per-slot CAS objects, FIFO dropped for cap-only |
 | `state/asr_runtime_log.json` | all ASR shards; merge-union; telemetry | indirectly | no (merge-tolerant) | **Stay B2** |
 | `state/run_history.jsonl` + `run_events/` | one writer / run; append | no | no | **Stay B2** (free writes) |
 
@@ -252,9 +252,15 @@ Grounded in the existing seams (`citypods/storage/`):
           raise
   ```
 - **Coordination redesign.** Re-implement `provider_leases.py` and the H5 work/budget lease writes on R2
-  CAS, retiring the one-slot FIFO emulation: lease acquire = conditional create; renew/release = CAS
-  update; budget decrement = CAS read-modify-write with retry. Keep a serialization guard only on the
-  **hottest keys** to avoid CAS retry-storms under throttle bursts (bounded backoff + jitter).
+  CAS, retiring the candidate-list FIFO emulation: lease acquire = conditional create; renew/release =
+  CAS update; budget decrement = CAS read-modify-write with retry. The CAS retry-storm is avoided not by
+  a serialization guard but by **independent ETags** — work-leases are per `(source,uid)`, and provider
+  leases are per *slot* (`provider-leases/<domain>/slot-<i>.json`), so concurrent claims of different
+  items/slots never contend. **Shipped (H17 PR6):** `provider_leases.py` now uses per-slot CAS objects;
+  a worker reads a slot (Class-B) and claims a free one with `if_none_match="*"` or an expired one with
+  `if_match=<etag>`, never listing. FIFO arrival order is dropped (the contract is the concurrency cap,
+  not fairness) and the soft cap can briefly admit N+1 on a reap-vs-release race — both fine for a rate
+  limiter. The pool degrades to in-process-only on a non-CAS backend.
 - **External-worker access (H13/H14).** Document the access path per artifact: blobs and coordination via
   **S3 creds** to B2/R2; Phase-R records via **Turso (direct libSQL/HTTP)** or **D1 (Worker / D1 HTTP
   API)**. This is the concrete payoff for "reliability as we expand to non-Actions runners."

@@ -1,13 +1,16 @@
-"""Tests for cross-shard provider leases."""
+"""Tests for cross-process provider leases (H17 PR6: per-slot CAS objects).
+
+A small **thread-safe** in-memory CAS bucket stands in for R2. The pool now needs real
+compare-and-swap (``get_bytes``/``put_cas``/``delete`` + ``cas_capable``); it never lists the slot
+prefix, so the fake's ``list_objects`` raises if the pool ever calls it.
+"""
 
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -16,42 +19,59 @@ from citypods.provider_leases import (
     DistributedProviderLeasePool,
     ProviderLeaseRule,
 )
-from citypods.storage.local import LocalStorage
+from tests._cas_fake import MemCAS
+
+URL = "https://archive-video.granicus.com/x.mp4"
 
 
 def _pool(
-    store: LocalStorage,
+    store: MemCAS,
     *,
+    slots: int = 1,
     ttl_seconds: float = 60,
     log=None,
+    shard: str | None = None,
 ) -> DistributedProviderLeasePool:
     pool = DistributedProviderLeasePool(prefix="test-provider-leases")
     pool.configure(
         store,
         {
             "granicus.com": {
-                "slots": 1,
+                "slots": slots,
                 "ttl_seconds": ttl_seconds,
                 "poll_seconds": 0.01,
-                "settle_seconds": 0.01,
             }
         },
         log=log,
+        shard=shard,
     )
     return pool
 
 
-def test_distributed_provider_lease_blocks_second_pool_until_release(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def _held_count(store: MemCAS, prefix: str = "test-provider-leases/") -> int:
+    """Count slots currently HELD. Release is an atomic CAS tombstone write (no delete), so a freed
+    slot persists as an expired ``state == 'released'`` object — present but not held."""
+    held = 0
+    for key in store.keys(prefix):
+        try:
+            if json.loads(store.objs[key]).get("state") != "released":
+                held += 1
+        except (ValueError, TypeError):
+            held += 1  # unreadable payload — treat as occupying the slot
+    return held
+
+
+def test_distributed_provider_lease_blocks_second_pool_until_release():
+    store = MemCAS()
     first = _pool(store)
     second = _pool(store)
     acquired: list[str] = []
 
     def _waiter():
-        with second.slots(["https://archive-video.granicus.com/x.mp4"]):
+        with second.slots([URL]):
             acquired.append("second")
 
-    with first.slots(["https://archive-video.granicus.com/x.mp4"]):
+    with first.slots([URL]):
         t = threading.Thread(target=_waiter)
         t.start()
         time.sleep(0.05)
@@ -59,55 +79,71 @@ def test_distributed_provider_lease_blocks_second_pool_until_release(tmp_path):
 
     t.join(timeout=1)
     assert acquired == ["second"]
+    assert _held_count(store) == 0  # both released (tombstoned) — no slot held
 
 
-def test_distributed_provider_lease_ignores_unconfigured_domains(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_two_slots_admit_two_holders_and_block_the_third():
+    store = MemCAS()
+    holders = [_pool(store, slots=2) for _ in range(2)]
+    third = _pool(store, slots=2)
+    third_in = threading.Event()
+
+    cm0, cm1 = holders[0].slots([URL]), holders[1].slots([URL])
+    cm0.__enter__()
+    cm1.__enter__()
+    try:
+        assert _held_count(store) == 2
+
+        def _waiter():
+            with third.slots([URL]):
+                third_in.set()
+
+        t = threading.Thread(target=_waiter)
+        t.start()
+        time.sleep(0.05)
+        assert not third_in.is_set()  # both slots full
+        cm1.__exit__(None, None, None)  # free one slot
+        t.join(timeout=1)
+        assert third_in.is_set()
+    finally:
+        cm0.__exit__(None, None, None)
+
+
+def test_distributed_provider_lease_ignores_unconfigured_domains():
+    store = MemCAS()
     pool = _pool(store)
-
     with pool.slots(["https://example.com/x.mp4"]):
         pass
+    assert store.keys("test-provider-leases/") == []
 
-    assert list(store.list_objects("test-provider-leases/")) == []
 
+def test_pool_disabled_when_backend_lacks_cas():
+    """Without CAS (b2-only / local dev) the distributed layer is a no-op; only the in-process
+    HostRateLimiter applies, so ``slots()`` neither blocks nor writes anything."""
 
-def test_distributed_provider_lease_uses_basic_object_storage_api(tmp_path):
-    """B2 does not implement conditional PutObject headers; leases use upload/list/delete only."""
-
-    class BasicStore:
-        name = "basic"
-
-        def __init__(self, inner: LocalStorage) -> None:
-            self.inner = inner
+    class NonCasStore:
+        name = "noncas"
+        cas_capable = False
 
         def put_file(self, key, local_path, content_type):
-            return self.inner.put_file(key, local_path, content_type)
+            raise AssertionError("disabled pool must not write")
 
         def list_objects(self, prefix=""):
-            return self.inner.list_objects(prefix)
+            return []
 
         def delete(self, key):
-            self.inner.delete(key)
+            raise AssertionError("disabled pool must not delete")
 
-    store = BasicStore(LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn"))
+    messages: list[str] = []
     pool = DistributedProviderLeasePool(prefix="test-provider-leases")
     pool.configure(
-        store,
-        {
-            "granicus.com": {
-                "slots": 1,
-                "ttl_seconds": 60,
-                "poll_seconds": 0.01,
-                "settle_seconds": 0,
-            }
-        },
+        NonCasStore(), {"granicus.com": {"slots": 1}}, log=lambda m, **_k: messages.append(m)
     )
 
-    with pool.slots(["https://archive-video.granicus.com/x.mp4"]):
-        keys = [key for key, _ in store.list_objects("test-provider-leases/")]
-        assert len(keys) == 1
+    with pool.slots([URL]):
+        pass  # no-op; nothing raised
 
-    assert list(store.list_objects("test-provider-leases/")) == []
+    assert any("disabled" in m and "CAS" in m for m in messages)
 
 
 def test_renew_interval_is_capped_so_lowering_ttl_costs_no_renewal_traffic():
@@ -124,17 +160,17 @@ def test_renew_interval_is_capped_so_lowering_ttl_costs_no_renewal_traffic():
     assert interval(3600) == interval(900)  # unchanged renewal cadence across the reduction
 
 
-def test_active_lease_renews_past_ttl_and_blocks_waiter(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_active_lease_renews_past_ttl_and_blocks_waiter():
+    store = MemCAS()
     first = _pool(store, ttl_seconds=0.15)
     second = _pool(store, ttl_seconds=0.15)
     acquired = threading.Event()
 
     def _waiter():
-        with second.slots(["https://archive-video.granicus.com/x.mp4"]):
+        with second.slots([URL]):
             acquired.set()
 
-    with first.slots(["https://archive-video.granicus.com/x.mp4"]):
+    with first.slots([URL]):
         thread = threading.Thread(target=_waiter)
         thread.start()
         time.sleep(0.35)  # more than two TTLs; renewal must retain the first slot
@@ -146,52 +182,58 @@ def test_active_lease_renews_past_ttl_and_blocks_waiter(tmp_path):
     assert acquired.is_set()
 
 
-def test_payload_expiry_reaps_stale_lease_even_when_object_mtime_is_fresh(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_expired_slot_is_reclaimed_and_counted():
+    store = MemCAS()
     pool = _pool(store)
-    key = "test-provider-leases/granicus.com/0000000000000000000-dead.json"
-    payload = tmp_path / "lease.json"
-    payload.write_text(
+    key = "test-provider-leases/granicus.com/slot-0.json"
+    store.seed(
+        key,
         json.dumps(
             {
                 "owner": "dead-run:123",
                 "domain": "granicus.com",
                 "expires_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
             }
-        )
+        ).encode(),
     )
-    store.put_file(key, payload, "application/json")
 
-    with pool.slots(["https://archive-video.granicus.com/x.mp4"]):
-        keys = [candidate for candidate, _ in store.list_objects("test-provider-leases/")]
-        assert key not in keys
+    with pool.slots([URL]):
+        # The expired slot was reclaimed (still exactly one slot object, now ours).
+        assert store.keys("test-provider-leases/granicus.com/") == [key]
 
     assert pool.telemetry()["granicus.com"]["stale_leases_reaped"] == 1
+    assert _held_count(store) == 0  # released (tombstoned)
 
 
-def test_stale_reap_log_includes_run_job_shard_and_owner(tmp_path, monkeypatch):
+def test_release_does_not_delete_a_slot_another_worker_reclaimed():
+    # If this holder over-ran its TTL *without* observing a CAS conflict (a renewal network error or
+    # a stalled renew thread) and another worker reclaimed the slot, release must NOT delete the new
+    # holder's live lease — that would silently break the distributed cap.
+    store = MemCAS()
+    pool = _pool(store)
+    slot0 = "test-provider-leases/granicus.com/slot-0.json"
+    lease = pool._acquire("granicus.com")  # holds slot-0 at our ETag
+    assert lease.key == slot0
+
+    # Simulate another worker reclaiming the slot: a new payload under a different ETag.
+    store.seed(slot0, b'{"owner": "other", "domain": "granicus.com", "state": "acquired"}')
+    reclaimer_etag = store.etags[slot0]
+    assert reclaimer_etag != lease.etag
+
+    lease.release()  # stops renewal, then ownership-checked release
+
+    assert store.keys("test-provider-leases/") == [slot0]  # the reclaimer's lease survived
+    assert store.etags[slot0] == reclaimer_etag  # untouched — we did not delete it
+
+
+def test_stale_reap_log_includes_run_job_shard_and_owner(monkeypatch):
     monkeypatch.setenv("GITHUB_RUN_ID", "999")
-    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
-    monkeypatch.setenv("GITHUB_JOB", "audio")
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    store = MemCAS()
     messages: list[str] = []
-    pool = DistributedProviderLeasePool(prefix="test-provider-leases")
-    pool.configure(
-        store,
-        {
-            "granicus.com": {
-                "slots": 1,
-                "ttl_seconds": 60,
-                "poll_seconds": 0.01,
-                "settle_seconds": 0,
-            }
-        },
-        log=lambda msg, **_kw: messages.append(msg),
-        shard="2/4",
-    )
-    key = "test-provider-leases/granicus.com/0000000000000000000-dead.json"
-    payload = tmp_path / "lease.json"
-    payload.write_text(
+    pool = _pool(store, log=lambda msg, **_kw: messages.append(msg), shard="2/4")
+    key = "test-provider-leases/granicus.com/slot-0.json"
+    store.seed(
+        key,
         json.dumps(
             {
                 "owner": "dead-run:123",
@@ -202,11 +244,10 @@ def test_stale_reap_log_includes_run_job_shard_and_owner(tmp_path, monkeypatch):
                 "github_shard": "0/4",
                 "expires_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
             }
-        )
+        ).encode(),
     )
-    store.put_file(key, payload, "application/json")
 
-    with pool.slots(["https://archive-video.granicus.com/x.mp4"]):
+    with pool.slots([URL]):
         pass
 
     reaped = [m for m in messages if "stale reaped" in m]
@@ -218,32 +259,15 @@ def test_stale_reap_log_includes_run_job_shard_and_owner(tmp_path, monkeypatch):
     assert "state=acquired" in reaped[0]
 
 
-def test_stale_reap_log_falls_back_concisely_for_legacy_payload(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_stale_reap_log_falls_back_concisely_for_unreadable_payload():
+    store = MemCAS()
     messages: list[str] = []
-    pool = DistributedProviderLeasePool(prefix="test-provider-leases")
-    pool.configure(
-        store,
-        {
-            "granicus.com": {
-                "slots": 1,
-                "ttl_seconds": 60,
-                "poll_seconds": 0.01,
-                "settle_seconds": 0,
-            }
-        },
-        log=lambda msg, **_kw: messages.append(msg),
-    )
-    # Simulate an unreadable/legacy payload (body is not valid JSON) with a stale modification
-    # time, so only the mtime+TTL fallback applies (no metadata available).
-    key = "test-provider-leases/granicus.com/0000000000000000000-old.json"
-    object_path = tmp_path / "bucket" / key
-    object_path.parent.mkdir(parents=True, exist_ok=True)
-    object_path.write_text("not json", encoding="utf-8")
-    stale_modified = datetime.now(UTC) - timedelta(hours=1)
-    os.utime(object_path, (stale_modified.timestamp(), stale_modified.timestamp()))
+    pool = _pool(store, log=lambda msg, **_kw: messages.append(msg))
+    # An unreadable payload (not valid JSON) is treated as expired so a corrupt slot can't wedge the
+    # domain — but there is no metadata to enrich the log line.
+    store.seed("test-provider-leases/granicus.com/slot-0.json", b"not json")
 
-    with pool.slots(["https://archive-video.granicus.com/x.mp4"]):
+    with pool.slots([URL]):
         pass
 
     reaped = [m for m in messages if "stale reaped" in m]
@@ -251,94 +275,92 @@ def test_stale_reap_log_falls_back_concisely_for_legacy_payload(tmp_path):
     assert reaped[0] == "[enrich] provider lease stale reaped domain=granicus.com"
 
 
-def test_acquire_failure_removes_waiting_candidate(tmp_path):
-    class FailingListStore:
-        name = "failing-list"
+def test_acquire_uncontended_costs_one_read_and_one_write():
+    store = MemCAS()
+    pool = _pool(store, ttl_seconds=3600)  # 60s renew cadence: no renewal during this brief hold
+    cm = pool.slots([URL])
+    cm.__enter__()
+    # read-before-claim (Class-B) + a single claim write (Class-A); no listing.
+    assert (store.class_a, store.class_b) == (1, 1)
+    cm.__exit__(None, None, None)
+    assert store.class_a == 2  # release delete
 
-        def __init__(self, inner: LocalStorage) -> None:
-            self.inner = inner
 
-        def put_file(self, key: str, local_path: Path, content_type: str):
-            return self.inner.put_file(key, local_path, content_type)
+def test_get_bytes_error_propagates_and_writes_nothing():
+    class FailingReadStore(MemCAS):
+        def get_bytes(self, key):
+            raise RuntimeError("read failed")
 
-        def list_objects(self, prefix=""):
-            raise RuntimeError("list failed")
-
-        def delete(self, key: str):
-            self.inner.delete(key)
-
-    inner = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
-    pool = DistributedProviderLeasePool(prefix="test-provider-leases")
-    pool.configure(
-        FailingListStore(inner),
-        {
-            "granicus.com": {
-                "slots": 1,
-                "ttl_seconds": 60,
-                "poll_seconds": 0.01,
-                "settle_seconds": 0,
-            }
-        },
-    )
-
-    with pytest.raises(RuntimeError, match="list failed"):
-        with pool.slots(["https://archive-video.granicus.com/x.mp4"]):
+    store = FailingReadStore()
+    pool = _pool(store)
+    with pytest.raises(RuntimeError, match="read failed"):
+        with pool.slots([URL]):
             pass
+    assert store.keys("test-provider-leases/") == []
 
-    assert list(inner.list_objects("test-provider-leases/")) == []
 
-
-def test_stop_firing_raises_instead_of_blocking_out_the_lease_wait(tmp_path):
-    """A waiter polling for a held lease yields ``StopRequested`` once the run's wall-clock budget
-    expires, instead of blocking until the holder releases (which TTL alone could make minutes)."""
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_stop_firing_raises_instead_of_blocking_out_the_lease_wait():
+    """A waiter polling for a held slot yields ``StopRequested`` once the run's wall-clock budget
+    expires, instead of blocking until the holder releases. The stop must fire *after* contention is
+    established (one full sweep finds the slot held), not on the pre-poll check — otherwise the test
+    would never exercise the blocked path."""
+    store = MemCAS()
     first = _pool(store)
     second = _pool(store)
+    holder_acquired = threading.Event()
     holder_released = threading.Event()
 
     def hold():
-        with first.slots(["https://archive-video.granicus.com/x.mp4"]):
+        with first.slots([URL]):
+            holder_acquired.set()
             holder_released.wait(timeout=2.0)
 
     t = threading.Thread(target=hold)
     t.start()
     try:
+        assert holder_acquired.wait(timeout=1)  # the slot is genuinely held before we contend
+        calls = {"n": 0}
+
+        def stop() -> bool:
+            calls["n"] += 1
+            return calls["n"] > 1  # let one sweep observe the held slot, then fire
+
         with pytest.raises(StopRequested):
-            with second.slots(["https://archive-video.granicus.com/x.mp4"], stop=lambda: True):
+            with second.slots([URL], stop=stop):
                 pass
+        assert calls["n"] >= 2  # proves we polled the held slot before yielding
+
     finally:
         holder_released.set()
         t.join()
 
-    # The aborted waiter's own candidate key must be cleaned up — only the holder's lease key
-    # (now released too) may remain.
-    assert list(store.list_objects("test-provider-leases/")) == []
+    assert _held_count(store) == 0  # holder released; waiter wrote nothing
 
 
-def test_stop_never_firing_still_acquires_lease(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_stop_never_firing_still_acquires_lease():
+    store = MemCAS()
     pool = _pool(store)
-    with pool.slots(["https://archive-video.granicus.com/x.mp4"], stop=lambda: False):
+    with pool.slots([URL], stop=lambda: False):
         pass  # acquired without raising
 
 
-def test_current_waiting_counts_empty_when_idle(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_current_waiting_counts_empty_when_idle():
+    store = MemCAS()
     pool = _pool(store)
     assert pool.current_waiting_counts() == {}
 
 
-def test_current_waiting_counts_reflects_live_queue_depth(tmp_path):
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+def test_current_waiting_counts_reflects_live_queue_depth():
+    store = MemCAS()
     first = _pool(store)
     second = _pool(store)
     waiting_seen = threading.Event()
 
     def _waiter():
-        with second.slots(["https://archive-video.granicus.com/x.mp4"]):
+        with second.slots([URL]):
             pass
 
-    with first.slots(["https://archive-video.granicus.com/x.mp4"]):
+    with first.slots([URL]):
         t = threading.Thread(target=_waiter)
         t.start()
         for _ in range(200):
