@@ -16,6 +16,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **ASR transcript keys now use a timeline/recipe transcript media hash instead of the audio-byte
+  recipe hash ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR4).**
+  ASR VTT and word JSON keys are now based on source media identity plus the served timeline and ASR
+  recipe, so codec, loudness, chapter, or audio-processing recipe changes no longer mark completed ASR
+  transcripts stale. Current-version ASR records with old audio-spec-derived keys are migrated by copying
+  the existing VTT and word sidecar to the new key shape when the old objects are present; missing/corrupt
+  artifacts are reported and only those episodes fall through to regeneration. The run summary/history now
+  reports ASR migration counts (`copied`, `already_present`, `missing`, `regenerated`). This does **not**
+  bump `ASR_PIPELINE_VERSION`; the expected ASR regeneration count is zero except for genuinely missing
+  old artifacts.
 - **Provider transcript source documents now surface separately from the active podcast transcript
   ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR3).**
   A synced `provider_transcript.known_good` document can fill `<podcast:transcript>` only while no

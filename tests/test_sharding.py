@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+from citypods.asr import asr_initial_prompt, asr_spec_hash
 from citypods.models import City, Episode
-from citypods.records import episode_to_record, save_records, source_key
+from citypods.records import episode_to_record, save_records, source_key, transcript_media_hash
 from citypods.sharding import (
     ShardPlan,
     create_shard_plan,
@@ -48,6 +49,19 @@ def _hosted_episode(uid: str, duration: float) -> Episode:
     ep.hosted_audio_url = f"https://cdn.test/{uid}.m4a"
     ep.audio_duration_served = duration
     return ep
+
+
+def _asr_recipe(city: City, ep: Episode, version: str = "3") -> str:
+    return asr_spec_hash(
+        transcript_media_hash(ep),
+        city.asr_model,
+        None,
+        version,
+        language=city.asr_language or None,
+        compute_type=city.asr_compute_type,
+        beam_size=city.asr_beam_size,
+        initial_prompt=asr_initial_prompt(city.podcast_author, ep.body, ep.title),
+    )
 
 
 def _planned_episode_keys(keys: list[str], uid: str) -> list[str]:
@@ -172,12 +186,12 @@ def test_audio_plan_colocates_distinct_source_keys_for_one_entity(tmp_path):
     assert {plan.assignment[key] for key in keys} == {plan.assignment[keys[0]]}
 
 
-def test_transcribe_plan_does_not_dedupe_same_uid_with_different_audio_recipe(tmp_path):
+def test_transcribe_plan_does_not_dedupe_same_uid_with_different_transcript_media(tmp_path):
     cities = [_city("a", "https://a"), _city("b", "https://b")]
     keys = [source_key(city) for city in cities]
     ep_a = _hosted_episode("shared", 1800)
     ep_b = _hosted_episode("shared", 1800)
-    ep_b.audio_spec_hash = "different-spec"
+    ep_b.video_url = "https://example.test/other-video"
     save_records(tmp_path, keys[0], {"shared": episode_to_record(ep_a)})
     save_records(tmp_path, keys[1], {"shared": episode_to_record(ep_b)})
 
@@ -268,8 +282,10 @@ def test_caught_up_source_contributes_no_episode_entries(tmp_path):
     cities = [_city("done", "https://done")]
     key = source_key(cities[0])
     ep = _hosted_episode("d1", 1800)
+    recipe = _asr_recipe(cities[0], ep)
     ep.transcript_synced = True
-    ep.transcript_key = "transcripts/done/d1-asr-3.vtt"
+    ep.transcript_key = f"transcripts/{key}/d1-asr-{recipe}.vtt"
+    ep.transcript_spec_hash = recipe
     ep.transcript_pipeline_version = "3"
     save_records(tmp_path, key, {"d1": episode_to_record(ep)})
     plan = create_shard_plan(
@@ -281,6 +297,39 @@ def test_caught_up_source_contributes_no_episode_entries(tmp_path):
         asr_pipeline_version="3",
     )
     assert plan.assignment == {}
+
+
+def test_old_shape_synced_asr_key_is_planned_for_migration(tmp_path):
+    cities = [_city("done", "https://done")]
+    key = source_key(cities[0])
+    ep = _hosted_episode("d1", 1800)
+    old_recipe = asr_spec_hash(
+        ep.audio_spec_hash,
+        cities[0].asr_model,
+        None,
+        "3",
+        language=cities[0].asr_language or None,
+        compute_type=cities[0].asr_compute_type,
+        beam_size=cities[0].asr_beam_size,
+        initial_prompt=asr_initial_prompt(cities[0].podcast_author, ep.body, ep.title),
+    )
+    ep.transcript_synced = True
+    ep.transcript_key = f"transcripts/{key}/d1-asr-{old_recipe}.vtt"
+    ep.transcript_spec_hash = old_recipe
+    ep.transcript_pipeline_version = "3"
+    save_records(tmp_path, key, {"d1": episode_to_record(ep)})
+
+    plan = create_shard_plan(
+        cities,
+        tmp_path,
+        lane="transcribe",
+        num_shards=2,
+        defaults={"asr_local_max_duration_hours": 4},
+        asr_pipeline_version="3",
+    )
+
+    assert set(plan.assignment) == {f"{key}/d1"}
+    assert plan.weights[f"{key}/d1"] == 1
 
 
 def test_episode_plan_rejects_unconfigured_source():

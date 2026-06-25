@@ -100,7 +100,11 @@ from citypods.media import (
 from citypods.models import City, Episode
 from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workitem_from_episode
 from citypods.progress import PROGRESS
-from citypods.records import AUDIO_PIPELINE_VERSION, transcript_timeout_backoff_until
+from citypods.records import (
+    AUDIO_PIPELINE_VERSION,
+    transcript_media_hash,
+    transcript_timeout_backoff_until,
+)
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import validate_source_url
 from citypods.timeline import Timeline, remap, timeline_digest
@@ -341,6 +345,10 @@ class StageStats:
     aligned: int = 0  # Path A: stable-ts forced alignment from source text
     transcribed: int = 0  # Path B: fresh faster-whisper transcription
     dispatched: int = 0  # H14a: handed to an external GPU backend (off-runner); pending next render
+    asr_migration_copied: int = 0
+    asr_migration_already_present: int = 0
+    asr_migration_missing: int = 0
+    asr_migration_regenerated: int = 0
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     defer_reasons: dict[str, int] = field(default_factory=dict)
 
@@ -1136,6 +1144,49 @@ def _asr_words_object_key(src_key: str, uid: str, recipe: str) -> str:
     return f"transcripts/{src_key}/{uid}-asr-{recipe}.words.json"
 
 
+def _asr_recipe_hash(city: City, ep: Episode, align_hash: str | None) -> str:
+    """ASR recipe hash keyed on transcript media/timeline inputs, not audio-byte recipes."""
+    return asr_mod.asr_spec_hash(
+        transcript_media_hash(ep),
+        city.asr_model,
+        align_hash,
+        ASR_PIPELINE_VERSION,
+        language=city.asr_language or None,
+        compute_type=city.asr_compute_type,
+        beam_size=city.asr_beam_size,
+        initial_prompt=asr_initial_prompt(city.podcast_author, ep.body, ep.title),
+    )
+
+
+def _copy_storage_object(storage, src_key: str, dest_key: str, content_type: str) -> str:
+    """Copy one storage object by download+upload; return copied/already-present/missing."""
+    if storage.exists(dest_key):
+        return "already-present"
+    if not storage.exists(src_key) or not hasattr(storage, "get_file"):
+        return "missing"
+    import tempfile as _tmp
+
+    with _tmp.TemporaryDirectory() as t:
+        local_path = Path(t) / dest_key.rsplit("/", 1)[-1]
+        if not storage.get_file(src_key, local_path):
+            return "missing"
+        storage.put_file(dest_key, local_path, content_type)
+    return "copied"
+
+
+def _adopt_asr_keys(ep: Episode, storage, asr_key: str, words_key: str, recipe: str) -> None:
+    ep.transcript_key = asr_key
+    ep.transcript_hosted_url = storage.public_url(asr_key)
+    ep.transcript_words_key = words_key
+    ep.transcript_words_url = storage.public_url(words_key)
+    ep.transcript_spec_hash = recipe
+    ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+    ep.transcript_format = "vtt"
+    ep.transcript_basis = "served"
+    ep.transcript_synced = True
+    _reset_asr_timeout_backoff(ep)
+
+
 def _preprocess_align_text(text: str) -> str:
     """Extract spoken dialogue from a meeting-minutes source transcript.
 
@@ -1369,6 +1420,8 @@ class TranscriptStage:
                 f"uid={label} guid={ep.guid}"
             )
             redo_stale_asr = False
+            recheck_asr_key: str | None = None
+            recheck_asr_words_key: str | None = None
             active_synced_reused = False
             provider_url = (ep.links or {}).get("transcript")
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
@@ -1382,8 +1435,24 @@ class TranscriptStage:
                 # (not a bare ``-asr-`` substring, which a uid ending in ``-asr`` would trip).
                 key_name = ep.transcript_key.rsplit("/", 1)[-1]
                 is_asr = key_name.startswith(f"{ep.uid or ep.guid}-asr-")
-                if is_asr and ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
-                    redo_stale_asr = True  # fall through to the ASR slot to re-transcribe
+                if is_asr:
+                    if ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
+                        redo_stale_asr = True  # own recipe/version changed; re-transcribe
+                    elif ep.transcript_spec_hash:
+                        redo_stale_asr = True
+                        recheck_asr_key = ep.transcript_key
+                        recheck_asr_words_key = ep.transcript_words_key
+                    else:
+                        ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+                        if ep.transcript_words_key and _present(ep.transcript_words_key):
+                            ep.transcript_words_url = ctx.storage.public_url(
+                                ep.transcript_words_key
+                            )
+                        _reset_asr_timeout_backoff(ep)
+                        stats.reused += 1
+                        active_synced_reused = True
+                        if not provider_url:
+                            continue
                 else:
                     ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                     if ep.transcript_words_key and _present(ep.transcript_words_key):
@@ -1393,6 +1462,13 @@ class TranscriptStage:
                     active_synced_reused = True
                     if not provider_url:
                         continue
+            elif ep.transcript_key and ep.transcript_synced:
+                key_name = ep.transcript_key.rsplit("/", 1)[-1]
+                if key_name.startswith(f"{ep.uid or ep.guid}-asr-"):
+                    redo_stale_asr = True
+                    if ep.transcript_pipeline_version == ASR_PIPELINE_VERSION:
+                        recheck_asr_key = ep.transcript_key
+                        recheck_asr_words_key = ep.transcript_words_key
 
             # 1b. Untimed stored transcript: re-attach URL so the feed still shows it as a
             #     text note, then fall through to the ASR slot to attempt an upgrade.
@@ -1610,23 +1686,70 @@ class TranscriptStage:
             # Alignment falls back to fresh transcription on quality/runtime errors, so keep the
             # fresh prompt/beam inputs in the recipe even when alignment is the primary path.
             initial_prompt = asr_initial_prompt(city.podcast_author, ep.body, ep.title)
-            recipe = asr_mod.asr_spec_hash(
-                ep.audio_spec_hash,
-                city.asr_model,
-                align_hash,
-                ASR_PIPELINE_VERSION,
-                language=city.asr_language or None,
-                compute_type=city.asr_compute_type,
-                beam_size=city.asr_beam_size,
-                initial_prompt=initial_prompt,
-            )
+            recipe = _asr_recipe_hash(city, ep, align_hash)
             asr_key = _asr_object_key(src_key, ep.uid or ep.guid, recipe)
+            words_key = _asr_words_object_key(src_key, ep.uid or ep.guid, recipe)
             cache_key = (ep.uid or ep.guid, recipe)
 
-            if _present(asr_key):
+            migrate_asr_key: str | None = None
+            migrate_asr_words_key: str | None = None
+            migration_missing = False
+            if recheck_asr_key:
+                if (
+                    ep.transcript_spec_hash == recipe
+                    and recheck_asr_key == asr_key
+                    and _present(words_key)
+                ):
+                    _adopt_asr_keys(ep, ctx.storage, asr_key, words_key, recipe)
+                    stats.reused += 1
+                    continue
+                if provider_url and align_text is None:
+                    ep.transcript_hosted_url = ctx.storage.public_url(recheck_asr_key)
+                    if recheck_asr_words_key and _present(recheck_asr_words_key):
+                        ep.transcript_words_url = ctx.storage.public_url(recheck_asr_words_key)
+                    _reset_asr_timeout_backoff(ep)
+                    stats.reused += 1
+                    continue
+                migrate_asr_key = recheck_asr_key
+                migrate_asr_words_key = recheck_asr_words_key
+
+            if migrate_asr_key:
+                vtt_status = _copy_storage_object(
+                    ctx.storage, migrate_asr_key, asr_key, TRANSCRIPT_MIME["vtt"]
+                )
+                words_status = (
+                    _copy_storage_object(
+                        ctx.storage, migrate_asr_words_key, words_key, "application/json"
+                    )
+                    if migrate_asr_words_key
+                    else "missing"
+                )
+                if vtt_status != "missing" and words_status != "missing":
+                    _adopt_asr_keys(ep, ctx.storage, asr_key, words_key, recipe)
+                    if "copied" in {vtt_status, words_status}:
+                        stats.asr_migration_copied += 1
+                        outcome = "copied"
+                    else:
+                        stats.asr_migration_already_present += 1
+                        outcome = "already-present"
+                    stats.reused += 1
+                    print(
+                        f"[enrich] transcript asr migration {outcome} {ep_ref} "
+                        f"from={migrate_asr_key} to={asr_key}",
+                        flush=True,
+                    )
+                    continue
+                stats.asr_migration_missing += 1
+                migration_missing = True
+                print(
+                    f"[enrich] transcript asr migration missing {ep_ref} "
+                    f"vtt={vtt_status} words={words_status}; regenerating",
+                    flush=True,
+                )
+
+            if not migration_missing and _present(asr_key):
                 ep.transcript_key = asr_key
                 ep.transcript_hosted_url = ctx.storage.public_url(asr_key)
-                words_key = _asr_words_object_key(src_key, ep.uid or ep.guid, recipe)
                 if _present(words_key):
                     ep.transcript_words_key = words_key
                     ep.transcript_words_url = ctx.storage.public_url(words_key)
@@ -2127,6 +2250,8 @@ class TranscriptStage:
                     stats.transcribed += 1
                     outcome = "transcribed"
                 stats.ran += 1
+                if recheck_asr_key:
+                    stats.asr_migration_regenerated += 1
                 print(
                     f"[enrich] transcript asr done {ep_ref} method={outcome} "
                     f"asr_seconds={asr_elapsed:.1f} "

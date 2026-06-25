@@ -165,6 +165,10 @@ class SourcePipeline:
                 "errors": 0,
                 "error_samples": [],
                 "rate_limited": 0,
+                "asr_migration_copied": 0,
+                "asr_migration_already_present": 0,
+                "asr_migration_missing": 0,
+                "asr_migration_regenerated": 0,
                 "defer_reasons": {},
             }
         )
@@ -227,6 +231,10 @@ class SourcePipeline:
                 if s.errors and len(t["error_samples"]) < 3:
                     t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
                 t["rate_limited"] += s.rate_limited
+                t["asr_migration_copied"] += s.asr_migration_copied
+                t["asr_migration_already_present"] += s.asr_migration_already_present
+                t["asr_migration_missing"] += s.asr_migration_missing
+                t["asr_migration_regenerated"] += s.asr_migration_regenerated
                 for reason, count in s.defer_reasons.items():
                     t["defer_reasons"][reason] = t["defer_reasons"].get(reason, 0) + count
 
@@ -1464,6 +1472,20 @@ def _build_impl(
             f"{name}: {ran}, {t['reused']} reused, {t['backlog']} queued, "
             f"{t['errors']} errors ({t['seconds']:.0f}s)"
         )
+        migration_total = (
+            t.get("asr_migration_copied", 0)
+            + t.get("asr_migration_already_present", 0)
+            + t.get("asr_migration_missing", 0)
+            + t.get("asr_migration_regenerated", 0)
+        )
+        if migration_total:
+            print(
+                "    asr migration: "
+                f"{t['asr_migration_copied']} copied, "
+                f"{t['asr_migration_already_present']} already-present, "
+                f"{t['asr_migration_missing']} missing, "
+                f"{t['asr_migration_regenerated']} regenerated"
+            )
         for msg in t["error_samples"]:
             print(f"    ! {msg}")
         if t.get("rate_limited"):
@@ -1806,6 +1828,12 @@ def _record_run_history(
             "bytes": t["bytes"],
             "errors": t["errors"],
             "rate_limited": t.get("rate_limited", 0),
+            "asr_migration": {
+                "copied": t.get("asr_migration_copied", 0),
+                "already_present": t.get("asr_migration_already_present", 0),
+                "missing": t.get("asr_migration_missing", 0),
+                "regenerated": t.get("asr_migration_regenerated", 0),
+            },
             "defer_reasons": dict(sorted((t.get("defer_reasons") or {}).items())),
         }
         for name, t in stage_totals.items()

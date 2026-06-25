@@ -328,7 +328,7 @@ def align(
 
 
 def asr_spec_hash(
-    audio_spec_hash: str,
+    media_spec_hash: str,
     model: str,
     align_text_hash: str | None,
     version: str,
@@ -338,10 +338,14 @@ def asr_spec_hash(
     beam_size: int | None = None,
     initial_prompt: str | None = None,
 ) -> str:
-    """Recipe hash for an ASR transcript: changes when any inference input changes.
+    """Recipe hash for an ASR transcript: changes when any transcript input changes.
 
     Keyed on *inputs* (not output bytes) so the storage key can be computed before
     running inference, enabling a cheap ``_present(key)`` reuse check.
+
+    ``media_spec_hash`` is deliberately the transcript media/timeline identity, not the audio
+    mastering byte hash. Codec, loudness, chapter, or audio-processing recipe changes should not
+    invalidate completed ASR artifacts when the served timeline is unchanged.
 
     ``align_text_hash`` is the SHA-1 prefix of the source text used for alignment
     (Path A); ``None`` means fresh transcription (Path B). Fresh-transcription prompt and
@@ -349,7 +353,7 @@ def asr_spec_hash(
     """
     spec = {
         "v": version,
-        "audio": audio_spec_hash,
+        "media": media_spec_hash,
         "model": model,
         "align": align_text_hash,
         "language": language,

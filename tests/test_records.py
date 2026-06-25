@@ -26,8 +26,10 @@ from citypods.records import (
     save_records,
     shard_assignment,
     source_key,
+    transcript_media_hash,
     transcript_timeout_backoff_until,
 )
+from citypods.timeline import Segment, Timeline
 
 
 def _city(provider="granicus", source=None, author="City of Denton, TX"):
@@ -130,6 +132,30 @@ def test_audio_spec_hash_and_key_track_only_audio_inputs():
     ep.chapters = [{"start": 0, "title": "x"}]
     assert audio_spec_hash(ep, max_kbps=96) != base
     assert audio_object_key(_city(), ep, base).endswith(f"u1-{base}.m4a")
+
+
+def test_transcript_media_hash_ignores_audio_only_inputs_but_tracks_timeline():
+    ep = _ep("g1")
+    ep.uid = "u1"
+    base = transcript_media_hash(ep)
+    ep.chapters = [{"start": 0, "title": "x"}]
+    ep.audio_rebuild = "force-audio-only"
+    assert transcript_media_hash(ep) == base
+
+    ep.timeline = Timeline(
+        version="trim-v1",
+        segments=[
+            Segment(
+                kind="source",
+                source_id="s0",
+                served_start=0,
+                served_end=10,
+                source_start=5,
+                source_end=15,
+            )
+        ],
+    )
+    assert transcript_media_hash(ep) != base
 
 
 def test_audio_spec_hash_loudness_profile_changes_hash():
