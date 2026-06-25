@@ -34,10 +34,10 @@ Persistent state in B2 splits into three tiers with very different needs:
 2. **Durable records** — `state/sources/<source_key>/episodes.json` (~1–10 KB/source), the bucket-as-truth
    record set, merged with foreign-block preservation (`records.merge_preserving_foreign`,
    `statesync.push_records_merged`).
-3. **Hot coordination / control-plane** — `provider-circuits/**` + `provider-circuits-locks/**` (the PR358
-   storage-coordinated, tenant-scoped circuit breaker), `provider-leases/**` (distributed host leases),
+3. **Hot coordination / control-plane** — `provider-leases/**` (distributed host leases),
    `state/work.json` (H5 manifest leases/backoff), `state/compute_budget.json` (H14a free-tier ledger),
-   `state/asr_runtime_log.json` (telemetry).
+   `state/asr_runtime_log.json` (telemetry). (The PR358 storage-coordinated, tenant-scoped circuit breaker
+   that also lived here was deleted by GH#353; only the lease pool survives.)
 
 But the tier label is not what decides the right home. The deciding axis is **per artifact**:
 
@@ -49,9 +49,10 @@ But the tier label is not what decides the right home. The deciding axis is **pe
 
 ### 1.2 Root cause: B2 has no compare-and-swap
 
-Every coordination primitive we keep in B2 is *emulated* — the PR358 circuit breaker and
-`provider_leases.py` both use deterministic, timestamp-ordered objects guarded by a **one-slot FIFO
-lease**, precisely because **B2's S3 API offers no conditional writes** (`If-Match` / `If-None-Match`).
+Every coordination primitive we keep in B2 is *emulated* — `provider_leases.py` uses deterministic,
+timestamp-ordered objects guarded by a **one-slot FIFO lease**, precisely because **B2's S3 API offers no
+conditional writes** (`If-Match` / `If-None-Match`). (The PR358 circuit breaker shared this emulation
+before GH#353 removed it.)
 That emulation is the efficiency and reliability cost, and it gets worse as shards multiply and as
 non-Actions workers join (H13/H14), each of which must participate in the same emulated protocol.
 
@@ -226,7 +227,7 @@ Grounded in the existing seams (`citypods/storage/`):
   implements the `StorageBackend` Protocol (`storage/base.py`) and dispatches **by key prefix** to two
   `S3CompatibleStorage` instances — `audio/**`, `transcripts/**`, append-only logs (and, per §3, records)
   → **B2**; the coordination control-plane → **R2**. Callers (`statesync.py`, `media.py`, `stages.py`,
-  `provider_circuits.py`, `provider_leases.py`) keep using one storage object unchanged. R2 is already
+  `provider_leases.py`) keep using one storage object unchanged. R2 is already
   constructible via `r2_from_env()`.
 - **CAS extension.** Add `put_cas()` to `S3CompatibleStorage` using **native boto3 params** (confirmed by
   the §7 spike on boto3 1.43 — no header injection needed). Expose it as an **optional** Protocol
@@ -250,11 +251,10 @@ Grounded in the existing seams (`citypods/storage/`):
               raise CASConflict(key) from exc
           raise
   ```
-- **Coordination redesign.** Re-implement `provider_circuits.py` + `provider_leases.py` and the H5
-  work/budget lease writes on R2 CAS, retiring the one-slot FIFO emulation: lease acquire = conditional
-  create; renew/release = CAS update; circuit open/close = CAS update; budget decrement = CAS read-modify-
-  write with retry. Keep a serialization guard only on the **hottest keys** to avoid CAS retry-storms
-  under throttle bursts (bounded backoff + jitter).
+- **Coordination redesign.** Re-implement `provider_leases.py` and the H5 work/budget lease writes on R2
+  CAS, retiring the one-slot FIFO emulation: lease acquire = conditional create; renew/release = CAS
+  update; budget decrement = CAS read-modify-write with retry. Keep a serialization guard only on the
+  **hottest keys** to avoid CAS retry-storms under throttle bursts (bounded backoff + jitter).
 - **External-worker access (H13/H14).** Document the access path per artifact: blobs and coordination via
   **S3 creds** to B2/R2; Phase-R records via **Turso (direct libSQL/HTTP)** or **D1 (Worker / D1 HTTP
   API)**. This is the concrete payoff for "reliability as we expand to non-Actions runners."
@@ -271,8 +271,9 @@ Grounded in the existing seams (`citypods/storage/`):
 - **boto3 ↔ R2 conditional PUT ergonomics** — ~~the implementation risk~~ **resolved by §7 spike**
   (2026-06-19): native `IfNoneMatch`/`IfMatch` params work on boto3 1.43 against R2. Fallbacks (Worker
   shim, lease-on-R2) are not needed.
-- **Tier-3 is the safety-critical throttle path; PR358 is in flight** — sequence circuits/leases **after**
-  PR358 lands; prove the router + CAS helper on lower-stakes `work.json`/budget first.
+- **Tier-3 is the safety-critical throttle path** — sequence the **lease-pool** migration **after** the
+  Granicus reliability work (PR358, merged) and the GH#353 circuit removal; prove the router + CAS helper
+  on lower-stakes `work.json`/budget first.
 - **R2 introduces a metered Class A budget B2 didn't** — couple records-on-R2 with S2 (§4).
 - **CAS retry-storms on hot keys** — backoff/jitter; retain serialization on the few hottest keys.
 - **D1 reachability vs Turso** — D1 needs a Worker/HTTP shim from external runners; Turso is directly
@@ -371,7 +372,7 @@ python scripts/spike_r2_cas.py --latency-iterations 20 --output r2-cas-spike-res
 3. **Execute H17's consolidated implementation issue** — `RoutingStorage` + `put_cas()` (§5); fold in
    [`review/16`](16-scaling-review-plan.md) **S2** access-pattern work to keep R2 Class A free.
 4. **Migrate the coordination control-plane → R2** — start with `work.json`/`compute_budget.json` to prove
-   the router + CAS helper; move `provider-circuits`/`provider-leases` **after PR358**.
+   the router + CAS helper; move `provider-leases` **after PR358**.
 5. **`episodes.json`** per §3 — **decided: stay on B2** (per-uid lease ownership makes each block
    single-writer, so the shipped owned-block merge is race-free without CAS) and **migrate straight to a
    managed search-DB at Phase R** — skipping R2 for records to avoid a B2→R2→DB double migration.
