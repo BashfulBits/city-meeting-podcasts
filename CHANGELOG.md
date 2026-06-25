@@ -16,6 +16,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Provider transcript source documents now surface separately from the active podcast transcript
+  ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR3).**
+  A synced `provider_transcript.known_good` document can fill `<podcast:transcript>` only while no
+  ASR/provider-aligned active transcript exists; once `transcript_hosted_url` is synced, that served-time
+  artifact owns the Podcasting 2.0 tag. The known-good provider document remains exposed in feed notes and
+  city pages as **Original city-provided transcript**. This is a render-only exposure change: transcript
+  pipeline versions, artifact keys, and stored bytes are unchanged, so **no ASR backfill or regeneration**
+  is triggered.
 - **Provider transcript source documents are now fetched into the H15 provider registry
   ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR2).**
   `TranscriptStage` keeps the current provider transcript URL in `links["transcript"]` and stores

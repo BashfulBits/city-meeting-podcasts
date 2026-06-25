@@ -83,6 +83,35 @@ def test_city_page_renders_episode_resource_links():
     assert html.index("Agenda</a>") < html.index("Watch the video</a>")
 
 
+def test_city_page_renders_original_provider_transcript_link():
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.site import render_city_page
+
+    ep = Episode(
+        guid="g",
+        title="City Council - May 1",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://cdn/x.mp4",
+        media_kind="direct",
+        links={"agenda": "https://agenda.pdf"},
+        provider_transcript={
+            "known_good": {
+                "hosted_url": "https://cdn/provider/original.vtt",
+                "format": "vtt",
+                "synced": True,
+            }
+        },
+    )
+    html = render_city_page(_city("x-tx", "City of X", "X - Council"), "https://e.test", [ep])
+
+    assert '<a href="https://agenda.pdf">Agenda</a>' in html
+    assert (
+        '<a href="https://cdn/provider/original.vtt">Original city-provided transcript</a>' in html
+    )
+
+
 def test_city_page_formats_float_duration_from_archival_metadata():
     from datetime import UTC, datetime
 

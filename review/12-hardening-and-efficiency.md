@@ -1430,7 +1430,12 @@ migration.
 - **PT-PR3 — UI/feed exposure.** Emit the provider transcript as the active `<podcast:transcript>` only when
   no ASR/provider-aligned transcript is complete. Always expose the known-good provider document as a
   separate download link labeled **Original city-provided transcript**. Once ASR or alignment exists, that
-  active artifact owns `<podcast:transcript>` while the original download link remains.
+  active artifact owns `<podcast:transcript>` while the original download link remains. **Implemented in
+  PT-PR3 ([#457](https://github.com/BashfulBits/city-meeting-podcasts/pull/457)):** feed and city-page
+  rendering now add the known-good provider document as an original download link, and
+  `<podcast:transcript>` falls back to that synced provider document only until a synced active transcript
+  exists. This is render-only; no transcript/ASR pipeline version changed and no ASR backfill or
+  regeneration is triggered.
 - **PT-PR4 — migration-safe ASR key rebase.** Introduce timeline/recipe-based transcript keys and migrate
   existing ASR VTT + word JSON objects by copy/alias from old keys to new keys without inference. The
   migration report must state copied, already-present, missing, and regenerated counts; expected
