@@ -134,7 +134,20 @@ def validate(storage, *, run_id: str, now: datetime | None = None) -> dict:
     created.append(pool_a._slot_key(lease_domain, 1))
 
     def _held_slots() -> int:
-        return sum(storage.get_bytes(pool_a._slot_key(lease_domain, i)) is not None for i in (0, 1))
+        # Release is an atomic CAS tombstone (``state=released``), not a delete, so a freed slot
+        # persists as an object — count only those still HELD (compare by state, which is
+        # independent of the validator's logical ``now`` vs the pool's wall-clock expiry).
+        held = 0
+        for i in (0, 1):
+            got = storage.get_bytes(pool_a._slot_key(lease_domain, i))
+            if got is None:
+                continue
+            try:
+                if json.loads(got[0]).get("state") != "released":
+                    held += 1
+            except (ValueError, TypeError):
+                held += 1
+        return held
 
     try:
         # held_a stays held across the cap check; held_b is released first to observe the staged

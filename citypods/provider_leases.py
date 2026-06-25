@@ -345,7 +345,7 @@ class DistributedProviderLeasePool:
             return
         if lease._lost:
             # The renewal thread observed a CAS conflict — the slot was reaped and re-claimed by
-            # another worker, so it is no longer ours to delete.
+            # another worker, so it is no longer ours to release.
             if log is not None:
                 detail = self._self_metadata(state="released").detail()
                 _emit(
@@ -354,31 +354,36 @@ class DistributedProviderLeasePool:
                     f"domain={lease.domain}{detail}",
                 )
             return
+        from citypods.storage import CASConflict
+
         try:
-            # Ownership-checked delete: only remove the slot if it still holds OUR version.
-            # ``_lost`` covers the case where renewal *saw* a CAS conflict, but ownership can also
-            # lapse without one — a renewal network error or a stalled renew thread can let the TTL
-            # expire, after which another worker reclaims the slot. An unconditional delete would
-            # then evict that live holder and break the cap. There is no conditional-DELETE
-            # primitive, so verify the ETag first; the residual get→delete TOCTOU only exists in the
-            # already-degenerate over-TTL window and is bounded by the soft cap.
-            got = storage.get_bytes(lease.key)
-            if got is None:
-                return  # already gone (reclaimed-then-released, or never persisted)
-            _data, current_etag = got
-            if current_etag != lease.etag:
-                if log is not None:
-                    detail = self._self_metadata(state="released").detail()
-                    _emit(
-                        log,
-                        f"[enrich] provider lease release skipped (slot reclaimed by another "
-                        f"owner) domain={lease.domain}{detail}",
-                    )
-                return
-            storage.delete(lease.key)
+            # Atomic ownership-checked release: CAS-write an immediately-expired "released"
+            # tombstone guarded by our ETag (a single conditional PUT, not a read-then-delete that
+            # races). If we still own the slot, this frees it — the next acquirer reclaims the
+            # expired object via if_match. If ownership lapsed (over-TTL renewal error/stall) and
+            # another worker reclaimed it, the if_match fails and we leave their live lease alone.
+            # We do NOT delete: there is no conditional-DELETE primitive (a blind delete could evict
+            # a fresh holder), the tombstone reuses the conditional PUT that R2 is validated to
+            # honor, and at most N tombstones (one per slot) ever exist per domain — each reclaimed
+            # /overwritten on the next acquire, so they don't accumulate.
+            storage.put_cas(
+                lease.key,
+                self._released_payload(lease.domain),
+                "application/json; charset=utf-8",
+                if_match=lease.etag,
+            )
             if log is not None:
                 detail = self._self_metadata(state="released").detail()
                 _emit(log, f"[enrich] provider lease released domain={lease.domain}{detail}")
+        except CASConflict:
+            # Another worker reclaimed the slot during an over-TTL lapse — not ours to free.
+            if log is not None:
+                detail = self._self_metadata(state="released").detail()
+                _emit(
+                    log,
+                    f"[enrich] provider lease release skipped (slot reclaimed by another owner) "
+                    f"domain={lease.domain}{detail}",
+                )
         except Exception as exc:  # noqa: BLE001 - release should not mask the encode result
             if log is not None:
                 detail = self._self_metadata(state="released").detail()
@@ -473,13 +478,25 @@ class DistributedProviderLeasePool:
 
     def _payload(self, domain: str, rule: ProviderLeaseRule) -> bytes:
         now = datetime.now(UTC)
-        metadata = self._self_metadata(state="acquired")
+        return self._encode_payload(
+            domain, state="acquired", expires_at=now + timedelta(seconds=rule.ttl_seconds)
+        )
+
+    def _released_payload(self, domain: str) -> bytes:
+        """A tombstone for an explicitly released slot: ``state=released`` and an already-past
+        expiry, so the next acquirer treats it as a free/reclaimable slot."""
+        now = datetime.now(UTC)
+        return self._encode_payload(domain, state="released", expires_at=now)
+
+    def _encode_payload(self, domain: str, *, state: str, expires_at: datetime) -> bytes:
+        now = datetime.now(UTC)
+        metadata = self._self_metadata(state=state)
         fields = {
             "owner": metadata.owner,
             "domain": domain,
             "state": metadata.state,
             "renewed_at": now.isoformat(),
-            "expires_at": (now + timedelta(seconds=rule.ttl_seconds)).isoformat(),
+            "expires_at": expires_at.isoformat(),
         }
         extra = {
             "github_run_id": metadata.run_id,

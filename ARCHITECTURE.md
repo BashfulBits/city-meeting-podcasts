@@ -271,10 +271,14 @@ Hard-won facts that bite anyone adding/debugging providers:
   order — the contract is the concurrency *cap*, not fairness — and a soft cap that can briefly admit
   N+1 holders on a reap-vs-release race, which is acceptable for a rate limiter. A background thread
   renews the held slot via CAS; on a renewal conflict the holder has over-run its TTL and another
-  worker reclaimed the slot, so it stops renewing. Release is **ownership-checked** — it deletes the
-  slot only if the stored ETag still matches the one this holder last wrote, so a holder that lapsed
-  its TTL (via a renewal error or a stalled thread, not just an observed conflict) never deletes a
-  slot another worker has since reclaimed. Payload metadata
+  worker reclaimed the slot, so it stops renewing. Release is an **atomic CAS handoff** — it
+  conditionally writes an immediately-expired "released" tombstone with `if_match=<our ETag>` rather
+  than deleting, so a holder that lapsed its TTL (a renewal error or stalled thread, not just an
+  observed conflict) can never evict a slot another worker has since reclaimed: the `if_match` simply
+  fails and leaves their lease alone. (A read-then-delete would race between the check and the delete;
+  there is no conditional-DELETE primitive, so the tombstone reuses the conditional PUT R2 is
+  validated to honor. At most N tombstones exist per domain — one per slot, reclaimed on next
+  acquire.) Payload metadata
   identifies the GitHub run/job that held a stale claim (logged on reap). The pool needs a CAS-capable
   backend (R2 via `RoutingStorage` routing the `provider-leases/` coordination prefix); on a non-CAS
   backend (b2-only / local dev) the distributed layer disables and only the in-process `HostRateLimiter`

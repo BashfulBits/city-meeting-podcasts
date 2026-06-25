@@ -48,6 +48,19 @@ def _pool(
     return pool
 
 
+def _held_count(store: MemCAS, prefix: str = "test-provider-leases/") -> int:
+    """Count slots currently HELD. Release is an atomic CAS tombstone write (no delete), so a freed
+    slot persists as an expired ``state == 'released'`` object — present but not held."""
+    held = 0
+    for key in store.keys(prefix):
+        try:
+            if json.loads(store.objs[key]).get("state") != "released":
+                held += 1
+        except (ValueError, TypeError):
+            held += 1  # unreadable payload — treat as occupying the slot
+    return held
+
+
 def test_distributed_provider_lease_blocks_second_pool_until_release():
     store = MemCAS()
     first = _pool(store)
@@ -66,7 +79,7 @@ def test_distributed_provider_lease_blocks_second_pool_until_release():
 
     t.join(timeout=1)
     assert acquired == ["second"]
-    assert store.keys("test-provider-leases/") == []  # both released — no slot leak
+    assert _held_count(store) == 0  # both released (tombstoned) — no slot held
 
 
 def test_two_slots_admit_two_holders_and_block_the_third():
@@ -79,7 +92,7 @@ def test_two_slots_admit_two_holders_and_block_the_third():
     cm0.__enter__()
     cm1.__enter__()
     try:
-        assert len(store.keys("test-provider-leases/granicus.com/")) == 2
+        assert _held_count(store) == 2
 
         def _waiter():
             with third.slots([URL]):
@@ -189,7 +202,7 @@ def test_expired_slot_is_reclaimed_and_counted():
         assert store.keys("test-provider-leases/granicus.com/") == [key]
 
     assert pool.telemetry()["granicus.com"]["stale_leases_reaped"] == 1
-    assert store.keys("test-provider-leases/") == []  # released
+    assert _held_count(store) == 0  # released (tombstoned)
 
 
 def test_release_does_not_delete_a_slot_another_worker_reclaimed():
@@ -321,7 +334,7 @@ def test_stop_firing_raises_instead_of_blocking_out_the_lease_wait():
         holder_released.set()
         t.join()
 
-    assert store.keys("test-provider-leases/") == []  # holder released; waiter wrote nothing
+    assert _held_count(store) == 0  # holder released; waiter wrote nothing
 
 
 def test_stop_never_firing_still_acquires_lease():
