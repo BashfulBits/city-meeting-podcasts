@@ -1474,7 +1474,12 @@ migration.
   is independent of `ASR_PIPELINE_VERSION`, so this does not invalidate or regenerate ASR artifacts.
 - **PT-PR7 — router/status/admin polish.** Add backlog/status slices for provider transcript fetch, align,
   and diarize; expose confidence distributions and candidate/rollback counts; document operator recovery
-  actions.
+  actions. **Implemented in PT-PR7 ([#461](https://github.com/BashfulBits/city-meeting-podcasts/pull/461)):** `build_status` now derives a
+  `backlog.provider_transcripts` block with source-link/fetch storage counts,
+  known-good/candidate/history/rejected rollback counts, provider-align and provider-diarize work-state
+  slices from the manifest, coarse confidence buckets, diarize error reasons, and recovery guidance. The
+  static `/admin/status` page renders that block next to the work-list table. This is reporting-only; no
+  transcript, provider-align, provider-diarize, or ASR pipeline version changes and no artifact backfill.
 
 **Concurrent-write substrate (records stay on B2).** PT-PR5 and PT-PR6 write per-episode
 align/diarize/confidence results into `state/sources/<key>/episodes.json`. Records **stay on B2** and

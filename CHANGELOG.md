@@ -16,6 +16,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Admin status now exposes provider-transcript rollout health
+  ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR7).**
+  `/admin/status` now includes a provider-transcript rollout block with source-document fetch/storage
+  counts, `known_good`/candidate/history and rejected-rollback counts, provider-align and
+  provider-diarize work-state slices, coarse confidence distributions, diarize error reasons, and
+  operator recovery guidance. This is a reporting/UI-only change: it does **not** change transcript,
+  provider-align, provider-diarize, or ASR pipeline versions and triggers no artifact backfill.
 - **Selected provider-aligned transcripts now produce independent speaker-turn artifacts
   ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR6).**
   The work manifest emits `provider-transcript-diarize` after a provider-aligned transcript is active.
