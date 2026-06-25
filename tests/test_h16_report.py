@@ -57,6 +57,15 @@ def test_concurrency_ceiling_tolerates_malformed_declaration(tmp_path):
     assert result["expected"] == {"process_local": 1, "distributed": 2}
 
 
+def test_concurrency_ceiling_tolerates_non_mapping_root(tmp_path):
+    # A malformed YAML root (e.g. a bare list/scalar) must not crash the report either.
+    cfg = tmp_path / "site.yml"
+    cfg.write_text("- oops\n")
+    result = _configured_ceilings(cfg)
+    assert result["status"] == "fail"
+    assert result["expected"] == {"process_local": 1, "distributed": 2}
+
+
 def _write_config(path) -> None:
     path.write_text(
         """
