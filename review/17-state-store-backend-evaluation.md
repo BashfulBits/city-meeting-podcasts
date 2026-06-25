@@ -150,13 +150,12 @@ wins on "no new dependency, already wired, $0," the KV/DO option is held as a tr
 | `state/sources/<key>/episodes.json` | audio + ASR lanes; **RMW + foreign-block merge** | **yes (near-term)** | no (per-uid lease ⇒ single writer) | **Stay B2 → managed search-DB @ Phase R** (decided; see below) |
 | `state/work.json` (H5 manifest) | reconcile + lanes; merge | **yes** (claim work) | **yes** (lease claims) | **→ R2 now** → SQL at Phase R |
 | `state/compute_budget.json` | reconcile + dispatch coordinator | **yes** | **yes** (atomic decrement) | **→ R2 now** (overspend risk) |
-| `provider-circuits/**` + `-locks/**` | all audio shards; high-freq under throttle | yes (future media workers) | **yes** (PR358's purpose) | **→ R2 now** (retire FIFO emulation) |
 | `provider-leases/**` | all shards; high-freq | yes | **yes** (atomic FIFO) | **→ R2 now** |
 | `state/asr_runtime_log.json` | all ASR shards; merge-union; telemetry | indirectly | no (merge-tolerant) | **Stay B2** |
 | `state/run_history.jsonl` + `run_events/` | one writer / run; append | no | no | **Stay B2** (free writes) |
 
-**Settled:** the **coordination + dispatch control plane** (`provider-circuits`, `provider-leases`,
-`work.json`, `compute_budget.json`) → **R2** for CAS; **immutable blobs + append-only logs stay on B2**.
+**Settled:** the **coordination + dispatch control plane** (`provider-leases`, `work.json`,
+`compute_budget.json`) → **R2** for CAS; **immutable blobs + append-only logs stay on B2**.
 
 **Swing case — `episodes.json` — DECIDED: stay on B2, migrate straight to a managed search-DB at Phase R.**
 Records were the one artifact whose backend depended on the H14 external-worker access model. The decision
