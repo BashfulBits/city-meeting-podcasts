@@ -188,7 +188,9 @@ descriptions · #14 `podcast:person/location` tags · #33 dead-city archival · 
 DerivedArtifact refactor · review/04 B3 stale-record bucket leak · review/04 R4 per-host rate-limit (#39)
 · admin dashboard extension (#49) · full video re-hosting · hosted DB/API (Phase-R records→SQL split out
 & **promoted to Phase R** — [`review/17`](17-state-store-backend-evaluation.md)) · off-Actions media ·
-coordination → dedicated KV/DO fallback (trigger-gated — [`review/17`](17-state-store-backend-evaluation.md) §8).
+coordination → dedicated KV/DO fallback (trigger-gated — [`review/17`](17-state-store-backend-evaluation.md) §8)
+· 98 open code-quality/security findings from the full-repo CodeRabbit audit, triaged for fix-over-time
+— [`review/19`](19-coderabbit-findings-audit.md).
 **Deleted:** #5 entities/NER.
 
 ---

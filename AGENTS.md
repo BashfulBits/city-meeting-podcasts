@@ -153,3 +153,27 @@ ls config/cities/ | sed 's/\.yml//'
 `--dry-run` skips: all object-storage uploads, `docs/` writes, state saves, and audio encoding.
 It **does** call `provider.fetch_episodes()` for each city — that's a live HTTP scrape and is why
 a full catalog dry-run takes 10–15 minutes across `max_workers=8` concurrent threads.
+
+### Running a full-codebase CodeRabbit review
+
+CodeRabbit (bot and CLI) only reviews diffs — there's no native "scan the whole repo" mode. To
+review the *entire current state* of a directory instead of one PR's diff, diff `HEAD` against the
+repo's root commit (real commit object, near-empty), which makes the diff cover ~every file:
+
+```bash
+root=$(git rev-list --max-parents=0 HEAD)          # 06f2244 here — 1 file, safe substitute for the empty tree
+coderabbit review --agent --type committed --base-commit "$root" --dir citypods   # one source dir at a time
+```
+
+- Don't use git's empty-tree SHA (`4b825d...`) — `--base-commit` runs a three-dot symmetric diff via
+  `merge-base`, which needs a real commit, not a bare tree object.
+- Use `--agent` (structured JSON), not `--plain` — the CLI tells you to when it detects an agent shell.
+- `coderabbit auth login` needs a real interactive terminal (browser OAuth) — run it yourself, not
+  from an agent-driven shell. Install via `brew install coderabbit` (official cask).
+- Scope to source dirs only (`citypods/`, `scripts/`, `tests/`, `workers/`, `templates/`, `.github/`);
+  skip `config/` (per-city data) and doc dirs.
+- Save raw NDJSON output (don't trust a UI preview — it truncates display only) and verify every
+  finding against current code before fixing, same staleness caveat as reviewing old merged PRs.
+
+Full procedure, every finding from the 2026-06-25 run, and per-finding validity verdicts:
+[`review/19-coderabbit-findings-audit.md`](review/19-coderabbit-findings-audit.md).
