@@ -30,6 +30,7 @@ from citypods.records import (
     referenced_audio_keys,
     save_records,
     source_key,
+    transcript_media_hash,
 )
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
@@ -798,7 +799,7 @@ def _fake_audio_download(_url, dest):
 
 def _fresh_recipe(ep: Episode, city: City, version: str = ASR_PIPELINE_VERSION) -> str:
     return asr_spec_hash(
-        ep.audio_spec_hash,
+        transcript_media_hash(ep),
         city.asr_model,
         None,
         version,
@@ -1920,6 +1921,117 @@ class TestTranscriptVersionAwareReuse:
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.reused == 1
         assert fake_asr.transcribe_calls == []
+
+    def test_current_version_old_shape_asr_key_is_copied_to_timeline_recipe(self, tmp_path):
+        ep = _ep_with_audio()
+        city = _city()
+        src_key = source_key(city)
+        old_recipe = asr_spec_hash(
+            "old-audio-spec",
+            city.asr_model,
+            None,
+            ASR_PIPELINE_VERSION,
+            language=city.asr_language or None,
+            compute_type=city.asr_compute_type,
+            beam_size=city.asr_beam_size,
+            initial_prompt=asr_initial_prompt(city.podcast_author, ep.body, ep.title),
+        )
+        old_key = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.vtt"
+        old_words = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.words.json"
+        ep.transcript_key = old_key
+        ep.transcript_words_key = old_words
+        ep.transcript_spec_hash = old_recipe
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+        root = tmp_path / "audio"
+        (root / old_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / old_key).write_bytes(ASR_VTT)
+        (root / old_words).write_bytes(ASR_WORDS)
+
+        fake_asr = _FakeAsr()
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stats = TranscriptStage().process(FakeProvider(), city, [ep], _ctx(tmp_path))
+
+        new_recipe = _fresh_recipe(ep, city)
+        new_key = f"transcripts/{src_key}/{ep.uid}-asr-{new_recipe}.vtt"
+        new_words = f"transcripts/{src_key}/{ep.uid}-asr-{new_recipe}.words.json"
+        assert fake_asr.transcribe_calls == []
+        assert ep.transcript_key == new_key
+        assert ep.transcript_words_key == new_words
+        assert ep.transcript_spec_hash == new_recipe
+        assert (root / new_key).read_bytes() == ASR_VTT
+        assert (root / new_words).read_bytes() == ASR_WORDS
+        assert stats.reused == 1
+        assert stats.asr_migration_copied == 1
+        assert stats.asr_migration_missing == 0
+        assert stats.asr_migration_regenerated == 0
+
+    def test_missing_old_shape_asr_artifact_is_reported_and_regenerated(self, tmp_path):
+        ep = _ep_with_audio()
+        city = _city()
+        src_key = source_key(city)
+        old_recipe = asr_spec_hash(
+            "old-audio-spec",
+            city.asr_model,
+            None,
+            ASR_PIPELINE_VERSION,
+            language=city.asr_language or None,
+            compute_type=city.asr_compute_type,
+            beam_size=city.asr_beam_size,
+            initial_prompt=asr_initial_prompt(city.podcast_author, ep.body, ep.title),
+        )
+        ep.transcript_key = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.vtt"
+        ep.transcript_words_key = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.words.json"
+        ep.transcript_spec_hash = old_recipe
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ep.transcript_spec_hash == _fresh_recipe(ep, city)
+        assert stats.asr_migration_missing == 1
+        assert stats.asr_migration_regenerated == 1
+        assert stats.asr_migration_copied == 0
+
+    def test_partial_migrated_asr_vtt_without_words_regenerates(self, tmp_path):
+        ep = _ep_with_audio()
+        city = _city()
+        src_key = source_key(city)
+        old_recipe = asr_spec_hash(
+            "old-audio-spec",
+            city.asr_model,
+            None,
+            ASR_PIPELINE_VERSION,
+            language=city.asr_language or None,
+            compute_type=city.asr_compute_type,
+            beam_size=city.asr_beam_size,
+            initial_prompt=asr_initial_prompt(city.podcast_author, ep.body, ep.title),
+        )
+        new_recipe = _fresh_recipe(ep, city)
+        old_key = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.vtt"
+        old_words = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.words.json"
+        new_key = f"transcripts/{src_key}/{ep.uid}-asr-{new_recipe}.vtt"
+        new_words = f"transcripts/{src_key}/{ep.uid}-asr-{new_recipe}.words.json"
+        ep.transcript_key = old_key
+        ep.transcript_words_key = old_words
+        ep.transcript_spec_hash = old_recipe
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+        root = tmp_path / "audio"
+        (root / old_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / old_key).write_bytes(ASR_VTT)
+        (root / new_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / new_key).write_bytes(ASR_VTT)
+
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert len(fake_asr.transcribe_calls) == 1
+        assert ep.transcript_key == new_key
+        assert ep.transcript_words_key == new_words
+        assert (root / new_words).exists()
+        assert stats.asr_migration_missing == 1
+        assert stats.asr_migration_regenerated == 1
 
     def test_stale_version_asr_transcript_is_redone(self, tmp_path):
         ep = _ep_with_audio()

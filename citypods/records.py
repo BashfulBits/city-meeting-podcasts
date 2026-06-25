@@ -242,6 +242,15 @@ def audio_spec_hash(
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
 
+def transcript_media_hash(ep: Episode) -> str:
+    """Hash of ASR transcript media inputs, independent of audio mastering bytes."""
+    tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
+    source_refs = [s.ref for s in ep.sources] if ep.sources else [ep.video_url]
+    spec = {"v": 1, "sources": source_refs, "timeline": tl_digest}
+    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha1(blob.encode()).hexdigest()[:12]
+
+
 def audio_object_key(city: City, ep: Episode, spec: str) -> str:
     """Content-addressed storage key: changes iff the audio spec changes."""
     return f"{city.provider}/{source_key(city)}/{ep.uid}-{spec}.m4a"
@@ -376,8 +385,9 @@ def estimate_audio_shard_work(
     )
 
 
-TranscribeRoute = Literal["local", "dispatch", "blocked", "inflight"]
+TranscribeRoute = Literal["local", "dispatch", "blocked", "inflight", "copy"]
 TranscribeRouteClassifier = Callable[[Episode, float | None], TranscribeRoute]
+TranscriptStalePredicate = Callable[[Episode], bool]
 
 # Shard weights use cost-seconds as a common proxy. Local work uses recording duration because it
 # dominates runner occupancy; external dispatch and blocked inspection are cheap control-plane work.
@@ -385,6 +395,7 @@ TranscribeRouteClassifier = Callable[[Episode, float | None], TranscribeRoute]
 # distort the balance of GitHub runners that will not transcribe it.
 TRANSCRIBE_DISPATCH_WEIGHT_SECONDS = 60.0
 TRANSCRIBE_BLOCKED_WEIGHT_SECONDS = 1.0
+TRANSCRIBE_COPY_WEIGHT_SECONDS = 1.0
 TRANSCRIBE_UNKNOWN_LOCAL_WEIGHT_SECONDS = 2 * 3600.0
 
 
@@ -404,6 +415,7 @@ class TranscribeShardWork:
     dispatch_items: int = 0
     blocked_items: int = 0
     inflight_items: int = 0
+    copy_items: int = 0
 
     def shard_weight(
         self,
@@ -415,6 +427,7 @@ class TranscribeShardWork:
             self.local_seconds
             + self.dispatch_items * dispatch_seconds
             + self.blocked_items * blocked_seconds
+            + self.copy_items * TRANSCRIBE_COPY_WEIGHT_SECONDS
         )
 
 
@@ -426,6 +439,7 @@ def estimate_transcribe_shard_work(
     asr_pipeline_version: str,
     local_max_duration_hours: float,
     route_classifier: TranscribeRouteClassifier | None = None,
+    transcript_stale: TranscriptStalePredicate | None = None,
     unknown_local_seconds: float = TRANSCRIBE_UNKNOWN_LOCAL_WEIGHT_SECONDS,
 ) -> TranscribeShardWork:
     """Estimate routing-aware transcribe work for source-atomic shard assignment.
@@ -456,6 +470,7 @@ def estimate_transcribe_shard_work(
     dispatch_items = 0
     blocked_items = 0
     inflight_items = 0
+    copy_items = 0
     for _uid, route, duration_seconds in _iter_transcribe_routes(
         state_dir,
         src_key,
@@ -463,6 +478,7 @@ def estimate_transcribe_shard_work(
         asr_pipeline_version=asr_pipeline_version,
         local_max_duration_hours=local_max_duration_hours,
         route_classifier=route_classifier,
+        transcript_stale=transcript_stale,
     ):
         if route == "local":
             local_items += 1
@@ -476,6 +492,8 @@ def estimate_transcribe_shard_work(
             blocked_items += 1
         elif route == "inflight":
             inflight_items += 1
+        elif route == "copy":
+            copy_items += 1
 
     # Weight unknown-duration local items by the average *known* local duration in THIS source,
     # not a flat per-item ceiling. A source with many not-yet-probed episodes (a large backfill, or
@@ -498,6 +516,7 @@ def estimate_transcribe_shard_work(
         dispatch_items=dispatch_items,
         blocked_items=blocked_items,
         inflight_items=inflight_items,
+        copy_items=copy_items,
     )
 
 
@@ -509,6 +528,7 @@ def _iter_transcribe_routes(
     asr_pipeline_version: str,
     local_max_duration_hours: float,
     route_classifier: TranscribeRouteClassifier | None = None,
+    transcript_stale: TranscriptStalePredicate | None = None,
 ) -> Iterator[tuple[str, TranscribeRoute, float | None]]:
     """Yield ``(uid, route, duration_seconds)`` for each record that is transcribe **work this
     run** — the shared classification behind the source-atomic estimate
@@ -533,11 +553,17 @@ def _iter_transcribe_routes(
             continue
         if ep.transcript_synced:
             key_name = (ep.transcript_key or "").rsplit("/", 1)[-1]
-            is_stale_asr = (
-                key_name.startswith(f"{ep.uid or ep.guid}-asr-")
-                and ep.transcript_pipeline_version != asr_pipeline_version
+            is_asr = key_name.startswith(f"{ep.uid or ep.guid}-asr-")
+            copy_migration = (
+                is_asr
+                and ep.transcript_pipeline_version == asr_pipeline_version
+                and transcript_stale is not None
+                and transcript_stale(ep)
             )
-            if not is_stale_asr:
+            if copy_migration:
+                yield uid, "copy", None
+                continue
+            if not (is_asr and ep.transcript_pipeline_version != asr_pipeline_version):
                 continue
         timeout_backoff_until = transcript_timeout_backoff_until(ep)
         if timeout_backoff_until is not None and now < timeout_backoff_until:
@@ -555,7 +581,7 @@ def _iter_transcribe_routes(
             route = "blocked"
         else:
             route = "local"
-        if route not in ("local", "dispatch", "blocked", "inflight"):
+        if route not in ("local", "dispatch", "blocked", "inflight", "copy"):
             raise ValueError(f"unknown transcribe shard route {route!r}")
         yield uid, route, duration_seconds
 
@@ -568,6 +594,7 @@ def pending_transcribe_items(
     asr_pipeline_version: str,
     local_max_duration_hours: float,
     route_classifier: TranscribeRouteClassifier | None = None,
+    transcript_stale: TranscriptStalePredicate | None = None,
     unknown_local_seconds: float = TRANSCRIBE_UNKNOWN_LOCAL_WEIGHT_SECONDS,
 ) -> list[tuple[str, float]]:
     """Per-episode transcribe backlog: ``[(uid, weight_seconds), ...]`` (review/18 §3.1).
@@ -587,6 +614,7 @@ def pending_transcribe_items(
             asr_pipeline_version=asr_pipeline_version,
             local_max_duration_hours=local_max_duration_hours,
             route_classifier=route_classifier,
+            transcript_stale=transcript_stale,
         )
     )
     # Resolve unknown-duration local weight to the per-source average of known local durations
@@ -601,6 +629,8 @@ def pending_transcribe_items(
             weight = TRANSCRIBE_DISPATCH_WEIGHT_SECONDS
         elif route == "blocked":
             weight = TRANSCRIBE_BLOCKED_WEIGHT_SECONDS
+        elif route == "copy":
+            weight = TRANSCRIBE_COPY_WEIGHT_SECONDS
         elif duration_seconds is not None:
             weight = duration_seconds
         else:

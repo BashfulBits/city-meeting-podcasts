@@ -1439,7 +1439,13 @@ migration.
 - **PT-PR4 — migration-safe ASR key rebase.** Introduce timeline/recipe-based transcript keys and migrate
   existing ASR VTT + word JSON objects by copy/alias from old keys to new keys without inference. The
   migration report must state copied, already-present, missing, and regenerated counts; expected
-  regenerated count is zero except for genuinely missing/corrupt artifacts.
+  regenerated count is zero except for genuinely missing/corrupt artifacts. **Implemented in PT-PR4
+  ([#458](https://github.com/BashfulBits/city-meeting-podcasts/pull/458)):** ASR recipes now use a
+  transcript-media hash (source media + served timeline) rather than `audio_spec_hash`, current-version
+  old-shape ASR VTT/word objects copy into the new keys before inference is considered, and run
+  summaries/history report copied/already-present/missing/regenerated migration counts.
+  `ASR_PIPELINE_VERSION` is unchanged; audio-only recipe changes no longer queue ASR work, and the only
+  expected regeneration is for missing old artifacts.
 - **PT-PR5 — provider-transcript-align queue + confidence.** Add the `provider-transcript-align` work class.
   Alignment uses the provider document in source-time, translates timestamps through the timeline module
   before serving, writes confidence as `float | null`, and can compare a new candidate against the
