@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from citypods.feeds import enclosure_url, ordered_links
+from citypods.feeds import enclosure_url, episode_resource_links
 from citypods.models import City, Episode
 from citypods.render import get_env
 
@@ -88,7 +88,7 @@ def render_city_page(
             "title": e.title,
             "duration": _duration(e.duration),
             "audio": enclosure_url(e, "audio"),
-            "links": ordered_links(e.links),
+            "links": episode_resource_links(e),
         }
         for e in episodes
         if enclosure_url(e, "audio")

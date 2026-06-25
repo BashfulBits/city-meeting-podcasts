@@ -25,6 +25,7 @@ LINK_LABELS: dict[str, str] = {
     "agenda_packet": "Agenda packet",
     "minutes": "Minutes",
     "transcript": "Transcript",
+    "provider_transcript_original": "Original city-provided transcript",
     "documents": "Meeting documents",
     "canonical_video": "Watch the video",
     "meetings": "Official meetings page",
@@ -44,6 +45,51 @@ def ordered_links(links: dict | None) -> list[tuple[str, str]]:
     return [(link_label(k), links[k]) for k in keys]
 
 
+def _provider_known_good(ep: Episode) -> dict | None:
+    known_good = (ep.provider_transcript or {}).get("known_good")
+    return known_good if isinstance(known_good, dict) else None
+
+
+def _provider_transcript_url(ep: Episode) -> str | None:
+    known_good = _provider_known_good(ep)
+    if not known_good:
+        return None
+    return known_good.get("hosted_url") or known_good.get("url")
+
+
+def episode_resource_links(ep: Episode) -> list[tuple[str, str]]:
+    """Episode resource links, including the retained provider-source transcript document."""
+    links = dict(ep.links or {})
+    if url := _provider_transcript_url(ep):
+        links["provider_transcript_original"] = url
+    return ordered_links(links)
+
+
+def podcast_transcript(ep: Episode) -> tuple[str, str] | None:
+    """Feed-facing transcript URL + MIME.
+
+    ASR/provider-aligned served-time transcripts own the Podcasting 2.0 tag once present.
+    Until then, a synced known-good provider document may fill the slot while still appearing
+    as a separate original-document download link.
+    """
+    if ep.transcript_synced and ep.transcript_hosted_url:
+        return (
+            ep.transcript_hosted_url,
+            TRANSCRIPT_MIME.get(ep.transcript_format or "", "text/plain"),
+        )
+
+    known_good = _provider_known_good(ep)
+    if not known_good or not known_good.get("synced"):
+        return None
+    fmt = known_good.get("format") or ""
+    mime = TRANSCRIPT_MIME.get(fmt)
+    if not mime:
+        return None
+    if url := _provider_transcript_url(ep):
+        return (url, mime)
+    return None
+
+
 def episode_notes_html(ep: Episode) -> str:
     """Rich show-notes HTML (summary/description + a resource-link list) for
     ``content:encoded``. Returns "" when there's nothing richer than the plain ``<description>``
@@ -53,14 +99,14 @@ def episode_notes_html(ep: Episode) -> str:
     is often already HTML (e.g. Granicus emits ``<p>...<a>``), so it's emitted raw. Everything
     lives inside a CDATA section in the template, so the only sequence we must neutralize is the
     CDATA terminator ``]]>``."""
-    if not ep.summary and not (ep.links or {}):
+    pairs = episode_resource_links(ep)
+    if not ep.summary and not pairs:
         return ""
     parts: list[str] = []
     if ep.summary:
         parts.append(f"<p>{escape(ep.summary)}</p>")
     elif ep.description:
         parts.append(ep.description)  # provider HTML, rendered as-is inside CDATA
-    pairs = ordered_links(ep.links)
     if pairs:
         lis = "".join(
             f'<li><a href="{escape(url)}">{escape(label)}</a></li>' for label, url in pairs
@@ -141,20 +187,15 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
         url = enclosure_url(ep, kind)
         if url is None:
             continue
+        transcript = podcast_transcript(ep)
         items.append(
             {
                 "ep": ep,
                 "enclosure_url": url,
                 "notes_html": episode_notes_html(ep),
                 "chapters_url": chapters_url(city, ep, base_url),
-                # <podcast:transcript> emitted only when transcript is hosted and synced
-                # (timed VTT/SRT); untimed transcripts render as notes-only.
-                "transcript_url": ep.transcript_hosted_url if ep.transcript_synced else None,
-                "transcript_mime": (
-                    TRANSCRIPT_MIME.get(ep.transcript_format or "", "text/plain")
-                    if ep.transcript_synced
-                    else None
-                ),
+                "transcript_url": transcript[0] if transcript else None,
+                "transcript_mime": transcript[1] if transcript else None,
             }
         )
 

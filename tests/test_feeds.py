@@ -110,6 +110,36 @@ def test_episode_notes_html_renders_links_and_summary():
     assert '<a href="https://agenda.pdf">Agenda</a>' in html
 
 
+def test_episode_notes_html_includes_original_provider_transcript_link():
+    from datetime import UTC, datetime
+
+    from citypods.feeds import episode_notes_html
+    from citypods.models import Episode
+
+    ep = Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="v",
+        links={"agenda": "https://agenda.pdf"},
+        provider_transcript={
+            "known_good": {
+                "hosted_url": "https://cdn/provider/original.vtt",
+                "format": "vtt",
+                "synced": True,
+            }
+        },
+    )
+
+    html = episode_notes_html(ep)
+
+    assert '<a href="https://agenda.pdf">Agenda</a>' in html
+    assert (
+        '<a href="https://cdn/provider/original.vtt">Original city-provided transcript</a>' in html
+    )
+    assert html.index("Agenda</a>") < html.index("Original city-provided transcript</a>")
+
+
 def test_episode_notes_html_empty_when_no_enrichment():
     from datetime import UTC, datetime
 
@@ -198,3 +228,81 @@ def test_meetings_link_renders_into_feed_end_to_end(tmp_path):
     xml = build_rss(city, [ep], "audio", "https://e.test")
     assert "Official meetings page" in xml
     assert "https://x.gov/meetings" in xml
+
+
+def test_known_good_provider_transcript_fills_podcast_tag_until_active_transcript_exists():
+    from datetime import UTC, datetime
+
+    from citypods.feeds import build_rss
+    from citypods.models import City, Episode
+
+    city = City(
+        slug="x-tx",
+        provider="granicus",
+        source={"feed_url": "u"},
+        podcast_title="X",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="d",
+    )
+    ep = Episode(
+        guid="g",
+        uid="abc123",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        media_kind="direct",
+        provider_transcript={
+            "known_good": {
+                "hosted_url": "https://cdn/provider/original.vtt",
+                "format": "vtt",
+                "synced": True,
+            }
+        },
+    )
+
+    xml = build_rss(city, [ep], "audio", "https://e.test")
+
+    assert '<podcast:transcript url="https://cdn/provider/original.vtt" type="text/vtt"/>' in xml
+    assert "Original city-provided transcript" in xml
+
+
+def test_active_transcript_wins_podcast_tag_over_provider_original():
+    from datetime import UTC, datetime
+
+    from citypods.feeds import build_rss
+    from citypods.models import City, Episode
+
+    city = City(
+        slug="x-tx",
+        provider="granicus",
+        source={"feed_url": "u"},
+        podcast_title="X",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="d",
+    )
+    ep = Episode(
+        guid="g",
+        uid="abc123",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        media_kind="direct",
+        transcript_hosted_url="https://cdn/asr/served.vtt",
+        transcript_format="vtt",
+        transcript_synced=True,
+        provider_transcript={
+            "known_good": {
+                "hosted_url": "https://cdn/provider/original.vtt",
+                "format": "vtt",
+                "synced": True,
+            }
+        },
+    )
+
+    xml = build_rss(city, [ep], "audio", "https://e.test")
+
+    assert '<podcast:transcript url="https://cdn/asr/served.vtt" type="text/vtt"/>' in xml
+    assert 'podcast:transcript url="https://cdn/provider/original.vtt"' not in xml
+    assert "https://cdn/provider/original.vtt" in xml
