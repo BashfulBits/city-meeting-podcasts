@@ -258,16 +258,25 @@ Hard-won facts that bite anyone adding/debugging providers:
   provider CDN; that burst throttles the tenant (Granicus `403`; Swagit short/truncated responses).
   `HostRateLimiter` caps simultaneous in-flight requests **per registrable domain** inside one process
   (`provider_rate_limits` in `site_config.yml`, currently `granicus.com: 1`) and is acquired by
-  `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The B2-compatible
-  `provider_distributed_leases` layer adds soft candidate-election leases around ffprobe/ffmpeg media
-  reads, capping aggregate Granicus overlap across the four audio shard processes (currently 2 total
-  slots after the GH#300 Phase 1 reduction). Candidate keys provide immutable FIFO order; waiting and
-  acquired candidates renew payload expiry without changing their election position. Active holders
-  stop renewal before best-effort deletion, dead owners are reaped after expiry, and payload metadata
-  identifies the GitHub run/job that held a stale claim. Storage backends with `get_file` use the
-  payload expiry as authoritative; modification time plus TTL is the compatibility fallback. Keys are
-  registrable domains so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched by the host the
-  tenant sees. Both `HostRateLimiter` and `DistributedProviderLeasePool`, plus `SourceCache`'s
+  `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The
+  `provider_distributed_leases` layer adds **per-slot compare-and-swap leases** around ffprobe/ffmpeg
+  media reads (H17 PR6), capping aggregate Granicus overlap across the four audio shard processes
+  (currently 2 total slots after the GH#300 Phase 1 reduction). A domain's N slots are N fixed keys
+  `provider-leases/<domain>/slot-<i>.json` (`i` in `0..N-1`), each an independent CAS object; a worker
+  claims a free slot with `put_cas(if_none_match="*")` or an expired one (a dead owner) with
+  `put_cas(if_match=<etag>)`, walking the slots from a per-owner offset so workers don't all collide on
+  slot 0. This replaced the earlier write-a-candidate-then-list-and-sort FIFO emulation, whose every
+  poll spent an R2 Class-A *list*; the CAS model never lists, spending Class-A only on a claim,
+  renewal, or release (waiting is read-only Class-B). The trade-off is the loss of strict FIFO arrival
+  order — the contract is the concurrency *cap*, not fairness — and a soft cap that can briefly admit
+  N+1 holders on a reap-vs-release race, which is acceptable for a rate limiter. A background thread
+  renews the held slot via CAS; on a renewal conflict the holder has over-run its TTL and another
+  worker reclaimed the slot, so it stops and does not delete a slot it no longer owns. Payload metadata
+  identifies the GitHub run/job that held a stale claim (logged on reap). The pool needs a CAS-capable
+  backend (R2 via `RoutingStorage` routing the `provider-leases/` coordination prefix); on a non-CAS
+  backend (b2-only / local dev) the distributed layer disables and only the in-process `HostRateLimiter`
+  applies. Keys are registrable domains so the Granicus-owned Swagit CDN (`*.granicus.com`) is matched
+  by the host the tenant sees. Both `HostRateLimiter` and `DistributedProviderLeasePool`, plus `SourceCache`'s
   per-uid fetch lock, accept an optional `stop` predicate and raise `StopRequested` if it fires
   before the wait acquires its slot/lease/lock — so a worker idle past the run's wall-clock budget
   yields immediately instead of blocking out a full queue/lease cycle. `CommandFfmpeg` and

@@ -1440,9 +1440,10 @@ def test_run_ffmpeg_guarded_local_cap_does_not_hoard_distributed_slots(tmp_path)
     import citypods.media as media
     from citypods.http import HOST_LIMITER
     from citypods.provider_leases import DistributedProviderLeasePool
+    from tests._cas_fake import MemCAS
 
     url = "https://archive-video.granicus.com/x.mp4"
-    store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
+    store = MemCAS()  # the distributed pool needs real CAS (R2); LocalStorage is non-CAS
 
     class _CountingPool(DistributedProviderLeasePool):
         """Wraps real lease acquisition to track how many leases *this shard* holds concurrently,

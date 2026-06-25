@@ -16,6 +16,27 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **The distributed provider concurrency-slot pool moved to per-slot R2 compare-and-swap (H17 PR6,
+  the final H17 PR; [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)).**
+  `DistributedProviderLeasePool` (the cross-process Granicus/ffmpeg throttle that caps aggregate
+  overlap across the four audio shards) no longer emulates an N-slot FIFO semaphore by writing a
+  per-waiter candidate object and **listing + sorting** the prefix every poll. It now models a
+  domain's N slots as N fixed CAS objects `provider-leases/<domain>/slot-<i>.json` (`i` in `0..N-1`),
+  each with an independent ETag: a worker reads a slot (cheap Class-B) and claims a free one with
+  `put_cas(if_none_match="*")` or an expired one (dead owner) with `put_cas(if_match=<etag>)`, walking
+  the slots from a per-owner offset. Because the old per-poll *list* was itself an R2 Class-A op, a
+  blocked waiter used to burn Class-A continuously; the CAS model **never lists** and spends Class-A
+  only on a claim, renewal, or release (waiting is read-only). `provider-leases/` is added to
+  `COORDINATION_PREFIXES` so the slots route to R2 and are excluded from the bulk B2 state sync.
+  Behavioral changes: waiters no longer acquire in strict FIFO arrival order (the contract is the
+  concurrency *cap*, not fairness), and the soft cap can briefly admit N+1 holders on a
+  reap-vs-release race — both acceptable for a rate limiter. The pool now requires a **CAS-capable**
+  backend; on a non-CAS backend (b2-only / local dev) the distributed layer disables and only the
+  in-process `HostRateLimiter` applies (production runs on `audio_storage_backend: routing` → R2). The
+  live validation harness (PR5) gains a provider-slot check (acquire two of two slots, third caller
+  blocked, release frees) under a `provider-leases/__validate__-…` scratch namespace. Slot payloads,
+  TTL/renew cadence, telemetry, and `stop`-budget abort are unchanged; no audio bytes, pipeline
+  versions, or artifacts change — **no backfill**.
 - **The Granicus rate-limit circuit breaker (plus its queue parking and half-open canary recovery)
   was removed ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** It was
   built for a hypothesis H16 disproved — the Actions-runner 403s were shared GitHub-egress IP

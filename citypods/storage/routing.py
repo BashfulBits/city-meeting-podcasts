@@ -2,8 +2,9 @@
 
 Most state — content-addressed audio/transcripts and append-only logs — stays on the
 *primary* backend (B2), where writes are free and consistency is strong. Only the
-coordination control-plane (provider circuits/leases, work/budget) and the Stage-2 lease
-ledger, which genuinely need compare-and-swap, route to the *coordination* backend (R2).
+coordination control-plane (the GPU budget ledger, the Stage-2 work-lease ledger, and the
+provider concurrency slots), which genuinely needs compare-and-swap, routes to the
+*coordination* backend (R2).
 
 ``RoutingStorage`` implements the ``StorageBackend`` Protocol and dispatches each call by
 key prefix, so callers keep using one storage object unchanged. CAS-only methods
@@ -27,7 +28,14 @@ from citypods.storage.base import StorageBackend
 #   - ``work-leases/`` (H17 PR4): the Stage-2 per-item competitive-claim ledger (review/18 §4); each
 #     ``work-leases/<source>/<uid>.json`` is an independent CAS object. Derived/GET by key, never
 #     listed (listing is a Class-A op on R2).
-COORDINATION_PREFIXES: tuple[str, ...] = ("state/compute_budget.json", "work-leases/")
+#   - ``provider-leases/`` (H17 PR6): the cross-process provider concurrency slots; each
+#     ``provider-leases/<domain>/slot-<i>.json`` is an independent CAS object claimed by
+#     ``put_cas``. Slot keys are derived (``0..N-1``), never listed.
+COORDINATION_PREFIXES: tuple[str, ...] = (
+    "state/compute_budget.json",
+    "work-leases/",
+    "provider-leases/",
+)
 
 
 class RoutingStorage:

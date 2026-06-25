@@ -8,6 +8,7 @@ runs the same `validate()` against live B2 + R2.
 from __future__ import annotations
 
 import importlib.util
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -34,35 +35,39 @@ class _MemCAS:
         self._n = 0
         self.class_a = 0
         self.class_b = 0
+        self._lock = threading.Lock()  # the provider-lease pool spins a renewal thread
 
     def is_cas_managed_key(self, key: str) -> bool:
-        return key.startswith(("work-leases/", "state/compute_budget.json"))
+        return key.startswith(("work-leases/", "state/compute_budget.json", "provider-leases/"))
 
     def telemetry(self) -> dict:
         return {"r2_class_a": self.class_a, "r2_class_b": self.class_b}
 
     def get_bytes(self, key):
-        self.class_b += 1
-        if key not in self.objs:
-            return None
-        return self.objs[key], self.etags[key]
+        with self._lock:
+            self.class_b += 1
+            if key not in self.objs:
+                return None
+            return self.objs[key], self.etags[key]
 
     def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
-        self.class_a += 1
-        exists = key in self.objs
-        if if_none_match == "*" and exists:
-            raise CASConflict(key)
-        if if_match is not None and (not exists or self.etags.get(key) != if_match):
-            raise CASConflict(key)
-        self.objs[key] = data
-        self._n += 1
-        self.etags[key] = f'"e{self._n}"'
-        return "mem://" + key, self.etags[key]
+        with self._lock:
+            self.class_a += 1
+            exists = key in self.objs
+            if if_none_match == "*" and exists:
+                raise CASConflict(key)
+            if if_match is not None and (not exists or self.etags.get(key) != if_match):
+                raise CASConflict(key)
+            self.objs[key] = data
+            self._n += 1
+            self.etags[key] = f'"e{self._n}"'
+            return "mem://" + key, self.etags[key]
 
     def delete(self, key):
-        self.class_a += 1
-        self.objs.pop(key, None)
-        self.etags.pop(key, None)
+        with self._lock:
+            self.class_a += 1
+            self.objs.pop(key, None)
+            self.etags.pop(key, None)
 
 
 def test_validate_all_checks_pass_and_scratch_is_cleaned():
@@ -83,6 +88,9 @@ def test_validate_all_checks_pass_and_scratch_is_cleaned():
         "lease_renew",
         "lease_release",
         "lease_reaper_requeues_expired",
+        "provider_slots_acquire",
+        "provider_slots_cap_blocks",
+        "provider_slots_release",
     } <= names
     # Every scratch object created was deleted — no production-namespace residue.
     assert bucket.objs == {}
