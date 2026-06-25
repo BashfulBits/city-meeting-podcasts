@@ -127,7 +127,7 @@ and every other source-local record adopts that single CAS pointer (GH#421).
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
 | **Orchestration** | `run.py` — `SourcePipeline`, `build()`, the **global two-pass enrich queue** (`_run_enrich_global_queue`: newest-everywhere-first on-runner audio + decoupled transcript), run history, graceful yield, resource-guard wiring. `resources.py` — process resource snapshots + memory/load admission guard for expensive native work. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
 | **State** | `state.py` (build fingerprint), `statesync.py` (bucket↔local; bucket is truth), `storage/{base,local,s3}.py` (`S3CompatibleStorage` b2/r2 presets + local). |
-| **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status`; `validate.py` feed validation. |
+| **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status` (including provider-transcript rollout slices for fetch, align, diarize, confidence, rollback history, and recovery guidance); `validate.py` feed validation. |
 
 Scoped workflow telemetry is append-only under `state/run_events/`. Sibling matrix events sharing
 `GITHUB_RUN_ID` + phase + lane form one logical run; status/projection aggregates them only after every

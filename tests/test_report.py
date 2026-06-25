@@ -393,6 +393,106 @@ def test_build_status_backlog_by_work_class(tmp_path):
     assert bl["deep_archive_items"] == 0
 
 
+def test_build_status_provider_transcript_rollout_metrics(tmp_path):
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("provider-status")
+    done = _rec("done", media_kind="hls", hosted_url="http://cdn/done.m4a")
+    done["links"] = {"transcript": "http://city/done.vtt"}
+    done["provider_transcript"] = {
+        "known_good": {
+            "key": "transcripts/src/done-provider.vtt",
+            "synced": True,
+            "format": "vtt",
+            "confidence": 0.96,
+            "align_spec_hash": "align-done",
+            "diarize_spec_hash": "speaker-done",
+            "diarize_confidence": 1.0,
+        }
+    }
+    done["transcript"] = {
+        "key": "transcripts/src/done-provider-align-align-done.vtt",
+        "spec_hash": "align-done",
+        "synced": True,
+    }
+    done["speakers"] = {
+        "key": "transcripts/src/done-provider-diarize-speaker-done.speakers.json",
+        "spec_hash": "speaker-done",
+        "synced": True,
+        "confidence": 1.0,
+    }
+
+    candidate = _rec("candidate", media_kind="hls", hosted_url="http://cdn/candidate.m4a")
+    candidate["links"] = {"transcript": "http://city/candidate.vtt"}
+    candidate["provider_transcript"] = {
+        "candidate": {
+            "key": "transcripts/src/candidate-provider.vtt",
+            "synced": True,
+            "format": "vtt",
+            "confidence": 0.4,
+            "align_spec_hash": "align-candidate",
+        },
+        "history": [{"key": "transcripts/src/old-provider.vtt", "status": "rejected"}],
+    }
+
+    failed_diarize = _rec("failed", media_kind="hls", hosted_url="http://cdn/failed.m4a")
+    failed_diarize["links"] = {"transcript": "http://city/failed.vtt"}
+    failed_diarize["provider_transcript"] = {
+        "known_good": {
+            "key": "transcripts/src/failed-provider.vtt",
+            "synced": True,
+            "format": "vtt",
+            "confidence": 0.8,
+            "align_spec_hash": "align-failed",
+            "diarize_status": "no-speaker-labels",
+        }
+    }
+    failed_diarize["transcript"] = {
+        "key": "transcripts/src/failed-provider-align-align-failed.vtt",
+        "spec_hash": "align-failed",
+        "synced": True,
+    }
+    failed_diarize["speakers"] = {
+        "spec_hash": "speaker-failed",
+        "synced": False,
+        "error": "no-speaker-labels",
+    }
+
+    save_records(
+        tmp_path,
+        source_key(city),
+        {"done": done, "candidate": candidate, "failed": failed_diarize},
+    )
+
+    pt = build_status([city], site_config=SITE, state_dir=tmp_path)["backlog"][
+        "provider_transcripts"
+    ]
+    assert pt["fetch"] == {
+        "linked": 3,
+        "stored": 3,
+        "known_good": 2,
+        "candidate": 1,
+        "history_entries": 1,
+        "rollback_candidates": 2,
+        "rejected_history": 1,
+    }
+    assert pt["align"]["work"] == {"done": 2, "queued": 1}
+    assert pt["align"]["confidence"]["count"] == 2
+    assert pt["align"]["confidence"]["high"] == 1
+    assert pt["align"]["confidence"]["medium"] == 1
+    assert pt["diarize"]["work"] == {"done": 1, "queued": 1}
+    assert pt["diarize"]["done"] == 1
+    assert pt["diarize"]["errors"] == {"no-speaker-labels": 1}
+    assert pt["diarize"]["confidence"] == {
+        "count": 1,
+        "low": 0,
+        "medium": 0,
+        "high": 1,
+        "min": 1.0,
+        "avg": 1.0,
+    }
+
+
 def test_build_status_overlays_persisted_work_manifest_state(tmp_path):
     """Live work-list sidecar state (leases/backoff) survives the derived status manifest."""
     from datetime import UTC, datetime, timedelta

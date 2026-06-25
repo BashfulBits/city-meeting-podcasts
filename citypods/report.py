@@ -905,6 +905,105 @@ def _manifest_for_status(
     }
 
 
+def _confidence_summary(values: list[float]) -> dict:
+    """Small distribution for status JSON: buckets are intentionally coarse operator signals."""
+    summary = {"count": len(values), "low": 0, "medium": 0, "high": 0, "min": None, "avg": None}
+    if not values:
+        return summary
+    for value in values:
+        if value < 0.5:
+            summary["low"] += 1
+        elif value < 0.9:
+            summary["medium"] += 1
+        else:
+            summary["high"] += 1
+    summary["min"] = round(min(values), 3)
+    summary["avg"] = round(sum(values) / len(values), 3)
+    return summary
+
+
+def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: dict) -> dict:
+    """Provider-transcript rollout status for PT-PR7.
+
+    The work manifest owns live align/diarize state; records own fetch/candidate/history confidence
+    and rollback counters. Keep this derived from canonical state so `/admin/status` remains static.
+    """
+    fetch = {
+        "linked": 0,
+        "stored": 0,
+        "known_good": 0,
+        "candidate": 0,
+        "history_entries": 0,
+        "rollback_candidates": 0,
+        "rejected_history": 0,
+    }
+    align_conf: list[float] = []
+    diarize_conf: list[float] = []
+    diarize_done = 0
+    diarize_errors: dict[str, int] = {}
+    for recs in records_cache.values():
+        for rec in recs.values():
+            if (rec.get("links") or {}).get("transcript"):
+                fetch["linked"] += 1
+            registry = rec.get("provider_transcript") or {}
+            if not isinstance(registry, dict):
+                registry = {}
+            known_good = (
+                registry.get("known_good") if isinstance(registry.get("known_good"), dict) else {}
+            )
+            candidate = (
+                registry.get("candidate") if isinstance(registry.get("candidate"), dict) else {}
+            )
+            history = registry.get("history") if isinstance(registry.get("history"), list) else []
+            if known_good or candidate:
+                fetch["stored"] += 1
+            if known_good:
+                fetch["known_good"] += 1
+                confidence = known_good.get("confidence")
+                if isinstance(confidence, int | float):
+                    align_conf.append(float(confidence))
+                diarize_confidence = known_good.get("diarize_confidence")
+                if isinstance(diarize_confidence, int | float):
+                    diarize_conf.append(float(diarize_confidence))
+            if candidate:
+                fetch["candidate"] += 1
+                fetch["rollback_candidates"] += 1
+            for item in history:
+                if not isinstance(item, dict):
+                    continue
+                fetch["history_entries"] += 1
+                fetch["rollback_candidates"] += 1
+                if item.get("status") == "rejected":
+                    fetch["rejected_history"] += 1
+            speakers = rec.get("speakers") or {}
+            if speakers.get("key"):
+                diarize_done += 1
+            if speakers.get("error"):
+                reason = str(speakers.get("error"))
+                diarize_errors[reason] = diarize_errors.get(reason, 0) + 1
+
+    return {
+        "fetch": fetch,
+        "align": {
+            "work": by_work_class.get("provider-transcript-align", {}),
+            "confidence": _confidence_summary(align_conf),
+        },
+        "diarize": {
+            "work": by_work_class.get("provider-transcript-diarize", {}),
+            "done": diarize_done,
+            "errors": diarize_errors,
+            "confidence": _confidence_summary(diarize_conf),
+        },
+        "operator_recovery": [
+            "Re-run the transcript lane after fixing provider transcript source links.",
+            "Rejected provider candidates remain in provider_transcript.history for "
+            "rollback review.",
+            "Diarize failures do not clear the active provider-align/ASR transcript; "
+            "inspect speakers.error.",
+        ],
+    }
+
+
 def build_status(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
     """Build the operational status snapshot for the /admin/status/ dashboard (issue #124).
 
@@ -1042,6 +1141,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         cities, records_cache, Path(state_dir) if state_dir else None
     )
     by_work_class = wc_counts.get("by_work_class", {})
+    provider_transcripts = _provider_transcript_status(records_cache, by_work_class)
     audio_work = by_work_class.get("audio", {})
     audio_open = sum(
         n for state, n in audio_work.items() if state not in {"done", "alignment-disabled"}
@@ -1188,6 +1288,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             # H5: actionable backlog bucketed by output artifact (audio / transcript-asr /
             # transcript-align), plus alignment-disabled + inert deep-archive counts.
             "by_work_class": by_work_class,
+            "provider_transcripts": provider_transcripts,
             "work_pending": wc_counts.get("feed_visible_pending", 0),
             "alignment_disabled": wc_counts.get("alignment_disabled", 0),
             "deep_archive_items": wc_counts.get("deep_archive_items", 0),
