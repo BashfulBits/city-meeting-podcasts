@@ -288,22 +288,35 @@ def test_get_bytes_error_propagates_and_writes_nothing():
 
 def test_stop_firing_raises_instead_of_blocking_out_the_lease_wait():
     """A waiter polling for a held slot yields ``StopRequested`` once the run's wall-clock budget
-    expires, instead of blocking until the holder releases."""
+    expires, instead of blocking until the holder releases. The stop must fire *after* contention is
+    established (one full sweep finds the slot held), not on the pre-poll check — otherwise the test
+    would never exercise the blocked path."""
     store = MemCAS()
     first = _pool(store)
     second = _pool(store)
+    holder_acquired = threading.Event()
     holder_released = threading.Event()
 
     def hold():
         with first.slots([URL]):
+            holder_acquired.set()
             holder_released.wait(timeout=2.0)
 
     t = threading.Thread(target=hold)
     t.start()
     try:
+        assert holder_acquired.wait(timeout=1)  # the slot is genuinely held before we contend
+        calls = {"n": 0}
+
+        def stop() -> bool:
+            calls["n"] += 1
+            return calls["n"] > 1  # let one sweep observe the held slot, then fire
+
         with pytest.raises(StopRequested):
-            with second.slots([URL], stop=lambda: True):
+            with second.slots([URL], stop=stop):
                 pass
+        assert calls["n"] >= 2  # proves we polled the held slot before yielding
+
     finally:
         holder_released.set()
         t.join()
