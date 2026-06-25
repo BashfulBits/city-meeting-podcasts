@@ -104,6 +104,8 @@ def _configured_ceilings(site_config_path: Path) -> dict:
     import yaml
 
     config = yaml.safe_load(site_config_path.read_text()) or {}
+    if not isinstance(config, dict):
+        config = {}  # malformed (non-mapping) YAML root falls back to the default envelope
     local = (config.get("provider_rate_limits") or {}).get("granicus.com")
     distributed = ((config.get("provider_distributed_leases") or {}).get("granicus.com") or {}).get(
         "slots"
