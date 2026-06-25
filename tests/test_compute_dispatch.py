@@ -417,6 +417,38 @@ class TestReconcile:
         assert summary == {"reaped": 0, "settled": 0, "in_flight": 1, "leases": _NO_LEASES}
         assert load_manifest(tmp_path)[0].state == "running"
 
+    def test_work_lease_reaper_dormant_by_default_leaves_expired_claim_untouched(self, tmp_path):
+        # The Stage-2 ledger is dormant until external pull workers exist, so reconcile must NOT
+        # sweep it by default — even on a CAS backend with an expired claim and a pending item.
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        item = _item("u1")  # pending transcript-asr (state defaults to "queued")
+        save_manifest(tmp_path, [item])
+        wl.claim(  # a dead worker's expired claim sitting in the ledger
+            bucket, "s1", "u1", owner="dead", ttl_seconds=1, now=NOW - timedelta(hours=1)
+        )
+        before = bucket.objs[wl.lease_key("s1", "u1")]
+
+        summary = reconcile_compute(tmp_path, bucket, now=NOW)  # sweep_work_leases defaults False
+
+        assert summary["leases"] == _NO_LEASES  # ledger not swept
+        assert bucket.objs[wl.lease_key("s1", "u1")] == before  # the expired claim is untouched
+
+    def test_work_lease_reaper_requeues_expired_claim_when_enabled(self, tmp_path):
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        item = _item("u1")
+        save_manifest(tmp_path, [item])
+        wl.claim(bucket, "s1", "u1", owner="dead", ttl_seconds=1, now=NOW - timedelta(hours=1))
+
+        summary = reconcile_compute(tmp_path, bucket, now=NOW, sweep_work_leases=True)
+
+        assert summary["leases"]["requeued"] == 1  # dead worker's claim reclaimed
+        reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
+        assert reclaimed.state == "queued" and reclaimed.owner == ""
+
     def test_empty_manifest_is_noop(self, tmp_path):
         assert reconcile_compute(tmp_path, storage=None, now=NOW) == {
             "reaped": 0,

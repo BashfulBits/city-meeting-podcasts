@@ -37,6 +37,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   blocked, release frees) under a `provider-leases/__validate__-…` scratch namespace. Slot payloads,
   TTL/renew cadence, telemetry, and `stop`-budget abort are unchanged; no audio bytes, pipeline
   versions, or artifacts change — **no backfill**.
+- **`compute reconcile`'s Stage-2 work-lease sweep is now gated behind `work_lease_reaper_enabled`
+  (default `false`).** Flipping `audio_storage_backend: routing` activated the reaper on the CAS
+  path, but the per-item lease ledger external pull workers claim against is **dormant** until those
+  workers (H14b/H14c) exist — so the sweep would GET one R2 lease key per pending `transcript-asr`
+  item only to find every one absent (cheap Class-B, but pointless and backlog-scaled). The sweep is
+  lossless to skip while dormant (nothing to settle/requeue), so it stays off until a deployment sets
+  the flag once external workers are live. `reconcile_compute(..., sweep_work_leases=False)` and the
+  matching `compute reconcile --dry-run` preview are both gated.
 - **The Granicus rate-limit circuit breaker (plus its queue parking and half-open canary recovery)
   was removed ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)).** It was
   built for a hypothesis H16 disproved — the Actions-runner 403s were shared GitHub-egress IP

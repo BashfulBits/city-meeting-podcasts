@@ -295,7 +295,13 @@ def _asr_artifact_present(storage, src_key: str, uid: str) -> bool:
     return False
 
 
-def reconcile_compute(state_dir: str | Path, storage, *, now: datetime | None = None) -> dict:
+def reconcile_compute(
+    state_dir: str | Path,
+    storage,
+    *,
+    now: datetime | None = None,
+    sweep_work_leases: bool = False,
+) -> dict:
     """Reap dead workers and settle completed jobs from the persisted ``work.json`` + budget ledger.
 
     For each leased manifest item:
@@ -307,7 +313,14 @@ def reconcile_compute(state_dir: str | Path, storage, *, now: datetime | None = 
       * **still running** (unexpired, no artifact yet) → leave it.
 
     Persists the budget ledger always and the manifest when a lease changed. Returns per-outcome
-    counts for the CLI summary. Idempotent: a second run with no live leases is a no-op."""
+    counts for the CLI summary. Idempotent: a second run with no live leases is a no-op.
+
+    ``sweep_work_leases`` gates the Stage-2 work-lease ledger sweep (review/18 §4.2). It is **off by
+    default** because that ledger is *dormant* until external pull workers (H14b/H14c) claim against
+    it: with no claims, the sweep would GET one lease key per pending ``transcript-asr`` item only
+    to find every one absent — pointless Class-B reads that scale with the backlog. The reaper is
+    lossless to skip while dormant (nothing to settle/requeue), so deployments enable it
+    (``work_lease_reaper_enabled``) only once external workers exist."""
     now = now or datetime.now(UTC)
     state_dir = Path(state_dir)
     items = load_manifest(state_dir)
@@ -355,10 +368,11 @@ def reconcile_compute(state_dir: str | Path, storage, *, now: datetime | None = 
 
     # Stage-2 work-lease ledger reaping (review/18 §4.2): reclaim expired claims and settle done
     # ones, derived from the discovery index — never listing the R2 lease prefix. CAS-only (the
-    # ledger lives on R2); a non-CAS backend has no ledger, so this is skipped. Candidates are the
-    # not-yet-done transcript-asr items, so the sweep tracks backlog, not the whole catalog.
+    # ledger lives on R2); a non-CAS backend has no ledger. Gated behind ``sweep_work_leases``
+    # because the ledger is dormant until external pull workers exist (see the docstring).
+    # Candidates are the not-yet-done transcript-asr items, so the sweep tracks backlog, not all.
     leases = {"completed": 0, "requeued": 0, "in_flight": 0}
-    if cas:
+    if cas and sweep_work_leases:
         from citypods.ops.work_leases import reap as reap_work_leases
 
         candidates = [

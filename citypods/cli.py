@@ -630,6 +630,9 @@ def _compute_reconcile(args) -> int:
     state_dir = resolve_state_dir(site_config, output_dir)
     base_url = getattr(args, "base_url", None) or site_config.get("base_url", "")
     storage = make_storage(site_config, base_url, output_dir)
+    # The Stage-2 work-lease reaper stays dormant until external pull workers (H14b/H14c) claim
+    # against the ledger; until then sweeping it is pointless backlog-scaled GETs (review/18 §4.2).
+    sweep_work_leases = bool(site_config.get("work_lease_reaper_enabled", False))
 
     if args.dry_run:
         # Predict what a real run would reap WITHOUT touching durable or real local state. A real
@@ -651,9 +654,10 @@ def _compute_reconcile(args) -> int:
             manifest = load_manifest(snapshot)
             leased = [wi for wi in manifest if wi.lease_owner]
             budget = load_budget_cas(storage)[0] if cas else load_budget(snapshot)
-            if cas:
+            if cas and sweep_work_leases:
                 # Read-only preview of the Stage-2 work-lease sweep the real reconcile would do, so
-                # the dry-run output matches it (not just legacy work.json leases).
+                # the dry-run output matches it (not just legacy work.json leases). Gated by the
+                # same flag, so the preview reflects whether the reaper is actually enabled.
                 candidates = [
                     (wi.source_key, wi.episode_uid)
                     for wi in manifest
@@ -681,7 +685,7 @@ def _compute_reconcile(args) -> int:
     # written directly by reconcile via CAS and push_state skips it (CAS-managed); on a non-CAS
     # backend (plain B2 / local) it rides this bulk push as before. No-op for a sync-less backend.
     pull_state(storage, state_dir)
-    summary = reconcile_compute(state_dir, storage)
+    summary = reconcile_compute(state_dir, storage, sweep_work_leases=sweep_work_leases)
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
     leases = summary.get("leases", {})
     lease_note = (
