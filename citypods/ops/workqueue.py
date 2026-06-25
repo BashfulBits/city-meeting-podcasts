@@ -36,9 +36,15 @@ MANIFEST_NAME = "work.json"
 MANIFEST_VERSION = 1
 
 # Work classes are keyed by OUTPUT ARTIFACT (diarization-forward; review/12 §H5).
-WORK_CLASSES = ("audio", "transcript-asr", "transcript-align", "provider-transcript-align")
+WORK_CLASSES = (
+    "audio",
+    "transcript-asr",
+    "transcript-align",
+    "provider-transcript-align",
+    "provider-transcript-diarize",
+)
 # Reserved — recognized but not emitted in H5 (reserve-now, no migration later).
-RESERVED_WORK_CLASSES = ("diarization", "transcript-merge")
+RESERVED_WORK_CLASSES = ("transcript-merge",)
 
 # Priority buckets. feed-visible ≡ materialized today, so the archive buckets are
 # reserved-but-inert until the opt-in archive-backfill feature populates them (review/12 §H5).
@@ -378,6 +384,22 @@ def _episode_work_items(
             )
         else:
             items.append(WorkItem(work_class=work_class, state="queued", **base))
+        provider = _provider_transcript_entry(rec.get("provider_transcript"))
+        speakers = rec.get("speakers") or {}
+        active_provider_align = (
+            provider is not None
+            and transcript.get("key")
+            and "-provider-align-" in str(transcript.get("key"))
+            and transcript.get("spec_hash") == provider.get("align_spec_hash")
+        )
+        if active_provider_align:
+            state = (
+                "done"
+                if speakers.get("key")
+                and speakers.get("spec_hash") == provider.get("diarize_spec_hash")
+                else "queued"
+            )
+            items.append(WorkItem(work_class="provider-transcript-diarize", state=state, **base))
     return items
 
 

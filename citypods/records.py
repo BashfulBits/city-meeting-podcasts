@@ -669,6 +669,9 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             words_key = transcript.get("words_key")
             if words_key:
                 keys.add(words_key)
+            speakers_key = (rec.get("speakers") or {}).get("key")
+            if speakers_key:
+                keys.add(speakers_key)
             provider_transcript = rec.get("provider_transcript") or {}
             if isinstance(provider_transcript, dict):
                 for slot in ("known_good", "candidate"):
@@ -716,6 +719,18 @@ def episode_to_record(ep: Episode) -> dict:
         # transcript block so ASR/alignment can be the podcast transcript while the original
         # city document remains downloadable and eligible for refresh/re-alignment.
         "provider_transcript": ep.provider_transcript or None,
+        "speakers": {
+            "key": ep.speakers_key,
+            "url": ep.speakers_url,
+            "spec_hash": ep.speakers_spec_hash,
+            "format": ep.speakers_format,
+            "synced": ep.speakers_synced,
+            "confidence": ep.speakers_confidence,
+            "pipeline_version": ep.speakers_pipeline_version,
+            "error": ep.speakers_error,
+        }
+        if ep.speakers_key or ep.speakers_error
+        else None,
         # v2: source-media registry and timeline EDL (omitted when empty/identity).
         "sources": [dataclasses.asdict(s) for s in ep.sources] if ep.sources else [],
         "timeline": dataclasses.asdict(ep.timeline) if ep.timeline is not None else None,
@@ -764,6 +779,22 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_pipeline_version": t.get("pipeline_version"),
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
+    }
+
+
+def _speakers_fields_from_rec(rec: dict) -> dict:
+    s = rec.get("speakers") or {}
+    if not isinstance(s, dict):
+        return {}
+    return {
+        "speakers_key": s.get("key"),
+        "speakers_url": s.get("url"),
+        "speakers_spec_hash": s.get("spec_hash"),
+        "speakers_format": s.get("format"),
+        "speakers_synced": bool(s.get("synced", False)),
+        "speakers_confidence": s.get("confidence"),
+        "speakers_pipeline_version": s.get("pipeline_version"),
+        "speakers_error": s.get("error"),
     }
 
 
@@ -843,6 +874,7 @@ def record_to_episode(rec: dict) -> Episode:
         summary=rec.get("summary") or "",
         # v2 transcript block (INFRA-8); v1 records with old transcript_url silently dropped.
         **_transcript_fields_from_rec(rec),
+        **_speakers_fields_from_rec(rec),
         # v2 fields (default to identity/empty for v1 records — lazy upgrade)
         sources=sources,
         timeline=timeline,
@@ -885,7 +917,7 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 # ``provider_transcript`` registry is a transcript-lane artifact: PT-PR5/PT-PR6 update candidate /
 # known-good confidence and must preserve it from audio-lane snapshots.
 ARTIFACT_BLOCKS: frozenset[str] = frozenset(
-    {"audio", "transcript", "provider_transcript", "media_availability"}
+    {"audio", "transcript", "provider_transcript", "speakers", "media_availability"}
 )
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
@@ -895,6 +927,7 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "audio": frozenset({"audio", "media_availability"}),
     "transcribe": frozenset({"transcript", "provider_transcript"}),
     "align": frozenset({"transcript", "provider_transcript"}),
+    "diarize": frozenset({"speakers", "provider_transcript"}),
 }
 
 
@@ -1021,6 +1054,16 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.provider_transcript = (
             provider_transcript if isinstance(provider_transcript, dict) else {}
         )
+        speakers = rec.get("speakers") or {}
+        if isinstance(speakers, dict):
+            ep.speakers_key = speakers.get("key")
+            ep.speakers_url = speakers.get("url")
+            ep.speakers_spec_hash = speakers.get("spec_hash")
+            ep.speakers_format = speakers.get("format")
+            ep.speakers_synced = bool(speakers.get("synced", False))
+            ep.speakers_confidence = speakers.get("confidence")
+            ep.speakers_pipeline_version = speakers.get("pipeline_version")
+            ep.speakers_error = speakers.get("error")
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
