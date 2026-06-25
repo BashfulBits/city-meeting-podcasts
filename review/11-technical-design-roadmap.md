@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-06-21 (open-issue consolidation + remaining Phase-H queue)**
+**Status: LIVING · last updated 2026-06-25 (filed: multi-source concat source-caching gap)**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -190,7 +190,8 @@ DerivedArtifact refactor · review/04 B3 stale-record bucket leak · review/04 R
 & **promoted to Phase R** — [`review/17`](17-state-store-backend-evaluation.md)) · off-Actions media ·
 coordination → dedicated KV/DO fallback (trigger-gated — [`review/17`](17-state-store-backend-evaluation.md) §8)
 · 98 open code-quality/security findings from the full-repo CodeRabbit audit, triaged for fix-over-time
-— [`review/19`](19-coderabbit-findings-audit.md).
+— [`review/19`](19-coderabbit-findings-audit.md) · per-segment source caching for multi-source concat
+episodes (new, 2026-06-25 — see §5.5).
 **Deleted:** #5 entities/NER.
 
 ---
@@ -435,6 +436,48 @@ ASR uses the same verified static ffmpeg cache on the host, eliminating its obse
 `apt-get` setup variance without embedding the multi-gigabyte Whisper model. Whisper remains in the
 existing Actions-cache/Hugging Face/B2 cascade, where cache hits prepare in seconds and model/runtime
 versions can evolve independently.
+
+### Per-segment source caching for multi-source concat episodes (new, 2026-06-25)
+
+*Problem:* Audio run #70 showed that multi-segment Swagit/Granicus concat episodes (`ep.sources` with
+`len > 1`, owned by the `SwagitConcatPlanner` / #122) bypass `SourceCache` entirely — `SilencePlanner.plan()`
+(`silence.py:288`) and `AudioStage`'s encode worker (`media.py:2265`) both explicitly skip the cache for
+these episodes "by design" (the concat planner owns stable `.ref` URLs, not `resolve_media_url`),
+streaming every segment directly from the provider through one `filter_complex` ffmpeg invocation with
+dozens of `-i` inputs. Two related production symptoms surfaced on a 41-segment 2013-archive Granicus
+concat in that run: (1) the per-input `-rw_timeout=120s` did not reliably bound a stalled segment buried
+inside the multi-input filter graph — only the monolithic 45-minute `audio_encode_timeout_minutes`
+Python-side backstop eventually killed it (`audio encode error ... timed out after 2699.999943974
+seconds`), after ~36 minutes at 0% CPU; (2) `HOST_LIMITER`'s per-host concurrency slot (`media.py:369-374`,
+issue #39) is held for the *entire* subprocess duration, so one slow concat job pins a scarce
+Granicus/Swagit concurrency slot for 30+ minutes even though only one segment is transferring at any
+instant — starving other shards/episodes that share the same provider cap.
+
+*Candidate approaches:*
+1. **Per-segment download via `SourceCache`** — fetch each `SourceMedia.ref` individually through the
+   existing `_download_audio`/`get_or_fetch` path (already proven to enforce `-rw_timeout` reliably for
+   single-source episodes) before composing the `filter_complex` graph. This releases the rate-limiter
+   slot between segments and gives each segment its own ~120s timeout instead of riding the
+   episode-wide 45-minute backstop — turning "one bad segment kills the whole 41-segment episode" into
+   "one bad segment fails/retries in isolation."
+2. **Persistent cross-run segment cache** — same mechanism as (1), but keyed so a retried concat episode
+   doesn't re-stream segments that already downloaded cleanly in a prior failed attempt. Most valuable
+   for archival concat episodes with dozens of segments, where today one bad segment forces a full
+   re-fetch of all of them on the next run.
+3. **Bound the pathological case instead of caching it** — short-probe each segment (a few seconds)
+   before committing to the full concat measure pass, so segments from clearly degraded archival
+   sources fail fast rather than consuming the full 45-minute backstop. Complementary to (1)/(2), not a
+   substitute — it shortens the failure but doesn't avoid repeated full re-streams on retry.
+
+*Tradeoff:* (1)/(2) lift the "concat planner owns these episodes" boundary that `silence.py:288` /
+`media.py:2265` currently draw deliberately, and add per-segment disk/bookkeeping (N temp files instead
+of one streamed graph) — real but contained scope. (3) is cheaper but only shortens the failure.
+**Lean: (1) first** (fixes the unreliable per-segment timeout and the rate-limiter slot pinning observed
+in run #70), **(3) alongside** as a fast-fail guard, **(2) only if** repeated full concat re-fetches
+prove to be a real recurring cost once (1) ships. Related to the Granicus media reliability follow-up
+above and to `review/16`'s **S3 selective source cache** scaling item (line "Promote S3 selective source
+cache..." in the promotion ladder) — this is a concrete, run-evidenced instance of that broader item,
+narrowly scoped to the multi-segment concat case rather than general per-provider caching.
 
 **Strong Towns-focused discovery (#27/#32, rescoped).** *Problem:* grow toward where it helps most.
 *Approach:* seed discovery from cities with active **Strong Towns Local Conversations**
