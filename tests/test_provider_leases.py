@@ -192,6 +192,27 @@ def test_expired_slot_is_reclaimed_and_counted():
     assert store.keys("test-provider-leases/") == []  # released
 
 
+def test_release_does_not_delete_a_slot_another_worker_reclaimed():
+    # If this holder over-ran its TTL *without* observing a CAS conflict (a renewal network error or
+    # a stalled renew thread) and another worker reclaimed the slot, release must NOT delete the new
+    # holder's live lease — that would silently break the distributed cap.
+    store = MemCAS()
+    pool = _pool(store)
+    slot0 = "test-provider-leases/granicus.com/slot-0.json"
+    lease = pool._acquire("granicus.com")  # holds slot-0 at our ETag
+    assert lease.key == slot0
+
+    # Simulate another worker reclaiming the slot: a new payload under a different ETag.
+    store.seed(slot0, b'{"owner": "other", "domain": "granicus.com", "state": "acquired"}')
+    reclaimer_etag = store.etags[slot0]
+    assert reclaimer_etag != lease.etag
+
+    lease.release()  # stops renewal, then ownership-checked release
+
+    assert store.keys("test-provider-leases/") == [slot0]  # the reclaimer's lease survived
+    assert store.etags[slot0] == reclaimer_etag  # untouched — we did not delete it
+
+
 def test_stale_reap_log_includes_run_job_shard_and_owner(monkeypatch):
     monkeypatch.setenv("GITHUB_RUN_ID", "999")
     store = MemCAS()

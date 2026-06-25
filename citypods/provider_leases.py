@@ -355,6 +355,26 @@ class DistributedProviderLeasePool:
                 )
             return
         try:
+            # Ownership-checked delete: only remove the slot if it still holds OUR version.
+            # ``_lost`` covers the case where renewal *saw* a CAS conflict, but ownership can also
+            # lapse without one — a renewal network error or a stalled renew thread can let the TTL
+            # expire, after which another worker reclaims the slot. An unconditional delete would
+            # then evict that live holder and break the cap. There is no conditional-DELETE
+            # primitive, so verify the ETag first; the residual get→delete TOCTOU only exists in the
+            # already-degenerate over-TTL window and is bounded by the soft cap.
+            got = storage.get_bytes(lease.key)
+            if got is None:
+                return  # already gone (reclaimed-then-released, or never persisted)
+            _data, current_etag = got
+            if current_etag != lease.etag:
+                if log is not None:
+                    detail = self._self_metadata(state="released").detail()
+                    _emit(
+                        log,
+                        f"[enrich] provider lease release skipped (slot reclaimed by another "
+                        f"owner) domain={lease.domain}{detail}",
+                    )
+                return
             storage.delete(lease.key)
             if log is not None:
                 detail = self._self_metadata(state="released").detail()

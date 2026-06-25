@@ -137,31 +137,51 @@ def validate(storage, *, run_id: str, now: datetime | None = None) -> dict:
         return sum(storage.get_bytes(pool_a._slot_key(lease_domain, i)) is not None for i in (0, 1))
 
     try:
+        # held_a stays held across the cap check; held_b is released first to observe the staged
+        # held→1→0 transition. try/finally guarantees both are released even if a check throws, so
+        # a failure never leaves a live holder (whose renewal thread keeps re-claiming) behind for
+        # cleanup to race.
         held_a = pool_a.slots([lease_url])
-        held_b = pool_b.slots([lease_url])
         held_a.__enter__()
-        held_b.__enter__()
-        _check(
-            results, "provider_slots_acquire", _held_slots() == 2, f"{_held_slots()}/2 slots held"
-        )
-
-        # A third caller, given a stop budget that fires after one full sweep, must not acquire
-        # while both slots are held — proof the distributed cap holds across pools.
-        sweeps = {"n": 0}
-
-        def _stop_after_one_sweep() -> bool:
-            sweeps["n"] += 1
-            return sweeps["n"] > 1
-
         try:
-            with pool_c.slots([lease_url], stop=_stop_after_one_sweep):
-                _check(results, "provider_slots_cap_blocks", False, "third caller wrongly acquired")
-        except StopRequested:
-            _check(results, "provider_slots_cap_blocks", True, "third caller blocked while full")
+            held_b = pool_b.slots([lease_url])
+            held_b.__enter__()
+            try:
+                _check(
+                    results,
+                    "provider_slots_acquire",
+                    _held_slots() == 2,
+                    f"{_held_slots()}/2 slots held",
+                )
 
-        held_b.__exit__(None, None, None)
-        after_one = _held_slots()  # one released → exactly one slot object remains
-        held_a.__exit__(None, None, None)
+                # A third caller, given a stop budget that fires after one full sweep, must not
+                # acquire while both slots are held — proof the distributed cap holds across pools.
+                sweeps = {"n": 0}
+
+                def _stop_after_one_sweep() -> bool:
+                    sweeps["n"] += 1
+                    return sweeps["n"] > 1
+
+                try:
+                    with pool_c.slots([lease_url], stop=_stop_after_one_sweep):
+                        _check(
+                            results,
+                            "provider_slots_cap_blocks",
+                            False,
+                            "third caller wrongly acquired",
+                        )
+                except StopRequested:
+                    _check(
+                        results,
+                        "provider_slots_cap_blocks",
+                        True,
+                        "third caller blocked while full",
+                    )
+            finally:
+                held_b.__exit__(None, None, None)
+            after_one = _held_slots()  # one released → exactly one slot object remains
+        finally:
+            held_a.__exit__(None, None, None)
         after_both = _held_slots()  # both released → no slot objects remain
         _check(
             results,
