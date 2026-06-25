@@ -122,6 +122,11 @@ SRT_CONTENT = b"1\n00:00:01,000 --> 00:00:05,000\nHello world\n"
 PLAIN_CONTENT = b"These are the minutes of the meeting. No timestamps."
 
 
+@pytest.fixture(autouse=True)
+def _skip_provider_url_dns_validation(monkeypatch):
+    monkeypatch.setattr("citypods.stages.validate_source_url", lambda *_args, **_kwargs: None)
+
+
 # ---------------------------------------------------------------------------
 # Episode model — transcript_url removed
 # ---------------------------------------------------------------------------
@@ -282,55 +287,175 @@ class TestTranscriptStageVTT:
 
         return ep, stats
 
-    def test_vtt_stored_and_synced(self, tmp_path):
+    def test_vtt_stored_as_provider_candidate(self, tmp_path):
         ep, stats = self._run_with_content(tmp_path, VTT_CONTENT)
         assert stats.ran == 1
-        assert ep.transcript_key is not None
-        assert ep.transcript_synced is True
-        assert ep.transcript_format == "vtt"
+        candidate = ep.provider_transcript["candidate"]
+        assert candidate["key"].endswith(".vtt")
+        assert candidate["key"] is not None
+        assert candidate["synced"] is True
+        assert candidate["format"] == "vtt"
+        assert ep.transcript_key is None
 
-    def test_vtt_basis_served_for_identity_timeline(self, tmp_path):
+    def test_provider_candidate_basis_remains_source_time(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
-        assert ep.transcript_basis == "served"
+        assert ep.provider_transcript["candidate"]["basis"] == "source:s0"
 
     def test_vtt_object_uploaded_to_storage(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
-        assert ep.transcript_hosted_url is not None
-        assert ep.transcript_hosted_url.startswith("https://")
-        assert ep.transcript_key is not None
+        candidate = ep.provider_transcript["candidate"]
+        assert candidate["hosted_url"] is not None
+        assert candidate["hosted_url"].startswith("https://")
+        assert candidate["key"] is not None
         # Object should exist on disk
         audio_dir = tmp_path / "audio"
-        assert (audio_dir / ep.transcript_key).exists()
+        assert (audio_dir / candidate["key"]).exists()
 
     def test_srt_detected_as_synced(self, tmp_path):
         ep, stats = self._run_with_content(tmp_path, SRT_CONTENT)
-        assert ep.transcript_synced is True
-        assert ep.transcript_format == "srt"
+        assert ep.provider_transcript["candidate"]["synced"] is True
+        assert ep.provider_transcript["candidate"]["format"] == "srt"
 
     def test_plain_text_not_synced(self, tmp_path):
         ep, stats = self._run_with_content(tmp_path, PLAIN_CONTENT)
-        assert ep.transcript_synced is False
-        assert ep.transcript_format == "txt"
+        assert ep.provider_transcript["candidate"]["synced"] is False
+        assert ep.provider_transcript["candidate"]["format"] == "txt"
 
-    def test_reuse_skips_refetch(self, tmp_path):
+    def test_unchanged_refetch_refreshes_checked_at_without_new_candidate(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
-        first_key = ep.transcript_key
+        first = dict(ep.provider_transcript["candidate"])
 
-        class _FakeSession:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                pass
-
-            def get(self, *a, **kw):
-                raise AssertionError("should not fetch again on reuse")
-
-        with patch("citypods.http.make_session", return_value=_FakeSession()):
+        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
             stage = TranscriptStage()
             stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
-        assert ep.transcript_key == first_key
+        second = ep.provider_transcript["candidate"]
+        assert second["key"] == first["key"]
+        assert second["spec_hash"] == first["spec_hash"]
+        assert second["status"] == "unchanged"
+        assert second["checked_at"] >= first["checked_at"]
         assert stats.reused == 1
+
+    def test_unchanged_refetch_reuploads_when_provider_object_is_missing(self, tmp_path):
+        ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
+        key = ep.provider_transcript["candidate"]["key"]
+        stored = tmp_path / "audio" / key
+        stored.unlink()
+
+        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert stats.ran == 1
+        assert ep.provider_transcript["candidate"]["key"] == key
+        assert stored.exists()
+
+    def test_unchanged_refetch_matches_by_content_not_signed_url(self, tmp_path):
+        ep, _ = self._run_with_content(tmp_path, VTT_CONTENT, url="https://provider/t.vtt?token=a")
+        fresh = _ep(uid=ep.uid, links={"transcript": "https://provider/t.vtt?token=b"})
+        fresh.provider_transcript = ep.provider_transcript
+
+        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [fresh], _ctx(tmp_path))
+
+        assert stats.reused == 1
+        assert fresh.provider_transcript["candidate"]["url"].endswith("token=b")
+
+    def test_unchanged_refetch_only_updates_matching_slot_when_url_is_shared(self, tmp_path):
+        ep, _ = self._run_with_content(tmp_path, b"candidate bytes")
+        candidate = dict(ep.provider_transcript["candidate"])
+        known_good = dict(candidate)
+        known_good["spec_hash"] = "known-good-spec"
+        known_good["key"] = "transcripts/src/u-provider-known.txt"
+        ep.provider_transcript = {
+            "known_good": known_good,
+            "candidate": candidate,
+            "history": [],
+        }
+
+        with patch("citypods.http.make_session", return_value=_fetch(b"candidate bytes")):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert stats.reused == 1
+        assert ep.provider_transcript["candidate"]["status"] == "unchanged"
+        assert ep.provider_transcript["known_good"]["status"] == "candidate"
+
+    def test_known_good_refetch_clears_stale_candidate_to_history(self, tmp_path):
+        ep, _ = self._run_with_content(tmp_path, b"known good bytes")
+        known_good = dict(ep.provider_transcript["candidate"])
+        candidate = dict(known_good)
+        candidate["spec_hash"] = "candidate-spec"
+        candidate["key"] = "transcripts/src/u-provider-candidate.txt"
+        ep.provider_transcript = {
+            "known_good": known_good,
+            "candidate": candidate,
+            "history": [],
+        }
+
+        with patch("citypods.http.make_session", return_value=_fetch(b"known good bytes")):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert stats.reused == 1
+        assert "candidate" not in ep.provider_transcript
+        assert ep.provider_transcript["known_good"]["status"] == "unchanged"
+        assert ep.provider_transcript["history"][0]["spec_hash"] == "candidate-spec"
+
+    def test_changed_bytes_become_candidate_and_prior_candidate_moves_to_history(self, tmp_path):
+        ep, _ = self._run_with_content(tmp_path, b"old transcript")
+        first = dict(ep.provider_transcript["candidate"])
+
+        with patch("citypods.http.make_session", return_value=_fetch(b"new transcript")):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        candidate = ep.provider_transcript["candidate"]
+        assert stats.ran == 1
+        assert candidate["spec_hash"] != first["spec_hash"]
+        assert ep.provider_transcript["history"][0]["spec_hash"] == first["spec_hash"]
+        assert ep.transcript_key is None
+
+    def test_changed_candidate_does_not_copy_known_good_to_history(self, tmp_path):
+        ep, _ = self._run_with_content(tmp_path, b"old candidate")
+        first = dict(ep.provider_transcript["candidate"])
+        ep.provider_transcript["known_good"] = {
+            **first,
+            "spec_hash": "known-good-spec",
+            "key": "transcripts/src/u-provider-known.txt",
+        }
+
+        with patch("citypods.http.make_session", return_value=_fetch(b"new candidate")):
+            TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        history_hashes = [item["spec_hash"] for item in ep.provider_transcript["history"]]
+        assert history_hashes == [first["spec_hash"]]
+
+    def test_active_asr_transcript_does_not_block_provider_source_backfill(self, tmp_path):
+        ep = _ep(links={"transcript": "https://provider/t.vtt"})
+        src_key = source_key(_city())
+        ep.transcript_key = f"transcripts/{src_key}/{ep.uid}-asr-current.vtt"
+        ep.transcript_hosted_url = None
+        ep.transcript_synced = True
+        ep.transcript_format = "vtt"
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+        storage_root = tmp_path / "audio"
+        (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (storage_root / ep.transcript_key).write_bytes(ASR_VTT)
+
+        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert stats.ran == 1
+        assert stats.reused == 1
+        assert ep.transcript_key.endswith("-asr-current.vtt")
+        assert ep.provider_transcript["candidate"]["format"] == "vtt"
+
+    def test_provider_fetch_validates_url_with_dns_resolution(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "citypods.stages.validate_source_url",
+            lambda url, **kwargs: calls.append((url, kwargs)),
+        )
+
+        self._run_with_content(tmp_path, VTT_CONTENT, url="https://provider/t.vtt")
+
+        assert calls == [("https://provider/t.vtt", {"resolve": True})]
 
 
 # ---------------------------------------------------------------------------
@@ -462,11 +587,18 @@ class TestTranscriptStopAndStorage:
         return ep
 
     def test_reuse_runs_even_when_stopped(self, tmp_path):
-        # #16: reuse is cheap idempotent bookkeeping → must run even after stop(), so a yielded
-        # run still references the already-stored transcript (mirrors AudioStage).
+        # #16: active transcript reuse is cheap idempotent bookkeeping → must run even after
+        # stop(), so a yielded run still references the already-stored transcript (mirrors
+        # AudioStage). Provider-source fetching itself is expensive and remains stop-gated below.
         ep = self._store_once(tmp_path)
+        ep.transcript_key = f"transcripts/{source_key(_city())}/uid-g1-asr-abc.vtt"
         ep.transcript_hosted_url = None  # a fresh run must re-attach the URL
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
         ctx = _ctx(tmp_path)
+        dest = tmp_path / "audio" / ep.transcript_key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(VTT_CONTENT)
         ctx.stop = lambda: True
         with patch("citypods.http.make_session", return_value=_NoFetch()):
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
@@ -483,6 +615,7 @@ class TestTranscriptStopAndStorage:
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
         assert stats.skipped == 1
         assert ep.transcript_key is None
+        assert ep.provider_transcript == {}
 
     def test_spec_is_content_addressed_not_url(self, tmp_path):
         # #17: identical content behind different (tokenized) URLs → same spec/key.
@@ -492,8 +625,14 @@ class TestTranscriptStopAndStorage:
         with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
             TranscriptStage().process(FakeProvider(), _city(), [ep_a], _ctx(tmp_path))
             TranscriptStage().process(FakeProvider(), _city(), [ep_b], _ctx(tmp_path))
-        assert ep_a.transcript_spec_hash == ep_b.transcript_spec_hash
-        assert ep_a.transcript_key == ep_b.transcript_key
+        assert (
+            ep_a.provider_transcript["candidate"]["spec_hash"]
+            == ep_b.provider_transcript["candidate"]["spec_hash"]
+        )
+        assert (
+            ep_a.provider_transcript["candidate"]["key"]
+            == ep_b.provider_transcript["candidate"]["key"]
+        )
 
     def test_referenced_keys_protect_transcripts_from_gc(self, tmp_path):
         # Fix A: the live set the orphan GC keeps must include transcript keys, or
@@ -502,7 +641,7 @@ class TestTranscriptStopAndStorage:
         state_dir = tmp_path / "state"
         save_records(state_dir, source_key(_city()), {ep.uid: episode_to_record(ep)})
         refs = referenced_audio_keys(state_dir)
-        assert ep.transcript_key in refs
+        assert ep.provider_transcript["candidate"]["key"] in refs
 
     def test_referenced_keys_protect_word_sidecar_from_gc(self, tmp_path):
         # H12: the word-JSON sidecar must also be in the orphan-GC live set.
@@ -1134,7 +1273,9 @@ class TestTranscriptStageASR:
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
 
         out = capsys.readouterr().out
-        assert ep.transcript_key is not None
+        candidate = ep.provider_transcript["candidate"]
+        assert candidate["key"].endswith(".txt")
+        assert ep.transcript_key is None
         assert ep.transcript_format == "txt"
         assert ep.transcript_synced is False
         assert stats.ran == 1  # provider text was stored
