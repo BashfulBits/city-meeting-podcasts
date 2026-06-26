@@ -218,6 +218,12 @@ class _Slots:
 HOST_LIMITER = HostRateLimiter()
 
 
+def _redact_url(url: str) -> str:
+    """Strip query/fragment so signed params (S3/B2 auth, tokens) never land in an error message."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}{parts.path}"
+
+
 class _CappedRaw:
     """Proxies a urllib3 raw response so bytes are counted as they stream through.
 
@@ -235,7 +241,9 @@ class _CappedRaw:
     def _account(self, n: int) -> None:
         self._total += n
         if self._total > MAX_RESPONSE_BYTES:
-            raise SecurityError(f"response from {self._url} exceeds cap {MAX_RESPONSE_BYTES} bytes")
+            raise SecurityError(
+                f"response from {_redact_url(self._url)} exceeds cap {MAX_RESPONSE_BYTES} bytes"
+            )
 
     def stream(self, amt=2**16, **kwargs):
         for chunk in self._raw.stream(amt, **kwargs):
@@ -272,7 +280,8 @@ class GuardedHTTPAdapter(HTTPAdapter):
         if length is not None and length.isdigit() and int(length) > MAX_RESPONSE_BYTES:
             response.close()
             raise SecurityError(
-                f"response from {request.url} is {length} bytes, exceeds cap {MAX_RESPONSE_BYTES}"
+                f"response from {_redact_url(request.url)} is {length} bytes, "
+                f"exceeds cap {MAX_RESPONSE_BYTES}"
             )
         raw = getattr(response, "raw", None)
         if raw is None:

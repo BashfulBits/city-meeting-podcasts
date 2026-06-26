@@ -88,9 +88,11 @@ def test_clear_deletes_objects_when_requested(tmp_path):
         def __init__(self):
             self.deleted: list[str] = []
             self.put: list[str] = []
+            self.events: list[tuple[str, str]] = []
 
         def delete(self, key):
             self.deleted.append(key)
+            self.events.append(("delete", key))
 
         def get_file(self, key, local_path):
             return False
@@ -100,6 +102,7 @@ def test_clear_deletes_objects_when_requested(tmp_path):
 
         def put_file(self, key, local_path, content_type):
             self.put.append(key)
+            self.events.append(("put", key))
 
     st = FakeStorage()
     summary = crm.clear_materializations(
@@ -107,6 +110,10 @@ def test_clear_deletes_objects_when_requested(tmp_path):
     )
     assert st.put, "durable push must happen before the object delete"
     assert st.deleted == ["audio/k"]
+    put_positions = [i for i, (event, _) in enumerate(st.events) if event == "put"]
+    delete_positions = [i for i, (event, _) in enumerate(st.events) if event == "delete"]
+    assert put_positions and delete_positions
+    assert max(put_positions) < min(delete_positions)  # push happens before delete
     assert summary["deleted"] == 1
 
 

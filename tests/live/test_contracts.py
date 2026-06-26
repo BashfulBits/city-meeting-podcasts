@@ -37,7 +37,7 @@ def _live_selected(markexpr: str) -> bool:
         expr = Expression.compile(markexpr)
     except Exception:
         return True  # can't evaluate it safely -- don't skip work we can't be sure is unwanted
-    return expr.evaluate(lambda name: name == "live")
+    return expr.evaluate(lambda name, **kwargs: name == "live")
 
 
 def pytest_generate_tests(metafunc):
