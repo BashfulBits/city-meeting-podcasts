@@ -75,15 +75,23 @@ Notes:
 
 ## Summary
 
-| Directory | Total | Valid — needs fix | Invalid / by design | Needs discussion | Already fixed |
+Status as of the [fix/coderabbit-review-fixes](https://github.com/BashfulBits/city-meeting-podcasts/pull/483)
+sweep: every "Valid — needs fix" finding below is now fixed (PR #483), with four exceptions
+reclassified to **Needs discussion** after turning out to need a design decision rather than a
+blind patch — two (`CR-CP-06`, `CR-CP-33`) after a first fix attempt broke a real test or required
+touching architecture beyond this sweep's scope; two (`CR-CP-24`, `CR-TS-09`) because the real fix
+means changing core `media.py` download behavior or live per-city podcast description copy. See
+each row for why.
+
+| Directory | Total | Fixed (PR #483) | Invalid / by design | Needs discussion | Already fixed |
 |---|---|---|---|---|---|
-| `citypods/` | 45 | 34 | 4 | 7 | 0 |
-| `scripts/` | 38 | 27 | 9 | 2 | 0 |
+| `citypods/` | 45 | 32 | 4 | 9 | 0 |
+| `scripts/` | 38 | 25 | 9 | 3 | 0 |
 | `.github/` | 25 | 23 | 0 | 2 | 0 |
-| `tests/` | 10 | 7 | 2 | 1 | 0 |
+| `tests/` | 10 | 6 | 2 | 2 | 0 |
 | `templates/` | 6 | 3 | 2 | 0 | 1 |
 | `workers/` | 5 | 4 | 0 | 0 | 1 |
-| **Total** | **129** | **98** | **17** | **12** | **2** |
+| **Total** | **129** | **93** | **17** | **16** | **2** |
 
 Two findings worth flagging immediately as **critical and valid**: `CR-CP-14` (an unscoped
 `--drop-object` CLI flag can delete every audio object/pointer in the catalog) and `CR-CP-35` (a
@@ -226,7 +234,7 @@ scoping closes *other* cities' open GitHub issues as a side effect.
 | CR-TS-06 | minor | tests/fixtures/swagit/dallas-tx-city-council.html:2-6 (and all rows) | malformed `<td></tr>` row terminator in HTML fixture | Invalid / by design | `citypods/providers/swagit.py:32-35`'s `ROW_RE` regex only matches up through the second `</td>` and never inspects the trailing `<td>`/`</tr>` sequence, so this fixture's malformed terminator is invisible to the parser under test and has zero effect on what's exercised. |
 | CR-TS-07 | trivial | tests/test_http.py:223-256 | `test_send_acquires_the_host_slot` resets `HOST_LIMITER` only at the end, not in finally | fixed, PR#483 | The reset runs only after the final assertion; if an earlier assertion fails or any prior step raises, the process-global `HOST_LIMITER` config leaks into later tests. |
 | CR-TS-08 | minor | tests/test_http.py:90-94 (`_burst` helper at 55-77) | `test_unconfigured_host_is_unlimited` expects exact peak==5 under a timing-dependent burst | fixed, PR#483 | `_burst` launches 5 workers holding the slot for a fixed 20ms sleep; asserting `peak[0] == 5` exactly assumes all 5 overlap within that window — plausible on CI but not guaranteed under load/GIL contention. A `>= 2` style assertion would be more robust while still proving "unlimited" behavior. |
-| CR-TS-09 | minor | tests/snapshots/pflugerville-tx_audio.xml:11,14 | audio feed description says "Video recordings" | Valid — needs fix (design gap, not test bug) | `templates/feed.xml.j2:11,14` renders `{{ city.podcast_description }}` identically for both audio and video channels, and `citypods/models.py:182` defines a single `podcast_description: str` per city — there's no kind-specific text. The snapshot correctly mirrors generator output; the underlying generator/config needs media-agnostic wording, which isn't fixable inside `tests/` alone. |
+| CR-TS-09 | minor | tests/snapshots/pflugerville-tx_audio.xml:11,14 | audio feed description says "Video recordings" | Needs discussion | `templates/feed.xml.j2:11,14` renders `{{ city.podcast_description }}` identically for both audio and video channels, and `citypods/models.py:182` defines a single `podcast_description: str` per city — there's no kind-specific text. Traced the literal wording to 4 cities' `config/feeds/*.yml` (`denton-county-tx`, `pflugerville-tx`, `arlington-tx`, `fort-worth-tx`). The snapshot correctly mirrors generator output; fixing this means either rewording live, subscriber-facing podcast descriptions for real cities (an editorial call, not a code bug) or adding kind-specific copy to the model/template — left for a maintainer to choose, not fixed in this sweep. |
 | CR-TS-10 | minor | tests/fixtures/civicclerk/travis-county-tx.json:1 | fixture contains real-looking staff names + UUIDs | Needs discussion | Contains plausible full names tied to UUIDs that look like real Travis County CivicClerk staff, not obviously synthetic placeholders (cf. the genuinely placeholder all-zero UUID used elsewhere in the same file for system uploads). Can't confirm from the repo alone whether these are real; if scraped from the live API, anonymizing to "Test User" + fake UUIDs is the safer call. |
 
 ## `templates/` findings — source: [`full-review-templates-2026-06-25.jsonl`](../.claude/coderabbit/full-review-templates-2026-06-25.jsonl)
