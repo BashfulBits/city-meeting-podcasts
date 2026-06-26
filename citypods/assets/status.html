@@ -707,13 +707,13 @@ function renderHistory(){
   }).join('') || '<tr><td colspan="8" class="muted">No run history yet.</td></tr>';
 
   const hist = S.run_history||[];
-  const totNew   = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).ran||0, 0);
+  const totNew   = hist.reduce((s,r)=>s+(((r.stages||{}).audio||{}).ran||0), 0);
   const totTxNew = hist.reduce((s,r)=>{
     const tx = ((r.stages||{}).transcript||{});
     return s + ((tx.transcribed||0) + (tx.aligned||0) || tx.ran || 0);
   }, 0);
-  const totBytes = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).bytes||0, 0);
-  const totQueue = hist.reduce((s,r)=>s+((r.stages||{}).audio||{}).backlog||0, 0);
+  const totBytes = hist.reduce((s,r)=>s+(((r.stages||{}).audio||{}).bytes||0), 0);
+  const totQueue = hist.reduce((s,r)=>s+(((r.stages||{}).audio||{}).backlog||0), 0);
 
   document.getElementById('history').innerHTML = `
 <h2>Build History (last ${hist.length} run${hist.length!==1?'s':''})</h2>
