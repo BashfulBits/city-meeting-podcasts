@@ -45,7 +45,7 @@ def resolve_state_dir(site_config: dict, output_dir: Path) -> Path:
     return path
 
 
-def pull_canonical_state(site_config: dict, output_dir: Path, *, base_url: str = "") -> Path:
+def pull_canonical_state(site_config: dict, output_dir: str | Path, *, base_url: str = "") -> Path:
     """Resolve ``state_dir`` and pull the durable snapshot from the bucket into it.
 
     Shares the "construct storage, then pull" idiom every read path needs (``run.py``'s
