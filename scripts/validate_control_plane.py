@@ -160,11 +160,12 @@ def validate(storage, *, run_id: str, now: datetime | None = None) -> dict:
             held_b = pool_b.slots([lease_url])
             held_b.__enter__()
             try:
+                slots_held = _held_slots()
                 _check(
                     results,
                     "provider_slots_acquire",
-                    _held_slots() == 2,
-                    f"{_held_slots()}/2 slots held",
+                    slots_held == 2,
+                    f"{slots_held}/2 slots held",
                 )
 
                 # A third caller, given a stop budget that fires after one full sweep, must not

@@ -79,6 +79,7 @@ def _fetch_run_log(run_id: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        timeout=120,
     )
     return proc.stdout
 
@@ -105,6 +106,7 @@ def clear_materializations(
         if not records:
             continue
         changed = False
+        keys_to_delete: list[str] = []
         for uid in sorted(uids):
             rec = records.get(uid)
             if not isinstance(rec, dict):
@@ -116,15 +118,20 @@ def clear_materializations(
             if key:
                 object_keys.append(key)
                 if delete_objects and apply and storage is not None:
-                    storage.delete(key)
-                    deleted += 1
+                    keys_to_delete.append(key)
             rec["audio"] = {**audio, **_CLEARED_AUDIO}
             cleared += 1
             changed = True
         if changed:
             touched.add(source_key)
             if apply:
+                # Persist the cleared records *before* deleting B2 objects: a crash between the
+                # two should leave a record pointing at a (still-present) object, never a
+                # durable record pointing at an already-deleted one.
                 save_records(state_dir, source_key, records)
+                for key in keys_to_delete:
+                    storage.delete(key)
+                    deleted += 1
     return {
         "cleared": cleared,
         "deleted": deleted,
@@ -166,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     storage = make_storage(site_config, "https://example.invalid", args.output_dir)
     state_dir = resolve_state_dir(site_config, args.output_dir)
 
-    if args.delete_objects and (storage is None or not hasattr(storage, "delete")):
+    if args.apply and args.delete_objects and (storage is None or not hasattr(storage, "delete")):
         print("--delete-objects requested but no storage backend with delete support is configured")
         return 1
 
