@@ -1043,20 +1043,21 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.audio_duration_served = audio.get("duration_served")
         ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
-        t = rec.get("transcript") or {}
-        if isinstance(t, dict):
-            if t.get("key"):
-                ep.transcript_key = t.get("key")
-                ep.transcript_hosted_url = t.get("url")
-                ep.transcript_spec_hash = t.get("spec_hash")
-                ep.transcript_format = t.get("format")
-                ep.transcript_basis = t.get("basis", "source:s0")
-                ep.transcript_synced = bool(t.get("synced", False))
-                ep.transcript_words_key = t.get("words_key")
-                ep.transcript_words_url = t.get("words_url")
-                ep.transcript_pipeline_version = t.get("pipeline_version")
-            ep.transcript_timeout_attempts = _coerce_non_negative_int(t.get("timeout_attempts"))
-            ep.transcript_timeout_last_attempt = t.get("timeout_last_attempt")
+        transcript_fields = _transcript_fields_from_rec(rec)
+        if transcript_fields.get("transcript_key"):
+            ep.transcript_key = transcript_fields["transcript_key"]
+            ep.transcript_hosted_url = transcript_fields["transcript_hosted_url"]
+            ep.transcript_spec_hash = transcript_fields["transcript_spec_hash"]
+            ep.transcript_format = transcript_fields["transcript_format"]
+            ep.transcript_basis = transcript_fields["transcript_basis"]
+            ep.transcript_synced = transcript_fields["transcript_synced"]
+            ep.transcript_words_key = transcript_fields["transcript_words_key"]
+            ep.transcript_words_url = transcript_fields["transcript_words_url"]
+            ep.transcript_pipeline_version = transcript_fields["transcript_pipeline_version"]
+        ep.transcript_timeout_attempts = transcript_fields.get("transcript_timeout_attempts", 0)
+        ep.transcript_timeout_last_attempt = transcript_fields.get(
+            "transcript_timeout_last_attempt"
+        )
         provider_transcript = rec.get("provider_transcript")
         ep.provider_transcript = (
             provider_transcript if isinstance(provider_transcript, dict) else {}
