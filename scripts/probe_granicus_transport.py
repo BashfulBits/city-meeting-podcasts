@@ -111,8 +111,23 @@ def _tenant(url: str) -> str:
     return host
 
 
+_BEARER_RE = re.compile(r"(?i)bearer\s+\S+")
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _redact_stderr(text: str) -> str:
+    """Strip bearer tokens and URL query strings/tokens before this text is persisted."""
+    text = _BEARER_RE.sub("Bearer <redacted>", text)
+
+    def _redact_url(match: re.Match) -> str:
+        host, path = _redacted_parts(match.group(0))
+        return f"https://{host}{path}" if host else "<redacted-url>"
+
+    return _URL_RE.sub(_redact_url, text)
+
+
 def _stderr_tail(stderr: str) -> str:
-    return " ".join(stderr.strip().split())[-500:]
+    return " ".join(_redact_stderr(stderr).strip().split())[-500:]
 
 
 def _http_status(stderr: str) -> int | None:
@@ -529,14 +544,18 @@ def _emit(result: ProbeResult) -> None:
 
 
 def _version(binary: str) -> str:
-    proc = subprocess.run(
-        [binary, "--version" if Path(binary).name == "curl" else "-version"],
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
-    return (proc.stdout or proc.stderr).splitlines()[0][:300]
+    try:
+        proc = subprocess.run(
+            [binary, "--version" if Path(binary).name == "curl" else "-version"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        return f"<unavailable: {exc}>"
+    output = (proc.stdout or proc.stderr).splitlines()
+    return output[0][:300] if output else "<unavailable: empty output>"
 
 
 def main() -> int:
