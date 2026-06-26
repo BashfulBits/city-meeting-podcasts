@@ -287,9 +287,12 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert "apt-get" not in runs
     assert "docker run --rm --init" in runs
     assert "python -m citypods.cli enrich --lane audio" in runs
-    assert job["env"]["GRANICUS_PROXY_BASE_URL"] == "${{ secrets.GRANICUS_PROXY_BASE_URL }}"
-    assert job["env"]["GRANICUS_PROXY_TOKEN"] == "${{ secrets.GRANICUS_PROXY_TOKEN }}"
     audio_step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    # CR-GH-25: storage/Granicus secrets are scoped to this step (the only one that touches
+    # them), not the whole job -- checkout/setup-python/cache/runtime-select steps don't need them.
+    step_env = audio_step.get("env") or {}
+    assert step_env["GRANICUS_PROXY_BASE_URL"] == "${{ secrets.GRANICUS_PROXY_BASE_URL }}"
+    assert step_env["GRANICUS_PROXY_TOKEN"] == "${{ secrets.GRANICUS_PROXY_TOKEN }}"
     assert "--env GRANICUS_PROXY_BASE_URL" in audio_step["run"]
     assert "--env GRANICUS_PROXY_TOKEN" in audio_step["run"]
 
