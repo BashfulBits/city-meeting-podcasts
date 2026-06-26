@@ -43,7 +43,7 @@ jobs:
       # The audio manifest (state) lets the rehost-backlog check distinguish a stalled
       # pipeline from a normal in-progress backfill. Read-only here; deploy.yml owns writes.
       - name: Restore build state
-        uses: actions/cache@v5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: .citypods-state
           key: build-state-${{ github.run_id }}
