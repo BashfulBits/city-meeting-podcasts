@@ -2254,15 +2254,22 @@ def materialize_audio(
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
-                source_url = resolve_media_url(ep)
-                source_urls = [source_url]
-                if ep.sources:
-                    source_urls.extend(src.ref for src in ep.sources if src.ref not in source_urls)
+                multi_source = bool(ep.sources and len(ep.sources) > 1)
+                if multi_source:
+                    source_url = ep.sources[0].ref
+                    source_urls = [src.ref for src in ep.sources]
+                else:
+                    source_url = resolve_media_url(ep)
+                    source_urls = [source_url]
+                    if ep.sources:
+                        source_urls.extend(
+                            src.ref for src in ep.sources if src.ref not in source_urls
+                        )
                 # For single-source episodes, use a locally cached copy when available so the
                 # encode pass reads from disk rather than re-streaming the rate-limited source.
                 # Multi-source concat episodes use stable .ref URLs from the concat planner and
                 # don't go through resolve_media_url, so skip the cache for them.
-                if source_cache is not None and ep.uid and not (ep.sources and len(ep.sources) > 1):
+                if source_cache is not None and ep.uid and not multi_source:
                     local = source_cache.get_or_fetch(ep.uid, source_url)
                     by_id = _sources_by_id(ep, str(local) if local is not None else source_url)
                 else:
