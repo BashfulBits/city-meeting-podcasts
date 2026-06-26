@@ -259,6 +259,8 @@ def parse_index_json(content: bytes) -> list[dict]:
         data = json.loads(content)
     except (ValueError, TypeError):
         return []
+    if not isinstance(data, list):
+        return []
     entries = data[0] if data and isinstance(data[0], list) else data
     by_start: dict[int, dict] = {}
     for e in entries if isinstance(entries, list) else []:
