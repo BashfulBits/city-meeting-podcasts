@@ -504,3 +504,26 @@ def test_asr_bench_workflow_is_manual_serial_and_publishes_report():
     assert _step_index(job, "actions/upload-artifact") > _step_index(
         job, "python -m citypods.cli asr-bench"
     )
+
+
+def test_audit_workflow_pulls_canonical_state_not_a_borrowed_cache():
+    """audit.yml must not rely on actions/cache's ``build-state-`` restore-key prefix: that
+    prefix collides with audio.yml's per-shard caches (``build-state-audio-...``) and
+    preview.yml's PR caches (``build-state-preview-...``), so a restore could land on a
+    partial/unrelated snapshot and compare an EDL against a served-duration captured at a
+    different point in the pipeline's history (the cause of GH#464-478/#490-491's false
+    positives). The audit must instead pull the bucket's canonical state directly, same as
+    deploy.yml/audio.yml already do, with actions/cache no longer in the picture at all."""
+    wf, job = _job("audit.yml")
+
+    assert not any(
+        "actions/cache" in str(s.get("uses", "")) for s in job["steps"]
+    ), "audit.yml should pull canonical state from the bucket, not restore an actions/cache blob"
+
+    install = next(s for s in job["steps"] if s.get("name") == "Install")
+    assert 'pip install -e ".[storage]"' in install["run"]
+
+    run_audit = next(s for s in job["steps"] if s.get("name") == "Run audit")
+    env = run_audit.get("env", {})
+    for var in ("B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_PUBLIC_BASE_URL"):
+        assert var in env, f"audit.yml's Run audit step is missing {var} (needed for pull_state)"
