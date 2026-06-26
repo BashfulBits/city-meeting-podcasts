@@ -111,7 +111,9 @@ jobs:
           TITLE="Audio storage GC — reclaimable orphans"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           printf '\n\n> Full object list (`orphans.tsv`): %s\n' "$ARTIFACT_URL" >> gc-audio/issue-body.md
-          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
+            --jq --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty' \
+            2>/dev/null || echo "")
           if [ -n "$EXISTING" ]; then
             gh issue edit "$EXISTING" --body-file gc-audio/issue-body.md
             echo "Updated GC issue #$EXISTING"
@@ -131,7 +133,9 @@ jobs:
         run: |
           TITLE="Audio storage GC — reclaimable orphans"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
+            --jq --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty' \
+            2>/dev/null || echo "")
           if [ -n "$EXISTING" ]; then
             gh issue comment "$EXISTING" --body "Reaped by apply run: ${ARTIFACT_URL}"
             gh issue close "$EXISTING"
