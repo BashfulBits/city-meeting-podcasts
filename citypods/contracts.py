@@ -67,7 +67,13 @@ def _media_fetch_detail(
     if ok:
         return base
 
-    details = [base, f"url={resolved_url}"]
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(resolved_url)
+    safe_url = f"{parts.scheme}://{parts.netloc}{parts.path}"
+    if parts.query:
+        safe_url += "?<redacted>"
+    details = [base, f"url={safe_url}"]
     if logs:
         details.append(f"ffmpeg={_tail(logs[-1])}")
     else:
