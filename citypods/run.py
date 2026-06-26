@@ -862,7 +862,7 @@ def _run_enrich_global_queue(
             key = fut_key[fut]
             try:
                 provider, episodes, persisted, seeded = fut.result()
-            except ProviderError as exc:
+            except (ProviderError, SecurityError) as exc:
                 if ctx.lane in {"transcribe", "align"}:
                     try:
                         provider, episodes, persisted, seeded = pipeline.fetch_merge_from_records(
