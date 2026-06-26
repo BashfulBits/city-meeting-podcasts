@@ -560,8 +560,17 @@ def main() -> int:
             )  # noqa: E501
 
     # 4. Build report
-    all_pass = all(t.passed for t in cas_tests)
+    latency_incomplete = (
+        not args.no_latency
+        and (
+            len(latency) < 3  # conditional_put, get, head
+            or any(s.count < args.latency_iterations for s in latency)
+        )
+    )
+    all_pass = all(t.passed for t in cas_tests) and not latency_incomplete
     notes: list[str] = []
+    if latency_incomplete:
+        notes.append("latency measurement incomplete or had dropped samples")
     if not all_pass:
         notes.append("One or more CAS correctness tests failed — review §6 fallbacks.")
     if mechanism == "inject":
