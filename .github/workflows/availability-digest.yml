@@ -101,7 +101,9 @@ jobs:
           TITLE="H16 empty-recording review digest"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           printf '\n\n> Evidence artifact: %s\n' "$ARTIFACT_URL" >> availability-digest/issue-body.md
-          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
+            --jq --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty' \
+            2>/dev/null || echo "")
           if [ -n "$EXISTING" ]; then
             gh issue edit "$EXISTING" --body-file availability-digest/issue-body.md
             echo "Updated digest issue #$EXISTING"
