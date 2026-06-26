@@ -560,12 +560,9 @@ def main() -> int:
             )  # noqa: E501
 
     # 4. Build report
-    latency_incomplete = (
-        not args.no_latency
-        and (
-            len(latency) < 3  # conditional_put, get, head
-            or any(s.count < args.latency_iterations for s in latency)
-        )
+    latency_incomplete = not args.no_latency and (
+        len(latency) < 3  # conditional_put, get, head
+        or any(s.count < args.latency_iterations for s in latency)
     )
     all_pass = all(t.passed for t in cas_tests) and not latency_incomplete
     notes: list[str] = []

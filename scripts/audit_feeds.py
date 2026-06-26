@@ -154,9 +154,7 @@ def reconcile(findings, *, dry_run: bool, audited_slugs: set[str] | None = None)
             # severity can shift); any other stale severity:* label must go so exactly one
             # severity label is ever present.
             to_remove = {
-                lbl
-                for lbl in current_labels
-                if lbl.startswith("severity:") and lbl != sev_label
+                lbl for lbl in current_labels if lbl.startswith("severity:") and lbl != sev_label
             }
             to_add = desired_labels - current_labels
             body_changed = issue.get("body", "").strip() != body.strip()

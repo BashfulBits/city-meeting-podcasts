@@ -168,9 +168,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
         raw = yaml.safe_load(path.read_text()) or {}
         city = _build_city(raw, defaults, path, entities)
         if city.slug in RESERVED_PUBLIC_DIRS:
-            raise ValueError(
-                f"{path.name}: slug {city.slug!r} collides with a reserved docs path"
-            )
+            raise ValueError(f"{path.name}: slug {city.slug!r} collides with a reserved docs path")
         if city.slug in seen_slugs:
             raise ValueError(f"{path.name}: duplicate slug {city.slug!r}")
         seen_slugs.add(city.slug)

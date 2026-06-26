@@ -52,6 +52,8 @@ _CT2_FILES_REQUIRED = ["config.json", "model.bin", "tokenizer.json", "vocabulary
 
 def _complete(directory: Path) -> bool:
     return all((directory / filename).exists() for filename in _CT2_FILES_REQUIRED)
+
+
 _CT2_FILES_OPTIONAL = [
     "special_tokens_map.json",
     "preprocessor_config.json",
