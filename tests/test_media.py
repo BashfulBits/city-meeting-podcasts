@@ -2359,11 +2359,12 @@ class TestConcatLocalSourcesRealFfmpeg:
                     str(p),
                 ],
                 check=True,
+                timeout=30,
             )
             paths.append(p)
 
         dest = tmp_path / "combined.mka"
-        assert _concat_local_sources(paths, durations, dest, "ffmpeg")
+        assert _concat_local_sources(paths, durations, dest, "ffmpeg", timeout=30)
         assert dest.exists()
 
         probe = subprocess.run(
@@ -2380,5 +2381,6 @@ class TestConcatLocalSourcesRealFfmpeg:
             capture_output=True,
             text=True,
             check=True,
+            timeout=30,
         )
         assert float(probe.stdout.strip()) == pytest.approx(sum(durations), abs=0.05)
