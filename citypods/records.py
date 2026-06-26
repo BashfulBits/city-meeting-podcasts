@@ -68,6 +68,10 @@ def _in_backoff(ep: Episode, now: datetime) -> bool:
         last = datetime.fromisoformat(ep.materialize_last_attempt)
     except ValueError:
         return False
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=UTC)
+    else:
+        last = last.astimezone(UTC)
     delay = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (ep.materialize_attempts - 1))
     return now < last + delay
 
