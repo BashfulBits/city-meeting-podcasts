@@ -437,7 +437,7 @@ ASR uses the same verified static ffmpeg cache on the host, eliminating its obse
 existing Actions-cache/Hugging Face/B2 cascade, where cache hits prepare in seconds and model/runtime
 versions can evolve independently.
 
-### Per-segment source caching for multi-source concat episodes (new, 2026-06-25)
+### Per-segment source caching for multi-source concat episodes (Shipped 2026-06-26)
 
 *Problem:* Audio run #70 showed that multi-segment Swagit/Granicus concat episodes (`ep.sources` with
 `len > 1`, owned by the `SwagitConcatPlanner` / #122) bypass `SourceCache` entirely — `SilencePlanner.plan()`
@@ -472,12 +472,20 @@ instant — starving other shards/episodes that share the same provider cap.
 *Tradeoff:* (1)/(2) lift the "concat planner owns these episodes" boundary that `silence.py:288` /
 `media.py:2265` currently draw deliberately, and add per-segment disk/bookkeeping (N temp files instead
 of one streamed graph) — real but contained scope. (3) is cheaper but only shortens the failure.
-**Lean: (1) first** (fixes the unreliable per-segment timeout and the rate-limiter slot pinning observed
-in run #70), **(3) alongside** as a fast-fail guard, **(2) only if** repeated full concat re-fetches
-prove to be a real recurring cost once (1) ships. Related to the Granicus media reliability follow-up
-above and to `review/16`'s **S3 selective source cache** scaling item (line "Promote S3 selective source
-cache..." in the promotion ladder) — this is a concrete, run-evidenced instance of that broader item,
-narrowly scoped to the multi-segment concat case rather than general per-provider caching.
+Related to the Granicus media reliability follow-up above and to `review/16`'s **S3 selective source
+cache** scaling item (line "Promote S3 selective source cache..." in the promotion ladder) — this is a
+concrete, run-evidenced instance of that broader item, narrowly scoped to the multi-segment concat case
+rather than general per-provider caching.
+
+**Shipped:** a variant of (1), going one step further than per-segment caching alone —
+`SourceCache.get_or_fetch_concat` (`media.py`) downloads each segment individually (own bounded
+timeout, releases the rate-limiter slot between segments, exactly as (1) proposed), then
+*concatenates them once into a single local file* and renders that file as a single source instead
+of still feeding N inputs into one `filter_complex` on every encode attempt. `ep.timeline`/`ep.sources`
+on the persisted record are untouched (clips/soundbites still resolve through the real per-segment
+EDL); only the render-time input to the encoder changes (`_concat_render_timeline`). (3) (fast-fail
+short probe) and (2) (persistent cross-run segment cache) remain open follow-ups — (2) only if repeated
+full concat re-fetches prove to be a real recurring cost now that (1)/Shipped has landed.
 
 **Strong Towns-focused discovery (#27/#32, rescoped).** *Problem:* grow toward where it helps most.
 *Approach:* seed discovery from cities with active **Strong Towns Local Conversations**
