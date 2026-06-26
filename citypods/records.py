@@ -1083,6 +1083,9 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         tl_data = rec.get("timeline")
         if tl_data and ep.timeline is None:
             ep.timeline = _timeline_from_dict(tl_data)
+        availability = _availability_from_rec(rec)
+        if availability is not None:
+            ep.media_availability = availability
 
 
 def migrate_legacy_manifests(state_dir: Path, episodes: list[Episode]) -> int:
