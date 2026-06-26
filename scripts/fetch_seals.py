@@ -54,7 +54,9 @@ def _seal_title(session, name, state) -> str | None:
                 "format": "json",
             },
             timeout=DEFAULT_TIMEOUT,
-        ).json()
+        )
+        r.raise_for_status()
+        r = r.json()
         for p in r.get("query", {}).get("pages", {}).values():
             for img in p.get("images", []):
                 t = img["title"]
@@ -76,7 +78,9 @@ def _seal_title(session, name, state) -> str | None:
                 "format": "json",
             },
             timeout=DEFAULT_TIMEOUT,
-        ).json()
+        )
+        r.raise_for_status()
+        r = r.json()
         pages = r.get("query", {}).get("pages", {})
         if pages and "-1" not in pages:
             return title
@@ -92,7 +96,9 @@ def _seal_title(session, name, state) -> str | None:
             "format": "json",
         },
         timeout=DEFAULT_TIMEOUT,
-    ).json()
+    )
+    r.raise_for_status()
+    r = r.json()
     deny = (
         "school",
         "university",
@@ -139,14 +145,17 @@ def _download_seal(session, title) -> Image.Image | None:
             "format": "json",
         },
         timeout=DEFAULT_TIMEOUT,
-    ).json()
+    )
+    r.raise_for_status()
+    r = r.json()
     page = next(iter(r.get("query", {}).get("pages", {}).values()), {})
     ii = (page.get("imageinfo") or [{}])[0]
     url = ii.get("thumburl") or ii.get("url")
     if not url:
         return None
     data = session.get(url, timeout=DEFAULT_TIMEOUT).content
-    return Image.open(io.BytesIO(data))
+    with Image.open(io.BytesIO(data)) as img:
+        return img.copy()
 
 
 def _favicon_colors(session, website) -> list[str]:
@@ -158,7 +167,8 @@ def _favicon_colors(session, website) -> list[str]:
             f"https://www.google.com/s2/favicons?domain={domain}&sz=128",
             timeout=DEFAULT_TIMEOUT,
         ).content
-        return dominant_colors(Image.open(io.BytesIO(data)))
+        with Image.open(io.BytesIO(data)) as img:
+            return dominant_colors(img)
     except Exception:
         return []
 
@@ -193,26 +203,31 @@ def main(argv=None) -> int:
     SEAL_DIR.mkdir(parents=True, exist_ok=True)
     with make_session() as session:
         for author, group in by_author.items():
-            key = author_key(group[0])
-            seal_file = SEAL_DIR / f"{key}.png"
-            name, state = parse_author(author)
-            colors: list[str] = []
+            try:
+                key = author_key(group[0])
+                seal_file = SEAL_DIR / f"{key}.png"
+                name, state = parse_author(author)
+                colors: list[str] = []
 
-            if args.force or not seal_file.exists():
-                title = _seal_title(session, name, state)
-                if title:
-                    seal = _download_seal(session, title)
-                    if seal:
-                        seal.save(seal_file, "PNG")
-                        print(f"  seal: {author} -> {title}")
-            if seal_file.exists():
-                colors = dominant_colors(Image.open(seal_file))
-            if not colors:
-                colors = _favicon_colors(session, group[0].city_website)
-            if not colors:
-                print(f"  (no seal/colors for {author})")
+                if args.force or not seal_file.exists():
+                    title = _seal_title(session, name, state)
+                    if title:
+                        seal = _download_seal(session, title)
+                        if seal:
+                            seal.save(seal_file, "PNG")
+                            print(f"  seal: {author} -> {title}")
+                if seal_file.exists():
+                    with Image.open(seal_file) as img:
+                        colors = dominant_colors(img)
+                if not colors:
+                    colors = _favicon_colors(session, group[0].city_website)
+                if not colors:
+                    print(f"  (no seal/colors for {author})")
+                    continue
+                print(f"  colors: {author} -> {colors}")
+            except Exception as exc:  # noqa: BLE001 -- one city's failure must not abort the rest
+                print(f"  (failed for {author}: {exc})")
                 continue
-            print(f"  colors: {author} -> {colors}")
             # Colors live on the entity now, so write once per city rather than per feed.
             entity_slug = group[0].city_entity
             if entity_slug:
