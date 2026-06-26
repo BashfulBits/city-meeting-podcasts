@@ -22,7 +22,19 @@ def _representatives():
     return representative_cities(cities)
 
 
-@pytest.mark.parametrize("city", _representatives(), ids=lambda c: c.provider)
+def pytest_generate_tests(metafunc):
+    # `-m 'not live'` (pyproject addopts) is a post-collection filter, so a plain
+    # @pytest.mark.parametrize(..., _representatives()) would still run config loading at
+    # collection time on every pytest invocation, live or not. Skip it unless live tests are
+    # actually selected.
+    if "city" not in metafunc.fixturenames:
+        return
+    if metafunc.config.getoption("markexpr") == "not live":
+        metafunc.parametrize("city", [], ids=[])
+        return
+    metafunc.parametrize("city", _representatives(), ids=lambda c: c.provider)
+
+
 def test_provider_contracts(city):
     results = check_city(city.slug, city.provider, city.source)
     failures = [r for r in results if not r.ok]

@@ -20,7 +20,7 @@ _PINNED_SHA = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
-def _job(workflow_file: str, job_name: str | None = None) -> dict:
+def _job(workflow_file: str, job_name: str | None = None) -> tuple[dict, dict]:
     wf = yaml.safe_load((WORKFLOWS / workflow_file).read_text())
     job = wf["jobs"][job_name] if job_name else next(iter(wf["jobs"].values()))
     return wf, job

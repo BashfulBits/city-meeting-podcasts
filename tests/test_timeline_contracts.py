@@ -238,10 +238,11 @@ class TestSourceSpanBounds:
 
     def test_unknown_source_duration_skips_check(self):
         ep = _ep()
-        ep.sources = [_src("s0", None)]  # duration unknown
-        ep.sources[0] = SourceMedia(
-            id="s0", provider="g", ref="u", media_kind="direct", duration=None, watch_url=None
-        )
+        ep.sources = [
+            SourceMedia(
+                id="s0", provider="g", ref="u", media_kind="direct", duration=None, watch_url=None
+            )
+        ]
         ep.timeline = Timeline(
             version="v1",
             segments=(

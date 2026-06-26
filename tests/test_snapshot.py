@@ -57,12 +57,12 @@ def test_feed_snapshot(provider, slug, kind):
     snapshot = SNAPSHOT_DIR / f"{slug}_{kind}.xml"
     if os.environ.get("SNAPSHOT_UPDATE"):
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-        snapshot.write_text(generated)
+        snapshot.write_text(generated, encoding="utf-8")
         pytest.skip(f"updated snapshot {snapshot.name}")
 
     assert snapshot.exists(), (
         f"missing snapshot {snapshot.name}; run SNAPSHOT_UPDATE=1 pytest to create it"
     )
-    assert generated == snapshot.read_text(), (
+    assert generated == snapshot.read_text(encoding="utf-8"), (
         f"{snapshot.name} changed; if intentional, regenerate with SNAPSHOT_UPDATE=1"
     )
