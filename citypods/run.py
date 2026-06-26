@@ -26,7 +26,14 @@ from pathlib import Path
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body
 from citypods.compute import DispatchCoordinator, make_compute
-from citypods.config import load_backlog_policy, load_city_configs, load_site_config
+from citypods.config import (
+    RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
+)
+from citypods.config import (
+    load_backlog_policy,
+    load_city_configs,
+    load_site_config,
+)
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.h16_identity import H16IdentityTracker
 from citypods.http import HOST_LIMITER
@@ -1695,10 +1702,6 @@ def build(
             close_compute = getattr(compute_backend, "close", None)
             if callable(close_compute):
                 close_compute()
-
-
-# Top-level files/dirs the build owns directly; never pruned as a stale slug.
-_RESERVED_DOC_NAMES = {"audio", "assets", "static", ".git"}
 
 
 def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
