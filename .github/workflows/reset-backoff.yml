@@ -62,7 +62,10 @@ jobs:
         run: pip install -e ".[storage]"
 
       - name: Reset materialization backoff
+        env:
+          PROVIDER: ${{ inputs.provider }}
         run: |
-          PYTHONPATH=. python scripts/reset_materialize_backoff.py \
-            ${{ inputs.provider != '' && format('--provider {0}', inputs.provider) || '' }} \
-            ${{ inputs.apply && '--apply' || '' }}
+          ARGS=()
+          if [ -n "$PROVIDER" ]; then ARGS+=(--provider "$PROVIDER"); fi
+          if [ "${{ inputs.apply }}" = "true" ]; then ARGS+=(--apply); fi
+          PYTHONPATH=. python scripts/reset_materialize_backoff.py "${ARGS[@]}"
