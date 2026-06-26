@@ -12,13 +12,14 @@ const FORWARDED_RESPONSE_HEADERS = [
   "last-modified",
 ];
 
-function plain(status, message) {
+function plain(status, message, extraHeaders = {}) {
   return new Response(`${message}\n`, {
     status,
     headers: {
       "cache-control": "no-store",
       "content-type": "text/plain; charset=utf-8",
       "x-content-type-options": "nosniff",
+      ...extraHeaders,
     },
   });
 }
@@ -108,10 +109,10 @@ function clientResponseHeaders(upstream) {
 
 export async function handleRequest(request, env, fetchImpl = fetch) {
   if (!["GET", "HEAD"].includes(request.method)) {
-    return plain(405, "method not allowed");
+    return plain(405, "method not allowed", { allow: "GET, HEAD" });
   }
   if (!(await authorized(request, env))) {
-    return plain(401, "unauthorized");
+    return plain(401, "unauthorized", { "www-authenticate": "Bearer" });
   }
   const archive = parseArchivePath(request.url, env);
   if (!archive) {
@@ -134,11 +135,12 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
     return plain(502, "upstream fetch failed");
   }
 
-  if (upstream.status >= 300 && upstream.status < 400) {
+  if (upstream.status !== 304 && upstream.status >= 300 && upstream.status < 400) {
     return plain(502, "upstream redirect refused");
   }
 
-  return new Response(request.method === "HEAD" ? null : upstream.body, {
+  const noBody = request.method === "HEAD" || upstream.status === 304;
+  return new Response(noBody ? null : upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers: clientResponseHeaders(upstream),
