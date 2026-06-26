@@ -517,13 +517,18 @@ def _rebuild_audio(args) -> int:
     target_source = args.source
     target_body = args.body
 
-    # Guard the foot-gun: stamping the nonce with no selector would queue the ENTIRE catalog
-    # for re-encode — the blunt blast radius the nonce is meant to be the scalpel against.
-    # Require an explicit --all to do that on purpose. (Dropping objects is always scoped by a
-    # selector in practice, but an unscoped --drop-object is harmless: it only clears pointers
-    # for objects that exist, and is itself gated by the matched set.)
+    # Guard the foot-gun: stamping the nonce, or dropping object pointers, with no selector
+    # would hit the ENTIRE catalog — the blunt blast radius the nonce is meant to be the
+    # scalpel against. Require an explicit --all to do that on purpose.
     has_selector = bool(target_uids or target_source or target_body or after or before)
-    if not drop and not has_selector and not args.all:
+    if not has_selector and not args.all:
+        if drop:
+            print(
+                "error: --drop-object with no selector would clear every audio object pointer. "
+                "Pass a selector (--uid/--source/--body/--encoded-after/--encoded-before), "
+                "or --all to deliberately rebuild the whole catalog."
+            )
+            return 1
         print(
             "error: --reason with no selector would stamp every episode for re-encode. "
             "Pass a selector (--uid/--source/--body/--encoded-after/--encoded-before), "
