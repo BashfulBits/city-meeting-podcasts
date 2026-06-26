@@ -575,11 +575,19 @@ def _parse_rule(raw: object) -> ProviderLeaseRule | None:
             return None
         if slots <= 0:
             return None
+        try:
+            ttl_seconds = float(raw.get("ttl_seconds", 3600.0))
+            poll_seconds = float(raw.get("poll_seconds", 2.0))
+            settle_seconds = float(raw.get("settle_seconds", 0.25))
+        except (TypeError, ValueError):
+            return None
+        if ttl_seconds <= 0 or poll_seconds <= 0 or settle_seconds < 0:
+            return None
         return ProviderLeaseRule(
             slots=slots,
-            ttl_seconds=float(raw.get("ttl_seconds", 3600.0)),
-            poll_seconds=float(raw.get("poll_seconds", 2.0)),
-            settle_seconds=float(raw.get("settle_seconds", 0.25)),
+            ttl_seconds=ttl_seconds,
+            poll_seconds=poll_seconds,
+            settle_seconds=settle_seconds,
         )
     try:
         slots = int(raw)  # type: ignore[arg-type]
