@@ -516,9 +516,9 @@ def test_audit_workflow_pulls_canonical_state_not_a_borrowed_cache():
     deploy.yml/audio.yml already do, with actions/cache no longer in the picture at all."""
     wf, job = _job("audit.yml")
 
-    assert not any(
-        "actions/cache" in str(s.get("uses", "")) for s in job["steps"]
-    ), "audit.yml should pull canonical state from the bucket, not restore an actions/cache blob"
+    assert not any("actions/cache" in str(s.get("uses", "")) for s in job["steps"]), (
+        "audit.yml should pull canonical state from the bucket, not restore an actions/cache blob"
+    )
 
     install = next(s for s in job["steps"] if s.get("name") == "Install")
     assert 'pip install -e ".[storage]"' in install["run"]

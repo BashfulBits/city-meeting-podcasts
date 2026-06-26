@@ -25,9 +25,7 @@ import sys
 
 from citypods.audit import Finding, audit_all
 from citypods.config import load_city_configs, load_site_config
-from citypods.state import resolve_state_dir
-from citypods.statesync import pull_state
-from citypods.storage import make_storage
+from citypods.state import pull_canonical_state
 
 LABELS = {
     "signal:feed-health": ("0E8A16", "Automated feed-health finding"),
@@ -254,19 +252,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.city:
         cities = [c for c in cities if c.slug == args.city]
 
-    # Pull the canonical record store from the bucket before auditing it (statesync.py's
-    # documented contract: the bucket is the source of truth, actions/cache is a pure latency
-    # optimization, never a correctness dependency). Without this, the audit only ever saw
-    # whatever actions/cache/restore's "build-state-" prefix match happened to land on — which
-    # collides with audio.yml's per-shard caches and preview.yml's PR caches, so it could compare
-    # an EDL and a served-duration captured at two different points in the pipeline's history and
-    # file a false-positive timeline-duration-mismatch/timeline-short-coverage finding.
+    # Pull the canonical record store from the bucket before auditing it. Without this, the
+    # audit only ever saw whatever actions/cache/restore's "build-state-" prefix match happened
+    # to land on — which collides with audio.yml's per-shard caches and preview.yml's PR caches,
+    # so it could compare an EDL and a served-duration captured at two different points in the
+    # pipeline's history and file a false-positive timeline-duration-mismatch/
+    # timeline-short-coverage finding.
     output_dir = "docs"
-    state_dir = resolve_state_dir(site_config, output_dir)
-    storage = make_storage(site_config, "", output_dir)
-    restored = pull_state(storage, state_dir)
-    if restored:
-        print(f"state: restored {restored} file(s) from durable storage")
+    pull_canonical_state(site_config, output_dir)
 
     findings = audit_all(
         cities,

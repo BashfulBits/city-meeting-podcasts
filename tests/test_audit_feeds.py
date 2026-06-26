@@ -214,32 +214,41 @@ def test_reconcile_closes_obsolete_inconclusive_meetings_url_issue():
     assert close_calls, "legacy 403 meetings-url issues should close under the current policy"
 
 
-def test_main_pulls_canonical_state_before_auditing(monkeypatch, tmp_path):
+def test_main_pulls_canonical_state_before_auditing(monkeypatch):
     """``main()`` must pull the bucket's canonical state before running checks (not rely solely
     on whatever ``actions/cache/restore`` happened to land on) — otherwise the timeline-integrity
     check can compare an EDL and a served-duration captured at two different points in the
     pipeline's history and file a false-positive finding (see audit.yml's removed cache step)."""
-    sentinel_storage = object()
     calls: list[str] = []
 
     monkeypatch.setattr(_mod, "load_site_config", lambda *_a, **_k: {"defaults": {}})
     monkeypatch.setattr(_mod, "load_city_configs", lambda *_a, **_k: [])
-    monkeypatch.setattr(_mod, "resolve_state_dir", lambda *_a, **_k: tmp_path)
     monkeypatch.setattr(
-        _mod, "make_storage", lambda *_a, **_k: (calls.append("make_storage"), sentinel_storage)[1]
+        _mod, "pull_canonical_state", lambda *_a, **_k: calls.append("pull_canonical_state")
     )
-
-    def _fake_pull_state(storage, state_dir):
-        calls.append("pull_state")
-        assert storage is sentinel_storage
-        assert state_dir == tmp_path
-        return 0
-
-    monkeypatch.setattr(_mod, "pull_state", _fake_pull_state)
     monkeypatch.setattr(_mod, "audit_all", lambda *_a, **_k: (calls.append("audit_all"), [])[1])
     monkeypatch.setattr(_mod, "_ensure_labels", lambda: None)
     monkeypatch.setattr(_mod, "reconcile", lambda *_a, **_k: 0)
 
     _mod.main(["--dry-run"])
 
-    assert calls.index("pull_state") < calls.index("audit_all")
+    assert calls.index("pull_canonical_state") < calls.index("audit_all")
+
+
+def test_pull_canonical_state_degrades_gracefully_when_bucket_unavailable(monkeypatch, tmp_path):
+    """If B2 secrets are absent/invalid or the bucket is unreachable, the audit must keep running
+    against whatever state is already on disk rather than crashing — the old actions/cache step
+    degraded silently on a cache miss, and the bucket pull must preserve that, not regress to a
+    hard failure that takes down unrelated checks (e.g. GH issue reconciliation) too."""
+    from citypods import state as state_mod
+
+    monkeypatch.setattr(state_mod, "resolve_state_dir", lambda *_a, **_k: tmp_path)
+
+    def _boom(*_a, **_k):
+        raise ValueError("Invalid endpoint: ")
+
+    monkeypatch.setattr(state_mod, "make_storage", _boom)
+
+    result = state_mod.pull_canonical_state({}, "docs")
+
+    assert result == tmp_path
