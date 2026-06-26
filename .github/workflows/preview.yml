@@ -12,6 +12,12 @@ permissions:
   contents: read
   pull-requests: write
 
+# Rapid pushes to the same PR would otherwise run overlapping preview jobs that race on
+# artifact upload / PR comment update.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   preview:
     runs-on: ubuntu-latest
@@ -33,7 +39,7 @@ jobs:
       # Actions caches. This gives `--no-refresh` real records to render; on a cache miss (first run
       # / eviction) the render is empty-but-valid (it still verifies the build/render flow).
       - name: Restore build state
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           # Match the path set deploy.yml caches under, so a restore-keys hit extracts cleanly.
           # (docs/ is harmless here — the render below overwrites it.)
@@ -46,7 +52,7 @@ jobs:
 
       - name: Configure Pages
         id: pages
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
         continue-on-error: true
 
       - name: Build feeds
@@ -61,7 +67,7 @@ jobs:
 
       - name: Upload preview artifact
         id: upload
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: site-preview
           path: docs
@@ -71,7 +77,7 @@ jobs:
         # posting the comment fails with "Resource not accessible by integration". The preview
         # itself still built and uploaded — don't fail the check over the cosmetic comment.
         continue-on-error: true
-        uses: actions/github-script@v9
+        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
         with:
           script: |
             const body = [
@@ -80,7 +86,7 @@ jobs:
               `Download the generated \`docs/\` from the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) (artifact: \`site-preview\`).`,
               'Unzip and run `python -m http.server` inside it to browse locally.',
             ].join('\n');
-            const { data: comments } = await github.rest.issues.listComments({
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
             });
             const prev = comments.find(c => c.user.type === 'Bot' && c.body.includes('Site preview built'));
