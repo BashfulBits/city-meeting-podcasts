@@ -96,6 +96,10 @@ def run_bench(
     )
     print()
 
+    if not models:
+        print("No models specified.")
+        return 1
+
     # Column widths
     mw = max(len(m) for m in models)
     print(f"{'Model':<{mw}}  {'WER':>8}  {'Time':>10}  {'Words':>8}  Notes")
