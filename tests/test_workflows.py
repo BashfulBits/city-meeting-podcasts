@@ -303,7 +303,9 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
     assert not wf["env"]["IMAGE"].endswith(":latest")
 
     build = next(s for s in job["steps"] if "docker/build-push-action" in s.get("uses", ""))
-    assert build["with"]["push"] is True
+    # CR-GH-12: push is gated to main so a manual dispatch from a feature branch never
+    # overwrites the shared GHCR tag.
+    assert build["with"]["push"] == "${{ github.ref == 'refs/heads/main' }}"
     assert build["with"]["platforms"] == "linux/amd64"
     assert build["with"]["file"] == ".github/audio-runner/Dockerfile"
     assert "FFMPEG_SHA256=" in build["with"]["build-args"]
