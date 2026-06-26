@@ -210,7 +210,12 @@ def measured_inputs(
     if run_history:
         secs = sum(r.get("materialize_seconds", 0) for r in run_history)
         # Use expensive encodes only (not cheap storage re-credits) so sec/ep reflects real cost.
-        eps = sum(r.get("materialize_encoded", 0) or r.get("materialized", 0) for r in run_history)
+        eps = sum(
+            r["materialize_encoded"]
+            if r.get("materialize_encoded") is not None
+            else r.get("materialized", 0)
+            for r in run_history
+        )
         if eps > 0 and secs > 0:
             inp.sec_per_ep = round(secs / eps, 1)
     if archive_items is not None:
