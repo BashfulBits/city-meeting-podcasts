@@ -230,6 +230,8 @@ class GuardedHTTPAdapter(HTTPAdapter):
 
     def send(self, request, **kwargs):
         validate_source_url(request.url, resolve=True)
+        stream_requested = kwargs.get("stream", False)
+        kwargs["stream"] = True
         # Per-host concurrency cap (#39): hold the provider's slot only for the network round-trip.
         with HOST_LIMITER.slot(request.url):
             response = super().send(request, **kwargs)
@@ -239,6 +241,26 @@ class GuardedHTTPAdapter(HTTPAdapter):
             raise SecurityError(
                 f"response from {request.url} is {length} bytes, exceeds cap {MAX_RESPONSE_BYTES}"
             )
+        if stream_requested or not hasattr(response, "iter_content"):
+            return response
+        # Caller asked for a buffered response (the default): read it ourselves so an
+        # oversized or missing/incorrect Content-Length response can't be fully buffered
+        # into memory before the cap check has a chance to run.
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            for chunk in response.iter_content(chunk_size=65536):
+                total += len(chunk)
+                if total > MAX_RESPONSE_BYTES:
+                    response.close()
+                    raise SecurityError(
+                        f"response from {request.url} exceeds cap {MAX_RESPONSE_BYTES} bytes"
+                    )
+                chunks.append(chunk)
+        finally:
+            response.close()
+        response._content = b"".join(chunks)
+        response._content_consumed = True
         return response
 
 
