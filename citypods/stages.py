@@ -2453,7 +2453,7 @@ class TranscriptStage:
             _t.start()
 
             _abandoned = False
-            _timeout_at = time.monotonic() + timeout_s if timeout_s else None
+            _timeout_at = time.monotonic() + timeout_s if timeout_s is not None else None
             # Register the in-flight inference so the heartbeat's progress snapshot shows a busy
             # ASR shard as busy. Native inference runs in a killable child process, so without this
             # the per-thread PROGRESS registry is empty for the whole (possibly multi-hour)
