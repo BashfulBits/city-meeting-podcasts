@@ -86,12 +86,12 @@ each row for why.
 | Directory | Total | Fixed (PR #483) | Invalid / by design | Needs discussion | Already fixed |
 |---|---|---|---|---|---|
 | `citypods/` | 45 | 32 | 4 | 9 | 0 |
-| `scripts/` | 38 | 25 | 9 | 3 | 0 |
+| `scripts/` | 38 | 25 | 9 | 4 | 0 |
 | `.github/` | 25 | 23 | 0 | 2 | 0 |
 | `tests/` | 10 | 6 | 2 | 2 | 0 |
 | `templates/` | 6 | 3 | 2 | 0 | 1 |
 | `workers/` | 5 | 4 | 0 | 0 | 1 |
-| **Total** | **129** | **93** | **17** | **16** | **2** |
+| **Total** | **129** | **93** | **17** | **17** | **2** |
 
 Two findings worth flagging immediately as **critical and valid**: `CR-CP-14` (an unscoped
 `--drop-object` CLI flag can delete every audio object/pointer in the catalog) and `CR-CP-35` (a

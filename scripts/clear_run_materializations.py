@@ -125,13 +125,26 @@ def clear_materializations(
         if changed:
             touched.add(source_key)
             if apply:
-                # Persist the cleared records *before* deleting B2 objects: a crash between the
-                # two should leave a record pointing at a (still-present) object, never a
-                # durable record pointing at an already-deleted one.
                 save_records(state_dir, source_key, records)
-                for key in keys_to_delete:
-                    storage.delete(key)
-                    deleted += 1
+                if keys_to_delete:
+                    # save_records() only writes local state -- the durable copy lives in the
+                    # bucket. A crash between deleting an object and main()'s single end-of-run
+                    # push_state() call would leave the *durable* record still pointing at an
+                    # object we already deleted. Push this source's state now, scoped to just
+                    # this source, before deleting any of its objects: a crash after this push
+                    # leaves a record pointing at a (still-present) object, never the reverse.
+                    pushed = push_state(
+                        storage, state_dir, only_prefixes=[f"sources/{source_key}/"]
+                    )
+                    if not pushed:
+                        print(
+                            f"  warning: durable push for {source_key} pushed 0 file(s); "
+                            "skipping its object delete(s) to avoid a dangling durable record"
+                        )
+                        continue
+                    for key in keys_to_delete:
+                        storage.delete(key)
+                        deleted += 1
     return {
         "cleared": cleared,
         "deleted": deleted,

@@ -81,18 +81,59 @@ def test_clear_deletes_objects_when_requested(tmp_path):
     save_records(tmp_path, sk, {"u1": _rec("u1", "audio/k", "https://cdn/k", 258)})
 
     class FakeStorage:
+        """Implements enough of the storage protocol for push_state() to treat this as a
+        real, sync-capable backend -- clear_materializations() now requires a successful
+        durable push before it will delete a source's objects (CR; see review/19)."""
+
+        def __init__(self):
+            self.deleted: list[str] = []
+            self.put: list[str] = []
+
+        def delete(self, key):
+            self.deleted.append(key)
+
+        def get_file(self, key, local_path):
+            return False
+
+        def list_objects(self, prefix=""):
+            return iter(())
+
+        def put_file(self, key, local_path, content_type):
+            self.put.append(key)
+
+    st = FakeStorage()
+    summary = crm.clear_materializations(
+        tmp_path, {sk: {"u1"}}, storage=st, delete_objects=True, apply=True
+    )
+    assert st.put, "durable push must happen before the object delete"
+    assert st.deleted == ["audio/k"]
+    assert summary["deleted"] == 1
+
+
+def test_clear_skips_object_delete_when_push_fails(tmp_path):
+    # If the durable push doesn't actually persist anything (push_state returns 0), the object
+    # must not be deleted -- that would leave a durable record pointing at a missing object.
+    sk = "s1"
+    save_records(tmp_path, sk, {"u1": _rec("u1", "audio/k", "https://cdn/k", 258)})
+
+    class UnsupportedStorage:
+        """Lacks the storage protocol push_state() needs, so push_state() always returns 0."""
+
         def __init__(self):
             self.deleted: list[str] = []
 
         def delete(self, key):
             self.deleted.append(key)
 
-    st = FakeStorage()
+    st = UnsupportedStorage()
     summary = crm.clear_materializations(
         tmp_path, {sk: {"u1"}}, storage=st, delete_objects=True, apply=True
     )
-    assert st.deleted == ["audio/k"]
-    assert summary["deleted"] == 1
+    assert st.deleted == []
+    assert summary["deleted"] == 0
+    # The record mutation (audio cleared) still happened locally even though the delete was
+    # skipped -- only the destructive object delete is gated on the durable push.
+    assert summary["cleared"] == 1
 
 
 def test_clear_skips_records_with_no_hosted_audio(tmp_path):

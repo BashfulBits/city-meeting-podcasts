@@ -85,7 +85,7 @@ def seed_episodes(city: City) -> list[Episode]:
         if missing:
             raise ValueError(f"{label}: missing required keys: {', '.join(missing)}")
 
-        guid = str(raw.get("guid") or video_url).strip()
+        guid = str(raw.get("guid") or "").strip() or video_url
         episodes.append(
             Episode(
                 guid=guid,

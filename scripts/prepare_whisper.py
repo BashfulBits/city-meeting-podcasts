@@ -241,7 +241,8 @@ def main() -> int:
                     print("  Model ready from B2 mirror.")
                     _set_env("ASR_MODEL_PATH", str(PREFERRED_DIR))
                     return 0
-                print("  B2 download incomplete (model.bin missing).")
+                missing = [f for f in _CT2_FILES_REQUIRED if not (PREFERRED_DIR / f).exists()]
+                print(f"  B2 download incomplete (missing: {', '.join(missing)}).")
             else:
                 print("  Model not yet mirrored to B2.")
         except Exception as exc:

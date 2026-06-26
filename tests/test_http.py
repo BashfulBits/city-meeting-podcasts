@@ -55,12 +55,18 @@ class TestHostRateLimiter:
     @staticmethod
     def _burst(limiter, urls, threads):
         """Run ``threads`` workers that each hold ``limiter.slots(urls)`` briefly; return the peak
-        observed concurrency inside the slot."""
+        observed concurrency inside the slot.
+
+        A barrier holds every worker at the starting line until all ``threads`` have been
+        created, so they all contend for the slot at once instead of trickling in over the
+        20ms hold window -- making the peak deterministic rather than load/GIL-dependent."""
         active = [0]
         peak = [0]
         lock = threading.Lock()
+        barrier = threading.Barrier(threads)
 
         def work():
+            barrier.wait()
             with limiter.slots(urls):
                 with lock:
                     active[0] += 1
@@ -90,10 +96,12 @@ class TestHostRateLimiter:
     def test_unconfigured_host_is_unlimited(self):
         lim = HostRateLimiter()
         lim.configure({"granicus.com": 1})
-        # example.com has no configured cap → no-op slot lets concurrency exceed any
-        # plausible cap. >= 2 (rather than the exact thread count) avoids flaking under
-        # load/GIL contention while still proving "unlimited" behavior.
-        assert self._burst(lim, ["https://example.com/a.mp4"], threads=5) >= 2
+        # example.com has no configured cap → the no-op slot must let every worker run
+        # concurrently. The barrier in _burst makes this deterministic: asserting the full
+        # thread count (not just >= 2) actually proves no cap is applied, including a
+        # regression that accidentally defaults unconfigured hosts to a small cap.
+        threads = 5
+        assert self._burst(lim, ["https://example.com/a.mp4"], threads=threads) == threads
 
     def test_registrable_domain_matches_any_subdomain(self):
         lim = HostRateLimiter()

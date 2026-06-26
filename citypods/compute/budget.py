@@ -150,7 +150,7 @@ def load_budget(state_dir: str | Path) -> Budget:
     try:
         data = json.loads(path.read_text())
         return Budget.from_dict(data if isinstance(data, dict) else {})
-    except (OSError, TypeError, ValueError):
+    except (AttributeError, OSError, TypeError, ValueError):
         return Budget()
 
 

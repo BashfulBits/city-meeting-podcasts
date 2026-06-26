@@ -195,7 +195,9 @@ def measured_inputs(
 
     - ``feeds`` from the city list; ``host_frac`` from hosted/total when known.
     - ``duration_hours`` from the median episode duration when durations are supplied.
-    - ``sec_per_ep`` from run history (total seconds / episodes materialized) when present.
+    - ``sec_per_ep`` from run history (total seconds / expensive encodes), preferring each run's
+      ``materialize_encoded`` count and falling back to ``materialized`` only when a run predates
+      that field, so cheap storage re-credits don't skew the cost-per-episode estimate.
     All optional — with no data this just returns ``base`` (defaults) with ``feeds`` filled in.
     """
     inp = ModelInputs(**(base.__dict__ if base else {}))

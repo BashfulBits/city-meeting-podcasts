@@ -183,8 +183,19 @@ def main(argv: list[str] | None = None) -> int:
         from citypods.statesync import push_state
         from citypods.storage import make_storage
 
+        state_path = digest_state_path(state_dir)
+        if not state_path.exists():
+            print(f"error: {state_path} not found; nothing to push (did the build step run?)")
+            return 1
         storage = make_storage(site_config, site_config.get("base_url", ""), Path(args.output_dir))
-        push_state(storage, state_dir, only_prefixes=[DIGEST_STATE_NAME])
+        pushed = push_state(storage, state_dir, only_prefixes=[DIGEST_STATE_NAME])
+        if pushed == 0:
+            # push_state() also returns 0 for "no sync support" / missing state_dir -- both mean
+            # nothing was actually persisted, which would silently mark candidates digested with
+            # no durable record of it (the exact failure mode --push-only exists to prevent).
+            print("error: push_state pushed 0 file(s); digest state was not persisted")
+            return 1
+        print(f"state: pushed {pushed} file(s)")
         return 0
 
     out_dir = Path(args.out)

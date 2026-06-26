@@ -241,10 +241,11 @@ def remap(
 
     Items whose ``start`` falls in a cut span are dropped entirely. ``end`` is remapped
     when present; if the end was cut it becomes ``None`` — *unless* ``clamp_to`` is given,
-    in which case it is clamped to that value (typically the served duration). Passing
-    ``clamp_to`` centralizes the "an item that runs into a removed span ends at the
-    boundary" rule so no downstream consumer has to special-case ``None`` (e.g. the
-    transcript and permalink renderers).
+    in which case it is first snapped to the served-time edge of the nearest kept segment
+    before the cut (so it never overlaps a later chapter/cue), falling back to ``clamp_to``
+    itself only when no such boundary exists. Passing ``clamp_to`` centralizes the "an item
+    that runs into a removed span ends at the boundary" rule so no downstream consumer has
+    to special-case ``None`` (e.g. the transcript and permalink renderers).
 
     ``source_id`` names which source's clock the items are in. When ``None``, defaults to
     the first source segment's id (correct for all single-source episodes).

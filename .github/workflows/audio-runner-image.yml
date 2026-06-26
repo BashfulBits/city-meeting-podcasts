@@ -50,6 +50,10 @@ jobs:
           file: .github/audio-runner/Dockerfile
           platforms: linux/amd64
           push: ${{ github.ref == 'refs/heads/main' }}
+          # On a non-main run (manual dispatch from a feature branch) push is false, so the GHCR
+          # tag is never updated; load the build into the local daemon instead so the smoke test
+          # below exercises the image just built here, not a possibly-stale published tag.
+          load: ${{ github.ref != 'refs/heads/main' }}
           tags: ${{ env.IMAGE }}
           build-args: |
             FFMPEG_URL=${{ env.FFMPEG_URL }}
@@ -60,9 +64,12 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Smoke-test published runtime
+      - name: Smoke-test runtime
         run: |
-          docker pull "$IMAGE"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Published: pull it back from GHCR to prove the published tag is actually usable.
+            docker pull "$IMAGE"
+          fi
           docker run --rm --entrypoint sh "$IMAGE" -c '
             python --version
             ffmpeg -version

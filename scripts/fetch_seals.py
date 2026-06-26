@@ -25,6 +25,7 @@ from PIL import Image
 from citypods.artwork import SEAL_DIR, author_key, dominant_colors
 from citypods.config import load_city_configs, load_site_config
 from citypods.http import DEFAULT_TIMEOUT, make_session
+from citypods.security import SecurityError, validate_source_url
 
 ROOT = Path(__file__).resolve().parent.parent
 COMMONS = "https://commons.wikimedia.org/w/api.php"
@@ -152,6 +153,10 @@ def _download_seal(session, title) -> Image.Image | None:
     ii = (page.get("imageinfo") or [{}])[0]
     url = ii.get("thumburl") or ii.get("url")
     if not url:
+        return None
+    try:
+        validate_source_url(url, resolve=True)
+    except SecurityError:
         return None
     data = session.get(url, timeout=DEFAULT_TIMEOUT).content
     with Image.open(io.BytesIO(data)) as img:

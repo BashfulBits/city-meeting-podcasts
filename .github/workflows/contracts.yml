@@ -67,8 +67,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for i in $(seq 1 60); do
-            ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
-            QUEUED=$(gh run list --workflow audio.yml --status queued --json databaseId --limit 5 2>/dev/null || echo "[]")
+            # A gh API/auth/network error must not be masked as "no active runs" -- that would let
+            # the loop fall through to the endpoint probes while audio.yml might still be running.
+            # Retry (same backoff as the normal wait) instead of treating a failed check as empty.
+            if ! ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>&1); then
+              echo "[$i/60] gh run list (in_progress) failed, will retry: $ACTIVE"
+              sleep 120
+              continue
+            fi
+            if ! QUEUED=$(gh run list --workflow audio.yml --status queued --json databaseId --limit 5 2>&1); then
+              echo "[$i/60] gh run list (queued) failed, will retry: $QUEUED"
+              sleep 120
+              continue
+            fi
             if [ "$ACTIVE" = "[]" ] && [ "$QUEUED" = "[]" ]; then
               echo "No active or queued audio runs. Proceeding with endpoint checks."
               exit 0
