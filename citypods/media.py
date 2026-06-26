@@ -1488,7 +1488,7 @@ class CommandFfmpeg:
                 meta = Path(tmp) / "chapters.ffmeta"
                 meta.write_text(_ffmetadata(chapters))
                 inputs += ["-i", str(meta)]
-                chapter_args = ["-map_chapters", str(next_idx + len(asset_keys))]
+                chapter_args = ["-map_chapters", str(next_idx)]
 
             cmd = [
                 self.binary,
