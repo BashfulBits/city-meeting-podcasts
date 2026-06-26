@@ -71,16 +71,25 @@ def seed_episodes(city: City) -> list[Episode]:
         label = f"{city.slug}: seed_episodes[{index}]"
         if not isinstance(raw, dict):
             raise ValueError(f"{label}: entry must be a mapping")
-        missing = [key for key in ("title", "published", "video_url") if not raw.get(key)]
+        title = str(raw.get("title") or "").strip()
+        video_url = str(raw.get("video_url") or "").strip()
+        missing = [
+            key
+            for key, value in (
+                ("title", title),
+                ("published", raw.get("published")),
+                ("video_url", video_url),
+            )
+            if not value
+        ]
         if missing:
             raise ValueError(f"{label}: missing required keys: {', '.join(missing)}")
 
-        video_url = str(raw["video_url"]).strip()
         guid = str(raw.get("guid") or video_url).strip()
         episodes.append(
             Episode(
                 guid=guid,
-                title=str(raw["title"]).strip(),
+                title=title,
                 published=_parse_published(raw["published"], label=label),
                 video_url=video_url,
                 description=str(raw.get("description") or ""),
