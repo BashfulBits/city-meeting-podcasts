@@ -59,7 +59,7 @@ from citypods.resources import (
 )
 from citypods.security import redact_subprocess_command, redact_subprocess_text
 from citypods.storage.base import StorageBackend
-from citypods.timeline import Segment, Timeline, timeline_digest
+from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
 
 CONTENT_TYPE = "audio/mp4"
 
@@ -732,6 +732,72 @@ def _download_audio(
         return False
 
 
+def _concat_local_sources(
+    paths: list[Path],
+    durations: list[float],
+    dest: Path,
+    ffmpeg_binary: str = "ffmpeg",
+    timeout: float | None = None,
+    memory_floor_bytes: int | None = None,
+    stop: Callable[[], bool] | None = None,
+) -> bool:
+    """Decode and concatenate already-downloaded local segment files into one local file.
+
+    Reuses :func:`build_filter_complex`'s N-input concat graph (the same one a live
+    multi-source encode would otherwise build against remote URLs) so the result is the
+    same audio, just rendered once from local disk instead of re-streamed from the provider
+    on every encode attempt. All inputs are local, so there is no provider host to rate-limit.
+    """
+    segs: list[Segment] = []
+    offset = 0.0
+    for i, dur in enumerate(durations):
+        segs.append(
+            Segment(
+                served_start=offset,
+                served_end=offset + dur,
+                kind="source",
+                source_id=f"s{i}",
+                source_start=0.0,
+                source_end=dur,
+            )
+        )
+        offset += dur
+    source_input_idx = {f"s{i}": i for i in range(len(paths))}
+    filter_str, out_label = build_filter_complex(tuple(segs), source_input_idx, {})
+
+    inputs: list[str] = []
+    for p in paths:
+        inputs += ["-i", str(p)]
+    cmd = [
+        ffmpeg_binary,
+        "-y",
+        "-loglevel",
+        "error",
+        *inputs,
+        "-filter_complex",
+        filter_str,
+        "-map",
+        out_label,
+        "-vn",
+        "-c:a",
+        "flac",
+        "-f",
+        "matroska",
+        str(dest),
+    ]
+    try:
+        _run_ffmpeg_guarded(
+            cmd,
+            phase="source-concat",
+            timeout=timeout,
+            memory_floor_bytes=memory_floor_bytes,
+            stop=stop,
+        )
+        return dest.exists() and dest.stat().st_size > 0
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
+        return False
+
+
 class SourceCache:
     """Thread-safe per-run cache: episode uid → locally downloaded audio file.
 
@@ -805,6 +871,54 @@ class SourceCache:
                 self.timeout_seconds,
                 self.memory_floor_bytes,
                 transport_telemetry=self.transport_telemetry,
+                stop=self._stop,
+            ):
+                self._paths[uid] = dest
+                return dest
+            return None
+        finally:
+            lock.release()
+
+    def get_or_fetch_concat(self, uid: str, sources: list[SourceMedia]) -> Path | None:
+        """Download each of *sources* individually, then concatenate them into one cached
+        local file keyed by *uid*.
+
+        Each segment is fetched through :meth:`get_or_fetch` (keyed ``f"{uid}:{source.id}"``),
+        which gives each segment its own bounded timeout and releases the rate-limit slot
+        between segments — instead of holding one slot for an entire multi-input
+        ``filter_complex`` subprocess (review/11 "Per-segment source caching for multi-source
+        concat episodes"). Returns ``None`` (caller falls back to the live multi-input render)
+        if any segment fails to download, a segment's duration is unknown, or the concat itself
+        fails.
+        """
+        with self._guard:
+            lock = self._locks[uid]
+        if self._stop is None:
+            lock.acquire()
+        else:
+            while not lock.acquire(timeout=1.0):
+                if self._stop():
+                    raise StopRequested(f"source cache wait for uid={uid!r} stopped")
+        try:
+            if uid in self._paths:
+                return self._paths[uid]
+            if any(src.duration is None for src in sources):
+                return None
+            local_paths: list[Path] = []
+            for src in sources:
+                local = self.get_or_fetch(f"{uid}:{src.id}", src.ref)
+                if local is None:
+                    return None
+                local_paths.append(local)
+            dest = Path(self._tmpdir.name) / f"{hashlib.md5(uid.encode()).hexdigest()}-concat.mka"
+            durations = [src.duration for src in sources]
+            if _concat_local_sources(
+                local_paths,
+                durations,  # type: ignore[arg-type]
+                dest,
+                self.ffmpeg_binary,
+                self.timeout_seconds,
+                self.memory_floor_bytes,
                 stop=self._stop,
             ):
                 self._paths[uid] = dest
@@ -1912,6 +2026,41 @@ def _sources_by_id(ep: Episode, source_url: str) -> dict[str, str]:
     return {"s0": source_url}
 
 
+def _concat_render_timeline(
+    sources: list[SourceMedia], combined: Path
+) -> tuple[Timeline, dict[str, str]]:
+    """A synthesized single-segment Timeline + ``by_id`` pointing at *combined*.
+
+    Spans the same total served duration as the persisted multi-segment EDL (the same
+    sources in the same order), but shaped as one monotonic single-source segment that's
+    exactly full-span (``served_*`` == ``source_*``) — ``timeline_digest`` treats that as the
+    identity case (see ``timeline.py::_is_identity``), so with no loudness/processing profile
+    configured the encoder takes the cheaper ``_render_identity`` copy path; with a profile set
+    (production always sets ``audio_processing_profile``) it takes ``_render_filter`` ->
+    ``_build_streaming_single_source_filter`` instead of the legacy multi-input
+    ``filter_complex`` fan-out. Either way is correct here: there are no cuts left to apply once
+    the segments are already concatenated, so identity-copy and the streaming path produce the
+    same audio. Render-time only — never persisted onto the episode record; ``ep.timeline`` keeps
+    the real per-segment EDL the concat planner built (clips/soundbites still need the original
+    per-segment source URLs to extract a single clip without downloading the whole meeting).
+    """
+    total = sum(src.duration or 0.0 for src in sources)
+    timeline = Timeline(
+        version="",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=total,
+                kind="source",
+                source_id="combined",
+                source_start=0.0,
+                source_end=total,
+            ),
+        ),
+    )
+    return timeline, {"combined": str(combined)}
+
+
 def _served_duration(ep: Episode) -> float | None:
     """The served (enclosure) duration to record as ``audio_duration_served``.
 
@@ -2255,6 +2404,7 @@ def materialize_audio(
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
                 multi_source = bool(ep.sources and len(ep.sources) > 1)
+                render_timeline = ep.timeline
                 if multi_source:
                     source_url = ep.sources[0].ref
                     source_urls = [src.ref for src in ep.sources]
@@ -2267,11 +2417,22 @@ def materialize_audio(
                         )
                 # For single-source episodes, use a locally cached copy when available so the
                 # encode pass reads from disk rather than re-streaming the rate-limited source.
-                # Multi-source concat episodes use stable .ref URLs from the concat planner and
-                # don't go through resolve_media_url, so skip the cache for them.
+                # Multi-source concat episodes: download + concat each segment into one local
+                # file once (per-segment timeout, releases the rate-limit slot between segments)
+                # and render that single file as a single source instead of streaming N remote
+                # URLs into one filter_complex on every encode attempt — ep.timeline is left
+                # untouched (clips/soundbites still need the original per-segment URLs); only
+                # this render's input changes. See _concat_render_timeline for which encoder
+                # path that single file actually takes.
                 if source_cache is not None and ep.uid and not multi_source:
                     local = source_cache.get_or_fetch(ep.uid, source_url)
                     by_id = _sources_by_id(ep, str(local) if local is not None else source_url)
+                elif source_cache is not None and ep.uid and multi_source:
+                    combined = source_cache.get_or_fetch_concat(ep.uid, ep.sources)
+                    if combined is not None:
+                        render_timeline, by_id = _concat_render_timeline(ep.sources, combined)
+                    else:
+                        by_id = _sources_by_id(ep, source_url)
                 else:
                     by_id = _sources_by_id(ep, source_url)
                 # Fetch/cache the provider source before occupying a native CPU slot. Production
@@ -2295,7 +2456,7 @@ def materialize_audio(
                 if processing_profile:
                     render_options["processing_profile"] = processing_profile
                 ffmpeg.extract_audio(
-                    ep.timeline,
+                    render_timeline,
                     by_id,
                     dest,
                     ep.chapters or None,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import threading
 from contextlib import contextmanager
@@ -16,6 +17,8 @@ from citypods.media import (
     _ENCODE_RSS_MAX_BYTES,
     _ENCODE_RSS_UNKNOWN_BYTES,
     SourceCache,
+    _concat_local_sources,
+    _concat_render_timeline,
     _probe_duration_secs,
     encode_args,
     estimate_encode_rss_bytes,
@@ -24,7 +27,7 @@ from citypods.media import (
 from citypods.models import City, Episode
 from citypods.records import audio_object_key, audio_spec_hash, source_key
 from citypods.storage.local import LocalStorage
-from citypods.timeline import Segment, Timeline
+from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
 
 MAX_KBPS = 96
 
@@ -2208,3 +2211,176 @@ class TestSourceCacheStopAware:
         monkeypatch.setattr("citypods.media._download_audio", lambda *a, **k: False)
         with SourceCache() as cache:
             assert cache.get_or_fetch("ep1", "https://example.com/a.mp4") is None
+
+
+def _source(id_: str, ref: str, duration: float | None) -> SourceMedia:
+    return SourceMedia(
+        id=id_, provider="swagit", ref=ref, media_kind="direct", duration=duration, watch_url=None
+    )
+
+
+class TestSourceCacheGetOrFetchConcat:
+    """Multi-source (``SwagitConcatPlanner``) episodes: download each segment individually
+    (its own bounded timeout, releasing the rate-limit slot between segments) then concatenate
+    once into a cached local file, instead of re-streaming every segment on every encode."""
+
+    def test_downloads_each_segment_once_and_caches_the_combined_result(self, monkeypatch):
+        fetch_calls: list[str] = []
+
+        def _fake_download(url, dest, *_a, **_k):
+            fetch_calls.append(url)
+            dest.write_bytes(b"stub")
+            return True
+
+        concat_calls: list[tuple[list[Path], list[float]]] = []
+
+        def _fake_concat(paths, durations, dest, *_a, **_k):
+            concat_calls.append((list(paths), list(durations)))
+            dest.write_bytes(b"combined")
+            return True
+
+        monkeypatch.setattr("citypods.media._download_audio", _fake_download)
+        monkeypatch.setattr("citypods.media._concat_local_sources", _fake_concat)
+
+        sources = [
+            _source("s0", "https://example.com/seg0.mp4", 10.0),
+            _source("s1", "https://example.com/seg1.mp4", 20.0),
+        ]
+        with SourceCache() as cache:
+            combined = cache.get_or_fetch_concat("ep1", sources)
+            assert combined is not None
+            assert combined.read_bytes() == b"combined"
+            assert fetch_calls == [s.ref for s in sources]
+            assert concat_calls == [(concat_calls[0][0], [10.0, 20.0])]
+
+            # A second call for the same uid reuses the cached combined file — no re-download,
+            # no re-concat.
+            again = cache.get_or_fetch_concat("ep1", sources)
+            assert again is combined
+            assert fetch_calls == [s.ref for s in sources]
+            assert len(concat_calls) == 1
+
+    def test_returns_none_when_a_segment_duration_is_unknown(self, monkeypatch):
+        monkeypatch.setattr(
+            "citypods.media._download_audio", lambda *a, **k: pytest.fail("should not fetch")
+        )
+        sources = [_source("s0", "https://example.com/seg0.mp4", None)]
+        with SourceCache() as cache:
+            assert cache.get_or_fetch_concat("ep1", sources) is None
+
+    def test_returns_none_when_a_segment_fails_to_download(self, monkeypatch):
+        calls: list[str] = []
+
+        def _fake_download(url, dest, *_a, **_k):
+            calls.append(url)
+            return url.endswith("seg0.mp4")  # first segment "succeeds", second fails
+
+        monkeypatch.setattr("citypods.media._download_audio", _fake_download)
+        monkeypatch.setattr(
+            "citypods.media._concat_local_sources",
+            lambda *a, **k: pytest.fail("should not concat after a segment failure"),
+        )
+        sources = [
+            _source("s0", "https://example.com/seg0.mp4", 10.0),
+            _source("s1", "https://example.com/seg1.mp4", 20.0),
+        ]
+        with SourceCache() as cache:
+            assert cache.get_or_fetch_concat("ep1", sources) is None
+            # Both segments were attempted (no short-circuit before the failing one's fetch).
+            assert calls == [s.ref for s in sources]
+
+    def test_returns_none_when_concat_itself_fails(self, monkeypatch, tmp_path):
+        def _fake_download(url, dest, *_a, **_k):
+            dest.write_bytes(b"stub")
+            return True
+
+        monkeypatch.setattr("citypods.media._download_audio", _fake_download)
+        monkeypatch.setattr("citypods.media._concat_local_sources", lambda *a, **k: False)
+        sources = [_source("s0", "https://example.com/seg0.mp4", 10.0)]
+        with SourceCache() as cache:
+            assert cache.get_or_fetch_concat("ep1", sources) is None
+
+
+class TestConcatRenderTimeline:
+    def test_builds_one_monotonic_segment_spanning_the_combined_duration(self, tmp_path):
+        sources = [
+            _source("s0", "https://example.com/seg0.mp4", 10.0),
+            _source("s1", "https://example.com/seg1.mp4", 20.5),
+        ]
+        combined = tmp_path / "combined.mka"
+
+        timeline, by_id = _concat_render_timeline(sources, combined)
+
+        assert by_id == {"combined": str(combined)}
+        assert len(timeline.segments) == 1
+        seg = timeline.segments[0]
+        assert seg.kind == "source"
+        assert seg.source_id == "combined"
+        assert seg.served_start == 0.0
+        assert seg.served_end == pytest.approx(30.5)
+        assert seg.source_start == 0.0
+        assert seg.source_end == pytest.approx(30.5)
+
+    def test_synthesized_timeline_is_identity_shaped(self, tmp_path):
+        """The synthesized segment is exactly full-span (served_* == source_*), so
+        ``timeline_digest`` treats it as identity — correct here since there are no cuts left
+        to apply once the segments are already concatenated; see the function's docstring for
+        which encoder path that implies."""
+        sources = [_source("s0", "https://example.com/seg0.mp4", 10.0)]
+        timeline, _ = _concat_render_timeline(sources, tmp_path / "combined.mka")
+
+        assert timeline_digest(timeline) == ""
+
+
+class TestConcatLocalSourcesRealFfmpeg:
+    def test_real_ffmpeg_concatenates_segments_to_the_summed_duration(self, tmp_path):
+        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+            pytest.skip("ffmpeg/ffprobe required for this integration check")
+
+        durations = [1.5, 2.25]
+        paths = []
+        for i, dur in enumerate(durations):
+            p = tmp_path / f"seg{i}.mka"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    f"sine=frequency=440:sample_rate=48000:duration={dur}",
+                    "-c:a",
+                    "flac",
+                    "-f",
+                    "matroska",
+                    str(p),
+                ],
+                check=True,
+                timeout=30,
+            )
+            paths.append(p)
+
+        dest = tmp_path / "combined.mka"
+        assert _concat_local_sources(paths, durations, dest, "ffmpeg", timeout=30)
+        assert dest.exists()
+
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=nw=1:nk=1",
+                str(dest),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        assert float(probe.stdout.strip()) == pytest.approx(sum(durations), abs=0.05)

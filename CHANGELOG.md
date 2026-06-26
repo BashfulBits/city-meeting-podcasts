@@ -16,6 +16,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Multi-source (`SwagitConcatPlanner`) concat episodes now use local-concat source caching
+  ([`review/11`](review/11-technical-design-roadmap.md) "Per-segment source caching for
+  multi-source concat episodes").** `SourceCache.get_or_fetch_concat` downloads each segment
+  individually (own bounded timeout, releases the rate-limit slot between segments) and
+  concatenates them once into a cached local file, rendered as a single source instead of
+  streaming N remote URLs into one `filter_complex` invocation on every encode attempt.
+  `ep.timeline`/`ep.sources` on the persisted record are unchanged — clips/soundbites still
+  resolve through the real per-segment EDL; only the render-time encoder input changes.
 - **Admin status now exposes provider-transcript rollout health
   ([GH#453](https://github.com/BashfulBits/city-meeting-podcasts/issues/453), PT-PR7).**
   `/admin/status` now includes a provider-transcript rollout block with source-document fetch/storage
