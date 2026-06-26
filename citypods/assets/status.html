@@ -113,7 +113,7 @@ const B2_PER_GB = 0.006, B2_FREE = 10;
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 
-function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function fmtGb(gb){ return gb==null?'—':gb>=1?gb.toFixed(2)+' GB':(gb*1000).toFixed(0)+' MB'; }
 function fmtHrs(h){ return h>=1?Math.round(h).toLocaleString()+' h':'<1 h'; }
 function fmtCost(usd){ return '$'+usd.toFixed(2)+'/mo'; }
