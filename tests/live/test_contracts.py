@@ -22,7 +22,37 @@ def _representatives():
     return representative_cities(cities)
 
 
-@pytest.mark.parametrize("city", _representatives(), ids=lambda c: c.provider)
+def _live_selected(markexpr: str) -> bool:
+    """True unless *markexpr* would deselect the ``live`` mark.
+
+    Uses pytest's own mark-expression evaluator (the same one ``-m`` filtering runs later)
+    rather than string-matching the literal ``"not live"`` default, so any expression that
+    also happens to exclude ``live`` (e.g. ``"not (live)"``, ``"unit"``) is caught too.
+    """
+    if not markexpr:
+        return True
+    from _pytest.mark.expression import Expression
+
+    try:
+        expr = Expression.compile(markexpr)
+    except Exception:
+        return True  # can't evaluate it safely -- don't skip work we can't be sure is unwanted
+    return expr.evaluate(lambda name, **kwargs: name == "live")
+
+
+def pytest_generate_tests(metafunc):
+    # `-m 'not live'` (pyproject addopts) is a post-collection filter, so a plain
+    # @pytest.mark.parametrize(..., _representatives()) would still run config loading at
+    # collection time on every pytest invocation, live or not. Skip it unless live tests are
+    # actually selected.
+    if "city" not in metafunc.fixturenames:
+        return
+    if not _live_selected(metafunc.config.getoption("markexpr")):
+        metafunc.parametrize("city", [], ids=[])
+        return
+    metafunc.parametrize("city", _representatives(), ids=lambda c: c.provider)
+
+
 def test_provider_contracts(city):
     results = check_city(city.slug, city.provider, city.source)
     failures = [r for r in results if not r.ok]

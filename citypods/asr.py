@@ -210,8 +210,9 @@ def transcribe(
     beam_size: int,
     initial_prompt: str | None,
     cpu_threads: int,
-) -> bytes:
-    """Run faster-whisper transcription on *audio_path*; return WebVTT bytes.
+) -> TranscriptArtifacts:
+    """Run faster-whisper transcription on *audio_path*; return a ``TranscriptArtifacts``
+    (segment WebVTT + word-level JSON sidecar).
 
     *model_or_name* may be a pre-loaded ``WhisperModel`` instance (preferred — avoids
     reloading weights on every call) or a model-name string (loads inline, kept for
@@ -269,8 +270,9 @@ def align(
     model_or_name: object,
     language: str | None,
     cpu_threads: int,
-) -> bytes:
-    """Force-align *text* to *audio_path* using stable-ts; return WebVTT bytes.
+) -> TranscriptArtifacts:
+    """Force-align *text* to *audio_path* using stable-ts; return a ``TranscriptArtifacts``
+    (segment WebVTT + word-level JSON sidecar).
 
     *model_or_name* may be a pre-loaded stable-ts model instance or a name string.
     Preserves the official transcript wording exactly; faster than generation.

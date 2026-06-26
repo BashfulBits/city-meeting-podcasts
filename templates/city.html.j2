@@ -32,8 +32,8 @@
   <ul style="list-style:none;margin:0;padding:0;">
     {% for e in episodes %}
     <li style="display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--border);">
-      <button class="btn play" data-src="{{ e.audio }}" data-title="{{ e.title }}"
-              style="margin:0;padding:.25rem .6rem;">▶</button>
+      <button type="button" class="btn play" data-src="{{ e.audio }}" data-title="{{ e.title }}"
+              aria-label="Play {{ e.title }}" style="margin:0;padding:.25rem .6rem;">▶</button>
       <span style="flex:1;">{{ e.title }}</span>
       {% if e.duration %}<span class="muted" style="font-size:.85rem;">{{ e.duration }}</span>{% endif %}
       {% if e.links %}
@@ -49,8 +49,13 @@
   <script>
     const copy = document.getElementById('copy');
     if (copy) copy.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(copy.dataset.url);
-      copy.textContent = 'Copied!'; setTimeout(() => copy.textContent = 'Copy RSS', 1500);
+      try {
+        await navigator.clipboard.writeText(copy.dataset.url);
+        copy.textContent = 'Copied!';
+      } catch (err) {
+        copy.textContent = 'Copy failed';
+      }
+      setTimeout(() => copy.textContent = 'Copy RSS', 1500);
     });
     const player = document.getElementById('player');
     for (const b of document.querySelectorAll('.play')) {

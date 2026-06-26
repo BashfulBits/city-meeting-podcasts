@@ -79,7 +79,7 @@ jobs:
         id: digest
         run: |
           python scripts/availability_digest.py \
-            --pull --push \
+            --pull \
             --out availability-digest \
             --limit 8
           echo "has_candidates=$(cat availability-digest/has_candidates 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
@@ -101,7 +101,8 @@ jobs:
           TITLE="H16 empty-recording review digest"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           printf '\n\n> Evidence artifact: %s\n' "$ARTIFACT_URL" >> availability-digest/issue-body.md
-          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
+            | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
           if [ -n "$EXISTING" ]; then
             gh issue edit "$EXISTING" --body-file availability-digest/issue-body.md
             echo "Updated digest issue #$EXISTING"
@@ -109,3 +110,10 @@ jobs:
             gh issue create --title "$TITLE" --body-file availability-digest/issue-body.md
             echo "Opened a new digest issue"
           fi
+
+      # Only mark candidates as digested once the issue publish above has actually succeeded
+      # (this step doesn't run at all if it failed), so a publish failure can't silently mark
+      # evidence as digested with nothing published for reviewers to see.
+      - name: Push digest state
+        if: steps.digest.outputs.has_candidates == 'true'
+        run: python scripts/availability_digest.py --push-only --out availability-digest

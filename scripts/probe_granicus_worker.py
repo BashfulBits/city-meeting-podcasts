@@ -82,35 +82,44 @@ def _run_production_encode(
                     "elapsed_seconds": round(time.monotonic() - started, 3),
                 }
             output = tmpdir / "production.m4a"
-            runner = CommandFfmpeg(
-                binary=ffmpeg,
-                max_kbps=96,
-                timeout_seconds=timeout,
-                threads=1,
-            )
-            runner.extract_audio(
-                None,
-                {"s0": str(source)},
-                output,
-                loudness_profile="ebuR128:-16LUFS",
-                processing_profile=PODCAST_SPEECH_PROFILE,
-            )
-            probe = subprocess.run(
-                [
-                    ffprobe,
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration:stream=codec_type,codec_name",
-                    "-of",
-                    "json",
-                    str(output),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=min(timeout, 120),
-                check=False,
-            )
+            try:
+                runner = CommandFfmpeg(
+                    binary=ffmpeg,
+                    max_kbps=96,
+                    timeout_seconds=timeout,
+                    threads=1,
+                )
+                runner.extract_audio(
+                    None,
+                    {"s0": str(source)},
+                    output,
+                    loudness_profile="ebuR128:-16LUFS",
+                    processing_profile=PODCAST_SPEECH_PROFILE,
+                )
+                probe = subprocess.run(
+                    [
+                        ffprobe,
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "format=duration:stream=codec_type,codec_name",
+                        "-of",
+                        "json",
+                        str(output),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=min(timeout, 120),
+                    check=False,
+                )
+            except Exception as exc:  # noqa: BLE001 - this probe step must not abort the whole run
+                return {
+                    "clip": clip,
+                    "ok": False,
+                    "outcome": "extract_or_probe_failed",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "error": str(exc),
+                }
             output_bytes = output.stat().st_size if output.exists() else 0
             ok = probe.returncode == 0 and output_bytes > 0
             return {
@@ -157,6 +166,10 @@ def main() -> int:
     except ValueError as exc:
         parser.error(str(exc))
     validate_source_url(args.proxy_base_url)
+    # Requests to the worker proxy aren't *.granicus.com, so they can't use transport's default
+    # ALLOWED_HOSTS -- but allowed_hosts=None would disable the allowlist entirely. Pin it to the
+    # configured proxy host instead so the bearer token is still never sent anywhere else.
+    proxy_allowed_hosts = (urlsplit(args.proxy_base_url).hostname or "",)
 
     results = []
     comparisons = []
@@ -197,7 +210,7 @@ def main() -> int:
                 byte_range=f"0-{args.range_mib - 1}",
                 order_in_pair=2,
                 authorization=token,
-                allowed_hosts=None,
+                allowed_hosts=proxy_allowed_hosts,
                 transport="curl_worker_range",
                 source_identity_url=archive_url,
             )
@@ -216,7 +229,7 @@ def main() -> int:
                 timeout=args.timeout,
                 order_in_pair=3,
                 authorization=token,
-                allowed_hosts=None,
+                allowed_hosts=proxy_allowed_hosts,
                 transport="ffmpeg_worker_remote",
                 request_shape="cloudflare_worker_audio",
                 source_identity_url=archive_url,
@@ -278,7 +291,7 @@ def main() -> int:
                 byte_range=None,
                 order_in_pair=None,
                 authorization=token,
-                allowed_hosts=None,
+                allowed_hosts=proxy_allowed_hosts,
                 transport="curl_worker_full",
                 source_identity_url=archive_url,
             )
@@ -348,6 +361,7 @@ def main() -> int:
             ),
         },
     }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n")
     print(f"RESULTS path={args.output} cases={len(results)}", flush=True)
     return 0

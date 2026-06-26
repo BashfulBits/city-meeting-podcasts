@@ -20,7 +20,7 @@ _PINNED_SHA = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
-def _job(workflow_file: str, job_name: str | None = None) -> dict:
+def _job(workflow_file: str, job_name: str | None = None) -> tuple[dict, dict]:
     wf = yaml.safe_load((WORKFLOWS / workflow_file).read_text())
     job = wf["jobs"][job_name] if job_name else next(iter(wf["jobs"].values()))
     return wf, job
@@ -287,9 +287,12 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert "apt-get" not in runs
     assert "docker run --rm --init" in runs
     assert "python -m citypods.cli enrich --lane audio" in runs
-    assert job["env"]["GRANICUS_PROXY_BASE_URL"] == "${{ secrets.GRANICUS_PROXY_BASE_URL }}"
-    assert job["env"]["GRANICUS_PROXY_TOKEN"] == "${{ secrets.GRANICUS_PROXY_TOKEN }}"
     audio_step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    # CR-GH-25: storage/Granicus secrets are scoped to this step (the only one that touches
+    # them), not the whole job -- checkout/setup-python/cache/runtime-select steps don't need them.
+    step_env = audio_step.get("env") or {}
+    assert step_env["GRANICUS_PROXY_BASE_URL"] == "${{ secrets.GRANICUS_PROXY_BASE_URL }}"
+    assert step_env["GRANICUS_PROXY_TOKEN"] == "${{ secrets.GRANICUS_PROXY_TOKEN }}"
     assert "--env GRANICUS_PROXY_BASE_URL" in audio_step["run"]
     assert "--env GRANICUS_PROXY_TOKEN" in audio_step["run"]
 
@@ -303,7 +306,9 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
     assert not wf["env"]["IMAGE"].endswith(":latest")
 
     build = next(s for s in job["steps"] if "docker/build-push-action" in s.get("uses", ""))
-    assert build["with"]["push"] is True
+    # CR-GH-12: push is gated to main so a manual dispatch from a feature branch never
+    # overwrites the shared GHCR tag.
+    assert build["with"]["push"] == "${{ github.ref == 'refs/heads/main' }}"
     assert build["with"]["platforms"] == "linux/amd64"
     assert build["with"]["file"] == ".github/audio-runner/Dockerfile"
     assert "FFMPEG_SHA256=" in build["with"]["build-args"]

@@ -760,7 +760,11 @@ def _group_is_complete(rows: list[dict]) -> bool:
     against indices ``0..total-1`` actually present in the group — no external config needed.
     Unsharded rows (no ``shard`` token) have nothing to wait on and are always complete.
     """
-    parsed = [_parse_shard_token(r.get("shard")) for r in rows if r.get("shard")]
+    parsed = [
+        p
+        for p in (_parse_shard_token(r.get("shard")) for r in rows if r.get("shard"))
+        if p is not None
+    ]
     if not parsed:
         return True
     totals = {p[1] for p in parsed}

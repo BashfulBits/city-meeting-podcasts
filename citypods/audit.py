@@ -730,8 +730,12 @@ def audit_city(
     # Oldest date in the archive (across all episodes, pre-filter) for staleness correction.
     archive_newest: datetime | None = None
     if records:
+        from citypods.bodies import matches
+
         dates = []
         for rec in records.values():
+            if body and not matches(rec.get("body"), body):
+                continue
             pub = rec.get("published")
             if pub:
                 try:

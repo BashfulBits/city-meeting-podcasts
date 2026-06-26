@@ -55,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
     if tmpl is None:
         print(f"no city with slug {args.template_city!r}")
         return 1
+    if args.recency_months <= 0:
+        print(f"--recency-months must be positive, got {args.recency_months}")
+        return 1
 
     episodes = get_provider(tmpl.provider).fetch_episodes(tmpl.source)
     cutoff = datetime.now(UTC) - timedelta(days=30 * args.recency_months)
@@ -85,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
         f"last {args.recency_months}mo, denylist {tmpl.body_exclude or '(none)'}):"
     )
     feeds_dir = Path(args.config_dir) / "feeds"
+    if args.write:
+        feeds_dir.mkdir(parents=True, exist_ok=True)
     for body in selected:
         slug = f"{args.base_slug}-{slugify(body)}"
         path = feeds_dir / f"{slug}.yml"

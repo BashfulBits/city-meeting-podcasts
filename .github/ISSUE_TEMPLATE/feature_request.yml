@@ -6,8 +6,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks! Before filing, check [ROADMAP.md](../blob/main/ROADMAP.md) and
-        [review/11](../blob/main/review/11-technical-design-roadmap.md) — many ideas are already tracked.
+        Thanks! Before filing, check
+        [ROADMAP.md](https://github.com/BashfulBits/city-meeting-podcasts/blob/main/ROADMAP.md) and
+        [review/11](https://github.com/BashfulBits/city-meeting-podcasts/blob/main/review/11-technical-design-roadmap.md)
+        — many ideas are already tracked.
   - type: textarea
     id: problem
     attributes:

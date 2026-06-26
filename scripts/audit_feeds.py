@@ -122,23 +122,60 @@ def _is_obsolete_meetings_url_issue(issue: dict, check_name: str) -> bool:
     return int(match.group(1)) not in _DEAD_MEETINGS_URL_STATUSES
 
 
-def reconcile(findings, *, dry_run: bool) -> int:
+def reconcile(findings, *, dry_run: bool, audited_slugs: set[str] | None = None) -> int:
     # One issue per (slug, check); if a city somehow yields two findings for the same check,
     # the later one wins — still a single issue for that pair.
     wanted = {_title(f.slug, f.check): (f, _body(f.message, f.severity, f.check)) for f in findings}
-    existing = {} if dry_run else _open_issues()
+    # _open_issues() is read-only (gh issue list), so it's safe to call in dry-run too -- forcing
+    # existing={} there collapsed every UPDATE/CLOSE/SKIP-CLOSE branch into CREATE, making the
+    # preview useless for telling a stamping-everything-new run from a real reconcile.
+    existing = _open_issues()
+    if audited_slugs is not None:
+        # --city (or any other subset of cities) was used: an issue belonging to a city outside
+        # that scope was never re-evaluated this run, so it must not be touched (in particular,
+        # never closed as "stale" just because it's absent from this run's `wanted`).
+        existing = {
+            title: issue
+            for title, issue in existing.items()
+            if title.removeprefix(f"{TITLE_PREFIX} ").split(":", 1)[0] in audited_slugs
+        }
 
     created = updated = closed = 0
     for title, (finding, body) in wanted.items():
         sev_label = f"severity:{finding.severity}"
         if title in existing:
-            if existing[title].get("body", "").strip() != body.strip():
+            issue = existing[title]
+            needs_human = finding.check in _MEETINGS_URL_CHECKS
+            desired_labels = {"signal:feed-health", "type:operations", sev_label}
+            if needs_human:
+                desired_labels.add("needs:human-verification")
+            current_labels = _label_names(issue)
+            # Severity is the only label that can change meaning between runs (a finding's
+            # severity can shift); any other stale severity:* label must go so exactly one
+            # severity label is ever present.
+            to_remove = {
+                lbl for lbl in current_labels if lbl.startswith("severity:") and lbl != sev_label
+            }
+            to_add = desired_labels - current_labels
+            body_changed = issue.get("body", "").strip() != body.strip()
+            if body_changed or to_add or to_remove:
                 if dry_run:
-                    print(f"UPDATE  {title}")
+                    label_note = ""
+                    if to_add or to_remove:
+                        label_note = f"  +{sorted(to_add)} -{sorted(to_remove)}"
+                    print(f"UPDATE  {title}{label_note}")
                 else:
-                    num = str(existing[title]["number"])
-                    _gh("issue", "edit", num, "--body", body)
-                    _gh("issue", "comment", num, "--body", _state_comment(finding))
+                    num = str(issue["number"])
+                    if body_changed:
+                        _gh("issue", "edit", num, "--body", body)
+                        _gh("issue", "comment", num, "--body", _state_comment(finding))
+                    if to_add or to_remove:
+                        label_args = []
+                        for lbl in sorted(to_add):
+                            label_args += ["--add-label", lbl]
+                        for lbl in sorted(to_remove):
+                            label_args += ["--remove-label", lbl]
+                        _gh("issue", "edit", num, *label_args)
                 updated += 1
         else:
             needs_human = finding.check in _MEETINGS_URL_CHECKS
@@ -225,7 +262,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.dry_run:
         _ensure_labels()
-    reconcile(findings, dry_run=args.dry_run)
+    audited_slugs = {c.slug for c in cities} if args.city else None
+    reconcile(findings, dry_run=args.dry_run, audited_slugs=audited_slugs)
     return 0
 
 

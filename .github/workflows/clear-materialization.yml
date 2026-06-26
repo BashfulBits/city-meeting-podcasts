@@ -25,7 +25,7 @@ on:
         description: "Also delete the B2 audio objects (re-encode overwrites them either way)"
         required: false
         type: boolean
-        default: true
+        default: false
 
 # Share the `audio` concurrency group so this never runs while an Audio run is materializing into the
 # same records (which would race the state push). One at a time.

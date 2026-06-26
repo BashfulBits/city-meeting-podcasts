@@ -229,15 +229,18 @@ def extract_clip(
         )
 
     # Determine timeline version for content-addressing
+    uid = ep.uid or ""
+    if not uid:
+        raise ValueError("extract_clip requires ep.uid for content-addressed clip keys")
     tl_version = ep.timeline.version if ep.timeline is not None else "identity"
-    key = clip_object_key(ep.uid or "", served_start, served_end, tl_version, kind)
+    key = clip_object_key(uid, served_start, served_end, tl_version, kind)
 
     # Reuse if already in storage
     if storage.exists(key):
         return ClipArtifact(
             key=key,
             url=storage.public_url(key),
-            uid=ep.uid or "",
+            uid=uid,
             served_start=served_start,
             served_end=served_end,
             timeline_version=tl_version,
@@ -252,6 +255,12 @@ def extract_clip(
     else:
         clip_tl, source_cuts = _clip_timeline(ep.timeline, served_start, served_end)
 
+    if not clip_tl.segments:
+        raise ValueError(
+            f"clip range [{served_start}, {served_end}) maps to no source segments "
+            f"for episode {ep.uid or ep.guid}"
+        )
+
     # Resolve source URLs. For multi-source concat episodes ep.sources carries a stable ref
     # per segment (set by SwagitConcatPlanner); use those directly so a clip spanning a concat
     # boundary fetches each cut from the correct source file. For single-source episodes, use
@@ -261,6 +270,11 @@ def extract_clip(
         sources_by_id: dict[str, str] = {}
         for seg in clip_tl.segments:
             if seg.kind == "source" and seg.source_id not in sources_by_id:
+                if seg.source_id not in all_refs:
+                    raise ValueError(
+                        f"clip segment references unknown source_id {seg.source_id!r} "
+                        f"for episode {ep.uid or ep.guid}"
+                    )
                 sources_by_id[seg.source_id] = all_refs[seg.source_id]  # type: ignore[index]
     else:
         source_url = resolve_media_url(ep)
@@ -285,7 +299,7 @@ def extract_clip(
     return ClipArtifact(
         key=key,
         url=url,
-        uid=ep.uid or "",
+        uid=uid,
         served_start=served_start,
         served_end=served_end,
         timeline_version=tl_version,

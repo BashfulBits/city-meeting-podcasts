@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from email.utils import parsedate_to_datetime
+from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
 import defusedxml.ElementTree as DET
@@ -124,7 +125,11 @@ class CivicPlusProvider:
         m = EMBED_RE.search(resp.text)
         if not m:
             raise ProviderError(f"no TikiLive embed URL found on {page_url}")
-        return m.group(0).replace("&amp;", "&")
+        embed_url = m.group(0).replace("&amp;", "&")
+        host = (urlparse(embed_url).hostname or "").lower()
+        if host != "tikiliveapi.com" and not host.endswith(".tikiliveapi.com"):
+            raise ProviderError(f"unexpected embed host in URL: {embed_url}")
+        return embed_url
 
     def _find_hls_url(self, session: requests.Session, embed_url: str) -> str:
         try:

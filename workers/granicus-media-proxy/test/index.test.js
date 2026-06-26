@@ -31,6 +31,23 @@ test("requires bearer authentication before fetching upstream", async () => {
   assert.equal(fetched, false);
 });
 
+test("rejects a present-but-incorrect bearer token", async () => {
+  let fetched = false;
+  const response = await handleRequest(
+    new Request(VALID_URL, {
+      headers: { authorization: "Bearer wrong-secret" },
+    }),
+    ENV,
+    async () => {
+      fetched = true;
+      return new Response();
+    },
+  );
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("www-authenticate"), "Bearer");
+  assert.equal(fetched, false);
+});
+
 test("rejects arbitrary tenants, filenames, queries, and methods", async () => {
   const urls = [
     VALID_URL.replace("fortworthgov/", "unknown/"),
@@ -46,6 +63,7 @@ test("rejects arbitrary tenants, filenames, queries, and methods", async () => {
   }
   const post = await handleRequest(request(VALID_URL, { method: "POST" }), ENV);
   assert.equal(post.status, 405);
+  assert.equal(post.headers.get("allow"), "GET, HEAD");
 });
 
 test("streams an allowed range and forwards only selected headers", async () => {
@@ -112,4 +130,20 @@ test("HEAD omits the body and upstream redirects are refused", async () => {
   });
   assert.equal(redirect.status, 502);
   assert.equal(redirect.headers.get("location"), null);
+});
+
+test("304 Not Modified passes through instead of being refused as a redirect", async () => {
+  const response = await handleRequest(
+    request(VALID_URL, { headers: { "if-none-match": '"etag-value"' } }),
+    ENV,
+    async () => {
+      return new Response(null, {
+        status: 304,
+        headers: { etag: '"etag-value"' },
+      });
+    },
+  );
+  assert.equal(response.status, 304);
+  assert.equal(response.headers.get("etag"), '"etag-value"');
+  assert.equal(await response.text(), "");
 });

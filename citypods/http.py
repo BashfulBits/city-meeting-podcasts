@@ -218,6 +218,47 @@ class _Slots:
 HOST_LIMITER = HostRateLimiter()
 
 
+def _redact_url(url: str) -> str:
+    """Strip query/fragment so signed params (S3/B2 auth, tokens) never land in an error message."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}{parts.path}"
+
+
+class _CappedRaw:
+    """Proxies a urllib3 raw response so bytes are counted as they stream through.
+
+    Hooking ``.stream``/``.read`` lets the cap ride along the normal, fully-supported
+    ``requests.Response.content``/``.iter_content()`` reading path. This deliberately avoids
+    writing ``Response._content``/``_content_consumed`` directly — those are private
+    implementation details requests doesn't guarantee across releases.
+    """
+
+    def __init__(self, raw, url: str) -> None:
+        self._raw = raw
+        self._url = url
+        self._total = 0
+
+    def _account(self, n: int) -> None:
+        self._total += n
+        if self._total > MAX_RESPONSE_BYTES:
+            raise SecurityError(
+                f"response from {_redact_url(self._url)} exceeds cap {MAX_RESPONSE_BYTES} bytes"
+            )
+
+    def stream(self, amt=2**16, **kwargs):
+        for chunk in self._raw.stream(amt, **kwargs):
+            self._account(len(chunk))
+            yield chunk
+
+    def read(self, amt=None, *args, **kwargs):
+        data = self._raw.read(amt, *args, **kwargs)
+        self._account(len(data))
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+
 class GuardedHTTPAdapter(HTTPAdapter):
     """An adapter that validates the target of every request it sends (and retries transient
     failures via the shared ``_RETRY`` policy).
@@ -230,6 +271,8 @@ class GuardedHTTPAdapter(HTTPAdapter):
 
     def send(self, request, **kwargs):
         validate_source_url(request.url, resolve=True)
+        stream_requested = kwargs.get("stream", False)
+        kwargs["stream"] = True
         # Per-host concurrency cap (#39): hold the provider's slot only for the network round-trip.
         with HOST_LIMITER.slot(request.url):
             response = super().send(request, **kwargs)
@@ -237,8 +280,22 @@ class GuardedHTTPAdapter(HTTPAdapter):
         if length is not None and length.isdigit() and int(length) > MAX_RESPONSE_BYTES:
             response.close()
             raise SecurityError(
-                f"response from {request.url} is {length} bytes, exceeds cap {MAX_RESPONSE_BYTES}"
+                f"response from {_redact_url(request.url)} is {length} bytes, "
+                f"exceeds cap {MAX_RESPONSE_BYTES}"
             )
+        raw = getattr(response, "raw", None)
+        if raw is None:
+            return response
+        response.raw = _CappedRaw(raw, request.url)
+        if not stream_requested:
+            # Caller asked for a buffered response (the default): force the (now capped) read
+            # through the public `.content` property so an oversized or missing/incorrect
+            # Content-Length response can't be fully buffered into memory unchecked, and so
+            # the cap is enforced at the same point a RequestException would otherwise surface.
+            try:
+                _ = response.content
+            finally:
+                response.close()
         return response
 
 

@@ -79,6 +79,7 @@ def _fetch_run_log(run_id: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        timeout=120,
     )
     return proc.stdout
 
@@ -105,6 +106,7 @@ def clear_materializations(
         if not records:
             continue
         changed = False
+        keys_to_delete: list[str] = []
         for uid in sorted(uids):
             rec = records.get(uid)
             if not isinstance(rec, dict):
@@ -116,8 +118,7 @@ def clear_materializations(
             if key:
                 object_keys.append(key)
                 if delete_objects and apply and storage is not None:
-                    storage.delete(key)
-                    deleted += 1
+                    keys_to_delete.append(key)
             rec["audio"] = {**audio, **_CLEARED_AUDIO}
             cleared += 1
             changed = True
@@ -125,6 +126,25 @@ def clear_materializations(
             touched.add(source_key)
             if apply:
                 save_records(state_dir, source_key, records)
+                if keys_to_delete:
+                    # save_records() only writes local state -- the durable copy lives in the
+                    # bucket. A crash between deleting an object and main()'s single end-of-run
+                    # push_state() call would leave the *durable* record still pointing at an
+                    # object we already deleted. Push this source's state now, scoped to just
+                    # this source, before deleting any of its objects: a crash after this push
+                    # leaves a record pointing at a (still-present) object, never the reverse.
+                    pushed = push_state(
+                        storage, state_dir, only_prefixes=[f"sources/{source_key}/"]
+                    )
+                    if not pushed:
+                        print(
+                            f"  warning: durable push for {source_key} pushed 0 file(s); "
+                            "skipping its object delete(s) to avoid a dangling durable record"
+                        )
+                        continue
+                    for key in keys_to_delete:
+                        storage.delete(key)
+                        deleted += 1
     return {
         "cleared": cleared,
         "deleted": deleted,
@@ -166,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     storage = make_storage(site_config, "https://example.invalid", args.output_dir)
     state_dir = resolve_state_dir(site_config, args.output_dir)
 
-    if args.delete_objects and (storage is None or not hasattr(storage, "delete")):
+    if args.apply and args.delete_objects and (storage is None or not hasattr(storage, "delete")):
         print("--delete-objects requested but no storage backend with delete support is configured")
         return 1
 

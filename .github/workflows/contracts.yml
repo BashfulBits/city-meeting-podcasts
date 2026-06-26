@@ -42,29 +42,10 @@ jobs:
       # (catches a CDN that 403s our User-Agent). Without ffmpeg that sub-check self-skips.
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      # Wait for any active audio.yml runs to finish before probing Granicus media endpoints.
-      # audio.yml's four shards each open Granicus CDN connections; adding an uncoordinated
-      # ffmpeg fetch on top of them is the primary cause of HTTP 403 throttling (GH#300).
-      # Polls every 2 minutes for up to 2 hours; always proceeds after the timeout so a
-      # stuck audio run does not permanently block the weekly contracts check.
-      - name: Wait for active audio runs to finish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for i in $(seq 1 60); do
-            ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
-            if [ "$ACTIVE" = "[]" ]; then
-              echo "No active audio runs. Proceeding with endpoint checks."
-              exit 0
-            fi
-            echo "[$i/60] audio.yml is running. Waiting 2 minutes..."
-            sleep 120
-          done
-          echo "Timed out after 2 hours. Proceeding anyway."
-
       # Fail fast if the proxy secrets are missing/empty: without them the production fetch path
       # silently self-disables the Worker fallback, so the media-fetch check would revert to the
-      # known direct-fetch 403 and report a false break instead of testing the real path.
+      # known direct-fetch 403 and report a false break instead of testing the real path. Checked
+      # before the (up to 2h) wait loop below so a misconfigured run fails in seconds, not hours.
       - name: Verify Granicus proxy secrets are configured
         env:
           GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
@@ -74,6 +55,39 @@ jobs:
             echo "::error::GRANICUS_PROXY_BASE_URL and GRANICUS_PROXY_TOKEN must both be set as repo secrets; the media-fetch contract check depends on the Worker fallback path."
             exit 1
           fi
+
+      # Wait for any active (or queued -- a queued run will start opening connections shortly,
+      # so it must be waited on too) audio.yml runs to finish before probing Granicus media
+      # endpoints. audio.yml's four shards each open Granicus CDN connections; adding an
+      # uncoordinated ffmpeg fetch on top of them is the primary cause of HTTP 403 throttling
+      # (GH#300). Polls every 2 minutes for up to 2 hours; always proceeds after the timeout so a
+      # stuck audio run does not permanently block the weekly contracts check.
+      - name: Wait for active audio runs to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            # A gh API/auth/network error must not be masked as "no active runs" -- that would let
+            # the loop fall through to the endpoint probes while audio.yml might still be running.
+            # Retry (same backoff as the normal wait) instead of treating a failed check as empty.
+            if ! ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>&1); then
+              echo "[$i/60] gh run list (in_progress) failed, will retry: $ACTIVE"
+              sleep 120
+              continue
+            fi
+            if ! QUEUED=$(gh run list --workflow audio.yml --status queued --json databaseId --limit 5 2>&1); then
+              echo "[$i/60] gh run list (queued) failed, will retry: $QUEUED"
+              sleep 120
+              continue
+            fi
+            if [ "$ACTIVE" = "[]" ] && [ "$QUEUED" = "[]" ]; then
+              echo "No active or queued audio runs. Proceeding with endpoint checks."
+              exit 0
+            fi
+            echo "[$i/60] audio.yml is running or queued. Waiting 2 minutes..."
+            sleep 120
+          done
+          echo "Timed out after 2 hours. Proceeding anyway."
 
       # Granicus 403s our User-Agent on direct CDN fetches; the production fetch path falls back to
       # the Cloudflare Worker proxy when these are set (citypods.media._worker_fallback_for_403).

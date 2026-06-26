@@ -189,6 +189,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.repeat_count < 0 or args.concurrency < 1 or args.cooldown_seconds < 0:
         parser.error("repeat-count/cooldown must be non-negative and concurrency must be positive")
+    if args.timeout <= 0 or args.repeat_seconds <= 0:
+        parser.error("timeout and repeat-seconds must be positive")
 
     clips = args.clips or list(DEFAULT_CLIPS)
     results: list[ProbeResult] = []
@@ -263,6 +265,7 @@ def main() -> int:
             },
         },
     }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, indent=2) + "\n")
     print(f"RESULTS path={args.output} cases={len(results)}", flush=True)
     return 0

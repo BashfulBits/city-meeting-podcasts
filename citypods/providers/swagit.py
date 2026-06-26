@@ -272,7 +272,12 @@ class SwagitProvider:
             return episode.sources[0].ref
 
         with make_session() as session:
-            resp = session.get(episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+            try:
+                resp = session.get(
+                    episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False
+                )
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
             loc = resp.headers.get("Location")
             is_redirect = resp.status_code in (301, 302, 303, 307, 308) and bool(loc)
             if is_redirect and _s3_object_key(loc):

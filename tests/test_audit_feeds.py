@@ -63,17 +63,21 @@ def test_state_comment_contains_severity_and_message():
 
 
 def test_reconcile_dry_run_create_printed(capsys):
+    # CR-SC-28: dry-run now calls the real (read-only) _open_issues() instead of forcing
+    # existing={}, so it must be mocked here too -- no real `gh` call in tests.
     f = _finding()
-    reconcile([f], dry_run=True)
+    with mock.patch.object(_mod, "_open_issues", return_value={}):
+        reconcile([f], dry_run=True)
     out = capsys.readouterr().out
     assert "CREATE" in out
     assert _title(f.slug, f.check) in out
 
 
 def test_reconcile_dry_run_close_printed(capsys):
-    # dry_run uses empty existing, so close is never triggered through the normal path.
+    # No findings and no existing issues → nothing to create/update/close.
     # The summary line should show 0 findings.
-    reconcile([], dry_run=True)
+    with mock.patch.object(_mod, "_open_issues", return_value={}):
+        reconcile([], dry_run=True)
     out = capsys.readouterr().out
     assert "0 active finding(s)" in out
 
@@ -99,14 +103,27 @@ def test_reconcile_creates_new_issue():
     assert create_calls, "expected an issue create call"
 
 
-def test_reconcile_no_action_when_body_unchanged():
+def test_reconcile_no_action_when_body_and_labels_unchanged():
     f = _finding()
-    existing = _existing_issue(f, number=10)
+    existing = _existing_issue(
+        f, number=10, labels=["signal:feed-health", "type:operations", "severity:warn"]
+    )
     calls = _run_reconcile([f], existing_issues=existing)
     edit_calls = [a for a in calls if len(a) >= 2 and a[1] == "edit"]
     comment_calls = [a for a in calls if len(a) >= 2 and a[1] == "comment"]
-    assert not edit_calls, "body unchanged → no edit"
+    assert not edit_calls, "body and labels unchanged → no edit"
     assert not comment_calls, "body unchanged → no comment"
+
+
+def test_reconcile_update_syncs_stale_labels_even_when_body_unchanged():
+    # CR-SC-30: an existing issue created before label-syncing existed (or whose severity
+    # changed) must have its labels brought in line even when the body text is identical.
+    f = _finding()
+    existing = _existing_issue(f, number=11, labels=[])
+    calls = _run_reconcile([f], existing_issues=existing)
+    label_edit_calls = [a for a in calls if len(a) >= 2 and a[1] == "edit" and "--add-label" in a]
+    assert label_edit_calls, "missing labels should be added even when body is unchanged"
+    assert "--body" not in label_edit_calls[0], "label sync should not also re-edit the body"
 
 
 def test_reconcile_update_edits_body_and_posts_comment():
@@ -134,6 +151,25 @@ def test_reconcile_closes_resolved_issue():
     close_calls = [a for a in calls if len(a) >= 2 and a[1] == "close"]
     assert close_calls, "resolved issue should be closed"
     assert "99" in close_calls[0]
+
+
+def test_reconcile_does_not_close_other_cities_issues_when_scoped(monkeypatch):
+    # CR-SC-29: --city scoping (audited_slugs) must never touch an open issue belonging to a
+    # city outside this run's scope, even though it's absent from `wanted` (it was never
+    # re-evaluated this run, so "absent" doesn't mean "resolved").
+    existing = {
+        "[feed-health] othercity: some-check": {
+            "number": 5,
+            "title": "[feed-health] othercity: some-check",
+            "body": "x",
+        }
+    }
+    calls: list[tuple] = []
+    monkeypatch.setattr(_mod, "_open_issues", lambda: existing)
+    monkeypatch.setattr(_mod, "_gh", lambda *a, **kw: calls.append(a) or "")
+    reconcile([], dry_run=False, audited_slugs={"thiscity"})
+    close_calls = [a for a in calls if len(a) >= 2 and a[1] == "close"]
+    assert not close_calls, "issue for a city outside the audited scope must not be closed"
 
 
 def test_reconcile_does_not_autoclose_meetings_url_with_needs_human_verification():

@@ -45,13 +45,15 @@ def _set_env(key: str, value: str) -> None:
             f.write(f"{key}={value}\n")
 
 
-def _complete(directory: Path) -> bool:
-    return (directory / SENTINEL).exists()
-
-
 # CTranslate2 faster-whisper models always contain these files.
 # Required files must download successfully; optional ones are skipped on 404.
 _CT2_FILES_REQUIRED = ["config.json", "model.bin", "tokenizer.json", "vocabulary.json"]
+
+
+def _complete(directory: Path) -> bool:
+    return all((directory / filename).exists() for filename in _CT2_FILES_REQUIRED)
+
+
 _CT2_FILES_OPTIONAL = [
     "special_tokens_map.json",
     "preprocessor_config.json",
@@ -90,9 +92,11 @@ def _hf_download_direct(repo: str, dest: Path, token: str | None = None) -> bool
             r.raise_for_status()
             size_mb = int(r.headers.get("content-length", 0)) // 1_000_000
             print(f"    {filename}  ({size_mb} MB)…", flush=True)
-            with open(dest / filename, "wb") as f:
+            tmp_path = dest / f"{filename}.part"
+            with open(tmp_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=65536):
                     f.write(chunk)
+            tmp_path.replace(dest / filename)
         except Exception as exc:
             if required:
                 print(f"    {filename} FAILED (required): {exc}")
@@ -190,7 +194,9 @@ def _b2_download(client, bucket: str, dest: Path) -> bool:
             local.parent.mkdir(parents=True, exist_ok=True)
             size_mb = obj.get("Size", 0) // 1_000_000
             print(f"  ← {rel}  ({size_mb} MB)")
-            client.download_file(bucket, key, str(local))
+            tmp_local = local.with_name(f"{local.name}.part")
+            client.download_file(bucket, key, str(tmp_local))
+            tmp_local.replace(local)
             count += 1
     print(f"  Downloaded {count} file(s) from B2.")
     return _complete(dest)
@@ -235,7 +241,8 @@ def main() -> int:
                     print("  Model ready from B2 mirror.")
                     _set_env("ASR_MODEL_PATH", str(PREFERRED_DIR))
                     return 0
-                print("  B2 download incomplete (model.bin missing).")
+                missing = [f for f in _CT2_FILES_REQUIRED if not (PREFERRED_DIR / f).exists()]
+                print(f"  B2 download incomplete (missing: {', '.join(missing)}).")
             else:
                 print("  Model not yet mirrored to B2.")
         except Exception as exc:
@@ -254,8 +261,9 @@ def main() -> int:
     # ── All paths exhausted ───────────────────────────────────────────────────────
     print("\nAll download attempts failed. ASR will be skipped gracefully this run.")
     # Don't set ASR_MODEL_PATH — asr.load_model() will use city.asr_model from config
-    # and fail gracefully with one error per source.
-    return 1
+    # and fail gracefully with one error per source. Exit 0: this is the documented
+    # graceful-degradation path, not a CI job failure.
+    return 0
 
 
 if __name__ == "__main__":

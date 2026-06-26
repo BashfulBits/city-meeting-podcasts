@@ -238,6 +238,8 @@ def detect_silences(
             text=True,
             timeout=timeout,
         )
+        if result.returncode != 0:
+            return [], None
         # ffmpeg writes both its probe header and filter output to stderr.
         stderr = result.stderr
         silences = parse_silences(stderr)

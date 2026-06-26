@@ -145,6 +145,13 @@ def main(argv: list[str] | None = None) -> int:
     storage = make_storage(site_config, "https://example.invalid", args.output_dir)
     state_dir = resolve_state_dir(site_config, args.output_dir)
 
+    if args.apply and storage is None:
+        print(
+            "--apply requires a configured storage backend "
+            "(would mutate local state with no durable push)"
+        )
+        return 1
+
     # Pull regardless of --apply: read-only (downloads the durable records locally) and a dry-run
     # must see the real records to report what it would reset.
     if storage is not None:

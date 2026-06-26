@@ -42,6 +42,10 @@ def run_bench(
     language: str = "en",
     cpu_threads: int = 4,
 ) -> int:
+    if not models:
+        print("No models specified.")
+        return 1
+
     from citypods import asr as asr_mod
     from citypods.config import load_city_configs, load_site_config
     from citypods.records import load_records, record_to_episode, source_key

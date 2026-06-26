@@ -121,6 +121,14 @@ class H16IdentityTracker:
             with self._lock:
                 # id(ep) can be reused after GC, so only trust a cached identity
                 # that belongs to this source; otherwise fall back to (source, uid).
+                #
+                # NOTE (CR-CP-06): a tighter check requiring identity == (source, ep.uid)
+                # was tried and reverted -- it broke the in-place uid-mutation case this
+                # cache exists for (test_identity_drift_reports_bounded_categories mutates
+                # ep.uid on the same object and expects the original captured snapshot to
+                # still be found via id(ep)). The GC-reuse collision this finding describes
+                # is real but needs a key scheme beyond id() to fix without breaking that
+                # case (e.g. keying on id(ep) + a generation counter) -- left as a follow-up.
                 identity = self._object_keys.get(id(ep))
                 if identity is None or identity[0] != source:
                     identity = (source, ep.uid)

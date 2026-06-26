@@ -147,6 +147,12 @@ def _build_city(
     )
 
 
+# Top-level files/dirs the build owns directly; a feed slug/alias landing on one of these
+# would write into (or be pruned alongside) the build's own reserved tree. Shared with
+# run.py's _prune_stale_dirs, which must leave these alone.
+RESERVED_PUBLIC_DIRS = {"audio", "assets", "static", ".git"}
+
+
 def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
     """Load every feed from ``config/feeds/*.yml``, merging entity fields from
     ``config/cities/*.yml`` (referenced per feed via the ``city:`` key)."""
@@ -161,6 +167,8 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
             continue  # _template.yml and friends
         raw = yaml.safe_load(path.read_text()) or {}
         city = _build_city(raw, defaults, path, entities)
+        if city.slug in RESERVED_PUBLIC_DIRS:
+            raise ValueError(f"{path.name}: slug {city.slug!r} collides with a reserved docs path")
         if city.slug in seen_slugs:
             raise ValueError(f"{path.name}: duplicate slug {city.slug!r}")
         seen_slugs.add(city.slug)
@@ -173,6 +181,10 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
     seen_aliases: dict[str, str] = {}
     for city in cities:
         for alias in city.aliases:
+            if alias in RESERVED_PUBLIC_DIRS:
+                raise ValueError(
+                    f"{files[city.slug]}: alias {alias!r} collides with a reserved docs path"
+                )
             if alias in seen_slugs:
                 raise ValueError(
                     f"{files[city.slug]}: alias {alias!r} collides with the slug of an "

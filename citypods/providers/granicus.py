@@ -12,7 +12,7 @@ import json
 import re
 from email.utils import parsedate_to_datetime
 from html import unescape
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 from xml.etree import ElementTree as ET
 
 import defusedxml.ElementTree as DET
@@ -22,6 +22,7 @@ from citypods.bodies import granicus_body
 from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import ChangeToken, Episode
 from citypods.providers.base import ProviderError
+from citypods.security import SecurityError, validate_source_url
 
 # RSS extension namespaces seen in Granicus feeds.
 NS = {
@@ -151,6 +152,11 @@ class GranicusProvider:
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("Location", "")
             if location:
+                location = urljoin(url, location)
+                try:
+                    validate_source_url(location, resolve=True)
+                except SecurityError:
+                    return url
                 return location
         return url
 
@@ -258,6 +264,8 @@ def parse_index_json(content: bytes) -> list[dict]:
     try:
         data = json.loads(content)
     except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
         return []
     entries = data[0] if data and isinstance(data[0], list) else data
     by_start: dict[int, dict] = {}

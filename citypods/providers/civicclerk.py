@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from urllib.parse import urlsplit
 
 import requests
 
@@ -106,7 +107,8 @@ def parse_events(
         if not e.get("hasMedia"):
             continue
         mp4 = (e.get("mediaSourcePathMp4") or "").strip()
-        if not mp4.startswith("http"):
+        mp4_parts = urlsplit(mp4)
+        if mp4_parts.scheme != "https" or not mp4_parts.netloc:
             continue  # relative streaming path (e.g. press conferences) — not a meeting MP4
         published = _parse_dt(e.get("startDateTime", ""))
         if published is None:

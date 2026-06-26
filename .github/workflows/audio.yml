@@ -63,26 +63,6 @@ jobs:
       FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
       FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
       FFMPEG_FALLBACK_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
-      # Lets the shard poll the Actions API and yield gracefully when a newer run is queued behind
-      # it. Not auto-exported by Actions, so pass it explicitly. (Guarded by test_workflows.)
-      GITHUB_TOKEN: ${{ github.token }}
-      # Audio hosting. Set the secrets for whichever backend
-      # site_config.defaults.audio_storage_backend selects.
-      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
-      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
-      B2_BUCKET: ${{ secrets.B2_BUCKET }}
-      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
-      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-      # Native Granicus archive media is attempted directly first. An immediate HTTP 403 gets one
-      # authenticated retry through the closed Cloudflare Worker while the same provider lease is
-      # held. Unset both secrets below to roll back to direct-only (config-only rollback, GH#353).
-      GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
-      GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -144,6 +124,29 @@ jobs:
       # gracefully (exit 143 after the stop signal) when a newer audio run is queued behind it.
       - name: Audio (shard ${{ matrix.shard }}/4)
         id: audio
+        env:
+          # Lets the shard poll the Actions API and yield gracefully when a newer run is queued
+          # behind it. Not auto-exported by Actions, so pass it explicitly. (Guarded by
+          # test_workflows.)
+          GITHUB_TOKEN: ${{ github.token }}
+          # Audio hosting. Set the secrets for whichever backend
+          # site_config.defaults.audio_storage_backend selects.
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          # Native Granicus archive media is attempted directly first. An immediate HTTP 403 gets
+          # one authenticated retry through the closed Cloudflare Worker while the same provider
+          # lease is held. Unset both secrets below to roll back to direct-only (config-only
+          # rollback, GH#353).
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
         run: |
           # Contract marker for workflow tests: citypods enrich --lane audio --shard ${{ matrix.shard }}/4
           set +e

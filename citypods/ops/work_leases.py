@@ -40,6 +40,7 @@ LEASE_SCHEMA_VERSION = 1
 # Claimable states: a fresh/abandoned item. ``leased`` is claimable only once expired; ``done`` and
 # ``failed`` are terminal (``failed`` needs operator/attempts attention, never auto-reclaimed here).
 LeaseState = Literal["queued", "leased", "done", "failed"]
+_LEASE_STATES: frozenset[str] = frozenset(("queued", "leased", "done", "failed"))
 # A held lease may only be settled to a terminal state — releasing to ``queued``/``leased`` would
 # write a non-terminal object (e.g. ``leased`` with no expiry) that can wedge the item forever.
 TerminalLeaseState = Literal["done", "failed"]
@@ -99,10 +100,13 @@ class WorkLease:
 
     @classmethod
     def from_dict(cls, data: dict) -> WorkLease:
+        state = data.get("state", "queued")
+        if state not in _LEASE_STATES:
+            raise ValueError(f"invalid lease state {state!r}")
         return cls(
             source_key=str(data.get("source_key", "")),
             uid=str(data.get("uid", "")),
-            state=data.get("state", "queued"),
+            state=state,
             owner=str(data.get("owner", "")),
             lease_expiry=_parse_dt(data.get("lease_expiry")),
             attempts=int(data.get("attempts", 0)),

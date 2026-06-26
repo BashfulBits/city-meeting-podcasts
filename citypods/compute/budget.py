@@ -149,9 +149,9 @@ def load_budget(state_dir: str | Path) -> Budget:
         return Budget()
     try:
         data = json.loads(path.read_text())
-    except (OSError, ValueError):
+        return Budget.from_dict(data if isinstance(data, dict) else {})
+    except (AttributeError, OSError, TypeError, ValueError):
         return Budget()
-    return Budget.from_dict(data if isinstance(data, dict) else {})
 
 
 def save_budget(state_dir: str | Path, budget: Budget) -> Path:
