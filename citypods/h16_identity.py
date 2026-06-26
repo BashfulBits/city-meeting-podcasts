@@ -120,9 +120,9 @@ class H16IdentityTracker:
                 continue
             with self._lock:
                 # id(ep) can be reused after GC, so only trust a cached identity
-                # that belongs to this source; otherwise fall back to (source, uid).
+                # that exactly matches this record; otherwise fall back to (source, uid).
                 identity = self._object_keys.get(id(ep))
-                if identity is None or identity[0] != source:
+                if identity is None or identity != (source, ep.uid):
                     identity = (source, ep.uid)
                 before = self._snapshots.get(identity)
             if before is None:
