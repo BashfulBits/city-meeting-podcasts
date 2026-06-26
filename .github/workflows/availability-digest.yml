@@ -79,7 +79,7 @@ jobs:
         id: digest
         run: |
           python scripts/availability_digest.py \
-            --pull --push \
+            --pull \
             --out availability-digest \
             --limit 8
           echo "has_candidates=$(cat availability-digest/has_candidates 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
@@ -109,3 +109,10 @@ jobs:
             gh issue create --title "$TITLE" --body-file availability-digest/issue-body.md
             echo "Opened a new digest issue"
           fi
+
+      # Only mark candidates as digested once the issue publish above has actually succeeded
+      # (this step doesn't run at all if it failed), so a publish failure can't silently mark
+      # evidence as digested with nothing published for reviewers to see.
+      - name: Push digest state
+        if: steps.digest.outputs.has_candidates == 'true'
+        run: python scripts/availability_digest.py --push-only --out availability-digest

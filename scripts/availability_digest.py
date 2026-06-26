@@ -89,8 +89,10 @@ def _encode_proxy(
     try:
         subprocess.run(cmd, capture_output=True, timeout=timeout, check=True)
     except (subprocess.SubprocessError, OSError):
+        dest.unlink(missing_ok=True)
         return None
     if not dest.exists() or dest.stat().st_size == 0:
+        dest.unlink(missing_ok=True)
         return None
     from citypods.media import _probe_duration_secs
 
@@ -118,7 +120,7 @@ def _evidence_for(
     untrimmed = trimmed = None
     note = ""
     if src_url is None:
-        note = "source media could not be resolved; metadata only"
+        note = "source media could not be resolved; metadata only" if encode else ""
     else:
         silences, duration = detect_silences(src_url, ffmpeg_binary=ffmpeg_binary, timeout=timeout)
         stem = safe_stem(candidate.uid)
@@ -163,10 +165,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-encode", action="store_true", help="skip proxies (metadata-only)")
     ap.add_argument("--pull", action="store_true", help="pull durable bucket state before scanning")
     ap.add_argument("--push", action="store_true", help="push the updated digest ledger back")
+    ap.add_argument(
+        "--push-only",
+        action="store_true",
+        help=(
+            "skip building entirely; just push the already-written digest state. Run this "
+            "after the GitHub issue publish step has confirmed success, so a candidate is "
+            "never marked digested without its evidence actually having been published."
+        ),
+    )
     args = ap.parse_args(argv)
 
     site_config = load_site_config(args.site_config)
     state_dir = resolve_state_dir(site_config, Path(args.output_dir))
+
+    if args.push_only:
+        from citypods.statesync import push_state
+        from citypods.storage import make_storage
+
+        storage = make_storage(site_config, site_config.get("base_url", ""), Path(args.output_dir))
+        push_state(storage, state_dir, only_prefixes=[DIGEST_STATE_NAME])
+        return 0
+
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
