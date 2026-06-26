@@ -108,8 +108,6 @@ class SwagitConcatPlanner:
         and returns the concat Timeline.  :class:`~citypods.stages.TimelineStage` stamps the
         planner-set version onto it before persisting.
         """
-        from citypods.providers.base import ProviderError
-
         if city.provider != "swagit":
             return None
         if ep.media_kind != "hls":
@@ -121,7 +119,7 @@ class SwagitConcatPlanner:
 
         try:
             seg_objs = provider.fetch_segment_objects(ep, city.source)
-        except (ProviderError, Exception) as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             record_materialize_failure(ep, "concat-fetch")
             print(f"[enrich] concat planner fetch failed for {ep.uid or ep.guid}: {exc}")
             return None
