@@ -25,6 +25,7 @@ import sys
 
 from citypods.audit import Finding, audit_all
 from citypods.config import load_city_configs, load_site_config
+from citypods.state import pull_canonical_state
 
 LABELS = {
     "signal:feed-health": ("0E8A16", "Automated feed-health finding"),
@@ -251,9 +252,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.city:
         cities = [c for c in cities if c.slug == args.city]
 
+    # Pull the canonical record store from the bucket before auditing it. Without this, the
+    # audit only ever saw whatever actions/cache/restore's "build-state-" prefix match happened
+    # to land on — which collides with audio.yml's per-shard caches and preview.yml's PR caches,
+    # so it could compare an EDL and a served-duration captured at two different points in the
+    # pipeline's history and file a false-positive timeline-duration-mismatch/
+    # timeline-short-coverage finding.
+    output_dir = "docs"
+    pull_canonical_state(site_config, output_dir)
+
     findings = audit_all(
         cities,
         site_config=site_config,
+        output_dir=output_dir,
         check_enclosures_net=args.enclosures,
         check_meetings_urls_net=args.meetings_urls,
     )

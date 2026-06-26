@@ -24,6 +24,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from citypods.render import TEMPLATE_DIR
+from citypods.statesync import pull_state
+from citypods.storage import make_storage
 
 DEFAULT_STATE_DIR = ".citypods-state"
 ETAG_CACHE_NAME = "feed_etags.json"
@@ -41,6 +43,28 @@ def resolve_state_dir(site_config: dict, output_dir: Path) -> Path:
     if not path.is_absolute():
         path = Path(output_dir).resolve().parent / path
     return path
+
+
+def pull_canonical_state(site_config: dict, output_dir: str | Path, *, base_url: str = "") -> Path:
+    """Resolve ``state_dir`` and pull the durable snapshot from the bucket into it.
+
+    Shares the "construct storage, then pull" idiom every read path needs (``run.py``'s
+    builder and the feed-health audit) so a future change to that sequence (e.g. CAS-key
+    skip logic) only needs editing once. The bucket is canonical
+    (``citypods.statesync``'s documented contract) — ``actions/cache`` is a pure latency
+    optimization elsewhere, never a correctness dependency, so a missing/unreachable bucket
+    degrades to "whatever's already on disk" rather than failing the caller outright.
+    """
+    state_dir = resolve_state_dir(site_config, output_dir)
+    try:
+        storage = make_storage(site_config, base_url, output_dir)
+        restored = pull_state(storage, state_dir)
+    except Exception as exc:  # noqa: BLE001 — state unavailable must not abort the caller
+        print(f"state: could not pull canonical state from the bucket ({exc}); using local copy")
+        return state_dir
+    if restored:
+        print(f"state: restored {restored} file(s) from durable storage")
+    return state_dir
 
 
 @lru_cache(maxsize=1)

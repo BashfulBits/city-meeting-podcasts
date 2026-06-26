@@ -38,21 +38,16 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e .
-
-      # The audio manifest (state) lets the rehost-backlog check distinguish a stalled
-      # pipeline from a normal in-progress backfill. Read-only here; deploy.yml owns writes.
-      - name: Restore build state
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
-        with:
-          path: .citypods-state
-          key: build-state-${{ github.run_id }}
-          restore-keys: |
-            build-state-
+        run: pip install -e ".[storage]"
 
       - name: Run audit
         env:
           GH_TOKEN: ${{ github.token }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
         # --meetings-urls runs every time: it's one HEAD per unique meetings_url (a handful),
         # so it's cheap enough for the daily cron (unlike --enclosures, which probes per-episode).
         run: >-
