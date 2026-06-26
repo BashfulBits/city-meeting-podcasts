@@ -6,6 +6,8 @@ on:
     paths:
       - "workers/granicus-media-proxy/src/**"
       - "workers/granicus-media-proxy/wrangler.jsonc"
+      - "workers/granicus-media-proxy/package.json"
+      - "workers/granicus-media-proxy/package-lock.json"
       - ".github/workflows/granicus-worker-deploy.yml"
   workflow_dispatch:
 
