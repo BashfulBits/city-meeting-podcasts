@@ -209,6 +209,27 @@ def source_to_served(tl: Timeline, source_id: str, t: float) -> float | None:
     return None
 
 
+def _nearest_cut_boundary(tl: Timeline, source_id: str, t: float) -> float | None:
+    """Served-time of the boundary the cut span containing source-time *t* hands off to.
+
+    Used when an item's end falls inside a removed span: the item should end at the
+    served-time edge of the *last kept segment before the cut*, not at the episode's
+    overall served duration — clamping to the global duration would wrongly overlap any
+    later chapters/cues that follow the cut.
+    """
+    source_segs = sorted(
+        (s for s in tl.segments if s.kind == "source" and s.source_id == source_id),
+        key=lambda s: s.source_start,  # type: ignore[arg-type]
+    )
+    boundary: float | None = None
+    for s in source_segs:
+        if s.source_start <= t:  # type: ignore[operator]
+            boundary = s.served_end
+        else:
+            break
+    return boundary
+
+
 def remap(
     tl: Timeline,
     items: list[dict],
@@ -244,7 +265,11 @@ def remap(
         if "end" in item and item["end"] is not None:
             new_end = source_to_served(tl, source_id, item["end"])  # type: ignore[arg-type]
             if new_end is None and clamp_to is not None:
-                new_end = clamp_to  # end fell in a cut span — clamp to the served boundary
+                # End fell in a cut span — clamp to the nearest segment boundary, not the
+                # episode's overall served duration (which would overlap a later chapter).
+                new_end = _nearest_cut_boundary(tl, source_id, item["end"])  # type: ignore[arg-type]
+                if new_end is None:
+                    new_end = clamp_to
             new_item["end"] = new_end
         result.append(new_item)
     return result

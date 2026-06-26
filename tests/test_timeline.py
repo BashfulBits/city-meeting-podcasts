@@ -439,13 +439,16 @@ class TestConcatSeamConvention:
 
 class TestRemapClampTo:
     def test_cut_end_is_clamped_when_requested(self):
-        # _trimmed_timeline cuts source 300–600; an item ending at 450 (inside the cut)
-        # would otherwise remap to end=None. clamp_to pins it to the served boundary.
+        # _trimmed_timeline cuts source 300-600; an item ending at 450 (inside the cut)
+        # would otherwise remap to end=None. clamp_to pins it to the nearest segment
+        # boundary (served=300, the edge of the cut) rather than the overall served
+        # duration -- clamping to the global duration would wrongly overlap any later
+        # chapter/cue that follows the cut.
         tl = _trimmed_timeline()
         items = [{"start": 100, "end": 450, "title": "runs into the cut"}]
         out = remap(tl, items, clamp_to=3300.0)
         assert out[0]["start"] == 100.0
-        assert out[0]["end"] == 3300.0
+        assert out[0]["end"] == 300.0
 
     def test_without_clamp_cut_end_is_still_none(self):
         tl = _trimmed_timeline()
