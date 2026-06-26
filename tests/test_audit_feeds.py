@@ -63,17 +63,21 @@ def test_state_comment_contains_severity_and_message():
 
 
 def test_reconcile_dry_run_create_printed(capsys):
+    # CR-SC-28: dry-run now calls the real (read-only) _open_issues() instead of forcing
+    # existing={}, so it must be mocked here too -- no real `gh` call in tests.
     f = _finding()
-    reconcile([f], dry_run=True)
+    with mock.patch.object(_mod, "_open_issues", return_value={}):
+        reconcile([f], dry_run=True)
     out = capsys.readouterr().out
     assert "CREATE" in out
     assert _title(f.slug, f.check) in out
 
 
 def test_reconcile_dry_run_close_printed(capsys):
-    # dry_run uses empty existing, so close is never triggered through the normal path.
+    # No findings and no existing issues → nothing to create/update/close.
     # The summary line should show 0 findings.
-    reconcile([], dry_run=True)
+    with mock.patch.object(_mod, "_open_issues", return_value={}):
+        reconcile([], dry_run=True)
     out = capsys.readouterr().out
     assert "0 active finding(s)" in out
 
