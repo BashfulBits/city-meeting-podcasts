@@ -69,6 +69,23 @@ class ShardPlan:
         }
 
 
+_LANE_UNITS = {
+    "audio": "source",
+    "align": "source",
+    "transcribe": "episode",
+}
+
+
+def _validate_lane_unit(lane: str, unit: str) -> None:
+    expected = _LANE_UNITS.get(lane)
+    if expected is None:
+        raise ValueError(f"invalid shard-plan lane {lane!r}")
+    if unit != expected:
+        raise ValueError(
+            f"invalid shard-plan unit {unit!r} for lane {lane!r}; expected {expected!r}"
+        )
+
+
 def create_shard_plan(
     cities: Sequence[City],
     state_dir: str | Path,
@@ -79,7 +96,7 @@ def create_shard_plan(
     asr_pipeline_version: str,
 ) -> ShardPlan:
     """Create one deterministic source ownership plan from one restored state snapshot."""
-    if lane not in {"audio", "transcribe", "align"}:
+    if lane not in _LANE_UNITS:
         raise ValueError(f"unsupported shard-plan lane {lane!r}")
     if num_shards < 1:
         raise ValueError(f"num_shards must be >= 1, got {num_shards}")
@@ -247,6 +264,7 @@ def load_shard_plan(path: str | Path) -> ShardPlan:
         raise ValueError(f"invalid shard-plan lane {lane!r}")
     if unit not in {"source", "episode"}:
         raise ValueError(f"invalid shard-plan unit {unit!r}")
+    _validate_lane_unit(lane, unit)
     if num_shards < 1:
         raise ValueError(f"invalid shard count {num_shards}")
     if set(assignment) != set(weights):
@@ -285,6 +303,7 @@ def episodes_for_shard(
     """
     if plan.lane != lane:
         raise ValueError(f"shard plan is for lane {plan.lane!r}, not {lane!r}")
+    _validate_lane_unit(plan.lane, plan.unit)
     if plan.num_shards != num_shards:
         raise ValueError(
             f"shard plan has {plan.num_shards} shards, workflow requested {num_shards}"
