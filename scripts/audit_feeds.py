@@ -26,6 +26,7 @@ from pathlib import Path
 
 from citypods.audit import Finding, audit_all
 from citypods.config import load_city_configs, load_site_config
+from citypods.records import source_key
 from citypods.state import pull_canonical_state
 from citypods.statesync import push_state
 from citypods.storage import make_storage
@@ -281,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         check_enclosures_net=args.enclosures,
         check_meetings_urls_net=args.meetings_urls,
         timeline_diagnostics=timeline_diagnostics,
-        persist_timeline_integrity=args.persist_timeline_integrity,
+        persist_timeline_integrity=args.persist_timeline_integrity and not args.dry_run,
     )
     if args.timeline_diagnostics and timeline_diagnostics is not None:
         path = Path(args.timeline_diagnostics)
@@ -290,11 +291,9 @@ def main(argv: list[str] | None = None) -> int:
             for row in timeline_diagnostics:
                 f.write(json.dumps(row, sort_keys=True) + "\n")
         print(f"timeline diagnostics: wrote {len(timeline_diagnostics)} row(s) to {path}")
-    if args.persist_timeline_integrity:
+    if args.persist_timeline_integrity and not args.dry_run:
         storage = make_storage(site_config, site_config.get("base_url", ""), output_dir)
-        prefixes = sorted(
-            {f"sources/{p.parent.name}/" for p in Path(state_dir).glob("sources/*/episodes.json")}
-        )
+        prefixes = sorted({f"sources/{source_key(city)}/" for city in cities})
         pushed = push_state(storage, Path(state_dir), only_prefixes=prefixes)
         print(f"timeline integrity: pushed {pushed} state file(s)")
     for f in findings:

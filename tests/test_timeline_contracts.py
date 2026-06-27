@@ -200,7 +200,7 @@ class TestDurationMismatch:
             diagnostics=diagnostics,
         )
 
-        assert not any(f.check == "container-duration-drift" for f in fs)
+        assert fs == []
         assert diagnostics[0]["check"] == "container-duration-drift"
         assert diagnostics[0]["repair"] == []
 

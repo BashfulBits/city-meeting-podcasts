@@ -1009,6 +1009,9 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
 
 
 def _timeline_audio_repair_status(records_cache: dict[str, dict]) -> dict:
+    from citypods.integrity import timeline_audio_repair_actions
+    from citypods.records import record_to_episode
+
     by_status: dict[str, int] = {}
     by_action: dict[str, int] = {}
     total = 0
@@ -1019,11 +1022,10 @@ def _timeline_audio_repair_status(records_cache: dict[str, dict]) -> dict:
                 continue
             status = str(block.get("status") or "unknown")
             by_status[status] = by_status.get(status, 0) + 1
-            repair = block.get("repair")
-            if isinstance(repair, list) and repair:
+            repair = timeline_audio_repair_actions(record_to_episode(rec))
+            if repair:
                 total += 1
-                for action in repair:
-                    action = str(action)
+                for action in sorted(repair):
                     by_action[action] = by_action.get(action, 0) + 1
     return {
         "active": total,

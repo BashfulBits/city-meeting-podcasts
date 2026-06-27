@@ -46,12 +46,12 @@ def needs_timeline_audio_repair(ep: Episode, action: str) -> bool:
 
 def timeline_audio_repair_token(ep: Episode, action: str) -> str:
     """Stable token folded into targeted rebuild recipes for one repair action."""
+    if action not in timeline_audio_repair_actions(ep):
+        return ""
     block = timeline_audio_integrity(ep)
     tokens = block.get("repair_tokens") if isinstance(block, dict) else None
     if isinstance(tokens, dict) and tokens.get(action):
         return str(tokens[action])
-    if action not in timeline_audio_repair_actions(ep):
-        return ""
     seed = {
         "v": 1,
         "uid": ep.uid or ep.guid,
@@ -82,7 +82,8 @@ def ensure_timeline_audio_repair_token(ep: Episode, action: str) -> str:
 def set_timeline_audio_integrity(ep: Episode, block: dict | None) -> None:
     integrity = dict(ep.integrity or {})
     if block:
-        integrity[TIMELINE_AUDIO] = block
+        current = dict(timeline_audio_integrity(ep))
+        integrity[TIMELINE_AUDIO] = {**current, **block}
     else:
         integrity.pop(TIMELINE_AUDIO, None)
     ep.integrity = integrity
@@ -118,6 +119,7 @@ def clear_resolved_timeline_audio_integrity(ep: Episode, status: str) -> bool:
     if "repair" not in block:
         return False
     block.pop("repair", None)
+    block.pop("repair_tokens", None)
     block["status"] = "ok"
     block["resolved_at"] = datetime.now(UTC).isoformat()
     set_timeline_audio_integrity(ep, block)

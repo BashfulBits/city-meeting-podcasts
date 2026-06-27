@@ -129,13 +129,17 @@ def _is_identity(tl: Timeline, sources: tuple[SourceMedia, ...] = ()) -> bool:
     if not (
         s.kind == "source"
         and s.source_id is not None
+        and s.served_start == 0
+        and s.source_start == 0
         and s.served_start == s.source_start
         and s.served_end == s.source_end
     ):
         return False
     if sources:
         src = next((src for src in sources if src.id == s.source_id), None)
-        if src is not None and src.duration is not None and s.source_end != src.duration:
+        if src is None:
+            return False
+        if src.duration is not None and s.source_end != src.duration:
             return False
     return True
 

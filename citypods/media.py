@@ -2164,7 +2164,7 @@ def _served_duration(ep: Episode) -> float | None:
     (it compares the segment total against this field). Falls back to ``ep.duration`` when there
     is no timeline (identity) or no known duration."""
     tl = ep.timeline
-    if tl is not None and timeline_digest(tl) != "":
+    if tl is not None and timeline_digest(tl, ep.sources) != "":
         duration = sum(s.served_end - s.served_start for s in tl.segments)
         return duration if duration > 0 else None
     if ep.duration is None:

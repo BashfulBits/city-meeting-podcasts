@@ -89,9 +89,13 @@ def _probe_duration_url(
                         return float(duration)
                 stream_duration = stream.get("duration")
                 if stream_duration:
-                    return float(stream_duration)
+                    duration = float(stream_duration)
+                    return duration if duration > 0 else None
             raw = (data.get("format") or {}).get("duration")
-            return float(raw) if raw else None
+            if raw:
+                duration = float(raw)
+                return duration if duration > 0 else None
+            return None
         except (
             subprocess.TimeoutExpired,
             subprocess.CalledProcessError,

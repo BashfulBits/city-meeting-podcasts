@@ -764,7 +764,9 @@ def check_timeline_integrity(
             block = build_timeline_audio_integrity(
                 status=status,
                 timeline_duration=(
-                    timeline_duration if isinstance(timeline_duration, float) else None
+                    float(timeline_duration)
+                    if isinstance(timeline_duration, (int, float))
+                    else None
                 ),
                 container_duration=diag.get("container_duration"),
                 stream_sample_duration=diag.get("stream_sample_duration"),
@@ -777,12 +779,17 @@ def check_timeline_integrity(
             elif mutate_integrity and repair:
                 set_timeline_audio_integrity(ep, block)
             if status not in {"ok", "container-duration-drift"}:
+                duration_label = (
+                    f"{timeline_duration:.3f}s"
+                    if isinstance(timeline_duration, (int, float))
+                    else "unknown"
+                )
                 findings.append(
                     Finding(
                         slug,
                         status,
                         severity,
-                        f"{uid}: timeline={diag.get('timeline_duration'):.3f}s "
+                        f"{uid}: timeline={duration_label} "
                         f"stream={diag.get('stream_sample_duration')} "
                         f"container={diag.get('container_duration')} repair={repair or []}",
                     )
