@@ -30,10 +30,11 @@ external workers instead of repeatedly overflowing onto and terminating a hosted
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
-> **Remaining tail (updated 2026-06-21).** With
+> **Remaining tail (updated 2026-06-27).** With
 > H1–H8/H10–H13/**#39** shipped, the remaining items are:
 > **H16** Granicus proxy production validation → **H17** R2/CAS + durable pull-work substrate
-> (`review/17`/`review/18`) → **H14** the first real external workers
+> (`review/17`/`review/18`) → **H18** timeline/audio integrity repair
+> ([`review/20`](review/20-timeline-audio-integrity-repair.md)) → **H14** the first real external workers
 > (**Modal + Beam**, free-tier-bounded) → **H9**
 > combined-throughput eval. The maintainer pulled the external-worker *build* into Phase H so "compute
 > is pluggable" ships proven by two live GPU adapters before 1.0. (**#39** per-provider rate limiting
@@ -99,6 +100,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H15** | **Transcript-quality metric** — periodic caption-trust scoring that gates align-vs-transcribe routing ([GH#391](https://github.com/BashfulBits/city-meeting-podcasts/issues/391)). Provider-transcript rollout through PT-PR7 is implemented: source documents are fetched separately, provider-align publishes confidence-gated served-time VTTs, selected provider-aligned transcripts write independent `speakers.json` artifacts, and `/admin/status` exposes provider fetch/align/diarize confidence plus rollback counts without invalidating ASR. |
 | **H16** | **Granicus proxy validation + simplification** — three production Audio runs, direct-first vs sticky-Worker decision, then remove or justify redundant circuit machinery ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)). Duplicate combined/per-board audio work is fixed (implemented, unreleased — [GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)): entity-family shard affinity + run-local stable-uid/recipe coalescing, with no source-key migration or backfill. |
 | **H17** | **Distributed work/control-plane substrate** — `RoutingStorage` + native R2 CAS, per-episode ownership-safe merge/planning, and the pull-ledger claim contract H14 workers consume ([GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); `review/17` + `review/18`) |
+| **H18** | **Timeline/audio integrity repair** — distinguish harmless container-duration drift from real stream/decoded audio drift, diagnose concat segment-duration accumulation, fix GH#495 source-duration-aware timeline identity detection, and add targeted repair flags so affected records re-plan/re-materialize/re-transcribe without a full-catalog invalidation ([`review/20`](review/20-timeline-audio-integrity-repair.md)) |
 
 **Phase H exit criteria ("green").** Phase H is done — and Phase R may start — when, measured off
 `run_history.jsonl` + the status page (instruments built in H2/H4):

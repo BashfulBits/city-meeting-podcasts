@@ -1232,6 +1232,13 @@ def _served_duration_hint(ep: Episode) -> float | None:
     return float(ep.duration) if ep.duration else None
 
 
+def _edited_timeline_served_duration(ep: Episode) -> float | None:
+    if ep.timeline is None or timeline_digest(ep.timeline) == "":
+        return None
+    served = sum(s.served_end - s.served_start for s in ep.timeline.segments)
+    return served if served > 0 else None
+
+
 def _remap_provider_cues(ep: Episode, cues: list[dict]) -> tuple[list[dict], float | None]:
     if not cues:
         return [], None
@@ -1494,6 +1501,13 @@ def _download_audio_file(url: str, dest: Path) -> None:
 
 
 def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_binary: str) -> str:
+    edited = _edited_timeline_served_duration(ep)
+    if edited is not None:
+        if ep.audio_duration_served is None or abs(ep.audio_duration_served - edited) > 0.001:
+            ep.audio_duration_served = edited
+            return "timeline"
+        return "served"
+
     probed = _probe_duration_secs(audio_path, ffmpeg_binary)
     if probed is None or probed <= 0:
         return "unknown"
