@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
+from types import SimpleNamespace
 
 import pytest
+import yaml
 
 import scripts
 
@@ -25,3 +27,33 @@ def test_script_imports(module):
 def test_found_the_scripts():
     # Guard against the discovery silently finding nothing (e.g. missing __init__).
     assert any(m.endswith("generate_board_cities") for m in SCRIPT_MODULES)
+
+
+def test_generate_board_cities_render_yaml_escapes_scalars():
+    from scripts.generate_board_cities import _render
+
+    tmpl = SimpleNamespace(
+        city_entity='Denton "Metro"',
+        provider="swagit",
+        source={"list_url": "https://example.test/a?x=1&y=2", "body": "old"},
+        podcast_author='Author "Name"',
+        podcast_email="podcasts@example.test",
+        max_episodes=25,
+        extract_audio=True,
+    )
+    body = 'Board "A"\nPlanning: North'
+    title_prefix = 'Denton \\ Civic'
+
+    rendered = _render(tmpl, "denton-board-a", body, title_prefix)
+    loaded = yaml.safe_load(rendered)
+
+    assert loaded["city"] == tmpl.city_entity
+    assert loaded["source"] == {
+        "list_url": "https://example.test/a?x=1&y=2",
+        "body": body,
+    }
+    assert loaded["podcast_title"] == f"{title_prefix}: {body}"
+    assert loaded["podcast_author"] == tmpl.podcast_author
+    assert loaded["podcast_description"] == f"{body} meetings for {title_prefix}."
+    assert loaded["max_episodes"] == 25
+    assert loaded["extract_audio"] is True

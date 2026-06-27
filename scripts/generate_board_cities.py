@@ -23,6 +23,8 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import yaml
+
 from citypods.bodies import body_key, is_excluded
 from citypods.bodies import canonical_body as canonical
 from citypods.config import load_city_configs, load_site_config
@@ -104,21 +106,19 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _render(tmpl, slug: str, body: str, title_prefix: str) -> str:
-    src = {k: v for k, v in tmpl.source.items() if k != "body"}
-    src_lines = "\n".join(f"  {k}: {v}" for k, v in src.items())
-    return (
-        f"slug: {slug}\n"
-        + (f"city: {tmpl.city_entity}\n" if tmpl.city_entity else "")
-        + f"provider: {tmpl.provider}\n"
-        f"source:\n{src_lines}\n"
-        f'  body: "{body}"\n'
-        f'podcast_title: "{title_prefix}: {body}"\n'
-        f'podcast_author: "{tmpl.podcast_author}"\n'
-        f'podcast_email: "{tmpl.podcast_email}"\n'
-        f'podcast_description: "{body} meetings for {title_prefix}."\n'
-        + (f"max_episodes: {tmpl.max_episodes}\n" if tmpl.max_episodes != 50 else "")
-        + (f"extract_audio: {str(tmpl.extract_audio).lower()}\n" if tmpl.extract_audio else "")
-    )
+    doc = {
+        "slug": slug,
+        **({"city": tmpl.city_entity} if tmpl.city_entity else {}),
+        "provider": tmpl.provider,
+        "source": {**{k: v for k, v in tmpl.source.items() if k != "body"}, "body": body},
+        "podcast_title": f"{title_prefix}: {body}",
+        "podcast_author": tmpl.podcast_author,
+        "podcast_email": tmpl.podcast_email,
+        "podcast_description": f"{body} meetings for {title_prefix}.",
+        **({"max_episodes": tmpl.max_episodes} if tmpl.max_episodes != 50 else {}),
+        **({"extract_audio": tmpl.extract_audio} if tmpl.extract_audio else {}),
+    }
+    return yaml.safe_dump(doc, sort_keys=False)
 
 
 if __name__ == "__main__":
