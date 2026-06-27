@@ -618,6 +618,7 @@ def _timeline_audio_diagnostic(
     timeline_duration = _timeline_duration(ep)
     container = probe.container_duration if probe else None
     stream = probe.stream_sample_duration if probe else None
+    probe_error = probe.probe_error if probe else "probe-not-run"
     return {
         "slug": slug,
         "uid": ep.uid or ep.guid,
@@ -640,6 +641,7 @@ def _timeline_audio_diagnostic(
         "source_duration_delta": _source_duration_delta(ep),
         "repair": repair,
         "prior_integrity": timeline_audio_integrity(ep) or None,
+        "probe_error": probe_error,
     }
 
 
@@ -754,7 +756,7 @@ def check_timeline_integrity(
         # 3b. Rendered audio duration diagnostics. This compares the EDL to the stream sample
         # clock when the caller provides a probe; container-only drift is reported separately so
         # it does not masquerade as cue drift.
-        probe = probe_audio(ep) if probe_audio is not None and ep.audio_key else None
+        probe = probe_audio(ep) if probe_audio is not None else None
         if probe_audio is not None:
             status, severity, repair = _classify_timeline_audio_duration(ep, probe)
             diag = _timeline_audio_diagnostic(slug, ep, probe, status, severity, repair)
@@ -791,7 +793,8 @@ def check_timeline_integrity(
                         severity,
                         f"{uid}: timeline={duration_label} "
                         f"stream={diag.get('stream_sample_duration')} "
-                        f"container={diag.get('container_duration')} repair={repair or []}",
+                        f"container={diag.get('container_duration')} "
+                        f"probe_error={diag.get('probe_error')} repair={repair or []}",
                     )
                 )
 
@@ -1048,22 +1051,22 @@ def audit_all(
             print(f"timeline diagnostics: storage unavailable ({exc})")
 
     def _probe_timeline_audio(ep: Episode) -> AudioDurationProbe | None:
-        if (
-            timeline_storage is None
-            or not ep.audio_key
-            or not hasattr(timeline_storage, "get_file")
-        ):
-            return None
+        if timeline_storage is None:
+            return AudioDurationProbe(probe_error="storage-unavailable")
+        if not ep.audio_key:
+            return AudioDurationProbe(probe_error="missing-audio-key")
+        if not hasattr(timeline_storage, "get_file"):
+            return AudioDurationProbe(probe_error="storage-read-unsupported")
         import tempfile
 
         with tempfile.TemporaryDirectory() as t:
             dest = Path(t) / "audio.m4a"
             try:
                 if not timeline_storage.get_file(ep.audio_key, dest):
-                    return None
+                    return AudioDurationProbe(probe_error="download-failed")
                 return _probe_audio_duration_details(dest)
             except Exception:  # noqa: BLE001 - one bad object becomes inconclusive diagnostics
-                return None
+                return AudioDurationProbe(probe_error="download-exception")
 
     findings: list[Finding] = []
     # Audio-failure tally is per *source* (per-body feeds share one record store), so accumulate

@@ -226,6 +226,22 @@ class TestDurationMismatch:
         assert diagnostics[0]["repair"] == ["audio-rematerialize", "transcript-regenerate"]
         assert ep.integrity["timeline_audio"]["status"] == "rendered-duration-mismatch"
 
+    def test_inconclusive_diagnostic_carries_probe_error(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(probe_error="missing-audio-key"),
+            diagnostics=diagnostics,
+        )
+
+        assert any(f.check == "duration-probe-inconclusive" for f in fs)
+        assert diagnostics[0]["probe_error"] == "missing-audio-key"
+        assert "probe_error=missing-audio-key" in fs[0].message
+
 
 # ---------------------------------------------------------------------------
 # Gap at start

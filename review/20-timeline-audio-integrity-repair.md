@@ -80,7 +80,10 @@ issue keys until classification is proven. Add a manual/debug flag for segment-l
 
 Implemented: `scripts/audit_feeds.py --timeline-diagnostics <path>` writes JSONL diagnostics and the
 scheduled feed-health workflow uploads the artifact as `timeline-audio-integrity`. The probe downloads
-only hosted edited-timeline objects and uses the stream sample-clock helper before classifying.
+only hosted edited-timeline objects and uses the stream sample-clock helper before classifying. The
+artifact now records `probe_error` for inconclusive rows (`missing-audio-key`, storage/download
+failures, `ffprobe-error`, `no-duration-metadata`) so PR6 can distinguish missing evidence from true
+duration ambiguity.
 
 Backfill story: none. The scheduled audit remains non-mutating; diagnostics are an artifact used to
 gate PR6.
