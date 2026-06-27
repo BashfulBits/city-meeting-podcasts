@@ -55,7 +55,9 @@ the last 12 months (configurable), skipping denylisted bodies and merging `" - s
 ```bash
 ruff check . && ruff format --check . && pytest
 ```
-Open a PR; CI + the per-PR preview build validate the feeds. Note: **Swagit/CivicPlus** feeds
+Open a PR; CI runs lint/tests, and the per-PR preview build renders feeds/pages from restored
+state without live provider refresh. Live provider/feed checks are handled by the contract/live
+validation workflows. Note: **Swagit/CivicPlus** feeds
 re-host audio (ffmpeg → B2), bounded by the per-run **wall-clock enrich window**
 (`run_time_budget_minutes` × `budget_safety`; a run also yields early if a newer build is queued),
 so a new city backfills over several scheduled deploys — that's expected.
