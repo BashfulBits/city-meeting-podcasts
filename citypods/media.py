@@ -35,6 +35,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from fractions import Fraction
 from pathlib import Path
 from typing import Protocol
 
@@ -1889,6 +1890,97 @@ def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | N
         return float(out) if out else None
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
         return None
+
+
+@dataclass(frozen=True)
+class AudioDurationProbe:
+    """Cheap duration views from ffprobe.
+
+    ``container_duration`` is ``format.duration``: the whole container's advertised duration.
+    ``stream_sample_duration`` prefers the first audio stream's ``duration_ts * time_base``, which
+    is the endpoint in the stream's sample clock after container edit-list semantics. It is not a
+    substitute for decoding PCM when a format omits stream timing, but it avoids a full decode for
+    the common M4A/Matroska cases the audit needs to classify first.
+    """
+
+    container_duration: float | None = None
+    stream_sample_duration: float | None = None
+    stream_duration_source: str | None = None
+
+
+def _parse_positive_float(raw: object) -> float | None:
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _duration_from_stream(stream: dict) -> tuple[float | None, str | None]:
+    duration_ts = stream.get("duration_ts")
+    time_base = stream.get("time_base")
+    try:
+        if duration_ts is not None and time_base:
+            duration = int(duration_ts) * Fraction(str(time_base))
+            if duration > 0:
+                return float(duration), "stream-duration-ts"
+    except (TypeError, ValueError, ZeroDivisionError):
+        pass
+
+    duration = _parse_positive_float(stream.get("duration"))
+    if duration is not None:
+        return duration, "stream-duration"
+    return None, None
+
+
+def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> AudioDurationProbe:
+    """Read container and stream-clock duration without decoding the whole file.
+
+    This is the low-cost first pass for timeline/audio integrity checks. A later audit can fall
+    back to bounded PCM decoding only when stream timing is unavailable or contradicts other
+    evidence.
+    """
+    ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+    try:
+        out = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "format=duration:stream=duration_ts,time_base,duration",
+                "-of",
+                "json",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+        ).stdout
+        data = json.loads(out or "{}")
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+        OSError,
+        ValueError,
+        TypeError,
+    ):
+        return AudioDurationProbe()
+
+    container = _parse_positive_float((data.get("format") or {}).get("duration"))
+    streams = data.get("streams") or []
+    stream_duration = None
+    stream_source = None
+    if streams and isinstance(streams[0], dict):
+        stream_duration, stream_source = _duration_from_stream(streams[0])
+    return AudioDurationProbe(
+        container_duration=container,
+        stream_sample_duration=stream_duration,
+        stream_duration_source=stream_source,
+    )
 
 
 # ---------------------------------------------------------------------------

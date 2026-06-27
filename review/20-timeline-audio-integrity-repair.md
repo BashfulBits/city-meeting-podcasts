@@ -1,0 +1,131 @@
+# Timeline/audio integrity repair plan
+
+**Status:** L3 design, PR1 started 2026-06-27.
+
+## Problem
+
+Feed-health timeline findings currently compare the persisted EDL duration against
+`audio_duration_served`. That field has historically mixed two meanings:
+
+- the semantic served duration derived from `timeline.segments`;
+- the hosted container duration reported by ffprobe after materialization or ASR probing.
+
+For edited timelines, those clocks can diverge. Small container-only drift is not enough to prove
+chapters or VTT cues are wrong, but decoded audio drift from the EDL is a real cue-integrity problem.
+Multi-source concat can also accumulate per-segment duration errors if `SourceMedia.duration` was
+planned from container metadata rather than the same sample clock used by rendering.
+
+## Duration clocks
+
+Every integrity check must distinguish:
+
+| Clock | Meaning | Use |
+|---|---|---|
+| `timeline_duration` | Sum of served EDL segment spans | Canonical cue/chapter clock |
+| `stream_sample_duration` | First audio stream endpoint from `duration_ts * time_base` | Cheap sample-clock endpoint probe |
+| `container_duration` | `format.duration` | Diagnostic only |
+| `decoded_duration` | PCM sample count after decode | Expensive fallback / proof when stream timing is absent or suspicious |
+
+The daily audit should start with `stream_sample_duration` rather than a full decode. For normal M4A
+and Matroska outputs ffprobe can expose the stream endpoint directly from stream timestamps. A
+"last frame only" probe is not generally sufficient: raw codec frame counts can include encoder
+padding, while container edit-list semantics can shorten the playable stream. If stream timing is
+missing or contradictory, fall back to bounded PCM decode for the small suspicious set only.
+
+## Finding classes
+
+| Finding | Condition | Severity | Repair |
+|---|---|---|---|
+| `container-duration-drift` | `container_duration` differs from EDL, but stream/decoded duration matches | warn/debug | none |
+| `rendered-duration-mismatch` | stream/decoded audio duration differs from EDL | error | re-materialize; maybe re-transcribe |
+| `timeline-source-duration-mismatch` | concat segment decoded durations differ from persisted `SourceMedia.duration` enough to explain drift | error | re-plan timeline, then re-materialize/re-transcribe |
+| `timeline-identity-misclassified` | timeline digest is empty for a source span that is not full-source identity | error | fix GH#495 identity detection, then re-plan/re-materialize/re-transcribe |
+| `duration-probe-inconclusive` | stream timing absent and bounded decode unavailable/fails | warn | no automatic repair |
+
+## Persisted repair state
+
+Add a small episode-record block once PR3 lands:
+
+```json
+"integrity": {
+  "timeline_audio": {
+    "status": "rendered-duration-mismatch",
+    "checked_at": "2026-06-27T00:00:00Z",
+    "timeline_duration": 8010.788,
+    "stream_sample_duration": 8014.859,
+    "container_duration": 8014.859,
+    "repair": ["audio-rematerialize", "transcript-regenerate"]
+  }
+}
+```
+
+This block is owned by the audit/repair reconciler. It must be preserved by audio/transcript lanes in
+the same way foreign artifact blocks are preserved today.
+
+## PR sequence
+
+### PR1 — sample-clock probe + design documentation
+
+Add a reusable ffprobe helper that reports both `format.duration` and first-audio-stream
+`duration_ts * time_base`. Do not change audit behavior yet. Document this series in `review/11`,
+`ROADMAP`, and this breakout.
+
+Backfill story: none. This is helper-only and does not change records or artifacts.
+
+### PR2 — read-only audit diagnostics
+
+Extend `check_timeline_integrity` to include cheap duration diagnostics for hosted edited timelines:
+`timeline_duration`, `stream_sample_duration`, `container_duration`, and clock deltas. Keep existing
+issue keys until classification is proven. Add a manual/debug flag for segment-level probes.
+
+Backfill story: none. Findings may get richer bodies, but no records are changed.
+
+### PR3 — persisted integrity/repair flags
+
+Persist `integrity.timeline_audio` for confirmed mismatches. Teach issue reconciliation to show repair
+state and avoid closing while a repair flag remains unresolved. Add status/admin counts for repair
+queues.
+
+Backfill story: only records with confirmed mismatches get a new metadata block. No artifact invalidation.
+
+### PR4 — planner duration basis + GH#495 identity fix
+
+Make source-duration-aware identity detection so true full-source identity remains digest-empty, while
+tail-only trims and other real edits get a non-empty digest. For concat planning, store segment duration
+basis (`decoded:<rate>` where available) and prefer stream/decoded sample-clock durations over container
+duration.
+
+Backfill story: targeted. Re-plan only records marked `timeline-source-duration-mismatch` or
+`timeline-identity-misclassified` unless the PR explicitly bumps a planner version and states the wider
+catalog cost.
+
+### PR5 — repair consumers
+
+Teach stages to consume repair flags:
+
+- `timeline-replan`: `TimelineStage` ignores the matching planner signature for that episode.
+- `audio-rematerialize`: stamp a deterministic `audio_rebuild` nonce so `audio_spec_hash` changes.
+- `transcript-regenerate`: add a targeted transcript rebuild input so ASR/provider-align artifacts can
+  invalidate without bumping `ASR_PIPELINE_VERSION`.
+
+Clear repair flags only after the post-repair audit sees stream/decoded duration match the EDL.
+
+Backfill story: bounded by the existing timeline/audio/ASR lanes and backlog policy. No global
+pipeline-version bump.
+
+### PR6 — auto-repair enablement
+
+Enable automatic flagging for confirmed decoded/stream mismatches after PR2-PR5 have run in diagnostic
+mode. Keep a dry-run summary in feed-health logs and add an emergency config switch to disable automatic
+repair stamping.
+
+Backfill story: only confirmed affected records enter the repair queues; all work drains gradually under
+existing stop budgets.
+
+## Acceptance
+
+- The audit distinguishes container-only drift from decoded/stream-clock drift.
+- Multi-source concat diagnostics can identify whether segment-duration accumulation explains a mismatch.
+- GH#495 tail-only trims no longer collapse to identity.
+- Repair is targeted: no silent full-catalog ASR or audio invalidation.
+- Feed-health issues close only after a successful post-repair audit, not merely after a field is stamped.

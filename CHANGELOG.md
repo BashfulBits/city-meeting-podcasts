@@ -16,6 +16,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Timeline/audio integrity repair is now an L3 Phase-H series with a cheap sample-clock duration
+  probe.** `review/20` breaks the work into read-only diagnostics, persisted repair flags, planner
+  duration-basis fixes, and targeted re-plan/re-materialize/re-transcribe consumers. PR1 adds
+  `AudioDurationProbe`, which reads both `format.duration` and the first audio stream's
+  `duration_ts * time_base` without decoding the whole file. This does not change audit behavior,
+  records, pipeline versions, or artifact invalidation yet.
+- **ASR audio-duration refresh preserves edited timeline durations.** The transcript stage no longer
+  overwrites `audio_duration_served` on non-identity timelines with ffprobe's container duration, which
+  kept resolved `timeline-duration-mismatch` / `timeline-short-coverage` feed-health issues open after
+  the audit started reading durable state. Identity/no-timeline audio still uses hosted-file probes for
+  ASR budgeting. This is a metadata correction only: no pipeline-version bump, no automatic artifact
+  invalidation, and affected records update gradually as audio/ASR touches them again.
 - **Multi-source (`SwagitConcatPlanner`) concat episodes now use local-concat source caching
   ([`review/11`](review/11-technical-design-roadmap.md) "Per-segment source caching for
   multi-source concat episodes").** `SourceCache.get_or_fetch_concat` downloads each segment
