@@ -27,6 +27,23 @@ _ADMIN_TEMPLATE = Path(__file__).resolve().parent / "assets" / "admin.html"
 _STATUS_TEMPLATE = Path(__file__).resolve().parent / "assets" / "status.html"
 
 
+def _json_for_html_script(value, *, indent: int | None = None) -> str:
+    """Serialize JSON safely for inline ``<script>`` contexts.
+
+    ``type="application/json"`` prevents execution, but HTML parsing still recognizes
+    ``</script>`` inside text. Escaping the HTML-sensitive characters keeps the script block
+    intact while preserving normal JSON/JS parsing semantics.
+    """
+    return (
+        json.dumps(value, indent=indent)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
 def _hosted_fraction(cities: list) -> float:
     if not cities:
         return 1.0
@@ -1341,7 +1358,7 @@ def to_status_html(status: dict) -> str:
     The HTML template lives in ``assets/status.html`` with a ``__STATUS_JSON__`` placeholder.
     Must be served behind Cloudflare Access — it publishes actuals (cost, errors, GB).
     """
-    data = json.dumps(status, indent=2)
+    data = _json_for_html_script(status, indent=2)
     html = _STATUS_TEMPLATE.read_text()
     return html.replace("__STATUS_JSON__", data)
 
@@ -1354,7 +1371,7 @@ def to_admin_html(report: dict) -> str:
     NOTE: public on GitHub Pages. The page is a calculator; current live actuals seed the slider
     defaults but are not announced. Lock ``/admin/*`` behind Cloudflare Access to hide actuals.
     """
-    data = json.dumps(report, indent=2)
-    seed = json.dumps(report["current"]["inputs"])
+    data = _json_for_html_script(report, indent=2)
+    seed = _json_for_html_script(report["current"]["inputs"])
     html = _ADMIN_TEMPLATE.read_text()
     return html.replace("__REPORT_JSON__", data).replace("__SEED_JSON__", seed)
