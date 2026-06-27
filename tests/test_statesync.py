@@ -409,6 +409,23 @@ def test_pull_state_skips_cas_managed_budget(tmp_path):
     assert restored == 1
 
 
+def test_reconcile_state_skips_cas_managed_budget(tmp_path):
+    bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    budget = _tmpfile(tmp_path, '{"month": "2026-06", "backends": {}}')
+    stale = _tmpfile(tmp_path, '{"episodes": {}}')
+    bucket.put_file(f"{STATE_PREFIX}/compute_budget.json", budget, "application/json")
+    bucket.put_file(f"{STATE_PREFIX}/sources/stale/episodes.json", stale, "application/json")
+    _age(bucket, f"{STATE_PREFIX}/compute_budget.json", days=30)
+    _age(bucket, f"{STATE_PREFIX}/sources/stale/episodes.json", days=30)
+
+    assert reconcile_state(bucket, state_dir) == 1
+    assert bucket.exists(f"{STATE_PREFIX}/compute_budget.json")
+    assert not bucket.exists(f"{STATE_PREFIX}/sources/stale/episodes.json")
+
+
 def test_cas_managed_uses_router_instance_prefixes_not_global(tmp_path):
     # A RoutingStorage built with CUSTOM coordination_prefixes must drive the bulk-sync exclusion
     # from its own config, not the module-level COORDINATION_PREFIXES (which could diverge).
