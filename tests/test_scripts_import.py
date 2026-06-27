@@ -57,3 +57,19 @@ def test_generate_board_cities_render_yaml_escapes_scalars():
     assert loaded["podcast_description"] == f"{body} meetings for {title_prefix}."
     assert loaded["max_episodes"] == 25
     assert loaded["extract_audio"] is True
+
+
+def test_granicus_sustained_stderr_tail_redacts_url_queries_and_tokens():
+    from scripts.probe_granicus_sustained import _stderr_tail
+
+    text = (
+        "https://archive-video.granicus.com/city/file.mp4?"
+        "X-Amz-Credential=abc&X-Amz-Signature=secret failed; token=plain-secret"
+    )
+
+    tail = _stderr_tail(text)
+
+    assert "X-Amz" not in tail
+    assert "secret" not in tail
+    assert "token=plain-secret" not in tail
+    assert "https://archive-video.granicus.com/city/file.mp4" in tail
