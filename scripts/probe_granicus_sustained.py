@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from citypods.http import USER_AGENT
-from citypods.security import validate_source_url
+from citypods.security import redact_subprocess_text, validate_source_url
 
 ALLOWED_HOSTS = ("*.granicus.com",)
 
@@ -85,6 +85,11 @@ def _outcome(returncode: int, stderr: str, output_bytes: int) -> str:
     return "error"
 
 
+def _stderr_tail(stderr: str) -> str:
+    redacted = redact_subprocess_text(stderr)
+    return " ".join(str(redacted or "").strip().split())[-500:]
+
+
 def run_probe(
     *,
     sequence: int,
@@ -125,7 +130,7 @@ def run_probe(
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
             returncode = proc.returncode
-            stderr = " ".join(proc.stderr.strip().split())
+            stderr = proc.stderr
         except subprocess.TimeoutExpired as exc:
             returncode = 124
             stderr = f"timeout after {timeout}s: {exc}"
@@ -145,7 +150,7 @@ def run_probe(
         ok=outcome == "success",
         outcome=outcome,
         returncode=returncode,
-        stderr_tail=stderr[-500:],
+        stderr_tail=_stderr_tail(stderr),
     )
 
 

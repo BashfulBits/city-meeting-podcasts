@@ -115,6 +115,25 @@ def test_admin_html_substitutes_and_embeds_valid_json():
     assert m and json.loads(m.group(1))["generated_for_feeds"] == 4
 
 
+def test_admin_html_escapes_json_for_script_context():
+    payload = '</script><script>alert("x")</script>'
+    report = build_report(_cities(), site_config=SITE)
+    report["notes"]["egress"] = payload
+    report["current"]["inputs"]["label"] = payload
+
+    html = to_admin_html(report)
+
+    m = re.search(r'<script id="report" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert payload not in m.group(1)
+    assert json.loads(m.group(1))["notes"]["egress"] == payload
+
+    seed = re.search(r"const SEED = (.*?);\nconst B2_GB_MO", html, re.S)
+    assert seed
+    assert payload not in seed.group(1)
+    assert json.loads(seed.group(1))["label"] == payload
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not available for JS parity")
 def test_js_python_parity():
     """The admin page re-implements project() in JS; assert it matches Python for sample inputs."""
@@ -693,6 +712,19 @@ def test_to_status_html_substitution():
     assert m, "status-data script tag not found"
     parsed = json.loads(m.group(1))
     assert "kpis" in parsed and "feeds_by_feed" in parsed
+
+
+def test_status_html_escapes_json_for_script_context():
+    payload = '</script><script>alert("x")</script>'
+    status = build_status([], site_config=SITE)
+    status["config"]["github_repo"] = payload
+
+    html = to_status_html(status)
+
+    m = re.search(r'<script id="status-data" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert payload not in m.group(1)
+    assert json.loads(m.group(1))["config"]["github_repo"] == payload
 
 
 def test_audio_bytes_round_trip():

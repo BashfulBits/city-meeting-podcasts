@@ -22,6 +22,7 @@ import requests
 from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import ChangeToken, Episode
 from citypods.providers.base import ProviderError
+from citypods.security import validate_source_url
 
 EMBED_RE = re.compile(r"https?://[\w.-]*tikiliveapi\.com/embed\?[^\"'\s]*videoId=\d+[^\"'\s]*")
 M3U8_RE = re.compile(r"https?://[^\"'\s]+\.m3u8[^\"'\s]*")
@@ -87,11 +88,31 @@ class CivicPlusProvider:
 
     def detect_change(self, source: dict) -> ChangeToken | None:
         url = source["feed_url"]
+        validate_source_url(url)
         with make_session() as session:
             try:
                 resp = session.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
             except requests.RequestException as exc:
                 raise ProviderError(f"HEAD failed for {url}: {exc}") from exc
+            if resp.status_code == 405:
+                try:
+                    resp = session.get(
+                        url,
+                        timeout=DEFAULT_TIMEOUT,
+                        allow_redirects=True,
+                        stream=True,
+                    )
+                except requests.RequestException as exc:
+                    raise ProviderError(f"GET fallback failed for {url}: {exc}") from exc
+                try:
+                    if resp.status_code >= 400:
+                        raise ProviderError(f"GET fallback {url} returned {resp.status_code}")
+                    return ChangeToken(
+                        etag=resp.headers.get("ETag"),
+                        last_modified=resp.headers.get("Last-Modified"),
+                    )
+                finally:
+                    resp.close()
         if resp.status_code >= 400:
             raise ProviderError(f"HEAD {url} returned {resp.status_code}")
         return ChangeToken(

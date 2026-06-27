@@ -608,6 +608,21 @@ def test_order_cities_by_policy_newest_first():
     assert [c.slug for c in ordered] == ["b-tx", "c-tx", "a-tx"]
 
 
+def test_order_cities_by_policy_normalizes_mixed_published_timestamps():
+    a, b = _city("a-tx"), _city("b-tx")
+    aware = _rec(1, hosted=True)
+    naive = _rec(2, hosted=True)
+    naive["published"] = (NOW - timedelta(days=2)).replace(tzinfo=None).isoformat()
+    recs_by_slug = {
+        "a-tx": {"aware": aware, "naive": naive},
+        "b-tx": {"u": _rec(5, hosted=True)},
+    }
+
+    ordered = order_cities_by_policy([b, a], recs_by_slug, _policy({"recency": "desc"}))
+
+    assert [c.slug for c in ordered] == ["a-tx", "b-tx"]
+
+
 def test_order_cities_by_policy_identity_without_policy():
     a, b = _city("a-tx"), _city("b-tx")
     assert order_cities_by_policy([a, b], {}, None) == [a, b]

@@ -95,7 +95,11 @@ class S3CompatibleStorage:
             if code in ("NoSuchKey", "404") or status == 404:
                 return None
             raise
-        return resp["Body"].read(), resp["ETag"]
+        body = resp["Body"]
+        try:
+            return body.read(), resp["ETag"]
+        finally:
+            body.close()
 
     def put_cas(
         self,

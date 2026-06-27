@@ -326,6 +326,8 @@ def reconcile_state(
         rel = key[len(STATE_PREFIX) + 1 :]
         if not rel or Path(rel).suffix not in _SUFFIXES:
             continue  # only manage the JSON snapshot push_state writes
+        if _is_cas_managed(storage, key):
+            continue  # CAS-managed on R2; never bulk-reconcile/delete
         if (state_dir / rel).exists():
             continue  # still has a local counterpart — canonical, keep it
         if last_modified is not None and last_modified > cutoff:

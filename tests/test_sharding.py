@@ -348,7 +348,7 @@ def test_episode_plan_rejects_unconfigured_source():
 
 def test_plan_validation_fails_closed_on_lane_shards_or_source_drift():
     plan = ShardPlan(
-        lane="transcribe",
+        lane="audio",
         num_shards=2,
         assignment={"a": 0, "b": 1},
         weights={"a": 1, "b": 1},
@@ -360,16 +360,50 @@ def test_plan_validation_fails_closed_on_lane_shards_or_source_drift():
         )
     with pytest.raises(ValueError, match="has 2 shards"):
         episodes_for_shard(
-            plan, lane="transcribe", shard_index=0, num_shards=4, expected_sources={"a", "b"}
+            plan, lane="audio", shard_index=0, num_shards=4, expected_sources={"a", "b"}
         )
     with pytest.raises(ValueError, match="shard index 2 out of range"):
         episodes_for_shard(
-            plan, lane="transcribe", shard_index=2, num_shards=2, expected_sources={"a", "b"}
+            plan, lane="audio", shard_index=2, num_shards=2, expected_sources={"a", "b"}
         )
     with pytest.raises(ValueError, match="source set"):
         episodes_for_shard(
-            plan, lane="transcribe", shard_index=0, num_shards=2, expected_sources={"a", "c"}
+            plan, lane="audio", shard_index=0, num_shards=2, expected_sources={"a", "c"}
         )
+
+
+def test_plan_validation_rejects_lane_unit_mismatch(tmp_path):
+    runtime_plan = ShardPlan(
+        lane="transcribe",
+        num_shards=2,
+        assignment={"a": 0, "b": 1},
+        weights={"a": 1, "b": 1},
+        unit="source",
+    )
+    with pytest.raises(ValueError, match="unit 'source'.*lane 'transcribe'"):
+        episodes_for_shard(
+            runtime_plan,
+            lane="transcribe",
+            shard_index=0,
+            num_shards=2,
+            expected_sources={"a", "b"},
+        )
+
+    path = tmp_path / "bad-unit.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "lane": "audio",
+                "unit": "episode",
+                "num_shards": 2,
+                "assignment": {"a/u1": 0},
+                "weights": {"a/u1": 1},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="unit 'episode'.*lane 'audio'"):
+        load_shard_plan(path)
 
 
 def test_load_plan_rejects_v1(tmp_path):

@@ -221,9 +221,13 @@ def _client_error(code, status):
 class _FakeBody:
     def __init__(self, data):
         self._data = data
+        self.closed = False
 
     def read(self):
         return self._data
+
+    def close(self):
+        self.closed = True
 
 
 class _FakeS3Client:
@@ -231,6 +235,7 @@ class _FakeS3Client:
 
     def __init__(self):
         self.store: dict[str, tuple[bytes, str]] = {}
+        self.bodies: dict[str, _FakeBody] = {}
         self._n = 0
 
     def _next_etag(self):
@@ -251,7 +256,9 @@ class _FakeS3Client:
         if Key not in self.store:
             raise _client_error("NoSuchKey", 404)
         data, etag = self.store[Key]
-        return {"Body": _FakeBody(data), "ETag": etag}
+        body = _FakeBody(data)
+        self.bodies[Key] = body
+        return {"Body": body, "ETag": etag}
 
 
 def _s3_with_fake_client():
@@ -290,3 +297,4 @@ def test_get_bytes_roundtrip_and_absent():
     _, etag = store.put_cas("k.json", b"hello", "application/json", if_none_match="*")
     data, got_etag = store.get_bytes("k.json")
     assert data == b"hello" and got_etag == etag
+    assert store._client.bodies["k.json"].closed is True

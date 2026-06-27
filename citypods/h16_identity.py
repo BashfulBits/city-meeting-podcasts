@@ -47,7 +47,7 @@ class H16IdentityTracker:
         self._processing_profile = processing_profile
         self._enabled = enabled and storage is not None
         self._snapshots: dict[tuple[str, str], _Snapshot] = {}
-        self._object_keys: dict[int, tuple[str, str]] = {}
+        self._object_keys: dict[int, tuple[Episode, tuple[str, str]]] = {}
         self._cities: dict[str, City] = {}
         self._results: dict[tuple[str, str], tuple[bool, frozenset[str], bool]] = {}
         self._lock = threading.Lock()
@@ -107,7 +107,7 @@ class H16IdentityTracker:
             with self._lock:
                 identity = (source, ep.uid)
                 self._snapshots[identity] = snapshot
-                self._object_keys[id(ep)] = identity
+                self._object_keys[id(ep)] = (ep, identity)
 
     def verify(self, source: str, episodes: list[Episode]) -> None:
         with self._lock:
@@ -119,19 +119,16 @@ class H16IdentityTracker:
             if not ep.uid:
                 continue
             with self._lock:
-                # id(ep) can be reused after GC, so only trust a cached identity
-                # that belongs to this source; otherwise fall back to (source, uid).
-                #
-                # NOTE (CR-CP-06): a tighter check requiring identity == (source, ep.uid)
-                # was tried and reverted -- it broke the in-place uid-mutation case this
-                # cache exists for (test_identity_drift_reports_bounded_categories mutates
-                # ep.uid on the same object and expects the original captured snapshot to
-                # still be found via id(ep)). The GC-reuse collision this finding describes
-                # is real but needs a key scheme beyond id() to fix without breaking that
-                # case (e.g. keying on id(ep) + a generation counter) -- left as a follow-up.
-                identity = self._object_keys.get(id(ep))
-                if identity is None or identity[0] != source:
-                    identity = (source, ep.uid)
+                # The object cache preserves in-place uid drift detection: a pre-media snapshot
+                # can still be found even if a later stage mutates ``ep.uid``. Guard it with
+                # object identity, not just id(ep), so a stale id reused after GC cannot bind a
+                # different Episode to the captured snapshot.
+                identity = (source, ep.uid)
+                cached = self._object_keys.get(id(ep))
+                if cached is not None:
+                    cached_ep, cached_identity = cached
+                    if cached_ep is ep and cached_identity[0] == source:
+                        identity = cached_identity
                 before = self._snapshots.get(identity)
             if before is None:
                 continue

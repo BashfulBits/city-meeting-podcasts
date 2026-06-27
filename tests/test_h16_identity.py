@@ -179,6 +179,32 @@ def test_identity_drift_reports_bounded_categories(tmp_path):
     }
 
 
+def test_stale_object_id_cache_does_not_bind_different_episode(tmp_path):
+    city = _city()
+    captured = _episode()
+    replacement = _episode()
+    replacement.uid = "replacement-uid"
+    replacement.guid = "replacement-guid"
+    storage = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn.example")
+    tracker = _tracker(storage)
+    tracker.capture(city, [captured])
+
+    # Simulate a stale id(ep) cache entry pointing at the captured snapshot for a different
+    # object. Verification must fall back to (source, uid), not compare replacement against
+    # captured as if it were in-place drift.
+    source = source_key(city)
+    tracker._object_keys[id(replacement)] = (captured, (source, captured.uid))
+
+    tracker.verify(source, [replacement])
+
+    assert tracker.summary() == {
+        "checked": 1,
+        "mismatches": 1,
+        "artifact_checked": 0,
+        "mismatch_categories": {"record_missing": 1},
+    }
+
+
 def test_legacy_artifact_reuse_is_not_a_mismatch(tmp_path):
     # GH#353 / Audio run 54: a migrated legacy artifact is reused as-is by materialize_audio
     # (its ``legacy_ok`` path) — the record keeps ``audio_spec_hash == "legacy"`` and its
