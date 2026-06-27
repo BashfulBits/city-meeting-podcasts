@@ -75,23 +75,21 @@ Notes:
 
 ## Summary
 
-Status as of the [fix/coderabbit-review-fixes](https://github.com/BashfulBits/city-meeting-podcasts/pull/483)
-sweep: every "Valid — needs fix" finding below is now fixed (PR #483), with four exceptions
-reclassified to **Needs discussion** after turning out to need a design decision rather than a
-blind patch — two (`CR-CP-06`, `CR-CP-33`) after a first fix attempt broke a real test or required
-touching architecture beyond this sweep's scope; two (`CR-CP-24`, `CR-TS-09`) because the real fix
-means changing core `media.py` download behavior or live per-city podcast description copy. See
-each row for why.
+Status after the original [fix/coderabbit-review-fixes](https://github.com/BashfulBits/city-meeting-podcasts/pull/483)
+sweep and this follow-up branch/PR #494: the originally valid findings are now split between the
+first sweep (`PR #483`), targeted follow-up fixes in this branch, explicit `Confirmed no action`
+decisions for comments that turned out to be by-design or editorial/modeling choices, and a small
+set of intentionally deferred follow-ups. See each row for the specific rationale.
 
-| Directory | Total | Fixed (PR #483) | Invalid / by design | Needs discussion | Already fixed |
-|---|---|---|---|---|---|
-| `citypods/` | 45 | 32 | 4 | 9 | 0 |
-| `scripts/` | 38 | 25 | 9 | 4 | 0 |
-| `.github/` | 25 | 23 | 0 | 2 | 0 |
-| `tests/` | 10 | 6 | 2 | 2 | 0 |
-| `templates/` | 6 | 3 | 2 | 0 | 1 |
-| `workers/` | 5 | 4 | 0 | 0 | 1 |
-| **Total** | **129** | **93** | **17** | **17** | **2** |
+| Directory | Total | Fixed (PR #483) | Fixed (follow-up PRs) | Confirmed no action | Deferred follow-up | Already fixed |
+|---|---|---|---|---|---|---|
+| `citypods/` | 45 | 32 | 7 | 5 | 1 | 0 |
+| `scripts/` | 38 | 25 | 2 | 8 | 3 | 0 |
+| `.github/` | 25 | 23 | 1 | 1 | 0 | 0 |
+| `tests/` | 10 | 6 | 1 | 3 | 0 | 0 |
+| `templates/` | 6 | 3 | 0 | 2 | 0 | 1 |
+| `workers/` | 5 | 4 | 0 | 0 | 0 | 1 |
+| **Total** | **129** | **93** | **11** | **19** | **4** | **2** |
 
 Two findings worth flagging immediately as **critical and valid**: `CR-CP-14` (an unscoped
 `--drop-object` CLI flag can delete every audio object/pointer in the catalog) and `CR-CP-35` (a
