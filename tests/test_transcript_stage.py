@@ -1099,6 +1099,33 @@ class TestTranscriptStageASR:
         assert "duration_h=0.5" in out
         assert "duration_source=hosted" in out
 
+    def test_asr_probe_preserves_edited_timeline_served_duration(self, tmp_path, capsys):
+        ep = _ep_with_audio()
+        ep.duration = 7200
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=30.0,
+                    source_end=40.0,
+                ),
+            ),
+        )
+        ep.audio_duration_served = 7200.0
+
+        with patch("citypods.stages._probe_duration_secs", return_value=1800.0):
+            _run_asr(tmp_path, ep)
+
+        out = capsys.readouterr().out
+        assert ep.audio_duration_served == pytest.approx(10.0)
+        assert "duration_h=0.0" in out
+        assert "duration_source=served" in out
+        assert "duration_source=hosted" not in out
+
     def test_asr_timeout_is_capped_to_remaining_budget(self, tmp_path):
         ctx = _ctx(tmp_path)
         ctx.asr_timeout_base_seconds = 120

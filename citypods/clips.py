@@ -250,7 +250,7 @@ def extract_clip(
 
     # Build the clip sub-timeline and source cuts
     source_id = ep.sources[0].id if ep.sources else "s0"
-    if ep.timeline is None or timeline_digest(ep.timeline) == "":
+    if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
         clip_tl, source_cuts = _identity_clip_timeline(source_id, served_start, served_end)
     else:
         clip_tl, source_cuts = _clip_timeline(ep.timeline, served_start, served_end)
@@ -313,7 +313,7 @@ def _get_source_cuts(
 ) -> tuple[tuple[str, float, float], ...]:
     """Return source cuts for an episode (used on the reuse path)."""
     source_id = ep.sources[0].id if ep.sources else "s0"
-    if ep.timeline is None or timeline_digest(ep.timeline) == "":
+    if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
         return ((source_id, served_start, served_end),)
     _, cuts = _clip_timeline(ep.timeline, served_start, served_end)
     return cuts

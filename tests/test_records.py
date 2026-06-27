@@ -930,16 +930,16 @@ def test_protected_blocks_for_lane():
     # A lane preserves the artifact block(s) it does NOT own from the freshest remote. The audio
     # lane owns both the audio bytes and the media-availability verdict it derives (H16 PR3).
     assert protected_blocks_for_lane("audio") == frozenset(
-        {"transcript", "provider_transcript", "speakers"}
+        {"transcript", "provider_transcript", "speakers", "integrity"}
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
-        {"audio", "speakers", "media_availability"}
+        {"audio", "speakers", "media_availability", "integrity"}
     )
     assert protected_blocks_for_lane("align") == frozenset(
-        {"audio", "speakers", "media_availability"}
+        {"audio", "speakers", "media_availability", "integrity"}
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
-        {"audio", "transcript", "media_availability"}
+        {"audio", "transcript", "media_availability", "integrity"}
     )
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
     assert protected_blocks_for_lane(None) == frozenset()

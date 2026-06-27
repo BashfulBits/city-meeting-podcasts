@@ -34,6 +34,11 @@ from typing import Literal
 
 from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body
+from citypods.integrity import (
+    REPAIR_AUDIO_REMATERIALIZE,
+    REPAIR_TRANSCRIPT_REGENERATE,
+    timeline_audio_repair_token,
+)
 from citypods.models import City, Episode
 from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
 
@@ -216,10 +221,10 @@ def audio_spec_hash(
     registering a single identity source, the hash stays byte-identical and no re-encode
     storm occurs. Do not "fix" this to read ``ref``: it would change every identity hash.
     """
-    tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
+    tl_digest = timeline_digest(ep.timeline, ep.sources) if ep.timeline is not None else ""
     loudness = loudness_profile
     processing = processing_profile
-    rebuild = ep.audio_rebuild or ""
+    rebuild = ep.audio_rebuild or timeline_audio_repair_token(ep, REPAIR_AUDIO_REMATERIALIZE)
 
     if not tl_digest and not rebuild and not loudness and not processing and len(ep.sources) <= 1:
         # v1-compatible format: byte-identical for identity episodes.
@@ -248,9 +253,14 @@ def audio_spec_hash(
 
 def transcript_media_hash(ep: Episode) -> str:
     """Hash of ASR transcript media inputs, independent of audio mastering bytes."""
-    tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
+    tl_digest = timeline_digest(ep.timeline, ep.sources) if ep.timeline is not None else ""
     source_refs = [s.ref for s in ep.sources] if ep.sources else [ep.video_url]
-    spec = {"v": 1, "sources": source_refs, "timeline": tl_digest}
+    spec = {
+        "v": 1,
+        "sources": source_refs,
+        "timeline": tl_digest,
+        "repair": timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE),
+    }
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
@@ -754,6 +764,9 @@ def episode_to_record(ep: Episode) -> dict:
         # Durable media-availability verdict (H16 PR3): omitted when never classified so the
         # record stays clean for direct enclosures we don't re-host and for pre-PR3 records.
         "media_availability": _availability_to_dict(ep.media_availability),
+        # Audit-owned diagnostic/repair metadata. Kept out of render hashes and preserved across
+        # scoped lane pushes so repair intent survives ordinary audio/transcript work.
+        "integrity": ep.integrity or None,
     }
 
 
@@ -886,6 +899,7 @@ def record_to_episode(rec: dict) -> Episode:
         audio_rebuild=audio.get("rebuild") or "",
         audio_encode_time=audio.get("encode_time"),
         audio_duration_served=audio.get("duration_served"),
+        integrity=rec.get("integrity") if isinstance(rec.get("integrity"), dict) else {},
         media_availability=_availability_from_rec(rec),
     )
 
@@ -921,7 +935,7 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 # ``provider_transcript`` registry is a transcript-lane artifact: PT-PR5/PT-PR6 update candidate /
 # known-good confidence and must preserve it from audio-lane snapshots.
 ARTIFACT_BLOCKS: frozenset[str] = frozenset(
-    {"audio", "transcript", "provider_transcript", "speakers", "media_availability"}
+    {"audio", "transcript", "provider_transcript", "speakers", "media_availability", "integrity"}
 )
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
@@ -1084,6 +1098,9 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         tl_data = rec.get("timeline")
         if tl_data and ep.timeline is None:
             ep.timeline = _timeline_from_dict(tl_data)
+        integrity = rec.get("integrity")
+        if isinstance(integrity, dict):
+            ep.integrity = integrity
         availability = _availability_from_rec(rec)
         if availability is not None:
             ep.media_availability = availability

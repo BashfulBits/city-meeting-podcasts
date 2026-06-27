@@ -1025,6 +1025,32 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
     }
 
 
+def _timeline_audio_repair_status(records_cache: dict[str, dict]) -> dict:
+    from citypods.integrity import timeline_audio_repair_actions
+    from citypods.records import record_to_episode
+
+    by_status: dict[str, int] = {}
+    by_action: dict[str, int] = {}
+    total = 0
+    for records in records_cache.values():
+        for rec in records.values():
+            block = (rec.get("integrity") or {}).get("timeline_audio") or {}
+            if not isinstance(block, dict) or not block:
+                continue
+            status = str(block.get("status") or "unknown")
+            by_status[status] = by_status.get(status, 0) + 1
+            repair = timeline_audio_repair_actions(record_to_episode(rec))
+            if repair:
+                total += 1
+                for action in sorted(repair):
+                    by_action[action] = by_action.get(action, 0) + 1
+    return {
+        "active": total,
+        "by_status": dict(sorted(by_status.items())),
+        "by_action": dict(sorted(by_action.items())),
+    }
+
+
 def build_status(cities: list, *, site_config: dict, state_dir: Path | None = None) -> dict:
     """Build the operational status snapshot for the /admin/status/ dashboard (issue #124).
 
@@ -1163,6 +1189,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     )
     by_work_class = wc_counts.get("by_work_class", {})
     provider_transcripts = _provider_transcript_status(records_cache, by_work_class)
+    timeline_audio_repair = _timeline_audio_repair_status(records_cache)
     audio_work = by_work_class.get("audio", {})
     audio_open = sum(
         n for state, n in audio_work.items() if state not in {"done", "alignment-disabled"}
@@ -1310,6 +1337,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             # transcript-align), plus alignment-disabled + inert deep-archive counts.
             "by_work_class": by_work_class,
             "provider_transcripts": provider_transcripts,
+            "timeline_audio_repair": timeline_audio_repair,
             "work_pending": wc_counts.get("feed_visible_pending", 0),
             "alignment_disabled": wc_counts.get("alignment_disabled", 0),
             "deep_archive_items": wc_counts.get("deep_archive_items", 0),

@@ -163,10 +163,16 @@ def test_resolve_media_url_follows_downloadfile_redirect(monkeypatch):
         def __exit__(self, *_):
             pass
 
+    validated = []
+
     monkeypatch.setattr("citypods.providers.granicus.make_session", lambda: _FakeSession())
-    monkeypatch.setattr("citypods.providers.granicus.validate_source_url", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "citypods.providers.granicus.validate_source_url",
+        lambda *a, **kw: validated.append((a, kw)),
+    )
     url = GranicusProvider().resolve_media_url(ep, source)
     assert url == signed
+    assert validated == [((signed,), {"resolve": True})]
 
 
 def test_resolve_media_url_makes_a_single_request_no_bespoke_retry(monkeypatch):

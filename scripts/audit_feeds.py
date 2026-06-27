@@ -22,10 +22,14 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 from citypods.audit import Finding, audit_all
 from citypods.config import load_city_configs, load_site_config
+from citypods.records import source_key
 from citypods.state import pull_canonical_state
+from citypods.statesync import push_state
+from citypods.storage import make_storage
 
 LABELS = {
     "signal:feed-health": ("0E8A16", "Automated feed-health finding"),
@@ -243,6 +247,15 @@ def main(argv: list[str] | None = None) -> int:
         help="HEAD-probe each city's meetings_url (one probe per unique URL)",
     )
     ap.add_argument("--city", help="audit only this slug")
+    ap.add_argument(
+        "--timeline-diagnostics",
+        help="write timeline/audio duration diagnostics as JSONL for review/PR6 gating",
+    )
+    ap.add_argument(
+        "--persist-timeline-integrity",
+        action="store_true",
+        help="persist confirmed timeline/audio repair flags to durable state",
+    )
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
     args = ap.parse_args(argv)
@@ -259,15 +272,30 @@ def main(argv: list[str] | None = None) -> int:
     # pipeline's history and file a false-positive timeline-duration-mismatch/
     # timeline-short-coverage finding.
     output_dir = "docs"
-    pull_canonical_state(site_config, output_dir)
+    state_dir = pull_canonical_state(site_config, output_dir)
 
+    timeline_diagnostics: list[dict] | None = [] if args.timeline_diagnostics else None
     findings = audit_all(
         cities,
         site_config=site_config,
         output_dir=output_dir,
         check_enclosures_net=args.enclosures,
         check_meetings_urls_net=args.meetings_urls,
+        timeline_diagnostics=timeline_diagnostics,
+        persist_timeline_integrity=args.persist_timeline_integrity and not args.dry_run,
     )
+    if args.timeline_diagnostics and timeline_diagnostics is not None:
+        path = Path(args.timeline_diagnostics)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w") as f:
+            for row in timeline_diagnostics:
+                f.write(json.dumps(row, sort_keys=True) + "\n")
+        print(f"timeline diagnostics: wrote {len(timeline_diagnostics)} row(s) to {path}")
+    if args.persist_timeline_integrity and not args.dry_run:
+        storage = make_storage(site_config, site_config.get("base_url", ""), output_dir)
+        prefixes = sorted({f"sources/{source_key(city)}/" for city in cities})
+        pushed = push_state(storage, Path(state_dir), only_prefixes=prefixes)
+        print(f"timeline integrity: pushed {pushed} state file(s)")
     for f in findings:
         print(f"  {f.severity:5} {f.slug} [{f.check}] {f.message}")
 

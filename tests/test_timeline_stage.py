@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from citypods.integrity import REPAIR_TIMELINE_REPLAN, set_timeline_audio_integrity
 from citypods.media import RateLimitedMediaFetchError
 from citypods.models import City, Episode
 from citypods.stages import (
@@ -442,6 +443,24 @@ class TestTimelineStageSkipAndStop:
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert planner.calls == 1  # plan() not invoked again
         assert stats.reused == 1 and stats.ran == 0
+
+    def test_repair_flag_forces_replanning_when_signature_matches(self, tmp_path):
+        ep = _ep()
+        planner = _CountingSilence()
+        stage = TimelineStage(planners=[planner])
+        stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        set_timeline_audio_integrity(
+            ep,
+            {
+                "status": "timeline-source-duration-mismatch",
+                "repair": [REPAIR_TIMELINE_REPLAN],
+            },
+        )
+
+        stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert planner.calls == 2
+        assert stats.ran == 1
 
     def test_replans_when_planner_version_changes(self, tmp_path):
         ep = _ep()

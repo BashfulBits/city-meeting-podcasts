@@ -1376,7 +1376,7 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
     assert (
         captured["protected"]
         == protected_blocks_for_lane("transcribe")
-        == frozenset({"audio", "media_availability", "speakers"})
+        == frozenset({"audio", "media_availability", "speakers", "integrity"})
     )
     # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).
     assert isinstance(captured["owned_uids"], dict)

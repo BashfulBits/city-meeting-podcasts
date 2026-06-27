@@ -87,6 +87,14 @@ from citypods.asr import asr_initial_prompt
 from citypods.bodies import body_key, canonical_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
+from citypods.integrity import (
+    REPAIR_AUDIO_REMATERIALIZE,
+    REPAIR_TIMELINE_REPLAN,
+    REPAIR_TRANSCRIPT_REGENERATE,
+    ensure_timeline_audio_repair_token,
+    needs_timeline_audio_repair,
+    timeline_audio_repair_token,
+)
 from citypods.media import (
     AudioArtifactCache,
     HostedKeysCache,
@@ -638,6 +646,10 @@ class AudioStage:
     ) -> StageStats:
         if ctx.dry_run or ctx.storage is None:
             return StageStats(self.name)
+        for ep in episodes:
+            token = ensure_timeline_audio_repair_token(ep, REPAIR_AUDIO_REMATERIALIZE)
+            if token:
+                ep.audio_rebuild = token
         ms: MaterializeStats = materialize_audio(
             city,
             _playable(
@@ -772,7 +784,8 @@ class TimelineStage:
         def _plan_one(ep: Episode) -> None:
             # Already planned by this exact planner set+versions → don't recompute. A stale
             # signature (older set) falls through and re-plans.
-            if ep.timeline is not None and ep.timeline.version == sig:
+            force_replan = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+            if ep.timeline is not None and ep.timeline.version == sig and not force_replan:
                 with lock:
                     stats.reused += 1
                 return
@@ -908,7 +921,7 @@ def _needs_chapter_remap(ep: Episode) -> bool:
         return False  # nothing to remap
     if ep.timeline is None:
         return False  # identity: source == served, no remap needed
-    if timeline_digest(ep.timeline) == "":
+    if timeline_digest(ep.timeline, ep.sources) == "":
         return False  # identity timeline: source == served
     return True
 
@@ -1053,11 +1066,12 @@ def _provider_transcript_object_key(src_key: str, uid: str, spec: str, fmt: str)
 
 
 def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
-    tl_digest = timeline_digest(ep.timeline) if ep.timeline is not None else ""
+    tl_digest = timeline_digest(ep.timeline, ep.sources) if ep.timeline is not None else ""
     spec = {
         "v": PROVIDER_ALIGN_PIPELINE_VERSION,
         "provider": artifact.get("spec_hash"),
         "timeline": tl_digest,
+        "repair": timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE),
     }
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
@@ -1232,11 +1246,18 @@ def _served_duration_hint(ep: Episode) -> float | None:
     return float(ep.duration) if ep.duration else None
 
 
+def _edited_timeline_served_duration(ep: Episode) -> float | None:
+    if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
+        return None
+    served = sum(s.served_end - s.served_start for s in ep.timeline.segments)
+    return served if served > 0 else None
+
+
 def _remap_provider_cues(ep: Episode, cues: list[dict]) -> tuple[list[dict], float | None]:
     if not cues:
         return [], None
     total_duration = sum(max(0.0, c.get("end", 0.0) - c.get("start", 0.0)) for c in cues)
-    if ep.timeline is None or timeline_digest(ep.timeline) == "":
+    if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
         return [dict(c) for c in cues], 1.0
     source_id = ep.sources[0].id if ep.sources else "s0"
     remapped = remap(
@@ -1494,6 +1515,13 @@ def _download_audio_file(url: str, dest: Path) -> None:
 
 
 def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_binary: str) -> str:
+    edited = _edited_timeline_served_duration(ep)
+    if edited is not None:
+        if ep.audio_duration_served is None or abs(ep.audio_duration_served - edited) > 0.001:
+            ep.audio_duration_served = edited
+            return "timeline"
+        return "served"
+
     probed = _probe_duration_secs(audio_path, ffmpeg_binary)
     if probed is None or probed <= 0:
         return "unknown"
@@ -2008,6 +2036,7 @@ class TranscriptStage:
                 )
                 continue
 
+            ensure_timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE)
             align_hash = hashlib.sha1(align_text.encode()).hexdigest()[:12] if align_text else None
             # Alignment falls back to fresh transcription on quality/runtime errors, so keep the
             # fresh prompt/beam inputs in the recipe even when alignment is the primary path.

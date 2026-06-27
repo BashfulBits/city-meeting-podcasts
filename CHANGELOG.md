@@ -16,6 +16,29 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Timeline/audio integrity diagnostics and targeted repair plumbing are implemented, with PR6 still
+  gated.** The feed-health workflow now uploads an `audit-timeline-integrity.jsonl` artifact that
+  distinguishes container-only duration drift from real stream-sample/EDL mismatches. Episode records
+  can carry an audit-owned `integrity.timeline_audio` repair block, `/admin/status` reports the repair
+  queue, `SourceMedia` records duration basis, and source-aware identity hashing prevents tail-only
+  trims from collapsing to identity (GH#495). `TimelineStage`, `AudioStage`, ASR, and provider-align
+  consume targeted repair actions (`timeline-replan`, `audio-rematerialize`,
+  `transcript-regenerate`) without bumping global pipeline versions. Automatic persistence/repair is
+  still off in the scheduled audit; `--persist-timeline-integrity` is a manual gate. Backfill story:
+  no global invalidation, no `ASR_PIPELINE_VERSION` or `AUDIO_PIPELINE_VERSION` bump, and only records
+  explicitly flagged for repair get new audio/transcript recipes.
+- **Timeline/audio integrity repair is now an L3 Phase-H series with a cheap sample-clock duration
+  probe.** `review/20` breaks the work into read-only diagnostics, persisted repair flags, planner
+  duration-basis fixes, and targeted re-plan/re-materialize/re-transcribe consumers. PR1 adds
+  `AudioDurationProbe`, which reads both `format.duration` and the first audio stream's
+  `duration_ts * time_base` without decoding the whole file. This does not change audit behavior,
+  records, pipeline versions, or artifact invalidation yet.
+- **ASR audio-duration refresh preserves edited timeline durations.** The transcript stage no longer
+  overwrites `audio_duration_served` on non-identity timelines with ffprobe's container duration, which
+  kept resolved `timeline-duration-mismatch` / `timeline-short-coverage` feed-health issues open after
+  the audit started reading durable state. Identity/no-timeline audio still uses hosted-file probes for
+  ASR budgeting. This is a metadata correction only: no pipeline-version bump, no automatic artifact
+  invalidation, and affected records update gradually as audio/ASR touches them again.
 - **Multi-source (`SwagitConcatPlanner`) concat episodes now use local-concat source caching
   ([`review/11`](review/11-technical-design-roadmap.md) "Per-segment source caching for
   multi-source concat episodes").** `SourceCache.get_or_fetch_concat` downloads each segment

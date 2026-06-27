@@ -19,6 +19,7 @@ from citypods.media import (
     SourceCache,
     _concat_local_sources,
     _concat_render_timeline,
+    _probe_audio_duration_details,
     _probe_duration_secs,
     encode_args,
     estimate_encode_rss_bytes,
@@ -1109,6 +1110,37 @@ def test_probe_duration_returns_none_on_error(monkeypatch, tmp_path):
     )
     result = _probe_duration_secs(tmp_path / "audio.m4a")
     assert result is None
+
+
+def test_probe_audio_duration_details_uses_stream_sample_clock(tmp_path):
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe required for sample-clock duration probe")
+
+    audio = tmp_path / "audio.m4a"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=1.5",
+            "-c:a",
+            "aac",
+            str(audio),
+        ],
+        check=True,
+        timeout=30,
+    )
+
+    probe = _probe_audio_duration_details(audio)
+
+    assert probe.container_duration == pytest.approx(1.5, abs=0.01)
+    assert probe.stream_sample_duration == pytest.approx(1.5, abs=0.01)
+    assert probe.stream_duration_source == "stream-duration-ts"
 
 
 def test_audio_duration_served_set_from_probe(tmp_path):
