@@ -498,6 +498,11 @@ list maintenance; aligns the catalog with the mission. Pairs with onboarding (#2
 sketched here; issue templates + PR template **shipped**, label taxonomy (`area:*`, `needs-*`)
 **shipped**, Projects board lands at 1.0.
 Handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING) **shipped** with this doc set.
+When the city-request/import form is revisited for Phase R, include a branding-discovery pass:
+evaluate alternatives to the current `fetch_seals.py` representative-city/favicon fallback for city
+colors, seals, and logos (for example official site metadata, OpenGraph icons, municipal brand pages,
+Wikipedia/Commons, and operator-provided overrides), while keeping the committed entity config as the
+source of truth for published branding.
 
 **Pluggable inference-execution backend (compute offload).** *Problem:* heavy inference — transcription,
 forced alignment, diarization, and (Phase R) text inference for summaries, topic tags, and soundbite
