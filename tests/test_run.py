@@ -1235,14 +1235,24 @@ def test_enrich_consumes_canonical_plan_and_skips_duplicate_state_restore(
     cities_dir = _setup_multi(tmp_path)
     cfg = load_city_configs(cities_dir, {})
     keys = {city.slug: source_key(city) for city in cfg}
+    plan_keys = {
+        slug: [f"{key}/{ep.uid}" for ep in fake_provider.episodes] for slug, key in keys.items()
+    }
     plan_path = tmp_path / "asr-plan.json"
     save_shard_plan(
         plan_path,
         ShardPlan(
             lane="transcribe",
             num_shards=2,
-            assignment={keys["feed-a"]: 1, keys["feed-b"]: 0},
-            weights={keys["feed-a"]: 10, keys["feed-b"]: 1},
+            assignment={
+                **{key: 1 for key in plan_keys["feed-a"]},
+                **{key: 0 for key in plan_keys["feed-b"]},
+            },
+            weights={
+                **{key: 10 for key in plan_keys["feed-a"]},
+                **{key: 1 for key in plan_keys["feed-b"]},
+            },
+            unit="episode",
         ),
     )
     pulls = []

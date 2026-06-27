@@ -42,7 +42,7 @@ def test_generate_board_cities_render_yaml_escapes_scalars():
         extract_audio=True,
     )
     body = 'Board "A"\nPlanning: North'
-    title_prefix = 'Denton \\ Civic'
+    title_prefix = "Denton \\ Civic"
 
     rendered = _render(tmpl, "denton-board-a", body, title_prefix)
     loaded = yaml.safe_load(rendered)

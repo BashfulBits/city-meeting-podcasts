@@ -18,7 +18,10 @@ from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-import probe_granicus_transport as transport
+try:
+    from scripts import probe_granicus_transport as transport
+except ModuleNotFoundError:  # pragma: no cover - direct script execution
+    import probe_granicus_transport as transport
 
 from citypods.media import PODCAST_SPEECH_PROFILE, CommandFfmpeg, SourceCache
 from citypods.security import validate_source_url
