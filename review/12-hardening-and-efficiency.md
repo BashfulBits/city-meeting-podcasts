@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-20 (routing-aware ASR shard cost + H14 planner contract)**
+last updated 2026-06-27 (H18 source-duration-aware timeline identity follow-up)**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -2115,6 +2115,67 @@ operational behavior, not a code bug.
 
 ---
 
+## H18 — Source-duration-aware timeline identity detection
+
+**Maturity: L1/L2 (scoped from CodeRabbit audit CR-CP-33; GH#495).** This is a correctness follow-up to
+the timeline/EDL audio-cleanup work, not part of the H14 external-worker path. It is intentionally split
+out because the fix touches the content-addressed audio contract.
+
+**Problem.** `timeline_digest()` returns `""` for any single source segment whose served and source
+coordinates match. That is correct for a true no-op identity timeline, and the empty-string sentinel is
+load-bearing: `audio_spec_hash()` keeps the old v1-compatible shape when the digest is empty so merely
+stamping an identity timeline does not re-encode the catalog. But a tail-only silence trim can produce
+the same internal shape:
+
+```
+served[0..cut_start] -> source[0..cut_start]
+```
+
+If the original source duration is longer than `cut_start`, that segment is a real edit, not identity.
+The current `Timeline`/`Segment` model does not carry enough original source-duration context for
+`_is_identity()` to distinguish "the full 300-second source" from "the first 300 seconds of a longer
+source."
+
+**Chosen scope for the fix.**
+
+1. Make identity classification source-duration-aware. Choose the narrowest durable contract after
+   inspecting call sites: either carry original source duration on `Timeline`, pass source duration into
+   `timeline_digest()`, or introduce a separate helper that classifies an episode's timeline using
+   `ep.sources`/provider duration context.
+2. Preserve the compatibility invariant: true full-source identity timelines must still produce an empty
+   digest and keep existing v1-compatible audio specs.
+3. Ensure tail-only trims of longer sources produce a non-empty timeline digest, which in turn invalidates
+   `audio_spec_hash()` and `transcript_media_hash()` for the affected episode.
+4. Audit every `timeline_digest(...) == ""` branch and decide whether it needs source-duration context:
+   audio render/reuse, transcript-media hashing, chapter remap checks, clips, audit/status helpers, and
+   tests.
+5. State the backfill story in the PR description and CHANGELOG entry before merge. If the implementation
+   changes existing persisted timeline semantics or bumps a planner/pipeline version, explicitly say which
+   already-stored artifacts are auto-invalidated and how reprocessing remains bounded.
+
+**Suggested implementation shape.** Prefer an episode-aware digest/classification path for hash-producing
+call sites (`audio_spec_hash`, `transcript_media_hash`) while keeping a low-level timeline-only fallback
+for pure mapping utilities. Unknown source duration should fail conservative for planned edits but must not
+churn known true identities; the tests should pin this distinction so future planners cannot accidentally
+collapse real edits to identity.
+
+**Files.** `citypods/timeline.py` (identity/digest contract); `citypods/records.py`
+(`audio_spec_hash`, `transcript_media_hash`); `citypods/media.py`, `citypods/stages.py`,
+`citypods/clips.py`, `citypods/audit.py` (identity branches); `citypods/silence.py`
+(tail-only trim behavior/tests); `tests/test_timeline.py`, `tests/test_silence.py`,
+`tests/test_records.py`, `tests/test_media.py`.
+
+**Acceptance.**
+- A true full-source identity timeline still returns an empty digest and keeps existing v1-compatible
+  audio specs.
+- A tail-only trim of a longer source returns a non-empty digest.
+- Head trim, middle trim, concat, and synthesized identity-shaped timelines have explicit tests documenting
+  their intended identity/non-identity behavior.
+- Audio and transcript media hashes change only for actual timeline edits, not for no-op identities.
+- The PR documents whether existing stored artifacts are invalidated automatically or left as-is.
+
+---
+
 ## Module-split note (Codex maintainability, opportunistic)
 
 While touching these areas, extract along natural seams (do **not** refactor for size alone): H5 creates
@@ -2140,6 +2201,7 @@ H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates
 5. **H14b** (Modal free-tier GPU adapter — can parallelize with H14c)
 6. **H14c** (Beam free-tier GPU adapter — can parallelize with H14b)
 7. **H9** (combined local-sharded + Modal + Beam throughput evaluation, diarization $/speaker-hour, 80-feed 1-month gate)
+8. **H18** (source-duration-aware timeline identity detection; GH#495; can land independently of H14/H9)
 
 Each lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11 catalog
 entry + add timestamp, add CHANGELOG, stamp this doc "Implemented in PR #N" per item). Self-hosted
