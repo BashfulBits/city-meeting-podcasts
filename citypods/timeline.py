@@ -49,6 +49,7 @@ class SourceMedia:
     duration: float | None  # source-clip seconds (None when unknown before probing)
     watch_url: str | None  # human watch page (canonical_video)
     backup_key: str | None = None  # future: our archived copy of this source media (§7)
+    duration_basis: str | None = None  # e.g. "container", "stream-sample", "decoded:48000"
 
 
 @dataclass(frozen=True)
@@ -112,7 +113,7 @@ def identity_timeline(source: SourceMedia, duration: float) -> Timeline:
 # ---------------------------------------------------------------------------
 
 
-def _is_identity(tl: Timeline) -> bool:
+def _is_identity(tl: Timeline, sources: tuple[SourceMedia, ...] = ()) -> bool:
     """True when the timeline is a single full-pass source segment (no offset, no trim).
 
     The comparison is *exact* (``served_start == source_start`` etc.), so a planner that
@@ -125,22 +126,28 @@ def _is_identity(tl: Timeline) -> bool:
     if len(tl.segments) != 1:
         return False
     s = tl.segments[0]
-    return (
+    if not (
         s.kind == "source"
         and s.source_id is not None
         and s.served_start == s.source_start
         and s.served_end == s.source_end
-    )
+    ):
+        return False
+    if sources:
+        src = next((src for src in sources if src.id == s.source_id), None)
+        if src is not None and src.duration is not None and s.source_end != src.duration:
+            return False
+    return True
 
 
-def timeline_digest(tl: Timeline) -> str:
+def timeline_digest(tl: Timeline, sources: tuple[SourceMedia, ...] | list[SourceMedia] = ()) -> str:
     """Canonical hash of the EDL, or ``""`` for an identity timeline.
 
     The empty-string sentinel is load-bearing: it lets ``audio_spec_hash`` produce the
     same bytes for identity episodes as it did before this model existed, so no re-encode
     storm occurs when the model is first deployed.
     """
-    if _is_identity(tl):
+    if _is_identity(tl, tuple(sources)):
         return ""
     blob = json.dumps(dataclasses.asdict(tl), separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]

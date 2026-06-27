@@ -1,6 +1,6 @@
 # Timeline/audio integrity repair plan
 
-**Status:** L3 design, PR1 started 2026-06-27.
+**Status:** L3 design, PR1 merged 2026-06-27; PR2-PR5 implemented in follow-up branch.
 
 ## Problem
 
@@ -78,7 +78,12 @@ Extend `check_timeline_integrity` to include cheap duration diagnostics for host
 `timeline_duration`, `stream_sample_duration`, `container_duration`, and clock deltas. Keep existing
 issue keys until classification is proven. Add a manual/debug flag for segment-level probes.
 
-Backfill story: none. Findings may get richer bodies, but no records are changed.
+Implemented: `scripts/audit_feeds.py --timeline-diagnostics <path>` writes JSONL diagnostics and the
+scheduled feed-health workflow uploads the artifact as `timeline-audio-integrity`. The probe downloads
+only hosted edited-timeline objects and uses the stream sample-clock helper before classifying.
+
+Backfill story: none. The scheduled audit remains non-mutating; diagnostics are an artifact used to
+gate PR6.
 
 ### PR3 — persisted integrity/repair flags
 
@@ -86,7 +91,13 @@ Persist `integrity.timeline_audio` for confirmed mismatches. Teach issue reconci
 state and avoid closing while a repair flag remains unresolved. Add status/admin counts for repair
 queues.
 
-Backfill story: only records with confirmed mismatches get a new metadata block. No artifact invalidation.
+Implemented: records round-trip an audit-owned `integrity` block, scoped lane pushes preserve it, and
+`/admin/status` exposes `backlog.timeline_audio_repair` counts by status/action. The audit can stamp
+confirmed repair blocks with `--persist-timeline-integrity`, but the scheduled workflow does not enable
+that flag yet.
+
+Backfill story: only manually persisted confirmed mismatches get a metadata block. No global artifact
+invalidation.
 
 ### PR4 — planner duration basis + GH#495 identity fix
 
@@ -95,9 +106,12 @@ tail-only trims and other real edits get a non-empty digest. For concat planning
 basis (`decoded:<rate>` where available) and prefer stream/decoded sample-clock durations over container
 duration.
 
-Backfill story: targeted. Re-plan only records marked `timeline-source-duration-mismatch` or
-`timeline-identity-misclassified` unless the PR explicitly bumps a planner version and states the wider
-catalog cost.
+Implemented: episode-level digest callers pass `ep.sources`, so a span can collapse to identity only
+when it covers the known full source duration. `SwagitConcatPlanner` now asks ffprobe for stream
+`duration_ts * time_base` first and stores `duration_basis="stream-sample"` on segment sources.
+
+Backfill story: targeted. Existing artifacts are not globally invalidated; only records with repair
+actions or later planner-version changes are reworked.
 
 ### PR5 — repair consumers
 
@@ -110,14 +124,21 @@ Teach stages to consume repair flags:
 
 Clear repair flags only after the post-repair audit sees stream/decoded duration match the EDL.
 
+Implemented: `TimelineStage` ignores a matching signature only for episodes without
+`timeline-replan`; `AudioStage` stamps a deterministic `audio_rebuild` nonce for
+`audio-rematerialize`; ASR and provider-align recipes include a persistent repair token for
+`transcript-regenerate`. Resolved repair tokens remain in recipe history so artifacts do not snap back
+to pre-repair keys after the active repair queue clears.
+
 Backfill story: bounded by the existing timeline/audio/ASR lanes and backlog policy. No global
 pipeline-version bump.
 
 ### PR6 — auto-repair enablement
 
 Enable automatic flagging for confirmed decoded/stream mismatches after PR2-PR5 have run in diagnostic
-mode. Keep a dry-run summary in feed-health logs and add an emergency config switch to disable automatic
-repair stamping.
+mode. Gate on the uploaded `timeline-audio-integrity` artifact showing stable classifications, then turn
+on `--persist-timeline-integrity` for the scheduled audit with an emergency config switch to disable
+automatic repair stamping.
 
 Backfill story: only confirmed affected records enter the repair queues; all work drains gradually under
 existing stop budgets.

@@ -20,9 +20,11 @@ or cumulative.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from collections.abc import Callable
+from fractions import Fraction
 
 from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
 from citypods.media import record_materialize_failure
@@ -38,7 +40,7 @@ def _probe_duration_url(
     *,
     stop: Callable[[], bool] | None = None,
 ) -> float | None:
-    """Return a remote URL's container duration in seconds via ffprobe, or ``None`` on failure.
+    """Return a remote URL's stream-clock duration in seconds via ffprobe, or ``None`` on failure.
 
     Raises :class:`~citypods.http.StopRequested` (rather than returning ``None``) if the run's
     wall-clock budget expires while queued on the rate-limit/lease wait — the caller distinguishes
@@ -56,10 +58,12 @@ def _probe_duration_url(
                     "error",
                     "-user_agent",
                     USER_AGENT,
+                    "-select_streams",
+                    "a:0",
                     "-show_entries",
-                    "format=duration",
+                    "format=duration:stream=duration_ts,time_base,duration",
                     "-of",
-                    "default=nw=1:nk=1",
+                    "json",
                     url,
                 ],
                 check=True,
@@ -67,8 +71,35 @@ def _probe_duration_url(
                 text=True,
                 timeout=timeout,
             ).stdout.strip()
-            return float(out) if out else None
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
+            if not out:
+                return None
+            # Unit tests historically patched ffprobe with a plain duration line. Keep accepting
+            # that while production uses JSON so stream duration_ts wins over format.duration.
+            if not out.startswith("{"):
+                return float(out)
+            data = json.loads(out)
+            streams = data.get("streams") or []
+            if streams and isinstance(streams[0], dict):
+                stream = streams[0]
+                duration_ts = stream.get("duration_ts")
+                time_base = stream.get("time_base")
+                if duration_ts is not None and time_base:
+                    duration = int(duration_ts) * Fraction(str(time_base))
+                    if duration > 0:
+                        return float(duration)
+                stream_duration = stream.get("duration")
+                if stream_duration:
+                    return float(stream_duration)
+            raw = (data.get("format") or {}).get("duration")
+            return float(raw) if raw else None
+        except (
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+            OSError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+        ):
             return None
 
 
@@ -156,6 +187,7 @@ class SwagitConcatPlanner:
                 media_kind="direct",
                 duration=dur,
                 watch_url=(ep.links or {}).get("canonical_video"),
+                duration_basis="stream-sample",
             )
             for i, ((url, _), dur) in enumerate(zip(seg_objs, durations, strict=True))
         ]

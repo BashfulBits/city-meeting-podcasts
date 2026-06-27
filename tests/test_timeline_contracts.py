@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from citypods.audit import check_timeline_integrity
+from citypods.media import AudioDurationProbe
 from citypods.models import Episode
 from citypods.timeline import Segment, SourceMedia, Timeline
 
@@ -181,6 +182,49 @@ class TestDurationMismatch:
         ep.audio_duration_served = 3300.0 + 0.05  # within 0.1s frame tolerance
         fs = _findings([ep])
         assert not any(f.check == "timeline-duration-mismatch" for f in fs)
+
+    def test_container_only_drift_is_diagnostic_not_error(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3304.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+        )
+
+        assert not any(f.check == "container-duration-drift" for f in fs)
+        assert diagnostics[0]["check"] == "container-duration-drift"
+        assert diagnostics[0]["repair"] == []
+
+    def test_stream_duration_mismatch_flags_repair_actions(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3304.0,
+                stream_sample_duration=3304.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+            mutate_integrity=True,
+        )
+
+        assert any(f.check == "rendered-duration-mismatch" for f in fs)
+        assert diagnostics[0]["repair"] == ["audio-rematerialize", "transcript-regenerate"]
+        assert ep.integrity["timeline_audio"]["status"] == "rendered-duration-mismatch"
 
 
 # ---------------------------------------------------------------------------

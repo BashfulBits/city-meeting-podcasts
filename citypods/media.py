@@ -2174,7 +2174,7 @@ def _served_duration(ep: Episode) -> float | None:
 
 
 def _has_non_identity_timeline(ep: Episode) -> bool:
-    return ep.timeline is not None and timeline_digest(ep.timeline) != ""
+    return ep.timeline is not None and timeline_digest(ep.timeline, ep.sources) != ""
 
 
 # Encode peak-RSS cost model (H8 reservation admission). The legacy one-pass dynamic loudnorm path

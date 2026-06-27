@@ -164,6 +164,7 @@ def test_resolve_media_url_follows_downloadfile_redirect(monkeypatch):
             pass
 
     monkeypatch.setattr("citypods.providers.granicus.make_session", lambda: _FakeSession())
+    monkeypatch.setattr("citypods.providers.granicus.validate_source_url", lambda *_a, **_kw: None)
     url = GranicusProvider().resolve_media_url(ep, source)
     assert url == signed
 

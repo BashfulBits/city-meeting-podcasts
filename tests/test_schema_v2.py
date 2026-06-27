@@ -16,6 +16,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.cli import main as cli_main
+from citypods.integrity import (
+    REPAIR_AUDIO_REMATERIALIZE,
+    REPAIR_TRANSCRIPT_REGENERATE,
+    build_timeline_audio_integrity,
+    set_timeline_audio_integrity,
+)
 from citypods.models import City, Episode
 from citypods.records import (
     audio_spec_hash,
@@ -24,6 +30,7 @@ from citypods.records import (
     record_to_episode,
     save_records,
     source_key,
+    transcript_media_hash,
 )
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
@@ -158,6 +165,24 @@ class TestAudioSpecHashV1Compat:
         # identity_timeline digest == "" → still uses v1 format
         assert audio_spec_hash(ep, max_kbps=96) == self._v1_hash(ep)
 
+    def test_tail_only_identity_requires_full_source_duration(self):
+        ep = _ep()
+        ep.sources = [_src()]
+        ep.timeline = Timeline(
+            version="buggy-tail-trim",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=1800,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=1800,
+                ),
+            ),
+        )
+        assert audio_spec_hash(ep, max_kbps=96) != self._v1_hash(ep)
+
     def test_summary_change_still_matches_v1(self):
         ep = _ep()
         ep.summary = "A new summary"
@@ -170,6 +195,24 @@ class TestAudioSpecHashV1Compat:
         stamped = audio_spec_hash(ep, max_kbps=96)
         assert stamped != base
         assert stamped != self._v1_hash(ep)
+
+    def test_timeline_audio_repair_actions_rekey_targeted_artifacts(self):
+        ep = _ep()
+        base_audio = audio_spec_hash(ep, max_kbps=96)
+        base_transcript = transcript_media_hash(ep)
+        set_timeline_audio_integrity(
+            ep,
+            build_timeline_audio_integrity(
+                status="rendered-duration-mismatch",
+                timeline_duration=100.0,
+                container_duration=104.0,
+                stream_sample_duration=104.0,
+                repair=[REPAIR_AUDIO_REMATERIALIZE, REPAIR_TRANSCRIPT_REGENERATE],
+            ),
+        )
+
+        assert audio_spec_hash(ep, max_kbps=96) != base_audio
+        assert transcript_media_hash(ep) != base_transcript
 
     def test_multi_source_uses_v2_format(self):
         ep = _ep()
@@ -277,6 +320,16 @@ class TestRoundTrip:
         rec = episode_to_record(ep)
         assert rec["timeline"] is None
         assert record_to_episode(rec).timeline is None
+
+    def test_integrity_block_round_trips(self):
+        ep = _ep()
+        ep.integrity = {
+            "timeline_audio": {
+                "status": "rendered-duration-mismatch",
+                "repair": ["audio-rematerialize"],
+            }
+        }
+        assert record_to_episode(episode_to_record(ep)).integrity == ep.integrity
 
     def test_audio_rebuild_nonce_round_trips(self):
         ep = _ep()
