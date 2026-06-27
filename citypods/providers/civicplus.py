@@ -92,6 +92,25 @@ class CivicPlusProvider:
                 resp = session.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
             except requests.RequestException as exc:
                 raise ProviderError(f"HEAD failed for {url}: {exc}") from exc
+            if resp.status_code == 405:
+                try:
+                    resp = session.get(
+                        url,
+                        timeout=DEFAULT_TIMEOUT,
+                        allow_redirects=True,
+                        stream=True,
+                    )
+                except requests.RequestException as exc:
+                    raise ProviderError(f"GET fallback failed for {url}: {exc}") from exc
+                try:
+                    if resp.status_code >= 400:
+                        raise ProviderError(f"GET fallback {url} returned {resp.status_code}")
+                    return ChangeToken(
+                        etag=resp.headers.get("ETag"),
+                        last_modified=resp.headers.get("Last-Modified"),
+                    )
+                finally:
+                    resp.close()
         if resp.status_code >= 400:
             raise ProviderError(f"HEAD {url} returned {resp.status_code}")
         return ChangeToken(

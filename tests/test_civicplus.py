@@ -34,10 +34,15 @@ source: "https://wms.civplus.tikiliveapi.com/vodhttporigin/159920/playlist.m3u8?
 
 
 class FakeResponse:
-    def __init__(self, text, status=200):
+    def __init__(self, text, status=200, headers=None):
         self.text = text
         self.content = text.encode()
         self.status_code = status
+        self.headers = headers or {}
+        self.closed = False
+
+    def close(self):
+        self.closed = True
 
 
 class FakeSession:
@@ -91,6 +96,59 @@ def test_fetch_episodes_wraps_network_errors(monkeypatch):
 
     with pytest.raises(ProviderError, match=r"GET https://city.example/rss failed: timed out"):
         CivicPlusProvider().fetch_episodes({"feed_url": "https://city.example/rss"})
+
+
+def test_detect_change_falls_back_to_get_when_head_not_allowed(monkeypatch):
+    head = FakeResponse("", status=405)
+    fallback = FakeResponse(
+        "", headers={"ETag": '"abc"', "Last-Modified": "Mon, 01 Jun 2026 12:00:00 GMT"}
+    )
+
+    class Head405Session:
+        def __init__(self):
+            self.get_kwargs = None
+
+        def head(self, url, timeout=None, allow_redirects=False):
+            return head
+
+        def get(self, url, **kwargs):
+            self.get_kwargs = kwargs
+            return fallback
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    fake = Head405Session()
+    monkeypatch.setattr("citypods.providers.civicplus.make_session", lambda: fake)
+
+    token = CivicPlusProvider().detect_change({"feed_url": "https://city.example/rss"})
+
+    assert token is not None
+    assert token.etag == '"abc"'
+    assert token.last_modified == "Mon, 01 Jun 2026 12:00:00 GMT"
+    assert fake.get_kwargs["allow_redirects"] is True
+    assert fake.get_kwargs["stream"] is True
+    assert fallback.closed is True
+
+
+def test_detect_change_preserves_head_http_errors(monkeypatch):
+    class Head500Session:
+        def head(self, url, timeout=None, allow_redirects=False):
+            return FakeResponse("", status=500)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("citypods.providers.civicplus.make_session", Head500Session)
+
+    with pytest.raises(ProviderError, match=r"HEAD https://city.example/rss returned 500"):
+        CivicPlusProvider().detect_change({"feed_url": "https://city.example/rss"})
 
 
 def test_resolve_media_url_walks_page_then_embed(monkeypatch):
