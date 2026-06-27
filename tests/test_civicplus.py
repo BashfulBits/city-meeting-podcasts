@@ -103,6 +103,7 @@ def test_detect_change_falls_back_to_get_when_head_not_allowed(monkeypatch):
     fallback = FakeResponse(
         "", headers={"ETag": '"abc"', "Last-Modified": "Mon, 01 Jun 2026 12:00:00 GMT"}
     )
+    validated = []
 
     class Head405Session:
         def __init__(self):
@@ -123,9 +124,11 @@ def test_detect_change_falls_back_to_get_when_head_not_allowed(monkeypatch):
 
     fake = Head405Session()
     monkeypatch.setattr("citypods.providers.civicplus.make_session", lambda: fake)
+    monkeypatch.setattr("citypods.providers.civicplus.validate_source_url", validated.append)
 
     token = CivicPlusProvider().detect_change({"feed_url": "https://city.example/rss"})
 
+    assert validated == ["https://city.example/rss"]
     assert token is not None
     assert token.etag == '"abc"'
     assert token.last_modified == "Mon, 01 Jun 2026 12:00:00 GMT"
@@ -146,6 +149,7 @@ def test_detect_change_preserves_head_http_errors(monkeypatch):
             return False
 
     monkeypatch.setattr("citypods.providers.civicplus.make_session", Head500Session)
+    monkeypatch.setattr("citypods.providers.civicplus.validate_source_url", lambda _url: None)
 
     with pytest.raises(ProviderError, match=r"HEAD https://city.example/rss returned 500"):
         CivicPlusProvider().detect_change({"feed_url": "https://city.example/rss"})
