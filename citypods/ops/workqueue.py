@@ -306,7 +306,7 @@ def _published_of(rec: dict) -> datetime | None:
     if not raw:
         return None
     try:
-        return datetime.fromisoformat(raw)
+        return _aware(datetime.fromisoformat(raw))
     except (TypeError, ValueError):
         return None
 
