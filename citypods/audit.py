@@ -38,6 +38,16 @@ from pathlib import Path
 
 from citypods.bodies import filter_by_body
 from citypods.feeds import enclosure_url
+from citypods.integrity import (
+    REPAIR_AUDIO_REMATERIALIZE,
+    REPAIR_TIMELINE_REPLAN,
+    REPAIR_TRANSCRIPT_REGENERATE,
+    build_timeline_audio_integrity,
+    clear_resolved_timeline_audio_integrity,
+    set_timeline_audio_integrity,
+    timeline_audio_integrity,
+)
+from citypods.media import AudioDurationProbe
 from citypods.models import City, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, ProviderError
 from citypods.timeline import timeline_digest
@@ -533,7 +543,114 @@ def check_enclosures(
 _FRAME_TOLERANCE = 0.1
 
 
-def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding]:
+def _timeline_duration(ep: Episode) -> float | None:
+    if ep.timeline is None or not ep.timeline.segments:
+        return None
+    total = sum(s.served_end - s.served_start for s in ep.timeline.segments)
+    return total if total > 0 else None
+
+
+def _source_duration_delta(ep: Episode) -> float | None:
+    if not ep.sources or len(ep.sources) <= 1:
+        return None
+    src_by_id = {s.id: s for s in ep.sources if s.duration is not None}
+    deltas: list[float] = []
+    for seg in ep.timeline.segments if ep.timeline else ():
+        if seg.kind != "source" or seg.source_id not in src_by_id:
+            continue
+        if seg.source_start is None or seg.source_end is None:
+            continue
+        expected = max(0.0, seg.source_end - seg.source_start)
+        actual = float(src_by_id[seg.source_id].duration or 0)
+        deltas.append(actual - expected)
+    if not deltas:
+        return None
+    return sum(deltas)
+
+
+def _classify_timeline_audio_duration(
+    ep: Episode,
+    probe: AudioDurationProbe | None,
+) -> tuple[str, str, list[str]]:
+    timeline_duration = _timeline_duration(ep)
+    if timeline_duration is None:
+        return "duration-probe-inconclusive", WARN, []
+    if probe is None:
+        return "duration-probe-inconclusive", WARN, []
+
+    stream = probe.stream_sample_duration
+    container = probe.container_duration
+    if stream is None:
+        return "duration-probe-inconclusive", WARN, []
+
+    stream_delta = abs(stream - timeline_duration)
+    container_delta = abs(container - timeline_duration) if container is not None else None
+    if stream_delta > _FRAME_TOLERANCE:
+        source_delta = _source_duration_delta(ep)
+        if source_delta is not None and abs(source_delta) > _FRAME_TOLERANCE:
+            return (
+                "timeline-source-duration-mismatch",
+                ERROR,
+                [
+                    REPAIR_TIMELINE_REPLAN,
+                    REPAIR_AUDIO_REMATERIALIZE,
+                    REPAIR_TRANSCRIPT_REGENERATE,
+                ],
+            )
+        return (
+            "rendered-duration-mismatch",
+            ERROR,
+            [REPAIR_AUDIO_REMATERIALIZE, REPAIR_TRANSCRIPT_REGENERATE],
+        )
+    if container_delta is not None and container_delta > _FRAME_TOLERANCE:
+        return "container-duration-drift", WARN, []
+    return "ok", WARN, []
+
+
+def _timeline_audio_diagnostic(
+    slug: str,
+    ep: Episode,
+    probe: AudioDurationProbe | None,
+    status: str,
+    severity: str,
+    repair: list[str],
+) -> dict:
+    timeline_duration = _timeline_duration(ep)
+    container = probe.container_duration if probe else None
+    stream = probe.stream_sample_duration if probe else None
+    return {
+        "slug": slug,
+        "uid": ep.uid or ep.guid,
+        "check": status,
+        "severity": severity,
+        "timeline_duration": timeline_duration,
+        "audio_duration_served": ep.audio_duration_served,
+        "container_duration": container,
+        "stream_sample_duration": stream,
+        "container_delta": (
+            abs(container - timeline_duration)
+            if container is not None and timeline_duration is not None
+            else None
+        ),
+        "stream_delta": (
+            abs(stream - timeline_duration)
+            if stream is not None and timeline_duration is not None
+            else None
+        ),
+        "source_duration_delta": _source_duration_delta(ep),
+        "repair": repair,
+        "prior_integrity": timeline_audio_integrity(ep) or None,
+    }
+
+
+def check_timeline_integrity(
+    slug: str,
+    episodes: list[Episode],
+    *,
+    probe_audio: Callable[[Episode], AudioDurationProbe | None] | None = None,
+    diagnostics: list[dict] | None = None,
+    mutate_integrity: bool = False,
+) -> list[Finding]:
     """Validate the Edit Decision Lists stored on episodes that have non-identity timelines.
 
     Checks (per episode with a non-identity Timeline):
@@ -549,7 +666,7 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
     """
     findings: list[Finding] = []
     for ep in episodes:
-        if ep.timeline is None or timeline_digest(ep.timeline) == "":
+        if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
             continue  # identity timeline — nothing to verify
 
         tl = ep.timeline
@@ -634,6 +751,50 @@ def check_timeline_integrity(slug: str, episodes: list[Episode]) -> list[Finding
                     )
                 )
 
+        # 3b. Rendered audio duration diagnostics. This compares the EDL to the stream sample
+        # clock when the caller provides a probe; container-only drift is reported separately so
+        # it does not masquerade as cue drift.
+        probe = probe_audio(ep) if probe_audio is not None and ep.audio_key else None
+        if probe_audio is not None:
+            status, severity, repair = _classify_timeline_audio_duration(ep, probe)
+            diag = _timeline_audio_diagnostic(slug, ep, probe, status, severity, repair)
+            if diagnostics is not None:
+                diagnostics.append(diag)
+            timeline_duration = diag.get("timeline_duration")
+            block = build_timeline_audio_integrity(
+                status=status,
+                timeline_duration=(
+                    float(timeline_duration)
+                    if isinstance(timeline_duration, (int, float))
+                    else None
+                ),
+                container_duration=diag.get("container_duration"),
+                stream_sample_duration=diag.get("stream_sample_duration"),
+                repair=repair,
+                source_duration_delta=diag.get("source_duration_delta"),
+            )
+            if status == "ok":
+                if mutate_integrity:
+                    clear_resolved_timeline_audio_integrity(ep, status)
+            elif mutate_integrity and repair:
+                set_timeline_audio_integrity(ep, block)
+            if status not in {"ok", "container-duration-drift"}:
+                duration_label = (
+                    f"{timeline_duration:.3f}s"
+                    if isinstance(timeline_duration, (int, float))
+                    else "unknown"
+                )
+                findings.append(
+                    Finding(
+                        slug,
+                        status,
+                        severity,
+                        f"{uid}: timeline={duration_label} "
+                        f"stream={diag.get('stream_sample_duration')} "
+                        f"container={diag.get('container_duration')} repair={repair or []}",
+                    )
+                )
+
         # 4. Source spans within SourceMedia.duration
         src_by_id = {s.id: s for s in (ep.sources or [])}
         for i, seg in enumerate(segs):
@@ -700,6 +861,9 @@ def audit_city(
     head: Callable[[str], int] | None = None,
     resolve: Callable[[Episode], str] | None = None,
     run_history: list[dict] | None = None,
+    probe_timeline_audio: Callable[[Episode], AudioDurationProbe | None] | None = None,
+    timeline_diagnostics: list[dict] | None = None,
+    mutate_timeline_integrity: bool = False,
 ) -> list[Finding]:
     """Fetch a city once and run every applicable check, returning all findings.
 
@@ -769,7 +933,24 @@ def audit_city(
             findings.extend(check_enclosures(city.slug, episodes, head, resolve=resolve))
         # Timeline integrity: offline, always runs when records are present.
         if records is not None:
-            findings.extend(check_timeline_integrity(city.slug, episodes))
+            findings.extend(
+                check_timeline_integrity(
+                    city.slug,
+                    episodes,
+                    probe_audio=probe_timeline_audio,
+                    diagnostics=timeline_diagnostics,
+                    mutate_integrity=mutate_timeline_integrity,
+                )
+            )
+            if mutate_timeline_integrity:
+                for ep in episodes:
+                    uid = ep.uid or ""
+                    if not uid or uid not in records:
+                        continue
+                    if ep.integrity:
+                        records[uid] = {**records[uid], "integrity": ep.integrity}
+                    elif records[uid].get("integrity"):
+                        records[uid] = {**records[uid], "integrity": None}
     return findings
 
 
@@ -839,12 +1020,16 @@ def audit_all(
     check_enclosures_net: bool = False,
     check_meetings_urls_net: bool = False,
     now: datetime | None = None,
+    timeline_diagnostics: list[dict] | None = None,
+    persist_timeline_integrity: bool = False,
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
     per-source record store are gathered so the provider-specific checks apply."""
+    from citypods.media import _probe_audio_duration_details
     from citypods.providers import get_provider
-    from citypods.records import load_records, source_key
+    from citypods.records import load_records, save_records, source_key
     from citypods.state import resolve_state_dir
+    from citypods.storage import make_storage
 
     now = now or datetime.now(UTC)
     state_dir = resolve_state_dir(site_config, Path(output_dir))
@@ -853,6 +1038,32 @@ def audit_all(
     dead_threshold = int(defaults.get("dead_audio_alert_threshold", DEAD_AUDIO_ALERT_THRESHOLD))
     head = _net_head() if check_enclosures_net else None
     run_history = _load_run_history(state_dir)
+    timeline_storage = None
+    if timeline_diagnostics is not None:
+        try:
+            timeline_storage = make_storage(
+                site_config, site_config.get("base_url", ""), output_dir
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not take down the audit
+            print(f"timeline diagnostics: storage unavailable ({exc})")
+
+    def _probe_timeline_audio(ep: Episode) -> AudioDurationProbe | None:
+        if (
+            timeline_storage is None
+            or not ep.audio_key
+            or not hasattr(timeline_storage, "get_file")
+        ):
+            return None
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as t:
+            dest = Path(t) / "audio.m4a"
+            try:
+                if not timeline_storage.get_file(ep.audio_key, dest):
+                    return None
+                return _probe_audio_duration_details(dest)
+            except Exception:  # noqa: BLE001 - one bad object becomes inconclusive diagnostics
+                return None
 
     findings: list[Finding] = []
     # Audio-failure tally is per *source* (per-body feeds share one record store), so accumulate
@@ -893,8 +1104,15 @@ def audit_all(
                 head=head,
                 resolve=resolve,
                 run_history=run_history,
+                probe_timeline_audio=(
+                    _probe_timeline_audio if timeline_diagnostics is not None else None
+                ),
+                timeline_diagnostics=timeline_diagnostics,
+                mutate_timeline_integrity=persist_timeline_integrity,
             )
         )
+        if persist_timeline_integrity and records:
+            save_records(state_dir, src_key, records)
 
     findings = aggregate_view_cap_findings(findings, view_cap_contexts)
 

@@ -153,6 +153,10 @@ class Episode:
     # None for pre-v2 records; set by the encoder on each successful encode.
     audio_duration_served: float | None = None
 
+    # Audit-owned repair/diagnostic metadata.  ``integrity.timeline_audio`` is consumed by
+    # timeline/audio/transcript stages as targeted rebuild input; other lanes preserve it.
+    integrity: dict = field(default_factory=dict)
+
     # --- durable media-availability projection (H16 PR3, GH#353) -----------------------
     # Versioned verdict on whether this meeting's source media is usable: available / suspected
     # or confirmed empty / missing / invalid / recovered, plus operator overrides. Withheld
