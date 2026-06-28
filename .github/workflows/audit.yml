@@ -15,6 +15,22 @@ on:
         description: "Also HEAD-probe enclosures (slower)"
         type: boolean
         default: false
+      timeline_repair:
+        description: "Persist selected timeline/audio repair flags"
+        type: boolean
+        default: false
+      timeline_repair_min_delta:
+        description: "Minimum stream delta in seconds for selected repair rows"
+        type: string
+        default: "1.0"
+      timeline_repair_cohort:
+        description: "Cohort label stamped on selected repair rows"
+        type: string
+        default: ""
+      timeline_finding_min_delta:
+        description: "Minimum stream delta in seconds for rendered-mismatch issues"
+        type: string
+        default: "1.0"
 
 permissions:
   contents: read
@@ -53,11 +69,31 @@ jobs:
           B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
         # --meetings-urls runs every time: it's one HEAD per unique meetings_url (a handful),
         # so it's cheap enough for the daily cron (unlike --enclosures, which probes per-episode).
-        run: >-
-          PYTHONPATH=. python scripts/audit_feeds.py
-          --meetings-urls
-          --timeline-diagnostics audit-timeline-integrity.jsonl
-          ${{ (github.event_name == 'workflow_dispatch' && inputs.enclosures) && '--enclosures' || '' }}
+        run: |
+          args=(
+            --meetings-urls
+            --timeline-diagnostics audit-timeline-integrity.jsonl
+            --timeline-finding-min-delta "${{ github.event_name == 'workflow_dispatch' && inputs.timeline_finding_min_delta || '1.0' }}"
+          )
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.enclosures }}" = "true" ]; then
+            args+=(--enclosures)
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.timeline_repair }}" = "true" ]; then
+            if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+              echo "::error::timeline_repair can only persist durable state from main"
+              exit 1
+            fi
+            args+=(
+              --persist-timeline-integrity
+              --timeline-repair-min-delta "${{ inputs.timeline_repair_min_delta }}"
+            )
+            if [ -z "${{ inputs.timeline_repair_cohort }}" ]; then
+              echo "::error::timeline_repair_cohort is required when timeline_repair is true"
+              exit 1
+            fi
+            args+=(--timeline-repair-cohort "${{ inputs.timeline_repair_cohort }}")
+          fi
+          PYTHONPATH=. python scripts/audit_feeds.py "${args[@]}"
 
       - name: Upload timeline diagnostics
         if: always()

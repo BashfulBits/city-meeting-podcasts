@@ -84,10 +84,16 @@ only hosted edited-timeline objects and uses the stream sample-clock helper befo
 artifact now records `probe_error` for inconclusive rows (`missing-audio-key`, storage/download
 failures, `ffprobe-error`, `no-duration-metadata`) so PR6 can distinguish missing evidence from true
 duration ambiguity. Scheduled feed-health keeps those inconclusive rows in the artifact but does not
-file per-slug issues for them, and the workflow installs `ffmpeg`/`ffprobe` before probing.
+file per-slug issues for them, and the workflow installs `ffmpeg`/`ffprobe` before probing. The
+workflow can also be manually dispatched from `main` with `timeline_repair`, a
+`timeline_repair_min_delta`, and a required `timeline_repair_cohort` label to persist only a named
+cohort of over-threshold repair flags while still uploading the full diagnostic artifact.
+`scripts/compare_timeline_diagnostics.py` compares the selected before cohort against a later artifact
+and reports fixed, still-mismatched, missing-after, worsened, and audio-key-changed counts for the PR6
+gate.
 
-Backfill story: none. The scheduled audit remains non-mutating; diagnostics are an artifact used to
-gate PR6.
+Backfill story: bounded manual cohort repair only. The scheduled audit remains non-mutating; diagnostics
+and the before/after comparison artifact are used to gate PR6.
 
 ### PR3 — persisted integrity/repair flags
 
@@ -142,9 +148,11 @@ pipeline-version bump.
 ### PR6 — auto-repair enablement
 
 Enable automatic flagging for confirmed decoded/stream mismatches after PR2-PR5 have run in diagnostic
-mode. Gate on the uploaded `timeline-audio-integrity` artifact showing stable classifications, then turn
-on `--persist-timeline-integrity` for the scheduled audit with an emergency config switch to disable
-automatic repair stamping.
+mode and the manual over-threshold cohort has repaired cleanly. Gate on the uploaded
+`timeline-audio-integrity` artifact and `scripts/compare_timeline_diagnostics.py` showing that selected
+cohort rows return with stream deltas within tolerance and no unexpected missing-after/worsened pattern,
+then turn on `--persist-timeline-integrity` for the scheduled audit with an emergency config switch to
+disable automatic repair stamping.
 
 Backfill story: only confirmed affected records enter the repair queues; all work drains gradually under
 existing stop budgets.

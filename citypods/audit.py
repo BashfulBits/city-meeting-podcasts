@@ -614,7 +614,11 @@ def _timeline_audio_diagnostic(
     status: str,
     severity: str,
     repair: list[str],
+    *,
+    max_kbps: int,
 ) -> dict:
+    from citypods.records import audio_spec_hash, transcript_media_hash
+
     timeline_duration = _timeline_duration(ep)
     container = probe.container_duration if probe else None
     stream = probe.stream_sample_duration if probe else None
@@ -640,9 +644,49 @@ def _timeline_audio_diagnostic(
         ),
         "source_duration_delta": _source_duration_delta(ep),
         "repair": repair,
+        "audio_key": ep.audio_key,
+        "audio_spec_hash": audio_spec_hash(ep, max_kbps=max_kbps),
+        "transcript_key": ep.transcript_key,
+        "transcript_media_hash": transcript_media_hash(ep),
+        "timeline_digest": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
         "prior_integrity": timeline_audio_integrity(ep) or None,
         "probe_error": probe_error,
     }
+
+
+def _diagnostic_delta(diag: dict) -> float | None:
+    delta = diag.get("stream_delta")
+    if not isinstance(delta, (int, float)):
+        return None
+    return abs(float(delta))
+
+
+def _select_timeline_audio_repair(
+    diag: dict,
+    repair: list[str],
+    *,
+    min_delta: float | None,
+) -> bool:
+    if not repair:
+        return False
+    if min_delta is None:
+        return True
+    delta = _diagnostic_delta(diag)
+    return delta is not None and delta >= min_delta
+
+
+def _emit_timeline_audio_finding(
+    status: str,
+    diag: dict,
+    *,
+    min_delta: float,
+) -> bool:
+    if status in {"ok", "container-duration-drift", "duration-probe-inconclusive"}:
+        return False
+    if status == "rendered-duration-mismatch":
+        delta = _diagnostic_delta(diag)
+        return delta is not None and delta >= min_delta
+    return True
 
 
 def check_timeline_integrity(
@@ -652,6 +696,10 @@ def check_timeline_integrity(
     probe_audio: Callable[[Episode], AudioDurationProbe | None] | None = None,
     diagnostics: list[dict] | None = None,
     mutate_integrity: bool = False,
+    max_kbps: int = 96,
+    repair_min_delta: float | None = None,
+    repair_cohort: str | None = None,
+    finding_min_delta: float = 1.0,
 ) -> list[Finding]:
     """Validate the Edit Decision Lists stored on episodes that have non-identity timelines.
 
@@ -759,7 +807,25 @@ def check_timeline_integrity(
         probe = probe_audio(ep) if probe_audio is not None else None
         if probe_audio is not None:
             status, severity, repair = _classify_timeline_audio_duration(ep, probe)
-            diag = _timeline_audio_diagnostic(slug, ep, probe, status, severity, repair)
+            diag = _timeline_audio_diagnostic(
+                slug,
+                ep,
+                probe,
+                status,
+                severity,
+                repair,
+                max_kbps=max_kbps,
+            )
+            repair_selected = _select_timeline_audio_repair(
+                diag,
+                repair,
+                min_delta=repair_min_delta,
+            )
+            diag["repair_selected"] = repair_selected
+            if repair_min_delta is not None:
+                diag["repair_min_delta"] = repair_min_delta
+            if repair_cohort:
+                diag["repair_cohort"] = repair_cohort
             if diagnostics is not None:
                 diagnostics.append(diag)
             timeline_duration = diag.get("timeline_duration")
@@ -775,16 +841,20 @@ def check_timeline_integrity(
                 repair=repair,
                 source_duration_delta=diag.get("source_duration_delta"),
             )
+            if repair_min_delta is not None:
+                block["repair_min_delta"] = repair_min_delta
+            if repair_cohort:
+                block["repair_cohort"] = repair_cohort
             if status == "ok":
                 if mutate_integrity:
                     clear_resolved_timeline_audio_integrity(ep, status)
-            elif mutate_integrity and repair:
+            elif mutate_integrity and repair_selected:
                 set_timeline_audio_integrity(ep, block)
-            if status not in {
-                "ok",
-                "container-duration-drift",
-                "duration-probe-inconclusive",
-            }:
+            if _emit_timeline_audio_finding(
+                status,
+                diag,
+                min_delta=finding_min_delta,
+            ):
                 duration_label = (
                     f"{timeline_duration:.3f}s"
                     if isinstance(timeline_duration, (int, float))
@@ -871,6 +941,10 @@ def audit_city(
     probe_timeline_audio: Callable[[Episode], AudioDurationProbe | None] | None = None,
     timeline_diagnostics: list[dict] | None = None,
     mutate_timeline_integrity: bool = False,
+    max_kbps: int = 96,
+    timeline_repair_min_delta: float | None = None,
+    timeline_repair_cohort: str | None = None,
+    timeline_finding_min_delta: float = 1.0,
 ) -> list[Finding]:
     """Fetch a city once and run every applicable check, returning all findings.
 
@@ -947,6 +1021,10 @@ def audit_city(
                     probe_audio=probe_timeline_audio,
                     diagnostics=timeline_diagnostics,
                     mutate_integrity=mutate_timeline_integrity,
+                    max_kbps=max_kbps,
+                    repair_min_delta=timeline_repair_min_delta,
+                    repair_cohort=timeline_repair_cohort,
+                    finding_min_delta=timeline_finding_min_delta,
                 )
             )
             if mutate_timeline_integrity:
@@ -1029,6 +1107,9 @@ def audit_all(
     now: datetime | None = None,
     timeline_diagnostics: list[dict] | None = None,
     persist_timeline_integrity: bool = False,
+    timeline_repair_min_delta: float | None = None,
+    timeline_repair_cohort: str | None = None,
+    timeline_finding_min_delta: float = 1.0,
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
     per-source record store are gathered so the provider-specific checks apply."""
@@ -1042,6 +1123,7 @@ def audit_all(
     state_dir = resolve_state_dir(site_config, Path(output_dir))
     defaults = site_config.get("defaults", {})
     min_meetings = int(defaults.get("min_meetings_per_body", 3))
+    max_kbps = int(defaults.get("audio_max_kbps", 96))
     dead_threshold = int(defaults.get("dead_audio_alert_threshold", DEAD_AUDIO_ALERT_THRESHOLD))
     head = _net_head() if check_enclosures_net else None
     run_history = _load_run_history(state_dir)
@@ -1116,6 +1198,10 @@ def audit_all(
                 ),
                 timeline_diagnostics=timeline_diagnostics,
                 mutate_timeline_integrity=persist_timeline_integrity,
+                max_kbps=max_kbps,
+                timeline_repair_min_delta=timeline_repair_min_delta,
+                timeline_repair_cohort=timeline_repair_cohort,
+                timeline_finding_min_delta=timeline_finding_min_delta,
             )
         )
         if persist_timeline_integrity and records:
