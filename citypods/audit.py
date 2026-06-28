@@ -600,7 +600,11 @@ def _classify_timeline_audio_duration(
         return (
             "rendered-duration-mismatch",
             ERROR,
-            [REPAIR_AUDIO_REMATERIALIZE, REPAIR_TRANSCRIPT_REGENERATE],
+            [
+                REPAIR_TIMELINE_REPLAN,
+                REPAIR_AUDIO_REMATERIALIZE,
+                REPAIR_TRANSCRIPT_REGENERATE,
+            ],
         )
     if container_delta is not None and container_delta > _FRAME_TOLERANCE:
         return "container-duration-drift", WARN, []
