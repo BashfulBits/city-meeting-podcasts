@@ -20,9 +20,9 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   gated.** The feed-health workflow now uploads an `audit-timeline-integrity.jsonl` artifact that
   distinguishes container-only duration drift from real stream-sample/EDL mismatches. Episode records
   can carry an audit-owned `integrity.timeline_audio` repair block, `/admin/status` reports the repair
-  queue, `SourceMedia` records duration basis, and source-aware identity hashing prevents tail-only
-  trims from collapsing to identity (GH#495). `TimelineStage`, `AudioStage`, ASR, and provider-align
-  consume targeted repair actions (`timeline-replan`, `audio-rematerialize`,
+  queue, `SourceMedia` records duration basis, and source-aware identity detection now reaches both
+  hashing and render-path selection so tail-only trims cannot collapse to identity/copy handling
+  (GH#495). `TimelineStage`, `AudioStage`, ASR, and provider-align consume targeted repair actions (`timeline-replan`, `audio-rematerialize`,
   `transcript-regenerate`) without bumping global pipeline versions. Automatic persistence/repair is
   still off in the scheduled audit; `--persist-timeline-integrity` is a manual gate. Backfill story:
   no global invalidation, no `ASR_PIPELINE_VERSION` or `AUDIO_PIPELINE_VERSION` bump, and only records

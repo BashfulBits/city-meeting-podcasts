@@ -535,7 +535,14 @@ class TestCommandFfmpegIdentityPath:
 
 class TestCommandFfmpegFilterPath:
     def _run_filter(
-        self, monkeypatch, tmp_path, timeline, sources_by_id, loudness=None, asset_resolver=None
+        self,
+        monkeypatch,
+        tmp_path,
+        timeline,
+        sources_by_id,
+        loudness=None,
+        asset_resolver=None,
+        sources=None,
     ):
         import citypods.media as media
 
@@ -554,6 +561,7 @@ class TestCommandFfmpegFilterPath:
             timeline=timeline,
             sources_by_id=sources_by_id,
             dest=tmp_path / "out.m4a",
+            sources=sources,
             loudness_profile=loudness,
             asset_resolver=asset_resolver,
         )
@@ -571,6 +579,22 @@ class TestCommandFfmpegFilterPath:
     def test_filter_complex_present_for_trim(self, monkeypatch, tmp_path):
         tl = self._trim_timeline()
         cmd = self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://src/vid.mp4"})
+        assert "-filter_complex" in cmd
+
+    def test_tail_only_trim_uses_filter_when_source_duration_is_longer(self, monkeypatch, tmp_path):
+        tl = Timeline(
+            version="buggy-tail-trim",
+            segments=(_seg_src(0, 1800, 0, 1800),),
+        )
+
+        cmd = self._run_filter(
+            monkeypatch,
+            tmp_path,
+            tl,
+            {"s0": "https://src/vid.mp4"},
+            sources=[_src()],
+        )
+
         assert "-filter_complex" in cmd
 
     def test_no_probe_in_filter_path(self, monkeypatch, tmp_path):
@@ -593,6 +617,7 @@ class TestCommandFfmpegFilterPath:
             timeline=tl,
             sources_by_id={"s0": "https://s/v.mp4"},
             dest=tmp_path / "out.m4a",
+            sources=[_src()],
         )
         # Only ONE subprocess call (no ffprobe in filter path)
         assert len(calls) == 1
@@ -921,6 +946,7 @@ class TestMaterializeWithTimeline:
             dest,
             chapters=None,
             *,
+            sources=None,
             loudness_profile=None,
             processing_profile=None,
             asset_resolver=None,

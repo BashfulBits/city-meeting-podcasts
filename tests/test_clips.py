@@ -96,6 +96,7 @@ class CapturingFfmpeg:
         dest,
         chapters=None,
         *,
+        sources=None,
         loudness_profile=None,
         processing_profile=None,
         asset_resolver=None,
@@ -104,6 +105,7 @@ class CapturingFfmpeg:
             {
                 "timeline": timeline,
                 "sources_by_id": dict(sources_by_id),
+                "sources": tuple(sources or ()),
             }
         )
         dest.write_bytes(b"fake-clip")
@@ -259,6 +261,25 @@ class TestExtractClipFiltergraph:
         seg = call["timeline"].segments[0]
         assert seg.source_start == 100.0
         assert seg.source_end == 200.0
+
+    def test_identity_clip_from_start_carries_source_duration(self, tmp_path):
+        ep = _ep(duration=3600.0)
+        ep.timeline = None
+        ff = CapturingFfmpeg()
+
+        extract_clip(
+            ep,
+            0.0,
+            200.0,
+            storage=_store(tmp_path),
+            ffmpeg=ff,
+            resolve_media_url=lambda e: e.video_url,
+        )
+
+        sources = ff.calls[0]["sources"]
+        assert len(sources) == 1
+        assert sources[0].id == "s0"
+        assert sources[0].duration == 3600.0
 
     def test_concat_boundary_clip_has_two_segments(self, tmp_path):
         ep = _ep()

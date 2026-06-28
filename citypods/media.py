@@ -945,6 +945,7 @@ class FfmpegRunner(Protocol):
         dest: Path,
         chapters: list[dict] | None = None,
         *,
+        sources: tuple[SourceMedia, ...] | list[SourceMedia] | None = None,
         loudness_profile: str | None = None,
         processing_profile: str | None = None,
         asset_resolver: Callable[[str, str | None], Path] | None = None,
@@ -957,6 +958,8 @@ class FfmpegRunner(Protocol):
                 episodes this has exactly one entry; for concat it has N.
             dest: Output file path (will be created/overwritten).
             chapters: Served-time chapter markers embedded as M4A chapter atoms.
+            sources: Optional ``SourceMedia`` registry for source-duration-aware identity
+                classification. Real call sites should pass this whenever available.
             loudness_profile: e.g. ``"ebuR128:-16LUFS"``; ``None`` = no loudnorm.
             processing_profile: Named pre-mastering recipe, currently
                 ``"podcast-speech-v2"`` for bounded multi-mic speech leveling.
@@ -1399,13 +1402,14 @@ class CommandFfmpeg:
         dest: Path,
         chapters: list[dict] | None = None,
         *,
+        sources: tuple[SourceMedia, ...] | list[SourceMedia] | None = None,
         loudness_profile: str | None = None,
         processing_profile: str | None = None,
         asset_resolver: Callable[[str, str | None], Path] | None = None,
     ) -> None:
-        use_filter = (timeline is not None and timeline_digest(timeline) != "") or bool(
-            loudness_profile or processing_profile
-        )
+        use_filter = (
+            timeline is not None and timeline_digest(timeline, tuple(sources or ())) != ""
+        ) or bool(loudness_profile or processing_profile)
 
         if use_filter:
             self._render_filter(
@@ -2502,6 +2506,7 @@ def materialize_audio(
                 dest = Path(tmp) / "audio.m4a"
                 multi_source = bool(ep.sources and len(ep.sources) > 1)
                 render_timeline = ep.timeline
+                render_sources: tuple[SourceMedia, ...] | list[SourceMedia] = ep.sources
                 if multi_source:
                     source_url = ep.sources[0].ref
                     source_urls = [src.ref for src in ep.sources]
@@ -2528,6 +2533,7 @@ def materialize_audio(
                     combined = source_cache.get_or_fetch_concat(ep.uid, ep.sources)
                     if combined is not None:
                         render_timeline, by_id = _concat_render_timeline(ep.sources, combined)
+                        render_sources = ()
                     else:
                         by_id = _sources_by_id(ep, source_url)
                 else:
@@ -2557,6 +2563,7 @@ def materialize_audio(
                     by_id,
                     dest,
                     ep.chapters or None,
+                    sources=render_sources,
                     **render_options,
                 )
                 probed: float | None = None

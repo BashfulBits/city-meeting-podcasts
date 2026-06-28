@@ -64,6 +64,7 @@ def _ctx(tmp_path: Path) -> StageContext:
             dest,
             ch=None,
             *,
+            sources=None,
             loudness_profile=None,
             processing_profile=None,
             asset_resolver=None,

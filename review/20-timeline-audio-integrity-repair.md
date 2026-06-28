@@ -111,8 +111,10 @@ basis (`decoded:<rate>` where available) and prefer stream/decoded sample-clock 
 duration.
 
 Implemented: episode-level digest callers pass `ep.sources`, so a span can collapse to identity only
-when it covers the known full source duration. `SwagitConcatPlanner` now asks ffprobe for stream
-`duration_ts * time_base` first and stores `duration_basis="stream-sample"` on segment sources.
+when it covers the known full source duration. The render path now receives that same source registry,
+so tail-only trims cannot fall back to the legacy identity/copy branch while hash-producing call sites
+treat them as real edits. `SwagitConcatPlanner` now asks ffprobe for stream `duration_ts * time_base`
+first and stores `duration_basis="stream-sample"` on segment sources.
 
 Backfill story: targeted. Existing artifacts are not globally invalidated; only records with repair
 actions or later planner-version changes are reworked.

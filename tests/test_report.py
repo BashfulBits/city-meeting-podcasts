@@ -1386,6 +1386,7 @@ def test_audio_bytes_set_on_encode(tmp_path):
             dest,
             chapters=None,
             *,
+            sources=None,
             loudness_profile=None,
             processing_profile=None,
             asset_resolver=None,
