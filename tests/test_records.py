@@ -402,6 +402,39 @@ def test_estimate_audio_shard_work_gives_withheld_media_only_recheck_cost(tmp_pa
     )
 
 
+def test_estimate_audio_shard_work_handles_extreme_backoff_attempts(tmp_path):
+    pending = _ep("g-pending")
+    pending.uid = "u-pending"
+    pending.duration = 1800
+
+    backing_off = _ep("g-backoff")
+    backing_off.uid = "u-backoff"
+    backing_off.duration = 7200
+    backing_off.materialize_attempts = 1 << 30
+    backing_off.materialize_last_attempt = datetime.now(UTC).isoformat()
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-pending": episode_to_record(pending),
+            "u-backoff": episode_to_record(backing_off),
+        },
+    )
+
+    assert (
+        estimate_audio_shard_work(
+            tmp_path,
+            "src",
+            extract_audio=True,
+            max_kbps=96,
+            loudness_profile="",
+            processing_profile="",
+        )
+        == 1800
+    )
+
+
 def test_transcribe_shard_work_separates_local_duration_from_blocked_work(tmp_path):
     no_audio_yet = _ep("g-no-audio")
     no_audio_yet.uid = "u-no-audio"
@@ -869,6 +902,14 @@ def test_timeout_backoff_accepts_legacy_naive_timestamp_as_utc():
     ep.transcript_timeout_last_attempt = "2026-06-20T12:00:00"
 
     assert transcript_timeout_backoff_until(ep) == datetime(2026, 6, 21, 12, tzinfo=UTC)
+
+
+def test_timeout_backoff_caps_extreme_attempt_counts():
+    ep = _ep("g-timeout-huge")
+    ep.transcript_timeout_attempts = 1 << 30
+    ep.transcript_timeout_last_attempt = "2026-06-20T12:00:00+00:00"
+
+    assert transcript_timeout_backoff_until(ep) == datetime(2026, 7, 20, 12, tzinfo=UTC)
 
 
 def test_timeout_attempts_coerce_malformed_persisted_values_to_zero():
