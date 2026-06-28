@@ -77,6 +77,7 @@ def compare(
 
     details: list[dict[str, Any]] = []
     fixed = still_mismatch = missing_after = worsened = audio_key_changed = 0
+    timeline_digest_changed = timeline_version_changed = 0
     for uid, before_row in sorted(before_by_uid.items()):
         after_row = after_by_uid.get(uid)
         before_delta = _delta(before_row)
@@ -103,6 +104,16 @@ def compare(
         )
         if changed_audio:
             audio_key_changed += 1
+        changed_timeline_digest = bool(
+            after_row and before_row.get("timeline_digest") != after_row.get("timeline_digest")
+        )
+        if changed_timeline_digest:
+            timeline_digest_changed += 1
+        changed_timeline_version = bool(
+            after_row and before_row.get("timeline_version") != after_row.get("timeline_version")
+        )
+        if changed_timeline_version:
+            timeline_version_changed += 1
         details.append(
             {
                 "uid": uid,
@@ -113,6 +124,8 @@ def compare(
                 "before_delta": before_delta,
                 "after_delta": after_delta,
                 "audio_key_changed": changed_audio,
+                "timeline_digest_changed": changed_timeline_digest,
+                "timeline_version_changed": changed_timeline_version,
                 "outcome": outcome,
             }
         )
@@ -126,6 +139,8 @@ def compare(
         "missing_after": missing_after,
         "worsened": worsened,
         "audio_key_changed": audio_key_changed,
+        "timeline_digest_changed": timeline_digest_changed,
+        "timeline_version_changed": timeline_version_changed,
         "details": details,
     }
 

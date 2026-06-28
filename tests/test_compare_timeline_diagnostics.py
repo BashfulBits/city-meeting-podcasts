@@ -69,6 +69,8 @@ def test_compare_timeline_diagnostics_summarizes_selected_cohort():
     assert result["missing_after"] == 0
     assert result["worsened"] == 1
     assert result["audio_key_changed"] == 2
+    assert result["timeline_digest_changed"] == 0
+    assert result["timeline_version_changed"] == 0
     assert {row["uid"]: row["outcome"] for row in result["details"]} == {
         "fixed": "fixed",
         "still": "still-mismatch",

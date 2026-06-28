@@ -89,8 +89,13 @@ workflow can also be manually dispatched from `main` with `timeline_repair`, a
 `timeline_repair_min_delta`, and a required `timeline_repair_cohort` label to persist only a named
 cohort of over-threshold repair flags while still uploading the full diagnostic artifact.
 `scripts/compare_timeline_diagnostics.py` compares the selected before cohort against a later artifact
-and reports fixed, still-mismatched, missing-after, worsened, and audio-key-changed counts for the PR6
-gate.
+and reports fixed, still-mismatched, missing-after, worsened, audio-key-changed,
+timeline-digest-changed, and timeline-version-changed counts for the PR6 gate. The artifact also carries planner-input telemetry
+per row: `source_mode` (`single-file` / `multi-part`), `source_count`, `source_media[]` with
+per-source durations and duration bases, `source_duration_total`, `segment_source_span_total`, and
+the persisted `timeline_version` / `timeline_digest`. Silence-planned single-file episodes now
+persist that source duration and basis too, so post-repair analysis can tell whether a mismatch came
+from a measured file duration or a provider fallback without reconstructing planner state by hand.
 
 Backfill story: bounded manual cohort repair only. The scheduled audit remains non-mutating; diagnostics
 and the before/after comparison artifact are used to gate PR6.

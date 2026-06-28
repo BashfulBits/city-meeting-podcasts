@@ -15,7 +15,7 @@ from citypods.silence import (
     is_degenerate_served_duration,
     parse_silences,
 )
-from citypods.timeline import Segment, Timeline, timeline_digest
+from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
 
 # ---------------------------------------------------------------------------
 # parse_silences
@@ -332,16 +332,20 @@ class TestSilencePlanner:
         ctx = _make_ctx()
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
             mock_detect.return_value = ([(0.0, 5.0)], 3600.0)
-            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is not None
         assert timeline_digest(result) != ""  # non-identity → will re-encode
         assert len(result.segments) == 1
         assert result.segments[0].source_start == pytest.approx(5.0)
+        assert len(ep.sources) == 1
+        assert ep.sources[0].duration == pytest.approx(3600.0)
+        assert ep.sources[0].duration_basis == "container"
 
     def test_detect_silences_called_with_native_work_gate_threads(self):
         """The detect_silences call is pinned to CommandFfmpeg's configured thread count, the same
@@ -441,6 +445,42 @@ class TestSilencePlanner:
         # No silence, ep.duration used → identity
         assert result is not None
         assert timeline_digest(result) == ""
+        assert len(ep.sources) == 1
+        assert ep.sources[0].duration == pytest.approx(7200.0)
+        assert ep.sources[0].duration_basis == "provider"
+
+    def test_preserves_existing_single_source_metadata_when_refreshing_duration_telemetry(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        ep.sources = [
+            SourceMedia(
+                id="s-existing",
+                provider="swagit",
+                ref="https://stable.example/watch/123",
+                media_kind="hls",
+                duration=1111.0,
+                watch_url="https://watch.example/123",
+                backup_key="audio/source-backup.m4a",
+                duration_basis="provider",
+            )
+        ]
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences", return_value=([], 3600.0)),
+        ):
+            planner.plan(provider, _make_city(), ep, ctx, None)
+        assert len(ep.sources) == 1
+        assert ep.sources[0].id == "s-existing"
+        assert ep.sources[0].provider == "swagit"
+        assert ep.sources[0].ref == "https://stable.example/watch/123"
+        assert ep.sources[0].media_kind == "hls"
+        assert ep.sources[0].watch_url == "https://watch.example/123"
+        assert ep.sources[0].backup_key == "audio/source-backup.m4a"
+        assert ep.sources[0].duration == pytest.approx(3600.0)
+        assert ep.sources[0].duration_basis == "container"
 
     def test_returns_none_when_ffmpeg_not_installed(self):
         planner = SilencePlanner()

@@ -24,7 +24,7 @@ import subprocess
 
 from citypods.availability import is_effectively_silent
 from citypods.http import StopRequested
-from citypods.timeline import Segment, Timeline, identity_timeline
+from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
 # ---------------------------------------------------------------------------
 # Pure helpers (no I/O)
@@ -374,7 +374,24 @@ class SilencePlanner:
                 return None  # can't build a timeline without total duration
             source_duration = float(ep.duration)
 
-        source_id = ep.sources[0].id if ep.sources else "s0"
+        existing_src = ep.sources[0] if ep.sources else None
+        source_id = existing_src.id if existing_src else "s0"
+        source_duration_basis = "container" if probed_duration is not None else "provider"
+        src = SourceMedia(
+            id=source_id,
+            provider=existing_src.provider if existing_src else city.provider,
+            ref=existing_src.ref if existing_src else ep.video_url,
+            media_kind=existing_src.media_kind if existing_src else ep.media_kind,
+            duration=source_duration,
+            watch_url=(
+                existing_src.watch_url
+                if existing_src and existing_src.watch_url is not None
+                else (ep.links or {}).get("canonical_video")
+            ),
+            backup_key=existing_src.backup_key if existing_src else None,
+            duration_basis=source_duration_basis,
+        )
+        ep.sources = [src]
 
         tl = build_silence_timeline(
             source_id,
@@ -405,16 +422,6 @@ class SilencePlanner:
             # Nothing to trim (or a degenerate result was rejected with no prior timeline to
             # keep): return an identity timeline so the episode is stamped and not re-examined
             # on the next run (per TimelinePlanner protocol).
-            from citypods.timeline import SourceMedia
-
-            src = SourceMedia(
-                id=source_id,
-                provider=city.provider,
-                ref=ep.video_url,
-                media_kind=ep.media_kind,
-                duration=source_duration,
-                watch_url=(ep.links or {}).get("canonical_video"),
-            )
             return identity_timeline(src, source_duration)
 
         return tl

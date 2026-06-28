@@ -568,6 +568,52 @@ def _source_duration_delta(ep: Episode) -> float | None:
     return sum(deltas)
 
 
+def _source_media_telemetry(ep: Episode) -> dict:
+    sources = list(ep.sources or [])
+    source_count = len(sources)
+    if source_count > 1:
+        source_mode = "multi-part"
+    elif source_count == 1:
+        source_mode = "single-file"
+    else:
+        source_mode = "unregistered"
+
+    source_media = [
+        {
+            "id": src.id,
+            "duration": src.duration,
+            "duration_basis": src.duration_basis,
+            "media_kind": src.media_kind,
+        }
+        for src in sources
+    ]
+    known_source_durations = [float(src.duration) for src in sources if src.duration is not None]
+    source_duration_total = (
+        sum(known_source_durations)
+        if source_count and len(known_source_durations) == source_count
+        else None
+    )
+    segment_source_span_total = None
+    if ep.timeline is not None and ep.timeline.segments:
+        spans = [
+            float(seg.source_end - seg.source_start)
+            for seg in ep.timeline.segments
+            if seg.kind == "source" and seg.source_start is not None and seg.source_end is not None
+        ]
+        if spans:
+            segment_source_span_total = sum(spans)
+
+    return {
+        "timeline_version": ep.timeline.version if ep.timeline is not None else None,
+        "source_mode": source_mode,
+        "source_count": source_count,
+        "source_media": source_media,
+        "source_duration_bases": [src.duration_basis for src in sources],
+        "source_duration_total": source_duration_total,
+        "segment_source_span_total": segment_source_span_total,
+    }
+
+
 def _classify_timeline_audio_duration(
     ep: Episode,
     probe: AudioDurationProbe | None,
@@ -655,6 +701,7 @@ def _timeline_audio_diagnostic(
         "timeline_digest": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
         "prior_integrity": timeline_audio_integrity(ep) or None,
         "probe_error": probe_error,
+        **_source_media_telemetry(ep),
     }
 
 
