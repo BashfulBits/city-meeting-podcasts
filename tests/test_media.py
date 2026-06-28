@@ -40,6 +40,7 @@ class FakeFfmpeg:
         self.calls: list[str] = []  # first resolved URL per call
         self.chapters: list[list[dict] | None] = []
         self.timelines: list = []
+        self.source_registries: list = []
         self.loudness_profiles: list[str | None] = []
         self.processing_profiles: list[str | None] = []
         self.fail = fail
@@ -51,6 +52,7 @@ class FakeFfmpeg:
         dest,
         chapters=None,
         *,
+        sources=None,
         loudness_profile=None,
         processing_profile=None,
         asset_resolver=None,
@@ -60,6 +62,7 @@ class FakeFfmpeg:
         self.calls.append(first_url)
         self.chapters.append(chapters)
         self.timelines.append(timeline)
+        self.source_registries.append(tuple(sources or ()))
         self.loudness_profiles.append(loudness_profile)
         self.processing_profiles.append(processing_profile)
         if self.fail:
@@ -889,6 +892,7 @@ class _FailUrls:
         dest,
         chapters=None,
         *,
+        sources=None,
         loudness_profile=None,
         processing_profile=None,
         asset_resolver=None,
@@ -1072,6 +1076,7 @@ def test_encode_timeout_is_caught_and_tagged_timeout(tmp_path):
             dest,
             chapters=None,
             *,
+            sources=None,
             loudness_profile=None,
             processing_profile=None,
             asset_resolver=None,
@@ -1190,6 +1195,87 @@ def test_audio_duration_served_uses_edited_timeline_total(monkeypatch, tmp_path)
 
     assert stats.encoded == 1
     assert ep.audio_duration_served == pytest.approx(3300.0)
+
+
+def test_materialize_passes_source_registry_to_ffmpeg(tmp_path):
+    ep = _ep("g1")
+    ep.sources = [
+        SourceMedia(
+            id="s0",
+            provider="granicus",
+            ref="https://src/vid.mp4",
+            media_kind="direct",
+            duration=3600.0,
+            watch_url=None,
+        )
+    ]
+    ep.timeline = Timeline(
+        version="buggy-tail-trim",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=1800.0,
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=1800.0,
+            ),
+        ),
+    )
+    ff = FakeFfmpeg()
+
+    _materialize(_city(), [ep], _store(tmp_path), ff)
+
+    assert ff.source_registries == [tuple(ep.sources)]
+
+
+def test_materialize_concat_cache_uses_render_timeline_identity_context(tmp_path):
+    ep = _ep("g1")
+    ep.sources = [
+        SourceMedia(
+            id="s0",
+            provider="swagit",
+            ref="https://src/seg0.mp4",
+            media_kind="direct",
+            duration=10.0,
+            watch_url=None,
+        ),
+        SourceMedia(
+            id="s1",
+            provider="swagit",
+            ref="https://src/seg1.mp4",
+            media_kind="direct",
+            duration=20.0,
+            watch_url=None,
+        ),
+    ]
+    ep.timeline = Timeline(
+        version="concat-v1",
+        segments=(
+            Segment(0.0, 10.0, "source", "s0", 0.0, 10.0),
+            Segment(10.0, 30.0, "source", "s1", 0.0, 20.0),
+        ),
+    )
+    combined = tmp_path / "combined.mka"
+    combined.write_bytes(b"combined")
+
+    class _Cache:
+        def get_or_fetch_concat(self, uid, sources):
+            return combined
+
+    ff = FakeFfmpeg()
+    materialize_audio(
+        _city(),
+        [ep],
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: pytest.fail("multi-source render should not resolve URL"),
+        source_cache=_Cache(),
+    )
+
+    assert ff.timelines[0].segments[0].source_id == "combined"
+    assert ff.source_registries == [()]
 
 
 def test_audio_duration_served_fallback_when_probe_fails(tmp_path):

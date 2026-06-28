@@ -42,7 +42,7 @@ from pathlib import Path
 from citypods.media import CONTENT_TYPE
 from citypods.models import Episode
 from citypods.storage.base import StorageBackend
-from citypods.timeline import Segment, Timeline, timeline_digest
+from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
 
 # ---------------------------------------------------------------------------
 # ClipArtifact
@@ -171,6 +171,23 @@ def _identity_clip_timeline(
     return tl, cuts
 
 
+def _clip_sources(ep: Episode, source_id: str) -> tuple[SourceMedia, ...] | list[SourceMedia]:
+    if ep.sources:
+        return ep.sources
+    if ep.duration is None:
+        return ()
+    return (
+        SourceMedia(
+            id=source_id,
+            provider="unknown",
+            ref=ep.video_url,
+            media_kind=ep.media_kind,
+            duration=float(ep.duration),
+            watch_url=(ep.links or {}).get("canonical_video"),
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # extract_clip
 # ---------------------------------------------------------------------------
@@ -250,6 +267,7 @@ def extract_clip(
 
     # Build the clip sub-timeline and source cuts
     source_id = ep.sources[0].id if ep.sources else "s0"
+    clip_sources = _clip_sources(ep, source_id)
     if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
         clip_tl, source_cuts = _identity_clip_timeline(source_id, served_start, served_end)
     else:
@@ -291,6 +309,7 @@ def extract_clip(
             sources_by_id,
             dest,
             None,  # no chapter markers on clips
+            sources=clip_sources,
             asset_resolver=asset_resolver,
         )
         content_type = CONTENT_TYPE if kind == "audio" else "video/mp4"

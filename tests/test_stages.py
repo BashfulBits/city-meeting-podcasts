@@ -27,6 +27,7 @@ class FakeFfmpeg:
         dest,
         chapters=None,
         *,
+        sources=None,
         loudness_profile=None,
         processing_profile=None,
         asset_resolver=None,
