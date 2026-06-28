@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from citypods.models import City, Episode
 from citypods.records import (
+    _capped_exponential_backoff,
     assign_uids,
     audio_object_key,
     audio_spec_hash,
@@ -399,6 +400,39 @@ def test_estimate_audio_shard_work_gives_withheld_media_only_recheck_cost(tmp_pa
             processing_profile="",
         )
         == 5400 + AUDIO_WITHHELD_RECHECK_WEIGHT_SECONDS
+    )
+
+
+def test_estimate_audio_shard_work_handles_extreme_backoff_attempts(tmp_path):
+    pending = _ep("g-pending")
+    pending.uid = "u-pending"
+    pending.duration = 1800
+
+    backing_off = _ep("g-backoff")
+    backing_off.uid = "u-backoff"
+    backing_off.duration = 7200
+    backing_off.materialize_attempts = 1 << 30
+    backing_off.materialize_last_attempt = datetime.now(UTC).isoformat()
+
+    save_records(
+        tmp_path,
+        "src",
+        {
+            "u-pending": episode_to_record(pending),
+            "u-backoff": episode_to_record(backing_off),
+        },
+    )
+
+    assert (
+        estimate_audio_shard_work(
+            tmp_path,
+            "src",
+            extract_audio=True,
+            max_kbps=96,
+            loudness_profile="",
+            processing_profile="",
+        )
+        == 1800
     )
 
 
@@ -869,6 +903,23 @@ def test_timeout_backoff_accepts_legacy_naive_timestamp_as_utc():
     ep.transcript_timeout_last_attempt = "2026-06-20T12:00:00"
 
     assert transcript_timeout_backoff_until(ep) == datetime(2026, 6, 21, 12, tzinfo=UTC)
+
+
+def test_capped_exponential_backoff_does_not_clamp_fractional_caps_early():
+    assert _capped_exponential_backoff(timedelta(days=1), timedelta(hours=36), 1) == timedelta(
+        days=1
+    )
+    assert _capped_exponential_backoff(timedelta(days=1), timedelta(hours=36), 2) == timedelta(
+        hours=36
+    )
+
+
+def test_timeout_backoff_caps_extreme_attempt_counts():
+    ep = _ep("g-timeout-huge")
+    ep.transcript_timeout_attempts = 1 << 30
+    ep.transcript_timeout_last_attempt = "2026-06-20T12:00:00+00:00"
+
+    assert transcript_timeout_backoff_until(ep) == datetime(2026, 7, 20, 12, tzinfo=UTC)
 
 
 def test_timeout_attempts_coerce_malformed_persisted_values_to_zero():

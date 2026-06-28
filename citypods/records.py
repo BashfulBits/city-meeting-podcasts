@@ -65,6 +65,25 @@ AUDIO_WITHHELD_RECHECK_WEIGHT_SECONDS = 5.0
 AUDIO_UNKNOWN_DURATION_WEIGHT_SECONDS = 2 * 3600.0
 
 
+def _capped_exponential_backoff(
+    base: timedelta,
+    cap: timedelta,
+    attempts: int,
+) -> timedelta:
+    """Bound exponential backoff before timedelta multiplication can overflow."""
+    if attempts <= 0:
+        return timedelta(0)
+    if base <= timedelta(0) or cap <= base:
+        return cap
+    base_us = base // timedelta(microseconds=1)
+    cap_us = cap // timedelta(microseconds=1)
+    multiplier_cap = max(1, (cap_us + base_us - 1) // base_us)
+    exponent = attempts - 1
+    if exponent >= (multiplier_cap - 1).bit_length():
+        return cap
+    return min(cap, base * (2**exponent))
+
+
 def _in_backoff(ep: Episode, now: datetime) -> bool:
     """True if ``ep`` failed recently enough to still be inside its materialization backoff."""
     if ep.materialize_attempts <= 0 or not ep.materialize_last_attempt:
@@ -77,7 +96,7 @@ def _in_backoff(ep: Episode, now: datetime) -> bool:
         last = last.replace(tzinfo=UTC)
     else:
         last = last.astimezone(UTC)
-    delay = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (ep.materialize_attempts - 1))
+    delay = _capped_exponential_backoff(BACKOFF_BASE, BACKOFF_MAX, ep.materialize_attempts)
     return now < last + delay
 
 
@@ -93,9 +112,10 @@ def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
         last = last.replace(tzinfo=UTC)
     else:
         last = last.astimezone(UTC)
-    delay = min(
+    delay = _capped_exponential_backoff(
+        TRANSCRIPT_TIMEOUT_BACKOFF_BASE,
         TRANSCRIPT_TIMEOUT_BACKOFF_MAX,
-        TRANSCRIPT_TIMEOUT_BACKOFF_BASE * 2 ** (ep.transcript_timeout_attempts - 1),
+        ep.transcript_timeout_attempts,
     )
     return last + delay
 
