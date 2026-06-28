@@ -33,7 +33,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   stream-delta threshold, while keeping scheduled runs read-only and suppressing sub-threshold
   feed-health noise. A new `scripts/compare_timeline_diagnostics.py` helper compares the cohort's
   before/after artifacts so the operator can verify fixed, still-mismatched, missing-after, worsened,
-  and audio-key-changed counts before widening repair scope. Backfill story:
+  audio-key-changed, and timeline-digest-changed counts before widening repair scope. The audit
+  artifact now also records planner-facing source telemetry for each row: whether the episode was
+  single-file or multi-part, the per-source measured durations and duration bases, the timeline
+  version/digest, and the total source-span lengths the EDL mapped. Silence-planned single-file
+  episodes now persist that source duration/basis too, so a stubborn mismatch can be traced back to
+  whether the planner used a measured container duration or a provider fallback. Backfill story:
   no global invalidation, no `ASR_PIPELINE_VERSION` or `AUDIO_PIPELINE_VERSION` bump, and only records
   explicitly flagged for repair get new audio/transcript recipes. The diagnostics artifact now also
   records `probe_error` reasons such as missing audio keys, storage/download failures, ffprobe

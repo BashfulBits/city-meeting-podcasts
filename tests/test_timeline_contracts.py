@@ -208,6 +208,7 @@ class TestDurationMismatch:
         ep = _ep()
         ep.timeline = _good_timeline()
         ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
         diagnostics = []
 
         fs = check_timeline_integrity(
@@ -227,6 +228,18 @@ class TestDurationMismatch:
             "timeline-replan",
             "audio-rematerialize",
             "transcript-regenerate",
+        ]
+        assert diagnostics[0]["source_mode"] == "single-file"
+        assert diagnostics[0]["source_count"] == 1
+        assert diagnostics[0]["source_duration_total"] == 3600.0
+        assert diagnostics[0]["segment_source_span_total"] == 3300.0
+        assert diagnostics[0]["source_media"] == [
+            {
+                "id": "s0",
+                "duration": 3600.0,
+                "duration_basis": None,
+                "media_kind": "direct",
+            }
         ]
         assert ep.integrity["timeline_audio"]["status"] == "rendered-duration-mismatch"
 
@@ -305,6 +318,55 @@ class TestDurationMismatch:
 
         assert fs == []
         assert diagnostics[0]["probe_error"] == "missing-audio-key"
+
+    def test_multi_part_diagnostic_carries_part_durations(self):
+        ep = _ep()
+        ep.timeline = Timeline(
+            version="concat-v1",
+            segments=(
+                _seg(0, 1800, 0, 1800, "s0"),
+                _seg(1800, 3600, 0, 1800, "s1"),
+            ),
+        )
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="g",
+                ref="https://g.com/1.mp4",
+                media_kind="direct",
+                duration=1800.0,
+                watch_url=None,
+                duration_basis="stream-sample",
+            ),
+            SourceMedia(
+                id="s1",
+                provider="g",
+                ref="https://g.com/2.mp4",
+                media_kind="direct",
+                duration=1800.0,
+                watch_url=None,
+                duration_basis="stream-sample",
+            ),
+        ]
+        ep.audio_key = "audio/u1.m4a"
+        diagnostics = []
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3602.0,
+                stream_sample_duration=3602.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+        )
+
+        assert diagnostics[0]["source_mode"] == "multi-part"
+        assert diagnostics[0]["source_count"] == 2
+        assert diagnostics[0]["source_duration_total"] == 3600.0
+        assert diagnostics[0]["segment_source_span_total"] == 3600.0
+        assert diagnostics[0]["source_duration_bases"] == ["stream-sample", "stream-sample"]
 
 
 # ---------------------------------------------------------------------------
