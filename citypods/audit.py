@@ -780,7 +780,11 @@ def check_timeline_integrity(
                     clear_resolved_timeline_audio_integrity(ep, status)
             elif mutate_integrity and repair:
                 set_timeline_audio_integrity(ep, block)
-            if status not in {"ok", "container-duration-drift"}:
+            if status not in {
+                "ok",
+                "container-duration-drift",
+                "duration-probe-inconclusive",
+            }:
                 duration_label = (
                     f"{timeline_duration:.3f}s"
                     if isinstance(timeline_duration, (int, float))

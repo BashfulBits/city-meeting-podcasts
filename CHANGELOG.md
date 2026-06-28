@@ -29,7 +29,8 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   explicitly flagged for repair get new audio/transcript recipes. The diagnostics artifact now also
   records `probe_error` reasons such as missing audio keys, storage/download failures, ffprobe
   failures, or absent duration metadata so PR6 can gate on actionable evidence instead of a single
-  opaque `duration-probe-inconclusive` bucket.
+  opaque `duration-probe-inconclusive` bucket. Scheduled feed-health no longer files per-slug issues
+  for inconclusive diagnostics, and the workflow now installs `ffmpeg`/`ffprobe` before probing.
 - **Timeline/audio integrity repair is now an L3 Phase-H series with a cheap sample-clock duration
   probe.** `review/20` breaks the work into read-only diagnostics, persisted repair flags, planner
   duration-basis fixes, and targeted re-plan/re-materialize/re-transcribe consumers. PR1 adds

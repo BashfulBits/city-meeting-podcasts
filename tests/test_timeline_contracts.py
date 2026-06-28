@@ -238,9 +238,8 @@ class TestDurationMismatch:
             diagnostics=diagnostics,
         )
 
-        assert any(f.check == "duration-probe-inconclusive" for f in fs)
+        assert fs == []
         assert diagnostics[0]["probe_error"] == "missing-audio-key"
-        assert "probe_error=missing-audio-key" in fs[0].message
 
 
 # ---------------------------------------------------------------------------
