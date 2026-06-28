@@ -83,7 +83,8 @@ scheduled feed-health workflow uploads the artifact as `timeline-audio-integrity
 only hosted edited-timeline objects and uses the stream sample-clock helper before classifying. The
 artifact now records `probe_error` for inconclusive rows (`missing-audio-key`, storage/download
 failures, `ffprobe-error`, `no-duration-metadata`) so PR6 can distinguish missing evidence from true
-duration ambiguity.
+duration ambiguity. Scheduled feed-health keeps those inconclusive rows in the artifact but does not
+file per-slug issues for them, and the workflow installs `ffmpeg`/`ffprobe` before probing.
 
 Backfill story: none. The scheduled audit remains non-mutating; diagnostics are an artifact used to
 gate PR6.
