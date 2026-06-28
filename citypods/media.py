@@ -1906,6 +1906,7 @@ class AudioDurationProbe:
     container_duration: float | None = None
     stream_sample_duration: float | None = None
     stream_duration_source: str | None = None
+    probe_error: str | None = None
 
 
 def _parse_positive_float(raw: object) -> float | None:
@@ -1968,7 +1969,7 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
         ValueError,
         TypeError,
     ):
-        return AudioDurationProbe()
+        return AudioDurationProbe(probe_error="ffprobe-error")
 
     container = _parse_positive_float((data.get("format") or {}).get("duration"))
     streams = data.get("streams") or []
@@ -1976,10 +1977,14 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
     stream_source = None
     if streams and isinstance(streams[0], dict):
         stream_duration, stream_source = _duration_from_stream(streams[0])
+    probe_error = None
+    if container is None and stream_duration is None:
+        probe_error = "no-duration-metadata"
     return AudioDurationProbe(
         container_duration=container,
         stream_sample_duration=stream_duration,
         stream_duration_source=stream_source,
+        probe_error=probe_error,
     )
 
 

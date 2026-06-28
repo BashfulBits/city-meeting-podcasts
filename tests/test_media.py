@@ -1141,6 +1141,15 @@ def test_probe_audio_duration_details_uses_stream_sample_clock(tmp_path):
     assert probe.container_duration == pytest.approx(1.5, abs=0.01)
     assert probe.stream_sample_duration == pytest.approx(1.5, abs=0.01)
     assert probe.stream_duration_source == "stream-duration-ts"
+    assert probe.probe_error is None
+
+
+def test_probe_audio_duration_details_reports_ffprobe_error(tmp_path):
+    probe = _probe_audio_duration_details(tmp_path / "missing.m4a")
+
+    assert probe.container_duration is None
+    assert probe.stream_sample_duration is None
+    assert probe.probe_error == "ffprobe-error"
 
 
 def test_audio_duration_served_set_from_probe(tmp_path):
