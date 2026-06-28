@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from citypods.models import City, Episode
 from citypods.records import (
+    _capped_exponential_backoff,
     assign_uids,
     audio_object_key,
     audio_spec_hash,
@@ -902,6 +903,15 @@ def test_timeout_backoff_accepts_legacy_naive_timestamp_as_utc():
     ep.transcript_timeout_last_attempt = "2026-06-20T12:00:00"
 
     assert transcript_timeout_backoff_until(ep) == datetime(2026, 6, 21, 12, tzinfo=UTC)
+
+
+def test_capped_exponential_backoff_does_not_clamp_fractional_caps_early():
+    assert _capped_exponential_backoff(timedelta(days=1), timedelta(hours=36), 1) == timedelta(
+        days=1
+    )
+    assert _capped_exponential_backoff(timedelta(days=1), timedelta(hours=36), 2) == timedelta(
+        hours=36
+    )
 
 
 def test_timeout_backoff_caps_extreme_attempt_counts():

@@ -75,7 +75,9 @@ def _capped_exponential_backoff(
         return timedelta(0)
     if base <= timedelta(0) or cap <= base:
         return cap
-    multiplier_cap = max(1, int(cap // base))
+    base_us = base // timedelta(microseconds=1)
+    cap_us = cap // timedelta(microseconds=1)
+    multiplier_cap = max(1, (cap_us + base_us - 1) // base_us)
     exponent = attempts - 1
     if exponent >= (multiplier_cap - 1).bit_length():
         return cap
