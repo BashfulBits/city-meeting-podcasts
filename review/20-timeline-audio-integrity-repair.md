@@ -37,7 +37,7 @@ missing or contradictory, fall back to bounded PCM decode for the small suspicio
 | Finding | Condition | Severity | Repair |
 |---|---|---|---|
 | `container-duration-drift` | `container_duration` differs from EDL, but stream/decoded duration matches | warn/debug | none |
-| `rendered-duration-mismatch` | stream/decoded audio duration differs from EDL | error | re-materialize; maybe re-transcribe |
+| `rendered-duration-mismatch` | stream/decoded audio duration differs from EDL | error | re-plan timeline, then re-materialize/re-transcribe |
 | `timeline-source-duration-mismatch` | concat segment decoded durations differ from persisted `SourceMedia.duration` enough to explain drift | error | re-plan timeline, then re-materialize/re-transcribe |
 | `timeline-identity-misclassified` | timeline digest is empty for a source span that is not full-source identity | error | fix GH#495 identity detection, then re-plan/re-materialize/re-transcribe |
 | `duration-probe-inconclusive` | stream timing absent and bounded decode unavailable/fails | warn | no automatic repair |
@@ -54,7 +54,7 @@ Add a small episode-record block once PR3 lands:
     "timeline_duration": 8010.788,
     "stream_sample_duration": 8014.859,
     "container_duration": 8014.859,
-    "repair": ["audio-rematerialize", "transcript-regenerate"]
+    "repair": ["audio-rematerialize", "timeline-replan", "transcript-regenerate"]
   }
 }
 ```

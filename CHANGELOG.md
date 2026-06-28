@@ -25,6 +25,10 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   (GH#495). `TimelineStage`, `AudioStage`, ASR, and provider-align consume targeted repair actions (`timeline-replan`, `audio-rematerialize`,
   `transcript-regenerate`) without bumping global pipeline versions. Automatic persistence/repair is
   still off in the scheduled audit; `--persist-timeline-integrity` is a manual gate. The feed-health
+  audit now queues `timeline-replan` for confirmed stream-vs-EDL mismatches up front, so the next
+  repair pass rebuilds the EDL from planner inputs before rematerializing audio/transcripts instead
+  of faithfully reproducing the same bad timeline.
+  The feed-health
   workflow can now be manually dispatched from `main` to stamp a named repair cohort above a chosen
   stream-delta threshold, while keeping scheduled runs read-only and suppressing sub-threshold
   feed-health noise. A new `scripts/compare_timeline_diagnostics.py` helper compares the cohort's

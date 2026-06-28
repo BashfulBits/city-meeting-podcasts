@@ -223,7 +223,11 @@ class TestDurationMismatch:
         )
 
         assert any(f.check == "rendered-duration-mismatch" for f in fs)
-        assert diagnostics[0]["repair"] == ["audio-rematerialize", "transcript-regenerate"]
+        assert diagnostics[0]["repair"] == [
+            "timeline-replan",
+            "audio-rematerialize",
+            "transcript-regenerate",
+        ]
         assert ep.integrity["timeline_audio"]["status"] == "rendered-duration-mismatch"
 
     def test_subthreshold_stream_mismatch_is_telemetry_only(self):
@@ -281,7 +285,11 @@ class TestDurationMismatch:
         block = ep.integrity["timeline_audio"]
         assert block["repair_cohort"] == "gt1s"
         assert block["repair_min_delta"] == 1.0
-        assert block["repair"] == ["audio-rematerialize", "transcript-regenerate"]
+        assert block["repair"] == [
+            "audio-rematerialize",
+            "timeline-replan",
+            "transcript-regenerate",
+        ]
 
     def test_inconclusive_diagnostic_carries_probe_error(self):
         ep = _ep()
