@@ -26,8 +26,11 @@ def _load_rows(path: Path) -> list[dict[str, Any]]:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise SystemExit(f"{path}:{lineno}: invalid JSON: {exc}") from exc
-            if isinstance(row, dict):
-                rows.append(row)
+            if not isinstance(row, dict):
+                raise SystemExit(
+                    f"{path}:{lineno}: expected a JSON object per line, got {type(row).__name__}"
+                )
+            rows.append(row)
     return rows
 
 
@@ -53,7 +56,11 @@ def _max_delta_by_uid(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             continue
         uid = str(uid)
         current = by_uid.get(uid)
-        if current is None or (_delta(row) or -1.0) > (_delta(current) or -1.0):
+        row_delta = _delta(row)
+        current_delta = _delta(current) if current is not None else None
+        if current is None or (
+            row_delta is not None and (current_delta is None or row_delta > current_delta)
+        ):
             by_uid[uid] = row
     return by_uid
 
