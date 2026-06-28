@@ -226,6 +226,63 @@ class TestDurationMismatch:
         assert diagnostics[0]["repair"] == ["audio-rematerialize", "transcript-regenerate"]
         assert ep.integrity["timeline_audio"]["status"] == "rendered-duration-mismatch"
 
+    def test_subthreshold_stream_mismatch_is_telemetry_only(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.4,
+                stream_sample_duration=3300.4,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+            mutate_integrity=True,
+            repair_min_delta=1.0,
+            repair_cohort="gt1s",
+            finding_min_delta=1.0,
+        )
+
+        assert fs == []
+        assert diagnostics[0]["check"] == "rendered-duration-mismatch"
+        assert diagnostics[0]["repair_selected"] is False
+        assert diagnostics[0]["repair_cohort"] == "gt1s"
+        assert ep.integrity == {}
+
+    def test_repair_cohort_selects_over_threshold_stream_mismatch(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3302.0,
+                stream_sample_duration=3302.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+            mutate_integrity=True,
+            repair_min_delta=1.0,
+            repair_cohort="gt1s",
+            finding_min_delta=1.0,
+        )
+
+        assert any(f.check == "rendered-duration-mismatch" for f in fs)
+        assert diagnostics[0]["repair_selected"] is True
+        assert diagnostics[0]["repair_min_delta"] == 1.0
+        assert diagnostics[0]["repair_cohort"] == "gt1s"
+        block = ep.integrity["timeline_audio"]
+        assert block["repair_cohort"] == "gt1s"
+        assert block["repair_min_delta"] == 1.0
+        assert block["repair"] == ["audio-rematerialize", "transcript-regenerate"]
+
     def test_inconclusive_diagnostic_carries_probe_error(self):
         ep = _ep()
         ep.timeline = _good_timeline()

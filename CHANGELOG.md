@@ -24,7 +24,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   hashing and render-path selection so tail-only trims cannot collapse to identity/copy handling
   (GH#495). `TimelineStage`, `AudioStage`, ASR, and provider-align consume targeted repair actions (`timeline-replan`, `audio-rematerialize`,
   `transcript-regenerate`) without bumping global pipeline versions. Automatic persistence/repair is
-  still off in the scheduled audit; `--persist-timeline-integrity` is a manual gate. Backfill story:
+  still off in the scheduled audit; `--persist-timeline-integrity` is a manual gate. The feed-health
+  workflow can now be manually dispatched from `main` to stamp a named repair cohort above a chosen
+  stream-delta threshold, while keeping scheduled runs read-only and suppressing sub-threshold
+  feed-health noise. A new `scripts/compare_timeline_diagnostics.py` helper compares the cohort's
+  before/after artifacts so the operator can verify fixed, still-mismatched, missing-after, worsened,
+  and audio-key-changed counts before widening repair scope. Backfill story:
   no global invalidation, no `ASR_PIPELINE_VERSION` or `AUDIO_PIPELINE_VERSION` bump, and only records
   explicitly flagged for repair get new audio/transcript recipes. The diagnostics artifact now also
   records `probe_error` reasons such as missing audio keys, storage/download failures, ffprobe

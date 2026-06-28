@@ -256,9 +256,40 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="persist confirmed timeline/audio repair flags to durable state",
     )
+    ap.add_argument(
+        "--timeline-repair-min-delta",
+        type=float,
+        help=(
+            "when persisting timeline/audio repair flags, select only rows whose stream "
+            "duration delta is at least this many seconds"
+        ),
+    )
+    ap.add_argument(
+        "--timeline-repair-cohort",
+        help="stamp selected timeline/audio repair flags with this cohort label",
+    )
+    ap.add_argument(
+        "--timeline-finding-min-delta",
+        type=float,
+        default=1.0,
+        help=(
+            "minimum stream duration delta, in seconds, before rendered-duration-mismatch "
+            "becomes a feed-health finding"
+        ),
+    )
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
     args = ap.parse_args(argv)
+    if args.persist_timeline_integrity and not args.timeline_diagnostics:
+        ap.error("--persist-timeline-integrity requires --timeline-diagnostics")
+    if args.persist_timeline_integrity and args.timeline_repair_min_delta is None:
+        ap.error("--persist-timeline-integrity requires --timeline-repair-min-delta")
+    if args.persist_timeline_integrity and not args.timeline_repair_cohort:
+        ap.error("--persist-timeline-integrity requires --timeline-repair-cohort")
+    if args.timeline_repair_min_delta is not None and args.timeline_repair_min_delta < 0:
+        ap.error("--timeline-repair-min-delta must be >= 0")
+    if args.timeline_finding_min_delta < 0:
+        ap.error("--timeline-finding-min-delta must be >= 0")
 
     site_config = load_site_config(args.site_config)
     cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
@@ -283,6 +314,9 @@ def main(argv: list[str] | None = None) -> int:
         check_meetings_urls_net=args.meetings_urls,
         timeline_diagnostics=timeline_diagnostics,
         persist_timeline_integrity=args.persist_timeline_integrity and not args.dry_run,
+        timeline_repair_min_delta=args.timeline_repair_min_delta,
+        timeline_repair_cohort=args.timeline_repair_cohort,
+        timeline_finding_min_delta=args.timeline_finding_min_delta,
     )
     if args.timeline_diagnostics and timeline_diagnostics is not None:
         path = Path(args.timeline_diagnostics)

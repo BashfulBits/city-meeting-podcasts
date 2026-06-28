@@ -527,3 +527,23 @@ def test_audit_workflow_pulls_canonical_state_not_a_borrowed_cache():
     env = run_audit.get("env", {})
     for var in ("B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_PUBLIC_BASE_URL"):
         assert var in env, f"audit.yml's Run audit step is missing {var} (needed for pull_state)"
+
+
+def test_audit_workflow_exposes_guarded_timeline_repair_cohort_dispatch():
+    wf, job = _job("audit.yml")
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+
+    assert inputs["timeline_repair"]["type"] == "boolean"
+    assert inputs["timeline_repair"]["default"] is False
+    assert inputs["timeline_repair_min_delta"]["default"] == "1.0"
+    assert inputs["timeline_repair_cohort"]["default"] == ""
+    assert inputs["timeline_finding_min_delta"]["default"] == "1.0"
+
+    run = next(s for s in job["steps"] if s.get("name") == "Run audit")["run"]
+    assert "--timeline-diagnostics audit-timeline-integrity.jsonl" in run
+    assert "--timeline-finding-min-delta" in run
+    assert "--persist-timeline-integrity" in run
+    assert "--timeline-repair-min-delta" in run
+    assert "--timeline-repair-cohort" in run
+    assert 'github.ref }}" != "refs/heads/main"' in run
+    assert "timeline_repair_cohort is required" in run
