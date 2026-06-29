@@ -197,6 +197,20 @@ class TestDurationMismatch:
         assert not any(f.check == "timeline-short-coverage" for f in fs)
         assert any(f.check == "rendered-duration-mismatch" for f in fs)
 
+    def test_cheap_check_runs_when_probe_inconclusive(self):
+        # An inconclusive probe (no stream_sample_duration) must NOT suppress the cheap stored-field
+        # check — otherwise a real mismatch would be silently dropped when the live probe can't run.
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.audio_duration_served = 3290.0  # disagrees with the 3300 EDL
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(probe_error="missing-audio-key"),
+        )
+        assert any(f.check == "timeline-duration-mismatch" for f in fs)
+
     def test_small_floating_point_delta_not_flagged(self):
         ep = _ep()
         ep.timeline = _good_timeline()
