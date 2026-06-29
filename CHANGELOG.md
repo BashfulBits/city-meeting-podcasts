@@ -16,6 +16,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **`work_leases.py` gains a public `scan_offset`/`ordered_candidates` ordering primitive, extracted
+  from `run_claim_loop` (review/18 §4).** The H14b Modal pull-worker prototype (unmerged) needed
+  budget-gating/lease-renewal/retry `run_claim_loop` doesn't have, so it composed its own loop directly
+  on the `claim`/`release`/`renew` primitives — but reimplemented the scan-offset rotation by reaching
+  into `work_leases._scan_offset` rather than sharing it. `scan_offset`/`ordered_candidates` are now
+  public and generic over candidate shape, so any worker that builds its own loop (instead of calling
+  `run_claim_loop`) shares the rotation logic instead of re-deriving it. Docstrings on `run_claim_loop`,
+  the module header, and review/18 §4.3/§6 now spell out precisely what `run_claim_loop` is missing
+  (external-budget gating, lease renewal, retry) and flag the in-Actions push→pull migration
+  (review/18 §6 step 4) as the moment to fold those in as shared hooks instead of writing a third loop.
 - **New `long_first: N` backlog-priority comparator prioritizes the catalog's long-meeting transcript
   backlog ahead of everything else (review/12 §H5).** Once an episode exceeds
   `asr_local_max_duration_hours`, the in-process ASR backend refuses it outright

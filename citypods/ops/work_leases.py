@@ -24,6 +24,17 @@ transcript:
    the durable completion signal, so a worker need not write a ``done`` lease — the reaper sweeps
    "leased but artifact present → done".
 4. **Generous TTL.** Renew is the exception (only long-audio jobs renew mid-inference, §5).
+
+**Frozen vs. not, precisely.** :func:`claim` / :func:`renew` / :func:`release` / :func:`reap` and
+the R2 key layout are the frozen §4.2 contract — every worker (in-Actions or external) must use
+these and only these to win/hold/release an item. :func:`run_claim_loop` is a reference
+*orchestration* around that contract, not part of the frozen surface itself: it is missing
+external-budget gating, lease renewal for long jobs, and retry — all of which
+``citypods.compute.external_worker`` (the H14b Modal worker) needed and built directly on the
+primitives instead. **Read `run_claim_loop`'s docstring before reusing it for a new worker class**,
+especially the note on review/18 §6 step 4 (migrating in-Actions shards from the static plan to
+this claim loop) — that migration is the moment to fold renewal/retry into one shared loop instead
+of writing a third one.
 """
 
 from __future__ import annotations
@@ -32,10 +43,12 @@ import json
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Literal, TypeVar
 
 LEASE_PREFIX = "work-leases"
 LEASE_SCHEMA_VERSION = 1
+
+T = TypeVar("T")
 
 # Claimable states: a fresh/abandoned item. ``leased`` is claimable only once expired; ``done`` and
 # ``failed`` are terminal (``failed`` needs operator/attempts attention, never auto-reclaimed here).
@@ -311,14 +324,36 @@ def reap(
     return {"completed": completed, "requeued": requeued, "in_flight": in_flight}
 
 
-def _scan_offset(owner: str, n: int) -> int:
-    """Per-worker start offset over the policy-ordered candidates, so N workers target N different
-    head items first (review/18 §4.6 lever 2) instead of all colliding on the newest item."""
+def scan_offset(owner: str, n: int) -> int:
+    """Per-worker start offset over *n* policy-ordered candidates, so N workers target N different
+    head items first (review/18 §4.6 lever 2) instead of all colliding on the newest item.
+
+    Public: this is the one ordering primitive every claim-style worker anchors its scan to,
+    whether or not it drives its loop through :func:`run_claim_loop` — see
+    :func:`ordered_candidates` and that function's docstring for why a worker might compose the
+    primitives itself instead of calling the loop wrapper."""
     if n <= 0:
         return 0
     import hashlib
 
     return int(hashlib.sha1(owner.encode()).hexdigest(), 16) % n
+
+
+def ordered_candidates(candidates: Sequence[T], owner: str) -> list[T]:
+    """Rotate *candidates* (policy-ordered, e.g. read straight from the ``work.json`` discovery
+    index) to *owner*'s deterministic :func:`scan_offset`.
+
+    Generic over the candidate shape — :func:`run_claim_loop` calls this with
+    ``(source_key, uid)`` tuples; a worker that composes the claim primitives itself (instead of
+    calling that loop — see its docstring for when that's the right call) can call this directly
+    on a richer sequence (e.g. full ``WorkItem`` objects) without re-deriving the rotation math.
+    Do not reach for :func:`scan_offset` and re-write the modulo-rotation by hand — that is exactly
+    the duplication this function exists to remove."""
+    n = len(candidates)
+    if n == 0:
+        return []
+    offset = scan_offset(owner, n)
+    return [candidates[(offset + i) % n] for i in range(n)]
 
 
 def run_claim_loop(
@@ -333,20 +368,40 @@ def run_claim_loop(
     should_stop: Callable[[], bool] | None = None,
     now_fn: Callable[[], datetime] | None = None,
 ) -> dict:
-    """The frozen pull contract (review/18 §4.2) every worker runs — in-Actions or external GPU.
+    """The reference pull loop (review/18 §4.2) over the claim/release primitives this module
+    owns. Walks ``candidates`` (``(source_key, uid)``, policy-ordered) from this worker's
+    :func:`ordered_candidates` rotation: CAS-claim each claimable item; on a win, run the injected
+    ``transcribe(source_key, uid)`` (fetch audio → infer → write the content-addressed artifact →
+    commit the record with ``owned_uids={uid}``); on success leave completion to be inferred from
+    the artifact (no ``done`` write — cost lever 3); on failure settle the lease ``failed`` so it
+    isn't at once re-claimed. Stops at ``max_claims`` or when ``should_stop()`` (the wall-clock
+    budget). ``transcribe`` is the seam a real GPU path fills; the claim/renew/reap primitives and
+    R2 key layout underneath are fixed (frozen, review/18 §4.2) — this function's *orchestration*
+    around them is not.
 
-    Walks ``candidates`` (``(source_key, uid)``, policy-ordered) from this worker's scan offset:
-    CAS-claim each claimable item; on a win, run the injected ``transcribe(source_key, uid)`` (fetch
-    audio → infer → write the content-addressed artifact → commit the record with
-    ``owned_uids={uid}``); on success leave completion to be inferred from the artifact (no ``done``
-    write — cost lever 3); on failure settle the lease ``failed`` so it isn't at once re-claimed.
-    Stops at ``max_claims`` or when ``should_stop()`` (the wall-clock budget). ``transcribe`` is the
-    seam H14b/H14c fill with the real GPU path; the loop, claim/renew/reap, and keys are fixed.
+    **What this loop does NOT do, by design — read before reusing it for a new worker.** It has no
+    external-budget gating (no monthly-cap/in-flight check before claiming), no lease renewal for
+    an inference that outlives ``ttl_seconds`` (a long job can be reaped and re-claimed by another
+    worker mid-flight — content-addressing makes that wasteful, not corrupting, but it is a real
+    gap for anything beyond a short job), and no retry on a transient failure. That was an
+    acceptable scope when this was written because the only caller in mind was a same-process,
+    no-budget GPU adapter. The Modal/H14b worker (``citypods.compute.external_worker``) needed all
+    three of those and, rather than extend this *frozen* function, built its own loop directly on
+    :func:`claim` / :func:`release` / :func:`renew` (still the same contract — just not this
+    wrapper) with budget-gating, a renewal thread, and retry layered on top.
+
+    **The moment this will bite again: review/18 §6 step 4 — in-Actions shards flip from the
+    Stage-1 static plan to this claim loop (GitHub Actions becomes "just another worker").** That
+    migration's natural first move is to reach for this function by name. Before doing that,
+    check whether in-Actions ASR jobs need the same renewal/retry external_worker.py already
+    proved out (long meetings — review/12 §H5's ``long_first`` comparator deliberately prioritizes
+    them — can easily outlive a short TTL). If so, this is the point to fold renewal/retry into
+    this loop as optional hooks (budget-gating stays external-only — an in-Actions runner has no
+    monthly dollar cap to protect), so both worker classes finally share one real implementation
+    instead of three loops slowly drifting apart. Do not write a third loop.
     """
     now_fn = now_fn or (lambda: datetime.now(UTC))
-    n = len(candidates)
-    offset = _scan_offset(owner, n)
-    ordered = [candidates[(offset + i) % n] for i in range(n)] if n else []
+    ordered = ordered_candidates(candidates, owner)
 
     claimed = completed = failed = 0
     for source_key, uid in ordered:
