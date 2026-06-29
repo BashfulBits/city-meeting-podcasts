@@ -126,10 +126,10 @@ def _probe_stream_sample_duration(
             if stream_duration:
                 value = float(stream_duration)
                 return value if value > 0 else None
-        raw = (data.get("format") or {}).get("duration")
-        if raw:
-            value = float(raw)
-            return value if value > 0 else None
+        # Deliberately NO ``format.duration`` fallback: that is the container header — the very
+        # clock GH#702 says overstates the audio. Returning it would let the caller mislabel a
+        # container value as ``stream-sample``. When no stream-level clock is exposed, return None
+        # so the caller falls back to the container header *and labels the basis honestly*.
         return None
     except (
         subprocess.TimeoutExpired,
@@ -457,9 +457,9 @@ class SilencePlanner:
         # shorter than the planned EDL — the single-file ``rendered-duration-mismatch`` class
         # (GH#702). Prefer ffprobe's stream-sample clock (the same basis ``SwagitConcatPlanner``
         # already uses); fall back to the container header, then the provider-declared duration.
-        ffprobe_binary = (
-            "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
-        )
+        # Replace only the trailing path component so a parent dir named "ffmpeg"
+        # (e.g. /opt/ffmpeg/bin/ffmpeg) is preserved rather than mangled.
+        ffprobe_binary = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
         stream_duration = _probe_stream_sample_duration(detect_url, ffprobe_binary, timeout)
         if stream_duration is not None:
             source_duration = stream_duration

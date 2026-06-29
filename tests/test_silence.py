@@ -410,9 +410,11 @@ class TestProbeStreamSampleDuration:
         value, _ = self._run(out)
         assert value == pytest.approx(950.5)
 
-    def test_falls_back_to_format_duration(self):
+    def test_format_only_returns_none(self):
+        # No stream-level clock → return None (do NOT return the container format.duration
+        # mislabeled as stream-sample); the caller then falls back to the container basis honestly.
         value, _ = self._run('{"streams":[],"format":{"duration":"1010.0"}}')
-        assert value == pytest.approx(1010.0)
+        assert value is None
 
     def test_accepts_plain_duration_line(self):
         value, _ = self._run("1234.5")

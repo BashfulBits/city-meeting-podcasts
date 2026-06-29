@@ -1812,7 +1812,8 @@ def _probe_audio_stream(
     stop: Callable[[], bool] | None = None,
 ) -> AudioStreamInfo:
     """Return source audio codec/bitrate via ffprobe, or unknown fields on failure."""
-    ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+    # Replace only the trailing path component so a parent dir named "ffmpeg" is preserved.
+    ffprobe = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
     try:
         with (
             HOST_LIMITER.slot(url, stop=stop),
@@ -1873,7 +1874,8 @@ def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | N
     Used after encoding to capture the served duration before the temp file is deleted,
     so the record carries ``audio_duration_served`` even for providers (Swagit, CivicPlus)
     that never set ``ep.duration``."""
-    ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+    # Replace only the trailing path component so a parent dir named "ffmpeg" is preserved.
+    ffprobe = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
     try:
         out = subprocess.run(
             [
@@ -1945,7 +1947,8 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
     back to bounded PCM decoding only when stream timing is unavailable or contradicts other
     evidence.
     """
-    ffprobe = "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+    # Replace only the trailing path component so a parent dir named "ffmpeg" is preserved.
+    ffprobe = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
     try:
         out = subprocess.run(
             [
