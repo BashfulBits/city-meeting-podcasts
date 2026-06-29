@@ -501,9 +501,11 @@ def _rec(
     duration=None,
     duration_served=None,
 ):
-    audio = {"url": "https://x/a.m4a"} if hosted else {}
-    if duration_served is not None:
-        audio["duration_served"] = duration_served
+    audio = {}
+    if hosted:
+        audio["url"] = "https://x/a.m4a"
+        if duration_served is not None:
+            audio["duration_served"] = duration_served
     rec = {
         "published": (NOW - timedelta(days=days_ago)).isoformat(),
         "body": body,

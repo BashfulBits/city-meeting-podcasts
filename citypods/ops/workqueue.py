@@ -54,7 +54,7 @@ RESERVED_WORK_CLASSES = ("transcript-merge",)
 # reservation, never a refusal), so reordering it would just delay publishing the common case of
 # short meetings with no corresponding benefit. ``transcript-merge`` is included for forward
 # compatibility even though H5 does not yet emit it.
-DURATION_AWARE_WORK_CLASSES = frozenset(WORK_CLASSES[1:]) | {"transcript-merge"}
+DURATION_AWARE_WORK_CLASSES = (frozenset(WORK_CLASSES) - {"audio"}) | {"transcript-merge"}
 
 # Priority buckets. feed-visible ≡ materialized today, so the archive buckets are
 # reserved-but-inert until the opt-in archive-backfill feature populates them (review/12 §H5).
