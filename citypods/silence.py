@@ -69,6 +69,33 @@ def _parse_ffmpeg_duration(stderr: str) -> float | None:
     return h * 3600 + mn * 60 + s
 
 
+def _parse_ffmpeg_decoded_end(stderr: str) -> float | None:
+    """Parse the final processed timestamp (``time=HH:MM:SS.ss``) from ffmpeg's stats stream.
+
+    ``detect_silences`` runs a full ``-vn -f null -`` decode of the audio, so ffmpeg's progress
+    ``time=`` reports the real **decoded audio-stream** end. That is the ground-truth clock the
+    silence EDL must anchor on when the container ``Duration`` header overstates the audio
+    (GH#702) *and* no stream-level sample clock is exposed (``_probe_stream_sample_duration``
+    returns ``None`` for HLS manifests / fragmented MP4 — exactly the over-claiming cohort). Reusing
+    the decode the silence pass already performed avoids a second media pass.
+
+    Returns the largest **positive** ``time=`` seen (decode is monotonic, so the final stats line
+    is the end), or ``None`` when none is parseable — the caller then falls back to the container
+    header / provider duration and labels the basis honestly. A stats stream that never advances
+    (only ``time=00:00:00.00``) yields ``None`` rather than a zero-length clock the planner would
+    otherwise prefer over container/provider duration. The leading ``-`` of ffmpeg's occasional
+    negative-wrapped warm-up timestamps is deliberately not matched, so they are skipped too.
+    """
+    best: float | None = None
+    for h, mn, s in re.findall(r"time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)", stderr):
+        secs = int(h) * 3600 + int(mn) * 60 + float(s)
+        if secs <= 0:
+            continue
+        if best is None or secs > best:
+            best = secs
+    return best
+
+
 def _probe_stream_sample_duration(
     url: str,
     ffprobe_binary: str = "ffprobe",
@@ -284,15 +311,20 @@ def detect_silences(
     min_duration_s: float = 1.0,
     timeout: float | None = None,
     threads: int | None = None,
-) -> tuple[list[tuple[float, float]], float | None]:
-    """Run ``ffmpeg silencedetect`` on ``url``; return ``(silences, source_duration)``.
+) -> tuple[list[tuple[float, float]], float | None, float | None]:
+    """Run ``ffmpeg silencedetect`` on ``url``; return ``(silences, container_duration,
+    decoded_duration)``.
 
     ``min_duration_s`` is passed to the filter as the minimum silence length to detect.
     Use a short value (e.g. 1.0) to capture all candidates; ``build_silence_timeline``
     applies the per-category thresholds (leading/trailing vs mid-meeting) when filtering.
 
-    ``source_duration`` is parsed from the same stderr output — no extra ffprobe call.
-    Returns ``([], None)`` on any subprocess or parse error.
+    Both durations are parsed from the same stderr output — no extra ffprobe call.
+    ``container_duration`` is the ``Duration`` header (which can overstate the audio stream);
+    ``decoded_duration`` is the real decoded audio-stream end (the final ``time=`` stats
+    timestamp from this ``-vn`` decode pass), used by ``SilencePlanner`` as the GH#702 source
+    clock when the cheap stream-sample ffprobe is unavailable. Returns ``([], None, None)`` on any
+    subprocess or parse error.
 
     ``threads``, if given, pins ffmpeg's decode/filter thread count the same way
     ``CommandFfmpeg`` pins its encode passes — ffmpeg otherwise defaults to "all cores",
@@ -324,14 +356,21 @@ def detect_silences(
             timeout=timeout,
         )
         if result.returncode != 0:
-            return [], None
+            return [], None, None
         # ffmpeg writes both its probe header and filter output to stderr.
         stderr = result.stderr
         silences = parse_silences(stderr)
-        duration = _parse_ffmpeg_duration(stderr)
-        return silences, duration
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
-        return [], None
+        container_duration = _parse_ffmpeg_duration(stderr)
+        decoded_duration = _parse_ffmpeg_decoded_end(stderr)
+        return silences, container_duration, decoded_duration
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+        OSError,
+        ValueError,  # a malformed float() in parse_silences/_parse_ffmpeg_duration
+        TypeError,
+    ):
+        return [], None, None
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +462,7 @@ class SilencePlanner:
             if not gate_acquired:
                 return None  # deferred: budget/queue pressure, not a real failure
         try:
-            silences, source_duration = detect_silences(
+            silences, container_duration, decoded_duration = detect_silences(
                 detect_url,
                 ffmpeg_binary=ffmpeg_binary,
                 noise_db=ctx.silence_noise_db,
@@ -435,10 +474,11 @@ class SilencePlanner:
             if gate_acquired:
                 gate.release(kind="audio")
 
-        # Durable availability verdict (H16 PR3), judged off the *probed* duration only. A missing
-        # probe header means the fetch/decode itself failed (throttle/truncation) — transport, not
-        # evidence about content, so it can never confirm silence or clear a known-good episode.
-        probed_duration = source_duration
+        # Durable availability verdict (H16 PR3), judged off the *probed* duration only. Prefer the
+        # decoded audio-stream end over the container header; a missing probe (both None) means the
+        # fetch/decode itself failed (throttle/truncation) — transport, not evidence about content,
+        # so it can never confirm silence or clear a known-good episode.
+        probed_duration = decoded_duration if decoded_duration is not None else container_duration
         if probed_duration is None:
             _stamp_availability(ep, "transport_failed", profile)
         elif is_effectively_silent(
@@ -459,7 +499,12 @@ class SilencePlanner:
         # keep-span on the header makes the renderer hit EOF early and the rendered file come out
         # shorter than the planned EDL — the single-file ``rendered-duration-mismatch`` class
         # (GH#702). Prefer ffprobe's stream-sample clock (the same basis ``SwagitConcatPlanner``
-        # already uses); fall back to the container header, then the provider-declared duration.
+        # already uses). When the container exposes no stream-level sample clock — HLS manifests and
+        # fragmented MP4, the exact over-claiming cohort — fall back to the *decoded* audio-stream
+        # end measured by the silencedetect pass above (reusing that decode, no second media pass)
+        # before the container header. Without this tier, those sources re-plan straight back onto
+        # the container clock and the rendered file stays short (the ``rendered-duration-mismatch``
+        # survivors). Provider-declared duration is the last resort.
         # Replace only the trailing path component so a parent dir named "ffmpeg"
         # (e.g. /opt/ffmpeg/bin/ffmpeg) is preserved rather than mangled.
         ffprobe_binary = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
@@ -467,7 +512,11 @@ class SilencePlanner:
         if stream_duration is not None:
             source_duration = stream_duration
             source_duration_basis = "stream-sample"
-        elif source_duration is not None:
+        elif decoded_duration is not None:
+            source_duration = decoded_duration
+            source_duration_basis = "decoded"
+        elif container_duration is not None:
+            source_duration = container_duration
             source_duration_basis = "container"
         elif ep.duration is not None:
             source_duration = float(ep.duration)

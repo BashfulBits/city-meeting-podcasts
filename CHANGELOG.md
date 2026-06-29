@@ -14,6 +14,23 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Fixed
+
+- **`SilencePlanner` now anchors the single-file EDL on the *decoded* audio-stream end when no
+  stream-sample clock is exposed, closing the GH#702 `rendered-duration-mismatch` survivor gap.** PR
+  #704 made the planner prefer ffprobe's stream-sample duration over the container header, but for the
+  exact sources that overstate their audio — HLS manifests and fragmented MP4 — ffprobe exposes no
+  stream-level `duration_ts`/`time_base`/`duration`, so `_probe_stream_sample_duration` returns `None`
+  and the planner fell straight back to the container header. Those episodes therefore re-planned (even
+  under a forced `timeline-replan` flag or a version bump) onto the *same* over-claiming EDL — identical
+  `timeline_digest`, identical short rendered file — so the repair cohort never converged. The
+  `silencedetect` pass already performs a full `-vn` decode, so its final `time=` progress timestamp is
+  the real audio-stream end; `detect_silences` now returns that decoded duration alongside the container
+  header, and the planner uses it as a `duration_basis="decoded"` tier between `stream-sample` and
+  `container`. Re-planned survivors now produce a corrected (shorter) EDL the renderer matches, and the
+  audit artifact shows `source_duration_bases=["decoded"]` instead of `["container"]`. No second media
+  pass; the container header remains the honest fallback when even the decode end is unparseable.
+
 ### Changed
 
 - **`work_leases.py` gains a public `scan_offset`/`ordered_candidates` ordering primitive, extracted
