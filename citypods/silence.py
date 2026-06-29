@@ -76,8 +76,11 @@ def _probe_stream_sample_duration(
 ) -> float | None:
     """ffprobe the first audio stream's sample-clock duration (``duration_ts * time_base``).
 
-    Falls back to the stream's ``duration`` then ``format.duration``. Returns ``None`` on any
-    subprocess/parse failure (caller then falls back to the container header / provider duration).
+    Falls back to the stream-level ``duration`` field. Deliberately does **not** fall back to
+    ``format.duration`` (the container header) — that is the clock GH#702 distrusts, and the caller
+    labels any non-``None`` return as ``duration_basis="stream-sample"``. Returns ``None`` when no
+    stream-level clock is exposed or on any subprocess/parse failure, so the caller falls back to the
+    container header / provider duration and labels the basis honestly.
 
     The silence EDL's trailing-silence test and final keep-span must anchor on the source's real
     **audio-stream** end, not the container/format ``Duration`` header. When a source's container
