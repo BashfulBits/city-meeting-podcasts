@@ -9,6 +9,7 @@ import pytest
 from citypods.http import StopRequested
 from citypods.silence import (
     SilencePlanner,
+    _parse_ffmpeg_decoded_end,
     _parse_ffmpeg_duration,
     _probe_stream_sample_duration,
     build_silence_timeline,
@@ -74,6 +75,34 @@ class TestParseFfmpegDuration:
     def test_zero_duration(self):
         stderr = "Duration: 00:00:00.00"
         assert _parse_ffmpeg_duration(stderr) == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# _parse_ffmpeg_decoded_end
+# ---------------------------------------------------------------------------
+
+
+class TestParseFfmpegDecodedEnd:
+    def test_returns_final_progress_timestamp(self):
+        stderr = (
+            "size=N/A time=00:00:30.00 bitrate=N/A speed=60x\n"
+            "size=N/A time=00:15:30.45 bitrate=N/A speed=58x\n"
+        )
+        assert _parse_ffmpeg_decoded_end(stderr) == pytest.approx(15 * 60 + 30.45)
+
+    def test_returns_max_even_if_lines_unordered(self):
+        # The end is the largest timestamp, not necessarily the textually last line.
+        stderr = "time=00:10:00.00\ntime=00:09:59.50\n"
+        assert _parse_ffmpeg_decoded_end(stderr) == pytest.approx(600.0)
+
+    def test_skips_negative_warmup_timestamps(self):
+        # ffmpeg occasionally prints a negative-wrapped warm-up time before real progress.
+        stderr = "time=-577014:32:22.77\ntime=00:00:05.00\n"
+        assert _parse_ffmpeg_decoded_end(stderr) == pytest.approx(5.0)
+
+    def test_none_when_no_progress(self):
+        assert _parse_ffmpeg_decoded_end("Duration: 01:00:00.00\n") is None
+        assert _parse_ffmpeg_decoded_end("time=N/A\n") is None
 
 
 # ---------------------------------------------------------------------------
@@ -172,24 +201,34 @@ class TestBuildSilenceTimeline:
 
 
 class TestDetectSilences:
-    def test_parses_silences_and_duration(self):
+    def test_parses_silences_container_and_decoded_duration(self):
+        # Container header overstates (3600s) while the decode only reached 3550.10s — the GH#702
+        # gap. detect_silences surfaces both so the planner can anchor on the decoded end.
         fake_stderr = (
             "  Duration: 01:00:00.00, start: 0.0, bitrate: 128 kb/s\n"
             "[silencedetect @ 0x1] silence_start: 0\n"
             "[silencedetect @ 0x1] silence_end: 2.0 | silence_duration: 2.0\n"
+            "size=N/A time=00:00:30.00 bitrate=N/A speed=60x\n"
+            "size=N/A time=00:59:10.10 bitrate=N/A speed=58x\n"
         )
         with patch("citypods.silence.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(stderr=fake_stderr, returncode=0)
-            silences, duration = detect_silences("http://example.com/video.mp4")
+            silences, container_duration, decoded_duration = detect_silences(
+                "http://example.com/video.mp4"
+            )
         assert silences == [(0.0, 2.0)]
-        assert duration == pytest.approx(3600.0)
+        assert container_duration == pytest.approx(3600.0)
+        assert decoded_duration == pytest.approx(59 * 60 + 10.10)
 
     def test_returns_empty_on_subprocess_error(self):
         with patch("citypods.silence.subprocess.run") as mock_run:
             mock_run.side_effect = OSError("ffmpeg not found")
-            silences, duration = detect_silences("http://example.com/video.mp4")
+            silences, container_duration, decoded_duration = detect_silences(
+                "http://example.com/video.mp4"
+            )
         assert silences == []
-        assert duration is None
+        assert container_duration is None
+        assert decoded_duration is None
 
     def test_ffmpeg_command_includes_silencedetect(self):
         with patch("citypods.silence.subprocess.run") as mock_run:
@@ -301,7 +340,7 @@ class TestSilencePlanner:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], 3600.0)
+            mock_detect.return_value = ([], 3600.0, None)
             result = planner.plan(provider, _make_city(extract_audio=True), ep, ctx, None)
         # No silence → identity timeline
         assert result is not None
@@ -323,7 +362,7 @@ class TestSilencePlanner:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], 3600.0)
+            mock_detect.return_value = ([], 3600.0, None)
             result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         assert result is not None
         assert timeline_digest(result) == ""  # identity → no re-encode
@@ -339,7 +378,7 @@ class TestSilencePlanner:
             patch("citypods.silence.detect_silences") as mock_detect,
             patch("citypods.silence._probe_stream_sample_duration", return_value=None),
         ):
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0)
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, None)
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is not None
         assert timeline_digest(result) != ""  # non-identity → will re-encode
@@ -363,7 +402,7 @@ class TestSilencePlanner:
             # container header says 3600; the real audio stream is 3550.
             patch("citypods.silence._probe_stream_sample_duration", return_value=3550.0),
         ):
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0)  # 5s leading silence
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, None)  # 5s leading silence
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is not None
         # Single kept span [5, 3550] in source time → served total 3545, NOT 3595.
@@ -383,11 +422,37 @@ class TestSilencePlanner:
             patch("citypods.silence.detect_silences") as mock_detect,
             patch("citypods.silence._probe_stream_sample_duration", return_value=None),
         ):
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0)
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, None)
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is not None
         assert ep.sources[0].duration == 3600.0
         assert ep.sources[0].duration_basis == "container"
+
+    def test_edl_anchors_on_decoded_end_when_stream_probe_unavailable(self):
+        """GH#702: HLS / fragmented-MP4 sources expose no stream-sample clock
+        (``_probe_stream_sample_duration`` → None) yet their container header overstates the audio.
+        The planner must fall back to the *decoded* end measured by the silence pass — not the
+        container header — so the re-planned EDL matches the rendered file. This is the tier whose
+        absence left the rendered-duration-mismatch survivors on the container clock."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+            patch("citypods.silence._probe_stream_sample_duration", return_value=None),
+        ):
+            # container header 3600; decoded audio-stream end 3550 (the GH#702 gap), 5s lead trim.
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, 3550.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is not None
+        # Single kept span [5, 3550] in source time → served total 3545, NOT 3595.
+        assert result.segments[-1].source_end == 3550.0
+        assert sum(s.served_end - s.served_start for s in result.segments) == 3545.0
+        assert ep.sources[0].duration == 3550.0
+        assert ep.sources[0].duration_basis == "decoded"
 
 
 class TestProbeStreamSampleDuration:
@@ -451,7 +516,7 @@ class TestProbeStreamSampleDuration:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], 3600.0)
+            mock_detect.return_value = ([], 3600.0, None)
             planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         assert mock_detect.call_args.kwargs["threads"] == 2
 
@@ -480,7 +545,7 @@ class TestProbeStreamSampleDuration:
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences", return_value=([], 3600.0)),
+            patch("citypods.silence.detect_silences", return_value=([], 3600.0, None)),
         ):
             planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         ctx.native_work_gate.release.assert_called_once_with(kind="audio")
@@ -518,7 +583,7 @@ class TestProbeStreamSampleDuration:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], None)  # also no duration from ffmpeg
+            mock_detect.return_value = ([], None, None)  # also no duration from ffmpeg
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is None
 
@@ -532,7 +597,7 @@ class TestProbeStreamSampleDuration:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], None)  # no duration from ffmpeg
+            mock_detect.return_value = ([], None, None)  # no duration from ffmpeg
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         # No silence, ep.duration used → identity
         assert result is not None
@@ -561,7 +626,7 @@ class TestProbeStreamSampleDuration:
         ]
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences", return_value=([], 3600.0)),
+            patch("citypods.silence.detect_silences", return_value=([], 3600.0, None)),
         ):
             planner.plan(provider, _make_city(), ep, ctx, None)
         assert len(ep.sources) == 1
@@ -595,7 +660,7 @@ class TestProbeStreamSampleDuration:
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
             # Almost the entire (claimed) 3600s source flagged silent → 0.01s kept.
-            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0)
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, None)
             result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         assert result is not None
         assert timeline_digest(result) == ""  # identity, not the degenerate trim
@@ -624,7 +689,7 @@ class TestProbeStreamSampleDuration:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0)
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, None)
             result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, prior)
         assert result is None
 
@@ -650,27 +715,27 @@ class TestSilencePlannerAvailability:
     def test_real_audio_is_available(self):
         from citypods.availability import AVAILABLE
 
-        av = self._plan(([(0.0, 5.0)], 3600.0))
+        av = self._plan(([(0.0, 5.0)], 3600.0, None))
         assert av is not None and av.state == AVAILABLE and not av.is_withheld()
 
     def test_near_total_silence_is_suspected_then_confirmed(self):
         from citypods.availability import CONFIRMED_EMPTY, SUSPECTED_EMPTY
 
         ep = _make_episode(duration=3600)
-        first = self._plan(([(0.0, 3599.99)], 3600.0), ep=ep)
+        first = self._plan(([(0.0, 3599.99)], 3600.0, None), ep=ep)
         assert first.state == SUSPECTED_EMPTY and first.is_withheld()
         ep.media_availability = first  # carry the verdict into the next independent run
-        second = self._plan(([(0.0, 3599.99)], 3600.0), ep=ep)
+        second = self._plan(([(0.0, 3599.99)], 3600.0, None), ep=ep)
         assert second.state == CONFIRMED_EMPTY and second.silent_confirmations == 2
 
     def test_missing_probe_duration_is_transport_not_silence(self):
         from citypods.availability import AVAILABLE
 
         ep = _make_episode(duration=3600)
-        ep.media_availability = self._plan(([(0.0, 5.0)], 3600.0), ep=ep)
+        ep.media_availability = self._plan(([(0.0, 5.0)], 3600.0, None), ep=ep)
         assert ep.media_availability.state == AVAILABLE
         # A later run whose fetch fails to decode (no probe duration) must NOT flip it to empty.
-        after = self._plan(([], None), ep=ep)
+        after = self._plan(([], None, None), ep=ep)
         assert after.state == AVAILABLE and not after.is_withheld()
 
     def test_dead_media_is_classified_missing(self):
