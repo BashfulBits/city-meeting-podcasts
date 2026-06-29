@@ -2081,38 +2081,38 @@ a recording above the local ceiling completes through bounded-memory assembly.
 
 ## H14c — Beam transcription adapter (Async dispatch backend, parallel with H14b)
 
-**Maturity: L3** (finalized implementation details below). Implements the H13 `Backend` protocol for
-Beam Cloud serverless GPU, dispatching transcription and future diarization jobs asynchronously.
-**Fully parallelizable with H14b** — both are thin wrappers on the same dispatch infrastructure.
+**Maturity: L3** (finalized implementation details below). Implements the same H17/review/18 Stage-2
+pull-worker contract as H14b, using Beam Cloud serverless GPU. H14c is stacked after H14b and reuses
+`citypods/compute/external_worker.py`; Beam-specific code is limited to `scripts/compute/beam_app.py`
+and `.github/workflows/beam-deploy.yml`.
 
-**Job lifecycle & error handling:** Identical to H14b: distinguish pre-acceptance routing declines from
-accepted-job failures, retry an accepted transient failure once, preserve leases/reconciliation, and
-support bounded-memory long audio.
+**Job lifecycle & error handling:** Identical to H14b: claim one `transcript-asr` item, reserve Beam
+budget, renew the lease during long inference, retry an accepted transient failure once, write
+content-addressed VTT + word JSON, and let `compute reconcile` settle/release any reservation left by
+preemption. Budget/capacity decline abandons the fresh claim back to `queued`, not failed.
 
 **Budget tracking:** Separate from Modal. `compute_budget.json` tracks `beam_budget` separately so
 differing credit periods and free-tier allotments can be managed independently. Each provider has its
 own `monthly_gpu_seconds` and `max_inflight`.
 
-**Dispatch & routing:** Participate in the same configured target order as Modal. A Beam budget,
-capacity, or capability decline allows the router to try another external target and then only a
-locally eligible fallback. If no backend is eligible, retain the item as queued (`external-required`
-or a more specific routing reason); do not classify normal free-tier exhaustion as an ASR failure.
-Beam reports capability, budget, and capacity inputs to the once-per-run planner and consumes the
-published assignment; it must not compute source ownership against live state inside a matrix shard.
+**Dispatch & routing:** Beam is not dispatched by `asr.yml`; it is a provider-scheduled puller over the
+same global discovery index/lease ledger. The GitHub ASR lane continues as the local worker pool, while
+Modal and Beam independently drain claimable `transcript-asr` items within their own budgets.
 
-**Secrets & configuration:** Beam API token as `secrets.BEAM_TOKEN` in GitHub Actions. Config per
-`compute_backends.beam` in `site_config.yml`: `monthly_gpu_seconds`, `max_inflight`.
+**Secrets & configuration:** Beam runtime secrets are provider-local and named after their environment
+variables (`B2_*`, `R2_*`, future `HF_TOKEN`). GitHub stores only `BEAM_TOKEN` in the
+`beam-production` Environment for path-scoped deploys. Config per `compute_backends.beam` in
+`site_config.yml`: `monthly_gpu_seconds`, `max_inflight`.
 
-**Job serialization:** Shares the same H13 `InferenceJob` format as Modal (no conversion logic in
-H14c; serialization happens in the `beam_backend.py` adapter at dispatch time).
+**Job serialization:** Shares H14b's pull-worker artifact semantics; Beam only supplies image, schedule,
+GPU class, and secret binding.
 
-**Testing:** (1) Mock Beam backend for unit tests. (2) One minimal live integration test on CI (short
-5-min audio dispatch) **only when Beam code changes** (path filter on `citypods/compute/beam*` +
-`scripts/compute/beam_app.py`). (3) Production canary: after merge, test on 1–2 real backlog files.
+**Testing:** No live Beam calls in PR CI. Path-scoped deploy from `main` after Environment approval.
+Production starts at `CITYPODS_WORKER_MAX_CLAIMS=1`; `asr-worker-report.yml` reports Beam leases,
+budget, and completions before raising schedule/cap.
 
-**Files.** `citypods/compute/beam_backend.py`, `scripts/compute/beam_app.py`, `citypods/compute/budget.py`
-(Beam budget ledger), `.github/workflows/asr.yml` (dispatch + compute reconcile), `tests/test_compute_dispatch.py`
-(mock dispatch, budget tracking), `SECURITY.md` (free-tier ToS).
+**Files.** `scripts/compute/beam_app.py`, `.github/workflows/beam-deploy.yml`, plus H14b's shared
+`citypods/compute/external_worker.py` / budget / work-lease substrate.
 
 **Acceptance.** A Beam job is dispatched successfully; artifact is written to the object bucket by the
 worker; the next `render` reconciles it. Budget tracking is separate from Modal; both backends' budgets
