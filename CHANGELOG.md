@@ -16,6 +16,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **The rendered-vs-EDL duration audit uses a 0.5s classification floor, separate from the 0.1s
+  structural tolerance (GH#702, PR5).** A clean re-encode legitimately differs from the EDL sum by AAC
+  priming/padding plus per-cut sample rounding (~0.1–0.4s) with no cue-integrity problem; classifying
+  that band as `rendered-duration-mismatch` produced a long tail of sub-finding artifact noise. A new
+  `_RENDERED_DURATION_TOLERANCE` (0.5s) cleanly separates padding noise from genuine drift (cohort
+  divergences are ≥1s) while leaving the 1.0s finding/repair thresholds and structural checks untouched.
+  review/20 gains an operator remediation runbook for the already-broken cohort and the Dallas /
+  missing-audio-key stragglers.
 - **Single-source many-cut timelines always render via the bounded-memory streaming filter, with an
   OOM guard on the generic fan-out (GH#702, PR4).** `_build_streaming_single_source_filter` is now
   attempted regardless of `audio_processing_profile` (loudnorm is appended to its output on the legacy
