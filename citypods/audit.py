@@ -50,7 +50,7 @@ from citypods.integrity import (
 from citypods.media import AudioDurationProbe
 from citypods.models import City, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, ProviderError
-from citypods.timeline import timeline_digest
+from citypods.timeline import edl_duration, timeline_digest
 
 ERROR = "error"
 WARN = "warn"
@@ -544,10 +544,7 @@ _FRAME_TOLERANCE = 0.1
 
 
 def _timeline_duration(ep: Episode) -> float | None:
-    if ep.timeline is None or not ep.timeline.segments:
-        return None
-    total = sum(s.served_end - s.served_start for s in ep.timeline.segments)
-    return total if total > 0 else None
+    return edl_duration(ep.timeline)
 
 
 def _source_duration_delta(ep: Episode) -> float | None:
