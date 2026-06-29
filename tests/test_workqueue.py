@@ -10,6 +10,7 @@ from citypods.models import City, Episode
 from citypods.ops.workqueue import (
     BUCKET_DEEP_ARCHIVE,
     BUCKET_FEED_VISIBLE,
+    DURATION_AWARE_WORK_CLASSES,
     BacklogPolicy,
     WorkItem,
     build_manifest,
@@ -252,6 +253,17 @@ def test_long_first_does_not_reorder_audio():
     policy = _policy({"long_first": 4}, {"recency": "desc"})
     # Both fall through long_first's constant rank ⇒ recency alone governs ⇒ newest first.
     assert _uids(order(items, policy)) == ["short_audio", "long_audio"]
+
+
+def test_long_first_includes_reserved_diarize_only_lane():
+    assert "transcript-diarize" in DURATION_AWARE_WORK_CLASSES
+
+    items = [
+        _wi("short", work_class="transcript-diarize", duration_hours=1.0),
+        _wi("long", work_class="transcript-diarize", duration_hours=5.0),
+    ]
+    policy = _policy({"long_first": 4})
+    assert _uids(order(items, policy)) == ["long", "short"]
 
 
 def test_long_first_requires_positive_threshold():

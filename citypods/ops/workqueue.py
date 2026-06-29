@@ -54,9 +54,11 @@ RESERVED_WORK_CLASSES = ("transcript-merge", "transcript-diarize")
 # refuses it outright — ``stages._asr_local_duration_eligible``). ``audio`` is deliberately
 # excluded: it is not capacity-gated by duration the same way (a long encode gets a bigger memory
 # reservation, never a refusal), so reordering it would just delay publishing the common case of
-# short meetings with no corresponding benefit. ``transcript-merge`` is included for forward
-# compatibility even though H5 does not yet emit it.
-DURATION_AWARE_WORK_CLASSES = (frozenset(WORK_CLASSES) - {"audio"}) | {"transcript-merge"}
+# short meetings with no corresponding benefit. Reserved transcript lanes are included for forward
+# compatibility even though H5 does not yet emit them.
+DURATION_AWARE_WORK_CLASSES = (frozenset(WORK_CLASSES) - {"audio"}) | frozenset(
+    RESERVED_WORK_CLASSES
+)
 
 # Priority buckets. feed-visible ≡ materialized today, so the archive buckets are
 # reserved-but-inert until the opt-in archive-backfill feature populates them (review/12 §H5).

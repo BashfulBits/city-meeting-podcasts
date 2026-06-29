@@ -23,7 +23,7 @@ from citypods.compute.budget import reserve_if_available, settle_reservation
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City, Episode
 from citypods.ops import work_leases
-from citypods.ops.workqueue import WorkItem, load_manifest
+from citypods.ops.workqueue import BUCKET_FEED_VISIBLE, WorkItem, load_manifest
 from citypods.records import (
     episode_to_record,
     load_records,
@@ -158,7 +158,9 @@ class ExternalTranscribeWorker:
         candidates = [
             wi
             for wi in manifest
-            if wi.work_class == self.config.work_class and wi.state == "queued"
+            if wi.work_class == self.config.work_class
+            and wi.state == "queued"
+            and wi.priority_bucket == BUCKET_FEED_VISIBLE
         ]
         summary.scanned = len(candidates)
         ordered = self._ordered(candidates)
