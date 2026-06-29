@@ -161,6 +161,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `TranscriptStage` / `ProviderTranscriptDiarizeStage` now pass their real work class. Accepted
   tradeoff: a hard catalog-wide drain — one pathological multi-hour backlog can deprioritize all
   short-meeting transcript throughput until it clears; no reserved-capacity split is implemented.
+- **`SilencePlanner.version` bumped 2→3 to re-plan every single-file silence EDL on the stream-sample
+  clock (GH#702, PR6).** This re-trims the whole single-file silence catalog onto the corrected source
+  clock, eliminating the last container-basis EDLs. Because `Timeline.version` is part of
+  `timeline_digest`/`audio_spec_hash`, this re-encodes **every** single-file silence episode (and
+  regenerates transcripts), not only the gap-affected cohort — a deliberate but large cost. All four
+  GH#702 PR6 merge thresholds were confirmed before enabling: PR2–PR5 have run in production; a
+  post-GH#795 full-catalog audit shows zero `rendered-duration-mismatch` survivors (stronger evidence
+  than the cohort-scoped comparison the gate originally called for); the re-encode cost is accepted;
+  and both stragglers (Dallas, Pflugerville) resolved on their own — Dallas now only shows ordinary
+  `container-duration-drift`, and Pflugerville's `missing-audio-key` row resolved into the GH#795
+  withheld-media lifecycle (`media-withheld`, `confirmed_empty`). See review/20.
 - **The rendered-vs-EDL duration audit uses a 0.5s classification floor, separate from the 0.1s
   structural tolerance (GH#702, PR5).** A clean re-encode legitimately differs from the EDL sum by AAC
   priming/padding plus per-cut sample rounding (~0.1–0.4s) with no cue-integrity problem; classifying
