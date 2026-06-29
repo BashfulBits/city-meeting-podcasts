@@ -20,6 +20,7 @@ from citypods.media import (
     PODCAST_SPEECH_PROFILE,
     CommandFfmpeg,
     LoudnessMeasurements,
+    StreamingFilterBypassedError,
     UnusableAudioError,
     _build_streaming_single_source_filter,
     _linear_loudnorm_filter,
@@ -622,12 +623,46 @@ class TestCommandFfmpegFilterPath:
         # Only ONE subprocess call (no ffprobe in filter path)
         assert len(calls) == 1
 
-    def test_atrim_in_filter_complex(self, monkeypatch, tmp_path):
+    def test_single_source_uses_streaming_graph(self, monkeypatch, tmp_path):
+        # GH#702: single-source many-cut timelines render via the bounded-memory streaming graph
+        # regardless of processing profile — never the generic atrim/concat fan-out.
         tl = self._trim_timeline()
         cmd = self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"})
-        fc_idx = cmd.index("-filter_complex")
-        fc_str = cmd[fc_idx + 1]
+        fc_str = cmd[cmd.index("-filter_complex") + 1]
+        assert "aselect" in fc_str and "asetpts" in fc_str
+        assert "atrim" not in fc_str
+
+    def test_multi_source_uses_generic_atrim_concat(self, monkeypatch, tmp_path):
+        # Multi-source concat still uses the generic graph (the streaming filter declines it).
+        tl = Timeline(
+            version="concat-v1",
+            segments=(
+                _seg_src(0, 1800, 0, 1800, sid="s0"),
+                _seg_src(1800, 3600, 0, 1800, sid="s1"),
+            ),
+        )
+        cmd = self._run_filter(
+            monkeypatch,
+            tmp_path,
+            tl,
+            {"s0": "https://s/a.mp4", "s1": "https://s/b.mp4"},
+            sources=[_src("s0"), _src("s1")],
+        )
+        fc_str = cmd[cmd.index("-filter_complex") + 1]
         assert "atrim" in fc_str and "concat" in fc_str
+
+    def test_single_source_fanout_guard_raises(self, monkeypatch, tmp_path):
+        # A single-source many-cut timeline the streaming filter declines (here: non-monotonic
+        # source order) must NOT silently fall back to the OOM-prone generic fan-out (GH#702).
+        tl = Timeline(
+            version="reordered",
+            segments=(
+                _seg_src(0, 100, 500, 600, sid="s0"),
+                _seg_src(100, 200, 300, 400, sid="s0"),  # source_start 300 < previous end 600
+            ),
+        )
+        with pytest.raises(StreamingFilterBypassedError):
+            self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"})
 
     def test_map_output_label(self, monkeypatch, tmp_path):
         tl = self._trim_timeline()

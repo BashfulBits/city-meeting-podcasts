@@ -36,9 +36,11 @@ change that warrants separate review:
   cheap stored-field `timeline-duration-mismatch` / `timeline-short-coverage` checks defer to the precise
   live `rendered-duration-mismatch` probe when one is supplied (no double-filing). Lands after the planner
   fix so corrected durations — not the short broken ones — are what gets published.
-- **GH#702 PR4:** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE` and guard
-  `build_filter_complex` against single-source many-cut input (retained only for multi-source concat
-  assembly/fallback and inserts).
+- **GH#702 PR4 (#706):** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE`
+  (attempt it for every single-source timeline; append loudnorm to its output on the legacy path) and
+  guard the generic graph: a single-source many-cut timeline reaching `build_filter_complex` now raises
+  `StreamingFilterBypassedError`. `build_filter_complex` is retained only for multi-source concat
+  assembly/fallback and inserts.
 - **GH#702 PR5:** cohort remediation for all feed-health-detected mismatches + audit threshold de-noise.
 - **GH#702 PR6 (gated, build-but-do-not-merge):** `silence:3` catalog version bump for the permanent
   guarantee.

@@ -16,6 +16,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Single-source many-cut timelines always render via the bounded-memory streaming filter, with an
+  OOM guard on the generic fan-out (GH#702, PR4).** `_build_streaming_single_source_filter` is now
+  attempted regardless of `audio_processing_profile` (loudnorm is appended to its output on the legacy
+  path), so the OOM-prone single-source `atrim`-fan-out in `build_filter_complex` can no longer be
+  reached through the empty-profile branch. If such a shape ever does reach the generic graph the render
+  raises `StreamingFilterBypassedError` rather than risking the RSS-growth OOM that motivated the
+  streaming graph. `build_filter_complex` is retained for its legitimate uses — multi-source concat
+  assembly/fallback and intro/outro inserts.
 - **`audio_duration_served` is now the probed hosted-stream duration, never the EDL sum (GH#702,
   PR3).** The post-encode/ASR/reuse paths no longer overwrite the measured duration of the actual
   hosted object with the EDL total (`_backfill_served_duration` / `_refresh_served_duration_from_audio`
