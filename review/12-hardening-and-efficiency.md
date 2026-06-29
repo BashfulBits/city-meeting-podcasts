@@ -2008,40 +2008,56 @@ measured and shipped.
 
 ---
 
-## H14b — Modal transcription adapter (Async dispatch backend)
+## H14b — Modal transcription pull worker (Async GPU backend)
 
-**Maturity: L3** (finalized implementation details below). Implements the H13 `Backend` protocol for
-Modal serverless GPU, dispatching transcription (and future diarization) jobs asynchronously.
+**Maturity: L3** (finalized implementation details below). Implements the H17/review/18 Stage-2
+pull-worker contract for Modal serverless GPU. The older H14a `DispatchBackend` remains the internal
+GitHub-worker dispatch substrate; Modal/Beam workers are not passive jobs pushed by `asr.yml`.
+They read the `work.json` discovery index, CAS-claim `work-leases/<source>/<uid>.json`, reserve the
+Modal budget under the same owner, run inference, write content-addressed artifacts, and commit only
+the owned UID's transcript block.
+
+**Implementation decision (2026-06-29).** H14b is combined-capable but transcribe-only by default:
+`transcript-asr` is the only live claim class. `transcript-diarize` is reserved for future diarize-only
+work over episodes transcribed by GitHub Actions, and fused ASR+diarization remains a worker-internal
+flow once diarization is enabled. The maintainer accepted the `pyannote/speaker-diarization-community-1`
+Hugging Face conditions for that future path, but H14b does not spend pyannote credits or require
+diarization in normal operation.
 
 **Job lifecycle & error handling:**
 
-- **Accepted-job failures** (Modal container crash, timeout, network interruption): automatically retry
-  **once** on the same backend. If the retry also fails, record an actual worker failure and release or
-  re-queue according to the existing lease/backoff policy; content addressing keeps a later retry
-  idempotent.
-- **Dispatch declines** (monthly budget unavailable, in-flight cap reached, missing capability, or
-  pre-acceptance provider unavailability): return declined without marking the transcript failed. The
-  router may try Beam, then an eligible local backend; otherwise the item remains queued.
-- **Graceful cancellation:** If workflow is cancelled or runner dies mid-dispatch, allow Modal jobs to
-  complete silently. The next deploy's `render` phase reconciles any completed artifacts onto the feed.
-  No cancellation API call needed (jobs are content-addressed; re-dispatch is idempotent).
+- **Accepted-job failures** (Modal container crash, timeout, network interruption): retry **once** on the
+  same backend. If the retry also fails, mark the Stage-2 lease failed so it is not immediately reclaimed;
+  content addressing keeps a later operator retry idempotent.
+- **Budget/capacity declines** (monthly budget unavailable or in-flight cap reached): abandon the fresh
+  claim back to `queued` before inference starts. This is not an ASR failure/backoff event.
+- **Graceful cancellation/preemption:** A killed Modal container leaves an R2 work lease and budget
+  reservation behind. `compute reconcile` settles it if the artifact landed, or releases the reservation
+  and requeues it after lease expiry if it did not. Workers renew leases during long inference.
 - **Long audio:** the worker uses the shared bounded-memory planner/stitcher and must pass a canary above
   the local duration ceiling before catalog-wide enablement.
 
 **Secrets & configuration:**
 
-- Modal API token: `secrets.MODAL_TOKEN` in GitHub Actions environment.
+- Runtime storage/model secrets live in Modal Secret `citypods-modal-worker`, not GitHub:
+  provider-specific B2 app key + public base URL, R2 API token/access key for the private
+  coordination bucket, and future `HF_TOKEN`. `R2_PUBLIC_BASE_URL` is not required for workers because
+  R2 stores only private CAS coordination objects in the routing setup.
+- GitHub stores only deploy credentials (`MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET`) in the
+  `modal-production` Environment. `.github/workflows/modal-deploy.yml` is path-scoped to worker-affecting
+  files, so a normal `main` merge does not redeploy Modal unless worker code/config changes.
 - Config (per `compute_backends.modal` in `site_config.yml`): `monthly_gpu_seconds` (pin to Modal's
   current free tier), `max_inflight` (concurrent job limit).
 
-**Job serialization:** Uses the shared H13 `InferenceJob` format (job `task`, `inputs` audio URL,
-`recipe_hash`, etc.). No Modal-specific serialization needed; the `modal_backend.py` adapter translates
-to Modal's API at dispatch time.
+**Job serialization:** The Modal wrapper is thin (`scripts/compute/modal_app.py`); artifact semantics live
+in `citypods/compute/external_worker.py`. It computes the same ASR recipe/key as the GitHub ASR lane,
+uses the configured ASR compute type for key compatibility, writes VTT + `.words.json`, then pushes
+records through `push_records_merged(..., owned_uids={uid})`.
 
-**Testing:** (1) Mock Modal backend for unit tests (cheap, catches serialization/logic bugs). (2) One
-minimal live integration test on CI (short 5-min audio dispatch) **only when Modal code changes**
-(path filter on `citypods/compute/modal*` + `scripts/compute/modal_app.py`). (3) Production canary:
-after merge, test on 1–2 real backlog files before enabling on full catalog.
+**Testing:** (1) Offline unit tests for lease abandon/reap callbacks, budget settlement, and worker
+record-merge behavior. (2) No live Modal calls in PR CI. (3) Path-scoped deploy from `main` after
+Environment approval. (4) Production canary starts with `CITYPODS_WORKER_MAX_CLAIMS=1` and reports via
+`asr-worker-report.yml` before raising the schedule/cap.
 
 **Dispatch priority & budget:** Follow the shared router policy rather than embedding transcript
 semantics in this adapter. Initial policy may prefer Modal or rotate providers, but it must preserve
@@ -2050,10 +2066,10 @@ deadline-, and cost-aware routing. The adapter reports those inputs to the once-
 does not assign shards. An accepted external route contributes fixed dispatch cost to
 `TranscribeShardWork`, while an already leased Modal job contributes zero new shard work.
 
-**Files.** `citypods/compute/modal_backend.py`, `scripts/compute/modal_app.py`,
-`citypods/compute/budget.py` (Modal budget ledger), `.github/workflows/asr.yml` (dispatch + compute
-reconcile), `tests/test_compute_dispatch.py` (mock dispatch, budget tracking), `SECURITY.md` (free-tier
-ToS, external-worker trust boundary).
+**Files.** `citypods/compute/external_worker.py`, `scripts/compute/modal_app.py`,
+`citypods/compute/budget.py`, `citypods/ops/work_leases.py`, `.github/workflows/modal-deploy.yml`,
+`.github/workflows/asr-worker-report.yml`, tests for lease/budget cleanup, `ARCHITECTURE.md`,
+`SECURITY.md`.
 
 **Acceptance.** A Modal job is dispatched successfully; artifact (`<uid>-<recipe>.vtt` +
 `.words.json`) is written to the object bucket by the worker; the next `render` reconciles it onto the

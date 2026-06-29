@@ -166,9 +166,13 @@ class S3CompatibleStorage:
         self._client.delete_object(Bucket=self.bucket, Key=key)
 
 
-def r2_from_env() -> S3CompatibleStorage | None:
+def r2_from_env(*, require_public_base_url: bool = True) -> S3CompatibleStorage | None:
     """Cloudflare R2. Env: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL.
+
+    ``R2_PUBLIC_BASE_URL`` is required when R2 is the public artifact backend. It is optional for
+    routing coordination-only use, where R2 stores private CAS objects (budget/work/provider leases)
+    that are never rendered into feeds.
 
     Optional: R2_ENDPOINT overrides the default endpoint (needed for
     jurisdiction-specific buckets, e.g. https://<id>.eu.r2.cloudflarestorage.com).
@@ -176,13 +180,16 @@ def r2_from_env() -> S3CompatibleStorage | None:
     try:
         account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
         endpoint = os.environ.get("R2_ENDPOINT", f"https://{account}.r2.cloudflarestorage.com")
+        public_base_url = os.environ.get("R2_PUBLIC_BASE_URL")
+        if require_public_base_url and not public_base_url:
+            raise KeyError("R2_PUBLIC_BASE_URL")
         return S3CompatibleStorage(
             name="r2",
             endpoint_url=endpoint,
             access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
             bucket=os.environ["R2_BUCKET"],
-            public_base_url=os.environ["R2_PUBLIC_BASE_URL"],
+            public_base_url=public_base_url or endpoint,
             cas_capable=True,  # R2 enforces If-Match/If-None-Match (real compare-and-swap)
         )
     except KeyError:

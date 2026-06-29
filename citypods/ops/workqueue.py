@@ -43,8 +43,10 @@ WORK_CLASSES = (
     "provider-transcript-align",
     "provider-transcript-diarize",
 )
-# Reserved — recognized but not emitted in H5 (reserve-now, no migration later).
-RESERVED_WORK_CLASSES = ("transcript-merge",)
+# Reserved — recognized but not emitted yet (reserve-now, no migration later).
+# ``transcript-diarize`` is the future diarize-only queue for episodes whose transcript was
+# produced by the GitHub ASR lane; external GPU workers will claim it once diarization is enabled.
+RESERVED_WORK_CLASSES = ("transcript-merge", "transcript-diarize")
 
 # Priority buckets. feed-visible ≡ materialized today, so the archive buckets are
 # reserved-but-inert until the opt-in archive-backfill feature populates them (review/12 §H5).

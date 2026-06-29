@@ -173,6 +173,25 @@ def test_release_requires_ownership():
     assert lease.state == "done" and lease.lease_expiry is None
 
 
+def test_abandon_returns_own_fresh_claim_to_queue():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    assert wl.abandon(bucket, "s1", "u1", owner="w1", now=NOW) is True
+    lease, _ = wl.read_lease(bucket, "s1", "u1")
+    assert lease.state == "queued"
+    assert lease.owner == ""
+    assert lease.lease_expiry is None
+
+
+def test_abandon_refuses_non_holder_and_expired_claim():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    assert wl.abandon(bucket, "s1", "u1", owner="w2", now=NOW) is False
+    assert wl.abandon(bucket, "s1", "u1", owner="w1", now=NOW + timedelta(hours=1)) is False
+    lease, _ = wl.read_lease(bucket, "s1", "u1")
+    assert lease.state == "leased" and lease.owner == "w1"
+
+
 def test_reap_settles_completed_requeues_expired_leaves_running():
     bucket = _MemCAS()
     # u1: leased + artifact present → completed
@@ -193,6 +212,34 @@ def test_reap_settles_completed_requeues_expired_leaves_running():
     requeued = wl.read_lease(bucket, "s1", "u2")[0]
     assert requeued.state == "queued" and requeued.owner == ""
     assert wl.read_lease(bucket, "s1", "u3")[0].state == "leased"
+
+
+def test_reap_calls_callbacks_after_successful_write():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "done", owner="modal:done", ttl_seconds=600, now=NOW)
+    wl.claim(
+        bucket,
+        "s1",
+        "dead",
+        owner="modal:dead",
+        ttl_seconds=600,
+        now=NOW - timedelta(hours=1),
+    )
+    completed: list[str] = []
+    requeued: list[str] = []
+
+    summary = wl.reap(
+        bucket,
+        [("s1", "done"), ("s1", "dead")],
+        artifact_present=lambda _s, u: u == "done",
+        on_completed=completed.append,
+        on_requeued=requeued.append,
+        now=NOW,
+    )
+
+    assert summary == {"completed": 1, "requeued": 1, "in_flight": 0}
+    assert completed == ["modal:done"]
+    assert requeued == ["modal:dead"]
 
 
 def test_scan_offset_differs_by_worker():
