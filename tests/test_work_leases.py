@@ -244,9 +244,32 @@ def test_reap_calls_callbacks_after_successful_write():
 
 def test_scan_offset_differs_by_worker():
     # Different workers start at different indices so they don't all collide on the newest item.
-    offsets = {wl._scan_offset(f"worker-{i}", 4) for i in range(8)}
+    offsets = {wl.scan_offset(f"worker-{i}", 4) for i in range(8)}
     assert len(offsets) > 1
-    assert wl._scan_offset("anything", 0) == 0  # empty candidate set
+    assert wl.scan_offset("anything", 0) == 0  # empty candidate set
+
+
+def test_ordered_candidates_is_a_rotation_not_a_resort():
+    # Public, generic over candidate shape: any worker composing its own loop on top of the
+    # claim primitives (rather than calling run_claim_loop) should call this instead of
+    # re-deriving the scan_offset modulo-rotation itself.
+    candidates = ["a", "b", "c", "d"]
+    offset = wl.scan_offset("worker-x", len(candidates))
+    rotated = wl.ordered_candidates(candidates, "worker-x")
+    assert rotated == candidates[offset:] + candidates[:offset]
+    assert sorted(rotated) == sorted(candidates)  # same set, just rotated
+
+
+def test_ordered_candidates_empty_is_noop():
+    assert wl.ordered_candidates([], "worker-x") == []
+
+
+def test_ordered_candidates_works_on_richer_objects_not_just_tuples():
+    # Generic over T: a worker building its loop on top of full WorkItem objects (not just
+    # (source_key, uid) tuples) can call this directly, same as run_claim_loop does internally.
+    items = [{"uid": "a"}, {"uid": "b"}, {"uid": "c"}]
+    rotated = wl.ordered_candidates(items, "worker-x")
+    assert {it["uid"] for it in rotated} == {"a", "b", "c"}
 
 
 def test_run_claim_loop_claims_then_infers_completion_without_done_write():

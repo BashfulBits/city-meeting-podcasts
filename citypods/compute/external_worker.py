@@ -23,7 +23,7 @@ from citypods.compute.budget import reserve_if_available, settle_reservation
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City, Episode
 from citypods.ops import work_leases
-from citypods.ops.workqueue import WorkItem, load_manifest
+from citypods.ops.workqueue import BUCKET_FEED_VISIBLE, WorkItem, load_manifest
 from citypods.records import (
     episode_to_record,
     load_records,
@@ -158,7 +158,9 @@ class ExternalTranscribeWorker:
         candidates = [
             wi
             for wi in manifest
-            if wi.work_class == self.config.work_class and wi.state == "queued"
+            if wi.work_class == self.config.work_class
+            and wi.state == "queued"
+            and wi.priority_bucket == BUCKET_FEED_VISIBLE
         ]
         summary.scanned = len(candidates)
         ordered = self._ordered(candidates)
@@ -259,11 +261,12 @@ class ExternalTranscribeWorker:
             t.join(timeout=1)
 
     def _ordered(self, items: list[WorkItem]) -> list[WorkItem]:
-        n = len(items)
-        if n == 0:
-            return []
-        offset = work_leases._scan_offset(self.config.owner, n)
-        return [items[(offset + i) % n] for i in range(n)]
+        """Rotate *items* to this worker's scan offset. Delegates to the shared
+        ``work_leases.ordered_candidates`` primitive rather than re-deriving the rotation here, so
+        this worker and ``run_claim_loop`` can never silently diverge on how the scan offset is
+        applied (see ``work_leases.run_claim_loop``'s docstring for what else, beyond ordering,
+        still differs between this worker and that reference loop)."""
+        return work_leases.ordered_candidates(items, self.config.owner)
 
     def _city_for(self, item: WorkItem) -> City:
         if item.city_slug and item.city_slug in self._city_by_slug:

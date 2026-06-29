@@ -125,13 +125,23 @@ def _materialize_set(
     *,
     policy: BacklogPolicy | None = None,
     city_slug: str = "",
+    work_class: str = "audio",
 ) -> list[Episode]:
     """The subset worth processing: the most-recent ``max_per_body`` per body. Every
     per-board feed shows at most that many of its body, and the combined feed is a subset of
     the union, so this is exactly what some feed can display — never the deep archive.
 
     Selection is unchanged; ``policy`` (H5) only reorders the selected set. With no policy the
-    order is byte-identical to before (body-grouped, newest-first per body)."""
+    order is byte-identical to before (body-grouped, newest-first per body).
+
+    ``work_class`` labels the transient ``WorkItem`` built for ordering only — it does not need to
+    match an episode's *exact* transcript sub-lane (``transcript-asr`` vs ``transcript-align`` vs
+    ``provider-transcript-align``, decided per-episode later by ``_transcript_class``), only
+    whether this call is a transcript-producing stage (any value in
+    ``workqueue.DURATION_AWARE_WORK_CLASSES``) so the ``long_first`` comparator can tell it apart
+    from a non-transcript stage's call. Defaults to ``"audio"``: every caller except
+    ``TranscriptStage`` / ``ProviderTranscriptDiarizeStage`` processes audio-adjacent work that
+    duration-based external-GPU prioritization should never reorder."""
     by_body: dict[str, list[Episode]] = collections.defaultdict(list)
     for ep in episodes:
         by_body[body_key(canonical_body(ep.body or ""))].append(ep)
@@ -141,7 +151,11 @@ def _materialize_set(
         out.extend(eps[:max_per_body])
     if policy is not None and policy.keys:
         key = sort_key_for(policy)
-        out.sort(key=lambda ep: key(workitem_from_episode(ep, city_slug=city_slug)))
+        out.sort(
+            key=lambda ep: key(
+                workitem_from_episode(ep, city_slug=city_slug, work_class=work_class)
+            )
+        )
     return out
 
 
@@ -1514,20 +1528,27 @@ def _download_audio_file(url: str, dest: Path) -> None:
 
 
 def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_binary: str) -> str:
-    edited = _edited_timeline_served_duration(ep)
-    if edited is not None:
-        if ep.audio_duration_served is None or abs(ep.audio_duration_served - edited) > 0.001:
-            ep.audio_duration_served = edited
-            return "timeline"
+    """Set ``audio_duration_served`` to the probed duration of the hosted audio ASR just ran on.
+
+    review/20: the served clock is the *real hosted file*, kept distinct from the EDL/cue clock. We
+    therefore probe the actual object for **every** timeline — identity and edited alike — rather
+    than trusting the EDL sum for edited episodes (the prior behavior, which masked a render that
+    came out shorter than its EDL). The EDL is only a fallback when the probe is unavailable, so the
+    field still gets populated."""
+    probed = _probe_duration_secs(audio_path, ffmpeg_binary)
+    if probed is not None and probed > 0:
+        if ep.audio_duration_served is None or abs(ep.audio_duration_served - probed) > 1.0:
+            ep.audio_duration_served = probed
+            return "hosted"
         return "served"
 
-    probed = _probe_duration_secs(audio_path, ffmpeg_binary)
-    if probed is None or probed <= 0:
-        return "unknown"
-    if ep.audio_duration_served is None or abs(ep.audio_duration_served - probed) > 1.0:
-        ep.audio_duration_served = probed
-        return "hosted"
-    return "served"
+    # Probe failed: only *fill* a missing value from the EDL — never downgrade an
+    # already-measured hosted duration back to the cue clock after a transient ffprobe failure.
+    edited = _edited_timeline_served_duration(ep)
+    if edited is not None and (ep.audio_duration_served is None or ep.audio_duration_served <= 0):
+        ep.audio_duration_served = edited
+        return "timeline"
+    return "served" if ep.audio_duration_served else "unknown"
 
 
 class TranscriptStage:
@@ -1754,7 +1775,11 @@ class TranscriptStage:
                     )
 
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="transcript-asr",
         ):
             label = ep.uid or ep.guid
             ep_ref = (
@@ -2654,7 +2679,11 @@ class ProviderTranscriptDiarizeStage:
 
         src_key = _src_key(city)
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="provider-transcript-diarize",
         ):
             label = ep.uid or ep.guid
             registry = ep.provider_transcript or {}

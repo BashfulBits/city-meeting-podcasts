@@ -14,8 +14,76 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Fixed
+
+- **`SilencePlanner` now anchors the single-file EDL on the *decoded* audio-stream end when no
+  stream-sample clock is exposed, closing the GH#702 `rendered-duration-mismatch` survivor gap.** PR
+  #704 made the planner prefer ffprobe's stream-sample duration over the container header, but for the
+  exact sources that overstate their audio — HLS manifests and fragmented MP4 — ffprobe exposes no
+  stream-level `duration_ts`/`time_base`/`duration`, so `_probe_stream_sample_duration` returns `None`
+  and the planner fell straight back to the container header. Those episodes therefore re-planned (even
+  under a forced `timeline-replan` flag or a version bump) onto the *same* over-claiming EDL — identical
+  `timeline_digest`, identical short rendered file — so the repair cohort never converged. The
+  `silencedetect` pass already performs a full `-vn` decode, so its final `time=` progress timestamp is
+  the real audio-stream end; `detect_silences` now returns that decoded duration alongside the container
+  header, and the planner uses it as a `duration_basis="decoded"` tier between `stream-sample` and
+  `container`. Re-planned survivors now produce a corrected (shorter) EDL the renderer matches, and the
+  audit artifact shows `source_duration_bases=["decoded"]` instead of `["container"]`. No second media
+  pass; the container header remains the honest fallback when even the decode end is unparseable.
+
 ### Changed
 
+- **`work_leases.py` gains a public `scan_offset`/`ordered_candidates` ordering primitive, extracted
+  from `run_claim_loop` (review/18 §4).** The H14b Modal pull-worker prototype (unmerged) needed
+  budget-gating/lease-renewal/retry `run_claim_loop` doesn't have, so it composed its own loop directly
+  on the `claim`/`release`/`renew` primitives — but reimplemented the scan-offset rotation by reaching
+  into `work_leases._scan_offset` rather than sharing it. `scan_offset`/`ordered_candidates` are now
+  public and generic over candidate shape, so any worker that builds its own loop (instead of calling
+  `run_claim_loop`) shares the rotation logic instead of re-deriving it. Docstrings on `run_claim_loop`,
+  the module header, and review/18 §4.3/§6 now spell out precisely what `run_claim_loop` is missing
+  (external-budget gating, lease renewal, retry) and flag the in-Actions push→pull migration
+  (review/18 §6 step 4) as the moment to fold those in as shared hooks instead of writing a third loop.
+- **New `long_first: N` backlog-priority comparator prioritizes the catalog's long-meeting transcript
+  backlog ahead of everything else (review/12 §H5).** Once an episode exceeds
+  `asr_local_max_duration_hours`, the in-process ASR backend refuses it outright
+  (`stages._asr_local_duration_eligible`) — the capped external GPU free tier (H13/H14) is its only
+  path to ever being transcribed. With no duration awareness, a steady stream of short episodes (which
+  have a working local fallback) could keep consuming that scarce dispatch/claim budget in arrival
+  order while long ones starved behind them indefinitely. `long_first` is a binary bucket (same shape
+  as `recent_first`) scoped to transcript-producing work classes only — `audio` items are never
+  reordered. Bare `long_first` (no params) resolves to the site's configured
+  `asr_local_max_duration_hours` so the two boundaries can't silently drift apart; an explicit value
+  overrides it. Fixed a latent gap found while adding this: `_materialize_set` unconditionally labelled
+  every stage's ordering `WorkItem` `work_class="audio"`, which would have silently neutralized any
+  work-class-scoped comparator for local ordering and the live H14a push-dispatch order (only the
+  separately built `work.json` manifest the H14b/H14c pull workers also read would have seen it);
+  `TranscriptStage` / `ProviderTranscriptDiarizeStage` now pass their real work class. Accepted
+  tradeoff: a hard catalog-wide drain — one pathological multi-hour backlog can deprioritize all
+  short-meeting transcript throughput until it clears; no reserved-capacity split is implemented.
+- **The rendered-vs-EDL duration audit uses a 0.5s classification floor, separate from the 0.1s
+  structural tolerance (GH#702, PR5).** A clean re-encode legitimately differs from the EDL sum by AAC
+  priming/padding plus per-cut sample rounding (~0.1–0.4s) with no cue-integrity problem; classifying
+  that band as `rendered-duration-mismatch` produced a long tail of sub-finding artifact noise. A new
+  `_RENDERED_DURATION_TOLERANCE` (0.5s) cleanly separates padding noise from genuine drift (cohort
+  divergences are ≥1s) while leaving the 1.0s finding/repair thresholds and structural checks untouched.
+  review/20 gains an operator remediation runbook for the already-broken cohort and the Dallas /
+  missing-audio-key stragglers.
+- **Single-source many-cut timelines always render via the bounded-memory streaming filter, with an
+  OOM guard on the generic fan-out (GH#702, PR4).** `_build_streaming_single_source_filter` is now
+  attempted regardless of `audio_processing_profile` (loudnorm is appended to its output on the legacy
+  path), so the OOM-prone single-source `atrim`-fan-out in `build_filter_complex` can no longer be
+  reached through the empty-profile branch. If such a shape ever does reach the generic graph the render
+  raises `StreamingFilterBypassedError` rather than risking the RSS-growth OOM that motivated the
+  streaming graph. `build_filter_complex` is retained for its legitimate uses — multi-source concat
+  assembly/fallback and intro/outro inserts.
+- **`audio_duration_served` is now the probed hosted-stream duration, never the EDL sum (GH#702,
+  PR3).** The post-encode/ASR/reuse paths no longer overwrite the measured duration of the actual
+  hosted object with the EDL total (`_backfill_served_duration` / `_refresh_served_duration_from_audio`
+  are fill-when-missing / probe-first), so a render that disagrees with its EDL stays visible to the
+  audit instead of being masked. The RSS `<itunes:duration>` for audio feeds now advertises this
+  served duration (a trimmed episode's real played length) instead of the longer source duration. The
+  cheap stored-field `timeline-duration-mismatch` / `timeline-short-coverage` checks defer to the
+  precise live `rendered-duration-mismatch` probe when one is supplied, so a broken slug is filed once.
 - **`SilencePlanner` now plans single-file silence EDLs against the source's audio stream-sample
   clock, not the container `Duration` header (GH#702, PR2).** When a source's container overstates its
   audio (HLS manifests, or a direct MP4 whose video stream outlasts its audio), anchoring the

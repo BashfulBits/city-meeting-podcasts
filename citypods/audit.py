@@ -542,6 +542,16 @@ def check_enclosures(
 # Tolerance for floating-point duration comparisons (one video frame at 30fps ≈ 33ms).
 _FRAME_TOLERANCE = 0.1
 
+# Structural timeline checks (ordering, coverage, chapter range) use _FRAME_TOLERANCE: a single
+# sample boundary. The rendered-vs-EDL duration comparison needs a looser floor, because a clean
+# re-encode legitimately differs from the EDL sum by AAC encoder priming/padding plus per-cut sample
+# rounding (~0.1-0.4s observed) without any cue-integrity problem. Classifying that band as an ERROR
+# produced a long tail of sub-finding `rendered-duration-mismatch` diagnostics that were never filed
+# (findings gate at finding_min_delta, default 1.0s) — pure artifact noise. Real divergences in the
+# GH#702 cohort are ≥1s, so a 0.5s floor cleanly separates padding noise from genuine drift while
+# leaving the 1s finding/repair thresholds untouched (GH#702 de-noise).
+_RENDERED_DURATION_TOLERANCE = 0.5
+
 
 def _timeline_duration(ep: Episode) -> float | None:
     return edl_duration(ep.timeline)
@@ -628,7 +638,7 @@ def _classify_timeline_audio_duration(
 
     stream_delta = abs(stream - timeline_duration)
     container_delta = abs(container - timeline_duration) if container is not None else None
-    if stream_delta > _FRAME_TOLERANCE:
+    if stream_delta > _RENDERED_DURATION_TOLERANCE:
         source_delta = _source_duration_delta(ep)
         if source_delta is not None and abs(source_delta) > _FRAME_TOLERANCE:
             return (
@@ -649,7 +659,7 @@ def _classify_timeline_audio_duration(
                 REPAIR_TRANSCRIPT_REGENERATE,
             ],
         )
-    if container_delta is not None and container_delta > _FRAME_TOLERANCE:
+    if container_delta is not None and container_delta > _RENDERED_DURATION_TOLERANCE:
         return "container-duration-drift", WARN, []
     return "ok", WARN, []
 
@@ -817,12 +827,21 @@ def check_timeline_integrity(
                 )
             )
 
-        # 3. Duration match + end coverage (only when audio_duration_served is recorded).
-        # This is only meaningful because the encoder derives audio_duration_served from the
-        # EDL itself (INFRA-3 review item #7), not from ep.duration (the *source* duration) —
-        # otherwise a trimmed episode would mismatch here purely by construction.
+        # Resolve the live probe up front: §3 (cheap, stored-field) defers to §3b (precise,
+        # stream-sample) only when the probe actually yields a usable stream clock.
+        probe = probe_audio(ep) if probe_audio is not None else None
+        probe_has_stream = probe is not None and probe.stream_sample_duration is not None
+
+        # 3. Cheap record-only duration match + end coverage, from stored fields alone.
+        # audio_duration_served is now the *probed hosted-stream* duration (review/20 / GH#702), so
+        # a mismatch against the EDL means the real file diverged from the cue clock — the same
+        # condition §3b classifies as `rendered-duration-mismatch`, but far more precisely (it
+        # separates container-only drift from real stream drift). To avoid double-filing the same
+        # slug, this stored-field check is suppressed only when §3b has a usable live stream clock;
+        # if the probe is absent OR inconclusive (no stream_sample_duration), the cheap check still
+        # runs so a real mismatch is not silently dropped.
         served_dur = ep.audio_duration_served
-        if served_dur is not None:
+        if served_dur is not None and not probe_has_stream:
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
             if delta > _FRAME_TOLERANCE:
@@ -852,7 +871,6 @@ def check_timeline_integrity(
         # 3b. Rendered audio duration diagnostics. This compares the EDL to the stream sample
         # clock when the caller provides a probe; container-only drift is reported separately so
         # it does not masquerade as cue drift.
-        probe = probe_audio(ep) if probe_audio is not None else None
         if probe_audio is not None:
             status, severity, repair = _classify_timeline_audio_duration(ep, probe)
             diag = _timeline_audio_diagnostic(

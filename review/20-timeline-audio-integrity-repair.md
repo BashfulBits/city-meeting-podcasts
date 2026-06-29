@@ -29,16 +29,70 @@ change that warrants separate review:
   (`_probe_stream_sample_duration`, mirroring `concat.py`) and uses it for trailing-silence detection and
   the final keep-span, recording `duration_basis="stream-sample"`. Root-cause fix; re-planned episodes get
   a corrected EDL the renderer matches.
-- **GH#702 PR3:** make the probed hosted-stream duration authoritative for `audio_duration_served` (remove
-  the `_backfill_served_duration` / `_refresh_served_duration_from_audio` EDL-clobber), repoint/retire the
-  redundant contract checks, and route RSS off the served clock. Lands *after* the planner fix so
-  corrected durations — not the short broken ones — are what gets published.
-- **GH#702 PR4:** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE` and guard
-  `build_filter_complex` against single-source many-cut input (retained only for multi-source concat
-  assembly/fallback and inserts).
-- **GH#702 PR5:** cohort remediation for all feed-health-detected mismatches + audit threshold de-noise.
+  - **PR2 follow-up (decoded-end fallback):** the stream-sample ffprobe returns `None` for precisely the
+    over-claiming sources — HLS manifests and fragmented MP4 expose no stream-level
+    `duration_ts`/`time_base`/`duration` — so the planner fell straight back to the **container** header
+    and re-planned those episodes onto the *same* over-claiming EDL (identical `timeline_digest`, identical
+    short rendered file). This was the reason the manual repair cohort did not converge even with
+    `timeline-replan` flags set: re-encode (the `audio-rematerialize` flag) fired and changed
+    `audio_spec_hash`, but the EDL never changed. Fixed by reusing the decode the `silencedetect` pass
+    already performs: `detect_silences` now also returns the decoded audio-stream end (its final `time=`
+    stats timestamp), and the planner uses it as a `duration_basis="decoded"` tier between `stream-sample`
+    and `container`. A clean post-repair audit now shows the survivors with changed `timeline_digest` and
+    `source_duration_bases=["decoded"]` (or `["stream-sample"]` where exposed), not `["container"]`.
+- **GH#702 PR3 (#705):** make the probed hosted-stream duration authoritative for `audio_duration_served`
+  — `_backfill_served_duration` is now fill-when-missing and `_refresh_served_duration_from_audio` is
+  probe-first for every timeline, so the measured hosted-file duration is no longer overwritten with the
+  EDL sum. RSS `<itunes:duration>` for audio feeds advertises the served clock (`enclosure_duration`). The
+  cheap stored-field `timeline-duration-mismatch` / `timeline-short-coverage` checks defer to the precise
+  live `rendered-duration-mismatch` probe when one is supplied (no double-filing). Lands after the planner
+  fix so corrected durations — not the short broken ones — are what gets published.
+- **GH#702 PR4 (#707):** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE`
+  (attempt it for every single-source timeline; append loudnorm to its output on the legacy path) and
+  guard the generic graph: a single-source many-cut timeline reaching `build_filter_complex` now raises
+  `StreamingFilterBypassedError`. `build_filter_complex` is retained only for multi-source concat
+  assembly/fallback and inserts.
+- **GH#702 PR5 (#708):** audit threshold de-noise — a distinct `_RENDERED_DURATION_TOLERANCE` (0.5s)
+  for the rendered/container duration classification, separate from the 0.1s `_FRAME_TOLERANCE` used by
+  structural checks, so the AAC-priming/sample-rounding band stops producing sub-finding
+  `rendered-duration-mismatch` artifact noise. Plus this remediation runbook.
 - **GH#702 PR6 (gated, build-but-do-not-merge):** `silence:3` catalog version bump for the permanent
   guarantee.
+
+### GH#702 remediation runbook (operator steps)
+
+The code fixes above correct EDLs and durations *going forward*. Remediating the already-broken
+single-file cohort (~26 unique uids over 1s: Denton ×20, Arlington ×3, Addison, Fort Worth; plus the
+0.5–1s band) is an operator action, because it re-encodes hosted audio and regenerates transcripts in
+production and drains over multiple runs under the stop budget:
+
+1. **Confirm the replan flags are still set.** The before-PR666 manual cohort stamped `timeline-replan`
+   on these episodes; a clean post-repair audit clears them, so a still-broken episode should still
+   carry the flag. If not, re-dispatch the feed-health workflow with `timeline_repair`,
+   `timeline_repair_min_delta` (use `0.5` to also catch the small band, or `1.0` for findings only) and
+   a `timeline_repair_cohort` label to re-stamp them.
+2. **Let the lanes drain.** With PR2 merged, `TimelineStage` re-plans flagged episodes on the
+   stream-sample clock → new EDL digest → `AudioStage` re-encodes → ASR regenerates. This is bounded by
+   the existing wall-clock stop budget.
+3. **Verify with the artifact.** Compare the before/after `audit-timeline-integrity` artifacts with
+   `scripts/compare_timeline_diagnostics.py --cohort <label>`. Gate: selected rows return with
+   `stream_delta` within tolerance, `fixed` rises, and no `worsened` / unexpected `missing-after`.
+   Diagnostic tell: a survivor with `audio_key_changed` but **unchanged** `timeline_digest` (and
+   `source_duration_bases=["container"]`) means the audio lane re-encoded against an EDL the timeline
+   lane never actually re-planned — the EDL must change (`timeline_digest_changed`, basis `decoded`/
+   `stream-sample`) for the rendered file to match. If digests stay put, the re-plan is not engaging
+   (lanes not drained, flags not set, or — pre-fix — the planner falling back to the container clock).
+   Note that **post-fix** the planner still lands on `["container"]` when the decoded-end parse itself
+   fails (no parseable `time=` in the silencedetect stats), so a lone post-fix container-basis survivor
+   is not necessarily a stale pre-fix cohort — verify decoded-end parsing for that source before
+   treating it as one.
+4. **Stragglers handled separately (not via timeline-replan):**
+   - **Dallas** (`dallas-tx-city-council`): `audio_key` never changed and `audio_duration_served` is
+     null while the hosted stream looks like the untrimmed source — the audio lane never
+     re-materialized it. Investigate the materialize backoff/queue for that uid; this is an audio-lane
+     issue, not a planner/renderer one.
+   - **Pflugerville `missing-audio-key`** (`duration-probe-inconclusive`): the audio object is absent
+     (never materialized or GC'd). Confirm whether the episode should re-materialize or is withheld.
 
 ## Problem
 

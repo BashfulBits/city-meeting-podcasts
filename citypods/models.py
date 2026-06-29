@@ -149,8 +149,11 @@ class Episode:
     # ISO8601 timestamp recorded at encode time so rebuild-audio --encoded-after/before can
     # select a precise window without touching unaffected episodes. None for pre-v2 records.
     audio_encode_time: str | None = None
-    # Served audio duration in seconds (may differ from source duration after trim/concat).
-    # None for pre-v2 records; set by the encoder on each successful encode.
+    # The *probed* duration in seconds of the actual hosted enclosure (the served/hosted clock,
+    # review/20). Differs from the source ``duration`` after trim/concat, and is kept distinct from
+    # the EDL/cue clock (``timeline.edl_duration``): a render that disagrees with the EDL must stay
+    # visible to the audit rather than being reconciled into this field. None for pre-v2 records;
+    # set from the post-encode ffprobe (or a reused artifact's recorded duration) on each success.
     audio_duration_served: float | None = None
 
     # Audit-owned repair/diagnostic metadata.  ``integrity.timeline_audio`` is consumed by
