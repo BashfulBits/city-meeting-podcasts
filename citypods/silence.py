@@ -18,12 +18,14 @@ this: it re-encodes using the *existing* timeline, which would still be the iden
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
+from fractions import Fraction
 
 from citypods.availability import is_effectively_silent
-from citypods.http import StopRequested
+from citypods.http import USER_AGENT, StopRequested
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
 # ---------------------------------------------------------------------------
@@ -53,12 +55,92 @@ def parse_silences(stderr: str) -> list[tuple[float, float]]:
 
 
 def _parse_ffmpeg_duration(stderr: str) -> float | None:
-    """Parse ``Duration: HH:MM:SS.ss`` from ffmpeg's probe header."""
+    """Parse ``Duration: HH:MM:SS.ss`` from ffmpeg's probe header.
+
+    This is the **container/format** ``Duration`` header, which can overstate the playable audio
+    stream (HLS manifests, or a direct MP4 whose video stream outlasts its audio). Prefer
+    :func:`_probe_stream_sample_duration` for the EDL source clock; this remains the fallback when
+    a stream-clock probe is unavailable. See GH#702.
+    """
     m = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", stderr)
     if not m:
         return None
     h, mn, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
     return h * 3600 + mn * 60 + s
+
+
+def _probe_stream_sample_duration(
+    url: str,
+    ffprobe_binary: str = "ffprobe",
+    timeout: float | None = None,
+) -> float | None:
+    """ffprobe the first audio stream's sample-clock duration (``duration_ts * time_base``).
+
+    Falls back to the stream's ``duration`` then ``format.duration``. Returns ``None`` on any
+    subprocess/parse failure (caller then falls back to the container header / provider duration).
+
+    The silence EDL's trailing-silence test and final keep-span must anchor on the source's real
+    **audio-stream** end, not the container/format ``Duration`` header. When a source's container
+    overstates its audio, the renderer (``atrim``/``aselect``) hits EOF early and the rendered file
+    comes out shorter than the planned EDL — the single-file ``rendered-duration-mismatch`` class
+    (GH#702). This mirrors ``concat.py``'s stream-sample probe, which already fixed the multi-part
+    path. A browser ``user_agent`` is sent for remote inputs (Granicus CDN blocks others); a cached
+    local file needs none.
+    """
+    is_remote = url.startswith(("http://", "https://"))
+    cmd = [
+        ffprobe_binary,
+        "-v",
+        "error",
+        *(["-user_agent", USER_AGENT] if is_remote else []),
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "format=duration:stream=duration_ts,time_base,duration",
+        "-of",
+        "json",
+        url,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if result.returncode != 0:
+            return None
+        out = (result.stdout or "").strip()
+        if not out:
+            return None
+        # Tests historically patch ffprobe with a plain duration line; accept that too.
+        if not out.startswith("{"):
+            value = float(out)
+            return value if value > 0 else None
+        data = json.loads(out)
+        streams = data.get("streams") or []
+        if streams and isinstance(streams[0], dict):
+            stream = streams[0]
+            duration_ts = stream.get("duration_ts")
+            time_base = stream.get("time_base")
+            if duration_ts is not None and time_base:
+                duration = int(duration_ts) * Fraction(str(time_base))
+                if duration > 0:
+                    return float(duration)
+            stream_duration = stream.get("duration")
+            if stream_duration:
+                value = float(stream_duration)
+                return value if value > 0 else None
+        raw = (data.get("format") or {}).get("duration")
+        if raw:
+            value = float(raw)
+            return value if value > 0 else None
+        return None
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+        OSError,
+        ValueError,
+        TypeError,
+        json.JSONDecodeError,
+        ZeroDivisionError,
+    ):
+        return None
 
 
 def build_silence_timeline(
@@ -368,15 +450,30 @@ class SilencePlanner:
         else:
             _stamp_availability(ep, "playable", profile)
 
-        # Fall back to ep.duration when ffmpeg didn't emit a Duration header.
-        if source_duration is None:
-            if ep.duration is None:
-                return None  # can't build a timeline without total duration
+        # The EDL source clock must be the real audio-stream end, not the container ``Duration``
+        # header. When a source's container overstates its audio (HLS manifests, or a direct MP4
+        # whose video stream outlasts its audio), anchoring the trailing-silence test and the final
+        # keep-span on the header makes the renderer hit EOF early and the rendered file come out
+        # shorter than the planned EDL — the single-file ``rendered-duration-mismatch`` class
+        # (GH#702). Prefer ffprobe's stream-sample clock (the same basis ``SwagitConcatPlanner``
+        # already uses); fall back to the container header, then the provider-declared duration.
+        ffprobe_binary = (
+            "ffprobe" if ffmpeg_binary == "ffmpeg" else ffmpeg_binary.replace("ffmpeg", "ffprobe")
+        )
+        stream_duration = _probe_stream_sample_duration(detect_url, ffprobe_binary, timeout)
+        if stream_duration is not None:
+            source_duration = stream_duration
+            source_duration_basis = "stream-sample"
+        elif source_duration is not None:
+            source_duration_basis = "container"
+        elif ep.duration is not None:
             source_duration = float(ep.duration)
+            source_duration_basis = "provider"
+        else:
+            return None  # can't build a timeline without total duration
 
         existing_src = ep.sources[0] if ep.sources else None
         source_id = existing_src.id if existing_src else "s0"
-        source_duration_basis = "container" if probed_duration is not None else "provider"
         src = SourceMedia(
             id=source_id,
             provider=existing_src.provider if existing_src else city.provider,

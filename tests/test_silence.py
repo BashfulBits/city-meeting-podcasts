@@ -10,6 +10,7 @@ from citypods.http import StopRequested
 from citypods.silence import (
     SilencePlanner,
     _parse_ffmpeg_duration,
+    _probe_stream_sample_duration,
     build_silence_timeline,
     detect_silences,
     is_degenerate_served_duration,
@@ -336,6 +337,7 @@ class TestSilencePlanner:
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
+            patch("citypods.silence._probe_stream_sample_duration", return_value=None),
         ):
             mock_detect.return_value = ([(0.0, 5.0)], 3600.0)
             result = planner.plan(provider, _make_city(), ep, ctx, None)
@@ -346,6 +348,94 @@ class TestSilencePlanner:
         assert len(ep.sources) == 1
         assert ep.sources[0].duration == pytest.approx(3600.0)
         assert ep.sources[0].duration_basis == "container"
+
+    def test_edl_anchors_on_stream_sample_not_container(self):
+        """GH#702: when the container Duration overstates the audio stream, the EDL's final span
+        must end at the stream-sample clock so the rendered file is not shorter than the EDL."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+            # container header says 3600; the real audio stream is 3550.
+            patch("citypods.silence._probe_stream_sample_duration", return_value=3550.0),
+        ):
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0)  # 5s leading silence
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is not None
+        # Single kept span [5, 3550] in source time → served total 3545, NOT 3595.
+        assert result.segments[-1].source_end == 3550.0
+        assert sum(s.served_end - s.served_start for s in result.segments) == 3545.0
+        assert ep.sources[0].duration == 3550.0
+        assert ep.sources[0].duration_basis == "stream-sample"
+
+    def test_falls_back_to_container_basis_when_stream_probe_unavailable(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+            patch("citypods.silence._probe_stream_sample_duration", return_value=None),
+        ):
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is not None
+        assert ep.sources[0].duration == 3600.0
+        assert ep.sources[0].duration_basis == "container"
+
+
+class TestProbeStreamSampleDuration:
+    def _run(self, stdout, returncode=0):
+        result = MagicMock(stdout=stdout, returncode=returncode)
+        with patch("citypods.silence.subprocess.run", return_value=result) as mock_run:
+            value = _probe_stream_sample_duration("/tmp/local.m4a")
+        return value, mock_run
+
+    def test_prefers_stream_duration_ts_times_time_base(self):
+        out = (
+            '{"streams":[{"duration_ts":48000000,"time_base":"1/48000"}],'
+            '"format":{"duration":"1010.0"}}'
+        )
+        value, _ = self._run(out)
+        assert value == pytest.approx(1000.0)  # 48000000/48000, not the 1010 container value
+
+    def test_falls_back_to_stream_duration_field(self):
+        out = '{"streams":[{"duration":"950.5"}],"format":{"duration":"1010.0"}}'
+        value, _ = self._run(out)
+        assert value == pytest.approx(950.5)
+
+    def test_falls_back_to_format_duration(self):
+        value, _ = self._run('{"streams":[],"format":{"duration":"1010.0"}}')
+        assert value == pytest.approx(1010.0)
+
+    def test_accepts_plain_duration_line(self):
+        value, _ = self._run("1234.5")
+        assert value == pytest.approx(1234.5)
+
+    def test_returns_none_on_nonzero_returncode(self):
+        value, _ = self._run("", returncode=1)
+        assert value is None
+
+    def test_returns_none_on_garbage(self):
+        value, _ = self._run("not json and not a float")
+        assert value is None
+
+    def test_no_user_agent_for_local_file(self):
+        _, mock_run = self._run('{"streams":[{"duration":"10.0"}]}')
+        cmd = mock_run.call_args[0][0]
+        assert "-user_agent" not in cmd
+
+    def test_user_agent_added_for_remote(self):
+        result = MagicMock(stdout='{"streams":[{"duration":"10.0"}]}', returncode=0)
+        with patch("citypods.silence.subprocess.run", return_value=result) as mock_run:
+            _probe_stream_sample_duration("https://cdn.example.com/v.m3u8")
+        assert "-user_agent" in mock_run.call_args[0][0]
 
     def test_detect_silences_called_with_native_work_gate_threads(self):
         """The detect_silences call is pinned to CommandFfmpeg's configured thread count, the same
