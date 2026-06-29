@@ -1514,20 +1514,27 @@ def _download_audio_file(url: str, dest: Path) -> None:
 
 
 def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_binary: str) -> str:
+    """Set ``audio_duration_served`` to the probed duration of the hosted audio ASR just ran on.
+
+    review/20: the served clock is the *real hosted file*, kept distinct from the EDL/cue clock. We
+    therefore probe the actual object for **every** timeline — identity and edited alike — rather
+    than trusting the EDL sum for edited episodes (the prior behavior, which masked a render that
+    came out shorter than its EDL). The EDL is only a fallback when the probe is unavailable, so the
+    field still gets populated."""
+    probed = _probe_duration_secs(audio_path, ffmpeg_binary)
+    if probed is not None and probed > 0:
+        if ep.audio_duration_served is None or abs(ep.audio_duration_served - probed) > 1.0:
+            ep.audio_duration_served = probed
+            return "hosted"
+        return "served"
+
     edited = _edited_timeline_served_duration(ep)
     if edited is not None:
         if ep.audio_duration_served is None or abs(ep.audio_duration_served - edited) > 0.001:
             ep.audio_duration_served = edited
             return "timeline"
         return "served"
-
-    probed = _probe_duration_secs(audio_path, ffmpeg_binary)
-    if probed is None or probed <= 0:
-        return "unknown"
-    if ep.audio_duration_served is None or abs(ep.audio_duration_served - probed) > 1.0:
-        ep.audio_duration_served = probed
-        return "hosted"
-    return "served"
+    return "served" if ep.audio_duration_served else "unknown"
 
 
 class TranscriptStage:

@@ -817,12 +817,15 @@ def check_timeline_integrity(
                 )
             )
 
-        # 3. Duration match + end coverage (only when audio_duration_served is recorded).
-        # This is only meaningful because the encoder derives audio_duration_served from the
-        # EDL itself (INFRA-3 review item #7), not from ep.duration (the *source* duration) —
-        # otherwise a trimmed episode would mismatch here purely by construction.
+        # 3. Cheap record-only duration match + end coverage, from stored fields alone.
+        # audio_duration_served is now the *probed hosted-stream* duration (review/20 / GH#702), so
+        # a mismatch against the EDL means the real file diverged from the cue clock — the same
+        # condition the live stream-sample probe classifies as `rendered-duration-mismatch` below
+        # (§3b), but far more precisely (it separates container-only drift from real stream drift).
+        # To avoid double-filing the same slug, this stored-field check only runs when no live probe
+        # is supplied; the scheduled audit passes one, so §3b owns the finding there.
         served_dur = ep.audio_duration_served
-        if served_dur is not None:
+        if served_dur is not None and probe_audio is None:
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
             if delta > _FRAME_TOLERANCE:

@@ -41,8 +41,8 @@
       <pubDate>{{ item.ep.published | rfc822 }}</pubDate>
       <guid isPermaLink="false">{{ item.ep.uid or item.ep.guid }}</guid>
       <enclosure url="{{ item.enclosure_url }}" type="{{ mime }}" length="{{ enclosure_length }}"/>
-      {% if item.ep.duration %}
-      <itunes:duration>{{ item.ep.duration }}</itunes:duration>
+      {% if item.duration %}
+      <itunes:duration>{{ item.duration }}</itunes:duration>
       {% endif %}
       <itunes:explicit>false</itunes:explicit>
     </item>

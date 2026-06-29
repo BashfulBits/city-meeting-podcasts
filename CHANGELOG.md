@@ -16,6 +16,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **`audio_duration_served` is now the probed hosted-stream duration, never the EDL sum (GH#702,
+  PR3).** The post-encode/ASR/reuse paths no longer overwrite the measured duration of the actual
+  hosted object with the EDL total (`_backfill_served_duration` / `_refresh_served_duration_from_audio`
+  are fill-when-missing / probe-first), so a render that disagrees with its EDL stays visible to the
+  audit instead of being masked. The RSS `<itunes:duration>` for audio feeds now advertises this
+  served duration (a trimmed episode's real played length) instead of the longer source duration. The
+  cheap stored-field `timeline-duration-mismatch` / `timeline-short-coverage` checks defer to the
+  precise live `rendered-duration-mismatch` probe when one is supplied, so a broken slug is filed once.
 - **`SilencePlanner` now plans single-file silence EDLs against the source's audio stream-sample
   clock, not the container `Duration` header (GH#702, PR2).** When a source's container overstates its
   audio (HLS manifests, or a direct MP4 whose video stream outlasts its audio), anchoring the

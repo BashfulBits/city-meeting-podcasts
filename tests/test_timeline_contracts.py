@@ -176,6 +176,27 @@ class TestDurationMismatch:
         fs = _findings([ep])
         assert not any(f.check == "timeline-duration-mismatch" for f in fs)
 
+    def test_cheap_duration_check_deferred_when_live_probe_present(self):
+        # audio_duration_served is now the probed hosted-stream duration (review/20). When a live
+        # probe is supplied the precise rendered-duration check owns the finding, so the cheap
+        # stored-field timeline-duration-mismatch must NOT also fire (no double-filing one slug).
+        ep = _ep()
+        ep.timeline = _good_timeline()  # EDL total 3300, last segment ends at 3300
+        ep.audio_key = "audio/u1.m4a"
+        ep.audio_duration_served = 3290.0  # disagrees with the EDL
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3290.0,
+                stream_sample_duration=3290.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+        )
+        assert not any(f.check == "timeline-duration-mismatch" for f in fs)
+        assert not any(f.check == "timeline-short-coverage" for f in fs)
+        assert any(f.check == "rendered-duration-mismatch" for f in fs)
+
     def test_small_floating_point_delta_not_flagged(self):
         ep = _ep()
         ep.timeline = _good_timeline()

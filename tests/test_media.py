@@ -779,7 +779,11 @@ def test_errored_record_is_re_encoded_not_reused(tmp_path):
     assert ep.materialize_error is None  # cleared by the successful pass
 
 
-def test_matching_spec_corrects_edited_timeline_served_duration(tmp_path):
+def test_matching_spec_keeps_recorded_served_duration(tmp_path):
+    """A reuse of an already-recorded served duration must not be overwritten with the EDL sum.
+
+    review/20: ``audio_duration_served`` is the measured hosted-file duration. The reuse path no
+    longer "corrects" it to the EDL total (3300.0) — it preserves the recorded 3300.8."""
     ep = _ep("g1")
     ep.timeline = _edited_timeline()
     ep.audio_duration_served = 3300.8
@@ -795,7 +799,7 @@ def test_matching_spec_corrects_edited_timeline_served_duration(tmp_path):
     stats = _materialize(city, [ep], store, FakeFfmpeg())
 
     assert stats.reused == 1
-    assert ep.audio_duration_served == pytest.approx(3300.0)
+    assert ep.audio_duration_served == pytest.approx(3300.8)
 
 
 def test_zero_source_duration_does_not_backfill_served_duration(tmp_path):
@@ -1183,18 +1187,21 @@ def test_audio_duration_served_set_from_probe(tmp_path):
     assert eps[0].audio_duration_served == pytest.approx(7200.5)
 
 
-def test_audio_duration_served_uses_edited_timeline_total(monkeypatch, tmp_path):
-    """Edited timelines store the EDL total, not ffprobe's rounded container duration."""
+def test_audio_duration_served_is_probed_hosted_duration(monkeypatch, tmp_path):
+    """Edited timelines store the probed hosted-stream duration, not the EDL total (review/20).
+
+    The served clock is the real file: a render that disagrees with the EDL must stay visible to the
+    audit rather than being overwritten with the EDL sum."""
     import citypods.media as media
 
     ep = _ep("g1")
-    ep.timeline = _edited_timeline()
+    ep.timeline = _edited_timeline()  # EDL total 3300.0
     monkeypatch.setattr(media, "_probe_duration_secs", lambda *args, **kwargs: 3300.8)
 
     stats = _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg())
 
     assert stats.encoded == 1
-    assert ep.audio_duration_served == pytest.approx(3300.0)
+    assert ep.audio_duration_served == pytest.approx(3300.8)
 
 
 def test_materialize_passes_source_registry_to_ffmpeg(tmp_path):

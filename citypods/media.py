@@ -2229,18 +2229,19 @@ def estimate_encode_rss_bytes(
 
 
 def _backfill_served_duration(ep: Episode) -> str:
-    served = _served_duration(ep)
-    if _has_non_identity_timeline(ep):
-        if served is None:
-            return "existing" if ep.audio_duration_served else "unknown"
-        if ep.audio_duration_served is None or abs(ep.audio_duration_served - served) > 0.001:
-            ep.audio_duration_served = served
-            return "metadata"
-        return "existing"
+    """Populate ``audio_duration_served`` only when no measured value is available.
+
+    review/20: the authoritative served duration is the *probed* duration of the actual hosted
+    object (set by the encode caller from the post-encode ffprobe, or adopted from a reused
+    artifact's recorded duration). This function no longer overwrites a present value with the EDL
+    sum — that conflated the served/hosted clock with the EDL/cue clock and masked renders that
+    disagreed with the EDL. It now only *fills* a missing value, falling back to the EDL/source
+    estimate so the enclosure still carries a duration when the caller could not measure one."""
     if ep.audio_duration_served is not None and ep.audio_duration_served > 0:
         return "existing"
-    if served is not None:
-        ep.audio_duration_served = served
+    fallback = _served_duration(ep)
+    if fallback is not None and fallback > 0:
+        ep.audio_duration_served = fallback
         return "metadata"
     return "unknown"
 

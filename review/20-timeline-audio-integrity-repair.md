@@ -29,10 +29,13 @@ change that warrants separate review:
   (`_probe_stream_sample_duration`, mirroring `concat.py`) and uses it for trailing-silence detection and
   the final keep-span, recording `duration_basis="stream-sample"`. Root-cause fix; re-planned episodes get
   a corrected EDL the renderer matches.
-- **GH#702 PR3:** make the probed hosted-stream duration authoritative for `audio_duration_served` (remove
-  the `_backfill_served_duration` / `_refresh_served_duration_from_audio` EDL-clobber), repoint/retire the
-  redundant contract checks, and route RSS off the served clock. Lands *after* the planner fix so
-  corrected durations — not the short broken ones — are what gets published.
+- **GH#702 PR3 (#705):** make the probed hosted-stream duration authoritative for `audio_duration_served`
+  — `_backfill_served_duration` is now fill-when-missing and `_refresh_served_duration_from_audio` is
+  probe-first for every timeline, so the measured hosted-file duration is no longer overwritten with the
+  EDL sum. RSS `<itunes:duration>` for audio feeds advertises the served clock (`enclosure_duration`). The
+  cheap stored-field `timeline-duration-mismatch` / `timeline-short-coverage` checks defer to the precise
+  live `rendered-duration-mismatch` probe when one is supplied (no double-filing). Lands after the planner
+  fix so corrected durations — not the short broken ones — are what gets published.
 - **GH#702 PR4:** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE` and guard
   `build_filter_complex` against single-source many-cut input (retained only for multi-source concat
   assembly/fallback and inserts).

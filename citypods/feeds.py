@@ -168,6 +168,19 @@ def has_items(episodes: list[Episode], kind: str) -> bool:
     return any(enclosure_url(ep, kind) for ep in episodes)
 
 
+def enclosure_duration(ep: Episode, kind: str) -> int | None:
+    """Whole-second duration to advertise as ``<itunes:duration>`` for *kind*'s enclosure.
+
+    For the **audio** feed this is the duration of the actual hosted object —
+    ``audio_duration_served`` (the served/hosted clock, review/20) — so a trimmed episode advertises
+    its real played length, not the longer source duration. Falls back to ``ep.duration`` (the
+    source clock) when no served duration is recorded (e.g. identity/direct audio that was never
+    re-hosted). The **video** feed always uses the source duration. ``None`` when unknown."""
+    if kind == "audio" and ep.audio_duration_served and ep.audio_duration_served > 0:
+        return int(round(ep.audio_duration_served))
+    return int(ep.duration) if ep.duration else None
+
+
 def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> str:
     """Render an iTunes RSS feed.
 
@@ -192,6 +205,7 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
             {
                 "ep": ep,
                 "enclosure_url": url,
+                "duration": enclosure_duration(ep, kind),
                 "notes_html": episode_notes_html(ep),
                 "chapters_url": chapters_url(city, ep, base_url),
                 "transcript_url": transcript[0] if transcript else None,
