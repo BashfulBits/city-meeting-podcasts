@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -12,7 +13,8 @@ from citypods.availability import (
     MediaAvailability,
     with_operator_override,
 )
-from citypods.feeds import build_rss, enclosure_url
+from citypods.feeds import build_rss, enclosure_duration, enclosure_url
+from citypods.models import Episode
 
 
 def _items(xml: str):
@@ -87,6 +89,41 @@ def test_xml_escaping(sample_city, sample_episodes):
 def test_invalid_kind_raises(sample_city, sample_episodes):
     with pytest.raises(ValueError):
         build_rss(sample_city, sample_episodes, "transcript", "https://x")
+
+
+def _ep_dur(duration=None, served=None) -> Episode:
+    return Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://x/v.mp4",
+        duration=duration,
+        audio_duration_served=served,
+    )
+
+
+class TestEnclosureDuration:
+    def test_audio_prefers_served_rounded(self):
+        # The hosted (trimmed) file is shorter than the source — advertise the real played length.
+        assert enclosure_duration(_ep_dur(duration=7200, served=3545.6), "audio") == 3546
+
+    def test_audio_falls_back_to_source_when_no_served(self):
+        assert enclosure_duration(_ep_dur(duration=7200, served=None), "audio") == 7200
+
+    def test_video_uses_source_duration(self):
+        assert enclosure_duration(_ep_dur(duration=7200, served=3545.6), "video") == 7200
+
+    def test_none_when_unknown(self):
+        assert enclosure_duration(_ep_dur(duration=None, served=None), "audio") is None
+
+
+def test_audio_feed_itunes_duration_uses_served(sample_city, sample_episodes):
+    ep = sample_episodes[0]
+    ep.duration = 7200
+    ep.audio_duration_served = 3545.6
+    xml = build_rss(sample_city, [ep], "audio", "https://x")
+    assert "<itunes:duration>3546</itunes:duration>" in xml
+    assert "<itunes:duration>7200</itunes:duration>" not in xml
 
 
 def test_episode_notes_html_renders_links_and_summary():

@@ -1100,7 +1100,9 @@ class TestTranscriptStageASR:
         assert "duration_h=0.5" in out
         assert "duration_source=hosted" in out
 
-    def test_asr_probe_preserves_edited_timeline_served_duration(self, tmp_path, capsys):
+    def test_asr_probe_corrects_edited_timeline_served_duration(self, tmp_path, capsys):
+        """review/20: ASR probes the real hosted file for edited timelines too, so the served clock
+        reflects the actual object (1800s) rather than being pinned to the EDL sum (10s)."""
         ep = _ep_with_audio()
         ep.duration = 7200
         ep.timeline = Timeline(
@@ -1122,10 +1124,9 @@ class TestTranscriptStageASR:
             _run_asr(tmp_path, ep)
 
         out = capsys.readouterr().out
-        assert ep.audio_duration_served == pytest.approx(10.0)
-        assert "duration_h=0.0" in out
-        assert "duration_source=served" in out
-        assert "duration_source=hosted" not in out
+        assert ep.audio_duration_served == pytest.approx(1800.0)
+        assert "duration_h=0.5" in out
+        assert "duration_source=hosted" in out
 
     def test_asr_timeout_is_capped_to_remaining_budget(self, tmp_path):
         ctx = _ctx(tmp_path)
