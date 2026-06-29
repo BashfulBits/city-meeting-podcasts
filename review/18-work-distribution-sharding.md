@@ -305,7 +305,7 @@ transcribe (it remains for the source-atomic audio lane).
 > `ttl_seconds`, no retry on a transient failure, and (correctly, since a GH Actions runner has no
 > monthly dollar cap to protect) no external-budget gating. The H14b Modal worker
 > (`citypods.compute.external_worker`) needed renewal + retry and built its own loop directly on the
-> primitives rather than extend a function marked frozen. In-Actions ASR jobs can run for hours on the
+> *frozen* primitives rather than extend this reference wrapper. In-Actions ASR jobs can run for hours on the
 > same long meetings `long_first` (review/12 §H5) now deliberately prioritizes, so they will hit the
 > same renewal gap. **This is the point to fold renewal + retry into `run_claim_loop` as optional
 > hooks** (a `should_renew`/renewal-interval parameter; budget-gating stays external-worker-only) so

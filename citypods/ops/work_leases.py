@@ -386,9 +386,9 @@ def run_claim_loop(
     gap for anything beyond a short job), and no retry on a transient failure. That was an
     acceptable scope when this was written because the only caller in mind was a same-process,
     no-budget GPU adapter. The Modal/H14b worker (``citypods.compute.external_worker``) needed all
-    three of those and, rather than extend this *frozen* function, built its own loop directly on
-    :func:`claim` / :func:`release` / :func:`renew` (still the same contract — just not this
-    wrapper) with budget-gating, a renewal thread, and retry layered on top.
+    three of those and, rather than extend this reference wrapper, built its own loop directly on
+    :func:`claim` / :func:`release` / :func:`renew` (still the same *frozen* contract — just not
+    this wrapper) with budget-gating, a renewal thread, and retry layered on top.
 
     **The moment this will bite again: review/18 §6 step 4 — in-Actions shards flip from the
     Stage-1 static plan to this claim loop (GitHub Actions becomes "just another worker").** That
