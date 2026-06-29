@@ -664,6 +664,27 @@ class TestCommandFfmpegFilterPath:
         with pytest.raises(StreamingFilterBypassedError):
             self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"})
 
+    def test_non_final_open_ended_span_uses_generic_graph(self, monkeypatch, tmp_path):
+        # A non-final open-ended (source_end=None) span is a documented generic-path case the
+        # streaming filter declines; the OOM guard must NOT raise for it (GH#702).
+        tl = Timeline(
+            version="open-ended",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=100,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=None,
+                ),
+                _seg_src(100, 200, 200, 300, sid="s0"),
+            ),
+        )
+        cmd = self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"})
+        fc_str = cmd[cmd.index("-filter_complex") + 1]
+        assert "atrim" in fc_str  # generic graph used; no StreamingFilterBypassedError
+
     def test_map_output_label(self, monkeypatch, tmp_path):
         tl = self._trim_timeline()
         cmd = self._run_filter(monkeypatch, tmp_path, tl, {"s0": "https://s/v.mp4"})

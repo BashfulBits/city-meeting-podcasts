@@ -1315,6 +1315,8 @@ def _is_single_source_fanout(segments: tuple[Segment, ...]) -> bool:
         return False
     if any(s.kind != "source" for s in segments):
         return False  # inserts (intro/outro) legitimately use the generic graph
+    if any(s.source_end is None for s in segments[:-1]):
+        return False  # a non-final open-ended span is a documented generic-path case
     return len({s.source_id for s in segments}) == 1
 
 
