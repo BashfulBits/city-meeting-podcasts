@@ -259,11 +259,12 @@ class ExternalTranscribeWorker:
             t.join(timeout=1)
 
     def _ordered(self, items: list[WorkItem]) -> list[WorkItem]:
-        n = len(items)
-        if n == 0:
-            return []
-        offset = work_leases._scan_offset(self.config.owner, n)
-        return [items[(offset + i) % n] for i in range(n)]
+        """Rotate *items* to this worker's scan offset. Delegates to the shared
+        ``work_leases.ordered_candidates`` primitive rather than re-deriving the rotation here, so
+        this worker and ``run_claim_loop`` can never silently diverge on how the scan offset is
+        applied (see ``work_leases.run_claim_loop``'s docstring for what else, beyond ordering,
+        still differs between this worker and that reference loop)."""
+        return work_leases.ordered_candidates(items, self.config.owner)
 
     def _city_for(self, item: WorkItem) -> City:
         if item.city_slug and item.city_slug in self._city_by_slug:
