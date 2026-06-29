@@ -13,24 +13,32 @@ plans on the stream-sample clock (`duration_basis="stream-sample"`); the silence
 the same treatment. PR636's `timeline-replan` is idempotent for these rows (same container duration →
 identical digest) so it cannot fix them.
 
-The fix series (GH#702), reordered for safe sequencing:
+The fix series below is a **separate, later series** from the `PR1 — sample-clock probe … PR6 —
+auto-repair enablement` sequence documented in "## PR sequence" further down (that earlier series built
+the diagnostic/repair infrastructure and is already implemented). To avoid ambiguity these are labelled
+**GH#702 PR1…PR6**. The served=probe inversion was split into its own PR after GH#702 PR2 because the
+`timeline-duration-mismatch` / `timeline-short-coverage` contract checks currently assume
+`audio_duration_served == EDL` "by construction" (audit.py §3), so repointing them is an audit-semantics
+change that warrants separate review:
 
-- **PR1 (this change):** consolidate the EDL/cue clock into one `timeline.edl_duration` primitive that
-  `media._served_duration`, `stages._edited_timeline_served_duration`, and `audit._timeline_duration`
+- **GH#702 PR1 (#703, merged):** consolidate the EDL/cue clock into one `timeline.edl_duration` primitive
+  that `media._served_duration`, `stages._edited_timeline_served_duration`, and `audit._timeline_duration`
   all delegate to. No behavior change; establishes the single derivation site so the three canonical
   duration facts (source / served-hosted / EDL-cue) cannot drift apart.
-- **PR2:** `SilencePlanner` measures the source's stream-sample duration (mirroring `concat.py`) and uses
-  it for trailing-silence detection and the final keep-span; adds an ffmpeg integration regression test
-  with a source whose container duration exceeds its audio stream.
-- **PR2/PR3:** make the probed hosted-stream duration authoritative for `audio_duration_served` (remove
-  the `_backfill_served_duration` / `_refresh_served_duration_from_audio` EDL-clobber) and route RSS off
-  it. Deliberately lands *with/after* the planner fix so corrected durations — not the short broken ones
-  — are what gets published.
-- **PR3:** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE` and guard
-  `build_filter_complex` against single-source many-cut input (it is retained only for multi-source
-  concat assembly/fallback and inserts).
-- **PR4:** cohort remediation for all feed-health-detected mismatches; **PR5 (gated):** `silence:3`
-  catalog version bump for the permanent guarantee.
+- **GH#702 PR2 (#704):** `SilencePlanner` measures the source's stream-sample duration
+  (`_probe_stream_sample_duration`, mirroring `concat.py`) and uses it for trailing-silence detection and
+  the final keep-span, recording `duration_basis="stream-sample"`. Root-cause fix; re-planned episodes get
+  a corrected EDL the renderer matches.
+- **GH#702 PR3:** make the probed hosted-stream duration authoritative for `audio_duration_served` (remove
+  the `_backfill_served_duration` / `_refresh_served_duration_from_audio` EDL-clobber), repoint/retire the
+  redundant contract checks, and route RSS off the served clock. Lands *after* the planner fix so
+  corrected durations — not the short broken ones — are what gets published.
+- **GH#702 PR4:** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE` and guard
+  `build_filter_complex` against single-source many-cut input (retained only for multi-source concat
+  assembly/fallback and inserts).
+- **GH#702 PR5:** cohort remediation for all feed-health-detected mismatches + audit threshold de-noise.
+- **GH#702 PR6 (gated, build-but-do-not-merge):** `silence:3` catalog version bump for the permanent
+  guarantee.
 
 ## Problem
 

@@ -16,6 +16,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **`SilencePlanner` now plans single-file silence EDLs against the source's audio stream-sample
+  clock, not the container `Duration` header (GH#702, PR2).** When a source's container overstates its
+  audio (HLS manifests, or a direct MP4 whose video stream outlasts its audio), anchoring the
+  trailing-silence test and the final keep-span on the header made the renderer hit EOF early, so the
+  rendered file came out shorter than the planned EDL — the single-file `rendered-duration-mismatch`
+  class. The planner now ffprobes `duration_ts * time_base` (mirroring `SwagitConcatPlanner`, which
+  already used this basis) and records `duration_basis="stream-sample"`, falling back to the container
+  header then the provider duration. Re-planned episodes get a corrected EDL that the renderer matches.
 - **The EDL (cue) clock now derives from a single `timeline.edl_duration` primitive (GH#702, PR1).**
   `media._served_duration`, `stages._edited_timeline_served_duration`, and `audit._timeline_duration`
   previously each re-summed served segment spans with subtly different fallbacks; they now delegate to
