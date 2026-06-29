@@ -60,7 +60,7 @@ from citypods.resources import (
 )
 from citypods.security import redact_subprocess_command, redact_subprocess_text
 from citypods.storage.base import StorageBackend
-from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
+from citypods.timeline import Segment, SourceMedia, Timeline, edl_duration, timeline_digest
 
 CONTENT_TYPE = "audio/mp4"
 
@@ -2163,19 +2163,21 @@ def _concat_render_timeline(
 
 
 def _served_duration(ep: Episode) -> float | None:
-    """The served (enclosure) duration to record as ``audio_duration_served``.
+    """The EDL (cue) clock for an edited episode, or the source duration as a fallback.
 
-    Derived from the EDL — the sum of served segment lengths — whenever the episode is
-    actually manipulated, rather than trusting ``ep.duration`` (which stays the *source*
-    duration until a planner overwrites it). For identity episodes the two are equal, so this
-    is a no-op there; for trims/concats it keeps ``audio_duration_served`` correct by
-    construction and makes the INFRA-9 ``timeline-duration-mismatch`` contract check meaningful
-    (it compares the segment total against this field). Falls back to ``ep.duration`` when there
-    is no timeline (identity) or no known duration."""
+    For a manipulated episode this returns the EDL/cue clock (the planned served length),
+    derived through the single :func:`citypods.timeline.edl_duration` primitive rather than a
+    local re-implementation. For identity episodes (no timeline / digest ``""``) it falls back
+    to ``ep.duration`` (the *source* duration, which equals the served length there).
+
+    NOTE (review/20): the value this returns is the **EDL** clock, not the probed hosted-stream
+    duration. It is still acceptable as a backfill estimate for ``audio_duration_served`` *when
+    no probe is available*, and as the size input to encode-RSS estimation — but a follow-up PR
+    makes the probed hosted-stream duration authoritative for ``audio_duration_served`` so the
+    EDL and the real enclosure can no longer be conflated by construction."""
     tl = ep.timeline
     if tl is not None and timeline_digest(tl, ep.sources) != "":
-        duration = sum(s.served_end - s.served_start for s in tl.segments)
-        return duration if duration > 0 else None
+        return edl_duration(tl)
     if ep.duration is None:
         return None
     duration = float(ep.duration)

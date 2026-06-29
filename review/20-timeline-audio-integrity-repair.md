@@ -2,6 +2,36 @@
 
 **Status:** L3 design, PR1 merged 2026-06-27; PR2-PR5 implemented in follow-up branch.
 
+## Follow-up: single-file silence root cause + duration-model hardening (GH#702)
+
+Post-PR666 audit comparison proved the remaining `rendered-duration-mismatch` survivors are a single
+class: `SilencePlanner` plans single-file silence EDLs against the source **container** duration
+(`_parse_ffmpeg_duration`), while the renderer renders the source **audio stream**. Where container >
+stream (HLS manifest overstatement, or a direct MP4 whose video outlasts its audio), the EDL's tail
+span over-claims and the rendered file is short by ≈(container − stream). `SwagitConcatPlanner` already
+plans on the stream-sample clock (`duration_basis="stream-sample"`); the silence planner was never given
+the same treatment. PR636's `timeline-replan` is idempotent for these rows (same container duration →
+identical digest) so it cannot fix them.
+
+The fix series (GH#702), reordered for safe sequencing:
+
+- **PR1 (this change):** consolidate the EDL/cue clock into one `timeline.edl_duration` primitive that
+  `media._served_duration`, `stages._edited_timeline_served_duration`, and `audit._timeline_duration`
+  all delegate to. No behavior change; establishes the single derivation site so the three canonical
+  duration facts (source / served-hosted / EDL-cue) cannot drift apart.
+- **PR2:** `SilencePlanner` measures the source's stream-sample duration (mirroring `concat.py`) and uses
+  it for trailing-silence detection and the final keep-span; adds an ffmpeg integration regression test
+  with a source whose container duration exceeds its audio stream.
+- **PR2/PR3:** make the probed hosted-stream duration authoritative for `audio_duration_served` (remove
+  the `_backfill_served_duration` / `_refresh_served_duration_from_audio` EDL-clobber) and route RSS off
+  it. Deliberately lands *with/after* the planner fix so corrected durations — not the short broken ones
+  — are what gets published.
+- **PR3:** decouple `_build_streaming_single_source_filter` from `PODCAST_SPEECH_PROFILE` and guard
+  `build_filter_complex` against single-source many-cut input (it is retained only for multi-source
+  concat assembly/fallback and inserts).
+- **PR4:** cohort remediation for all feed-health-detected mismatches; **PR5 (gated):** `silence:3`
+  catalog version bump for the permanent guarantee.
+
 ## Problem
 
 Feed-health timeline findings currently compare the persisted EDL duration against

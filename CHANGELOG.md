@@ -16,6 +16,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **The EDL (cue) clock now derives from a single `timeline.edl_duration` primitive (GH#702, PR1).**
+  `media._served_duration`, `stages._edited_timeline_served_duration`, and `audit._timeline_duration`
+  previously each re-summed served segment spans with subtly different fallbacks; they now delegate to
+  one canonical accessor so the three duration facts review/20 must keep distinct — source,
+  served/hosted, and EDL/cue — cannot drift apart through divergent local math. No behavior change;
+  foundation for making the probed hosted-stream duration authoritative for `audio_duration_served` and
+  for the single-file silence stream-sample planner fix.
 - **Timeline/audio integrity diagnostics and targeted repair plumbing are implemented, with PR6 still
   gated.** The feed-health workflow now uploads an `audit-timeline-integrity.jsonl` artifact that
   distinguishes container-only duration drift from real stream-sample/EDL mismatches. Episode records

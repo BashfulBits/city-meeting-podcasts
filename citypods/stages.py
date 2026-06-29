@@ -116,7 +116,7 @@ from citypods.records import (
 )
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import validate_source_url
-from citypods.timeline import Timeline, remap, timeline_digest
+from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 
 
 def _materialize_set(
@@ -1249,8 +1249,7 @@ def _served_duration_hint(ep: Episode) -> float | None:
 def _edited_timeline_served_duration(ep: Episode) -> float | None:
     if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
         return None
-    served = sum(s.served_end - s.served_start for s in ep.timeline.segments)
-    return served if served > 0 else None
+    return edl_duration(ep.timeline)
 
 
 def _remap_provider_cues(ep: Episode, cues: list[dict]) -> tuple[list[dict], float | None]:

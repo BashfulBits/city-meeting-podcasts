@@ -157,6 +157,29 @@ def timeline_digest(tl: Timeline, sources: tuple[SourceMedia, ...] | list[Source
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
 
+def edl_duration(tl: Timeline | None) -> float | None:
+    """The canonical EDL (cue) clock: the summed served span of the timeline.
+
+    This is the served-time length a listener scrubs and the basis for chapter/cue range
+    checks. It is one of three duration facts that review/20 requires to be kept distinct and
+    never silently reconciled:
+
+      * **source** — ``SourceMedia.duration`` (the original recording length);
+      * **served/hosted** — ``Episode.audio_duration_served`` (the *probed* duration of the
+        actual rendered enclosure);
+      * **EDL/cue** — this function (the planned served length).
+
+    For a correct episode all three agree within frame tolerance; the audit treats any
+    divergence as a finding. Every place that needs the EDL clock derives it here so the three
+    facts cannot drift apart through subtly-different local re-implementations. Returns ``None``
+    for an empty timeline or a non-positive total.
+    """
+    if tl is None or not tl.segments:
+        return None
+    total = sum(s.served_end - s.served_start for s in tl.segments)
+    return total if total > 0 else None
+
+
 # ---------------------------------------------------------------------------
 # Time maps
 # ---------------------------------------------------------------------------

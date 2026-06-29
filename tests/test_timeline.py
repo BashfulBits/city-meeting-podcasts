@@ -10,6 +10,7 @@ from citypods.timeline import (
     Segment,
     SourceMedia,
     Timeline,
+    edl_duration,
     identity_timeline,
     remap,
     served_to_source,
@@ -106,6 +107,59 @@ def _intro_timeline() -> Timeline:
             ),
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# edl_duration — the single EDL/cue-clock primitive (review/20)
+# ---------------------------------------------------------------------------
+
+
+class TestEdlDuration:
+    def test_trimmed_total_is_sum_of_served_spans(self):
+        # 300 + 3000 = 3300 served seconds after the silence cut.
+        assert edl_duration(_trimmed_timeline()) == 3300.0
+
+    def test_concat_total_spans_both_sources(self):
+        assert edl_duration(_concat_timeline()) == 3600.0
+
+    def test_insert_span_counts_toward_served_total(self):
+        # 60s intro + 3600s source.
+        assert edl_duration(_intro_timeline()) == 3660.0
+
+    def test_identity_full_span_equals_source(self):
+        assert edl_duration(identity_timeline(_src(), 3600.0)) == 3600.0
+
+    def test_none_and_empty_return_none(self):
+        assert edl_duration(None) is None
+        assert edl_duration(Timeline(version="x", segments=())) is None
+
+    def test_is_single_derivation_for_all_callers(self):
+        """media._served_duration, stages._edited_timeline_served_duration, and
+        audit._timeline_duration must all derive the EDL clock from this one primitive so the
+        three duration facts cannot drift apart through divergent local math (review/20)."""
+        from datetime import UTC, datetime
+
+        from citypods.audit import _timeline_duration
+        from citypods.media import _served_duration
+        from citypods.models import Episode
+        from citypods.stages import _edited_timeline_served_duration
+
+        tl = _trimmed_timeline()
+        src = _src()
+        ep = Episode(
+            guid="g",
+            title="t",
+            published=datetime(2026, 5, 20, tzinfo=UTC),
+            video_url="https://src/video.m3u8",
+            timeline=tl,
+            sources=[src],
+        )
+
+        expected = edl_duration(tl)
+        assert expected == 3300.0
+        assert _served_duration(ep) == expected
+        assert _edited_timeline_served_duration(ep) == expected
+        assert _timeline_duration(ep) == expected
 
 
 # ---------------------------------------------------------------------------
