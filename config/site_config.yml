@@ -62,10 +62,13 @@ provider_transport_telemetry_domains:
 # Backlog prioritization (H5). An ordered list of comparator keys applied to the work backlog;
 # ties fall through to the next key. With no list set, ordering is the behavior-preserving default.
 # Keys: recency ({order: asc|desc, within_days: N}), recent_first: N, city_order (ranks by the
-# city_order list below — partial lists fall through), body_order, feed_visible_first. See
+# city_order list below — partial lists fall through), body_order, feed_visible_first, long_first
+# (transcript-lane work over N hours — bare `long_first` defaults to asr_local_max_duration_hours
+# below — ranks first catalog-wide, ahead of every later key; never reorders audio). See
 # review/12 §H5. Today: keep the last 30 days complete first, then fall to the default order.
 backlog_priority:
   - recency: {order: desc, within_days: 30}
+# - long_first: 4                          # drain the >4h transcript backlog before <4h (unset today)
 # city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
 
 defaults:

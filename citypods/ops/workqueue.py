@@ -46,6 +46,16 @@ WORK_CLASSES = (
 # Reserved — recognized but not emitted in H5 (reserve-now, no migration later).
 RESERVED_WORK_CLASSES = ("transcript-merge",)
 
+# Work classes the ``long_first`` comparator (H13/H14) is allowed to reorder: every
+# transcript-producing lane, since those are the ones a capped *external* GPU free tier is the
+# only path for once an episode exceeds ``asr_local_max_duration_hours`` (the in-process backend
+# refuses it outright — ``stages._asr_local_duration_eligible``). ``audio`` is deliberately
+# excluded: it is not capacity-gated by duration the same way (a long encode gets a bigger memory
+# reservation, never a refusal), so reordering it would just delay publishing the common case of
+# short meetings with no corresponding benefit. ``transcript-merge`` is included for forward
+# compatibility even though H5 does not yet emit it.
+DURATION_AWARE_WORK_CLASSES = (frozenset(WORK_CLASSES) - {"audio"}) | {"transcript-merge"}
+
 # Priority buckets. feed-visible ≡ materialized today, so the archive buckets are
 # reserved-but-inert until the opt-in archive-backfill feature populates them (review/12 §H5).
 BUCKET_FEED_VISIBLE = "feed_visible"
@@ -61,9 +71,9 @@ RESERVED_KEYS = frozenset({"requested_first", "strong_towns_first", "population"
 class WorkItem:
     """One unit of backlog work — an (episode, output-artifact) pair.
 
-    Only the ordering inputs (``published`` / ``city_slug`` / ``body`` / ``priority_bucket``)
-    are exercised in H5. The remaining fields are the reserved persistence/diarization schema
-    (PR2 + future); they carry inert defaults today.
+    Only the ordering inputs (``published`` / ``city_slug`` / ``body`` / ``priority_bucket`` /
+    ``duration_hours``) are exercised in H5. The remaining fields are the reserved
+    persistence/diarization schema (PR2 + future); they carry inert defaults today.
     """
 
     # identity
@@ -75,6 +85,9 @@ class WorkItem:
     city_slug: str = ""
     body: str = ""
     priority_bucket: str = BUCKET_FEED_VISIBLE
+    # The episode's served (preferred) or source duration in hours, 0.0 when unknown. Feeds the
+    # ``long_first`` comparator (H13/H14); not exercised by any other H5 comparator.
+    duration_hours: float = 0.0
     # --- reserved (PR2 sidecar + diarization-forward schema); not populated in H5 ---
     stage_version: str = ""
     input_hashes: tuple[str, ...] = ()
@@ -85,6 +98,20 @@ class WorkItem:
     next_retry: datetime | None = None
     lease_owner: str = ""  # groupable: one owner may hold several items of one episode
     lease_expires: datetime | None = None
+
+
+def _duration_hours(served: float | None, source: float | None) -> float:
+    """Hours from a served (preferred) or source duration in seconds; 0.0 when both are unknown.
+
+    Mirrors ``stages._episode_duration_hours``'s served≻source precedence. Kept self-contained
+    here (rather than imported) since that helper also returns a basis label for logging that
+    this ordering-only primitive doesn't need; the precedence logic is duplicated by exactly one
+    line, not re-derived."""
+    if served is not None and served > 0:
+        return served / 3600
+    if source is not None and source > 0:
+        return source / 3600
+    return 0.0
 
 
 def workitem_from_episode(
@@ -105,6 +132,7 @@ def workitem_from_episode(
         city_slug=city_slug,
         body=ep.body or "",
         priority_bucket=priority_bucket,
+        duration_hours=_duration_hours(ep.audio_duration_served, ep.duration),
     )
 
 
@@ -222,12 +250,47 @@ def _build_feed_visible_first(params, *, city_order, now):
     return key
 
 
+def _build_long_first(params, *, city_order, now):
+    """`long_first: N` — binary bucket: pending transcript-lane work over *N* hours ranks first,
+    catalog-wide, ahead of every later configured key (e.g. `recency`/`city_order` then govern
+    ordering *within* each band). ``from_site_config`` resolves a bare `long_first` (no params) to
+    the site's configured `defaults.asr_local_max_duration_hours` before calling this builder, so
+    the prioritization boundary can't silently drift from the local-backend capability boundary —
+    pass an explicit value to prioritize a different cutoff.
+
+    Exists because once an episode exceeds `asr_local_max_duration_hours` the in-process ASR
+    backend refuses it outright (`stages._asr_local_duration_eligible`) — a capped *external* GPU
+    free tier (H13/H14) is its only path to ever being transcribed. With no duration awareness, a
+    steady stream of short episodes (which have a working local fallback) can keep consuming that
+    scarce external budget in arrival order while long ones starve behind them indefinitely.
+
+    Scoped to :data:`DURATION_AWARE_WORK_CLASSES` — an `audio` item's key is always the low-rank
+    constant (falls straight through to the next key), since audio is not capacity-gated by
+    duration the same way."""
+    if params is None:
+        raise ValueError(
+            "long_first requires an hours threshold, e.g. `long_first: 4` "
+            "(from_site_config defaults this to defaults.asr_local_max_duration_hours)"
+        )
+    threshold = float(params)
+    if threshold <= 0:
+        raise ValueError(f"long_first hours must be > 0, got {params!r}")
+
+    def key(wi: WorkItem):
+        if wi.work_class not in DURATION_AWARE_WORK_CLASSES:
+            return 1
+        return 0 if wi.duration_hours > threshold else 1
+
+    return key
+
+
 _BUILDERS: dict[str, Callable[..., Callable[[WorkItem], object]]] = {
     "recency": _build_recency,
     "recent_first": _build_recent_first,
     "city_order": _build_city_order,
     "body_order": _build_body_order,
     "feed_visible_first": _build_feed_visible_first,
+    "long_first": _build_long_first,
 }
 
 
@@ -272,6 +335,11 @@ class BacklogPolicy:
                 raise ValueError(
                     f"unknown backlog_priority comparator {name!r}; known: {sorted(_BUILDERS)}"
                 )
+            if name == "long_first" and params is None:
+                # Resolve the implicit default here (config normalization), not inside the
+                # builder, so the comparator registry's call convention stays uniform across
+                # every key — only `long_first` has a site-wide default to fall back to.
+                params = defaults.get("asr_local_max_duration_hours", 4.0)
             keys.append(SortKey(name, builder(params, city_order=city_order, now=now)))
         return cls(keys=tuple(keys))
 
@@ -362,6 +430,9 @@ def _episode_work_items(
         city_slug=city.slug,
         body=rec.get("body") or "",
         priority_bucket=bucket,
+        duration_hours=_duration_hours(
+            (rec.get("audio") or {}).get("duration_served"), rec.get("duration")
+        ),
     )
     items: list[WorkItem] = []
     audio_done = bool((rec.get("audio") or {}).get("url"))

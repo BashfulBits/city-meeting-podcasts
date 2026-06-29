@@ -323,6 +323,24 @@ into its own workflow (H6).
   to the next key; placement matters — `city_order` first = city-greedy, after `recency` = same-day
   tie-break only); `body_order`; `feed_visible_first`. Reserved stubs: `requested_first`,
   `strong_towns_first`, `population`.
+  - **`long_first: N` (added with H13/H14 dispatch).** Binary bucket, same shape as `recent_first`:
+    pending **transcript-lane** work (`WorkItem.duration_hours > N`) ranks first, catalog-wide, ahead
+    of every later key. Scoped to `workqueue.DURATION_AWARE_WORK_CLASSES` (every `WORK_CLASSES` entry
+    except `audio`) — an `audio` item's key is the constant low rank, so it always falls through to
+    the next configured key untouched. Bare `long_first` (no params) resolves to
+    `defaults.asr_local_max_duration_hours` in `from_site_config`, so the prioritization boundary
+    can't silently drift from the boundary at which the in-process backend refuses an episode
+    outright (`stages._asr_local_duration_eligible`) — the capped external GPU free tier (H14) is
+    that episode's *only* path to ever being transcribed, and with no duration awareness a steady
+    stream of short episodes (which have a working local fallback) could keep consuming that scarce
+    budget in arrival order while long ones starve behind them indefinitely. `_materialize_set` gained
+    a `work_class` parameter (default `"audio"`, unaffected) so `TranscriptStage` /
+    `ProviderTranscriptDiarizeStage` can pass a transcript-lane value — without it, every stage's
+    ordering `WorkItem` was unconditionally labelled `"audio"` and `long_first` would have silently
+    no-op'd for local/H14a push-dispatch order (only the separately-built `work.json` manifest that
+    H14a's iteration and the H14b/H14c pull workers also read would have seen it). Accepted tradeoff:
+    a hard catalog-wide drain, by design — one pathological multi-hour backlog can deprioritize all
+    short-meeting transcript throughput until it clears; no reserved-capacity split is implemented.
 - **Production policy (initial).** `backlog_priority: [recency: {order: desc, within_days: 30}]` and
   nothing else — keep the last 30 days complete first, then fall to the deterministic default. Every
   other comparator ships and is unit-tested but is unconfigured in production until chosen.

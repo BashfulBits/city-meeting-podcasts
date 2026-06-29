@@ -27,15 +27,25 @@ from citypods.ops.workqueue import (
 NOW = datetime(2026, 6, 11, tzinfo=UTC)
 
 
-def _wi(uid, *, days_ago=0, city="", body="", bucket=BUCKET_FEED_VISIBLE):
+def _wi(
+    uid,
+    *,
+    days_ago=0,
+    city="",
+    body="",
+    bucket=BUCKET_FEED_VISIBLE,
+    work_class="audio",
+    duration_hours=0.0,
+):
     return WorkItem(
         source_key=city or "s",
         episode_uid=uid,
-        work_class="audio",
+        work_class=work_class,
         published=NOW - timedelta(days=days_ago),
         city_slug=city,
         body=body,
         priority_bucket=bucket,
+        duration_hours=duration_hours,
     )
 
 
@@ -196,6 +206,83 @@ def test_feed_visible_first():
 
 
 # --------------------------------------------------------------------------------------------
+# long_first
+# --------------------------------------------------------------------------------------------
+
+
+def test_long_first_catalog_wide_ahead_of_recency():
+    # A 5h item published last week outranks a 10-minute item published today: long_first is the
+    # PRIMARY key, so duration band beats recency entirely (the stated policy: drain the >4h
+    # backlog catalog-wide before falling back to site-config order for <4h).
+    items = [
+        _wi("short_new", days_ago=0, work_class="transcript-asr", duration_hours=0.2),
+        _wi("long_old", days_ago=7, work_class="transcript-asr", duration_hours=5.0),
+    ]
+    policy = _policy({"long_first": 4}, {"recency": "desc"})
+    assert _uids(order(items, policy)) == ["long_old", "short_new"]
+
+
+def test_long_first_within_band_falls_through_to_next_key():
+    items = [
+        _wi("long_old", days_ago=10, work_class="transcript-asr", duration_hours=5.0),
+        _wi("long_new", days_ago=1, work_class="transcript-asr", duration_hours=6.0),
+        _wi("short", days_ago=0, work_class="transcript-asr", duration_hours=1.0),
+    ]
+    policy = _policy({"long_first": 4}, {"recency": "desc"})
+    # Both long items precede the short one; within the long band, recency still governs.
+    assert _uids(order(items, policy)) == ["long_new", "long_old", "short"]
+
+
+def test_long_first_exactly_at_threshold_is_not_long():
+    items = [
+        _wi("at_threshold", work_class="transcript-asr", duration_hours=4.0),
+        _wi("over_threshold", work_class="transcript-asr", duration_hours=4.01),
+    ]
+    policy = _policy({"long_first": 4})
+    assert _uids(order(items, policy)) == ["over_threshold", "at_threshold"]
+
+
+def test_long_first_does_not_reorder_audio():
+    # audio is excluded from DURATION_AWARE_WORK_CLASSES: a long audio item must not jump ahead
+    # of a short one just because it happens to carry a duration_hours value.
+    items = [
+        _wi("short_audio", days_ago=0, work_class="audio", duration_hours=0.2),
+        _wi("long_audio", days_ago=5, work_class="audio", duration_hours=5.0),
+    ]
+    policy = _policy({"long_first": 4}, {"recency": "desc"})
+    # Both fall through long_first's constant rank ⇒ recency alone governs ⇒ newest first.
+    assert _uids(order(items, policy)) == ["short_audio", "long_audio"]
+
+
+def test_long_first_requires_positive_threshold():
+    with pytest.raises(ValueError, match="long_first hours must be > 0"):
+        _policy({"long_first": 0})
+
+
+def test_long_first_bare_defaults_to_asr_local_max_duration_hours():
+    cfg = {
+        "backlog_priority": ["long_first"],
+        "defaults": {"asr_local_max_duration_hours": 2},
+    }
+    items = [
+        _wi("just_over_2h", work_class="transcript-asr", duration_hours=2.5),
+        _wi("under_2h", work_class="transcript-asr", duration_hours=1.0),
+    ]
+    policy = BacklogPolicy.from_site_config(cfg, now=NOW)
+    assert _uids(order(items, policy)) == ["just_over_2h", "under_2h"]
+
+
+def test_long_first_bare_falls_back_to_4_hours_with_no_config():
+    cfg = {"backlog_priority": ["long_first"]}
+    items = [
+        _wi("4h5", work_class="transcript-asr", duration_hours=4.5),
+        _wi("3h5", work_class="transcript-asr", duration_hours=3.5),
+    ]
+    policy = BacklogPolicy.from_site_config(cfg, now=NOW)
+    assert _uids(order(items, policy)) == ["4h5", "3h5"]
+
+
+# --------------------------------------------------------------------------------------------
 # Worked examples from review/12 §H5
 # --------------------------------------------------------------------------------------------
 
@@ -289,6 +376,23 @@ def test_workitem_from_episode_carries_fields():
     assert wi.priority_bucket == BUCKET_FEED_VISIBLE
 
 
+def test_workitem_from_episode_duration_prefers_served_over_source():
+    ep = _ep("g1", 1)
+    ep.duration = 7200
+    ep.audio_duration_served = 5400.0
+    assert workitem_from_episode(ep).duration_hours == pytest.approx(1.5)
+
+
+def test_workitem_from_episode_duration_falls_back_to_source():
+    ep = _ep("g1", 1)
+    ep.duration = 7200
+    assert workitem_from_episode(ep).duration_hours == pytest.approx(2.0)
+
+
+def test_workitem_from_episode_duration_unknown_is_zero():
+    assert workitem_from_episode(_ep("g1", 1)).duration_hours == 0.0
+
+
 # --------------------------------------------------------------------------------------------
 # Integration with _materialize_set
 # --------------------------------------------------------------------------------------------
@@ -321,6 +425,34 @@ def test_materialize_set_windowed_recency_reorders_across_bodies():
     out = _materialize_set(eps, 50, policy=policy, city_slug="denton-tx")
     # Now globally newest-first across both bodies (all within the 30d window).
     assert [e.guid for e in out] == ["a_new", "b_one", "a_old"]
+
+
+def test_materialize_set_long_first_requires_transcript_work_class():
+    """``_materialize_set`` always labels its ordering WorkItem 'audio' unless the caller passes
+    an explicit ``work_class`` — TranscriptStage must pass a transcript-lane value (e.g.
+    'transcript-asr') or `long_first` silently no-ops for its own per-run dispatch order, even
+    though the WHOLE point is to reorder transcript work ahead of short episodes."""
+    from citypods.stages import _materialize_set
+
+    eps = [
+        _ep("short", days_ago=0, body="City Council"),
+        _ep("long", days_ago=10, body="City Council"),
+    ]
+    eps[0].duration = 1800  # 0.5h
+    eps[1].duration = 5 * 3600  # 5h
+    policy = BacklogPolicy.from_site_config(
+        {"backlog_priority": [{"long_first": 4}, {"recency": "desc"}]}, now=NOW
+    )
+
+    # Default work_class="audio" (AudioStage's call shape): long_first never engages.
+    audio_order = [e.guid for e in _materialize_set(eps, 50, policy=policy)]
+    assert audio_order == ["short", "long"]  # recency alone governs
+
+    # An explicit transcript work_class (TranscriptStage's call shape): long_first engages.
+    transcript_order = [
+        e.guid for e in _materialize_set(eps, 50, policy=policy, work_class="transcript-asr")
+    ]
+    assert transcript_order == ["long", "short"]
 
 
 def test_materialize_set_selection_unchanged_by_policy():
@@ -366,14 +498,23 @@ def _rec(
     provider_text=False,
     transcript_key=None,
     media_kind="hls",
+    duration=None,
+    duration_served=None,
 ):
+    audio = {}
+    if hosted:
+        audio["url"] = "https://x/a.m4a"
+        if duration_served is not None:
+            audio["duration_served"] = duration_served
     rec = {
         "published": (NOW - timedelta(days=days_ago)).isoformat(),
         "body": body,
         "media_kind": media_kind,
         "links": {"transcript": "https://x/t.vtt"} if provider_text else {},
-        "audio": {"url": "https://x/a.m4a"} if hosted else {},
+        "audio": audio,
     }
+    if duration is not None:
+        rec["duration"] = duration
     if transcript_key:
         rec["transcript"] = {"key": transcript_key, "basis": "source:s0"}
     return rec
@@ -410,6 +551,33 @@ def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None, dia
 
 def _tx_items(items):
     return [it for it in items if "transcript" in it.work_class]
+
+
+def test_build_manifest_carries_duration_hours_preferring_served():
+    recs = {
+        "served": _rec(1, hosted=True, duration=7200, duration_served=5400.0),
+        "source_only": _rec(1, hosted=True, duration=3600),
+        "unknown": _rec(1, hosted=True),
+    }
+    items = {it.episode_uid: it for it in build_manifest([("s", _city("d"), recs)])}
+    assert items["served"].duration_hours == pytest.approx(1.5)
+    assert items["source_only"].duration_hours == pytest.approx(1.0)
+    assert items["unknown"].duration_hours == 0.0
+
+
+def test_build_manifest_long_first_prioritizes_long_transcript_backlog():
+    # A 5h episode published two weeks ago must precede a 20-minute episode published today once
+    # long_first leads the policy — the manifest both H14a dispatch and pull workers read.
+    recs = {
+        "short_new": _rec(0, hosted=True, duration_served=1200.0),
+        "long_old": _rec(14, hosted=True, duration_served=5 * 3600.0),
+    }
+    policy = BacklogPolicy.from_site_config(
+        {"backlog_priority": [{"long_first": 4}, {"recency": "desc"}]}, now=NOW
+    )
+    items = build_manifest([("s", _city("d"), recs)], policy=policy)
+    asr_order = [it.episode_uid for it in items if it.work_class == "transcript-asr"]
+    assert asr_order == ["long_old", "short_new"]
 
 
 def test_build_manifest_audio_queued_vs_done():
