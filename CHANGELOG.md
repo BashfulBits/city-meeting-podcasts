@@ -16,6 +16,23 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **New `long_first: N` backlog-priority comparator prioritizes the catalog's long-meeting transcript
+  backlog ahead of everything else (review/12 §H5).** Once an episode exceeds
+  `asr_local_max_duration_hours`, the in-process ASR backend refuses it outright
+  (`stages._asr_local_duration_eligible`) — the capped external GPU free tier (H13/H14) is its only
+  path to ever being transcribed. With no duration awareness, a steady stream of short episodes (which
+  have a working local fallback) could keep consuming that scarce dispatch/claim budget in arrival
+  order while long ones starved behind them indefinitely. `long_first` is a binary bucket (same shape
+  as `recent_first`) scoped to transcript-producing work classes only — `audio` items are never
+  reordered. Bare `long_first` (no params) resolves to the site's configured
+  `asr_local_max_duration_hours` so the two boundaries can't silently drift apart; an explicit value
+  overrides it. Fixed a latent gap found while adding this: `_materialize_set` unconditionally labelled
+  every stage's ordering `WorkItem` `work_class="audio"`, which would have silently neutralized any
+  work-class-scoped comparator for local ordering and the live H14a push-dispatch order (only the
+  separately built `work.json` manifest the H14b/H14c pull workers also read would have seen it);
+  `TranscriptStage` / `ProviderTranscriptDiarizeStage` now pass their real work class. Accepted
+  tradeoff: a hard catalog-wide drain — one pathological multi-hour backlog can deprioritize all
+  short-meeting transcript throughput until it clears; no reserved-capacity split is implemented.
 - **The rendered-vs-EDL duration audit uses a 0.5s classification floor, separate from the 0.1s
   structural tolerance (GH#702, PR5).** A clean re-encode legitimately differs from the EDL sum by AAC
   priming/padding plus per-cut sample rounding (~0.1–0.4s) with no cue-integrity problem; classifying

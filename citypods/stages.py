@@ -125,13 +125,23 @@ def _materialize_set(
     *,
     policy: BacklogPolicy | None = None,
     city_slug: str = "",
+    work_class: str = "audio",
 ) -> list[Episode]:
     """The subset worth processing: the most-recent ``max_per_body`` per body. Every
     per-board feed shows at most that many of its body, and the combined feed is a subset of
     the union, so this is exactly what some feed can display — never the deep archive.
 
     Selection is unchanged; ``policy`` (H5) only reorders the selected set. With no policy the
-    order is byte-identical to before (body-grouped, newest-first per body)."""
+    order is byte-identical to before (body-grouped, newest-first per body).
+
+    ``work_class`` labels the transient ``WorkItem`` built for ordering only — it does not need to
+    match an episode's *exact* transcript sub-lane (``transcript-asr`` vs ``transcript-align`` vs
+    ``provider-transcript-align``, decided per-episode later by ``_transcript_class``), only
+    whether this call is a transcript-producing stage (any value in
+    ``workqueue.DURATION_AWARE_WORK_CLASSES``) so the ``long_first`` comparator can tell it apart
+    from a non-transcript stage's call. Defaults to ``"audio"``: every caller except
+    ``TranscriptStage`` / ``ProviderTranscriptDiarizeStage`` processes audio-adjacent work that
+    duration-based external-GPU prioritization should never reorder."""
     by_body: dict[str, list[Episode]] = collections.defaultdict(list)
     for ep in episodes:
         by_body[body_key(canonical_body(ep.body or ""))].append(ep)
@@ -141,7 +151,11 @@ def _materialize_set(
         out.extend(eps[:max_per_body])
     if policy is not None and policy.keys:
         key = sort_key_for(policy)
-        out.sort(key=lambda ep: key(workitem_from_episode(ep, city_slug=city_slug)))
+        out.sort(
+            key=lambda ep: key(
+                workitem_from_episode(ep, city_slug=city_slug, work_class=work_class)
+            )
+        )
     return out
 
 
@@ -1761,7 +1775,11 @@ class TranscriptStage:
                     )
 
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="transcript-asr",
         ):
             label = ep.uid or ep.guid
             ep_ref = (
@@ -2661,7 +2679,11 @@ class ProviderTranscriptDiarizeStage:
 
         src_key = _src_key(city)
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="provider-transcript-diarize",
         ):
             label = ep.uid or ep.guid
             registry = ep.provider_transcript or {}
