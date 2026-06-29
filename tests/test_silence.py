@@ -104,6 +104,11 @@ class TestParseFfmpegDecodedEnd:
         assert _parse_ffmpeg_decoded_end("Duration: 01:00:00.00\n") is None
         assert _parse_ffmpeg_decoded_end("time=N/A\n") is None
 
+    def test_zero_only_progress_returns_none(self):
+        # A stats stream that never advances must not yield a zero-length clock the planner would
+        # then prefer over container/provider duration.
+        assert _parse_ffmpeg_decoded_end("time=00:00:00.00\ntime=00:00:00.00\n") is None
+
 
 # ---------------------------------------------------------------------------
 # build_silence_timeline
@@ -229,6 +234,15 @@ class TestDetectSilences:
         assert silences == []
         assert container_duration is None
         assert decoded_duration is None
+
+    def test_returns_fallback_on_parse_error(self):
+        # A malformed numeric token escapes parse_silences/_parse_ffmpeg_* as a ValueError; the
+        # documented ``([], None, None)`` fallback must still hold.
+        bad_stderr = "[silencedetect @ 0x1] silence_start: 1.2.3\n"
+        with patch("citypods.silence.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stderr=bad_stderr, returncode=0)
+            result = detect_silences("http://example.com/video.mp4")
+        assert result == ([], None, None)
 
     def test_ffmpeg_command_includes_silencedetect(self):
         with patch("citypods.silence.subprocess.run") as mock_run:
@@ -727,6 +741,18 @@ class TestSilencePlannerAvailability:
         ep.media_availability = first  # carry the verdict into the next independent run
         second = self._plan(([(0.0, 3599.99)], 3600.0, None), ep=ep)
         assert second.state == CONFIRMED_EMPTY and second.silent_confirmations == 2
+
+    def test_silence_verdict_uses_decoded_end_over_container(self):
+        """The availability verdict must be judged off the decoded audio-stream end, not the
+        container header. 8s of silence in a 10s decoded stream is near-total (suspected empty);
+        the same spans against the overstated 3600s container header would read as available. If
+        the decoded-end preference regressed, this would flip to AVAILABLE."""
+        from citypods.availability import SUSPECTED_EMPTY
+
+        ep = _make_episode(duration=3600)
+        # container 3600 (overstated) vs decoded 10s: content = 10 - 8 = 2s < floor(5s) → silent.
+        verdict = self._plan(([(0.0, 8.0)], 3600.0, 10.0), ep=ep)
+        assert verdict.state == SUSPECTED_EMPTY and verdict.is_withheld()
 
     def test_missing_probe_duration_is_transport_not_silence(self):
         from citypods.availability import AVAILABLE

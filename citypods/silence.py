@@ -79,14 +79,18 @@ def _parse_ffmpeg_decoded_end(stderr: str) -> float | None:
     returns ``None`` for HLS manifests / fragmented MP4 — exactly the over-claiming cohort). Reusing
     the decode the silence pass already performed avoids a second media pass.
 
-    Returns the largest non-negative ``time=`` seen (decode is monotonic, so the final stats line
+    Returns the largest **positive** ``time=`` seen (decode is monotonic, so the final stats line
     is the end), or ``None`` when none is parseable — the caller then falls back to the container
-    header / provider duration and labels the basis honestly. The leading ``-`` of ffmpeg's
-    occasional negative-wrapped warm-up timestamps is deliberately not matched, so they are skipped.
+    header / provider duration and labels the basis honestly. A stats stream that never advances
+    (only ``time=00:00:00.00``) yields ``None`` rather than a zero-length clock the planner would
+    otherwise prefer over container/provider duration. The leading ``-`` of ffmpeg's occasional
+    negative-wrapped warm-up timestamps is deliberately not matched, so they are skipped too.
     """
     best: float | None = None
     for h, mn, s in re.findall(r"time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)", stderr):
         secs = int(h) * 3600 + int(mn) * 60 + float(s)
+        if secs <= 0:
+            continue
         if best is None or secs > best:
             best = secs
     return best
@@ -359,7 +363,13 @@ def detect_silences(
         container_duration = _parse_ffmpeg_duration(stderr)
         decoded_duration = _parse_ffmpeg_decoded_end(stderr)
         return silences, container_duration, decoded_duration
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+        OSError,
+        ValueError,  # a malformed float() in parse_silences/_parse_ffmpeg_duration
+        TypeError,
+    ):
         return [], None, None
 
 

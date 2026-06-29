@@ -82,6 +82,10 @@ production and drains over multiple runs under the stop budget:
    lane never actually re-planned — the EDL must change (`timeline_digest_changed`, basis `decoded`/
    `stream-sample`) for the rendered file to match. If digests stay put, the re-plan is not engaging
    (lanes not drained, flags not set, or — pre-fix — the planner falling back to the container clock).
+   Note that **post-fix** the planner still lands on `["container"]` when the decoded-end parse itself
+   fails (no parseable `time=` in the silencedetect stats), so a lone post-fix container-basis survivor
+   is not necessarily a stale pre-fix cohort — verify decoded-end parsing for that source before
+   treating it as one.
 4. **Stragglers handled separately (not via timeline-replan):**
    - **Dallas** (`dallas-tx-city-council`): `audio_key` never changed and `audio_duration_served` is
      null while the hosted stream looks like the untrimmed source — the audio lane never
