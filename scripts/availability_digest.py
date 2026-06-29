@@ -122,7 +122,11 @@ def _evidence_for(
     if src_url is None:
         note = "source media could not be resolved; metadata only" if encode else ""
     else:
-        silences, duration = detect_silences(src_url, ffmpeg_binary=ffmpeg_binary, timeout=timeout)
+        silences, container_duration, decoded_duration = detect_silences(
+            src_url, ffmpeg_binary=ffmpeg_binary, timeout=timeout
+        )
+        # Prefer the decoded audio-stream end over the container header (GH#702).
+        duration = decoded_duration if decoded_duration is not None else container_duration
         stem = safe_stem(candidate.uid)
         untrimmed = _encode_proxy(
             src_url,

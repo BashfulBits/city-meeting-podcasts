@@ -29,6 +29,17 @@ change that warrants separate review:
   (`_probe_stream_sample_duration`, mirroring `concat.py`) and uses it for trailing-silence detection and
   the final keep-span, recording `duration_basis="stream-sample"`. Root-cause fix; re-planned episodes get
   a corrected EDL the renderer matches.
+  - **PR2 follow-up (decoded-end fallback):** the stream-sample ffprobe returns `None` for precisely the
+    over-claiming sources — HLS manifests and fragmented MP4 expose no stream-level
+    `duration_ts`/`time_base`/`duration` — so the planner fell straight back to the **container** header
+    and re-planned those episodes onto the *same* over-claiming EDL (identical `timeline_digest`, identical
+    short rendered file). This was the reason the manual repair cohort did not converge even with
+    `timeline-replan` flags set: re-encode (the `audio-rematerialize` flag) fired and changed
+    `audio_spec_hash`, but the EDL never changed. Fixed by reusing the decode the `silencedetect` pass
+    already performs: `detect_silences` now also returns the decoded audio-stream end (its final `time=`
+    stats timestamp), and the planner uses it as a `duration_basis="decoded"` tier between `stream-sample`
+    and `container`. A clean post-repair audit now shows the survivors with changed `timeline_digest` and
+    `source_duration_bases=["decoded"]` (or `["stream-sample"]` where exposed), not `["container"]`.
 - **GH#702 PR3 (#705):** make the probed hosted-stream duration authoritative for `audio_duration_served`
   — `_backfill_served_duration` is now fill-when-missing and `_refresh_served_duration_from_audio` is
   probe-first for every timeline, so the measured hosted-file duration is no longer overwritten with the
@@ -66,6 +77,15 @@ production and drains over multiple runs under the stop budget:
 3. **Verify with the artifact.** Compare the before/after `audit-timeline-integrity` artifacts with
    `scripts/compare_timeline_diagnostics.py --cohort <label>`. Gate: selected rows return with
    `stream_delta` within tolerance, `fixed` rises, and no `worsened` / unexpected `missing-after`.
+   Diagnostic tell: a survivor with `audio_key_changed` but **unchanged** `timeline_digest` (and
+   `source_duration_bases=["container"]`) means the audio lane re-encoded against an EDL the timeline
+   lane never actually re-planned — the EDL must change (`timeline_digest_changed`, basis `decoded`/
+   `stream-sample`) for the rendered file to match. If digests stay put, the re-plan is not engaging
+   (lanes not drained, flags not set, or — pre-fix — the planner falling back to the container clock).
+   Note that **post-fix** the planner still lands on `["container"]` when the decoded-end parse itself
+   fails (no parseable `time=` in the silencedetect stats), so a lone post-fix container-basis survivor
+   is not necessarily a stale pre-fix cohort — verify decoded-end parsing for that source before
+   treating it as one.
 4. **Stragglers handled separately (not via timeline-replan):**
    - **Dallas** (`dallas-tx-city-council`): `audio_key` never changed and `audio_duration_served` is
      null while the hosted stream looks like the untrimmed source — the audio lane never
