@@ -1302,6 +1302,28 @@ def build_filter_complex(
     return ";".join(parts), "[outa]"
 
 
+def _is_single_source_fanout(segments: tuple[Segment, ...]) -> bool:
+    """True for the OOM-prone shape: a single-source, all-source, multi-cut timeline.
+
+    This is exactly what :func:`_build_streaming_single_source_filter` renders in bounded memory.
+    The generic :func:`build_filter_complex` fans it into N parallel ``atrim`` branches whose
+    retained decoded frames make RSS grow with cut count — the OOM that motivated the streaming
+    graph (GH#702). The generic graph is legitimate only for multi-source concat and insert
+    timelines, so the render dispatch treats this shape reaching the generic graph as a regression.
+    """
+    if len(segments) <= 1:
+        return False
+    if any(s.kind != "source" for s in segments):
+        return False  # inserts (intro/outro) legitimately use the generic graph
+    if any(s.source_end is None for s in segments[:-1]):
+        return False  # a non-final open-ended span is a documented generic-path case
+    return len({s.source_id for s in segments}) == 1
+
+
+class StreamingFilterBypassedError(AssertionError):
+    """A single-source many-cut timeline reached the generic fan-out graph (GH#702 OOM guard)."""
+
+
 # ---------------------------------------------------------------------------
 # CommandFfmpeg
 # ---------------------------------------------------------------------------
@@ -1574,17 +1596,35 @@ class CommandFfmpeg:
                 inputs += ["-i", str(asset_path)]
 
             if segs:
-                streaming_filter = (
-                    _build_streaming_single_source_filter(segs, source_input_idx)
-                    if processing_profile == PODCAST_SPEECH_PROFILE
-                    else None
-                )
-                filter_str, out_label = streaming_filter or build_filter_complex(
-                    segs,
-                    source_input_idx,
-                    asset_input_idx,
-                    None if processing_profile else loudness_profile,
-                )
+                # Always try the bounded-memory single-source graph first, regardless of profile
+                # (GH#702): it — not the generic fan-out — must own the OOM-prone single-source
+                # many-cut shape. It returns None for multi-source concat / inserts / reordering,
+                # which the generic graph still handles.
+                streaming_filter = _build_streaming_single_source_filter(segs, source_input_idx)
+                if streaming_filter is not None:
+                    filter_str, out_label = streaming_filter
+                    # The speech profile appends its measured loudnorm in _render_speech_profile.
+                    # On the legacy (no-profile) path loudnorm is otherwise baked into
+                    # build_filter_complex, so append it to the streaming output here to keep parity
+                    # now that single-source always takes the streaming graph.
+                    if not processing_profile and loudness_profile:
+                        lufs = _parse_lufs(loudness_profile)
+                        filter_str = (
+                            f"{filter_str};{out_label}loudnorm=I={lufs}:TP=-1.5:LRA=11[outa]"
+                        )
+                        out_label = "[outa]"
+                else:
+                    if _is_single_source_fanout(segs):
+                        raise StreamingFilterBypassedError(
+                            "single-source many-cut timeline reached build_filter_complex; it must "
+                            "render via _build_streaming_single_source_filter (GH#702 OOM guard)"
+                        )
+                    filter_str, out_label = build_filter_complex(
+                        segs,
+                        source_input_idx,
+                        asset_input_idx,
+                        None if processing_profile else loudness_profile,
+                    )
             else:
                 filter_str, out_label = "[0:a]anull[program]", "[program]"
 
