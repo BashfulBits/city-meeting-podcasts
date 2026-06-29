@@ -41,9 +41,38 @@ change that warrants separate review:
   guard the generic graph: a single-source many-cut timeline reaching `build_filter_complex` now raises
   `StreamingFilterBypassedError`. `build_filter_complex` is retained only for multi-source concat
   assembly/fallback and inserts.
-- **GH#702 PR5:** cohort remediation for all feed-health-detected mismatches + audit threshold de-noise.
+- **GH#702 PR5 (#708):** audit threshold de-noise — a distinct `_RENDERED_DURATION_TOLERANCE` (0.5s)
+  for the rendered/container duration classification, separate from the 0.1s `_FRAME_TOLERANCE` used by
+  structural checks, so the AAC-priming/sample-rounding band stops producing sub-finding
+  `rendered-duration-mismatch` artifact noise. Plus this remediation runbook.
 - **GH#702 PR6 (gated, build-but-do-not-merge):** `silence:3` catalog version bump for the permanent
   guarantee.
+
+### GH#702 remediation runbook (operator steps)
+
+The code fixes above correct EDLs and durations *going forward*. Remediating the already-broken
+single-file cohort (~26 unique uids over 1s: Denton ×20, Arlington ×3, Addison, Fort Worth; plus the
+0.5–1s band) is an operator action, because it re-encodes hosted audio and regenerates transcripts in
+production and drains over multiple runs under the stop budget:
+
+1. **Confirm the replan flags are still set.** The before-PR666 manual cohort stamped `timeline-replan`
+   on these episodes; a clean post-repair audit clears them, so a still-broken episode should still
+   carry the flag. If not, re-dispatch the feed-health workflow with `timeline_repair`,
+   `timeline_repair_min_delta` (use `0.5` to also catch the small band, or `1.0` for findings only) and
+   a `timeline_repair_cohort` label to re-stamp them.
+2. **Let the lanes drain.** With PR2 merged, `TimelineStage` re-plans flagged episodes on the
+   stream-sample clock → new EDL digest → `AudioStage` re-encodes → ASR regenerates. This is bounded by
+   the existing wall-clock stop budget.
+3. **Verify with the artifact.** Compare the before/after `audit-timeline-integrity` artifacts with
+   `scripts/compare_timeline_diagnostics.py --cohort <label>`. Gate: selected rows return with
+   `stream_delta` within tolerance, `fixed` rises, and no `worsened` / unexpected `missing-after`.
+4. **Stragglers handled separately (not via timeline-replan):**
+   - **Dallas** (`dallas-tx-city-council`): `audio_key` never changed and `audio_duration_served` is
+     null while the hosted stream looks like the untrimmed source — the audio lane never
+     re-materialized it. Investigate the materialize backoff/queue for that uid; this is an audio-lane
+     issue, not a planner/renderer one.
+   - **Pflugerville `missing-audio-key`** (`duration-probe-inconclusive`): the audio object is absent
+     (never materialized or GC'd). Confirm whether the episode should re-materialize or is withheld.
 
 ## Problem
 

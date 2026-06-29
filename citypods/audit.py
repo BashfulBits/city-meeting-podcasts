@@ -542,6 +542,16 @@ def check_enclosures(
 # Tolerance for floating-point duration comparisons (one video frame at 30fps ≈ 33ms).
 _FRAME_TOLERANCE = 0.1
 
+# Structural timeline checks (ordering, coverage, chapter range) use _FRAME_TOLERANCE: a single
+# sample boundary. The rendered-vs-EDL duration comparison needs a looser floor, because a clean
+# re-encode legitimately differs from the EDL sum by AAC encoder priming/padding plus per-cut sample
+# rounding (~0.1-0.4s observed) without any cue-integrity problem. Classifying that band as an ERROR
+# produced a long tail of sub-finding `rendered-duration-mismatch` diagnostics that were never filed
+# (findings gate at finding_min_delta, default 1.0s) — pure artifact noise. Real divergences in the
+# GH#702 cohort are ≥1s, so a 0.5s floor cleanly separates padding noise from genuine drift while
+# leaving the 1s finding/repair thresholds untouched (GH#702 de-noise).
+_RENDERED_DURATION_TOLERANCE = 0.5
+
 
 def _timeline_duration(ep: Episode) -> float | None:
     return edl_duration(ep.timeline)
@@ -628,7 +638,7 @@ def _classify_timeline_audio_duration(
 
     stream_delta = abs(stream - timeline_duration)
     container_delta = abs(container - timeline_duration) if container is not None else None
-    if stream_delta > _FRAME_TOLERANCE:
+    if stream_delta > _RENDERED_DURATION_TOLERANCE:
         source_delta = _source_duration_delta(ep)
         if source_delta is not None and abs(source_delta) > _FRAME_TOLERANCE:
             return (
@@ -649,7 +659,7 @@ def _classify_timeline_audio_duration(
                 REPAIR_TRANSCRIPT_REGENERATE,
             ],
         )
-    if container_delta is not None and container_delta > _FRAME_TOLERANCE:
+    if container_delta is not None and container_delta > _RENDERED_DURATION_TOLERANCE:
         return "container-duration-drift", WARN, []
     return "ok", WARN, []
 

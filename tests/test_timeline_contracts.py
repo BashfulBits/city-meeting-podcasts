@@ -284,12 +284,14 @@ class TestDurationMismatch:
         ep.audio_key = "audio/u1.m4a"
         diagnostics = []
 
+        # 0.7s delta: above the 0.5s rendered-duration classification floor (so it is still recorded
+        # as rendered-duration-mismatch telemetry) but below the 1.0s finding/repair threshold.
         fs = check_timeline_integrity(
             "test-tx",
             [ep],
             probe_audio=lambda _ep: AudioDurationProbe(
-                container_duration=3300.4,
-                stream_sample_duration=3300.4,
+                container_duration=3300.7,
+                stream_sample_duration=3300.7,
                 stream_duration_source="stream-duration-ts",
             ),
             diagnostics=diagnostics,
@@ -304,6 +306,26 @@ class TestDurationMismatch:
         assert diagnostics[0]["repair_selected"] is False
         assert diagnostics[0]["repair_cohort"] == "gt1s"
         assert ep.integrity == {}
+
+    def test_padding_band_stream_delta_classified_ok(self):
+        # A sub-0.5s stream-vs-EDL delta (AAC priming/padding + per-cut sample rounding) is no
+        # longer an ERROR rendered-duration-mismatch — it is telemetry-clean "ok" (GH#702 de-noise).
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        diagnostics = []
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.3,
+                stream_sample_duration=3300.3,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+        )
+        assert fs == []
+        assert diagnostics[0]["check"] == "ok"
 
     def test_repair_cohort_selects_over_threshold_stream_mismatch(self):
         ep = _ep()
