@@ -43,8 +43,10 @@ WORK_CLASSES = (
     "provider-transcript-align",
     "provider-transcript-diarize",
 )
-# Reserved — recognized but not emitted in H5 (reserve-now, no migration later).
-RESERVED_WORK_CLASSES = ("transcript-merge",)
+# Reserved — recognized but not emitted yet (reserve-now, no migration later).
+# ``transcript-diarize`` is the future diarize-only queue for episodes whose transcript was
+# produced by the GitHub ASR lane; external GPU workers will claim it once diarization is enabled.
+RESERVED_WORK_CLASSES = ("transcript-merge", "transcript-diarize")
 
 # Work classes the ``long_first`` comparator (H13/H14) is allowed to reorder: every
 # transcript-producing lane, since those are the ones a capped *external* GPU free tier is the

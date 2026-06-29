@@ -51,6 +51,17 @@ single-maintainer civic project.
 - **Secrets are environment-only** — credentials are provided via GitHub Actions secrets; none are
   committed. Enabling GitHub secret-scanning + push protection (free for public repos) is recommended as
   a backstop.
+- **External GPU workers keep runtime secrets provider-local** — Modal/Beam deploy tokens may live in
+  GitHub only to publish code/config, but B2/R2/Hugging Face runtime credentials are stored in the
+  provider's secret manager and are not passed through GitHub Actions. Use separate least-privilege B2
+  app keys and R2 API tokens for each provider. External workers claim one episode at a time, write
+  content-addressed artifacts, renew leases during long inference, and let `compute reconcile` release or
+  settle budget reservations after preemption.
+- **pyannote diarization is opt-in by license acceptance** — the maintainer accepted the
+  `pyannote/speaker-diarization-community-1` Hugging Face conditions for future diarization work. Its
+  token remains provider-local (`HF_TOKEN` in Modal/Beam secrets). H14b deploys transcribe-only by
+  default; diarization is a later enablement and must not discard a successful transcript if speaker
+  labeling fails.
 - **Least-privilege workflow tokens** — e.g. the feed-health audit runs with `issues: write` only.
 
 ## Rules for future work

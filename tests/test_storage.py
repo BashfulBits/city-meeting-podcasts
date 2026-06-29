@@ -71,6 +71,39 @@ def test_b2_region_parsed_from_endpoint():
     assert _region_from_b2_endpoint("https://example.com") == "auto"
 
 
+def test_r2_public_base_required_for_public_backend(monkeypatch):
+    from citypods.storage import s3 as s3_mod
+
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("R2_BUCKET", "bucket")
+    monkeypatch.delenv("R2_PUBLIC_BASE_URL", raising=False)
+
+    assert s3_mod.r2_from_env() is None
+
+
+def test_r2_public_base_optional_for_routing_coordination(monkeypatch):
+    from citypods.storage import s3 as s3_mod
+
+    captured = {}
+
+    def fake_storage(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(s3_mod, "S3CompatibleStorage", fake_storage)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("R2_BUCKET", "bucket")
+    monkeypatch.delenv("R2_PUBLIC_BASE_URL", raising=False)
+
+    assert s3_mod.r2_from_env(require_public_base_url=False) == captured
+    assert captured["public_base_url"] == "https://acct.r2.cloudflarestorage.com"
+    assert captured["cas_capable"] is True
+
+
 def test_make_storage_unknown_backend(tmp_path, monkeypatch):
     monkeypatch.delenv("AUDIO_STORAGE_BACKEND", raising=False)
     with pytest.raises(ValueError, match="unknown audio_storage_backend"):

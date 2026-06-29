@@ -292,3 +292,21 @@ def release_reservation(
     """Return ``owner``'s reservation to the pool (a submit that failed after a successful
     :func:`reserve_if_available`). CAS read-modify-write; idempotent if already gone."""
     return mutate_budget(storage, lambda b: b.release(owner, backend), now=now, **retry)
+
+
+def settle_reservation(
+    storage,
+    owner: str,
+    backend: str,
+    *,
+    actual: float | None = None,
+    now: datetime | None = None,
+    **retry,
+) -> Budget:
+    """Settle ``owner``'s completed reservation and free its in-flight slot.
+
+    Pull workers (H14b/H14c) use the Stage-2 work-lease owner as the budget owner. If a
+    worker is preempted after reserving, ``compute reconcile`` can settle or release the
+    same owner idempotently when it sees the artifact or expired lease.
+    """
+    return mutate_budget(storage, lambda b: b.settle(owner, backend, actual), now=now, **retry)
