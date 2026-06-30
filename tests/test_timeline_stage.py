@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from citypods.integrity import REPAIR_TIMELINE_REPLAN, set_timeline_audio_integrity
-from citypods.media import RateLimitedMediaFetchError
+from citypods.media import MaterializeStats, RateLimitedMediaFetchError
 from citypods.models import City, Episode
 from citypods.stages import (
+    AudioStage,
     StageContext,
     TimelineStage,
     default_stages,
@@ -173,6 +175,40 @@ class _NoOpPlanner:
         return None  # always passes through
 
 
+class _DeferredPlanner:
+    """Planner that explicitly defers after deciding the source cannot be planned safely."""
+
+    name = "deferred-fake"
+    version = "1"
+
+    def plan(self, provider, city, ep, ctx, current):
+        ep.timeline_defer_reason = "deferred_decode_unavailable"
+        return None
+
+
+class _CountingPlanner:
+    name = "counting-fake"
+    version = "1"
+
+    def __init__(self):
+        self.calls = 0
+
+    def plan(self, provider, city, ep, ctx, current):
+        self.calls += 1
+        return identity_timeline(
+            SourceMedia(
+                id="s0",
+                provider="civicplus",
+                ref=ep.video_url,
+                media_kind=ep.media_kind,
+                duration=float(ep.duration or 0),
+                watch_url=None,
+                duration_basis="decoded",
+            ),
+            float(ep.duration or 0),
+        )
+
+
 # ---------------------------------------------------------------------------
 # TimelineStage — no planners (identity path)
 # ---------------------------------------------------------------------------
@@ -191,6 +227,43 @@ class TestTimelineStageNoPlanner:
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.reused == 1
         assert stats.ran == 0
+
+    def test_deferred_planner_counts_reason_and_leaves_timeline_untouched(self, tmp_path):
+        ep = _ep()
+        stage = TimelineStage(planners=[_DeferredPlanner()])
+        stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert ep.timeline is None
+        assert stats.ran == 0
+        assert stats.skipped == 1
+        assert stats.defer_reasons == {"deferred_decode_unavailable": 1}
+
+    def test_audio_stage_skips_episode_deferred_by_timeline_in_same_run(self, tmp_path):
+        ep = _ep()
+        ep.timeline_defer_reason = "deferred_decode_unavailable"
+        ctx = _ctx(tmp_path)
+        ctx.dry_run = False
+
+        with patch("citypods.stages.materialize_audio", return_value=MaterializeStats()) as mock:
+            stats = AudioStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        assert stats.ran == 0
+        assert mock.call_args.args[1] == []
+
+    def test_timeline_specific_materialize_backoff_defers_planning(self, tmp_path):
+        ep = _ep()
+        ep.materialize_attempts = 1
+        ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+        ep.materialize_error = "timeline-decode"
+        planner = _CountingPlanner()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert ep.timeline is None
+        assert stats.skipped == 1
+        assert stats.defer_reasons == {"timeline-decode-backoff": 1}
 
     def test_already_set_timeline_stays_when_no_planners(self, tmp_path):
         src = SourceMedia(
