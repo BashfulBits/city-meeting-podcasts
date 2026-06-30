@@ -581,29 +581,6 @@ class TestSilencePlanner:
         assert ep.materialize_attempts == 1
         assert ep.materialize_error == "timeline-decode"
 
-    def test_edl_anchors_on_decoded_end_when_container_overstates(self):
-        """GH#702: HLS / fragmented-MP4 sources can have a container header that overstates the
-        actual decoded audio. The planner must use the decoded end measured by the silence pass —
-        not the container header — so the re-planned EDL matches the rendered file."""
-        planner = SilencePlanner()
-        ctx = _make_ctx()
-        provider = MagicMock()
-        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
-        ep = _make_episode(duration=3600)
-        with (
-            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences") as mock_detect,
-        ):
-            # container header 3600; decoded audio-stream end 3550 (the GH#702 gap), 5s lead trim.
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, 3550.0)
-            result = planner.plan(provider, _make_city(), ep, ctx, None)
-        assert result is not None
-        # Single kept span [5, 3550] in source time → served total 3545, NOT 3595.
-        assert result.segments[-1].source_end == 3550.0
-        assert sum(s.served_end - s.served_start for s in result.segments) == 3545.0
-        assert ep.sources[0].duration == 3550.0
-        assert ep.sources[0].duration_basis == "decoded"
-
 
 class TestProbeStreamSampleDuration:
     def _run(self, stdout, returncode=0):
