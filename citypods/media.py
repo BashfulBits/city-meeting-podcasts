@@ -2053,6 +2053,24 @@ class MaterializeStats:
     errors: list[str] = field(default_factory=list)
     bytes_written: int = 0  # total bytes of objects uploaded this run (for cost accounting)
     rate_limited: int = 0  # encode attempts that hit HTTP 403 / provider throttle (GH#300)
+    defer_reasons: dict[str, int] = field(default_factory=dict)
+    defer_samples: list[str] = field(default_factory=list)
+
+    def defer(
+        self,
+        reason: str,
+        *,
+        backoff: bool = False,
+        sample: str | None = None,
+    ) -> None:
+        """Record restartable audio work left for a later run."""
+        if backoff:
+            self.skipped_backoff += 1
+        else:
+            self.skipped_budget += 1
+        self.defer_reasons[reason] = self.defer_reasons.get(reason, 0) + 1
+        if sample and len(self.defer_samples) < 5:
+            self.defer_samples.append(sample)
 
 
 def _should_host(episode: Episode, city: City) -> bool:
@@ -2363,6 +2381,38 @@ def materialize_audio(
     encode_cache_keys: dict[int, tuple[str, str, str]] = {}
     ffmpeg_binary = getattr(ffmpeg, "binary", "ffmpeg")
     src_key = source_key(city)
+    stats_lock = threading.Lock()
+
+    def _defer_sample(ep: Episode, reason: str) -> str:
+        return f"{ep.uid or ep.guid}:{reason}"
+
+    def _log_audio_defer(
+        ep: Episode,
+        reason: str,
+        *,
+        backoff: bool = False,
+        detail: str | None = None,
+    ) -> None:
+        with stats_lock:
+            stats.defer(reason, backoff=backoff, sample=_defer_sample(ep, reason))
+        label = ep.uid or ep.guid
+        msg = (
+            f"[enrich] audio materialize deferred slug={city.slug} provider={city.provider} "
+            f"source={src_key} uid={label} guid={ep.guid} reason={reason}"
+        )
+        if detail:
+            msg += f" detail={detail.replace(chr(10), ' ')[:200]}"
+        print(msg, flush=True)
+
+    def _stop_defer_reason(exc: StopRequested) -> str:
+        detail = str(exc).lower()
+        if "source cache" in detail:
+            return "source-cache-stop"
+        if "lease" in detail:
+            return "provider-lease-stop"
+        if "rate" in detail or "host" in detail or "throttle" in detail:
+            return "provider-throttle-stop"
+        return "stop-requested"
 
     def _artifact(ep: Episode) -> AudioArtifact:
         return AudioArtifact(
@@ -2460,7 +2510,12 @@ def materialize_audio(
         if _in_backoff(ep, now):
             if audio_artifact_cache is not None:
                 audio_artifact_cache.abort(cache_key)
-            stats.skipped_backoff += 1
+            _log_audio_defer(
+                ep,
+                f"{ep.materialize_error or 'error'}-backoff",
+                backoff=True,
+                detail=f"attempts={ep.materialize_attempts}",
+            )
             continue
 
         canonical_source = (
@@ -2496,7 +2551,6 @@ def materialize_audio(
 
     # Encode pass: parallel when max_workers > 1. Each worker is independent (per-episode state
     # mutations don't overlap); only stats updates require a lock.
-    lock = threading.Lock()
 
     def _encode_one(item: tuple[Episode, str, str]) -> None:
         ep, spec, key = item
@@ -2511,8 +2565,7 @@ def materialize_audio(
         # when the budget expires mid-batch.
         if stop is not None and stop():
             _abort_cache()
-            with lock:
-                stats.skipped_budget += 1
+            _log_audio_defer(ep, "stop-signal")
             return
         label = ep.uid or ep.guid
         _progress_entry = PROGRESS.start(source=str(src_key), uid=str(label), phase="audio-encode")
@@ -2529,15 +2582,13 @@ def materialize_audio(
             )
             if not memory_reservation.reserve(reserved_bytes, label=str(label), stop=stop):
                 _abort_cache()
-                with lock:
-                    stats.skipped_budget += 1
+                _log_audio_defer(ep, "memory-reservation")
                 PROGRESS.finish(_progress_entry)
                 return
         elif resource_admission is not None:
             if not resource_admission.wait(kind="audio", label=str(label), stop=stop):
                 _abort_cache()
-                with lock:
-                    stats.skipped_budget += 1
+                _log_audio_defer(ep, "resource-admission")
                 PROGRESS.finish(_progress_entry)
                 return
         gate_acquired = False
@@ -2596,8 +2647,7 @@ def materialize_audio(
                         stop=stop,
                     )
                     if not gate_acquired:
-                        with lock:
-                            stats.skipped_budget += 1
+                        _log_audio_defer(ep, "native-gate")
                         return
                 render_options: dict[str, str | None] = {
                     "loudness_profile": loudness_profile or None
@@ -2648,7 +2698,7 @@ def materialize_audio(
             if audio_artifact_cache is not None and cache_key is not None:
                 audio_artifact_cache.complete(cache_key, _artifact(ep))
                 cache_completed = True
-            with lock:
+            with stats_lock:
                 stats.bytes_written += size
                 stats.hosted += 1
                 stats.encoded += 1
@@ -2663,13 +2713,7 @@ def materialize_audio(
             # The run's wall-clock budget expired while queued on a coordination wait (host rate
             # limit, distributed lease, source cache) — not a source/provider failure, so no
             # backoff is recorded; this episode is simply retried from the top next run.
-            with lock:
-                stats.skipped_budget += 1
-            print(
-                f"[enrich] audio encode skipped slug={city.slug} provider={city.provider} "
-                f"source={src_key} uid={label} guid={ep.guid}: {exc}",
-                flush=True,
-            )
+            _log_audio_defer(ep, _stop_defer_reason(exc), detail=str(exc))
         except (
             subprocess.TimeoutExpired,
             subprocess.CalledProcessError,
@@ -2679,7 +2723,7 @@ def materialize_audio(
             if isinstance(exc, TruncatedAudioError) and transport_telemetry is not None:
                 transport_telemetry.record_truncation(source_urls)
             if isinstance(exc, RateLimitedMediaFetchError):
-                with lock:
+                with stats_lock:
                     stats.rate_limited += 1
             # Record the failed attempt so this episode backs off (exponentially) instead of being
             # re-tried every run — otherwise a permanently-broken meeting churns budget/time (#120).
@@ -2693,7 +2737,7 @@ def materialize_audio(
                 else getattr(exc, "code", None) or "error",
                 now=now,
             )
-            with lock:
+            with stats_lock:
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
             elapsed = time.perf_counter() - t0
             print(

@@ -16,6 +16,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Feed-health audit returns to the cheap default path while audio queued work gains UID-level
+  evidence.** The audit workflow no longer downloads and ffprobes every hosted audio object on every
+  scheduled/default run just to emit the timeline canary artifact; full `timeline-audio-integrity`
+  diagnostics are now opt-in via `timeline_diagnostics=true` and still forced when
+  `timeline_repair=true` needs persisted repair rows. Audio materialization deferrals now log
+  `[enrich] audio materialize deferred ... uid=... reason=...` and carry reason counts/samples into
+  the run summary, so a lingering `queued` count can be tied back to specific UIDs.
 - **Correction: timeline/audio canary repair is now decoded-only and fails closed (GH#702).**
   The canary stamp still forces targeted `timeline-replan` / `audio-rematerialize`, but a healthy
   `status="ok"` now clears or ignores stale repair actions so resolved episodes stop re-keying.
