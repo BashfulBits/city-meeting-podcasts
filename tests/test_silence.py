@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -108,6 +110,134 @@ class TestParseFfmpegDecodedEnd:
         # A stats stream that never advances must not yield a zero-length clock the planner would
         # then prefer over container/provider duration.
         assert _parse_ffmpeg_decoded_end("time=00:00:00.00\ntime=00:00:00.00\n") is None
+
+
+# ---------------------------------------------------------------------------
+# detect_silences — real ffmpeg, a genuine PTS-discontinuous source (GH#702)
+#
+# Reproduces the root cause: a presentation-timestamp gap (stream splice / ad-insertion
+# boundary / dropped HLS segment) makes both the container `Duration` header and the raw
+# `time=` progress clock overstate the true decodable audio by the gap size, while the render
+# path's `asetpts=N/SR/TB` reset naturally compacts the gap away. detect_silences must report
+# a decoded_duration close to the render's true output, not the gapped container value.
+# ---------------------------------------------------------------------------
+
+
+def _build_gapped_ts(tmp_path, gap_seconds: float = 2.0) -> str:
+    """A 10s real-audio MPEG-TS file with a genuine ``gap_seconds`` forward PTS discontinuity
+    spliced in at the 5s mark — a byte-level join of two independently-encoded segments, the
+    same shape a stream splice or a dropped HLS segment produces. Returns the file path."""
+    seg1 = tmp_path / "seg1.ts"
+    seg2 = tmp_path / "seg2.ts"
+    gapped = tmp_path / "gapped.ts"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg1),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=880:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-output_ts_offset",
+            str(5.0 + gap_seconds),
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg2),
+        ],
+        check=True,
+    )
+    with gapped.open("wb") as out:
+        out.write(seg1.read_bytes())
+        out.write(seg2.read_bytes())
+    return str(gapped)
+
+
+def _build_continuous_ts(tmp_path) -> str:
+    """A plain 10s real-audio MPEG-TS file with no discontinuity (the common case)."""
+    path = tmp_path / "normal.ts"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=10",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            str(path),
+        ],
+        check=True,
+    )
+    return str(path)
+
+
+class TestDetectSilencesPtsGapRealFfmpeg:
+    def test_decoded_end_is_gap_compacted_not_container_overstated(self, tmp_path):
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg is required for the PTS-gap integration check")
+        gapped = _build_gapped_ts(tmp_path, gap_seconds=2.0)
+
+        _silences, container_duration, decoded_duration = detect_silences(gapped)
+
+        assert container_duration is not None and decoded_duration is not None
+        # The container header is PTS-based and includes the gap: ~12s, not the true ~10s.
+        assert container_duration > 11.5
+        # Before this fix, decoded_duration matched container_duration exactly (both PTS-based).
+        # The asetpts=N/SR/TB reset must compact the gap away, landing near the true 10s content
+        # — and, critically, strictly below the container's gapped value.
+        assert decoded_duration < container_duration - 1.0
+        assert 9.5 < decoded_duration < 10.5
+
+    def test_no_discontinuity_is_unaffected(self, tmp_path):
+        # The fix is a pure timestamp rewrite: a source with no PTS gap must read the same
+        # decoded_duration with or without it (no regression on the common case).
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg is required for the PTS-gap integration check")
+        normal = _build_continuous_ts(tmp_path)
+
+        _silences, container_duration, decoded_duration = detect_silences(normal)
+
+        assert container_duration is not None and decoded_duration is not None
+        assert decoded_duration == pytest.approx(container_duration, abs=0.5)
+        assert 9.5 < decoded_duration < 10.5
 
 
 # ---------------------------------------------------------------------------
