@@ -28,6 +28,21 @@ from citypods.availability import is_effectively_silent
 from citypods.http import USER_AGENT, StopRequested
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
+DEFER_CACHE_UNAVAILABLE = "deferred_cache_unavailable"
+DEFER_CACHE_STOP = "deferred_cache_stop"
+DEFER_DECODE_UNAVAILABLE = "deferred_decode_unavailable"
+DEFER_DEGENERATE_TIMELINE = "deferred_degenerate_timeline"
+DEFER_NATIVE_GATE = "deferred_native_gate"
+
+
+def _defer_timeline_plan(ep, reason: str, *, failure_code: str | None = None) -> None:
+    ep.timeline_defer_reason = reason
+    if failure_code:
+        from citypods.media import record_materialize_failure
+
+        record_materialize_failure(ep, failure_code)
+
+
 # ---------------------------------------------------------------------------
 # Pure helpers (no I/O)
 # ---------------------------------------------------------------------------
@@ -58,9 +73,8 @@ def _parse_ffmpeg_duration(stderr: str) -> float | None:
     """Parse ``Duration: HH:MM:SS.ss`` from ffmpeg's probe header.
 
     This is the **container/format** ``Duration`` header, which can overstate the playable audio
-    stream (HLS manifests, or a direct MP4 whose video stream outlasts its audio). Prefer
-    :func:`_probe_stream_sample_duration` for the EDL source clock; this remains the fallback when
-    a stream-clock probe is unavailable. See GH#702.
+    stream (HLS manifests, or a direct MP4 whose video stream outlasts its audio). It is retained
+    as diagnostic telemetry; SilencePlanner must not use it as the EDL source clock. See GH#702.
     """
     m = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", stderr)
     if not m:
@@ -91,11 +105,10 @@ def _parse_ffmpeg_decoded_end(stderr: str) -> float | None:
     extra and is a no-op on a source with no PTS discontinuity.
 
     Returns the largest **positive** ``time=`` seen (decode is monotonic, so the final stats line
-    is the end), or ``None`` when none is parseable — the caller then falls back to the container
-    header / provider duration and labels the basis honestly. A stats stream that never advances
-    (only ``time=00:00:00.00``) yields ``None`` rather than a zero-length clock the planner would
-    otherwise prefer over container/provider duration. The leading ``-`` of ffmpeg's occasional
-    negative-wrapped warm-up timestamps is deliberately not matched, so they are skipped too.
+    is the end), or ``None`` when none is parseable. A stats stream that never advances (only
+    ``time=00:00:00.00``) yields ``None`` rather than a zero-length clock the planner would
+    otherwise stamp. The leading ``-`` of ffmpeg's occasional negative-wrapped warm-up timestamps
+    is deliberately not matched, so they are skipped too.
     """
     best: float | None = None
     for h, mn, s in re.findall(r"time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)", stderr):
@@ -115,18 +128,17 @@ def _probe_stream_sample_duration(
     """ffprobe the first audio stream's sample-clock duration (``duration_ts * time_base``).
 
     Falls back to the stream-level ``duration`` field. Deliberately does **not** fall back to
-    ``format.duration`` (the container header) — that is the clock GH#702 distrusts, and the caller
-    labels any non-``None`` return as ``duration_basis="stream-sample"``. Returns ``None`` when no
-    stream-level clock is exposed or on any subprocess/parse failure, so the caller falls back to
-    the container header / provider duration and labels the basis honestly.
+    ``format.duration`` (the container header) — that is the clock GH#702 distrusts. Returns
+    ``None`` when no stream-level clock is exposed or on any subprocess/parse failure.
 
     The silence EDL's trailing-silence test and final keep-span must anchor on the source's real
     **audio-stream** end, not the container/format ``Duration`` header. When a source's container
     overstates its audio, the renderer (``atrim``/``aselect``) hits EOF early and the rendered file
     comes out shorter than the planned EDL — the single-file ``rendered-duration-mismatch`` class
-    (GH#702). This mirrors ``concat.py``'s stream-sample probe, which already fixed the multi-part
-    path. A browser ``user_agent`` is sent for remote inputs (Granicus CDN blocks others); a cached
-    local file needs none.
+    (GH#702). This helper is kept as a low-level diagnostic, but SilencePlanner now relies on the
+    local-file decoded duration from ``detect_silences`` and defers when that measurement is
+    unavailable. A browser ``user_agent`` is sent for remote inputs (Granicus CDN blocks others);
+    a cached local file needs none.
     """
     is_remote = url.startswith(("http://", "https://"))
     cmd = [
@@ -170,7 +182,7 @@ def _probe_stream_sample_duration(
         # Deliberately NO ``format.duration`` fallback: that is the container header — the very
         # clock GH#702 says overstates the audio. Returning it would let the caller mislabel a
         # container value as ``stream-sample``. When no stream-level clock is exposed, return None
-        # so the caller falls back to the container header *and labels the basis honestly*.
+        # so callers can decide whether to defer rather than stamp a weak clock.
         return None
     except (
         subprocess.TimeoutExpired,
@@ -333,9 +345,8 @@ def detect_silences(
     Both durations are parsed from the same stderr output — no extra ffprobe call.
     ``container_duration`` is the ``Duration`` header (which can overstate the audio stream);
     ``decoded_duration`` is the decoded audio-stream end (the final ``time=`` stats timestamp from
-    this ``-vn`` decode pass), used by ``SilencePlanner`` as the GH#702 source clock when the cheap
-    stream-sample ffprobe is unavailable. Returns ``([], None, None)`` on any subprocess or parse
-    error.
+    this ``-vn`` decode pass), used by ``SilencePlanner`` as the only accepted GH#702 source
+    clock. Returns ``([], None, None)`` on any subprocess or parse error.
 
     The filter chain prepends ``asetpts=N/SR/TB`` ahead of ``silencedetect`` (GH#702 PTS-gap fix):
     without it, both this pass's ``time=`` reading and ``silencedetect``'s own reported silence
@@ -459,18 +470,26 @@ class SilencePlanner:
             return None
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 
-        # Download the source once and cache it locally so the subsequent AudioStage encode
-        # pass can read from disk rather than re-streaming the rate-limited source.
-        detect_url = source_url
-        if ctx.source_cache is not None and ep.uid:
-            try:
-                local = ctx.source_cache.get_or_fetch(ep.uid, source_url)
-            except StopRequested:
-                # The run's wall-clock budget expired while queued behind another thread's fetch
-                # of the same source — defer without recording a failure (#120); not a real error.
-                return None
-            if local is not None:
-                detect_url = str(local)
+        # Download the source once and cache it locally so both planning and the subsequent
+        # AudioStage encode read the same bytes.  Timeline planning must not fall back to probing
+        # the remote URL directly: Granicus worker fallback lives in
+        # SourceCache/_run_ffmpeg_guarded, and a failed cache/decode means this item should defer,
+        # not stamp a weak EDL.
+        uid = str(ep.uid or ep.guid or "")
+        if ctx.source_cache is None or not uid:
+            _defer_timeline_plan(ep, DEFER_CACHE_UNAVAILABLE, failure_code="timeline-cache")
+            return None
+        try:
+            local = ctx.source_cache.get_or_fetch(uid, source_url)
+        except StopRequested:
+            # The run's wall-clock budget expired while queued behind another thread's fetch of the
+            # same source — defer without recording a source failure (#120); not a real error.
+            _defer_timeline_plan(ep, DEFER_CACHE_STOP)
+            return None
+        if local is None:
+            _defer_timeline_plan(ep, DEFER_CACHE_UNAVAILABLE, failure_code="timeline-cache")
+            return None
+        detect_url = str(local)
 
         # silencedetect is a CPU-bound ffmpeg decode pass, same as an AudioStage encode — gate it
         # on the same NativeWorkGate so a TimelineStage planner pass for one source can't run
@@ -481,9 +500,10 @@ class SilencePlanner:
         if gate is not None:
             gate_acquired = gate.acquire(kind="audio", label=str(ep.uid or ep.guid), stop=ctx.stop)
             if not gate_acquired:
+                _defer_timeline_plan(ep, DEFER_NATIVE_GATE)
                 return None  # deferred: budget/queue pressure, not a real failure
         try:
-            silences, container_duration, decoded_duration = detect_silences(
+            silences, _container_duration, decoded_duration = detect_silences(
                 detect_url,
                 ffmpeg_binary=ffmpeg_binary,
                 noise_db=ctx.silence_noise_db,
@@ -495,13 +515,15 @@ class SilencePlanner:
             if gate_acquired:
                 gate.release(kind="audio")
 
-        # Durable availability verdict (H16 PR3), judged off the *probed* duration only. Prefer the
-        # decoded audio-stream end over the container header; a missing probe (both None) means the
-        # fetch/decode itself failed (throttle/truncation) — transport, not evidence about content,
-        # so it can never confirm silence or clear a known-good episode.
-        probed_duration = decoded_duration if decoded_duration is not None else container_duration
+        # Durable availability verdict (H16 PR3), judged off the decoded audio-stream end only.
+        # A missing decoded end means the fetch/decode itself failed (throttle/truncation/parse
+        # failure) — transport, not evidence about content — so it can never confirm silence or
+        # clear a known-good episode, and it cannot author an audio-affecting EDL.
+        probed_duration = decoded_duration
         if probed_duration is None:
             _stamp_availability(ep, "transport_failed", profile)
+            _defer_timeline_plan(ep, DEFER_DECODE_UNAVAILABLE, failure_code="timeline-decode")
+            return None
         elif is_effectively_silent(
             silences,
             probed_duration,
@@ -514,36 +536,11 @@ class SilencePlanner:
         else:
             _stamp_availability(ep, "playable", profile)
 
-        # The EDL source clock must be the real audio-stream end, not the container ``Duration``
-        # header. When a source's container overstates its audio (HLS manifests, or a direct MP4
-        # whose video stream outlasts its audio), anchoring the trailing-silence test and the final
-        # keep-span on the header makes the renderer hit EOF early and the rendered file come out
-        # shorter than the planned EDL — the single-file ``rendered-duration-mismatch`` class
-        # (GH#702). Prefer ffprobe's stream-sample clock (the same basis ``SwagitConcatPlanner``
-        # already uses). When the container exposes no stream-level sample clock — HLS manifests and
-        # fragmented MP4, the exact over-claiming cohort — fall back to the *decoded* audio-stream
-        # end measured by the silencedetect pass above (reusing that decode, no second media pass)
-        # before the container header. Without this tier, those sources re-plan straight back onto
-        # the container clock and the rendered file stays short (the ``rendered-duration-mismatch``
-        # survivors). Provider-declared duration is the last resort.
-        # Replace only the trailing path component so a parent dir named "ffmpeg"
-        # (e.g. /opt/ffmpeg/bin/ffmpeg) is preserved rather than mangled.
-        ffprobe_binary = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
-        stream_duration = _probe_stream_sample_duration(detect_url, ffprobe_binary, timeout)
-        if stream_duration is not None:
-            source_duration = stream_duration
-            source_duration_basis = "stream-sample"
-        elif decoded_duration is not None:
-            source_duration = decoded_duration
-            source_duration_basis = "decoded"
-        elif container_duration is not None:
-            source_duration = container_duration
-            source_duration_basis = "container"
-        elif ep.duration is not None:
-            source_duration = float(ep.duration)
-            source_duration_basis = "provider"
-        else:
-            return None  # can't build a timeline without total duration
+        # The EDL source clock must be the decoded audio-stream end. Container/provider duration is
+        # useful diagnostic metadata, but GH#702 proved it is unsafe as planning authority: a later
+        # repair pass can otherwise recreate the over-long EDL that rendered audio cannot satisfy.
+        source_duration = decoded_duration
+        source_duration_basis = "decoded"
 
         existing_src = ep.sources[0] if ep.sources else None
         source_id = existing_src.id if existing_src else "s0"
@@ -585,8 +582,12 @@ class SilencePlanner:
                 flush=True,
             )
             if current is not None:
+                _defer_timeline_plan(
+                    ep, DEFER_DEGENERATE_TIMELINE, failure_code="timeline-degenerate"
+                )
                 return None  # preserve the prior (non-degenerate) timeline as-is
-            tl = None  # no prior timeline to fall back to → treat as "nothing to trim" below
+            _defer_timeline_plan(ep, DEFER_DEGENERATE_TIMELINE, failure_code="timeline-degenerate")
+            return None
 
         if tl is None:
             # Nothing to trim (or a degenerate result was rejected with no prior timeline to

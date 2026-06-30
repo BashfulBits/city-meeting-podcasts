@@ -111,6 +111,7 @@ from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workit
 from citypods.progress import PROGRESS
 from citypods.records import (
     AUDIO_PIPELINE_VERSION,
+    _in_backoff,
     transcript_media_hash,
     transcript_timeout_backoff_until,
 )
@@ -170,6 +171,21 @@ def _playable(episodes: list[Episode]) -> list[Episode]:
     return [
         ep for ep in episodes if not (ep.media_availability and ep.media_availability.is_withheld())
     ]
+
+
+def _timeline_ready(episodes: list[Episode]) -> list[Episode]:
+    """Drop episodes whose required timeline planning explicitly deferred in this run."""
+    return [ep for ep in episodes if not getattr(ep, "timeline_defer_reason", "")]
+
+
+_TIMELINE_BACKOFF_ERRORS = frozenset(
+    {
+        "timeline-cache",
+        "timeline-decode",
+        "timeline-degenerate",
+        "rate_limited",
+    }
+)
 
 
 class AsrArtifactCache:
@@ -666,9 +682,14 @@ class AudioStage:
                 ep.audio_rebuild = token
         ms: MaterializeStats = materialize_audio(
             city,
-            _playable(
-                _materialize_set(
-                    episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            _timeline_ready(
+                _playable(
+                    _materialize_set(
+                        episodes,
+                        city.max_episodes,
+                        policy=ctx.backlog_policy,
+                        city_slug=city.slug,
+                    )
                 )
             ),
             storage=ctx.storage,
@@ -796,6 +817,7 @@ class TimelineStage:
         lock = threading.Lock()
 
         def _plan_one(ep: Episode) -> None:
+            ep.timeline_defer_reason = ""
             # Already planned by this exact planner set+versions → don't recompute. A stale
             # signature (older set) falls through and re-plans.
             force_replan = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
@@ -804,11 +826,18 @@ class TimelineStage:
                     stats.reused += 1
                 return
 
+            if ep.materialize_error in _TIMELINE_BACKOFF_ERRORS and _in_backoff(
+                ep, datetime.now(UTC)
+            ):
+                with lock:
+                    stats.defer(f"{ep.materialize_error}-backoff")
+                return
+
             # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
             # stop signal exactly like an encode — deferred to a later run, not an error.
             if ctx.stop is not None and ctx.stop():
                 with lock:
-                    stats.skipped += 1
+                    stats.defer("stop-signal")
                 return
 
             current: Timeline | None = ep.timeline
@@ -820,6 +849,10 @@ class TimelineStage:
                 try:
                     for planner in self.planners:
                         result = planner.plan(provider, city, ep, ctx, current)
+                        if ep.timeline_defer_reason:
+                            with lock:
+                                stats.defer(ep.timeline_defer_reason)
+                            return
                         if result is not None:
                             current = result
                             changed = True

@@ -141,6 +141,9 @@ class Episode:
     sources: list[SourceMedia] = field(default_factory=list)
     # Edit Decision List: None means identity (no manipulation). Set by TimelineStage.
     timeline: Timeline | None = None
+    # Transient, per-run TimelineStage defer marker. Not persisted; it prevents AudioStage from
+    # encoding stale/weak-basis timelines when planning could not safely complete this run.
+    timeline_defer_reason: str = ""
     # Basis of ep.chapters: "source:s0" (provider time, before remap) or "served" (after).
     chapters_basis: str = "source:s0"
     # Surgical re-encode nonce (§4): when non-empty it's mixed into audio_spec_hash so only

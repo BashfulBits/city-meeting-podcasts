@@ -34,7 +34,10 @@ def timeline_audio_integrity(ep: Episode) -> dict:
 
 
 def timeline_audio_repair_actions(ep: Episode) -> frozenset[str]:
-    repair = timeline_audio_integrity(ep).get("repair")
+    block = timeline_audio_integrity(ep)
+    if block.get("status") == "ok":
+        return frozenset()
+    repair = block.get("repair")
     if not isinstance(repair, list):
         return frozenset()
     return frozenset(str(action) for action in repair if str(action) in REPAIR_ACTIONS)
@@ -83,7 +86,10 @@ def set_timeline_audio_integrity(ep: Episode, block: dict | None) -> None:
     integrity = dict(ep.integrity or {})
     if block:
         current = dict(timeline_audio_integrity(ep))
-        integrity[TIMELINE_AUDIO] = {**current, **block}
+        next_block = {**current, **block}
+        if block.get("status") and block.get("status") != "ok":
+            next_block.pop("resolved_at", None)
+        integrity[TIMELINE_AUDIO] = next_block
     else:
         integrity.pop(TIMELINE_AUDIO, None)
     ep.integrity = integrity
@@ -122,5 +128,7 @@ def clear_resolved_timeline_audio_integrity(ep: Episode, status: str) -> bool:
     block.pop("repair_tokens", None)
     block["status"] = "ok"
     block["resolved_at"] = datetime.now(UTC).isoformat()
-    set_timeline_audio_integrity(ep, block)
+    integrity = dict(ep.integrity or {})
+    integrity[TIMELINE_AUDIO] = block
+    ep.integrity = integrity
     return True

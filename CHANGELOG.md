@@ -16,6 +16,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Correction: timeline/audio canary repair is now decoded-only and fails closed (GH#702).**
+  The canary stamp still forces targeted `timeline-replan` / `audio-rematerialize`, but a healthy
+  `status="ok"` now clears or ignores stale repair actions so resolved episodes stop re-keying.
+  `SilencePlanner` resolves media through `SourceCache`, runs `detect_silences` on the local cached
+  file only, and no longer falls back to container, provider, or stream-sample duration when the
+  decoded duration is missing. Cache/decode/degenerate failures defer as typed timeline reasons
+  (`deferred_cache_unavailable`, `deferred_decode_unavailable`, `deferred_degenerate_timeline`) with
+  timeline-specific materialization backoff; `AudioStage` skips same-run timeline deferrals so stale
+  timelines cannot be credited or encoded. This supersedes the earlier fallback-tier language below:
+  non-decoded clocks are diagnostic for this planner, not planning authority.
 - **Correction: the rendered-duration survivors were still selecting source spans on raw PTS
   (GH#702).** The run 5 → run 6 audit artifacts showed the prior fix only partially converged:
   9/63 original repair-cohort UIDs fixed, 54/63 still `rendered-duration-mismatch`, with nearly every
