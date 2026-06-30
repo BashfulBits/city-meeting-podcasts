@@ -11,6 +11,15 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Same checksum-pinned build audio.yml's host fallback uses (citypods-audio-runner:py312-
+      # ffmpeg71-v1) -- NOT `apt-get install ffmpeg`, which on ubuntu-latest (24.04 "noble") resolves
+      # to 6.1.1, a full major version behind the 7.1.4 production actually renders audio with.
+      # Real-ffmpeg integration tests (shutil.which("ffmpeg")-gated) exist to prove behavior against
+      # the binary that runs in production; testing a different major version would defeat that.
+      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
+      FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -24,13 +33,28 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
 
+      - name: Cache pinned ffmpeg
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-static-linux64-7.1.4-v1
+
+      - name: Install pinned ffmpeg (matches production's audio.yml pin)
+        run: |
+          python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          "${FFMPEG_DIR}/bin/ffmpeg" -version
+          "${FFMPEG_DIR}/bin/ffprobe" -version
+
       - name: Lint (ruff)
         run: |
           ruff check .
           ruff format --check .
 
       - name: Test (pytest)
-        run: pytest -q
+        run: PATH="${FFMPEG_DIR}/bin:${PATH}" pytest -q
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
