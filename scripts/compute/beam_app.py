@@ -15,7 +15,6 @@ APP_NAME = os.environ.get("CITYPODS_BEAM_APP", "citypods-beam-worker")
 GPU = os.environ.get("CITYPODS_BEAM_GPU", "A10G")
 WHEN = os.environ.get("CITYPODS_BEAM_SCHEDULE", "@daily")
 RUNTIME_ENV = {
-    "CITYPODS_WORKER_MAX_CLAIMS": os.environ.get("CITYPODS_WORKER_MAX_CLAIMS", "1"),
     "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
         "CITYPODS_WORKER_LEASE_TTL_SECONDS", "72000"
     ),
@@ -26,6 +25,8 @@ RUNTIME_ENV = {
     "CITYPODS_WORKER_ASR_DEVICE": os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
     "CITYPODS_WORKER_CPU_THREADS": os.environ.get("CITYPODS_WORKER_CPU_THREADS", "4"),
 }
+if "CITYPODS_WORKER_MAX_CLAIMS" in os.environ:
+    RUNTIME_ENV["CITYPODS_WORKER_MAX_CLAIMS"] = os.environ["CITYPODS_WORKER_MAX_CLAIMS"]
 
 RUNTIME_SECRETS = [
     "B2_ENDPOINT",

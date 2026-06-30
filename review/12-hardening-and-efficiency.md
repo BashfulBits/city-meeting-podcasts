@@ -2065,7 +2065,8 @@ diarization in normal operation.
   `modal-production` Environment. `.github/workflows/modal-deploy.yml` is path-scoped to worker-affecting
   files, so a normal `main` merge does not redeploy Modal unless worker code/config changes.
 - Config (per `compute_backends.modal` in `site_config.yml`): `monthly_gpu_seconds` (pin to Modal's
-  current free tier), `max_inflight` (concurrent job limit).
+  current free tier), `max_inflight` (concurrent job limit), `max_claims` (per-run pull cap; env
+  may override temporarily for a canary/manual run).
 
 **Job serialization:** The Modal wrapper is thin (`scripts/compute/modal_app.py`); artifact semantics live
 in `citypods/compute/external_worker.py`. It computes the same ASR recipe/key as the GitHub ASR lane,
@@ -2074,8 +2075,9 @@ records through `push_records_merged(..., owned_uids={uid})`.
 
 **Testing:** (1) Offline unit tests for lease abandon/reap callbacks, budget settlement, and worker
 record-merge behavior. (2) No live Modal calls in PR CI. (3) Path-scoped deploy from `main` after
-Environment approval. (4) Production canary starts with `CITYPODS_WORKER_MAX_CLAIMS=1` and reports via
-`asr-worker-report.yml` before raising the schedule/cap.
+Environment approval. (4) Production canary starts with `compute_backends.modal.max_claims: 1`
+and reports via `asr-worker-report.yml` before raising the schedule/cap; a deploy-time env override
+remains available for one-off manual runs.
 
 **Dispatch priority & budget:** Follow the shared router policy rather than embedding transcript
 semantics in this adapter. Initial policy may prefer Modal or rotate providers, but it must preserve
@@ -2120,14 +2122,15 @@ Modal and Beam independently drain claimable `transcript-asr` items within their
 **Secrets & configuration:** Beam runtime secrets are provider-local and named after their environment
 variables (`B2_*`, `R2_*`, future `HF_TOKEN`). GitHub stores only `BEAM_TOKEN` in the
 `beam-production` Environment for path-scoped deploys. Config per `compute_backends.beam` in
-`site_config.yml`: `monthly_gpu_seconds`, `max_inflight`.
+`site_config.yml`: `monthly_gpu_seconds`, `max_inflight`, `max_claims`.
 
 **Job serialization:** Shares H14b's pull-worker artifact semantics; Beam only supplies image, schedule,
 GPU class, and secret binding.
 
 **Testing:** No live Beam calls in PR CI. Path-scoped deploy from `main` after Environment approval.
-Production starts at `CITYPODS_WORKER_MAX_CLAIMS=1`; `asr-worker-report.yml` reports Beam leases,
-budget, and completions before raising schedule/cap.
+Production starts at `compute_backends.beam.max_claims: 1`; `asr-worker-report.yml` reports Beam
+leases, budget, and completions before raising schedule/cap. A deploy-time env override remains
+available for one-off manual runs.
 
 **Files.** `scripts/compute/beam_app.py`, `.github/workflows/beam-deploy.yml`, plus H14b's shared
 `citypods/compute/external_worker.py` / budget / work-lease substrate.

@@ -105,14 +105,25 @@ def _float_env(name: str, default: float) -> float:
     return float(raw)
 
 
-def config_from_env(backend: str) -> ExternalWorkerConfig:
+def _backend_settings(site_config: dict, backend: str) -> dict:
+    defaults = site_config.get("defaults", {}) if isinstance(site_config, dict) else {}
+    backends = defaults.get("compute_backends", {}) if isinstance(defaults, dict) else {}
+    settings = backends.get(backend, {}) if isinstance(backends, dict) else {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def config_from_env(backend: str, *, site_config: dict | None = None) -> ExternalWorkerConfig:
+    site_config = site_config or {}
+    backend_settings = _backend_settings(site_config, backend)
     owner = os.environ.get("CITYPODS_WORKER_OWNER") or f"{backend}:{uuid.uuid4().hex}"
     if not owner.startswith(f"{backend}:"):
         owner = f"{backend}:{owner}"
     return ExternalWorkerConfig(
         backend=backend,
         owner=owner,
-        max_claims=_int_env("CITYPODS_WORKER_MAX_CLAIMS", 1),
+        max_claims=_int_env(
+            "CITYPODS_WORKER_MAX_CLAIMS", int(backend_settings.get("max_claims", 1))
+        ),
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
         work_class=os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr"),
         gpu_seconds_per_audio_second=_float_env(
@@ -379,7 +390,7 @@ def run_worker(
     if not getattr(storage, "cas_capable", False):
         raise RuntimeError("external worker requires CAS-capable routing storage for work leases")
 
-    cfg = worker_config or config_from_env(backend)
+    cfg = worker_config or config_from_env(backend, site_config=site_config)
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
     state_dir = resolve_state_dir(site_config, output)
     pull_state(storage, state_dir)

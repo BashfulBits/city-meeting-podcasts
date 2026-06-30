@@ -218,9 +218,10 @@ defaults:
   # guarantee); `max_inflight` bounds concurrent in-flight jobs. No external adapter is registered yet
   # (the Modal/Beam adapters land in H14b/H14c), so today every job overflows to "local" — behavior-
   # identical to "local", but with the dispatch/lease/budget machinery live and reconciled each run.
+  # `max_claims` is the per-run pull-worker cap; deployment env may override it temporarily for a canary.
   compute_backends:
-    modal: { monthly_gpu_seconds: 108000, max_inflight: 8 }   # ≈ free credits — pin to the live plan
-    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8 }
+    modal: { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }   # ≈ free credits — pin to the live plan
+    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }
   # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull
   # workers (H14b/H14c) claim against is DORMANT until those workers exist, so `compute reconcile`
   # skips its sweep by default — otherwise it spends one R2 GET per pending transcript item only to
