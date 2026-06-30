@@ -73,11 +73,22 @@ def _parse_ffmpeg_decoded_end(stderr: str) -> float | None:
     """Parse the final processed timestamp (``time=HH:MM:SS.ss``) from ffmpeg's stats stream.
 
     ``detect_silences`` runs a full ``-vn -f null -`` decode of the audio, so ffmpeg's progress
-    ``time=`` reports the real **decoded audio-stream** end. That is the ground-truth clock the
-    silence EDL must anchor on when the container ``Duration`` header overstates the audio
-    (GH#702) *and* no stream-level sample clock is exposed (``_probe_stream_sample_duration``
-    returns ``None`` for HLS manifests / fragmented MP4 — exactly the over-claiming cohort). Reusing
-    the decode the silence pass already performed avoids a second media pass.
+    ``time=`` reports the last frame's timestamp from that decode. **This is a PTS clock, not a
+    decoded-sample-count clock** — without correction it carries forward any discontinuity in the
+    source's presentation timestamps (a stream splice, an ad-insertion boundary, a dropped-segment
+    gap) as if the gap were real elapsed audio, so it can overstate the true decodable content by
+    exactly the gap size. Confirmed by direct reproduction (GH#702): a 10s two-segment file with a
+    deliberate 2s forward PTS jump reports ``time=12.0x``, identical to the container `Duration`
+    header — both clocks are PTS-based and both overstate. The render path
+    (``_build_streaming_single_source_filter``, ``media.py``) resets timestamps to a contiguous
+    sample-index clock via ``asetpts=N/SR/TB`` and so naturally compacts the gap away, producing a
+    *shorter* file than either PTS-based measurement predicts — exactly the
+    `rendered-duration-mismatch` survivors an earlier basis-tier fix (this function, originally)
+    could not close. ``detect_silences`` now prepends the identical ``asetpts=N/SR/TB`` reset ahead
+    of ``silencedetect`` in its filter chain, so this function's ``time=`` reading is on the same
+    gap-compacted clock the render will actually produce (reproduced: 10.06s vs. the render's
+    measured 10.069s) — a pure per-frame timestamp rewrite, not a resample, so it costs nothing
+    extra and is a no-op on a source with no PTS discontinuity.
 
     Returns the largest **positive** ``time=`` seen (decode is monotonic, so the final stats line
     is the end), or ``None`` when none is parseable — the caller then falls back to the container
@@ -321,10 +332,20 @@ def detect_silences(
 
     Both durations are parsed from the same stderr output — no extra ffprobe call.
     ``container_duration`` is the ``Duration`` header (which can overstate the audio stream);
-    ``decoded_duration`` is the real decoded audio-stream end (the final ``time=`` stats
-    timestamp from this ``-vn`` decode pass), used by ``SilencePlanner`` as the GH#702 source
-    clock when the cheap stream-sample ffprobe is unavailable. Returns ``([], None, None)`` on any
-    subprocess or parse error.
+    ``decoded_duration`` is the decoded audio-stream end (the final ``time=`` stats timestamp from
+    this ``-vn`` decode pass), used by ``SilencePlanner`` as the GH#702 source clock when the cheap
+    stream-sample ffprobe is unavailable. Returns ``([], None, None)`` on any subprocess or parse
+    error.
+
+    The filter chain prepends ``asetpts=N/SR/TB`` ahead of ``silencedetect`` (GH#702 PTS-gap fix):
+    without it, both this pass's ``time=`` reading and ``silencedetect``'s own reported silence
+    boundaries ride the source's raw presentation timestamps, so a PTS discontinuity (stream
+    splice, ad-insertion boundary, dropped HLS segment) is counted as real elapsed audio. The reset
+    is a per-frame timestamp rewrite at the native sample rate — no resampling, no second decode
+    pass, a no-op when the source has no discontinuity — that puts both readings on the same
+    contiguous sample-index clock the render path already uses, so they agree with what actually
+    gets rendered instead of with each other's PTS-based overstatement. See
+    :func:`_parse_ffmpeg_decoded_end` for the reproduced before/after numbers.
 
     ``threads``, if given, pins ffmpeg's decode/filter thread count the same way
     ``CommandFfmpeg`` pins its encode passes — ffmpeg otherwise defaults to "all cores",
@@ -343,7 +364,7 @@ def detect_silences(
         url,
         "-vn",
         "-af",
-        f"silencedetect=noise={noise_db}dB:d={min_duration_s}",
+        f"asetpts=N/SR/TB,silencedetect=noise={noise_db}dB:d={min_duration_s}",
         "-f",
         "null",
         "-",

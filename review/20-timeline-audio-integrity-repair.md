@@ -40,6 +40,30 @@ change that warrants separate review:
     stats timestamp), and the planner uses it as a `duration_basis="decoded"` tier between `stream-sample`
     and `container`. A clean post-repair audit now shows the survivors with changed `timeline_digest` and
     `source_duration_bases=["decoded"]` (or `["stream-sample"]` where exposed), not `["container"]`.
+  - **PR2 follow-up correction (PTS-gap fix — the decoded-end fallback above did not converge in
+    production).** A before/after production audit of the repair cohort showed **0/56 survivors fixed**
+    despite genuine re-encodes and, for 27/56, a genuinely re-planned EDL — `stream_delta` was
+    statistically unchanged for every row. Root cause: ffmpeg's `time=` progress field is a
+    **presentation-timestamp (PTS) clock, not a decoded-PCM-sample-count clock** (the original duration-
+    clocks table below always specified `decoded_duration` as "PCM sample count after decode" — the PR2
+    follow-up's `time=` parse was a clock-type mismatch against that spec, not a design error). Without
+    correction, `time=` carries forward any PTS discontinuity in the source (a stream splice, an
+    ad-insertion boundary, a dropped HLS segment) as if the gap were real elapsed audio — so it
+    overstates by exactly the gap size, landing on the *same* value as the container `Duration` header
+    (also PTS-based). Confirmed for the three largest survivors: `decoded_duration` was bit-identical to
+    the prior `container_duration` (one of the three, Fort Worth, is `media_kind="direct"` — not HLS —
+    ruling out HLS-segment-loss as the mechanism). The render path
+    (`_build_streaming_single_source_filter`, `media.py`) resets timestamps to a contiguous sample-index
+    clock via `asetpts=N/SR/TB`, so it naturally compacts any such gap away — producing a file shorter
+    than either PTS-based measurement predicts, which is exactly the survivor symptom. **Fix:**
+    `detect_silences` now prepends the identical `asetpts=N/SR/TB` reset ahead of `silencedetect` in its
+    own filter chain, so `time=` (and `silencedetect`'s own reported silence boundaries) are measured on
+    the same gap-compacted clock the render will actually produce. This is a per-frame timestamp rewrite
+    at the native sample rate — no resampling, no second decode pass, a no-op on a source with no
+    discontinuity — reproduced directly: a constructed 10s two-segment file with a deliberate 2s forward
+    PTS jump reports `time=12.0x` unfixed (matching its container header) and `time=10.06s` fixed,
+    against a measured render output of `10.069s` for the same file. See
+    `citypods/silence.py::_parse_ffmpeg_decoded_end`'s docstring for the full mechanism.
 - **GH#702 PR3 (#705):** make the probed hosted-stream duration authoritative for `audio_duration_served`
   — `_backfill_served_duration` is now fill-when-missing and `_refresh_served_duration_from_audio` is
   probe-first for every timeline, so the measured hosted-file duration is no longer overwritten with the
