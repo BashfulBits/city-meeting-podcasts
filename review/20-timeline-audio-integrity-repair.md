@@ -53,9 +53,8 @@ change that warrants separate review:
     (also PTS-based). Confirmed for the three largest survivors: `decoded_duration` was bit-identical to
     the prior `container_duration` (one of the three, Fort Worth, is `media_kind="direct"` — not HLS —
     ruling out HLS-segment-loss as the mechanism). The render path
-    (`_build_streaming_single_source_filter`, `media.py`) resets timestamps to a contiguous sample-index
-    clock via `asetpts=N/SR/TB`, so it naturally compacts any such gap away — producing a file shorter
-    than either PTS-based measurement predicts, which is exactly the survivor symptom. **Fix:**
+    (`_build_streaming_single_source_filter`, `media.py`) is intended to operate on the same contiguous
+    sample-index clock, so any PTS gap must be compacted before comparing source spans. **Fix:**
     `detect_silences` now prepends the identical `asetpts=N/SR/TB` reset ahead of `silencedetect` in its
     own filter chain, so `time=` (and `silencedetect`'s own reported silence boundaries) are measured on
     the same gap-compacted clock the render will actually produce. This is a per-frame timestamp rewrite
@@ -64,6 +63,17 @@ change that warrants separate review:
     PTS jump reports `time=12.0x` unfixed (matching its container header) and `time=10.06s` fixed,
     against a measured render output of `10.069s` for the same file. See
     `citypods/silence.py::_parse_ffmpeg_decoded_end`'s docstring for the full mechanism.
+  - **PR2 follow-up correction (renderer pre-select PTS fix — the decode-pass PTS fix only partially
+    converged).** The next run 5 → run 6 production audit of the same repair cohort showed the repair
+    lanes were active but still wrong: 9/63 selected UIDs fixed, 54/63 remained
+    `rendered-duration-mismatch`, `audio_key` changed for 61, and `timeline_digest` changed for 62. All
+    old-cohort survivors were now `source_duration_bases=["decoded"]`, proving the planner moved off the
+    container clock. Root cause: `_build_streaming_single_source_filter` had `asetpts=N/SR/TB` only after
+    `aselect`; the final output was left-packed, but the selector still compared compacted EDL
+    boundaries to raw source PTS. With a 2s source PTS gap, a synthetic 10s EDL rendered as ~8.056s. The
+    streaming filter now rewrites source PTS to the contiguous decoded-sample clock before boundary
+    framing / `aselect`, and keeps the post-select `asetpts` that packs retained samples onto served
+    time. The synthetic PTS-gap regression now renders the same 10s EDL as 10.0s.
 - **GH#702 PR3 (#705):** make the probed hosted-stream duration authoritative for `audio_duration_served`
   — `_backfill_served_duration` is now fill-when-missing and `_refresh_served_duration_from_audio` is
   probe-first for every timeline, so the measured hosted-file duration is no longer overwritten with the

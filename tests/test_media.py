@@ -1161,6 +1161,104 @@ def test_probe_audio_duration_details_reports_ffprobe_error(tmp_path):
     assert probe.probe_error == "ffprobe-error"
 
 
+def _build_gapped_ts(tmp_path: Path, gap_seconds: float = 2.0) -> Path:
+    """Build a short source whose second half has a forward PTS discontinuity."""
+    seg1 = tmp_path / "seg1.ts"
+    seg2 = tmp_path / "seg2.ts"
+    gapped = tmp_path / "gapped.ts"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg1),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=880:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-output_ts_offset",
+            str(5.0 + gap_seconds),
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg2),
+        ],
+        check=True,
+    )
+    gapped.write_bytes(seg1.read_bytes() + seg2.read_bytes())
+    return gapped
+
+
+def test_streaming_single_source_filter_selects_on_compacted_pts(tmp_path):
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe required for PTS-gap render check")
+
+    import citypods.media as media
+
+    source = _build_gapped_ts(tmp_path, gap_seconds=2.0)
+    timeline = Timeline(
+        version="silence-test",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=10.0,
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=10.0,
+            ),
+        ),
+    )
+    out = tmp_path / "out.m4a"
+
+    media.CommandFfmpeg(max_kbps=MAX_KBPS, timeout_seconds=120, threads=1).extract_audio(
+        timeline,
+        {"s0": str(source)},
+        out,
+        sources=[
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref=str(source),
+                media_kind="direct",
+                duration=12.0,
+                watch_url=None,
+            )
+        ],
+    )
+
+    assert _probe_duration_secs(out) == pytest.approx(10.0, abs=0.15)
+
+
 def test_audio_duration_served_set_from_probe(tmp_path):
     """materialize_audio sets audio_duration_served from the probed output file."""
     import citypods.media as media

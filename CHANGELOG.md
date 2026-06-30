@@ -16,6 +16,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Correction: the rendered-duration survivors were still selecting source spans on raw PTS
+  (GH#702).** The run 5 → run 6 audit artifacts showed the prior fix only partially converged:
+  9/63 original repair-cohort UIDs fixed, 54/63 still `rendered-duration-mismatch`, with nearly every
+  survivor showing a changed `timeline_digest` and `audio_key`. That proved the repair lanes were
+  firing and the planner had moved from `duration_basis="container"` to `"decoded"`, but the renderer
+  was still not using the same clock for selection. Root cause: `_build_streaming_single_source_filter`
+  applied `asetpts=N/SR/TB` **after** `aselect`, so the final served output was left-packed but the
+  selector still compared compacted EDL boundaries against raw source PTS. A source with a 2s PTS gap
+  therefore rendered a 10s EDL as ~8.056s. The streaming filter now rewrites PTS to the contiguous
+  decoded-sample clock before boundary framing / `aselect`, and keeps the post-select reset that packs
+  retained samples onto served time. A synthetic PTS-gap regression now renders a 10s EDL as 10.0s.
 - **Correction: the "decoded audio-stream end" fix below did not converge in production — fixed by
   resetting the decode pass to a sample-index clock before measuring it (GH#702).** A before/after
   production audit of the repair cohort showed 0/56 survivors improved despite genuine re-encodes and
@@ -25,15 +36,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   the gap were real elapsed audio, so it overstates by exactly the gap size and lands on the same value
   as the (also PTS-based) container `Duration` header — confirmed bit-identical for the three largest
   survivors, one of which (`media_kind="direct"`) isn't even HLS, ruling out segment loss as the
-  mechanism. The render path already resets timestamps to a contiguous sample-index clock via
-  `asetpts=N/SR/TB`, naturally compacting any such gap away — producing a shorter file than either
-  PTS-based measurement predicts. `detect_silences` now prepends that identical `asetpts=N/SR/TB` reset
-  ahead of `silencedetect` in its own filter chain, so its `time=` reading (and `silencedetect`'s own
-  reported silence boundaries) are measured on the same clock the render will actually produce. A pure
-  per-frame timestamp rewrite at the native rate — no resampling, no second decode pass, a no-op on a
-  source with no discontinuity. Reproduced directly: a constructed 10s file with a deliberate 2s forward
-  PTS jump read `time=12.0x` unfixed (matching its container header) and `time=10.06s` fixed, against a
-  measured render output of `10.069s` for the same file.
+  mechanism. `detect_silences` now prepends `asetpts=N/SR/TB` ahead of `silencedetect`, so its `time=`
+  reading and silence boundaries are measured on a contiguous sample-index clock. A pure per-frame
+  timestamp rewrite at the native rate — no resampling, no second decode pass, a no-op on a source with
+  no discontinuity. Reproduced directly: a constructed 10s file with a deliberate 2s forward PTS jump
+  read `time=12.0x` unfixed (matching its container header) and `time=10.06s` fixed. The follow-up above
+  makes the renderer's selector use that same pre-select clock.
 - **`SilencePlanner` now anchors the single-file EDL on the *decoded* audio-stream end when no
   stream-sample clock is exposed, closing the GH#702 `rendered-duration-mismatch` survivor gap.** PR
   #704 made the planner prefer ffprobe's stream-sample duration over the container header, but for the
