@@ -1146,11 +1146,12 @@ def _build_streaming_single_source_filter(
     monotonic non-overlapping keep spans, no inserts or reordering.
 
     ``aselect`` normally keeps or rejects whole decoder frames, which accumulated visible duration
-    drift across many cuts. This graph first fixes the stream at 48 kHz, then changes the frame size
+    drift across many cuts. This graph first fixes the stream at 48 kHz and rewrites source PTS to
+    the contiguous decoded-sample clock used by ``SilencePlanner``. It then changes the frame size
     to one sample only in short windows around each cut boundary. The selector compares integer
-    sample PTS values, ``asetpts`` packs retained samples onto the served clock, and a final
-    ``asetnsamples`` coalesces them back into normal frames. Work and memory outside the boundary
-    windows remain independent of meeting duration and cut count.
+    sample PTS values, a post-select ``asetpts`` packs retained samples onto the served clock, and a
+    final ``asetnsamples`` coalesces them back into normal frames. Work and memory outside the
+    boundary windows remain independent of meeting duration and cut count.
 
     Return ``None`` for timelines that need the generic graph (multi-source concat, inserts,
     reordering, open-ended non-final spans).
@@ -1213,6 +1214,7 @@ def _build_streaming_single_source_filter(
         f"[{input_idx}:a]"
         f"aresample={_TIMELINE_SAMPLE_RATE},"
         "aformat=channel_layouts=mono,"
+        "asetpts=N/SR/TB,"
         f"asetnsamples=n={_TIMELINE_FRAME_SAMPLES}:p=0,"
         f"asettb=1/{_TIMELINE_SAMPLE_RATE},"
         f"asendcmd=c='{commands}',"
