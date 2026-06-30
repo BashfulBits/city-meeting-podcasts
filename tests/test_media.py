@@ -289,7 +289,9 @@ def test_source_cache_fetch_happens_before_native_cpu_admission(tmp_path):
     assert events == ["fetch", "gate", "release"]
 
 
-def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_requested(tmp_path):
+def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_requested(
+    tmp_path, capsys
+):
     """The run's wall-clock budget expiring while queued on the source cache is not a source
     failure: defer without recording it as an error/backoff (#120-style false penalty)."""
 
@@ -308,9 +310,15 @@ def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_reque
         source_cache=_StoppingCache(),
     )
     assert stats.skipped_budget == 1
+    assert stats.defer_reasons == {"source-cache-stop": 1}
+    assert stats.defer_samples == ["uid-g1:source-cache-stop"]
     assert stats.encoded == 0
     assert stats.errors == []
     assert ep.materialize_attempts == 0  # no backoff recorded for a budget-expiry defer
+    out = capsys.readouterr().out
+    assert "audio materialize deferred" in out
+    assert "uid=uid-g1" in out
+    assert "reason=source-cache-stop" in out
 
 
 def test_audio_encode_defers_when_resource_admission_stops(tmp_path):
@@ -328,6 +336,7 @@ def test_audio_encode_defers_when_resource_admission_stops(tmp_path):
     )
     assert admission.calls == [("audio", "uid-g1")]
     assert stats.skipped_budget == 1
+    assert stats.defer_reasons == {"resource-admission": 1}
     assert stats.encoded == 0
     assert ff.calls == []
 
@@ -991,6 +1000,8 @@ def test_episode_in_backoff_is_skipped_without_consuming_budget(tmp_path):
     ff = _FailUrls()
     stats = _materialize(_city(), [ep], _store(tmp_path), ff)
     assert stats.skipped_backoff == 1 and stats.errors == []
+    assert stats.defer_reasons == {"error-backoff": 1}
+    assert stats.defer_samples == ["uid-bad:error-backoff"]
     assert ff.calls == []  # never attempted
 
 

@@ -537,9 +537,15 @@ def test_audit_workflow_exposes_guarded_timeline_repair_cohort_dispatch():
     assert inputs["timeline_repair"]["default"] is False
     assert inputs["timeline_repair_min_delta"]["default"] == "1.0"
     assert inputs["timeline_repair_cohort"]["default"] == ""
+    assert inputs["timeline_diagnostics"]["type"] == "boolean"
+    assert inputs["timeline_diagnostics"]["default"] is False
     assert inputs["timeline_finding_min_delta"]["default"] == "1.0"
 
     run = next(s for s in job["steps"] if s.get("name") == "Run audit")["run"]
+    assert "timeline_diagnostics_requested=false" in run
+    assert 'inputs.timeline_diagnostics }}" = "true"' in run
+    assert "timeline_diagnostics_requested=true" in run
+    assert 'if [ "$timeline_diagnostics_requested" = "true" ]; then' in run
     assert "--timeline-diagnostics audit-timeline-integrity.jsonl" in run
     assert "--timeline-finding-min-delta" in run
     assert "--persist-timeline-integrity" in run

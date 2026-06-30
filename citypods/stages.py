@@ -390,11 +390,14 @@ class StageStats:
     asr_migration_regenerated: int = 0
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     defer_reasons: dict[str, int] = field(default_factory=dict)
+    defer_samples: list[str] = field(default_factory=list)
 
-    def defer(self, reason: str, count: int = 1) -> None:
+    def defer(self, reason: str, count: int = 1, *, sample: str | None = None) -> None:
         """Record restartable work left for a later run, grouped by a stable reason token."""
         self.skipped += count
         self.defer_reasons[reason] = self.defer_reasons.get(reason, 0) + count
+        if sample and len(self.defer_samples) < 5:
+            self.defer_samples.append(sample)
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -718,6 +721,8 @@ class AudioStage:
             encoded=ms.encoded,
             credited=ms.credited,
             rate_limited=ms.rate_limited,
+            defer_reasons=dict(ms.defer_reasons),
+            defer_samples=list(ms.defer_samples),
         )
 
 

@@ -27,6 +27,10 @@ on:
         description: "Cohort label stamped on selected repair rows"
         type: string
         default: ""
+      timeline_diagnostics:
+        description: "Write full timeline/audio diagnostics artifact (slow; for repair canaries)"
+        type: boolean
+        default: false
       timeline_finding_min_delta:
         description: "Minimum stream delta in seconds for rendered-mismatch issues"
         type: string
@@ -72,13 +76,17 @@ jobs:
         run: |
           args=(
             --meetings-urls
-            --timeline-diagnostics audit-timeline-integrity.jsonl
             --timeline-finding-min-delta "${{ github.event_name == 'workflow_dispatch' && inputs.timeline_finding_min_delta || '1.0' }}"
           )
+          timeline_diagnostics_requested=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.timeline_diagnostics }}" = "true" ]; then
+            timeline_diagnostics_requested=true
+          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.enclosures }}" = "true" ]; then
             args+=(--enclosures)
           fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.timeline_repair }}" = "true" ]; then
+            timeline_diagnostics_requested=true
             if [ "${{ github.ref }}" != "refs/heads/main" ]; then
               echo "::error::timeline_repair can only persist durable state from main"
               exit 1
@@ -92,6 +100,9 @@ jobs:
               exit 1
             fi
             args+=(--timeline-repair-cohort "${{ inputs.timeline_repair_cohort }}")
+          fi
+          if [ "$timeline_diagnostics_requested" = "true" ]; then
+            args+=(--timeline-diagnostics audit-timeline-integrity.jsonl)
           fi
           PYTHONPATH=. python scripts/audit_feeds.py "${args[@]}"
 
