@@ -472,9 +472,8 @@ def _parse_state(body: str) -> dict:
         }
         if len(cleaned) != len(first_seen):
             data = {**data, "first_seen": cleaned}
-    rows = data.get("rows")
-    if rows is not None and not isinstance(rows, dict):
-        return {}
+    # A malformed `rows` value is handled by _parse_state_rows() itself (returns {} for it
+    # alone) -- rejecting the whole state here would also discard an otherwise-valid first_seen.
     return data
 
 
@@ -514,6 +513,11 @@ def _render_state_block(check: str, first_seen: dict[str, str], rows: dict[str, 
         },
         sort_keys=True,
     )
+    # A feed-derived example (an upstream error/response message) could contain a literal "-->",
+    # which would prematurely terminate this HTML comment and corrupt the state block. "-->" can
+    # only appear inside a JSON string value here (it isn't valid bare JSON syntax), so replacing
+    # it with the equivalent > escape for ">" changes no parsed value on the read side.
+    payload = payload.replace("-->", "--\\u003e")
     return f"<!-- citypods:feed-health:state\n{payload}\n-->"
 
 

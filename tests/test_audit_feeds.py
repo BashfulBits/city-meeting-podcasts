@@ -307,6 +307,38 @@ def test_parse_state_drops_non_string_first_seen_entries():
     assert state["first_seen"] == {"cityA": "2026-06-01T00:00:00+00:00"}
 
 
+def test_parse_state_keeps_first_seen_when_rows_is_malformed():
+    # A malformed `rows` value must not also discard an otherwise-valid first_seen -- only
+    # _parse_state_rows() (which reads `rows` alone) should be affected.
+    body = (
+        "x\n<!-- citypods:feed-health:state\n"
+        '{"check": "drift", "first_seen": {"cityA": "2026-06-01T00:00:00+00:00"}, '
+        '"rows": "not-a-dict"}'
+        "\n-->"
+    )
+    state = _parse_state(body)
+    assert state["first_seen"] == {"cityA": "2026-06-01T00:00:00+00:00"}
+    assert _parse_state_rows(state) == {}
+
+
+def test_render_state_block_escapes_html_comment_terminator_in_example():
+    # A feed-derived example (e.g. a scraped provider error message) containing a literal "-->"
+    # must not be able to prematurely terminate the hidden HTML comment and corrupt the state
+    # block -- the round trip through render -> parse must still recover the original text.
+    rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="broke here --> oops")}
+    first_seen = {"cityA": _NOW.isoformat()}
+    body = _render_grouped_body(
+        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=WARN, now=_NOW
+    )
+    # The raw payload embedded in the HTML comment must not contain an unescaped "-->".
+    match = _mod._STATE_RE.search(body)
+    assert "-->" not in match.group(1)
+    state = _parse_state(body)
+    assert state["first_seen"] == first_seen  # comment wasn't truncated early
+    recovered = _parse_state_rows(state)
+    assert recovered["cityA"].example == "broke here --> oops"
+
+
 def test_parse_prior_rows_recovers_slug_count_and_example():
     rows = {"cityA": _FeedRow(slug="cityA", count=3, severity=WARN, example="some example")}
     first_seen = {"cityA": _NOW.isoformat()}
