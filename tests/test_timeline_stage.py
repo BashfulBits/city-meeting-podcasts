@@ -575,8 +575,8 @@ class TestTimelineStageSkipAndStop:
                     served_end=3300,
                     kind="source",
                     source_id="s0",
-                    source_start=0,
-                    source_end=3300,
+                    source_start=600,
+                    source_end=3900,
                 ),
             ),
         )
@@ -589,6 +589,65 @@ class TestTimelineStageSkipAndStop:
         assert planner.calls == 1
         assert stats.ran == 1 and stats.reused == 0
         assert ep.sources[0].duration_basis == "decoded"
+
+    def test_replans_same_signature_silence_timeline_with_missing_source_metadata(self, tmp_path):
+        ep = _ep()
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3900,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 1
+        assert stats.ran == 1 and stats.reused == 0
+
+    def test_reuses_same_signature_silence_timeline_with_decoded_qualified_basis(self, tmp_path):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="granicus",
+                ref=ep.video_url,
+                media_kind="direct",
+                duration=3900,
+                watch_url=None,
+                duration_basis="decoded:48000",
+            )
+        ]
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3900,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
 
     def test_replans_when_planner_version_changes(self, tmp_path):
         ep = _ep()

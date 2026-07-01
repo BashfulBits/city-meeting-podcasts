@@ -821,10 +821,16 @@ class TimelineStage:
 
         sources_by_id = {src.id: src for src in ep.sources}
         if not sources_by_id:
-            # Pre-source legacy test fixtures are not enough evidence to invalidate the EDL.
-            return True
+            return False
         return all(
-            (src := sources_by_id.get(source_id)) is not None and src.duration_basis == "decoded"
+            (src := sources_by_id.get(source_id)) is not None
+            and (
+                src.duration_basis == "decoded"
+                or (
+                    isinstance(src.duration_basis, str)
+                    and src.duration_basis.startswith("decoded:")
+                )
+            )
             for source_id in timeline_source_ids
         )
 
