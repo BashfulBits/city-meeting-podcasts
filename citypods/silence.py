@@ -26,6 +26,7 @@ from fractions import Fraction
 
 from citypods.availability import is_effectively_silent
 from citypods.http import USER_AGENT, StopRequested
+from citypods.integrity import REPAIR_TIMELINE_REPLAN, needs_timeline_audio_repair
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
 DEFER_CACHE_UNAVAILABLE = "deferred_cache_unavailable"
@@ -582,10 +583,16 @@ class SilencePlanner:
                 flush=True,
             )
             if current is not None:
+                if needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN):
+                    # The canary repair path has already proven the prior EDL is bad. Do not keep
+                    # serving it as "current" when the fresh decoded plan is withheld as degenerate;
+                    # let media availability/deferred state own the episode until it recovers.
+                    ep.timeline = None
                 _defer_timeline_plan(
                     ep, DEFER_DEGENERATE_TIMELINE, failure_code="timeline-degenerate"
                 )
-                return None  # preserve the prior (non-degenerate) timeline as-is
+                # Preserve ordinary prior timelines; repair-selected bad EDLs are cleared above.
+                return None
             _defer_timeline_plan(ep, DEFER_DEGENERATE_TIMELINE, failure_code="timeline-degenerate")
             return None
 

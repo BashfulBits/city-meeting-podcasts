@@ -240,6 +240,9 @@ class TestDurationMismatch:
         assert fs == []
         assert diagnostics[0]["check"] == "container-duration-drift"
         assert diagnostics[0]["repair"] == []
+        assert diagnostics[0]["duration_drift_kind"] == "container-only"
+        assert diagnostics[0]["container_delta_signed"] == pytest.approx(4.0)
+        assert diagnostics[0]["stream_delta_signed"] == pytest.approx(0.0)
 
     def test_stream_duration_mismatch_flags_repair_actions(self):
         ep = _ep()

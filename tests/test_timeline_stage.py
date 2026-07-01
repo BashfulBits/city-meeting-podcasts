@@ -236,6 +236,7 @@ class TestTimelineStageNoPlanner:
         assert stats.ran == 0
         assert stats.skipped == 1
         assert stats.defer_reasons == {"deferred_decode_unavailable": 1}
+        assert stats.defer_samples == ["uid-g1:deferred_decode_unavailable"]
 
     def test_audio_stage_skips_episode_deferred_by_timeline_in_same_run(self, tmp_path):
         ep = _ep()
@@ -264,6 +265,7 @@ class TestTimelineStageNoPlanner:
         assert ep.timeline is None
         assert stats.skipped == 1
         assert stats.defer_reasons == {"timeline-decode-backoff": 1}
+        assert stats.defer_samples == ["uid-g1:timeline-decode-backoff"]
 
     def test_already_set_timeline_stays_when_no_planners(self, tmp_path):
         src = SourceMedia(

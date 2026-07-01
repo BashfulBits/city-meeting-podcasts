@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from citypods.http import StopRequested
+from citypods.integrity import REPAIR_AUDIO_REMATERIALIZE, set_timeline_audio_integrity
 from citypods.media import (
     _ENCODE_RSS_COPY_BYTES,
     _ENCODE_RSS_MAX_BYTES,
@@ -1006,6 +1007,33 @@ def test_episode_in_backoff_is_skipped_without_consuming_budget(tmp_path):
     assert stats.defer_reasons == {"error-backoff": 1}
     assert stats.defer_samples == ["uid-bad:error-backoff"]
     assert ff.calls == []  # never attempted
+
+
+def test_repair_spec_change_bypasses_stale_materialize_backoff_once(tmp_path):
+    """A targeted repair recipe is new work, so an old generic backoff must not block its first
+    encode attempt. If that new spec fails, ``error_spec_hash`` keys normal backoff again."""
+    ep = _ep("bad", url="https://src/manifest.m3u8")
+    ep.materialize_attempts = 4
+    ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+    ep.materialize_error = "error"
+    ep.materialize_error_spec_hash = None  # old record from before spec-keyed failure tracking
+    set_timeline_audio_integrity(
+        ep,
+        {
+            "status": "rendered-duration-mismatch",
+            "repair": [REPAIR_AUDIO_REMATERIALIZE],
+        },
+    )
+    ff = FakeFfmpeg()
+
+    stats = _materialize(_city(), [ep], _store(tmp_path), ff)
+
+    assert stats.encoded == 1
+    assert stats.skipped_backoff == 0
+    assert ff.calls == ["https://src/manifest.m3u8"]
+    assert ep.materialize_attempts == 0
+    assert ep.materialize_error is None
+    assert ep.materialize_error_spec_hash is None
 
 
 def test_old_loudness_error_retries_immediately_under_peak_fallback(tmp_path):

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from citypods.http import StopRequested
+from citypods.integrity import REPAIR_TIMELINE_REPLAN, set_timeline_audio_integrity
 from citypods.silence import (
     SilencePlanner,
     _parse_ffmpeg_decoded_end,
@@ -861,6 +862,47 @@ class TestProbeStreamSampleDuration:
         assert result is None
         assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
         assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "timeline-degenerate"
+
+    def test_degenerate_repair_timeline_clears_known_bad_prior(self):
+        """A repair-selected prior EDL is not a healthy fallback. If decoded re-planning produces a
+        degenerate result, clear the stale EDL so availability/deferred state owns the episode."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        prior = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=51.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0.0,
+                    source_end=51.0,
+                ),
+            ),
+        )
+        ep = _make_episode(duration=3600)
+        ep.timeline = prior
+        set_timeline_audio_integrity(
+            ep,
+            {
+                "status": "rendered-duration-mismatch",
+                "repair": [REPAIR_TIMELINE_REPLAN],
+            },
+        )
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, 3600.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, prior)
+
+        assert result is None
+        assert ep.timeline is None
+        assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
         assert ep.materialize_error == "timeline-degenerate"
 
 
