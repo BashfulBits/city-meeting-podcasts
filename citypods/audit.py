@@ -697,6 +697,18 @@ def _timeline_audio_diagnostic(
     container = probe.container_duration if probe else None
     stream = probe.stream_sample_duration if probe else None
     probe_error = probe.probe_error if probe else "probe-not-run"
+    container_delta_signed = (
+        container - timeline_duration
+        if container is not None and timeline_duration is not None
+        else None
+    )
+    stream_delta_signed = (
+        stream - timeline_duration if stream is not None and timeline_duration is not None else None
+    )
+    media_availability = ep.media_availability
+    availability_state = (
+        media_availability.effective_state() if media_availability is not None else None
+    )
     return {
         "slug": slug,
         "uid": ep.uid or ep.guid,
@@ -707,14 +719,15 @@ def _timeline_audio_diagnostic(
         "container_duration": container,
         "stream_sample_duration": stream,
         "container_delta": (
-            abs(container - timeline_duration)
-            if container is not None and timeline_duration is not None
-            else None
+            abs(container_delta_signed) if container_delta_signed is not None else None
         ),
-        "stream_delta": (
-            abs(stream - timeline_duration)
-            if stream is not None and timeline_duration is not None
-            else None
+        "stream_delta": (abs(stream_delta_signed) if stream_delta_signed is not None else None),
+        "container_delta_signed": container_delta_signed,
+        "stream_delta_signed": stream_delta_signed,
+        "duration_drift_kind": (
+            "container-only"
+            if status == "container-duration-drift"
+            else ("stream" if status == "rendered-duration-mismatch" else None)
         ),
         "source_duration_delta": _source_duration_delta(ep),
         "repair": repair,
@@ -725,6 +738,8 @@ def _timeline_audio_diagnostic(
         "timeline_digest": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
         "prior_integrity": timeline_audio_integrity(ep) or None,
         "probe_error": probe_error,
+        "media_availability_state": availability_state,
+        "media_withheld": bool(media_availability and media_availability.is_withheld()),
         **_source_media_telemetry(ep),
     }
 

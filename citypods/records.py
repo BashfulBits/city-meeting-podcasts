@@ -780,6 +780,7 @@ def episode_to_record(ep: Episode) -> dict:
             "attempts": ep.materialize_attempts,
             "last_attempt": ep.materialize_last_attempt,
             "error": ep.materialize_error,
+            "error_spec_hash": ep.materialize_error_spec_hash,
         },
         # Durable media-availability verdict (H16 PR3): omitted when never classified so the
         # record stays clean for direct enclosures we don't re-host and for pre-PR3 records.
@@ -900,6 +901,7 @@ def record_to_episode(rec: dict) -> Episode:
         materialize_attempts=audio.get("attempts") or 0,
         materialize_last_attempt=audio.get("last_attempt"),
         materialize_error=audio.get("error"),
+        materialize_error_spec_hash=audio.get("error_spec_hash"),
         audio_bytes=audio.get("bytes"),
         links=rec.get("links") or {},
         chapters=rec.get("chapters") or [],
@@ -1122,6 +1124,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.materialize_attempts = audio.get("attempts") or 0
         ep.materialize_last_attempt = audio.get("last_attempt")
         ep.materialize_error = audio.get("error")
+        ep.materialize_error_spec_hash = audio.get("error_spec_hash")
         ep.audio_bytes = audio.get("bytes")
         ep.audio_encode_time = audio.get("encode_time")
         ep.audio_duration_served = audio.get("duration_served")

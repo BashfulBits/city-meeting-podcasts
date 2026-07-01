@@ -41,6 +41,7 @@ from typing import Protocol
 
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
 from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
+from citypods.integrity import REPAIR_AUDIO_REMATERIALIZE, needs_timeline_audio_repair
 from citypods.models import City, Episode
 from citypods.progress import PROGRESS
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
@@ -215,6 +216,7 @@ def record_materialize_failure(
     code: str,
     *,
     now: datetime | None = None,
+    spec_hash: str | None = None,
 ) -> None:
     """Persist one direct materialization failure on an episode.
 
@@ -225,6 +227,7 @@ def record_materialize_failure(
     ep.materialize_attempts += 1
     ep.materialize_last_attempt = (now or datetime.now(UTC)).isoformat()
     ep.materialize_error = code
+    ep.materialize_error_spec_hash = spec_hash
 
 
 def _rate_limited_status(stderr: bytes | str | None) -> str | None:
@@ -2546,6 +2549,7 @@ def materialize_audio(
         ep.materialize_attempts = 0
         ep.materialize_last_attempt = None
         ep.materialize_error = None
+        ep.materialize_error_spec_hash = None
         _backfill_served_duration(ep)
 
     for ep in episodes:
@@ -2560,6 +2564,7 @@ def materialize_audio(
             ep.materialize_attempts = 0
             ep.materialize_last_attempt = None
             ep.materialize_error = None
+            ep.materialize_error_spec_hash = None
 
         spec = audio_spec_hash(
             ep,
@@ -2612,7 +2617,11 @@ def materialize_audio(
 
         # Recently-failed episodes back off (exponential) so a permanently-broken source (e.g. a
         # Swagit meeting with no usable media — #120) stops re-trying and churning budget/time.
-        if _in_backoff(ep, now):
+        repair_spec_changed = (
+            needs_timeline_audio_repair(ep, REPAIR_AUDIO_REMATERIALIZE)
+            and ep.materialize_error_spec_hash != spec
+        )
+        if _in_backoff(ep, now) and not repair_spec_changed:
             if audio_artifact_cache is not None:
                 audio_artifact_cache.abort(cache_key)
             _log_audio_defer(
@@ -2622,6 +2631,14 @@ def materialize_audio(
                 detail=f"attempts={ep.materialize_attempts}",
             )
             continue
+        if repair_spec_changed and ep.materialize_attempts > 0:
+            print(
+                f"[enrich] audio repair retry bypassed stale backoff slug={city.slug} "
+                f"provider={city.provider} source={src_key} uid={uid} "
+                f"old_error_spec={ep.materialize_error_spec_hash or 'unknown'} "
+                f"new_spec={spec} attempts={ep.materialize_attempts}",
+                flush=True,
+            )
 
         canonical_source = (
             audio_artifact_cache.canonical_source(city.provider, src_key, uid)
@@ -2800,6 +2817,7 @@ def materialize_audio(
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None
+            ep.materialize_error_spec_hash = None
             if audio_artifact_cache is not None and cache_key is not None:
                 audio_artifact_cache.complete(cache_key, _artifact(ep))
                 cache_completed = True
@@ -2841,6 +2859,7 @@ def materialize_audio(
                 if isinstance(exc, subprocess.TimeoutExpired)
                 else getattr(exc, "code", None) or "error",
                 now=now,
+                spec_hash=spec,
             )
             with stats_lock:
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")

@@ -886,7 +886,8 @@ class TimelineStage:
                 ep, datetime.now(UTC)
             ):
                 with lock:
-                    stats.defer(f"{ep.materialize_error}-backoff")
+                    reason = f"{ep.materialize_error}-backoff"
+                    stats.defer(reason, sample=f"{ep.uid or ep.guid}:{reason}")
                 return
 
             # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
@@ -907,7 +908,10 @@ class TimelineStage:
                         result = planner.plan(provider, city, ep, ctx, current)
                         if ep.timeline_defer_reason:
                             with lock:
-                                stats.defer(ep.timeline_defer_reason)
+                                stats.defer(
+                                    ep.timeline_defer_reason,
+                                    sample=f"{ep.uid or ep.guid}:{ep.timeline_defer_reason}",
+                                )
                             return
                         if result is not None:
                             current = result

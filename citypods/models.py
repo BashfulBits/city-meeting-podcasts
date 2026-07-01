@@ -130,6 +130,9 @@ class Episode:
     # feature ships, e.g. multi-segment Swagit concat #122; ``"dead"`` = no usable media) or
     # ``"error"`` for a transient/uncategorized failure. ``None`` once hosted successfully.
     materialize_error: str | None = None
+    # Audio spec hash that was attempted when ``materialize_error`` was recorded. This lets targeted
+    # repair specs get one fresh attempt without disabling backoff for the same broken recipe.
+    materialize_error_spec_hash: str | None = None
     # Byte size of the hosted audio object, captured at put_file time (issue #124). Drives
     # exact per-feed and per-city GB totals in the status dashboard without a storage round-trip.
     # Older records carry ``None`` until re-hosted; the dashboard shows "~estimated" in that case.
