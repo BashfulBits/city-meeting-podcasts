@@ -19,6 +19,26 @@ on:
         required: false
         type: string
         default: ""
+      source:
+        description: "Only this source key (e.g. ecc3710ac47f); blank = all sources"
+        required: false
+        type: string
+        default: ""
+      uid:
+        description: "Only this record UID; blank = all UIDs"
+        required: false
+        type: string
+        default: ""
+      error:
+        description: "Only this materialize error code (e.g. timeline-degenerate); blank = any error"
+        required: false
+        type: string
+        default: ""
+      include_hosted:
+        description: "Also reset hosted records (use only with narrow source/uid/error filters)"
+        required: false
+        type: boolean
+        default: false
       apply:
         description: "Actually mutate state (unchecked = dry-run)"
         required: false
@@ -64,8 +84,15 @@ jobs:
       - name: Reset materialization backoff
         env:
           PROVIDER: ${{ inputs.provider }}
+          SOURCE: ${{ inputs.source }}
+          UID: ${{ inputs.uid }}
+          ERROR_CODE: ${{ inputs.error }}
         run: |
           ARGS=()
           if [ -n "$PROVIDER" ]; then ARGS+=(--provider "$PROVIDER"); fi
+          if [ -n "$SOURCE" ]; then ARGS+=(--source "$SOURCE"); fi
+          if [ -n "$UID" ]; then ARGS+=(--uid "$UID"); fi
+          if [ -n "$ERROR_CODE" ]; then ARGS+=(--error "$ERROR_CODE"); fi
+          if [ "${{ inputs.include_hosted }}" = "true" ]; then ARGS+=(--include-hosted); fi
           if [ "${{ inputs.apply }}" = "true" ]; then ARGS+=(--apply); fi
           PYTHONPATH=. python scripts/reset_materialize_backoff.py "${ARGS[@]}"

@@ -553,3 +553,25 @@ def test_audit_workflow_exposes_guarded_timeline_repair_cohort_dispatch():
     assert "--timeline-repair-cohort" in run
     assert 'github.ref }}" != "refs/heads/main"' in run
     assert "timeline_repair_cohort is required" in run
+
+
+def test_reset_backoff_workflow_exposes_targeted_hosted_filters():
+    wf, job = _job("reset-backoff.yml")
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+
+    assert inputs["provider"]["default"] == ""
+    assert inputs["source"]["default"] == ""
+    assert inputs["uid"]["default"] == ""
+    assert inputs["error"]["default"] == ""
+    assert inputs["include_hosted"]["type"] == "boolean"
+    assert inputs["include_hosted"]["default"] is False
+    assert inputs["apply"]["type"] == "boolean"
+    assert inputs["apply"]["default"] is False
+
+    run = next(s for s in job["steps"] if s.get("name") == "Reset materialization backoff")["run"]
+    assert 'ARGS+=(--provider "$PROVIDER")' in run
+    assert 'ARGS+=(--source "$SOURCE")' in run
+    assert 'ARGS+=(--uid "$UID")' in run
+    assert 'ARGS+=(--error "$ERROR_CODE")' in run
+    assert "ARGS+=(--include-hosted)" in run
+    assert "ARGS+=(--apply)" in run
