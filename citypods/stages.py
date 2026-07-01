@@ -821,7 +821,10 @@ class TimelineStage:
 
         sources_by_id = {src.id: src for src in ep.sources}
         if not sources_by_id:
-            return False
+            # Legacy persisted silence timelines may not have saved SourceMedia alongside the
+            # EDL. Do not fan those out during the canary; explicit non-decoded source evidence
+            # is stale, but absent source evidence waits for the planned version bump.
+            return True
         return all(
             (src := sources_by_id.get(source_id)) is not None
             and (

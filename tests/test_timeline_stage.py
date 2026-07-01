@@ -590,7 +590,7 @@ class TestTimelineStageSkipAndStop:
         assert stats.ran == 1 and stats.reused == 0
         assert ep.sources[0].duration_basis == "decoded"
 
-    def test_replans_same_signature_silence_timeline_with_missing_source_metadata(self, tmp_path):
+    def test_reuses_same_signature_silence_timeline_with_missing_source_metadata(self, tmp_path):
         ep = _ep()
         ep.timeline = Timeline(
             version="silence:1",
@@ -611,8 +611,8 @@ class TestTimelineStageSkipAndStop:
             FakeProvider(), _city(), [ep], _ctx(tmp_path)
         )
 
-        assert planner.calls == 1
-        assert stats.ran == 1 and stats.reused == 0
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
 
     def test_reuses_same_signature_silence_timeline_with_decoded_qualified_basis(self, tmp_path):
         ep = _ep()
