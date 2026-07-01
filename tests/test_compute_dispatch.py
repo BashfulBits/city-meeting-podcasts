@@ -181,7 +181,7 @@ def _coordinator(state_dir, *, fake=None, cap=10_000.0, max_inflight=8, budget=N
     return DispatchCoordinator(
         local=_LocalStub(),
         targets=targets,
-        budget=budget or Budget(),
+        budget=budget or Budget(month=month_key(NOW)),
         state_dir=state_dir,
         storage=storage,
         lease_ttl_seconds=3600,
@@ -376,7 +376,7 @@ class TestReconcile:
         item = _item()
         lease(item, "modal:job-1", ttl_seconds=3600, now=NOW - timedelta(hours=2))  # expired
         save_manifest(tmp_path, [item])
-        budget = Budget()
+        budget = Budget(month=month_key(NOW))
         budget.reserve("modal:job-1", "modal", 90)
         save_budget(tmp_path, budget)
 
@@ -396,7 +396,7 @@ class TestReconcile:
         item.observed_seconds = 70.0
         FakeDispatchBackend.write_result(bucket, item, "r1", observed_seconds=70.0)
         save_manifest(tmp_path, [item])
-        budget = Budget()
+        budget = Budget(month=month_key(NOW))
         budget.reserve("modal:job-1", "modal", 90)
         save_budget(tmp_path, budget)
 
@@ -412,7 +412,7 @@ class TestReconcile:
         item = _item()
         lease(item, "modal:job-1", ttl_seconds=3600, now=NOW)  # valid, no artifact yet
         save_manifest(tmp_path, [item])
-        save_budget(tmp_path, Budget())
+        save_budget(tmp_path, Budget(month=month_key(NOW)))
         summary = reconcile_compute(tmp_path, storage=None, now=NOW)
         assert summary == {"reaped": 0, "settled": 0, "in_flight": 1, "leases": _NO_LEASES}
         assert load_manifest(tmp_path)[0].state == "running"
@@ -567,7 +567,7 @@ class TestBudgetCAS:
         # MUST re-check availability against the fresh ledger and refuse — not blindly merge to
         # 180/100. (mutate_budget alone would merge; reserve_if_available re-checks.)
         bucket = _MemBucket()
-        mutate_budget(bucket, lambda b: None)  # seed an empty ledger (ETag exists)
+        mutate_budget(bucket, lambda b: None, now=NOW)  # seed an empty ledger (ETag exists)
         real = bucket.put_cas
         fired = {"n": 0}
 
