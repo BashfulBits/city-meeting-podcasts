@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Reset the #120 materialization backoff on un-hosted records so the next Audio run retries them.
+"""Reset materialization backoff so the next Audio run retries selected records.
 
 Why this exists (and why ``clear_run_materializations.py`` can't do it): the first sharded ``Audio``
 runs failed to host audio for reasons since fixed — Granicus User-Agent 403s (#293/#297) and Swagit
@@ -9,16 +9,21 @@ fixed. Granicus in particular has *never* successfully hosted, so its records ha
 ``audio encode done`` line for ``clear_run_materializations.py`` to match — that tool only undoes
 *hosted* materializations, leaving the errored-into-backoff records stuck.
 
-What it does, per record that is NOT hosted (no audio url/key) but IS in backoff (attempts > 0):
+Default behavior is still the original #120 drain tool. Per record that is NOT hosted
+(no audio url/key) but IS in backoff (attempts > 0):
   * clears the backoff fields (``attempts`` → 0, ``last_attempt`` → None, ``error`` → None) so the
     next ``audio.yml`` re-attempts the encode immediately instead of waiting out the backoff window.
 
-It never touches a hosted record (its audio is fine), the transcript block, or the durable
-``state/`` snapshot — only the audio backoff bookkeeping of episodes that are stuck-and-unhosted.
+It never touches a hosted record unless ``--include-hosted`` is explicitly passed. That override is
+for narrow timeline-planning recovery, e.g. a hosted record blocked by ``timeline-degenerate`` while
+a repair/quarantine pass needs one more planner attempt. The transcript block and durable
+``state/`` snapshot are otherwise untouched — only audio backoff bookkeeping changes.
 
 Filters (optional; combine freely):
   * ``--provider granicus`` (repeatable) — only sources whose city provider matches.
   * ``--source <key>``     (repeatable) — only these exact source keys.
+  * ``--uid <uid>``        (repeatable) — only these exact record UIDs.
+  * ``--error <code>``     (repeatable) — only records with these materialize error codes.
   With neither, every un-hosted in-backoff record across the catalog is reset (drains the whole
   bug-induced backlog at once).
 
@@ -37,6 +42,11 @@ Usage:
 
     # Drain every bug-induced backoff across all providers:
     PYTHONPATH=. python scripts/reset_materialize_backoff.py --apply
+
+    # Target a hosted timeline-planning backoff (dry-run first, then add --apply):
+    PYTHONPATH=. python scripts/reset_materialize_backoff.py \
+      --source ecc3710ac47f --uid 2c2baa25818e1849 \
+      --error timeline-degenerate --include-hosted
 """
 
 from __future__ import annotations
@@ -52,7 +62,12 @@ from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
 
 # Backoff fields cleared to force a clean re-attempt (mirrors the audio block in episode_to_record).
-_RESET_BACKOFF = {"attempts": 0, "last_attempt": None, "error": None}
+_RESET_BACKOFF = {
+    "attempts": 0,
+    "last_attempt": None,
+    "error": None,
+    "error_spec_hash": None,
+}
 
 
 def _is_hosted(audio: dict) -> bool:
@@ -65,16 +80,32 @@ def _in_backoff(audio: dict) -> bool:
     return int(audio.get("attempts") or 0) > 0
 
 
-def reset_backoff(records: dict) -> int:
+def _uid(rec: dict, fallback: str) -> str:
+    return str(rec.get("uid") or fallback)
+
+
+def reset_backoff(
+    records: dict,
+    *,
+    uids: set[str] | None = None,
+    errors: set[str] | None = None,
+    include_hosted: bool = False,
+) -> int:
     """Clear the backoff on every un-hosted, in-backoff record in ``records`` (mutates in place).
 
     Pure (no I/O) so it is trivially unit-testable. Returns the number of records reset."""
     reset = 0
-    for rec in records.values():
+    for key, rec in records.items():
         if not isinstance(rec, dict):
             continue
         audio = rec.get("audio") or {}
-        if _is_hosted(audio) or not _in_backoff(audio):
+        if not include_hosted and _is_hosted(audio):
+            continue
+        if not _in_backoff(audio):
+            continue
+        if uids is not None and _uid(rec, str(key)) not in uids:
+            continue
+        if errors is not None and str(audio.get("error") or "") not in errors:
             continue
         rec["audio"] = {**audio, **_RESET_BACKOFF}
         reset += 1
@@ -105,6 +136,9 @@ def reset_materialize_backoff(
     source_keys: list[str],
     *,
     apply: bool = False,
+    uids: set[str] | None = None,
+    errors: set[str] | None = None,
+    include_hosted: bool = False,
 ) -> dict:
     """Reset the backoff for each selected source; return a summary. ``apply=False`` writes none."""
     reset_total = 0
@@ -114,7 +148,12 @@ def reset_materialize_backoff(
         records = load_records(state_dir, key)
         if not records:
             continue
-        n = reset_backoff(records)
+        n = reset_backoff(
+            records,
+            uids=uids,
+            errors=errors,
+            include_hosted=include_hosted,
+        )
         if n:
             per_source[key] = n
             reset_total += n
@@ -131,6 +170,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--source", action="append", default=[], help="only this source key (repeatable)"
+    )
+    ap.add_argument("--uid", action="append", default=[], help="only this record UID (repeatable)")
+    ap.add_argument(
+        "--error",
+        action="append",
+        default=[],
+        help="only this materialize error code (repeatable)",
+    )
+    ap.add_argument(
+        "--include-hosted",
+        action="store_true",
+        help="also reset hosted records; use with --uid/--source/--error for targeted recovery",
     )
     ap.add_argument("--apply", action="store_true", help="actually mutate state (default: dry-run)")
     ap.add_argument("--site-config", default="config/site_config.yml")
@@ -160,20 +211,37 @@ def main(argv: list[str] | None = None) -> int:
 
     providers = {p.lower() for p in args.provider} or None
     sources = set(args.source) or None
+    uids = set(args.uid) or None
+    errors = set(args.error) or None
     selected = select_sources(state_dir, source_to_provider, providers=providers, sources=sources)
     if not selected:
         print("no sources matched the given filters; nothing to scan")
         return 1
 
-    summary = reset_materialize_backoff(state_dir, selected, apply=args.apply)
+    summary = reset_materialize_backoff(
+        state_dir,
+        selected,
+        apply=args.apply,
+        uids=uids,
+        errors=errors,
+        include_hosted=args.include_hosted,
+    )
     if not summary["reset"]:
+        hosted_label = "hosted or un-hosted" if args.include_hosted else "un-hosted"
+        filters = []
+        if uids:
+            filters.append(f"uid={','.join(sorted(uids))}")
+        if errors:
+            filters.append(f"error={','.join(sorted(errors))}")
         print(
-            f"scanned {len(selected)} source(s); no un-hosted in-backoff records found "
-            "(nothing to reset)"
+            f"scanned {len(selected)} source(s); no {hosted_label} in-backoff records found"
+            + (f" for {'; '.join(filters)}" if filters else "")
+            + " (nothing to reset)"
         )
         return 1
 
-    print(f"scanned {len(selected)} source(s); backoff to reset on un-hosted records:")
+    hosted_label = "hosted or un-hosted" if args.include_hosted else "un-hosted"
+    print(f"scanned {len(selected)} source(s); backoff to reset on {hosted_label} records:")
     for key, n in sorted(summary["per_source"].items()):
         provider = source_to_provider.get(key, "?")
         print(f"  {key} ({provider}): {n} record(s)")
