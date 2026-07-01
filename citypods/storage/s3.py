@@ -171,7 +171,7 @@ class S3CompatibleStorage:
                 if attempt == 2:
                     raise
                 time.sleep(2**attempt)
-        return False
+        raise AssertionError("unreachable")
 
     # --- orphan GC support (optional StorageBackend capability) ---
 

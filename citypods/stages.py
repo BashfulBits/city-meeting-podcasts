@@ -833,21 +833,14 @@ class TimelineStage:
             # EDL. Do not fan those out during the canary; explicit non-decoded source evidence
             # is stale, but absent source evidence waits for the planned version bump.
             return True
-        if len(ep.sources) > 1:
-            # Multi-source timelines are owned by SwagitConcatPlanner; SilencePlanner skips them.
-            # ``stream-sample`` is the concat planner's current basis, and older concat records may
-            # have persisted source entries before duration_basis was populated.
-            return all(
-                (src := sources_by_id.get(source_id)) is not None
-                and TimelineStage._has_healthy_source_basis(
-                    src.duration_basis, allow_concat_legacy=True
-                )
-                for source_id in timeline_source_ids
-            )
+        # Multi-source timelines are owned by SwagitConcatPlanner; SilencePlanner skips them.
+        # ``stream-sample`` is the concat planner's current basis, and older concat records may
+        # have persisted source entries before duration_basis was populated.
+        allow_concat_legacy = len(ep.sources) > 1
         return all(
             (src := sources_by_id.get(source_id)) is not None
             and TimelineStage._has_healthy_source_basis(
-                src.duration_basis, allow_concat_legacy=False
+                src.duration_basis, allow_concat_legacy=allow_concat_legacy
             )
             for source_id in timeline_source_ids
         )
