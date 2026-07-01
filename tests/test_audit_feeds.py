@@ -33,6 +33,7 @@ _merge_first_seen = _mod._merge_first_seen
 _since_label = _mod._since_label
 _render_grouped_body = _mod._render_grouped_body
 _parse_state = _mod._parse_state
+_parse_state_rows = _mod._parse_state_rows
 _parse_prior_rows = _mod._parse_prior_rows
 _FeedRow = _mod._FeedRow
 
@@ -265,6 +266,24 @@ def test_render_grouped_body_parse_state_round_trip():
     assert state["first_seen"] == first_seen
 
 
+def test_render_grouped_body_state_rows_survive_display_cap(monkeypatch):
+    # The visible table truncates at _MAX_ROWS, but the hidden state block must still carry full
+    # row detail for every affected feed, so a carried-forward feed beyond the display cap
+    # doesn't fall back to fabricated severity/count/example.
+    monkeypatch.setattr(_mod, "_MAX_ROWS", 1)
+    rows = {
+        "cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="ex-a"),
+        "cityB": _FeedRow(slug="cityB", count=5, severity=ERROR, example="ex-b"),
+    }
+    first_seen = {"cityA": _NOW.isoformat(), "cityB": _NOW.isoformat()}
+    body = _render_grouped_body(
+        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=ERROR, now=_NOW
+    )
+    assert "`cityB`" not in body  # beyond the display cap
+    recovered = _parse_state_rows(_parse_state(body))
+    assert recovered["cityB"] == _FeedRow(slug="cityB", count=5, severity=ERROR, example="ex-b")
+
+
 def test_parse_state_returns_empty_on_missing_block():
     assert _parse_state("no state block here") == {}
 
@@ -274,6 +293,18 @@ def test_parse_state_returns_empty_when_first_seen_is_not_a_dict():
     # propagate into _merge_first_seen, which assumes first_seen is a dict.
     body = 'x\n<!-- citypods:feed-health:state\n{"check": "drift", "first_seen": "garbage"}\n-->'
     assert _parse_state(body) == {}
+
+
+def test_parse_state_drops_non_string_first_seen_entries():
+    # A hand-edited state block with e.g. a numeric timestamp for one slug must not propagate
+    # that malformed entry -- only the invalid entry is dropped, not the whole state.
+    body = (
+        "x\n<!-- citypods:feed-health:state\n"
+        '{"check": "drift", "first_seen": {"cityA": "2026-06-01T00:00:00+00:00", "cityB": 123}}'
+        "\n-->"
+    )
+    state = _parse_state(body)
+    assert state["first_seen"] == {"cityA": "2026-06-01T00:00:00+00:00"}
 
 
 def test_parse_prior_rows_recovers_slug_count_and_example():
@@ -510,6 +541,32 @@ def test_reconcile_grouped_scoped_run_preserves_error_severity_of_out_of_scope_f
     )
     calls = _run_reconcile([], existing, now=_NOW, audited_slugs={"cityB"}, city_of={})
     assert not calls, "out-of-scope ERROR severity must survive the carry-forward unchanged"
+
+
+def test_reconcile_grouped_scoped_run_preserves_severity_beyond_display_cap(monkeypatch):
+    # Same as above, but for a feed that falls past _MAX_ROWS in the *visible* table -- the
+    # carry-forward path must read the hidden state block's full row map, not just what
+    # _parse_prior_rows can recover from the (truncated) rendered table.
+    monkeypatch.setattr(_mod, "_MAX_ROWS", 1)
+    # cityA's example matches what this run's finding will produce, so cityA's row doesn't also
+    # look "changed" this run -- isolating the test to cityB's out-of-scope carry-forward.
+    rows = {
+        "cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="zero episodes"),
+        "cityB": _FeedRow(slug="cityB", count=1, severity=ERROR, example="boom"),
+    }
+    first_seen = {"cityA": _NOW.isoformat(), "cityB": _NOW.isoformat()}
+    existing = _grouped_issue(
+        "drift",
+        number=33,
+        first_seen=first_seen,
+        rows=rows,
+        now=_NOW,
+        labels=["signal:feed-health", "type:operations", "severity:error"],
+    )
+    # cityB (ERROR, past the display cap) is out of scope; cityA (WARN, shown) is re-affirmed.
+    f_a = _finding(slug="cityA", check="drift", msg="zero episodes")
+    calls = _run_reconcile([f_a], existing, now=_NOW, audited_slugs={"cityA"})
+    assert not calls, "cityB's ERROR severity/detail must survive the carry-forward unchanged"
 
 
 def test_reconcile_grouped_scoped_run_clears_in_scope_feed():

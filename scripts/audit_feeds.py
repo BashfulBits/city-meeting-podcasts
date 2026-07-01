@@ -464,12 +464,55 @@ def _parse_state(body: str) -> dict:
     first_seen = data.get("first_seen")
     if first_seen is not None and not isinstance(first_seen, dict):
         return {}
+    if isinstance(first_seen, dict):
+        cleaned = {
+            slug: seen
+            for slug, seen in first_seen.items()
+            if isinstance(slug, str) and isinstance(seen, str)
+        }
+        if len(cleaned) != len(first_seen):
+            data = {**data, "first_seen": cleaned}
+    rows = data.get("rows")
+    if rows is not None and not isinstance(rows, dict):
+        return {}
     return data
 
 
-def _render_state_block(check: str, first_seen: dict[str, str]) -> str:
+def _parse_state_rows(state: dict) -> dict[str, _FeedRow]:
+    """Recover full per-slug row detail (severity/count/example) from the hidden state block,
+    independent of the visible table's ``_MAX_ROWS`` cap -- so a feed beyond the display cap in
+    a prior run doesn't fall back to fabricated detail when carried forward in a scoped run."""
+    raw = state.get("rows")
+    if not isinstance(raw, dict):
+        return {}
+    rows: dict[str, _FeedRow] = {}
+    for slug, detail in raw.items():
+        if not isinstance(slug, str) or not isinstance(detail, dict):
+            continue
+        severity = detail.get("severity")
+        count = detail.get("count")
+        example = detail.get("example")
+        if (
+            not isinstance(severity, str)
+            or not isinstance(count, int)
+            or not isinstance(example, str)
+        ):
+            continue
+        rows[slug] = _FeedRow(slug=slug, count=count, severity=severity, example=example)
+    return rows
+
+
+def _render_state_block(check: str, first_seen: dict[str, str], rows: dict[str, _FeedRow]) -> str:
     payload = json.dumps(
-        {"check": check, "first_seen": dict(sorted(first_seen.items()))}, sort_keys=True
+        {
+            "check": check,
+            "first_seen": dict(sorted(first_seen.items())),
+            "rows": {
+                slug: {"severity": r.severity, "count": r.count, "example": r.example}
+                for slug, r in sorted(rows.items())
+            },
+        },
+        sort_keys=True,
     )
     return f"<!-- citypods:feed-health:state\n{payload}\n-->"
 
@@ -562,7 +605,7 @@ def _render_grouped_body(
         parts.append(f"| _...and {len(ordered_slugs) - _MAX_ROWS} more_ | | | | | |")
 
     parts += ["", _footer(check)]
-    parts += ["", _render_state_block(check, first_seen)]
+    parts += ["", _render_state_block(check, first_seen, rows)]
     return "\n".join(parts)
 
 
@@ -600,9 +643,11 @@ def _reconcile_grouped(
         )
         # Rows for out-of-scope slugs that are being carried forward have no fresh Finding this
         # run (their source feed wasn't evaluated) — reuse the prior example/count/severity from
-        # the issue body if we can recover it, else fall back to a placeholder that still shows
-        # the feed is affected without fabricating detail we don't have this run.
-        prior_rows_by_slug = _parse_prior_rows(prior_body)
+        # the hidden state block (full detail, unaffected by the visible table's _MAX_ROWS cap),
+        # falling back to the visible table for older bodies that predate the state-row map, else
+        # a placeholder that still shows the feed is affected without fabricating detail we don't
+        # have this run.
+        prior_rows_by_slug = _parse_state_rows(prior_state) or _parse_prior_rows(prior_body)
         merged_rows: dict[str, _FeedRow] = {}
         for slug in keep_slugs:
             if slug in rows:
