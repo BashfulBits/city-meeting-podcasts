@@ -280,6 +280,8 @@ class _FakeS3Client:
         data, etag = self.store[Key]
         if Range is not None:
             start, end = (int(x) for x in Range.removeprefix("bytes=").split("-"))
+            if start >= len(data) or end < start:
+                raise _client_error("InvalidRange", 416)
             data = data[start : end + 1]
         body = _FakeBody(data)
         self.bodies[Key] = body
@@ -330,6 +332,7 @@ def test_get_range_reads_a_byte_window_and_absent():
     store.put_cas("k.m4a", b"0123456789", "audio/mp4", if_none_match="*")
 
     assert store.get_range("k.m4a", 2, 5) == b"2345"  # inclusive end, matches HTTP Range
+    assert store.get_range("k.m4a", 99, 120) is None  # start past EOF: real S3 = 416
     assert store.get_range("missing.m4a", 0, 3) is None
     assert store._client.bodies["k.m4a"].closed is True
 

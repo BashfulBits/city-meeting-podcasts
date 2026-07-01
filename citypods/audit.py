@@ -855,9 +855,46 @@ def check_timeline_integrity(
                 )
             )
 
-        # Resolve the live probe up front: §3 (cheap, stored-field) defers to §3b (precise,
-        # stream-sample) only when the probe actually yields a usable stream clock.
+        # Resolve the live probe up front — including reconciliation against a full download
+        # when the header-only probe already flags trouble (see the docstring on
+        # ``probe_audio_full``) — *before* §3 decides whether to suppress the cheap stored-field
+        # fallback. §3 defers to §3b only when the probe actually yields a usable stream clock;
+        # that decision must be made from the *final* (post-reconciliation) probe, not the raw
+        # header-only one — otherwise a header probe that looked usable but got overridden by an
+        # inconclusive full-probe reconciliation would suppress §3 without §3b having a usable
+        # clock either, and a real stored-duration mismatch could vanish from both checks.
         probe = probe_audio(ep) if probe_audio is not None else None
+        status = severity = repair = None
+        probe_divergence: float | None = None
+        if probe_audio is not None:
+            status, severity, repair = _classify_timeline_audio_duration(ep, probe)
+
+            # Reconciliation: the header-only probe just flagged this episode as non-"ok", so
+            # re-measure it with a full download and let that (ground-truth) reading decide the
+            # actual finding/repair — and separately alert if the two methods disagree, since
+            # that means the header-only fast path's core assumption broke for this file.
+            if status != "ok" and probe_audio_full is not None:
+                full_probe = probe_audio_full(ep)
+                if full_probe is not None:
+                    if probe is not None:
+                        probe_divergence = _probe_reconcile_delta(probe, full_probe)
+                    probe = full_probe
+                    status, severity, repair = _classify_timeline_audio_duration(ep, probe)
+                    if (
+                        probe_divergence is not None
+                        and probe_divergence > _PROBE_RECONCILE_TOLERANCE
+                    ):
+                        findings.append(
+                            Finding(
+                                slug,
+                                "timeline-audio-probe-divergence",
+                                ERROR,
+                                f"{uid}: header-only probe disagrees with full-download probe "
+                                f"by {probe_divergence:.3f}s — the moov-only fast-path "
+                                "assumption has broken for this file; do not trust header-only "
+                                "probes until this is root-caused",
+                            )
+                        )
         probe_has_stream = probe is not None and probe.stream_sample_duration is not None
 
         # 3. Cheap record-only duration match + end coverage, from stored fields alone.
@@ -898,38 +935,9 @@ def check_timeline_integrity(
 
         # 3b. Rendered audio duration diagnostics. This compares the EDL to the stream sample
         # clock when the caller provides a probe; container-only drift is reported separately so
-        # it does not masquerade as cue drift.
+        # it does not masquerade as cue drift. Classification/reconciliation already happened
+        # above (before §3's suppression decision); this just emits the diagnostic/finding.
         if probe_audio is not None:
-            status, severity, repair = _classify_timeline_audio_duration(ep, probe)
-
-            # Reconciliation: the header-only probe just flagged this episode as non-"ok", so
-            # re-measure it with a full download and let that (ground-truth) reading decide the
-            # actual finding/repair — and separately alert if the two methods disagree, since
-            # that means the header-only fast path's core assumption broke for this file.
-            probe_divergence: float | None = None
-            if status != "ok" and probe_audio_full is not None:
-                full_probe = probe_audio_full(ep)
-                if full_probe is not None:
-                    if probe is not None:
-                        probe_divergence = _probe_reconcile_delta(probe, full_probe)
-                    probe = full_probe
-                    status, severity, repair = _classify_timeline_audio_duration(ep, probe)
-                    if (
-                        probe_divergence is not None
-                        and probe_divergence > _PROBE_RECONCILE_TOLERANCE
-                    ):
-                        findings.append(
-                            Finding(
-                                slug,
-                                "timeline-audio-probe-divergence",
-                                ERROR,
-                                f"{uid}: header-only probe disagrees with full-download probe "
-                                f"by {probe_divergence:.3f}s — the moov-only fast-path "
-                                "assumption has broken for this file; do not trust header-only "
-                                "probes until this is root-caused",
-                            )
-                        )
-
             diag = _timeline_audio_diagnostic(
                 slug,
                 ep,

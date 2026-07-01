@@ -1282,6 +1282,24 @@ class TestFetchMp4Header:
         assert _fetch_mp4_header(lambda s, e: None) is None
         assert _fetch_mp4_header(lambda s, e: b"") is None
 
+    def test_returns_none_when_the_second_read_is_truncated(self):
+        # A storage backend is allowed to return fewer bytes than requested when the range
+        # extends past EOF (e.g. LocalStorage.get_range). If moov's second read comes back
+        # short — a corrupt/truncated object, not a normal EOF-at-file-end case since moov's
+        # end was computed from its own declared size — the header must not be trusted as
+        # complete; ffprobe could otherwise report a definitive-looking but wrong duration.
+        import citypods.media as media
+
+        ftyp = _mp4_box(b"ftyp")
+        moov = _mp4_box(b"moov", b"x" * (media._MP4_INITIAL_RANGE_BYTES + 5000))
+        full = ftyp + moov
+
+        def _get(start: int, end: int) -> bytes:
+            # Truncate the second read to 10 bytes short of what was asked for.
+            return full[start : min(end + 1, len(full) - 10)]
+
+        assert _fetch_mp4_header(_get) is None
+
 
 def _local_get_range(path: Path):
     def _get(start: int, end: int) -> bytes:

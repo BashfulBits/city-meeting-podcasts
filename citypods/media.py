@@ -2114,7 +2114,10 @@ def _fetch_mp4_header(get_range: Callable[[int, int], bytes | None]) -> bytes | 
     rest = get_range(len(buf), end - 1)
     if not rest:
         return None
-    return buf + rest
+    header = buf + rest
+    if len(header) < end:
+        return None  # short second read (e.g. a truncated/corrupt object) — don't trust it
+    return header[:end]
 
 
 def _probe_audio_duration_header(

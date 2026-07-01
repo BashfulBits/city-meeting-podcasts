@@ -673,6 +673,32 @@ class TestDeeplinkLivenessWired:
 
 
 class TestProbeAudioFullReconciliation:
+    def test_cheap_fallback_still_runs_when_reconciliation_goes_inconclusive(self):
+        # The header probe has a usable stream clock (so §3's cheap stored-field check would
+        # normally be suppressed in favor of §3b's more precise one) but is flagged non-"ok",
+        # triggering reconciliation. If the full-download probe then comes back inconclusive
+        # (no stream_sample_duration), §3b can't file anything either — the cheap check must
+        # still run against the *final* probe state, or a real stored-duration mismatch would
+        # vanish from both checks (CodeRabbit #784).
+        ep = _ep()
+        ep.timeline = _good_timeline()  # EDL total 3300, last segment ends at 3300
+        ep.audio_key = "audio/u1.m4a"
+        ep.audio_duration_served = 3290.0  # disagrees with the EDL
+        ep.sources = [_src("s0", 3600.0)]
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3304.0,
+                stream_sample_duration=3304.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            probe_audio_full=lambda _ep: AudioDurationProbe(probe_error="download-failed"),
+        )
+
+        assert any(f.check == "timeline-duration-mismatch" for f in fs)
+
     def test_full_probe_not_invoked_when_header_probe_is_ok(self):
         ep = _ep()
         ep.timeline = _good_timeline()
