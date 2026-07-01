@@ -25,6 +25,17 @@ def test_local_put_exists_url(tmp_path):
     assert (tmp_path / "out" / key).read_bytes() == b"audio-bytes"
 
 
+def test_local_get_range_reads_a_byte_window(tmp_path):
+    src = tmp_path / "src.m4a"
+    src.write_bytes(b"0123456789")
+    store = LocalStorage(root=tmp_path / "out", url_prefix="https://x/audio")
+    store.put_file("k.m4a", src, "audio/mp4")
+
+    assert store.get_range("k.m4a", 2, 5) == b"2345"  # inclusive end
+    assert store.get_range("k.m4a", 8, 100) == b"89"  # end past EOF: just shorter, not an error
+    assert store.get_range("missing.m4a", 0, 3) is None
+
+
 def test_make_storage_local(tmp_path):
     cfg = {"defaults": {"audio_storage_backend": "local"}}
     store = make_storage(cfg, "https://site", tmp_path)
@@ -110,6 +121,10 @@ class _FakeBackend:
         self.calls.append(("get_file", key))
         return False
 
+    def get_range(self, key, start, end):
+        self.calls.append(("get_range", key))
+        return b"data"
+
     def list_objects(self, prefix=""):
         self.calls.append(("list_objects", prefix))
         return iter(())
@@ -161,6 +176,13 @@ def test_routing_empty_prefixes_is_noop_all_primary():
     assert ("put_file", "coord/lease.json") in primary.calls
     assert coord.calls == []
     assert router.telemetry() == {"r2_class_a": 0, "r2_class_b": 0}
+
+
+def test_routing_get_range_dispatches_by_prefix():
+    router, primary, coord = _router()
+    assert router.get_range("audio/x.m4a", 0, 10) == b"data"
+    assert ("get_range", "audio/x.m4a") in primary.calls
+    assert coord.calls == []
 
 
 def test_routing_list_objects_is_namespace_scoped():
@@ -252,10 +274,15 @@ class _FakeS3Client:
         self.store[Key] = (Body, etag)
         return {"ETag": etag}
 
-    def get_object(self, *, Bucket, Key):
+    def get_object(self, *, Bucket, Key, Range=None):
         if Key not in self.store:
             raise _client_error("NoSuchKey", 404)
         data, etag = self.store[Key]
+        if Range is not None:
+            start, end = (int(x) for x in Range.removeprefix("bytes=").split("-"))
+            if start >= len(data) or end < start:
+                raise _client_error("InvalidRange", 416)
+            data = data[start : end + 1]
         body = _FakeBody(data)
         self.bodies[Key] = body
         return {"Body": body, "ETag": etag}
@@ -298,6 +325,16 @@ def test_get_bytes_roundtrip_and_absent():
     data, got_etag = store.get_bytes("k.json")
     assert data == b"hello" and got_etag == etag
     assert store._client.bodies["k.json"].closed is True
+
+
+def test_get_range_reads_a_byte_window_and_absent():
+    store = _s3_with_fake_client()
+    store.put_cas("k.m4a", b"0123456789", "audio/mp4", if_none_match="*")
+
+    assert store.get_range("k.m4a", 2, 5) == b"2345"  # inclusive end, matches HTTP Range
+    assert store.get_range("k.m4a", 99, 120) is None  # start past EOF: real S3 = 416
+    assert store.get_range("missing.m4a", 0, 3) is None
+    assert store._client.bodies["k.m4a"].closed is True
 
 
 class _FakeDownloadClient:

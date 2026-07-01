@@ -14,8 +14,21 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
-### Fixed
+### Added
 
+- **Timeline/audio diagnostics probe MP4 headers instead of downloading whole episodes.** When
+  `timeline_diagnostics=true`, `check_timeline_integrity` now defaults to a header-only probe that
+  range-reads just an episode's `ftyp`/`moov` boxes (`StorageBackend.get_range`, implemented for
+  S3-compatible and local storage) instead of downloading the full hosted `.m4a`. Every hosted
+  episode is written `-movflags +faststart`, so `format.duration` and the stream's
+  `duration_ts`/`time_base` live entirely in `moov` — ffprobe never reads `mdat` for these fields
+  either way, so this yields identical values at a fraction of the bytes (verified against a full
+  download for both short and multi-hour synthetic fixtures in `tests/test_media.py`). As a
+  standing guard against that assumption ever breaking for a real file, any episode the header
+  probe flags as non-"ok" is automatically re-measured with a full download
+  (`probe_audio_full`); the full read supersedes the header read for the actual finding/repair
+  decision, and a new `timeline-audio-probe-divergence` finding fires if the two disagree beyond
+  float noise.
 - **Feed-health audit returns to the cheap default path while audio queued work gains UID-level
   evidence.** The audit workflow no longer downloads and ffprobes every hosted audio object on every
   scheduled/default run just to emit the timeline canary artifact; full `timeline-audio-integrity`

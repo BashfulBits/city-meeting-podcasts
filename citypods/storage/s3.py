@@ -173,6 +173,27 @@ class S3CompatibleStorage:
                 time.sleep(2**attempt)
         raise AssertionError("unreachable")
 
+    def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        """Partial GET via the standard HTTP ``Range`` header — a Class-B op, far cheaper than
+        ``get_file`` for a header-only read (e.g. an MP4 ``moov`` duration probe)."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = self._client.get_object(
+                Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("NoSuchKey", "404") or status in (404, 416):
+                return None
+            raise
+        body = resp["Body"]
+        try:
+            return body.read()
+        finally:
+            body.close()
+
     # --- orphan GC support (optional StorageBackend capability) ---
 
     def list_objects(self, prefix: str = ""):

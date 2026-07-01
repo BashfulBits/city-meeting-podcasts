@@ -192,6 +192,22 @@ _GUIDANCE: dict[str, str] = {
         "dispatch of the feed-health workflow, then letting the audio lane drain and "
         "re-auditing."
     ),
+    "timeline-audio-probe-divergence": (
+        "**What this means:** the cheap header-only duration probe (range-reads just the "
+        "MP4 `moov` box instead of downloading the whole hosted file) disagreed with a "
+        "full-download probe of the same file beyond floating-point noise.\n\n"
+        "**Common causes:** this is a code bug, not a data issue — the header-only fast path "
+        "assumes the hosted `.m4a` is a single, non-fragmented, `moov`-before-`mdat` "
+        "(faststart) file, so `format.duration`/stream `duration_ts`/`time_base` are fully "
+        "contained in `moov` and identical to what a full download would report. A divergence "
+        "means that assumption broke for this file — e.g. a new encode path stopped writing "
+        "`-movflags +faststart`, a fragmented/multi-moov MP4 slipped through, or the `moov`-"
+        "location box walk mis-parsed a malformed/unusual object.\n\n"
+        "**Resolution:** code bug. Check `audio_spec_hash`/the encode path that produced this "
+        "episode's `audio_key` for a missing `+faststart`, and inspect the object's box layout "
+        "directly (e.g. `ffprobe -show_entries format` vs. a manual `moov` box scan) to see "
+        "where the header-only read diverged."
+    ),
     "timeline-source-duration-mismatch": (
         "**What this means:** for a multi-source (concat) episode, a source segment's actual "
         "duration disagrees with its registered `SourceMedia.duration`.\n\n"
