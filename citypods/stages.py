@@ -807,6 +807,14 @@ class TimelineStage:
         return any(p.name == "silence" for p in self.planners)
 
     @staticmethod
+    def _has_healthy_source_basis(basis: str | None, *, allow_concat_legacy: bool) -> bool:
+        if basis is None:
+            return allow_concat_legacy
+        if basis == "decoded" or basis.startswith("decoded:"):
+            return True
+        return allow_concat_legacy and basis == "stream-sample"
+
+    @staticmethod
     def _has_healthy_decoded_source_basis(ep: Episode) -> bool:
         if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
             return True
@@ -831,25 +839,15 @@ class TimelineStage:
             # have persisted source entries before duration_basis was populated.
             return all(
                 (src := sources_by_id.get(source_id)) is not None
-                and (
-                    src.duration_basis is None
-                    or src.duration_basis == "stream-sample"
-                    or src.duration_basis == "decoded"
-                    or (
-                        isinstance(src.duration_basis, str)
-                        and src.duration_basis.startswith("decoded:")
-                    )
+                and TimelineStage._has_healthy_source_basis(
+                    src.duration_basis, allow_concat_legacy=True
                 )
                 for source_id in timeline_source_ids
             )
         return all(
             (src := sources_by_id.get(source_id)) is not None
-            and (
-                src.duration_basis == "decoded"
-                or (
-                    isinstance(src.duration_basis, str)
-                    and src.duration_basis.startswith("decoded:")
-                )
+            and TimelineStage._has_healthy_source_basis(
+                src.duration_basis, allow_concat_legacy=False
             )
             for source_id in timeline_source_ids
         )
