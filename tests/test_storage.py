@@ -327,6 +327,21 @@ def test_get_file_retries_transfer_failures_then_succeeds(tmp_path, monkeypatch)
     assert client.calls == 2
 
 
+def test_get_file_raises_after_exhausting_transfer_retries(tmp_path, monkeypatch):
+    from botocore.exceptions import ReadTimeoutError
+
+    store = _s3_with_fake_client()
+    client = _FakeDownloadClient(
+        [ReadTimeoutError(endpoint_url="https://x", error="timeout") for _ in range(3)]
+    )
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(ReadTimeoutError):
+        store.get_file("state/k.json", tmp_path / "state.json")
+    assert client.calls == 3
+
+
 def test_get_file_returns_false_only_for_absent_objects(tmp_path):
     store = _s3_with_fake_client()
     store._client = _FakeDownloadClient([_client_error("NoSuchKey", 404)])
