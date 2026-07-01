@@ -76,6 +76,21 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **`audit_feeds.py` consolidates feed-health GitHub issues from one-per-feed to one-per-check.**
+  Filing a separate issue for every `(feed, check)` pair meant a single systemic regression (e.g. a
+  code bug affecting every feed's timeline check) could open dozens of near-duplicate issues in one
+  run. Every check now files a single issue covering all affected feeds — the title shows a live
+  `N feed(s) [across M cities]` count, and the body lists every affected feed with how long it's
+  been failing (tracked in a hidden JSON state block in the issue body, not an external file) plus a
+  representative example. `meetings-url-dead`/`meetings-url-changed` stay one-issue-per-city, since
+  each is a genuinely distinct problem needing a specific human to fix a specific city's YAML.
+  Issue matching now uses a hidden `<!-- citypods:feed-health:key=... -->` marker in the body
+  instead of the title, so the title can change every run without breaking run-to-run
+  create/update/close reconciliation. A visible comment posts only when the affected-feed *set*
+  changes (a feed newly failing or clearing), not on every cosmetic body refresh (e.g. a "since Nd
+  ago" day count ticking over) — the second-order goal being that fixing the "many issues" chattiness
+  doesn't just relocate it into "many comments on one issue." Every check's body also gained
+  substantially more verbose causes/resolution guidance specific to that check.
 - **`work_leases.py` gains a public `scan_offset`/`ordered_candidates` ordering primitive, extracted
   from `run_claim_loop` (review/18 §4).** The H14b Modal pull-worker prototype (unmerged) needed
   budget-gating/lease-renewal/retry `run_claim_loop` doesn't have, so it composed its own loop directly
