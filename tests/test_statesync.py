@@ -193,6 +193,49 @@ def test_push_records_merged_preserves_concurrent_audio(tmp_path):
     assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
 
 
+def test_push_records_merged_preserves_remote_decoded_plan_from_stale_audio_lane(tmp_path):
+    """An audio shard that started from stale state must not overwrite a repaired decoded plan."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(
+        bucket,
+        sk,
+        {
+            "u1": {
+                "uid": "u1",
+                "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+                "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+                "audio": {"url": "REMOTE", "key": "decoded-key", "spec_hash": "decoded-spec"},
+            }
+        },
+    )
+    save_records(
+        state_dir,
+        sk,
+        {
+            "u1": {
+                "uid": "u1",
+                "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+                "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+                "audio": {"url": "LOCAL", "key": "container-key", "spec_hash": "container-spec"},
+            }
+        },
+    )
+
+    pushed = push_records_merged(
+        bucket, state_dir, [sk], protected_blocks=protected_blocks_for_lane("audio")
+    )
+
+    assert pushed == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)["u1"]
+    assert final["sources"][0]["duration_basis"] == "decoded"
+    assert final["audio"]["key"] == "decoded-key"
+    assert load_records(state_dir, sk)["u1"]["sources"][0]["duration_basis"] == "decoded"
+
+
 def test_push_records_merged_owned_uids_no_sibling_shard_clobber(tmp_path):
     """Two transcribe shards split ONE source per-episode (review/18 §3.2). Each pulled the whole
     source, so each local carries a snapshot-stale transcript for the uid it does not own. Pushing

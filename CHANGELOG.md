@@ -87,6 +87,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   audit artifact shows `source_duration_bases=["decoded"]` instead of `["container"]`. No second media
   pass; the container header remains the honest fallback when even the decode end is unparseable.
 
+### Fixed
+
+- **Scoped state pushes no longer regress repaired timeline plans back to stale container-basis
+  records.** `push_records_merged` already re-read remote state to preserve sibling artifact blocks,
+  but timeline/source planning metadata lived in the unprotected whole-record body. A long-running
+  audio or ASR shard that started before a repair could therefore finish later and overwrite a remote
+  `duration_basis="decoded"` plan with its older local `container` or missing-source plan, while still
+  preserving enough artifact data to make the feed look partially repaired. The merge now ranks
+  planning metadata by timeline version and source duration basis, preserves the fresher remote
+  planning fields when they are strictly better, and keeps the matching remote artifact blocks so stale
+  local artifacts computed against the old EDL cannot be attached to the newer plan.
+
 ### Changed
 
 - **`audit_feeds.py` consolidates feed-health GitHub issues from one-per-feed to one-per-check.**
