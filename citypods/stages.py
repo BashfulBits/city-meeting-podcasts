@@ -803,11 +803,54 @@ class TimelineStage:
             return "identity"
         return "+".join(sorted(f"{p.name}:{getattr(p, 'version', '1')}" for p in self.planners))
 
+    def _requires_decoded_source_basis(self) -> bool:
+        return any(p.name == "silence" for p in self.planners)
+
+    @staticmethod
+    def _has_healthy_source_basis(basis: str | None, *, allow_concat_legacy: bool) -> bool:
+        if basis is None:
+            return allow_concat_legacy
+        if basis == "decoded" or basis.startswith("decoded:"):
+            return True
+        return allow_concat_legacy and basis == "stream-sample"
+
+    @staticmethod
+    def _has_healthy_decoded_source_basis(ep: Episode) -> bool:
+        if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
+            return True
+
+        timeline_source_ids = {
+            seg.source_id
+            for seg in ep.timeline.segments
+            if seg.kind == "source" and seg.source_id is not None
+        }
+        if not timeline_source_ids:
+            return True
+
+        sources_by_id = {src.id: src for src in ep.sources}
+        if not sources_by_id:
+            # Legacy persisted silence timelines may not have saved SourceMedia alongside the
+            # EDL. Do not fan those out during the canary; explicit non-decoded source evidence
+            # is stale, but absent source evidence waits for the planned version bump.
+            return True
+        # Multi-source timelines are owned by SwagitConcatPlanner; SilencePlanner skips them.
+        # ``stream-sample`` is the concat planner's current basis, and older concat records may
+        # have persisted source entries before duration_basis was populated.
+        allow_concat_legacy = len(ep.sources) > 1
+        return all(
+            (src := sources_by_id.get(source_id)) is not None
+            and TimelineStage._has_healthy_source_basis(
+                src.duration_basis, allow_concat_legacy=allow_concat_legacy
+            )
+            for source_id in timeline_source_ids
+        )
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         stats = StageStats(self.name)
         sig = self._signature()
+        require_decoded_source_basis = self._requires_decoded_source_basis()
         all_eps = list(
             _materialize_set(
                 episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
@@ -826,7 +869,15 @@ class TimelineStage:
             # Already planned by this exact planner set+versions → don't recompute. A stale
             # signature (older set) falls through and re-plans.
             force_replan = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
-            if ep.timeline is not None and ep.timeline.version == sig and not force_replan:
+            stale_source_basis = (
+                require_decoded_source_basis and not self._has_healthy_decoded_source_basis(ep)
+            )
+            if (
+                ep.timeline is not None
+                and ep.timeline.version == sig
+                and not force_replan
+                and not stale_source_basis
+            ):
                 with lock:
                     stats.reused += 1
                 return

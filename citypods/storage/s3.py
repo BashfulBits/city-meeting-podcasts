@@ -11,6 +11,7 @@ Requires ``boto3`` (extra: ``citypods[storage]``). Backends are built from env v
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 
@@ -138,15 +139,39 @@ class S3CompatibleStorage:
         return self.public_url(key), resp["ETag"]
 
     def get_file(self, key: str, local_path: Path) -> bool:
-        from botocore.exceptions import ClientError
+        import boto3
+        from botocore.exceptions import (
+            ClientError,
+            ConnectionClosedError,
+            EndpointConnectionError,
+            ReadTimeoutError,
+        )
+        from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
 
         local_path = Path(local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            self._client.download_file(self.bucket, key, str(local_path))
-            return True
-        except ClientError:
-            return False
+        transient_errors = (
+            boto3.exceptions.RetriesExceededError,
+            TransferRetriesExceededError,
+            EndpointConnectionError,
+            ReadTimeoutError,
+            ConnectionClosedError,
+        )
+        for attempt in range(3):
+            try:
+                self._client.download_file(self.bucket, key, str(local_path))
+                return True
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code")
+                status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if code in ("NoSuchKey", "404") or status == 404:
+                    return False
+                raise
+            except transient_errors:
+                if attempt == 2:
+                    raise
+                time.sleep(2**attempt)
+        raise AssertionError("unreachable")
 
     def get_range(self, key: str, start: int, end: int) -> bytes | None:
         """Partial GET via the standard HTTP ``Range`` header — a Class-B op, far cheaper than

@@ -332,3 +332,60 @@ def test_get_range_reads_a_byte_window_and_absent():
     assert store.get_range("k.m4a", 2, 5) == b"2345"  # inclusive end, matches HTTP Range
     assert store.get_range("missing.m4a", 0, 3) is None
     assert store._client.bodies["k.m4a"].closed is True
+
+
+class _FakeDownloadClient:
+    def __init__(self, failures):
+        self.failures = list(failures)
+        self.calls = 0
+
+    def download_file(self, bucket, key, path):
+        self.calls += 1
+        if self.failures:
+            raise self.failures.pop(0)
+        Path(path).write_text(f"{bucket}:{key}")
+
+
+def test_get_file_retries_transfer_failures_then_succeeds(tmp_path, monkeypatch):
+    from botocore.exceptions import ReadTimeoutError
+
+    store = _s3_with_fake_client()
+    client = _FakeDownloadClient([ReadTimeoutError(endpoint_url="https://x", error="timeout")])
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    dest = tmp_path / "state.json"
+
+    assert store.get_file("state/k.json", dest) is True
+    assert dest.read_text() == "b:state/k.json"
+    assert client.calls == 2
+
+
+def test_get_file_raises_after_exhausting_transfer_retries(tmp_path, monkeypatch):
+    from botocore.exceptions import ReadTimeoutError
+
+    store = _s3_with_fake_client()
+    client = _FakeDownloadClient(
+        [ReadTimeoutError(endpoint_url="https://x", error="timeout") for _ in range(3)]
+    )
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(ReadTimeoutError):
+        store.get_file("state/k.json", tmp_path / "state.json")
+    assert client.calls == 3
+
+
+def test_get_file_returns_false_only_for_absent_objects(tmp_path):
+    store = _s3_with_fake_client()
+    store._client = _FakeDownloadClient([_client_error("NoSuchKey", 404)])
+
+    assert store.get_file("missing.json", tmp_path / "missing.json") is False
+
+
+def test_get_file_raises_non_absent_client_errors(tmp_path):
+    store = _s3_with_fake_client()
+    store._client = _FakeDownloadClient([_client_error("InternalError", 500)])
+
+    with pytest.raises(Exception, match="InternalError"):
+        store.get_file("state/k.json", tmp_path / "k.json")
