@@ -649,6 +649,108 @@ class TestTimelineStageSkipAndStop:
         assert planner.calls == 0
         assert stats.reused == 1 and stats.ran == 0
 
+    def test_reuses_same_signature_concat_timeline_with_stream_sample_basis(self, tmp_path):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="swagit",
+                ref="https://src/part-1.mp4",
+                media_kind="direct",
+                duration=100.0,
+                watch_url=None,
+                duration_basis="stream-sample",
+            ),
+            SourceMedia(
+                id="s1",
+                provider="swagit",
+                ref="https://src/part-2.mp4",
+                media_kind="direct",
+                duration=200.0,
+                watch_url=None,
+                duration_basis="stream-sample",
+            ),
+        ]
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=100,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=100,
+                ),
+                Segment(
+                    served_start=100,
+                    served_end=300,
+                    kind="source",
+                    source_id="s1",
+                    source_start=0,
+                    source_end=200,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
+
+    def test_reuses_same_signature_concat_timeline_with_legacy_missing_basis(self, tmp_path):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="swagit",
+                ref="https://src/part-1.mp4",
+                media_kind="direct",
+                duration=100.0,
+                watch_url=None,
+            ),
+            SourceMedia(
+                id="s1",
+                provider="swagit",
+                ref="https://src/part-2.mp4",
+                media_kind="direct",
+                duration=200.0,
+                watch_url=None,
+            ),
+        ]
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=100,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=100,
+                ),
+                Segment(
+                    served_start=100,
+                    served_end=300,
+                    kind="source",
+                    source_id="s1",
+                    source_start=0,
+                    source_end=200,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
+
     def test_replans_when_planner_version_changes(self, tmp_path):
         ep = _ep()
         TimelineStage(planners=[_SilencePlanner()]).process(
