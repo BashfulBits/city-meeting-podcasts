@@ -269,6 +269,13 @@ def test_parse_state_returns_empty_on_missing_block():
     assert _parse_state("no state block here") == {}
 
 
+def test_parse_state_returns_empty_when_first_seen_is_not_a_dict():
+    # A hand-edited or corrupted state block (e.g. first_seen as a string) must not silently
+    # propagate into _merge_first_seen, which assumes first_seen is a dict.
+    body = 'x\n<!-- citypods:feed-health:state\n{"check": "drift", "first_seen": "garbage"}\n-->'
+    assert _parse_state(body) == {}
+
+
 def test_parse_prior_rows_recovers_slug_count_and_example():
     rows = {"cityA": _FeedRow(slug="cityA", count=3, severity=WARN, example="some example")}
     first_seen = {"cityA": _NOW.isoformat()}
@@ -283,6 +290,19 @@ def test_parse_prior_rows_recovers_slug_count_and_example():
     recovered = _parse_prior_rows(body)
     assert recovered["cityA"].count == 3
     assert recovered["cityA"].example == "some example"
+
+
+def test_parse_prior_rows_recovers_error_severity():
+    # A carried-forward row must not silently downgrade an ERROR-severity feed to WARN just
+    # because it wasn't re-evaluated this run -- that would let a real error mismatch the
+    # issue's overall severity label.
+    rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=ERROR, example="boom")}
+    first_seen = {"cityA": _NOW.isoformat()}
+    body = _render_grouped_body(
+        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=ERROR, now=_NOW
+    )
+    recovered = _parse_prior_rows(body)
+    assert recovered["cityA"].severity == ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -395,17 +415,26 @@ def test_reconcile_grouped_syncs_stale_label_without_comment():
 
 def test_reconcile_grouped_no_comment_on_pure_day_count_change():
     # A "since Nd ago" display refreshing daily must not itself trigger a chatty comment --
-    # only a real change in the affected-feed set should.
+    # only a real change in the affected-feed set should. Labels are pre-matched here so the
+    # edit_calls assertion below isolates the body-change path (a label-sync edit would also
+    # make edit_calls truthy, confounding the check this test exists for).
     f = _finding(slug="cityA", check="drift", msg="zero episodes")
     rows = _group_by_check([f])["drift"]
     old_now = datetime(2026, 6, 1, tzinfo=UTC)
     first_seen = {"cityA": old_now.isoformat()}
-    existing = _grouped_issue("drift", number=10, first_seen=first_seen, rows=rows, now=old_now)
+    existing = _grouped_issue(
+        "drift",
+        number=10,
+        first_seen=first_seen,
+        rows=rows,
+        now=old_now,
+        labels=["signal:feed-health", "type:operations", "severity:warn"],
+    )
     later = datetime(2026, 6, 20, tzinfo=UTC)
     calls = _run_reconcile([f], existing, now=later)
-    edit_calls = [a for a in calls if len(a) >= 2 and a[1] == "edit"]
+    body_edit_calls = [a for a in calls if len(a) >= 2 and a[1] == "edit" and "--body" in a]
     comment_calls = [a for a in calls if len(a) >= 2 and a[1] == "comment"]
-    assert edit_calls, "since-label day count changed -> body edit expected"
+    assert body_edit_calls, "since-label day count changed -> body edit expected"
     assert not comment_calls, "affected-feed set unchanged -> no comment"
 
 
@@ -463,6 +492,24 @@ def test_reconcile_grouped_scoped_run_preserves_out_of_scope_feed():
     # carried forward untouched (not silently cleared just because it's absent this run).
     calls = _run_reconcile([], existing, now=_NOW, audited_slugs={"cityB"}, city_of={})
     assert not calls, "an issue entirely out of a scoped run's audited slugs must not be touched"
+
+
+def test_reconcile_grouped_scoped_run_preserves_error_severity_of_out_of_scope_feed():
+    # If the carry-forward path downgraded cityA's recovered severity to WARN, the issue's
+    # overall severity would flip from error to warn and mismatch the existing severity:error
+    # label -> spurious label-edit call, even though nothing about cityA actually changed.
+    rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=ERROR, example="boom")}
+    first_seen = {"cityA": _NOW.isoformat()}
+    existing = _grouped_issue(
+        "drift",
+        number=32,
+        first_seen=first_seen,
+        rows=rows,
+        now=_NOW,
+        labels=["signal:feed-health", "type:operations", "severity:error"],
+    )
+    calls = _run_reconcile([], existing, now=_NOW, audited_slugs={"cityB"}, city_of={})
+    assert not calls, "out-of-scope ERROR severity must survive the carry-forward unchanged"
 
 
 def test_reconcile_grouped_scoped_run_clears_in_scope_feed():

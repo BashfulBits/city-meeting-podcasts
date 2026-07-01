@@ -459,7 +459,12 @@ def _parse_state(body: str) -> dict:
         data = json.loads(match.group(1))
     except (ValueError, TypeError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    first_seen = data.get("first_seen")
+    if first_seen is not None and not isinstance(first_seen, dict):
+        return {}
+    return data
 
 
 def _render_state_block(check: str, first_seen: dict[str, str]) -> str:
@@ -538,19 +543,23 @@ def _render_grouped_body(
     if guidance:
         parts += ["", guidance]
 
-    ordered_slugs = sorted(rows, key=lambda s: first_seen.get(s, ""))
+    # Tie-break by slug: `keep_slugs`/`rows` are built from sets, so without a deterministic
+    # secondary key, feeds sharing an identical first-seen timestamp (e.g. several newly stamped
+    # in the same run) could shuffle order between runs purely from set-iteration order, causing
+    # a spurious body diff (and edit call) with no real state change.
+    ordered_slugs = sorted(rows, key=lambda s: (first_seen.get(s, ""), s))
     parts += ["", "### Affected feeds", ""]
-    parts.append("| Feed | City | Since | Count | Example |")
-    parts.append("|---|---|---|---|---|")
+    parts.append("| Feed | City | Since | Severity | Count | Example |")
+    parts.append("|---|---|---|---|---|---|")
     shown = ordered_slugs[:_MAX_ROWS]
     for slug in shown:
         row = rows[slug]
         since = _since_label(first_seen.get(slug, now.isoformat()), now=now)
         city = city_of.get(slug, slug)
         example = row.example.replace("|", "\\|").replace("\n", " ")
-        parts.append(f"| `{slug}` | {city} | {since} | {row.count} | {example} |")
+        parts.append(f"| `{slug}` | {city} | {since} | {row.severity} | {row.count} | {example} |")
     if len(ordered_slugs) > _MAX_ROWS:
-        parts.append(f"| _...and {len(ordered_slugs) - _MAX_ROWS} more_ | | | | |")
+        parts.append(f"| _...and {len(ordered_slugs) - _MAX_ROWS} more_ | | | | | |")
 
     parts += ["", _footer(check)]
     parts += ["", _render_state_block(check, first_seen)]
@@ -710,16 +719,18 @@ def _is_per_slug_key(key: str) -> bool:
     return "::" in key
 
 
-_ROW_RE = re.compile(r"^\| `([^`]+)` \| [^|]* \| [^|]* \| (\d+) \| (.*) \|$", re.MULTILINE)
+_ROW_RE = re.compile(r"^\| `([^`]+)` \| [^|]* \| [^|]* \| (\w+) \| (\d+) \| (.*) \|$", re.MULTILINE)
 
 
 def _parse_prior_rows(body: str) -> dict[str, _FeedRow]:
     """Best-effort recovery of a prior run's per-feed detail from the rendered table, used only
-    to avoid fabricating an example/count for an out-of-scope feed being carried forward."""
+    to avoid fabricating a severity/example/count for an out-of-scope feed being carried forward
+    -- notably severity, so a carried-forward ERROR-severity feed can't silently downgrade an
+    issue to `severity:warn` just because it wasn't re-evaluated this run."""
     rows: dict[str, _FeedRow] = {}
     for match in _ROW_RE.finditer(body or ""):
-        slug, count, example = match.group(1), match.group(2), match.group(3)
-        rows[slug] = _FeedRow(slug=slug, count=int(count), severity=WARN, example=example)
+        slug, severity, count, example = match.groups()
+        rows[slug] = _FeedRow(slug=slug, count=int(count), severity=severity, example=example)
     return rows
 
 
