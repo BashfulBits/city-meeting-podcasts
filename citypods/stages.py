@@ -803,11 +803,37 @@ class TimelineStage:
             return "identity"
         return "+".join(sorted(f"{p.name}:{getattr(p, 'version', '1')}" for p in self.planners))
 
+    def _requires_decoded_source_basis(self) -> bool:
+        return any(p.name == "silence" for p in self.planners)
+
+    @staticmethod
+    def _has_healthy_decoded_source_basis(ep: Episode) -> bool:
+        if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
+            return True
+
+        timeline_source_ids = {
+            seg.source_id
+            for seg in ep.timeline.segments
+            if seg.kind == "source" and seg.source_id is not None
+        }
+        if not timeline_source_ids:
+            return True
+
+        sources_by_id = {src.id: src for src in ep.sources}
+        if not sources_by_id:
+            # Pre-source legacy test fixtures are not enough evidence to invalidate the EDL.
+            return True
+        return all(
+            (src := sources_by_id.get(source_id)) is not None and src.duration_basis == "decoded"
+            for source_id in timeline_source_ids
+        )
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         stats = StageStats(self.name)
         sig = self._signature()
+        require_decoded_source_basis = self._requires_decoded_source_basis()
         all_eps = list(
             _materialize_set(
                 episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
@@ -826,7 +852,15 @@ class TimelineStage:
             # Already planned by this exact planner set+versions → don't recompute. A stale
             # signature (older set) falls through and re-plans.
             force_replan = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
-            if ep.timeline is not None and ep.timeline.version == sig and not force_replan:
+            stale_source_basis = (
+                require_decoded_source_basis and not self._has_healthy_decoded_source_basis(ep)
+            )
+            if (
+                ep.timeline is not None
+                and ep.timeline.version == sig
+                and not force_replan
+                and not stale_source_basis
+            ):
                 with lock:
                     stats.reused += 1
                 return
