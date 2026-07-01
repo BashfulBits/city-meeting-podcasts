@@ -1059,7 +1059,9 @@ def test_merge_preserving_foreign_keeps_remote_decoded_plan_over_stale_audio_sna
             "uid": "u2",
             "sources": [],
             "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "chapters": [{"title": "stale local chapter", "start": 3.0}],
             "audio": {"url": "LOCAL2", "key": "missing-source-key", "spec_hash": "missing-spec"},
+            "transcript": {"key": "stale-local-transcript"},
         },
     }
 
@@ -1073,6 +1075,8 @@ def test_merge_preserving_foreign_keeps_remote_decoded_plan_over_stale_audio_sna
     assert merged["u1"]["transcript"] == remote["u1"]["transcript"]
     assert merged["u2"]["sources"] == remote["u2"]["sources"]
     assert merged["u2"]["audio"] == remote["u2"]["audio"]
+    assert "chapters" not in merged["u2"]
+    assert "transcript" not in merged["u2"]
 
 
 def test_merge_preserving_foreign_writes_local_decoded_plan_over_remote_container_plan():

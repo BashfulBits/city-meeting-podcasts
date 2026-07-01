@@ -1019,12 +1019,11 @@ def _preserve_remote_planning_if_better(rec: dict, remote_rec: dict) -> None:
     """
     if _record_planning_rank(remote_rec) <= _record_planning_rank(rec):
         return
-    for field in PLANNING_FIELDS:
-        if field in remote_rec:
-            rec[field] = remote_rec[field]
-    for block in ARTIFACT_BLOCKS:
-        if block in remote_rec:
-            rec[block] = remote_rec[block]
+    for key in PLANNING_FIELDS | ARTIFACT_BLOCKS:
+        if key in remote_rec:
+            rec[key] = remote_rec[key]
+        else:
+            rec.pop(key, None)
 
 
 def merge_preserving_foreign(
