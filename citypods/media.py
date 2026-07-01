@@ -2038,6 +2038,108 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
 
 
 # ---------------------------------------------------------------------------
+# Header-only duration probe (range reads, no full download)
+# ---------------------------------------------------------------------------
+#
+# Every hosted episode is a single-moov MP4/M4A written by this project's own ffmpeg finalize
+# pass with ``-movflags +faststart`` (moov before mdat) — see the encode call sites in this
+# module. ``format.duration`` and the stream's ``duration_ts``/``time_base`` (the exact fields
+# ``_probe_audio_duration_details`` reads) live entirely in ``moov``; ffprobe never touches
+# ``mdat`` to answer that query, whether it's given the whole file or just the header. So
+# fetching only ``ftyp``+``moov`` via range reads yields bit-identical values to a full
+# download, at a fraction of the bytes (moov is typically well under 1% of file size). See
+# review's timeline-audio-integrity notes for the empirical check that backs this claim, and
+# ``check_timeline_integrity``'s ``probe_audio_full`` reconciliation for the ongoing guard.
+
+# First range read when locating `moov`. Comfortably covers `ftyp`+`moov` for most episodes in
+# one round trip; `moov` grows with episode length (its per-frame stsz/stco tables dominate), so
+# the longest meetings need a second, exactly-sized read (see ``_fetch_mp4_header``).
+_MP4_INITIAL_RANGE_BYTES = 65536
+
+# Sanity cap on a claimed `moov` size before trusting it enough to issue the second range read.
+# Guards against parsing garbage as a box header (a non-MP4 or corrupt object) and turning that
+# into an unbounded fetch — if the declared size is implausible, fall back to a full download.
+_MP4_MAX_MOOV_BYTES = 32 * 1024 * 1024
+
+
+def _mp4_moov_extent(buf: bytes) -> tuple[int, int] | None:
+    """Scan top-level MP4 box headers in a *prefix* of a file to find ``moov``'s exact
+    ``[start, end)`` byte extent.
+
+    Returns ``None`` when ``moov``'s header isn't present in ``buf`` yet (need a larger initial
+    read), or a box with an unresolvable size (0-sized "extends to EOF", or malformed) is hit
+    before ``moov`` is found — e.g. ``mdat`` appears first, meaning the object was not written
+    moov-before-mdat and this fast path does not apply.
+    """
+    pos = 0
+    n = len(buf)
+    while pos + 8 <= n:
+        size = int.from_bytes(buf[pos : pos + 4], "big")
+        box_type = buf[pos + 4 : pos + 8]
+        header_len = 8
+        if size == 1:
+            if pos + 16 > n:
+                return None  # 64-bit largesize field not fully read yet
+            size = int.from_bytes(buf[pos + 8 : pos + 16], "big")
+            header_len = 16
+        if box_type == b"moov":
+            if size < header_len:
+                return None
+            return pos, pos + size
+        if size == 0 or size < header_len:
+            return None  # box extends to EOF, or malformed — not resolvable from a prefix
+        pos += size
+    return None
+
+
+def _fetch_mp4_header(get_range: Callable[[int, int], bytes | None]) -> bytes | None:
+    """Fetch just the ``ftyp``+``moov`` bytes of an MP4/M4A object via ``get_range(start, end)``
+    (inclusive byte offsets, HTTP Range semantics), or ``None`` if that isn't possible.
+
+    At most two range reads: an initial chunk to locate ``moov``'s header, and — only if
+    ``moov`` extends past that chunk — one more sized exactly to its declared length. Never
+    reads ``mdat``.
+    """
+    buf = get_range(0, _MP4_INITIAL_RANGE_BYTES - 1)
+    if not buf:
+        return None
+    extent = _mp4_moov_extent(buf)
+    if extent is None:
+        return None
+    start, end = extent
+    if end <= len(buf):
+        return buf[:end]
+    if end - start > _MP4_MAX_MOOV_BYTES:
+        return None
+    rest = get_range(len(buf), end - 1)
+    if not rest:
+        return None
+    return buf + rest
+
+
+def _probe_audio_duration_header(
+    get_range: Callable[[int, int], bytes | None],
+    ffmpeg_binary: str = "ffmpeg",
+) -> AudioDurationProbe | None:
+    """Header-only variant of :func:`_probe_audio_duration_details`: fetches only the
+    ``ftyp``/``moov`` boxes (via range reads, see :func:`_fetch_mp4_header`) instead of
+    downloading the whole object, then runs the identical ffprobe query against just those
+    bytes.
+
+    Returns ``None`` (not an error probe) when the header can't be isolated this way — e.g. the
+    object isn't moov-before-mdat, or a range read failed — so the caller falls back to a full
+    download + :func:`_probe_audio_duration_details` instead of reporting a false result.
+    """
+    header = _fetch_mp4_header(get_range)
+    if header is None:
+        return None
+    with tempfile.TemporaryDirectory() as t:
+        dest = Path(t) / "header.m4a"
+        dest.write_bytes(header)
+        return _probe_audio_duration_details(dest, ffmpeg_binary=ffmpeg_binary)
+
+
+# ---------------------------------------------------------------------------
 # Materialization stats + pipeline
 # ---------------------------------------------------------------------------
 

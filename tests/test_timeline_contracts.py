@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from citypods.audit import check_timeline_integrity
 from citypods.media import AudioDurationProbe
 from citypods.models import Episode
@@ -659,3 +661,153 @@ class TestDeeplinkLivenessWired:
         # verify the check function exists and accepts the provider name.
         assert "deeplink" in GranicusProvider.capabilities
         # The liveness probe itself is live-only (test_contracts.py in tests/live/).
+
+
+# ---------------------------------------------------------------------------
+# probe_audio_full reconciliation: the header-only probe is cheap, but its core assumption
+# (moov alone matches a full download) is exactly the kind of thing this project has been
+# burned trusting blindly before (GH#702). These verify the full-download reconciliation only
+# fires for episodes already flagged as non-"ok", wins as the authoritative reading, and files
+# a distinct alert when the two methods disagree.
+# ---------------------------------------------------------------------------
+
+
+class TestProbeAudioFullReconciliation:
+    def test_full_probe_not_invoked_when_header_probe_is_ok(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3300.0
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src()]
+        calls: list[Episode] = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            probe_audio_full=lambda e: calls.append(e) or AudioDurationProbe(),
+        )
+
+        assert calls == []
+        assert fs == []
+
+    def test_full_probe_confirms_agreement_no_divergence_finding(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        diagnostics = []
+        calls: list[Episode] = []
+
+        def _full(e):
+            calls.append(e)
+            return AudioDurationProbe(
+                container_duration=3304.0,
+                stream_sample_duration=3304.0,
+                stream_duration_source="stream-duration-ts",
+            )
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3304.0,
+                stream_sample_duration=3304.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            probe_audio_full=_full,
+            diagnostics=diagnostics,
+        )
+
+        assert len(calls) == 1  # header flagged non-"ok", so it was invoked once
+        assert not any(f.check == "timeline-audio-probe-divergence" for f in fs)
+        assert any(f.check == "rendered-duration-mismatch" for f in fs)
+        assert diagnostics[0]["probe_reconciled"] is True
+        assert diagnostics[0]["probe_divergence_delta"] == pytest.approx(0.0)
+
+    def test_full_probe_wins_and_files_divergence_when_probes_disagree(self):
+        # The header-only probe (falsely, off by 4s) reports a mismatch; the full-download
+        # probe — ground truth — shows the EDL actually matches. The episode must not be
+        # reported as a duration mismatch (the full probe wins), but the disagreement between
+        # the two probe methods must itself surface loudly.
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3304.0,
+                stream_sample_duration=3304.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            probe_audio_full=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+        )
+
+        divergence = [f for f in fs if f.check == "timeline-audio-probe-divergence"]
+        assert len(divergence) == 1
+        assert divergence[0].severity == "error"
+        assert not any(f.check == "rendered-duration-mismatch" for f in fs)
+        assert diagnostics[0]["check"] == "ok"
+        assert diagnostics[0]["probe_divergence_delta"] == pytest.approx(4.0)
+
+    def test_full_probe_is_the_fallback_when_header_probe_is_unavailable(self):
+        # The header probe returning None (e.g. a non-faststart object, or a storage backend
+        # without get_range) is not itself a divergence — there's nothing to compare against —
+        # but the full probe should still resolve the episode instead of leaving it inconclusive.
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: None,
+            probe_audio_full=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+        )
+
+        assert not any(f.check == "timeline-audio-probe-divergence" for f in fs)
+        assert diagnostics[0]["check"] == "ok"
+        assert "probe_reconciled" not in diagnostics[0]
+
+    def test_reconciliation_is_a_noop_without_probe_audio_full(self):
+        # Backward-compatible default: omitting probe_audio_full must behave exactly as before
+        # this feature existed — no reconciliation attempted, no crash.
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3304.0,
+                stream_sample_duration=3304.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+        )
+
+        assert any(f.check == "rendered-duration-mismatch" for f in fs)
+        assert "probe_reconciled" not in diagnostics[0]

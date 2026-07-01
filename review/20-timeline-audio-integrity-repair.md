@@ -288,6 +288,28 @@ disable automatic repair stamping.
 Backfill story: only confirmed affected records enter the repair queues; all work drains gradually under
 existing stop budgets.
 
+## Follow-up: header-only (range-read) duration probe, with continuous full-download reconciliation
+
+The diagnostics probe (`_probe_timeline_audio` in `citypods/audit.py`, feeding
+`_classify_timeline_audio_duration`) used to download every non-identity-timeline episode's whole
+hosted `.m4a` just to read `format.duration`/`stream.duration_ts`/`time_base` — fields that live
+entirely in the MP4 `moov` box. Every hosted episode is written `-movflags +faststart` (moov
+before mdat), so a small range read of just `ftyp`+`moov` (`StorageBackend.get_range`,
+`media._probe_audio_duration_header`) yields bit-identical values to a full download; `mdat` was
+never read for these fields either way. This cut the diagnostics-enabled audit's data transfer by
+roughly two orders of magnitude (moov is typically well under 1% of a multi-hour episode's file
+size).
+
+Given this project's history of subtle duration-measurement bugs in this exact area (the GH#702
+decoded-vs-container/PTS-gap saga above), the header-only probe is not trusted silently: any
+episode it flags as non-"ok" is automatically re-measured with a full-download probe
+(`probe_audio_full` in `check_timeline_integrity`). The full read is authoritative for that
+episode's actual finding/repair decision, and a new `timeline-audio-probe-divergence` finding
+(ERROR) fires if the two methods disagree beyond float noise — a live, ongoing check of the
+moov-only assumption against exactly the "problem" files this project periodically hits, not just
+a one-time validation. `tests/test_media.py` also pins the assumption directly against real
+ffmpeg/ffprobe output (short clip and a multi-round-trip long clip).
+
 ## Acceptance
 
 - The audit distinguishes container-only drift from decoded/stream-clock drift.

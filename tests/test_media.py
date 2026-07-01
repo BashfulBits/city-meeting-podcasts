@@ -19,7 +19,10 @@ from citypods.media import (
     SourceCache,
     _concat_local_sources,
     _concat_render_timeline,
+    _fetch_mp4_header,
+    _mp4_moov_extent,
     _probe_audio_duration_details,
+    _probe_audio_duration_header,
     _probe_duration_secs,
     encode_args,
     estimate_encode_rss_bytes,
@@ -1170,6 +1173,194 @@ def test_probe_audio_duration_details_reports_ffprobe_error(tmp_path):
     assert probe.container_duration is None
     assert probe.stream_sample_duration is None
     assert probe.probe_error == "ffprobe-error"
+
+
+# ---------------------------------------------------------------------------
+# Header-only (range-read) duration probe
+# ---------------------------------------------------------------------------
+
+
+def _mp4_box(fourcc: bytes, payload: bytes = b"") -> bytes:
+    """A synthetic top-level MP4 box: 4-byte size + 4-byte type + payload. Only the box
+    header matters to ``_mp4_moov_extent``/``_fetch_mp4_header`` — the payload bytes never
+    need to be a real, parseable ``moov``/``ftyp`` for these unit tests."""
+    return (8 + len(payload)).to_bytes(4, "big") + fourcc + payload
+
+
+class TestMp4MoovExtent:
+    def test_locates_moov_between_ftyp_and_mdat(self):
+        ftyp = _mp4_box(b"ftyp", b"M4A \x00\x00\x02\x00")
+        moov = _mp4_box(b"moov", b"x" * 100)
+        mdat = _mp4_box(b"mdat", b"y" * 1000)
+        buf = ftyp + moov + mdat
+
+        assert _mp4_moov_extent(buf) == (len(ftyp), len(ftyp) + len(moov))
+
+    def test_skips_a_leading_64bit_largesize_box(self):
+        payload = b"z" * 50
+        large_free = (
+            (1).to_bytes(4, "big") + b"free" + (16 + len(payload)).to_bytes(8, "big") + payload
+        )
+        moov = _mp4_box(b"moov", b"x" * 20)
+        buf = large_free + moov
+
+        assert _mp4_moov_extent(buf) == (len(large_free), len(large_free) + len(moov))
+
+    def test_returns_none_when_huge_mdat_precedes_moov(self):
+        # A non-faststart object: mdat (declared far larger than any prefix read) comes first,
+        # so moov is unreachable from a bounded initial read — the fast path does not apply.
+        ftyp = _mp4_box(b"ftyp")
+        huge_mdat_header = (50_000_000).to_bytes(4, "big") + b"mdat"
+        buf = ftyp + huge_mdat_header
+
+        assert _mp4_moov_extent(buf) is None
+
+    def test_returns_none_for_a_zero_sized_extends_to_eof_box(self):
+        buf = _mp4_box(b"ftyp") + (0).to_bytes(4, "big") + b"mdat"
+
+        assert _mp4_moov_extent(buf) is None
+
+    def test_returns_none_for_a_too_short_buffer(self):
+        assert _mp4_moov_extent(b"abc") is None
+
+
+def _fake_get_range(buf: bytes):
+    calls: list[tuple[int, int]] = []
+
+    def _get(start: int, end: int) -> bytes:
+        calls.append((start, end))
+        return buf[start : end + 1]
+
+    return _get, calls
+
+
+class TestFetchMp4Header:
+    def test_single_round_trip_when_moov_fits_the_initial_chunk(self):
+        ftyp = _mp4_box(b"ftyp")
+        moov = _mp4_box(b"moov", b"x" * 100)
+        mdat = _mp4_box(b"mdat", b"y" * 100_000)
+        get_range, calls = _fake_get_range(ftyp + moov + mdat)
+
+        header = _fetch_mp4_header(get_range)
+
+        assert header == ftyp + moov
+        assert len(calls) == 1
+
+    def test_second_round_trip_when_moov_spans_the_initial_chunk(self):
+        import citypods.media as media
+
+        ftyp = _mp4_box(b"ftyp")
+        moov = _mp4_box(b"moov", b"x" * (media._MP4_INITIAL_RANGE_BYTES + 5000))
+        mdat = _mp4_box(b"mdat", b"y" * 1000)
+        get_range, calls = _fake_get_range(ftyp + moov + mdat)
+
+        header = _fetch_mp4_header(get_range)
+
+        assert header == ftyp + moov
+        assert len(calls) == 2
+        assert calls[0] == (0, media._MP4_INITIAL_RANGE_BYTES - 1)
+
+    def test_returns_none_when_moov_is_not_found(self):
+        ftyp = _mp4_box(b"ftyp")
+        huge_mdat_header = (50_000_000).to_bytes(4, "big") + b"mdat"
+        get_range, _ = _fake_get_range(ftyp + huge_mdat_header)
+
+        assert _fetch_mp4_header(get_range) is None
+
+    def test_returns_none_and_skips_second_read_past_the_safety_cap(self):
+        import citypods.media as media
+
+        ftyp = _mp4_box(b"ftyp")
+        size = media._MP4_MAX_MOOV_BYTES + 1000 + 8
+        moov_header_only = size.to_bytes(4, "big") + b"moov"
+        get_range, calls = _fake_get_range(ftyp + moov_header_only)
+
+        assert _fetch_mp4_header(get_range) is None
+        assert len(calls) == 1  # never attempts to fetch the oversized claimed moov
+
+    def test_returns_none_when_the_initial_range_read_fails(self):
+        assert _fetch_mp4_header(lambda s, e: None) is None
+        assert _fetch_mp4_header(lambda s, e: b"") is None
+
+
+def _local_get_range(path: Path):
+    def _get(start: int, end: int) -> bytes:
+        with open(path, "rb") as f:
+            f.seek(start)
+            return f.read(end - start + 1)
+
+    return _get
+
+
+def _write_synthetic_m4a(path: Path, duration_seconds: float) -> None:
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=440:sample_rate=48000:duration={duration_seconds}",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            str(path),
+        ],
+        check=True,
+        timeout=60,
+    )
+
+
+def test_probe_audio_duration_header_matches_full_probe_short_clip(tmp_path):
+    """The core assumption behind the header-only probe (GH follow-up to review/20's
+    duration-measurement churn): for this project's own faststart-remuxed hosted audio, a
+    header-only (range-read) probe must report *exactly* what a full-download probe reports,
+    since both derive their numbers from the same `moov` bytes and neither touches `mdat`."""
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe required for the header-vs-full-probe parity check")
+
+    audio = tmp_path / "audio.m4a"
+    _write_synthetic_m4a(audio, 1.5)
+
+    full = _probe_audio_duration_details(audio)
+    header = _probe_audio_duration_header(_local_get_range(audio))
+
+    assert header is not None
+    assert header.container_duration == full.container_duration
+    assert header.stream_sample_duration == full.stream_sample_duration
+    assert header.stream_duration_source == full.stream_duration_source
+    assert header.probe_error == full.probe_error is None
+
+
+def test_probe_audio_duration_header_matches_full_probe_when_moov_spans_two_range_reads(
+    tmp_path,
+):
+    """Same parity check as above, but for a long enough episode that its `moov` (dominated by
+    per-frame stsz/stco tables) exceeds the initial range-read chunk — forcing the second,
+    exactly-sized read this project's episodes routinely need in production."""
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe required for the header-vs-full-probe parity check")
+
+    audio = tmp_path / "audio.m4a"
+    _write_synthetic_m4a(audio, 400)  # ~76KB moov, past the 64KB initial chunk
+
+    calls: list[tuple[int, int]] = []
+
+    def _get(start: int, end: int) -> bytes:
+        calls.append((start, end))
+        return _local_get_range(audio)(start, end)
+
+    full = _probe_audio_duration_details(audio)
+    header = _probe_audio_duration_header(_get)
+
+    assert len(calls) == 2, "fixture didn't actually exercise the two-round-trip path"
+    assert header is not None
+    assert header.container_duration == full.container_duration
+    assert header.stream_sample_duration == full.stream_sample_duration
 
 
 def _build_gapped_ts(tmp_path: Path, gap_seconds: float = 2.0) -> Path:
