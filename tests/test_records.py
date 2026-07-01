@@ -1025,6 +1025,85 @@ def test_merge_preserving_foreign_audio_lane_keeps_remote_transcript():
     assert merged["u1"]["audio"]["url"] == "NEW"  # local audio written (this lane owns it)
 
 
+def test_merge_preserving_foreign_keeps_remote_decoded_plan_over_stale_audio_snapshot():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "title": "old title",
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "chapters": [{"title": "remote chapter", "start": 1.0}],
+            "chapters_basis": "served:silence:2+swagit-concat:1",
+            "audio": {"url": "REMOTE", "key": "decoded-key", "spec_hash": "decoded-spec"},
+            "transcript": {"key": "remote-transcript"},
+        },
+        "u2": {
+            "uid": "u2",
+            "sources": [{"id": "s0", "duration": 200.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "audio": {"url": "REMOTE2", "key": "decoded-key-2", "spec_hash": "decoded-spec-2"},
+        },
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "title": "fresh title",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "chapters": [{"title": "local stale chapter", "start": 2.0}],
+            "chapters_basis": "served:silence:2+swagit-concat:1",
+            "audio": {"url": "LOCAL", "key": "container-key", "spec_hash": "container-spec"},
+            "transcript": {"key": "local-stale-transcript"},
+        },
+        "u2": {
+            "uid": "u2",
+            "sources": [],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "chapters": [{"title": "stale local chapter", "start": 3.0}],
+            "audio": {"url": "LOCAL2", "key": "missing-source-key", "spec_hash": "missing-spec"},
+            "transcript": {"key": "stale-local-transcript"},
+        },
+    }
+
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+
+    assert merged["u1"]["title"] == "fresh title"
+    assert merged["u1"]["sources"] == remote["u1"]["sources"]
+    assert merged["u1"]["timeline"] == remote["u1"]["timeline"]
+    assert merged["u1"]["chapters"] == remote["u1"]["chapters"]
+    assert merged["u1"]["audio"] == remote["u1"]["audio"]
+    assert merged["u1"]["transcript"] == remote["u1"]["transcript"]
+    assert merged["u2"]["sources"] == remote["u2"]["sources"]
+    assert merged["u2"]["audio"] == remote["u2"]["audio"]
+    assert "chapters" not in merged["u2"]
+    assert "transcript" not in merged["u2"]
+
+
+def test_merge_preserving_foreign_writes_local_decoded_plan_over_remote_container_plan():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "audio": {"url": "REMOTE", "key": "container-key", "spec_hash": "container-spec"},
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "audio": {"url": "LOCAL", "key": "decoded-key", "spec_hash": "decoded-spec"},
+        }
+    }
+
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+
+    assert merged["u1"]["sources"] == local["u1"]["sources"]
+    assert merged["u1"]["timeline"] == local["u1"]["timeline"]
+    assert merged["u1"]["audio"] == local["u1"]["audio"]
+
+
 def test_merge_preserving_foreign_audio_lane_keeps_remote_provider_transcript():
     remote = {
         "u1": {

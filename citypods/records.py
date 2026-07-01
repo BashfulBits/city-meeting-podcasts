@@ -957,6 +957,7 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 ARTIFACT_BLOCKS: frozenset[str] = frozenset(
     {"audio", "transcript", "provider_transcript", "speakers", "media_availability", "integrity"}
 )
+PLANNING_FIELDS: frozenset[str] = frozenset({"sources", "timeline", "chapters", "chapters_basis"})
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
 # full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
@@ -975,6 +976,54 @@ def protected_blocks_for_lane(lane: str | None) -> frozenset[str]:
     is written fresh. ``None``/unknown lane owns every artifact, so nothing is protected."""
     owned = _LANE_OWNED_BLOCKS.get(lane, ARTIFACT_BLOCKS) if lane is not None else ARTIFACT_BLOCKS
     return ARTIFACT_BLOCKS - owned
+
+
+def _basis_rank(basis: object) -> int:
+    if isinstance(basis, str) and (basis == "decoded" or basis.startswith("decoded:")):
+        return 3
+    if basis == "stream-sample":
+        return 2
+    if basis == "container":
+        return 1
+    return 0
+
+
+def _record_source_basis_rank(rec: dict) -> int:
+    sources = rec.get("sources") or []
+    ranks = [_basis_rank(src.get("duration_basis")) for src in sources if isinstance(src, dict)]
+    return min(ranks) if ranks else 0
+
+
+def _record_timeline_version_rank(rec: dict) -> tuple[int, ...]:
+    timeline = rec.get("timeline")
+    version = timeline.get("version") if isinstance(timeline, dict) else ""
+    return tuple(int(n) for n in re.findall(r":(\d+)", str(version or "")))
+
+
+def _record_planning_rank(rec: dict) -> tuple[tuple[int, ...], int, int]:
+    return (
+        _record_timeline_version_rank(rec),
+        _record_source_basis_rank(rec),
+        1 if rec.get("timeline") else 0,
+    )
+
+
+def _preserve_remote_planning_if_better(rec: dict, remote_rec: dict) -> None:
+    """Keep decoded/newer planning metadata from being clobbered by a stale scoped push.
+
+    Scoped lanes re-read remote state to protect sibling artifact blocks, but the timeline/source
+    metadata sits in the whole-record body. A long-running shard that started before a repair can
+    therefore carry container/legacy planning locally and overwrite a fresher decoded remote plan.
+    When remote planning is strictly better, keep it and its associated artifact blocks; local
+    artifacts were computed against the stale plan and are not safe to attach to the newer EDL.
+    """
+    if _record_planning_rank(remote_rec) <= _record_planning_rank(rec):
+        return
+    for key in PLANNING_FIELDS | ARTIFACT_BLOCKS:
+        if key in remote_rec:
+            rec[key] = remote_rec[key]
+        else:
+            rec.pop(key, None)
 
 
 def merge_preserving_foreign(
@@ -1024,6 +1073,7 @@ def merge_preserving_foreign(
             for block in protected:
                 if remote_rec.get(block):
                     rec[block] = remote_rec[block]
+            _preserve_remote_planning_if_better(rec, remote_rec)
         merged[uid] = rec
     return merged
 
