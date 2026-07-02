@@ -13,9 +13,11 @@ from citypods.http import StopRequested
 from citypods.integrity import REPAIR_TIMELINE_REPLAN, set_timeline_audio_integrity
 from citypods.silence import (
     SilencePlanner,
+    _describe_media_locator,
     _parse_ffmpeg_decoded_end,
     _parse_ffmpeg_duration,
     _probe_stream_sample_duration,
+    _silence_summary,
     build_silence_timeline,
     detect_silences,
     is_degenerate_served_duration,
@@ -61,6 +63,27 @@ class TestParseSilences:
             "[silencedetect @ 0x1] silence_start: 7200.0\n"
         )
         assert parse_silences(stderr) == [(0.0, 2.0)]
+
+
+class TestLoggingHelpers:
+    def test_describe_media_locator_redacts_query_tokens(self):
+        assert (
+            _describe_media_locator(
+                "https://archive-video.granicus.com/path/to/file.mp4?Signature=secret&Expires=1"
+            )
+            == "https://archive-video.granicus.com/file.mp4"
+        )
+
+    def test_describe_media_locator_keeps_local_filename(self):
+        assert _describe_media_locator("/tmp/citypods/source-cache/file.mka") == (
+            "/tmp/citypods/source-cache/file.mka"
+        )
+
+    def test_silence_summary_reports_count_duration_and_samples(self):
+        assert _silence_summary([(0.0, 4.0), (10.0, 11.5), (20.0, 22.0), (30.0, 31.0)]) == (
+            "count=4 total=8.500s longest=4.000s spans=0.000-4.000, "
+            "10.000-11.500, 20.000-22.000, ..."
+        )
 
 
 # ---------------------------------------------------------------------------

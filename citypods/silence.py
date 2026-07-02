@@ -23,6 +23,8 @@ import re
 import shutil
 import subprocess
 from fractions import Fraction
+from pathlib import Path
+from urllib.parse import urlparse
 
 from citypods.availability import is_effectively_silent
 from citypods.http import USER_AGENT, StopRequested
@@ -42,6 +44,37 @@ def _defer_timeline_plan(ep, reason: str, *, failure_code: str | None = None) ->
         from citypods.media import record_materialize_failure
 
         record_materialize_failure(ep, failure_code)
+
+
+def _describe_media_locator(locator: str) -> str:
+    """Stable, log-safe locator summary without query tokens."""
+    if not locator:
+        return "unknown"
+    if locator.startswith(("http://", "https://")):
+        parsed = urlparse(locator)
+        tail = Path(parsed.path).name or parsed.path or "/"
+        return f"{parsed.scheme}://{parsed.netloc}/{tail.lstrip('/')}"
+    path = Path(locator)
+    return str(path)
+
+
+def _local_file_snapshot(path: str) -> str:
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return f"path={Path(path).name} bytes=unknown"
+    return f"path={Path(path).name} bytes={stat.st_size}"
+
+
+def _silence_summary(silences: list[tuple[float, float]], *, limit: int = 3) -> str:
+    if not silences:
+        return "count=0 total=0.000s longest=0.000s spans=none"
+    total = sum(max(0.0, end - start) for start, end in silences)
+    longest = max(max(0.0, end - start) for start, end in silences)
+    spans = ", ".join(f"{start:.3f}-{end:.3f}" for start, end in silences[:limit])
+    if len(silences) > limit:
+        spans += ", ..."
+    return f"count={len(silences)} total={total:.3f}s longest={longest:.3f}s spans={spans}"
 
 
 # ---------------------------------------------------------------------------
@@ -522,6 +555,13 @@ class SilencePlanner:
         # clear a known-good episode, and it cannot author an audio-affecting EDL.
         probed_duration = decoded_duration
         if probed_duration is None:
+            print(
+                f"[enrich] silence planner decode unavailable uid={ep.uid or ep.guid} "
+                f"source={_describe_media_locator(source_url)} "
+                f"cache={_local_file_snapshot(detect_url)} "
+                f"silences={_silence_summary(silences)}",
+                flush=True,
+            )
             _stamp_availability(ep, "transport_failed", profile)
             _defer_timeline_plan(ep, DEFER_DECODE_UNAVAILABLE, failure_code="timeline-decode")
             return None
@@ -576,10 +616,33 @@ class SilencePlanner:
             min_fraction=ctx.silence_min_served_fraction,
         ):
             served_total = tl.segments[-1].served_end if tl.segments else 0.0
+            current_version = current.version if current is not None else "none"
+            existing_basis = existing_src.duration_basis if existing_src is not None else "none"
+            container_label = (
+                f"{_container_duration:.3f}s" if _container_duration is not None else "None"
+            )
+            decoded_label = f"{decoded_duration:.3f}s" if decoded_duration is not None else "None"
             print(
                 f"[enrich] silence planner rejected degenerate timeline uid={ep.uid or ep.guid} "
                 f"served_total={served_total:.3f}s source_duration={source_duration:.1f}s "
                 "— likely a bad/truncated source probe, not a real near-total silence wipeout",
+                flush=True,
+            )
+            print(
+                f"[enrich] silence planner degenerate detail uid={ep.uid or ep.guid} "
+                f"source={_describe_media_locator(source_url)} "
+                f"cache={_local_file_snapshot(detect_url)} "
+                f"current_timeline={current_version} "
+                f"existing_basis={existing_basis} "
+                f"repair_selected={needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)}",
+                flush=True,
+            )
+            print(
+                f"[enrich] silence planner degenerate metrics uid={ep.uid or ep.guid} "
+                f"container_duration={container_label} "
+                f"decoded_duration={decoded_label} "
+                f"kept_segments={len(tl.segments)} "
+                f"silences={_silence_summary(silences)}",
                 flush=True,
             )
             if current is not None:
