@@ -1020,6 +1020,27 @@ class TestSilencePlannerAvailability:
         assert ep.media_availability is not None
         assert ep.media_availability.state == MISSING and ep.media_availability.is_withheld()
 
+    def test_dead_media_recheck_retains_repair_flag(self):
+        """The lane must NOT clear a repair flag when it classifies an episode dead in-flight
+        (MEDIA_DEAD): the integrity block is audit-owned and a lane-side clear would not persist, so
+        the flat dead-cooldown gate — not flag-clearing — is what prevents every-run re-decode
+        (GH#795). This pins the removed lane-clear at the MEDIA_DEAD path itself."""
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
+
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.side_effect = MediaUnavailable("gone", code=MEDIA_DEAD)
+        ep = _make_episode(duration=3600)
+        set_timeline_audio_integrity(
+            ep,
+            {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]},
+        )
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            planner.plan(provider, _make_city(), ep, ctx, None)
+        assert ep.media_availability.is_withheld()
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+
 
 # ---------------------------------------------------------------------------
 # is_degenerate_served_duration
