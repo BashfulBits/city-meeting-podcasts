@@ -112,6 +112,7 @@ from citypods.progress import PROGRESS
 from citypods.records import (
     AUDIO_PIPELINE_VERSION,
     _in_backoff,
+    confirmed_dead_recheck_due,
     transcript_media_hash,
     transcript_timeout_backoff_until,
 )
@@ -882,13 +883,30 @@ class TimelineStage:
                     stats.reused += 1
                 return
 
-            if ep.materialize_error in _TIMELINE_BACKOFF_ERRORS and _in_backoff(
-                ep, datetime.now(UTC)
-            ):
-                with lock:
-                    reason = f"{ep.materialize_error}-backoff"
-                    stats.defer(reason, sample=f"{ep.uid or ep.guid}:{reason}")
-                return
+            now = datetime.now(UTC)
+
+            # A repair flag is a one-shot "recheck now": it bypasses *both* cooldowns below so a
+            # flagged episode is re-planned immediately and can recategorize (GH#795). Otherwise a
+            # confirmed-dead episode (empty/missing/invalid) polls on a flat cadence rather than the
+            # exponential #120 backoff — a recheck that stays dead just sleeps another full interval
+            # without re-downloading or escalating. ``suspected_empty`` is not confirmed-dead, so it
+            # falls through to the exponential backoff below and keeps its faster ramp.
+            if not force_replan:
+                availability = ep.media_availability
+                if (
+                    availability is not None
+                    and availability.is_confirmed_dead()
+                    and not confirmed_dead_recheck_due(ep, now)
+                ):
+                    with lock:
+                        stats.defer("dead-cooldown", sample=f"{ep.uid or ep.guid}:dead-cooldown")
+                    return
+
+                if ep.materialize_error in _TIMELINE_BACKOFF_ERRORS and _in_backoff(ep, now):
+                    with lock:
+                        reason = f"{ep.materialize_error}-backoff"
+                        stats.defer(reason, sample=f"{ep.uid or ep.guid}:{reason}")
+                    return
 
             # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
             # stop signal exactly like an encode — deferred to a later run, not an error.

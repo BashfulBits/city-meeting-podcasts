@@ -56,6 +56,13 @@ BACKOFF_MAX = timedelta(days=30)
 TRANSCRIPT_TIMEOUT_BACKOFF_BASE = timedelta(days=1)
 TRANSCRIPT_TIMEOUT_BACKOFF_MAX = timedelta(days=30)
 
+# Once an episode is *confirmed dead* (empty/missing/invalid) it is no longer "failing" — it is a
+# known-dead recording we poll occasionally in case the source is restored. Recheck it on a flat
+# cadence instead of the exponential #120 backoff, so a re-check that stays dead just sleeps another
+# full interval without escalating a cooldown or filing new findings (GH#795). ``suspected_empty``
+# stays on the exponential backoff so it can reach its second silent confirmation quickly.
+CONFIRMED_DEAD_RECHECK_INTERVAL = timedelta(days=30)
+
 # Audio shard planning uses recording seconds as its common cost proxy. A withheld recording still
 # reaches TimelineStage so it can recover, but it does not enter AudioStage; give that cheap recheck
 # a small non-zero cost without letting known-empty media dominate a shard. Unknown-duration
@@ -98,6 +105,28 @@ def _in_backoff(ep: Episode, now: datetime) -> bool:
         last = last.astimezone(UTC)
     delay = _capped_exponential_backoff(BACKOFF_BASE, BACKOFF_MAX, ep.materialize_attempts)
     return now < last + delay
+
+
+def confirmed_dead_recheck_due(ep: Episode, now: datetime) -> bool:
+    """True when a confirmed-dead episode is due for its periodic recheck.
+
+    Anchored on the availability verdict's ``last_check`` (stamped/refreshed every time the verdict
+    is recorded). A missing or unparseable anchor is treated as due, so a freshly-confirmed episode
+    rechecks once and then settles onto the flat cadence. Callers must gate on
+    ``media_availability.is_confirmed_dead()`` before consulting this."""
+    av = ep.media_availability
+    last_check = av.last_check if av is not None else None
+    if not last_check:
+        return True
+    try:
+        last = datetime.fromisoformat(last_check)
+    except ValueError:
+        return True
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=UTC)
+    else:
+        last = last.astimezone(UTC)
+    return now >= last + CONFIRMED_DEAD_RECHECK_INTERVAL
 
 
 def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:

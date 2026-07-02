@@ -8,7 +8,7 @@ Acceptance criteria:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -284,6 +284,94 @@ class TestTimelineStageNoPlanner:
         assert ep.timeline is None
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.reused == 1
+
+
+# ---------------------------------------------------------------------------
+# TimelineStage — confirmed-dead flat cadence + repair-flag one-shot recheck (GH#795)
+# ---------------------------------------------------------------------------
+
+
+class TestConfirmedDeadCadence:
+    """A confirmed-dead episode polls on a flat 30-day cadence; ``suspected_empty`` stays on the
+    exponential ramp; a repair flag forces an immediate recheck regardless of cooldown."""
+
+    @staticmethod
+    def _dead_ep(state, *, age_days: float):
+        from citypods.availability import MediaAvailability
+
+        ep = _ep()
+        last = (datetime.now(UTC) - timedelta(days=age_days)).isoformat()
+        ep.media_availability = MediaAvailability(state=state, last_check=last)
+        return ep
+
+    def test_confirmed_dead_within_window_defers_without_planning(self, tmp_path):
+        from citypods.availability import CONFIRMED_EMPTY
+
+        ep = self._dead_ep(CONFIRMED_EMPTY, age_days=1)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 0  # no download/decode
+        assert ep.timeline is None
+        assert stats.defer_reasons == {"dead-cooldown": 1}
+        assert stats.defer_samples == ["uid-g1:dead-cooldown"]
+
+    def test_confirmed_dead_past_window_replans(self, tmp_path):
+        from citypods.availability import MISSING
+
+        ep = self._dead_ep(MISSING, age_days=31)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1
+        assert stats.ran == 1
+
+    def test_suspected_empty_not_subject_to_flat_gate(self, tmp_path):
+        from citypods.availability import SUSPECTED_EMPTY
+
+        # A recent last_check would defer under the flat gate — but suspected_empty is not
+        # confirmed-dead, so it falls through and re-plans (its cadence is the exponential backoff).
+        ep = self._dead_ep(SUSPECTED_EMPTY, age_days=0)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1
+        assert stats.ran == 1
+
+    def test_repair_flag_bypasses_dead_cooldown(self, tmp_path):
+        from citypods.availability import CONFIRMED_EMPTY
+        from citypods.integrity import set_timeline_audio_integrity
+
+        ep = self._dead_ep(CONFIRMED_EMPTY, age_days=1)  # inside the flat window
+        set_timeline_audio_integrity(
+            ep, {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]}
+        )
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1  # one-shot recheck ran despite the cooldown
+        assert stats.ran == 1
+
+    def test_repair_flag_bypasses_exponential_backoff(self, tmp_path):
+        from citypods.integrity import set_timeline_audio_integrity
+
+        ep = _ep()
+        ep.materialize_attempts = 1
+        ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+        ep.materialize_error = "timeline-degenerate"
+        set_timeline_audio_integrity(
+            ep, {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]}
+        )
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1  # repair flag overrides the fresh backoff window
+        assert stats.ran == 1
 
 
 # ---------------------------------------------------------------------------

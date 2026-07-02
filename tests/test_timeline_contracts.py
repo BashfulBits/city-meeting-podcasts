@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 import pytest
 
 from citypods.audit import check_timeline_integrity
+from citypods.availability import CONFIRMED_EMPTY, MISSING, MediaAvailability
 from citypods.media import AudioDurationProbe
 from citypods.models import Episode
 from citypods.timeline import Segment, SourceMedia, Timeline
@@ -22,7 +23,7 @@ from citypods.timeline import Segment, SourceMedia, Timeline
 # ---------------------------------------------------------------------------
 
 
-def _ep(uid="uid-g1") -> Episode:
+def _ep(uid="uid-g1", media_availability=None) -> Episode:
     return Episode(
         guid="g1",
         uid=uid,
@@ -31,6 +32,7 @@ def _ep(uid="uid-g1") -> Episode:
         video_url="https://src/vid.mp4",
         media_kind="direct",
         duration=3600,
+        media_availability=media_availability,
     )
 
 
@@ -282,6 +284,52 @@ class TestDurationMismatch:
             }
         ]
         assert ep.integrity["timeline_audio"]["status"] == "rendered-duration-mismatch"
+
+    def test_withheld_media_is_terminal_no_finding(self):
+        # Same stale hosted/EDL mismatch as the control above (stream≪EDL), but the episode is
+        # withheld (silent/quarantined). Classification is forced to `media-withheld`: no finding,
+        # no repair, no integrity stamp — the availability lane owns the episode now (GH#795).
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_EMPTY))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=50.8,
+                stream_sample_duration=50.8,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+            mutate_integrity=True,
+        )
+
+        assert fs == []
+        assert diagnostics[0]["check"] == "media-withheld"
+        assert diagnostics[0]["repair"] == []
+        assert diagnostics[0]["repair_selected"] is False
+        assert diagnostics[0]["media_withheld"] is True
+        assert ep.integrity == {}  # withheld media is never stamped for repair
+
+    def test_withheld_media_suppresses_cheap_stored_field_check(self):
+        # With an inconclusive probe (no stream clock), a non-withheld episode would fall through to
+        # the cheap §3 stored-field check and file `timeline-duration-mismatch`. Withheld media must
+        # suppress that path too, so a quarantined episode files nothing (GH#795).
+        ep = _ep(media_availability=MediaAvailability(state=MISSING))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.audio_duration_served = 999.0  # diverges from the 3300s EDL — would trip §3 normally
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(probe_error="missing-audio-key"),
+        )
+
+        assert fs == []
 
     def test_subthreshold_stream_mismatch_is_telemetry_only(self):
         ep = _ep()

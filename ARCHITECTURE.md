@@ -156,6 +156,12 @@ total on `/admin/status`.
   page. Confirmation needs two independent successful silent fetches — a transport failure never
   confirms — and re-evaluation (detector version / source fingerprint / detect profile / operator
   override) is decoupled from `AUDIO_PIPELINE_VERSION`, so re-classifying never re-encodes (H16 PR3).
+  A **confirmed-dead** verdict (`confirmed_empty`/`missing`/`invalid`) polls on a flat 30-day cadence
+  (`records.confirmed_dead_recheck_due`) rather than the exponential #120 backoff, and the audit
+  treats withheld media as terminal for timeline-audio repair — no `rendered-duration-mismatch`
+  finding for a quarantined episode. A `timeline-replan` repair flag bypasses both cooldowns as a
+  one-shot recheck and self-clears once the episode recategorizes as withheld (GH#795,
+  [`review/20`](review/20-timeline-audio-integrity-repair.md)).
 - **Timeline served↔source EDL** — silence-trim/concat/intro/transcripts/clips all reduce to one
   served-vs-source time map (see [`review/08`](review/08-timeline-and-content-transforms.md)).
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.

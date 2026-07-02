@@ -324,6 +324,19 @@ def test_check_enclosures_no_resolve_files_as_before():
     assert "re-resolve" not in findings[0].message
 
 
+def test_check_enclosures_skips_withheld_media():
+    # A withheld episode is excluded from the feed, so a stale hosted URL must not file a
+    # dead-enclosure finding even when the HEAD comes back 4xx (GH#795).
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+
+    # Identical to test_check_enclosures_no_resolve_files_as_before (which files 1) except for the
+    # withheld verdict, so an empty result proves the skip rather than a missing enclosure URL.
+    ep = _ep(1, "g1", url="https://x/dead.mp4")
+    ep.media_availability = MediaAvailability(state=CONFIRMED_EMPTY)
+    findings = check_enclosures("s", [ep], lambda u: 404)
+    assert findings == []
+
+
 # ---------------------------------------------------------------------------
 # compute_archive_diff
 # ---------------------------------------------------------------------------
