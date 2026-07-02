@@ -224,8 +224,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not selected:
         print("no sources matched the given filters; nothing to scan")
+        if providers:
+            print(f"requested provider(s): {', '.join(sorted(providers))}")
         if sources:
             print(f"requested source(s): {', '.join(sorted(sources))}")
+        if providers or sources:
             print(f"available source count: {available_sources}")
         return 1
 
