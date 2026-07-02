@@ -208,3 +208,66 @@ def test_reset_materialize_backoff_filters_hosted_uid_and_error(tmp_path):
     recs = load_records(tmp_path, "gran-a")
     assert recs["target"]["audio"]["attempts"] == 0
     assert recs["other"]["audio"]["attempts"] == 2
+
+
+def test_describe_target_state_reports_not_in_backoff_uid(tmp_path):
+    save_records(
+        tmp_path,
+        "gran-a",
+        {
+            "target": _rec(
+                "target",
+                key="audio/k",
+                url="https://cdn/k",
+                attempts=0,
+                last=None,
+                error="timeline-degenerate",
+            )
+        },
+    )
+
+    assert rmb.describe_target_state(
+        tmp_path,
+        ["gran-a"],
+        uids={"target"},
+        errors={"timeline-degenerate"},
+        include_hosted=True,
+    ) == [
+        "  gran-a uid=target hosted=True attempts=0 last_attempt=None "
+        "error=timeline-degenerate reason=not-in-backoff"
+    ]
+
+
+def test_describe_target_state_reports_hosted_without_include_hosted(tmp_path):
+    save_records(
+        tmp_path,
+        "gran-a",
+        {
+            "target": _rec(
+                "target",
+                key="audio/k",
+                url="https://cdn/k",
+                attempts=2,
+                error="timeline-degenerate",
+            )
+        },
+    )
+
+    assert rmb.describe_target_state(
+        tmp_path,
+        ["gran-a"],
+        uids={"target"},
+        errors={"timeline-degenerate"},
+        include_hosted=False,
+    ) == [
+        "  gran-a uid=target hosted=True attempts=2 last_attempt=t "
+        "error=timeline-degenerate reason=hosted-without-include-hosted"
+    ]
+
+
+def test_describe_target_state_reports_missing_uid(tmp_path):
+    save_records(tmp_path, "gran-a", {"other": _rec("other", attempts=1, error="boom")})
+
+    assert rmb.describe_target_state(tmp_path, ["gran-a"], uids={"missing"}) == [
+        "  uid=missing missing from selected source records"
+    ]

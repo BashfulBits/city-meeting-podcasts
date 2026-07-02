@@ -169,6 +169,62 @@ def reset_materialize_backoff(
     return {"reset": reset_total, "touched_sources": touched, "per_source": per_source}
 
 
+def describe_target_state(
+    state_dir: Path,
+    source_keys: list[str],
+    *,
+    uids: set[str] | None = None,
+    errors: set[str] | None = None,
+    include_hosted: bool = False,
+    limit: int = 10,
+) -> list[str]:
+    """Human-readable record state for targeted no-op resets."""
+    if uids is None and errors is None:
+        return []
+
+    lines: list[str] = []
+    seen_uids: set[str] = set()
+    for key in source_keys:
+        records = load_records(state_dir, key)
+        for rec_key, rec in records.items():
+            if not isinstance(rec, dict):
+                continue
+            uid = _uid(rec, str(rec_key))
+            audio = rec.get("audio") or {}
+            error = str(audio.get("error") or "")
+            uid_match = uids is None or uid in uids
+            error_match = errors is None or error in errors
+            # If a UID was requested, report that record even when the error/backoff predicate
+            # missed. Without a UID, keep the diagnostic scoped to records matching the error.
+            if not uid_match or (uids is None and not error_match):
+                continue
+            seen_uids.add(uid)
+            reasons = []
+            if not include_hosted and _is_hosted(audio):
+                reasons.append("hosted-without-include-hosted")
+            if not _in_backoff(audio):
+                reasons.append("not-in-backoff")
+            if errors is not None and not error_match:
+                reasons.append("error-mismatch")
+            if not reasons:
+                reasons.append("matched-filter-but-not-reset")
+            lines.append(
+                "  "
+                f"{key} uid={uid} hosted={_is_hosted(audio)} "
+                f"attempts={int(audio.get('attempts') or 0)} "
+                f"last_attempt={audio.get('last_attempt') or 'None'} "
+                f"error={error or 'None'} "
+                f"reason={','.join(reasons)}"
+            )
+            if len(lines) >= limit:
+                return lines
+
+    if uids:
+        missing = sorted(uids - seen_uids)
+        lines.extend(f"  uid={uid} missing from selected source records" for uid in missing)
+    return lines[:limit]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -252,6 +308,14 @@ def main(argv: list[str] | None = None) -> int:
             + (f" for {'; '.join(filters)}" if filters else "")
             + " (nothing to reset)"
         )
+        for line in describe_target_state(
+            state_dir,
+            selected,
+            uids=uids,
+            errors=errors,
+            include_hosted=args.include_hosted,
+        ):
+            print(line)
         return 1
 
     hosted_label = "hosted or un-hosted" if args.include_hosted else "un-hosted"
