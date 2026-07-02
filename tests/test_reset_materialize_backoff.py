@@ -120,16 +120,26 @@ def test_select_sources_applies_provider_and_source_filters(tmp_path):
         save_records(tmp_path, sk, {"u": _rec("u", attempts=1)})
     s2p = {"gran-a": "granicus", "gran-b": "granicus", "swag-a": "swagit"}
 
-    assert rmb.select_sources(tmp_path, s2p, providers=None, sources=None) == [
+    selected, available_sources = rmb.select_sources(tmp_path, s2p, providers=None, sources=None)
+    assert selected == [
         "gran-a",
         "gran-b",
         "swag-a",
     ]
-    assert rmb.select_sources(tmp_path, s2p, providers={"granicus"}, sources=None) == [
+    assert available_sources == 3
+    selected, available_sources = rmb.select_sources(
+        tmp_path, s2p, providers={"granicus"}, sources=None
+    )
+    assert selected == [
         "gran-a",
         "gran-b",
     ]
-    assert rmb.select_sources(tmp_path, s2p, providers=None, sources={"swag-a"}) == ["swag-a"]
+    assert available_sources == 3
+    selected, available_sources = rmb.select_sources(
+        tmp_path, s2p, providers=None, sources={"swag-a"}
+    )
+    assert selected == ["swag-a"]
+    assert available_sources == 3
 
 
 def test_clean_filters_strips_workflow_input_whitespace():

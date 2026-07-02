@@ -124,8 +124,8 @@ def select_sources(
     *,
     providers: set[str] | None,
     sources: set[str] | None,
-) -> list[str]:
-    """The on-disk source keys to scan, after applying the ``--provider`` / ``--source`` filters."""
+) -> tuple[list[str], int]:
+    """Return selected on-disk sources and the total available source count."""
     on_disk = sorted(p.parent.name for p in Path(state_dir).glob("sources/*/episodes.json"))
     selected = []
     for key in on_disk:
@@ -134,7 +134,7 @@ def select_sources(
         if providers is not None and source_to_provider.get(key) not in providers:
             continue
         selected.append(key)
-    return selected
+    return selected, len(on_disk)
 
 
 def reset_materialize_backoff(
@@ -219,13 +219,14 @@ def main(argv: list[str] | None = None) -> int:
     sources = _clean_filters(args.source)
     uids = _clean_filters(args.uid)
     errors = _clean_filters(args.error)
-    selected = select_sources(state_dir, source_to_provider, providers=providers, sources=sources)
+    selected, available_sources = select_sources(
+        state_dir, source_to_provider, providers=providers, sources=sources
+    )
     if not selected:
         print("no sources matched the given filters; nothing to scan")
         if sources:
-            on_disk = sorted(p.parent.name for p in Path(state_dir).glob("sources/*/episodes.json"))
             print(f"requested source(s): {', '.join(sorted(sources))}")
-            print(f"available source count: {len(on_disk)}")
+            print(f"available source count: {available_sources}")
         return 1
 
     summary = reset_materialize_backoff(
