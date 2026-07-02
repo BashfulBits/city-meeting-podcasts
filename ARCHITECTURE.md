@@ -160,7 +160,7 @@ total on `/admin/status`.
   (`records.confirmed_dead_recheck_due`) rather than the exponential #120 backoff, and the audit
   treats withheld media as terminal for timeline-audio repair — no `rendered-duration-mismatch`
   finding for a quarantined episode. A `timeline-replan` repair flag bypasses both cooldowns as a
-  one-shot recheck and self-clears once the episode recategorizes as withheld (GH#795,
+  one-shot recheck and self-clears once the episode recategorizes as withheld/dead (GH#795,
   [`review/20`](review/20-timeline-audio-integrity-repair.md)).
 - **Timeline served↔source EDL** — silence-trim/concat/intro/transcripts/clips all reduce to one
   served-vs-source time map (see [`review/08`](review/08-timeline-and-content-transforms.md)).

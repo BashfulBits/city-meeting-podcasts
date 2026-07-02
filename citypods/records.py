@@ -91,18 +91,27 @@ def _capped_exponential_backoff(
     return min(cap, base * (2**exponent))
 
 
+def _parse_iso_utc(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 timestamp and normalize it to UTC, or ``None`` if absent/unparseable.
+
+    Shared by the backoff/recheck gates (``_in_backoff``, ``confirmed_dead_recheck_due``,
+    ``transcript_timeout_backoff_until``) so they cannot drift in how they read persisted times."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
 def _in_backoff(ep: Episode, now: datetime) -> bool:
     """True if ``ep`` failed recently enough to still be inside its materialization backoff."""
-    if ep.materialize_attempts <= 0 or not ep.materialize_last_attempt:
+    if ep.materialize_attempts <= 0:
         return False
-    try:
-        last = datetime.fromisoformat(ep.materialize_last_attempt)
-    except ValueError:
+    last = _parse_iso_utc(ep.materialize_last_attempt)
+    if last is None:
         return False
-    if last.tzinfo is None:
-        last = last.replace(tzinfo=UTC)
-    else:
-        last = last.astimezone(UTC)
     delay = _capped_exponential_backoff(BACKOFF_BASE, BACKOFF_MAX, ep.materialize_attempts)
     return now < last + delay
 
@@ -115,32 +124,19 @@ def confirmed_dead_recheck_due(ep: Episode, now: datetime) -> bool:
     rechecks once and then settles onto the flat cadence. Callers must gate on
     ``media_availability.is_confirmed_dead()`` before consulting this."""
     av = ep.media_availability
-    last_check = av.last_check if av is not None else None
-    if not last_check:
+    last = _parse_iso_utc(av.last_check if av is not None else None)
+    if last is None:
         return True
-    try:
-        last = datetime.fromisoformat(last_check)
-    except ValueError:
-        return True
-    if last.tzinfo is None:
-        last = last.replace(tzinfo=UTC)
-    else:
-        last = last.astimezone(UTC)
     return now >= last + CONFIRMED_DEAD_RECHECK_INTERVAL
 
 
 def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
     """When this episode's local-ASR timeout backoff expires, or ``None`` if not backing off."""
-    if ep.transcript_timeout_attempts <= 0 or not ep.transcript_timeout_last_attempt:
+    if ep.transcript_timeout_attempts <= 0:
         return None
-    try:
-        last = datetime.fromisoformat(ep.transcript_timeout_last_attempt)
-    except ValueError:
+    last = _parse_iso_utc(ep.transcript_timeout_last_attempt)
+    if last is None:
         return None
-    if last.tzinfo is None:
-        last = last.replace(tzinfo=UTC)
-    else:
-        last = last.astimezone(UTC)
     delay = _capped_exponential_backoff(
         TRANSCRIPT_TIMEOUT_BACKOFF_BASE,
         TRANSCRIPT_TIMEOUT_BACKOFF_MAX,
