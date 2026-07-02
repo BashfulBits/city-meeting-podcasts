@@ -175,6 +175,7 @@ def describe_target_state(
     *,
     uids: set[str] | None = None,
     errors: set[str] | None = None,
+    include_hosted: bool = False,
     limit: int = 10,
 ) -> list[str]:
     """Human-readable record state for targeted no-op resets."""
@@ -199,6 +200,8 @@ def describe_target_state(
                 continue
             seen_uids.add(uid)
             reasons = []
+            if not include_hosted and _is_hosted(audio):
+                reasons.append("hosted-without-include-hosted")
             if not _in_backoff(audio):
                 reasons.append("not-in-backoff")
             if errors is not None and not error_match:
@@ -305,7 +308,13 @@ def main(argv: list[str] | None = None) -> int:
             + (f" for {'; '.join(filters)}" if filters else "")
             + " (nothing to reset)"
         )
-        for line in describe_target_state(state_dir, selected, uids=uids, errors=errors):
+        for line in describe_target_state(
+            state_dir,
+            selected,
+            uids=uids,
+            errors=errors,
+            include_hosted=args.include_hosted,
+        ):
             print(line)
         return 1
 

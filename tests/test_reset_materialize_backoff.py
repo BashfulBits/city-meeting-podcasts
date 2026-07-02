@@ -231,9 +231,37 @@ def test_describe_target_state_reports_not_in_backoff_uid(tmp_path):
         ["gran-a"],
         uids={"target"},
         errors={"timeline-degenerate"},
+        include_hosted=True,
     ) == [
         "  gran-a uid=target hosted=True attempts=0 last_attempt=None "
         "error=timeline-degenerate reason=not-in-backoff"
+    ]
+
+
+def test_describe_target_state_reports_hosted_without_include_hosted(tmp_path):
+    save_records(
+        tmp_path,
+        "gran-a",
+        {
+            "target": _rec(
+                "target",
+                key="audio/k",
+                url="https://cdn/k",
+                attempts=2,
+                error="timeline-degenerate",
+            )
+        },
+    )
+
+    assert rmb.describe_target_state(
+        tmp_path,
+        ["gran-a"],
+        uids={"target"},
+        errors={"timeline-degenerate"},
+        include_hosted=False,
+    ) == [
+        "  gran-a uid=target hosted=True attempts=2 last_attempt=t "
+        "error=timeline-degenerate reason=hosted-without-include-hosted"
     ]
 
 
