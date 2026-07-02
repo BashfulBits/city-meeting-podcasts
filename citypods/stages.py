@@ -885,28 +885,39 @@ class TimelineStage:
 
             now = datetime.now(UTC)
 
-            # A repair flag is a one-shot "recheck now": it bypasses *both* cooldowns below so a
-            # flagged episode is re-planned immediately and can recategorize (GH#795). Otherwise a
-            # confirmed-dead episode (empty/missing/invalid) polls on a flat cadence rather than the
-            # exponential #120 backoff — a recheck that stays dead just sleeps another full interval
-            # without re-downloading or escalating. ``suspected_empty`` is not confirmed-dead, so it
-            # falls through to the exponential backoff below and keeps its faster ramp.
-            if not force_replan:
-                availability = ep.media_availability
-                if (
-                    availability is not None
-                    and availability.is_confirmed_dead()
-                    and not confirmed_dead_recheck_due(ep, now)
-                ):
-                    with lock:
-                        stats.defer("dead-cooldown", sample=f"{ep.uid or ep.guid}:dead-cooldown")
-                    return
+            # Confirmed-dead media (empty/missing/invalid) polls on a flat cadence, and this gate
+            # takes precedence over a repair flag. The integrity/repair block is audit-owned — the
+            # audio lane preserves it from remote on push (records.protected_blocks_for_lane), so a
+            # lane-side clear of the flag would not persist; if a repair flag could bypass this gate
+            # it would re-download + re-decode a quarantined episode on *every* run. The flat clock
+            # is anchored on the audio-lane-owned media_availability.last_check, so it is persistent
+            # and self-managing: when the recheck comes due the episode re-plans, refreshing
+            # last_check for another interval, and a genuinely recovered source is picked up then.
+            # ``suspected_empty`` is not confirmed-dead, so it keeps the exponential ramp below.
+            availability = ep.media_availability
+            if (
+                availability is not None
+                and availability.is_confirmed_dead()
+                and not confirmed_dead_recheck_due(ep, now)
+            ):
+                with lock:
+                    stats.defer("dead-cooldown", sample=f"{ep.uid or ep.guid}:dead-cooldown")
+                return
 
-                if ep.materialize_error in _TIMELINE_BACKOFF_ERRORS and _in_backoff(ep, now):
-                    with lock:
-                        reason = f"{ep.materialize_error}-backoff"
-                        stats.defer(reason, sample=f"{ep.uid or ep.guid}:{reason}")
-                    return
+            # A repair flag is a one-shot "recheck now" for transient failures / broken (non-dead)
+            # EDLs: it bypasses the exponential #120 backoff so a flagged episode re-plans
+            # immediately. Such flags are cleared by the post-repair audit once the episode is
+            # healthy (the audit owns the integrity block); a confirmed-dead episode is governed by
+            # the flat gate above, not here.
+            if (
+                not force_replan
+                and ep.materialize_error in _TIMELINE_BACKOFF_ERRORS
+                and _in_backoff(ep, now)
+            ):
+                with lock:
+                    reason = f"{ep.materialize_error}-backoff"
+                    stats.defer(reason, sample=f"{ep.uid or ep.guid}:{reason}")
+                return
 
             # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
             # stop signal exactly like an encode — deferred to a later run, not an error.
