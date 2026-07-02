@@ -84,6 +84,12 @@ def _uid(rec: dict, fallback: str) -> str:
     return str(rec.get("uid") or fallback)
 
 
+def _clean_filters(values: list[str], *, lower: bool = False) -> set[str] | None:
+    cleaned = {v.strip().lower() if lower else v.strip() for v in values}
+    cleaned.discard("")
+    return cleaned or None
+
+
 def reset_backoff(
     records: dict,
     *,
@@ -209,13 +215,17 @@ def main(argv: list[str] | None = None) -> int:
         pulled = pull_state(storage, state_dir)
         print(f"state: pulled {pulled} file(s) from durable storage")
 
-    providers = {p.lower() for p in args.provider} or None
-    sources = set(args.source) or None
-    uids = set(args.uid) or None
-    errors = set(args.error) or None
+    providers = _clean_filters(args.provider, lower=True)
+    sources = _clean_filters(args.source)
+    uids = _clean_filters(args.uid)
+    errors = _clean_filters(args.error)
     selected = select_sources(state_dir, source_to_provider, providers=providers, sources=sources)
     if not selected:
         print("no sources matched the given filters; nothing to scan")
+        if sources:
+            on_disk = sorted(p.parent.name for p in Path(state_dir).glob("sources/*/episodes.json"))
+            print(f"requested source(s): {', '.join(sorted(sources))}")
+            print(f"available source count: {len(on_disk)}")
         return 1
 
     summary = reset_materialize_backoff(

@@ -132,6 +132,11 @@ def test_select_sources_applies_provider_and_source_filters(tmp_path):
     assert rmb.select_sources(tmp_path, s2p, providers=None, sources={"swag-a"}) == ["swag-a"]
 
 
+def test_clean_filters_strips_workflow_input_whitespace():
+    assert rmb._clean_filters(["  ecc3710ac47f  ", ""]) == {"ecc3710ac47f"}
+    assert rmb._clean_filters(["  GRANICUS  "], lower=True) == {"granicus"}
+
+
 def test_reset_materialize_backoff_applies_and_persists(tmp_path):
     save_records(
         tmp_path,
