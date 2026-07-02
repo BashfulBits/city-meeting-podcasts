@@ -99,11 +99,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   anchored on the availability verdict's `last_check`) instead of the exponential #120 backoff — a
   recheck that stays dead just sleeps another full interval with no new cooldown escalation or ticket;
   `suspected_empty` keeps the exponential ramp so it can reach its second silent confirmation quickly.
-  A **repair flag is now a one-shot "recheck now"**: it bypasses *both* cooldowns in `TimelineStage`
-  so a flagged episode re-plans immediately, and once the recheck recategorizes it as withheld/dead
-  the lane clears the flag (`clear_timeline_audio_repair`) — no more manual backlog-clearing to
-  unstick quarantined episodes. Broken-EDL (non-withheld) repairs are unchanged: still cleared only
-  after a post-repair audit confirms `served ≈ EDL`.
+  A **repair flag bypasses the exponential #120 backoff** in `TimelineStage` so a flagged
+  transient/broken-EDL episode re-plans immediately (those flags clear via the post-repair audit,
+  which owns the integrity block). For **confirmed-dead** media the flat gate deliberately takes
+  precedence over the flag: the integrity/repair block is audit-owned and the audio lane preserves
+  it from remote on push, so a lane-side clear cannot persist — letting the flag bypass the flat gate
+  would re-download a quarantined episode every run. Anchoring the flat cadence on the
+  audio-lane-owned `media_availability.last_check` keeps it self-managing (recheck ≤ every 30 days)
+  without needing to clear the flag.
 - **Scoped state pushes no longer regress repaired timeline plans back to stale container-basis
   records.** `push_records_merged` already re-read remote state to preserve sibling artifact blocks,
   but timeline/source planning metadata lived in the unprotected whole-record body. A long-running

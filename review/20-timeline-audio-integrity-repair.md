@@ -151,13 +151,17 @@ unreachable/empty media:
   that stays dead just refreshes `last_check` and sleeps another interval — no escalation, no new
   ticket. `suspected_empty` is deliberately excluded so it keeps the exponential ramp and reaches its
   second silent confirmation quickly.
-- **Repair flag = one-shot "recheck now".** A `timeline-replan` flag bypasses *both* the exponential
-  timeline backoff and the flat confirmed-dead gate in `TimelineStage._plan_one`, so a flagged
-  episode re-plans immediately and can recategorize. When the recheck lands the episode in a
-  withheld/dead state, the lane clears the flag (`integrity.clear_timeline_audio_repair`) — removing
-  the manual backlog-clearing operators previously needed. Broken-EDL (non-withheld) repairs keep the
-  existing rule: cleared only after a post-repair audit confirms `served ≈ EDL`
-  (`clear_resolved_timeline_audio_integrity`).
+- **Repair flag bypasses only the exponential backoff; the flat gate wins for confirmed-dead.** A
+  `timeline-replan` flag bypasses the exponential `#120` timeline backoff in
+  `TimelineStage._plan_one`, so a flagged transient/broken-EDL episode re-plans immediately. It does
+  **not** bypass the flat confirmed-dead gate, because the integrity/repair block is audit-owned and
+  the audio lane preserves it from remote on push (`records.protected_blocks_for_lane`) — a lane-side
+  clear cannot persist, so if the flag bypassed the flat gate a quarantined episode would re-download
+  every run. The flat gate is anchored on the audio-lane-owned `media_availability.last_check`, so it
+  is self-managing (recheck ≤ every 30 days) without clearing the flag; a genuinely recovered source
+  is picked up at the next due recheck. Broken-EDL (non-withheld) repair flags are cleared by the
+  post-repair audit once it confirms `served ≈ EDL` (`clear_resolved_timeline_audio_integrity`) — the
+  audit owns the integrity block, so that clear persists.
 
 ## Problem
 

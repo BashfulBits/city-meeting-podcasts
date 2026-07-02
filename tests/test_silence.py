@@ -943,30 +943,10 @@ class TestProbeStreamSampleDuration:
         assert ep.timeline is None
         assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
         assert ep.materialize_error == "timeline-degenerate"
-        # The one-shot repair recheck decoded degenerate (withheld), so its flag is cleared and the
-        # episode settles onto the flat confirmed-dead cooldown, not force-replanning (GH#795).
-        assert not needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
-
-    def test_degenerate_repair_flag_kept_when_decode_is_playable(self):
-        """Split-by-state clearing: a repair-flagged episode that decodes *playable* keeps its
-        flag — only the post-repair audit (served≈EDL) may clear a broken-EDL repair (GH#795)."""
-        planner = SilencePlanner()
-        ctx = _make_ctx()
-        provider = MagicMock()
-        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
-        ep = _make_episode(duration=3600)
-        set_timeline_audio_integrity(
-            ep,
-            {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]},
-        )
-        with (
-            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences") as mock_detect,
-        ):
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, 3600.0)  # real audio → playable
-            planner.plan(provider, _make_city(), ep, ctx, None)
-
-        assert ep.media_availability is not None and not ep.media_availability.is_withheld()
+        # The repair flag is NOT cleared by the lane: the integrity block is audit-owned and a
+        # lane-side clear would not survive the scoped push (GH#795). A confirmed-dead episode is
+        # instead governed by the flat dead-cooldown gate in TimelineStage, which takes precedence
+        # over the flag, so the un-clearable flag never forces an every-run re-decode.
         assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
 
@@ -1040,9 +1020,11 @@ class TestSilencePlannerAvailability:
         assert ep.media_availability is not None
         assert ep.media_availability.state == MISSING and ep.media_availability.is_withheld()
 
-    def test_dead_media_repair_recheck_clears_flag(self):
-        """A repair-flagged episode that recategorizes as dead (unreachable) drops its flag so it
-        settles onto the flat confirmed-dead cooldown rather than force-replanning (GH#795)."""
+    def test_dead_media_recheck_retains_repair_flag(self):
+        """The lane must NOT clear a repair flag when it classifies an episode dead in-flight
+        (MEDIA_DEAD): the integrity block is audit-owned and a lane-side clear would not persist, so
+        the flat dead-cooldown gate — not flag-clearing — is what prevents every-run re-decode
+        (GH#795). This pins the removed lane-clear at the MEDIA_DEAD path itself."""
         from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
 
         planner = SilencePlanner()
@@ -1057,7 +1039,7 @@ class TestSilencePlannerAvailability:
         with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
             planner.plan(provider, _make_city(), ep, ctx, None)
         assert ep.media_availability.is_withheld()
-        assert not needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
 
 # ---------------------------------------------------------------------------

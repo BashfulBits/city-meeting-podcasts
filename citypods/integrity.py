@@ -131,24 +131,6 @@ def _write_cleared_timeline_audio_block(ep: Episode, block: dict, *, status: str
     ep.integrity = integrity
 
 
-def clear_timeline_audio_repair(ep: Episode) -> bool:
-    """Drop timeline-audio repair flags after a lane serviced a one-shot recheck that recategorized
-    the episode as withheld/dead (GH#795).
-
-    Unlike :func:`clear_resolved_timeline_audio_integrity` — which clears a broken-EDL flag only
-    once a post-repair audit confirms ``status == "ok"`` — this clears immediately because there is
-    nothing to re-verify: the episode is correctly quarantined and must not keep force-replanning.
-    Retains a ``media-withheld`` breadcrumb (with ``resolved_at``) rather than popping the block,
-    but removes ``repair`` + ``repair_tokens`` so :func:`timeline_audio_repair_actions` is empty.
-    Returns ``True`` if anything was removed.
-    """
-    block = timeline_audio_integrity(ep)
-    if "repair" not in block and "repair_tokens" not in block:
-        return False
-    _write_cleared_timeline_audio_block(ep, block, status="media-withheld")
-    return True
-
-
 def clear_resolved_timeline_audio_integrity(ep: Episode, status: str) -> bool:
     """Clear a prior repair flag after audit sees a healthy post-repair state."""
     if status != "ok" or not timeline_audio_integrity(ep):

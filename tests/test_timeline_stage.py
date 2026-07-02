@@ -341,7 +341,10 @@ class TestConfirmedDeadCadence:
         assert planner.calls == 1
         assert stats.ran == 1
 
-    def test_repair_flag_bypasses_dead_cooldown(self, tmp_path):
+    def test_repair_flag_does_not_bypass_dead_cooldown(self, tmp_path):
+        # The flat confirmed-dead gate takes precedence over a repair flag: the integrity block is
+        # audit-owned (the audio lane can't persist a clear), so if a flag bypassed this gate a
+        # quarantined episode would re-decode every run. It defers on dead-cooldown (GH#795).
         from citypods.availability import CONFIRMED_EMPTY
         from citypods.integrity import set_timeline_audio_integrity
 
@@ -353,8 +356,8 @@ class TestConfirmedDeadCadence:
         stats = TimelineStage(planners=[planner]).process(
             FakeProvider(), _city(), [ep], _ctx(tmp_path)
         )
-        assert planner.calls == 1  # one-shot recheck ran despite the cooldown
-        assert stats.ran == 1
+        assert planner.calls == 0  # no re-download; flat gate wins over the flag
+        assert stats.defer_reasons == {"dead-cooldown": 1}
 
     def test_repair_flag_bypasses_exponential_backoff(self, tmp_path):
         from citypods.integrity import set_timeline_audio_integrity
