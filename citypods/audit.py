@@ -493,6 +493,10 @@ def check_enclosures(
     findings: list[Finding] = []
     checked = 0
     for e in episodes:
+        # Withheld media (silent/quarantined or unreachable) is excluded from the feed, so a stale
+        # hosted URL left on the record must not file a `dead-enclosure` finding (GH#795).
+        if e.media_availability is not None and e.media_availability.is_withheld():
+            continue
         url = enclosure_url(e, "audio")
         if not url:
             continue
@@ -642,6 +646,12 @@ def _classify_timeline_audio_duration(
     ep: Episode,
     probe: AudioDurationProbe | None,
 ) -> tuple[str, str, list[str]]:
+    # Withheld media (silent/quarantined or unreachable) is terminal for timeline-audio repair:
+    # the stale hosted object no longer represents anything we will serve, so a stream-vs-EDL
+    # mismatch is expected and must not drive a repair finding (GH#795). The availability lane owns
+    # the episode's lifecycle from here; the audit only records the observation.
+    if ep.media_availability is not None and ep.media_availability.is_withheld():
+        return "media-withheld", WARN, []
     timeline_duration = _timeline_duration(ep)
     if timeline_duration is None:
         return "duration-probe-inconclusive", WARN, []
@@ -771,7 +781,12 @@ def _emit_timeline_audio_finding(
     *,
     min_delta: float,
 ) -> bool:
-    if status in {"ok", "container-duration-drift", "duration-probe-inconclusive"}:
+    if status in {
+        "ok",
+        "container-duration-drift",
+        "duration-probe-inconclusive",
+        "media-withheld",
+    }:
         return False
     if status == "rendered-duration-mismatch":
         delta = _diagnostic_delta(diag)
@@ -878,6 +893,12 @@ def check_timeline_integrity(
         # header-only one — otherwise a header probe that looked usable but got overridden by an
         # inconclusive full-probe reconciliation would suppress §3 without §3b having a usable
         # clock either, and a real stored-duration mismatch could vanish from both checks.
+        # Withheld media is terminal for timeline-audio repair (GH#795): the cheap header probe
+        # still runs for the diagnostic record, but classification is forced to `media-withheld`
+        # (no finding, no repair), the expensive full-download reconciliation is skipped (the stale
+        # object will be ignored either way), and the §3 stored-field checks below are suppressed so
+        # they cannot re-file the same EDL-vs-hosted-file mismatch under a different key.
+        withheld = bool(ep.media_availability and ep.media_availability.is_withheld())
         probe = probe_audio(ep) if probe_audio is not None else None
         status = severity = repair = None
         probe_divergence: float | None = None
@@ -888,7 +909,7 @@ def check_timeline_integrity(
             # re-measure it with a full download and let that (ground-truth) reading decide the
             # actual finding/repair — and separately alert if the two methods disagree, since
             # that means the header-only fast path's core assumption broke for this file.
-            if status != "ok" and probe_audio_full is not None:
+            if status != "ok" and not withheld and probe_audio_full is not None:
                 full_probe = probe_audio_full(ep)
                 if full_probe is not None:
                     if probe is not None:
@@ -921,7 +942,7 @@ def check_timeline_integrity(
         # if the probe is absent OR inconclusive (no stream_sample_duration), the cheap check still
         # runs so a real mismatch is not silently dropped.
         served_dur = ep.audio_duration_served
-        if served_dur is not None and not probe_has_stream:
+        if served_dur is not None and not probe_has_stream and not withheld:
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
             if delta > _FRAME_TOLERANCE:

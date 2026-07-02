@@ -89,6 +89,21 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Withheld/dead episodes no longer file noisy `rendered-duration-mismatch` tickets, and get a
+  flat ~30-day recheck lifecycle (GH#795).** Once an episode's media is withheld — silent/quarantined
+  (`confirmed_empty`) or unreachable (`missing`/`invalid`) — the stale hosted object no longer
+  represents anything served, so the timeline-audit now classifies it as terminal `media-withheld`:
+  no finding, no repair, no integrity stamp, and it skips both the full-download reconciliation and
+  the cheap stored-field duration checks (`check_enclosures` also skips withheld). Separately, a
+  **confirmed-dead** episode now polls on a **flat 30-day cadence** (`confirmed_dead_recheck_due`,
+  anchored on the availability verdict's `last_check`) instead of the exponential #120 backoff — a
+  recheck that stays dead just sleeps another full interval with no new cooldown escalation or ticket;
+  `suspected_empty` keeps the exponential ramp so it can reach its second silent confirmation quickly.
+  A **repair flag is now a one-shot "recheck now"**: it bypasses *both* cooldowns in `TimelineStage`
+  so a flagged episode re-plans immediately, and once the recheck recategorizes it as withheld/dead
+  the lane clears the flag (`clear_timeline_audio_repair`) — no more manual backlog-clearing to
+  unstick quarantined episodes. Broken-EDL (non-withheld) repairs are unchanged: still cleared only
+  after a post-repair audit confirms `served ≈ EDL`.
 - **Scoped state pushes no longer regress repaired timeline plans back to stale container-basis
   records.** `push_records_merged` already re-read remote state to preserve sibling artifact blocks,
   but timeline/source planning metadata lived in the unprotected whole-record body. A long-running

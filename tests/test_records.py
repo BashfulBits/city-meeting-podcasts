@@ -1248,3 +1248,29 @@ def test_legacy_manifest_carryover(tmp_path):
     assert seeded == 1
     assert ep.hosted_audio_url == "https://cdn/old.m4a"
     assert ep.audio_spec_hash == "legacy"  # reused, not re-encoded
+
+
+def test_confirmed_dead_recheck_due_flat_interval():
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+    from citypods.records import CONFIRMED_DEAD_RECHECK_INTERVAL, confirmed_dead_recheck_due
+
+    now = datetime.now(UTC)
+    ep = _ep("g1")
+
+    # Inside the flat window → not due (poll on the flat cadence, no re-download).
+    ep.media_availability = MediaAvailability(
+        state=CONFIRMED_EMPTY,
+        last_check=(now - CONFIRMED_DEAD_RECHECK_INTERVAL / 2).isoformat(),
+    )
+    assert not confirmed_dead_recheck_due(ep, now)
+
+    # Past the flat window → due for its one periodic recheck.
+    ep.media_availability = MediaAvailability(
+        state=CONFIRMED_EMPTY,
+        last_check=(now - CONFIRMED_DEAD_RECHECK_INTERVAL - timedelta(days=1)).isoformat(),
+    )
+    assert confirmed_dead_recheck_due(ep, now)
+
+    # No verdict / no anchor → treated as due so a freshly-confirmed episode rechecks once.
+    ep.media_availability = None
+    assert confirmed_dead_recheck_due(ep, now)

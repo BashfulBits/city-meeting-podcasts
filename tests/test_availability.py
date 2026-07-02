@@ -223,3 +223,19 @@ def test_confirm_then_recover_lifecycle_through_records_and_feed():
     ep.media_availability = classify(ep.media_availability, _playable(fp=fp))
     assert ep.media_availability.state == RECOVERED
     assert enclosure_url(ep, "video") == ep.video_url
+
+
+def test_is_confirmed_dead_covers_durable_states_not_suspected():
+    from citypods.availability import INVALID
+
+    assert MediaAvailability(state=CONFIRMED_EMPTY).is_confirmed_dead()
+    assert MediaAvailability(state=MISSING).is_confirmed_dead()
+    assert MediaAvailability(state=INVALID).is_confirmed_dead()
+    # suspected_empty is withheld but not yet confirmed dead → stays on the exponential ramp so it
+    # can reach its second silent confirmation quickly (GH#795).
+    suspected = MediaAvailability(state=SUSPECTED_EMPTY)
+    assert suspected.is_withheld() and not suspected.is_confirmed_dead()
+    assert not MediaAvailability(state=AVAILABLE).is_confirmed_dead()
+    # An operator override drives this gate like every other one.
+    overridden = MediaAvailability(state=CONFIRMED_EMPTY, operator_override=AVAILABLE)
+    assert not overridden.is_confirmed_dead()

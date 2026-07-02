@@ -128,6 +128,37 @@ production and drains over multiple runs under the stop budget:
    - **Pflugerville `missing-audio-key`** (`duration-probe-inconclusive`): the audio object is absent
      (never materialized or GC'd). Confirm whether the episode should re-materialize or is withheld.
 
+## Follow-up: withheld/dead episode lifecycle (GH#795)
+
+The GH#702 repair cohort drained to a single survivor — an Arlington episode the audio lane had
+already re-decoded, found near-totally silent, and moved to `confirmed_empty` (`media_withheld=true`).
+The audio lane was correct; the remaining defect was **audit-side**: `check_timeline_integrity`
+classified duration purely from stream/container-vs-EDL drift and never consulted
+`ep.media_availability.is_withheld()`, so the stale hosted object kept filing
+`rendered-duration-mismatch` and re-selecting repair on an episode that is already quarantined and
+excluded from both the feed and `AudioStage`. This resolved into a small lifecycle for
+unreachable/empty media:
+
+- **Withheld media is terminal for timeline-audio repair.** `_classify_timeline_audio_duration`
+  returns `("media-withheld", WARN, [])` when `is_withheld()`, before any mismatch classification.
+  The cheap header probe still runs (diagnostic record kept), but the full-download reconciliation
+  and the §3 cheap stored-field checks are skipped, `media-withheld` is a non-finding status, and no
+  `integrity.timeline_audio` block is stamped. `check_enclosures` likewise skips withheld episodes.
+- **Flat recheck cadence for confirmed-dead media.** A new `CONFIRMED_DEAD_STATES` subset
+  (`confirmed_empty`/`missing`/`invalid`) and `MediaAvailability.is_confirmed_dead()` gate a flat
+  `CONFIRMED_DEAD_RECHECK_INTERVAL` (30d) recheck in `TimelineStage` (`confirmed_dead_recheck_due`,
+  anchored on the verdict's `last_check`), independent of the exponential #120 backoff. A recheck
+  that stays dead just refreshes `last_check` and sleeps another interval — no escalation, no new
+  ticket. `suspected_empty` is deliberately excluded so it keeps the exponential ramp and reaches its
+  second silent confirmation quickly.
+- **Repair flag = one-shot "recheck now".** A `timeline-replan` flag bypasses *both* the exponential
+  timeline backoff and the flat confirmed-dead gate in `TimelineStage._plan_one`, so a flagged
+  episode re-plans immediately and can recategorize. When the recheck lands the episode in a
+  withheld/dead state, the lane clears the flag (`integrity.clear_timeline_audio_repair`) — removing
+  the manual backlog-clearing operators previously needed. Broken-EDL (non-withheld) repairs keep the
+  existing rule: cleared only after a post-repair audit confirms `served ≈ EDL`
+  (`clear_resolved_timeline_audio_integrity`).
+
 ## Problem
 
 Feed-health timeline findings currently compare the persisted EDL duration against

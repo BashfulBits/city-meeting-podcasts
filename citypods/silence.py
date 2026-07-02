@@ -28,7 +28,11 @@ from urllib.parse import urlparse
 
 from citypods.availability import is_effectively_silent
 from citypods.http import USER_AGENT, StopRequested
-from citypods.integrity import REPAIR_TIMELINE_REPLAN, needs_timeline_audio_repair
+from citypods.integrity import (
+    REPAIR_TIMELINE_REPLAN,
+    clear_timeline_audio_repair,
+    needs_timeline_audio_repair,
+)
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
 DEFER_CACHE_UNAVAILABLE = "deferred_cache_unavailable"
@@ -507,6 +511,10 @@ class SilencePlanner:
                 _stamp_availability(
                     ep, "missing", profile, reason="provider reports no usable media"
                 )
+                # A one-shot repair recheck that recategorizes as dead has done its job — drop the
+                # flag so the episode settles onto the flat confirmed-dead cooldown (GH#795).
+                if needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN):
+                    clear_timeline_audio_repair(ep)
             return None
         except (ProviderError, Exception):  # noqa: BLE001
             return None
@@ -642,6 +650,13 @@ class SilencePlanner:
                 f"kept_segments={len(tl.segments)}",
                 flush=True,
             )
+            # A one-shot repair recheck (force_replan) that still decodes degenerate has serviced
+            # the flag: the episode is (or just became) withheld, so drop the repair flag and let it
+            # settle onto the flat confirmed-dead cooldown instead of force-replanning every run
+            # (GH#795). A recovered/playable episode never reaches this branch; its post-repair
+            # audit verifies served≈EDL and clears the flag there.
+            if repair_selected and ep.media_availability and ep.media_availability.is_withheld():
+                clear_timeline_audio_repair(ep)
             if current is not None:
                 if repair_selected:
                     # The canary repair path has already proven the prior EDL is bad. Do not keep

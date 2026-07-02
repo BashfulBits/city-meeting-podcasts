@@ -10,7 +10,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from citypods.http import StopRequested
-from citypods.integrity import REPAIR_TIMELINE_REPLAN, set_timeline_audio_integrity
+from citypods.integrity import (
+    REPAIR_TIMELINE_REPLAN,
+    needs_timeline_audio_repair,
+    set_timeline_audio_integrity,
+)
 from citypods.silence import (
     SilencePlanner,
     _describe_media_locator,
@@ -939,6 +943,31 @@ class TestProbeStreamSampleDuration:
         assert ep.timeline is None
         assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
         assert ep.materialize_error == "timeline-degenerate"
+        # The one-shot repair recheck decoded degenerate (withheld), so its flag is cleared and the
+        # episode settles onto the flat confirmed-dead cooldown, not force-replanning (GH#795).
+        assert not needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+
+    def test_degenerate_repair_flag_kept_when_decode_is_playable(self):
+        """Split-by-state clearing: a repair-flagged episode that decodes *playable* keeps its
+        flag — only the post-repair audit (served≈EDL) may clear a broken-EDL repair (GH#795)."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        set_timeline_audio_integrity(
+            ep,
+            {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]},
+        )
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, 3600.0)  # real audio → playable
+            planner.plan(provider, _make_city(), ep, ctx, None)
+
+        assert ep.media_availability is not None and not ep.media_availability.is_withheld()
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
 
 class TestSilencePlannerAvailability:
@@ -1010,6 +1039,25 @@ class TestSilencePlannerAvailability:
             planner.plan(provider, _make_city(), ep, ctx, None)
         assert ep.media_availability is not None
         assert ep.media_availability.state == MISSING and ep.media_availability.is_withheld()
+
+    def test_dead_media_repair_recheck_clears_flag(self):
+        """A repair-flagged episode that recategorizes as dead (unreachable) drops its flag so it
+        settles onto the flat confirmed-dead cooldown rather than force-replanning (GH#795)."""
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
+
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.side_effect = MediaUnavailable("gone", code=MEDIA_DEAD)
+        ep = _make_episode(duration=3600)
+        set_timeline_audio_integrity(
+            ep,
+            {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]},
+        )
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            planner.plan(provider, _make_city(), ep, ctx, None)
+        assert ep.media_availability.is_withheld()
+        assert not needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
 
 # ---------------------------------------------------------------------------
