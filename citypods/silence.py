@@ -467,10 +467,21 @@ class SilencePlanner:
     ``version`` bumped 1->2 (audio workflow review, 2026-06) to re-examine episodes that may
     already carry a degenerate stamped timeline from before ``is_degenerate_served_duration``
     existed — a one-time full-catalog re-trim, bounded as always by the enrich wall-clock window.
+
+    ``version`` bumped 2->3 (GH#702 PR6) so every single-file silence EDL is re-planned against the
+    source *stream-sample* clock that ``plan`` now measures (PR2), eliminating the last
+    container-basis EDLs whose tail over-claimed the real audio. NOTE: ``Timeline.version`` is part
+    of ``timeline_digest`` (and therefore ``audio_spec_hash``), so this re-encodes **every**
+    single-file silence episode — not only the gap-affected cohort — and regenerates their
+    transcripts. That cost is intentional (a uniform, permanently-correct catalog) but large, so
+    this bump was held behind the review/20 runbook's GH#702 PR6 merge thresholds (cohort proven
+    clean, cost accepted, stragglers triaged) before landing. Bounding the re-encode to only gap
+    episodes is not possible without removing ``version`` from the digest, which would break the
+    version-bump-forces-re-encode contract and is out of scope here.
     """
 
     name = "silence"
-    version = "2"
+    version = "3"
 
     def plan(self, provider, city, ep, ctx, current: Timeline | None) -> Timeline | None:
         from citypods.providers.base import MEDIA_DEAD, MediaUnavailable, ProviderError

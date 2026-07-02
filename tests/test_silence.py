@@ -500,6 +500,12 @@ def _make_episode(media_kind="hls", duration=3600, sources=None, video_url="http
 
 
 class TestSilencePlanner:
+    def test_version_is_3(self):
+        # GH#702 PR6: bumped 2->3 to re-plan every single-file silence EDL onto the stream-sample
+        # clock. Bumping the version is a deliberate full-catalog re-trim/re-encode — keep this pin
+        # so the signature change is intentional, not accidental.
+        assert SilencePlanner.version == "3"
+
     def test_returns_none_when_disabled(self):
         planner = SilencePlanner()
         ctx = _make_ctx(trim_silence=False)

@@ -90,8 +90,39 @@ change that warrants separate review:
   for the rendered/container duration classification, separate from the 0.1s `_FRAME_TOLERANCE` used by
   structural checks, so the AAC-priming/sample-rounding band stops producing sub-finding
   `rendered-duration-mismatch` artifact noise. Plus this remediation runbook.
-- **GH#702 PR6 (gated, build-but-do-not-merge):** `silence:3` catalog version bump for the permanent
-  guarantee.
+- **GH#702 PR6 (#709, merged):** `silence:3` catalog version bump.
+  `SilencePlanner.version` 2→3 forces every single-file silence EDL to re-plan on the stream-sample clock
+  (PR2). Because `Timeline.version` is folded into `timeline_digest`/`audio_spec_hash`, this re-encodes
+  **the whole single-file silence catalog** and regenerates transcripts — not just the gap cohort. Merge
+  thresholds below (all confirmed satisfied before merge).
+
+### GH#702 PR6 (silence:3) merge thresholds
+
+Merged once **all** of these held:
+
+1. **PR2–PR5 are merged and have run in production** for at least one full audio cycle (the planner now
+   plans on the stream clock; served=probe; the OOM guard is live; the audit is de-noised). ✅ Confirmed
+   — PR2–PR5 were live across many audio/audit cycles before PR6 landed.
+2. **The cohort is proven clean.** The review/20 remediation runbook has been executed on the
+   over-threshold cohort and `scripts/compare_timeline_diagnostics.py --cohort <label>` shows the
+   selected rows returning with `stream_delta ≤ 0.5s`, `fixed` covering the cohort, and **no** `worsened`
+   or unexpected `missing-after`. ✅ Confirmed with stronger evidence than a cohort-scoped comparison
+   requires: a full-catalog `timeline-audio-integrity` audit (Feed health run #68, 2026-07-02) showed
+   **zero** `rendered-duration-mismatch` survivors catalog-wide — every episode the stream-sample planner
+   fix touches was already `ok` or resolved into the GH#795 `media-withheld` terminal state.
+3. **The full-re-encode cost is accepted and scheduled.** Bumping the version re-encodes every single-file
+   silence episode and regenerates transcripts, draining over multiple runs under the wall-clock stop
+   budget. Confirm there is operational headroom (provider rate limits, B2 storage/bandwidth, ASR
+   capacity) and, ideally, run it during a low-traffic window. There is no way to bound the re-encode to
+   only gap episodes without removing `version` from the digest (out of scope; would break the
+   version-bump-forces-re-encode contract). ✅ Accepted by the operator; drains under the existing stop
+   budget like any other catalog-wide planner version bump.
+4. **The two stragglers are triaged** (Dallas never-rematerialized; Pflugerville `missing-audio-key`) so
+   the post-bump audit can distinguish a genuinely-new regression from these known, separate audio-lane
+   issues. ✅ Both resolved independently by the time of the run #68 audit: Dallas's only non-`ok` rows
+   are ordinary `container-duration-drift` (no longer never-rematerialized), and Pflugerville's episode
+   resolved into the GH#795 `confirmed_empty`/`media-withheld` lifecycle rather than staying
+   `missing-audio-key`.
 
 ### GH#702 remediation runbook (operator steps)
 
