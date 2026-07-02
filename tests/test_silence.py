@@ -14,6 +14,7 @@ from citypods.integrity import REPAIR_TIMELINE_REPLAN, set_timeline_audio_integr
 from citypods.silence import (
     SilencePlanner,
     _describe_media_locator,
+    _local_file_snapshot,
     _parse_ffmpeg_decoded_end,
     _parse_ffmpeg_duration,
     _probe_stream_sample_duration,
@@ -78,6 +79,17 @@ class TestLoggingHelpers:
         assert _describe_media_locator("/tmp/citypods/source-cache/file.mka") == (
             "/tmp/citypods/source-cache/file.mka"
         )
+
+    def test_local_file_snapshot_reports_bytes(self, tmp_path):
+        path = tmp_path / "file.mka"
+        path.write_bytes(b"12345")
+        assert _local_file_snapshot(str(path)) == "path=file.mka bytes=5"
+
+    def test_local_file_snapshot_reports_unknown_on_oserror(self):
+        with patch("citypods.silence.Path.stat", side_effect=OSError):
+            assert _local_file_snapshot("/tmp/citypods/source-cache/file.mka") == (
+                "path=file.mka bytes=unknown"
+            )
 
     def test_silence_summary_reports_count_duration_and_samples(self):
         assert _silence_summary([(0.0, 4.0), (10.0, 11.5), (20.0, 22.0), (30.0, 31.0)]) == (

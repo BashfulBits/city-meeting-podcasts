@@ -77,6 +77,14 @@ def _silence_summary(silences: list[tuple[float, float]], *, limit: int = 3) -> 
     return f"count={len(silences)} total={total:.3f}s longest={longest:.3f}s spans={spans}"
 
 
+def _source_context(source_url: str, detect_url: str, silences: list[tuple[float, float]]) -> str:
+    return (
+        f"source={_describe_media_locator(source_url)} "
+        f"cache={_local_file_snapshot(detect_url)} "
+        f"silences={_silence_summary(silences)}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Pure helpers (no I/O)
 # ---------------------------------------------------------------------------
@@ -557,9 +565,7 @@ class SilencePlanner:
         if probed_duration is None:
             print(
                 f"[enrich] silence planner decode unavailable uid={ep.uid or ep.guid} "
-                f"source={_describe_media_locator(source_url)} "
-                f"cache={_local_file_snapshot(detect_url)} "
-                f"silences={_silence_summary(silences)}",
+                f"{_source_context(source_url, detect_url, silences)}",
                 flush=True,
             )
             _stamp_availability(ep, "transport_failed", profile)
@@ -622,31 +628,22 @@ class SilencePlanner:
                 f"{_container_duration:.3f}s" if _container_duration is not None else "None"
             )
             decoded_label = f"{decoded_duration:.3f}s" if decoded_duration is not None else "None"
+            repair_selected = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
             print(
                 f"[enrich] silence planner rejected degenerate timeline uid={ep.uid or ep.guid} "
                 f"served_total={served_total:.3f}s source_duration={source_duration:.1f}s "
-                "— likely a bad/truncated source probe, not a real near-total silence wipeout",
-                flush=True,
-            )
-            print(
-                f"[enrich] silence planner degenerate detail uid={ep.uid or ep.guid} "
-                f"source={_describe_media_locator(source_url)} "
-                f"cache={_local_file_snapshot(detect_url)} "
+                "— likely a bad/truncated source probe, not a real near-total silence wipeout; "
+                f"{_source_context(source_url, detect_url, silences)} "
                 f"current_timeline={current_version} "
                 f"existing_basis={existing_basis} "
-                f"repair_selected={needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)}",
-                flush=True,
-            )
-            print(
-                f"[enrich] silence planner degenerate metrics uid={ep.uid or ep.guid} "
+                f"repair_selected={repair_selected} "
                 f"container_duration={container_label} "
                 f"decoded_duration={decoded_label} "
-                f"kept_segments={len(tl.segments)} "
-                f"silences={_silence_summary(silences)}",
+                f"kept_segments={len(tl.segments)}",
                 flush=True,
             )
             if current is not None:
-                if needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN):
+                if repair_selected:
                     # The canary repair path has already proven the prior EDL is bad. Do not keep
                     # serving it as "current" when the fresh decoded plan is withheld as degenerate;
                     # let media availability/deferred state own the episode until it recovers.
