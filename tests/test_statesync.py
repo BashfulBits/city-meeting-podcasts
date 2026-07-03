@@ -6,6 +6,8 @@ import json
 import os
 import time
 
+import pytest
+
 from citypods.records import load_records, protected_blocks_for_lane, save_records
 from citypods.statesync import (
     STATE_PREFIX,
@@ -461,10 +463,11 @@ class _FlakyBucket(LocalStorage):
     B2 object that reproducibly failed with ``RetriesExceededError`` in build 452-455 (GH#455)."""
 
     flaky_key: str | None = None
+    flaky_error: type[BaseException] = _FlakyKeyError
 
     def get_file(self, key, local_path) -> bool:
         if key == self.flaky_key:
-            raise _FlakyKeyError("connection reset by peer")
+            raise self.flaky_error("connection reset by peer")
         return super().get_file(key, local_path)
 
 
@@ -487,6 +490,22 @@ def test_pull_state_skips_key_with_transient_download_error(tmp_path, monkeypatc
     assert (state_dir / "sources" / "good" / "episodes.json").exists()
     assert not (state_dir / "sources" / "bad" / "episodes.json").exists()
     assert any("bad" in w for w in warnings)
+
+
+def test_pull_state_propagates_non_transient_error(tmp_path, monkeypatch):
+    """Only the transient set is swallowed — a real (operator) error still surfaces, so a
+    regression that made ``pull_state`` catch everything wouldn't slip past this suite."""
+    from citypods.storage import s3 as s3_module
+
+    monkeypatch.setattr(s3_module, "transient_download_errors", lambda: (_FlakyKeyError,))
+
+    bucket = _FlakyBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    bucket.flaky_key = f"{STATE_PREFIX}/sources/bad/episodes.json"
+    bucket.flaky_error = RuntimeError
+    _seed_remote(bucket, "bad", {"u": {"uid": "u"}})
+
+    with pytest.raises(RuntimeError):
+        pull_state(bucket, tmp_path / "state")
 
 
 def test_reconcile_state_skips_cas_managed_budget(tmp_path):
