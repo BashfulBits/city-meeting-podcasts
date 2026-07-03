@@ -135,6 +135,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   planning metadata by timeline version and source duration basis, preserves the fresher remote
   planning fields when they are strictly better, and keeps the matching remote artifact blocks so stale
   local artifacts computed against the old EDL cannot be attached to the newer plan.
+- **A B2 connectivity blip on one `state/` key no longer fails the whole Build & Deploy run.**
+  `pull_state()` restores every object under `state/` from the durable bucket at build start;
+  `S3CompatibleStorage.get_file()` already retried transient connection errors in-process, but once
+  those retries were exhausted it re-raised, so a single key that kept timing out (Build & Deploy
+  runs #452-455 each failed on `boto3.exceptions.RetriesExceededError` inside `download_file`)
+  crashed the render-only deploy outright — even though render "must always finish so the deploy
+  isn't gated" and the bucket is meant to be a self-healing cache. `pull_state()` now catches the same
+  connectivity-level exceptions (`storage.s3.transient_download_errors()`, hoisted out of
+  `get_file()` so both call sites share one definition), logs a warning, and keeps whatever local copy
+  already exists for that key instead of aborting — the bucket resyncs it on a later run that can
+  reach it. A real (non-transient) error, e.g. a 403 from rotated/invalid credentials, still
+  propagates and fails the build loudly.
 
 ### Changed
 

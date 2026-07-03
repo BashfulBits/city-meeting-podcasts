@@ -452,6 +452,43 @@ def test_pull_state_skips_cas_managed_budget(tmp_path):
     assert restored == 1
 
 
+class _FlakyKeyError(Exception):
+    """Stand-in for a real backend's connectivity-level error (timeout, dropped connection)."""
+
+
+class _FlakyBucket(LocalStorage):
+    """A backend where one specific key raises on every ``get_file`` — simulating the Backblaze
+    B2 object that reproducibly failed with ``RetriesExceededError`` in build 452-455 (GH#455)."""
+
+    flaky_key: str | None = None
+
+    def get_file(self, key, local_path) -> bool:
+        if key == self.flaky_key:
+            raise _FlakyKeyError("connection reset by peer")
+        return super().get_file(key, local_path)
+
+
+def test_pull_state_skips_key_with_transient_download_error(tmp_path, monkeypatch):
+    from citypods.storage import s3 as s3_module
+
+    monkeypatch.setattr(s3_module, "transient_download_errors", lambda: (_FlakyKeyError,))
+
+    bucket = _FlakyBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    bucket.flaky_key = f"{STATE_PREFIX}/sources/bad/episodes.json"
+    _seed_remote(bucket, "bad", {"u": {"uid": "u"}})
+    _seed_remote(bucket, "good", {"u": {"uid": "u"}})
+
+    state_dir = tmp_path / "state"
+    warnings = []
+    restored = pull_state(bucket, state_dir, log=warnings.append)
+
+    # The flaky key is skipped (not raised through) and the rest of the snapshot still restores.
+    assert restored == 1
+    assert (state_dir / "sources" / "good" / "episodes.json").exists()
+    assert not (state_dir / "sources" / "bad" / "episodes.json").exists()
+    assert any("bad" in w for w in warnings)
+
+
 def test_reconcile_state_skips_cas_managed_budget(tmp_path):
     bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"

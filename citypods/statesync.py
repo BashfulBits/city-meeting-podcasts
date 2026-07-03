@@ -61,11 +61,23 @@ def _supported(storage) -> bool:
     return storage is not None and hasattr(storage, "get_file") and hasattr(storage, "list_objects")
 
 
-def pull_state(storage, state_dir: Path) -> int:
+def pull_state(storage, state_dir: Path, *, log=None) -> int:
     """Download the durable state snapshot from the bucket into ``state_dir`` (bucket wins).
-    Returns the number of files restored. No-op for backends without sync support."""
+    Returns the number of files restored. No-op for backends without sync support.
+
+    A single key that keeps failing with a connectivity-level error (timeout, dropped
+    connection — see ``storage.s3.transient_download_errors``) is logged and skipped rather
+    than aborting the whole restore: render "must always finish so the deploy isn't gated"
+    (citypods/run.py), and a skipped file just keeps its existing local copy — the bucket is
+    canonical, so it self-heals on the next run that can reach it. A non-transient error
+    (e.g. a real 403) still propagates; that is an operator problem, not a blip to paper over.
+    """
     if not _supported(storage):
         return 0
+    from citypods.storage.s3 import transient_download_errors
+
+    transient = transient_download_errors()
+    emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
     restored = 0
     for key, _ in storage.list_objects(f"{STATE_PREFIX}/"):
@@ -74,7 +86,12 @@ def pull_state(storage, state_dir: Path) -> int:
             continue
         if _is_cas_managed(storage, key):  # CAS-managed on R2; not part of the bulk snapshot
             continue
-        if storage.get_file(key, state_dir / rel):
+        try:
+            got = storage.get_file(key, state_dir / rel)
+        except transient as exc:
+            emit(f"state: WARNING transient error restoring {key} ({exc}); keeping local copy")
+            continue
+        if got:
             restored += 1
     return restored
 
