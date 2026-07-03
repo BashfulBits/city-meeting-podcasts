@@ -123,6 +123,21 @@ _GUIDANCE: dict[str, str] = {
         "records for a specific error signature, and check recent `audio.yml` run logs for "
         "this `source_key`."
     ),
+    "media-too-large": (
+        "**What this means:** the source-media size guard (issue #497) rejected this episode "
+        "before ffmpeg started — the source honestly advertised (via HEAD or a ranged GET) a "
+        "size over the configured `source_media_max_bytes` ceiling.\n\n"
+        "**Common causes:** a genuinely oversized/misencoded source (e.g. an accidental "
+        "high-bitrate or unusually long recording), a provider serving the wrong/full-length "
+        "asset for this episode, or the cap simply needs raising for a legitimately long "
+        "meeting.\n\n"
+        "**Resolution:** verify the meeting via the link in this finding (or the recorded `uid` if "
+        "no public link is on record). If it's a real, legitimate meeting, raise "
+        "`source_media_max_bytes` in `config/site_config.yml` (see the comment there for how the "
+        "current value was derived) and re-run. If it's a broken/mislabeled source, fix or "
+        "exclude it upstream — this finding will clear automatically once the episode is no "
+        "longer rejected."
+    ),
     "dead-enclosure": (
         "**What this means:** a sample of this feed's hosted-audio URLs returned 4xx/5xx.\n\n"
         "**Common causes:** a signed/presigned URL expired, the object was deleted from storage "

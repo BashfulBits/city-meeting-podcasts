@@ -129,8 +129,24 @@ defaults:
   # preserved; with no prior timeline the episode is stamped identity (untrimmed) instead.
   silence_min_served_seconds: 5.0
   silence_min_served_fraction: 0.02
-  audio_encode_timeout_minutes: 45       # hard cap per probe+encode; a stalled source can't pin a
-                                         # worker (which stop() can't preempt) past this. 0 = no cap.
+  # Hard cap per probe+encode; a stalled source can't pin a worker (which stop() can't preempt)
+  # past this. 0 = no cap. Recalibrated 2026-07-02 (issue #497) from 45min: a very conservative
+  # 12h longest-meeting ceiling (well above the asr_backstop_minutes=350min/5h50m the ASR pipeline
+  # already assumes, and a real production Audio run log floor of ~5.2h) at a conservative 20 Mbps
+  # floor throughput for the new 54 GB source_media_max_bytes cap below: 54e9*8/20e6 = 21,600s ≈
+  # 360min. The independent 120s stall detector (-rw_timeout) is the first line of defense for a
+  # truly hung connection; this is the backstop for a degraded-but-still-progressing one.
+  audio_encode_timeout_minutes: 360
+  # Media-specific size ceiling for direct ffmpeg source fetches (issue #497): ffmpeg reads media
+  # URLs directly via libavformat, bypassing every HTTP-layer byte cap (MAX_RESPONSE_BYTES is 64
+  # MiB, sized for feed/JSON/HTML, not hours of audio/video). Before ffmpeg starts, a HEAD/ranged-
+  # GET preflight refuses a source that *honestly discloses* a size over this cap; an unverifiable
+  # ("unknown") size is logged and allowed through, since nothing can enforce a cap ffmpeg itself
+  # doesn't respect. Calibrated from the same 12h duration ceiling as audio_encode_timeout_minutes
+  # above, at an assumed worst-case 10 Mbps source bitrate (providers serve video containers, not
+  # just the audio-only output this codebase can measure): 12h * 10 Mbps / 8 = 54,000,000,000
+  # bytes. 0/blank disables the guard. See DEFAULT_SOURCE_MEDIA_MAX_BYTES in citypods/media.py.
+  source_media_max_bytes: 54000000000
   audio_ffmpeg_threads: 1                # per-encode AAC threads; filter paths also pin
                                          # -filter_threads/-filter_complex_threads to this value.
                                          # Production enrich runs this as a one-core audio lane

@@ -16,6 +16,25 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Production media fetches now have a size ceiling before ffmpeg reads a remote source
+  (issue #497).** `citypods/media.py:_download_audio()` and the direct-remote render paths
+  (identity render, multi-source concat fallback) previously handed ffmpeg a remote URL with no
+  byte cap at all — `MAX_RESPONSE_BYTES` only ever covered feed/JSON/HTML fetches through
+  `requests`, not media bytes ffmpeg reads directly via libavformat. A new
+  `citypods.http.preflight_media_size()` issues a `HEAD` (falling back to a ranged `GET` for CDNs
+  that reject/ignore it) before any ffmpeg process starts; a source that honestly discloses a size
+  over the new `source_media_max_bytes` config ceiling raises `MediaSourceTooLargeError` and is
+  never retried by falling back to an unguarded direct stream — it lands in the normal
+  materialize-failure/backoff path instead. Unverifiable ("unknown") sizes are logged and allowed
+  through, since ffmpeg's own fetch can't be bounded after the fact. `audio_encode_timeout_minutes`
+  (the existing per-encode wall-clock cap) is recalibrated from 45 to 360 minutes and
+  `source_media_max_bytes` defaults to 54 GB, both derived from a conservative 12-hour
+  longest-meeting ceiling (see the comments in `config/site_config.yml` for the full derivation).
+  `scripts/probe_granicus_worker.py`'s production-encode check now inherits this same guard instead
+  of its own probe-only `--full-download-max-mib` cap. A new `citypods.audit.check_media_too_large`
+  feed-health check files one always-visible finding per rejection (never folded into aggregate
+  backoff noise), since this should be rare and each occurrence needs a human to verify the meeting
+  and decide whether the cap needs raising.
 - **Timeline/audio diagnostics probe MP4 headers instead of downloading whole episodes.** When
   `timeline_diagnostics=true`, `check_timeline_integrity` now defaults to a header-only probe that
   range-reads just an episode's `ftyp`/`moov` boxes (`StorageBackend.get_range`, implemented for

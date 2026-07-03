@@ -391,3 +391,10 @@ opens to submissions: https-only, per-provider host allowlists, private/loopback
 rejection, bounded redirects + response size, ffmpeg `-protocol_whitelist`, defusedxml parsing. See
 [SECURITY.md](SECURITY.md). **Any future LLM output is treated as untrusted** and must never overwrite
 official links, titles, dates, or transcript text.
+
+`MAX_RESPONSE_BYTES` only bounds fetches that go through `requests` (feeds/JSON/HTML) — ffmpeg reads
+media URLs directly via libavformat, bypassing that cap entirely. `citypods.http.preflight_media_size()`
+(issue #497) closes that gap with a `HEAD`/ranged-`GET` check against a separate, much larger
+`source_media_max_bytes` ceiling before any ffmpeg process starts; a source that honestly discloses an
+oversized total raises `MediaSourceTooLargeError` and is never retried unguarded. An unverifiable size is
+logged and allowed through — nothing can enforce a cap on bytes ffmpeg itself will fetch regardless.
