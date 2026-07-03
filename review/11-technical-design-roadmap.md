@@ -192,7 +192,10 @@ DerivedArtifact refactor · review/04 B3 stale-record bucket leak · review/04 R
 coordination → dedicated KV/DO fallback (trigger-gated — [`review/17`](17-state-store-backend-evaluation.md) §8)
 · 98 open code-quality/security findings from the full-repo CodeRabbit audit, triaged for fix-over-time
 — [`review/19`](19-coderabbit-findings-audit.md) · per-segment source caching for multi-source concat
-episodes (new, 2026-06-25 — see §5.5).
+episodes (new, 2026-06-25 — see §5.5) · 17 findings from a manual follow-up audit (CodeRabbit CLI
+unavailable in-session), triaged for fix-over-time, incl. an unguarded SSRF gap in the legacy Swagit
+concat duration-probe and two more presigned-URL-into-GitHub-issue leaks beyond CR-CP-03 —
+[`review/21`](21-manual-code-audit-2026-07.md).
 **Deleted:** #5 entities/NER.
 
 ---
