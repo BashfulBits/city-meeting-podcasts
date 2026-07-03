@@ -371,12 +371,18 @@ def preflight_media_size(
     discloses* an oversized total before any ffmpeg process starts (issue #497 Option A). Tries
     ``HEAD`` first (cheap, no body); falls back to a ``Range: bytes=0-0`` ``GET`` for the CDNs
     that reject/ignore HEAD. Both go through :func:`make_session`'s SSRF/host-allowlist gate, so a
-    bad URL is rejected here exactly as it would be for any other guarded fetch.
+    bad URL is rejected here exactly as it would be for any other guarded fetch — and that
+    rejection (``SecurityError``) propagates rather than being read as an inconclusive size: a
+    blocked/redirected-to-private-IP URL must never be treated as safe-to-hand-to-ffmpeg.
     """
     sess = session or make_session()
     try:
         resp = sess.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
-        total = _advertised_total_bytes(resp.headers)
+        # Only trust a response's declared size when it actually succeeded (2xx/206). A CDN that
+        # disallows HEAD or blocks the request can answer with a small error page instead of the
+        # real resource; reading its Content-Length would misreport an oversized source as
+        # "known_ok".
+        total = _advertised_total_bytes(resp.headers) if resp.ok else None
         if total is None:
             resp = sess.get(
                 url,
@@ -385,10 +391,15 @@ def preflight_media_size(
                 stream=True,
             )
             try:
-                total = _advertised_total_bytes(resp.headers)
+                total = _advertised_total_bytes(resp.headers) if resp.ok else None
             finally:
                 resp.close()
-    except (requests.RequestException, SecurityError):
+    except SecurityError:
+        # An SSRF/host-allowlist rejection is not an inconclusive size — it means this URL must
+        # not be fetched at all. Propagate so the caller aborts instead of treating it as
+        # "unknown, proceed" and handing the same URL to ffmpeg unguarded.
+        raise
+    except requests.RequestException:
         return MediaSizePreflight(status="unknown")
     if total is None:
         return MediaSizePreflight(status="unknown")

@@ -333,10 +333,18 @@ class TestGuardedAdapterHeadExemption:
 class TestPreflightMediaSize:
     """Issue #497: HEAD-then-ranged-GET-fallback size check ahead of a direct ffmpeg fetch."""
 
-    def _session(self, monkeypatch, head_headers=None, head_status=200, range_headers=None):
+    def _session(
+        self,
+        monkeypatch,
+        head_headers=None,
+        head_status=200,
+        range_headers=None,
+        range_status=206,
+        validate=lambda *a, **k: None,
+    ):
         from citypods import http as http_mod
 
-        monkeypatch.setattr(http_mod, "validate_source_url", lambda *a, **k: None)
+        monkeypatch.setattr(http_mod, "validate_source_url", validate)
 
         def _fake_response(status_code, headers):
             resp = requests.Response()
@@ -351,7 +359,7 @@ class TestPreflightMediaSize:
         def fake_send(self, request, **kwargs):
             if request.method == "HEAD":
                 return _fake_response(head_status, head_headers)
-            return _fake_response(206, range_headers)
+            return _fake_response(range_status, range_headers)
 
         monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
         return http_mod.make_session()
@@ -391,3 +399,48 @@ class TestPreflightMediaSize:
         )
         assert result.status == "unknown"
         assert result.content_length is None
+
+    def test_error_response_content_length_is_not_trusted(self, monkeypatch):
+        """CodeRabbit #800: a 403/404/5xx error page can carry its own small Content-Length —
+        that must never be read as the real resource's size (a HEAD-disallowing CDN answering
+        with a small error body would otherwise look "known_ok" for an actually huge source)."""
+        session = self._session(
+            monkeypatch,
+            head_status=403,
+            head_headers={"Content-Length": "50"},
+            range_status=403,
+            range_headers={"Content-Length": "50"},
+        )
+        result = preflight_media_size(
+            "https://archive-video.granicus.com/x.mp4", 2000, session=session
+        )
+        assert result.status == "unknown"
+        assert result.content_length is None
+
+    def test_error_head_falls_back_to_a_successful_ranged_get(self, monkeypatch):
+        """A HEAD that fails (ignored, so no size) can still resolve via a *successful* ranged
+        GET — only the error response's own headers are untrusted, not the whole preflight."""
+        session = self._session(
+            monkeypatch,
+            head_status=405,
+            head_headers={"Content-Length": "50"},
+            range_status=206,
+            range_headers={"Content-Range": "bytes 0-0/9999"},
+        )
+        result = preflight_media_size(
+            "https://archive-video.granicus.com/x.mp4", 2000, session=session
+        )
+        assert result.status == "known_too_large"
+        assert result.content_length == 9999
+
+    def test_security_error_propagates_instead_of_becoming_unknown(self, monkeypatch):
+        """CodeRabbit #800: an SSRF/host-allowlist rejection must abort the fetch, not be treated
+        as an inconclusive size that lets the caller proceed to hand the same URL to ffmpeg."""
+        from citypods.security import SecurityError
+
+        def _reject(*a, **k):
+            raise SecurityError("blocked: resolves to a private IP")
+
+        session = self._session(monkeypatch, validate=_reject)
+        with pytest.raises(SecurityError):
+            preflight_media_size("https://archive-video.granicus.com/x.mp4", 2000, session=session)
