@@ -16,6 +16,9 @@ the audit catches the next instance automatically instead of by manual investiga
                          all (keyless Swagit source with no usable page media, issue #120).
   * ``deferred-audio`` — one project-wide tracker of episodes parked in materialization backoff
                          (MEDIA_DEFERRED), so any recoverable backlog stays visible.
+  * ``media-too-large`` — the source-media size guard (issue #497) rejected an episode before
+                         ffmpeg started; rare by design, so each is its own visible finding
+                         rather than aggregate/backoff noise.
 
 The check functions are pure (no network) so they unit-test from fixtures; ``audit_city``
 does the one fetch and wires them together, taking injectable ``head`` / ``view_counts`` so
@@ -50,6 +53,7 @@ from citypods.integrity import (
 from citypods.media import AudioDurationProbe
 from citypods.models import City, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, ProviderError
+from citypods.security import MediaSourceTooLargeError
 from citypods.timeline import edl_duration, timeline_digest
 
 ERROR = "error"
@@ -380,6 +384,41 @@ def check_deferred_audio_aggregate(
         top = sorted(examples, key=lambda kv: kv[1], reverse=True)[:3]
         msg += " Most affected sources: " + ", ".join(f"{s} ({n})" for s, n in top) + "."
     return Finding("(all)", "deferred-audio", WARN, msg)
+
+
+def check_media_too_large(slug: str, records: dict) -> list[Finding]:
+    """One finding per episode the source-media size guard rejected (issue #497).
+
+    This should be rare by design (the cap is a very conservative multiple of the longest known
+    meeting), so unlike a transient network error it must never be silently swallowed into the
+    generic backoff/retry noise — each occurrence is filed as its own always-visible, human-
+    reviewed finding rather than folded into an aggregate count, and the feed-health reconciler
+    consolidates same-named findings across feeds into one issue (see ``scripts/audit_feeds.py``).
+    Reads the persisted record store, so it reflects every rejection regardless of whether the
+    episode is in this run's fetch window.
+    """
+    findings: list[Finding] = []
+    for uid, rec in records.items():
+        audio = rec.get("audio") or {}
+        if audio.get("error") != MediaSourceTooLargeError.code:
+            continue
+        title = rec.get("title") or uid
+        links = rec.get("links") or {}
+        link = links.get("canonical_video") or links.get("agenda")
+        ref = f" — {link}" if link else f" (uid={uid!r}; no public link on record for verification)"
+        findings.append(
+            Finding(
+                slug,
+                "media-too-large",
+                ERROR,
+                f"{title!r}{ref} was rejected before ffmpeg started: the source honestly "
+                "advertised a size over the configured `source_media_max_bytes` ceiling. Verify "
+                "whether this is a genuinely oversized/misencoded source or the cap needs "
+                "raising — see the comment on `source_media_max_bytes` in "
+                "`config/site_config.yml` for how it was derived.",
+            )
+        )
+    return findings
 
 
 _STALL_LOOK_BACK = 5  # examine this many recent runs
@@ -1359,6 +1398,7 @@ def audit_all(
     # source labels the prevalence examples.
     failures_by_source: dict[str, tuple[int, int]] = {}
     slug_by_source: dict[str, str] = {}
+    media_too_large_sources: set[str] = set()
     view_cap_contexts: dict[str, tuple[str, str]] = {}
     for city in cities:
         provider = get_provider(city.provider)
@@ -1381,6 +1421,11 @@ def audit_all(
         records = load_records(state_dir, src_key)
         failures_by_source.setdefault(src_key, count_audio_failures(records))
         slug_by_source.setdefault(src_key, city.slug)
+        # Per-body feeds share one record store (issue #120's dedup shape); only scan a given
+        # source once so a shared media-too-large rejection doesn't file once per body.
+        if src_key not in media_too_large_sources:
+            media_too_large_sources.add(src_key)
+            findings.extend(check_media_too_large(city.slug, records))
         findings.extend(
             audit_city(
                 city,

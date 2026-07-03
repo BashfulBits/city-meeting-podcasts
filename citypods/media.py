@@ -40,7 +40,13 @@ from pathlib import Path
 from typing import Protocol
 
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
-from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
+from citypods.http import (
+    HOST_LIMITER,
+    USER_AGENT,
+    StopRequested,
+    _redact_url,
+    preflight_media_size,
+)
 from citypods.integrity import REPAIR_AUDIO_REMATERIALIZE, needs_timeline_audio_repair
 from citypods.models import City, Episode
 from citypods.progress import PROGRESS
@@ -59,7 +65,12 @@ from citypods.resources import (
     current_snapshot,
     format_bytes,
 )
-from citypods.security import redact_subprocess_command, redact_subprocess_text
+from citypods.security import (
+    MediaSourceTooLargeError,
+    SecurityError,
+    redact_subprocess_command,
+    redact_subprocess_text,
+)
 from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, SourceMedia, Timeline, edl_duration, timeline_digest
 
@@ -87,6 +98,18 @@ _MIN_PLAUSIBLE_AUDIO_BYTES = 4096
 # subprocess ``timeout=`` is the hard backstop that guarantees the worker returns. Both surface as a
 # materialization failure → the #120 backoff, so a chronically-stalling source stops being retried.
 _STALL_TIMEOUT_US = 120_000_000  # ffmpeg aborts after 120s with zero I/O progress (microseconds)
+
+# Media-specific size ceiling (issue #497): ffmpeg reads source media URLs directly via
+# libavformat, bypassing every HTTP-layer byte cap in this codebase (``MAX_RESPONSE_BYTES`` is
+# sized for small feed/JSON/HTML responses, not hours of audio/video — see citypods/security.py).
+# Calibrated 2026-07-02 against the longest known/observed meeting class: the ASR pipeline already
+# assumes up to ``asr_backstop_minutes`` = 350min (5h50m), and a real production Audio run log
+# showed an episode whose 96kbps-capped output lower-bounds its served duration at ~5.2h. Given a
+# very conservative 12h duration ceiling (well above both) and an assumed worst-case 10 Mbps source
+# bitrate (providers serve video containers, not just the audio-only output this codebase can
+# measure): 12h * 10 Mbps / 8 = 54,000,000,000 bytes. Overridable via ``source_media_max_bytes`` in
+# site_config.yml; 0/blank disables the preflight guard entirely.
+DEFAULT_SOURCE_MEDIA_MAX_BYTES = 54_000_000_000
 _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
 # How often the guard wakes to poll the child + sample memory. Kept short so reported ``seconds``
 # reflects the child's *real* runtime: at 5s a fast/throttled fetch that exits in 0.3s was logged as
@@ -686,6 +709,7 @@ def _download_audio(
     log: Callable[[str], None] | None = print,
     transport_telemetry: ProviderTransportTelemetry | None = None,
     stop: Callable[[], bool] | None = None,
+    max_media_bytes: int | None = None,
 ) -> bool:
     """Copy the source audio stream from *url* to *dest* without re-encoding.
 
@@ -695,7 +719,27 @@ def _download_audio(
 
     The source cache uses a Matroska audio container so it can preserve common provider codecs
     (AAC, MP3, MP2, PCM, AC-3, etc.) without pretending they are already podcast-ready M4A files.
+
+    ``max_media_bytes`` (issue #497): before ffmpeg starts, preflight the source's advertised size
+    (HEAD, falling back to a ranged GET) and refuse a source that *honestly discloses* a size over
+    this ceiling — ffmpeg reads ``url`` directly via libavformat, bypassing every other byte cap in
+    this codebase, so this is the only guard on it. Raises :class:`MediaSourceTooLargeError`
+    (never returns False for this case) so the caller cannot silently fall back to streaming the
+    same oversized URL unguarded. Skipped for a truncated (``max_seconds``) probe fetch, which is
+    already bounded regardless of the source's real size.
     """
+    if max_media_bytes and not max_seconds:
+        preflight = preflight_media_size(url, max_media_bytes)
+        _log_ffmpeg_event(
+            log,
+            f"[enrich] media preflight {preflight.status} url={_redact_url(url)} "
+            f"content_length={preflight.content_length} cap={max_media_bytes}",
+        )
+        if preflight.status == "known_too_large":
+            raise MediaSourceTooLargeError(
+                f"source {_redact_url(url)} advertises {preflight.content_length} bytes, "
+                f"exceeds media cap {max_media_bytes}"
+            )
     cmd = [
         ffmpeg_binary,
         "-y",
@@ -734,6 +778,30 @@ def _download_audio(
         raise
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
         return False
+
+
+def _preflight_remote_source(url: str, max_media_bytes: int | None) -> None:
+    """Reject a remote source URL up front (issue #497) before a *direct* ffmpeg/ffprobe read.
+
+    ``_download_audio``'s preflight only covers the source-cache path. The identity/filter render
+    paths (:meth:`CommandFfmpeg._render_identity` / ``_render_filter``) invoke ffmpeg on a remote
+    URL directly whenever no local source-cache copy exists yet (dry-run, a failed/skipped cache
+    fetch, or a multi-source concat that fell back) — the exact "direct remote render path" #497
+    calls out as needing the same guard. No-op for a local (already-cached) path.
+    """
+    if not max_media_bytes or not url.startswith(("http://", "https://")):
+        return
+    preflight = preflight_media_size(url, max_media_bytes)
+    print(
+        f"[enrich] media preflight {preflight.status} url={_redact_url(url)} "
+        f"content_length={preflight.content_length} cap={max_media_bytes}",
+        flush=True,
+    )
+    if preflight.status == "known_too_large":
+        raise MediaSourceTooLargeError(
+            f"source {_redact_url(url)} advertises {preflight.content_length} bytes, "
+            f"exceeds media cap {max_media_bytes}"
+        )
 
 
 def _concat_local_sources(
@@ -821,6 +889,7 @@ class SourceCache:
         memory_floor_bytes: int | None = None,
         transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
+        max_media_bytes: int | None = None,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
         self._paths: dict[str, Path] = {}
@@ -830,6 +899,9 @@ class SourceCache:
         self.timeout_seconds = timeout_seconds
         self.memory_floor_bytes = memory_floor_bytes
         self.transport_telemetry = transport_telemetry
+        # Media-specific size ceiling (issue #497), separate from any HTTP response cap — see
+        # ``config.source_media_max_bytes``. None/0 disables the preflight guard.
+        self.max_media_bytes = max_media_bytes
         # Shared run-budget predicate (set once for the whole run); lets a caller queued behind
         # another thread's fetch of the same uid yield once the budget expires instead of waiting
         # out that fetch's full timeout.
@@ -876,6 +948,7 @@ class SourceCache:
                 self.memory_floor_bytes,
                 transport_telemetry=self.transport_telemetry,
                 stop=self._stop,
+                max_media_bytes=self.max_media_bytes,
             ):
                 self._paths[uid] = dest
                 return dest
@@ -1356,6 +1429,7 @@ class CommandFfmpeg:
         finalize_workers: int = 0,
         transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
+        max_media_bytes: int | None = None,
     ):
         self.binary = binary
         self.max_kbps = max_kbps
@@ -1369,6 +1443,9 @@ class CommandFfmpeg:
         self.phase_gate = phase_gate
         self.transport_telemetry = transport_telemetry
         self.manages_audio_phases = phase_gate is not None
+        # Media-specific size ceiling (issue #497) for remote sources this runner reads directly
+        # (the identity/filter render paths below, used when no source-cache copy exists yet).
+        self.max_media_bytes = max_media_bytes
         # Shared run-budget predicate; used for the pre-subprocess coordination waits (phase-gate
         # slot, per-host rate limit, distributed lease) so a queued encode yields once the run's
         # wall-clock budget expires instead of waiting out the queue. The ffmpeg subprocess call
@@ -1462,6 +1539,7 @@ class CommandFfmpeg:
         chapters: list[dict] | None = None,
     ) -> None:
         source_url = next(iter(sources_by_id.values()))
+        _preflight_remote_source(source_url, self.max_media_bytes)
         probe_timeout = (
             None if self.timeout_seconds is None else min(self.timeout_seconds, _PROBE_TIMEOUT_S)
         )
@@ -1565,6 +1643,12 @@ class CommandFfmpeg:
                 source_ids.append(seg.source_id)  # type: ignore[arg-type]
         if not source_ids:
             source_ids = [next(iter(sources_by_id))]
+
+        # Multi-source concat can fall back to streaming remote URLs directly (no source-cache
+        # copy) — same direct-remote-read gap as the identity path, so every source this render
+        # will actually read gets the same preflight (issue #497); no-op for cached local paths.
+        for sid in source_ids:
+            _preflight_remote_source(sources_by_id[sid], self.max_media_bytes)
 
         source_input_idx = {sid: i for i, sid in enumerate(source_ids)}
         next_idx = len(source_ids)
@@ -2842,7 +2926,14 @@ def materialize_audio(
             subprocess.CalledProcessError,
             OSError,
             ProviderError,
+            SecurityError,
         ) as exc:
+            # SecurityError here is specifically MediaSourceTooLargeError (issue #497): the source
+            # preflight rejected an honestly-oversized media URL before ffmpeg started. It must
+            # land in the same backoff path as any other encode error, never a silent retry with
+            # an unguarded direct stream — record_materialize_failure below + the "media-too-large"
+            # `.code` is what lets citypods.audit.check_media_too_large surface it as a visible,
+            # human-reviewed finding instead of generic retry noise.
             if isinstance(exc, TruncatedAudioError) and transport_telemetry is not None:
                 transport_telemetry.record_truncation(source_urls)
             if isinstance(exc, RateLimitedMediaFetchError):

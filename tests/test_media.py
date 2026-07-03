@@ -2528,6 +2528,97 @@ def test_source_cache_rate_limit_does_not_immediately_retry_direct_render(tmp_pa
     assert len(stats.errors) == 1
 
 
+def test_download_audio_raises_before_ffmpeg_when_preflight_reports_too_large(monkeypatch):
+    """Issue #497: a source-cache fetch must reject an honestly-oversized source before ffmpeg
+    ever starts, and must not be swallowed into a plain ``return False`` (which callers treat as
+    "fall back to streaming the URL directly" — exactly what the guard must prevent)."""
+    import citypods.media as media
+    from citypods.http import MediaSizePreflight
+    from citypods.security import MediaSourceTooLargeError
+
+    monkeypatch.setattr(
+        media,
+        "preflight_media_size",
+        lambda url, max_bytes, **kw: MediaSizePreflight(
+            status="known_too_large", content_length=max_bytes + 1
+        ),
+    )
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+
+    with pytest.raises(MediaSourceTooLargeError):
+        media._download_audio(
+            "https://archive-video.granicus.com/x.mp4",
+            Path("/tmp/nope.mka"),
+            max_media_bytes=100,
+        )
+    assert cmds == []  # ffmpeg must never be invoked for a rejected source
+
+
+@pytest.mark.parametrize("status", ["known_ok", "unknown"])
+def test_download_audio_proceeds_when_preflight_does_not_reject(monkeypatch, status):
+    import citypods.media as media
+    from citypods.http import MediaSizePreflight
+
+    monkeypatch.setattr(
+        media,
+        "preflight_media_size",
+        lambda url, max_bytes, **kw: MediaSizePreflight(status=status, content_length=10),
+    )
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+
+    media._download_audio(
+        "https://archive-video.granicus.com/x.mp4", Path("/tmp/nope.mka"), max_media_bytes=100
+    )
+    assert len(cmds) == 1
+
+
+def test_download_audio_skips_preflight_for_truncated_probe_fetch(monkeypatch):
+    """A ``max_seconds``-truncated fetch (the live contract check) is already bounded regardless
+    of the source's real size, so it shouldn't pay for (or be rejected by) a preflight."""
+    import citypods.media as media
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        media, "preflight_media_size", lambda *a, **k: calls.append("called") or None
+    )
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: None)
+
+    media._download_audio(
+        "https://x/y.mp4", Path("/tmp/nope.mka"), max_seconds=3, max_media_bytes=100
+    )
+    assert calls == []
+
+
+def test_source_cache_media_too_large_does_not_fall_back_to_direct_render(tmp_path):
+    """Issue #497 acceptance criterion: a guard-triggered rejection must not silently fall back to
+    an unguarded direct ffmpeg stream of the same oversized URL."""
+    from citypods.security import MediaSourceTooLargeError
+
+    class _TooLargeCache:
+        def get_or_fetch(self, uid, url):
+            raise MediaSourceTooLargeError(f"source {url} advertises 999 bytes, exceeds cap 100")
+
+    ep = _ep("g1", kind="direct", url="https://archive-video.granicus.com/x.mp4")
+    city = _city(extract_audio=True)
+    ff = FakeFfmpeg()
+
+    stats = materialize_audio(
+        city,
+        [ep],
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        source_cache=_TooLargeCache(),
+    )
+
+    assert ff.calls == []  # no unguarded direct-stream fallback
+    assert ep.materialize_error == "media-too-large"
+    assert len(stats.errors) == 1
+
+
 def test_probe_audio_bitrate_sends_browser_user_agent(monkeypatch):
     import citypods.media as media
     from citypods.http import USER_AGENT

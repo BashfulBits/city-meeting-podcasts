@@ -15,8 +15,10 @@ tenant (the cause of the Granicus/Swagit ``403`` + truncated-fetch storm under H
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import requests
@@ -277,7 +279,23 @@ class GuardedHTTPAdapter(HTTPAdapter):
         with HOST_LIMITER.slot(request.url):
             response = super().send(request, **kwargs)
         length = response.headers.get("Content-Length")
-        if length is not None and length.isdigit() and int(length) > MAX_RESPONSE_BYTES:
+        # Only fast-fail on the declared size when a body might actually get auto-buffered into
+        # ``.content`` below — the case this cap exists to protect (see class docstring). Two
+        # exemptions:
+        #  * HEAD never has a body, regardless of the ``stream`` kwarg — the header only
+        #    describes what a GET *would* return, so there's nothing here to buffer.
+        #  * A caller that explicitly asked to stream (e.g. a Range preflight that reads no body
+        #    at all — ``citypods.http.preflight_media_size``) takes responsibility for its own
+        #    bytes; the incremental ``_CappedRaw`` wrapper below still bounds it if it *does* read.
+        # Before this, a plain HEAD on a legitimately large media URL (which has no body to buffer)
+        # tripped this the same as an oversized buffered GET.
+        if (
+            getattr(request, "method", None) != "HEAD"
+            and not stream_requested
+            and length is not None
+            and length.isdigit()
+            and int(length) > MAX_RESPONSE_BYTES
+        ):
             response.close()
             raise SecurityError(
                 f"response from {_redact_url(request.url)} is {length} bytes, "
@@ -307,3 +325,73 @@ def make_session() -> requests.Session:
     session.mount("https://", adapter)
     session.mount("http://", adapter)  # guarded too: rejected at send (https-only)
     return session
+
+
+_CONTENT_RANGE_TOTAL_RE = re.compile(r"bytes\s+\d+-\d+/(\d+)")
+
+
+def _advertised_total_bytes(headers: Mapping[str, str]) -> int | None:
+    """Total size a response's headers claim, from ``Content-Range`` (a ranged request's real
+    total, e.g. ``bytes 0-0/123456``) or else ``Content-Length`` (a HEAD, or a GET the server
+    chose not to range). Returns ``None`` when neither is present/parseable — some providers omit
+    both or use chunked transfer, which this preflight cannot see through."""
+    content_range = headers.get("Content-Range")
+    if content_range:
+        m = _CONTENT_RANGE_TOTAL_RE.search(content_range)
+        if m:
+            return int(m.group(1))
+    length = headers.get("Content-Length")
+    if length is not None and length.isdigit():
+        return int(length)
+    return None
+
+
+@dataclass(frozen=True)
+class MediaSizePreflight:
+    """Result of :func:`preflight_media_size`.
+
+    ``status`` is one of ``"known_ok"``, ``"known_too_large"``, or ``"unknown"`` — three outcomes
+    on purpose (issue #497): a source can honestly disclose a safe size, honestly disclose an
+    oversized one, or disclose nothing verifiable (no HEAD support, range ignored, chunked
+    transfer, or a server that simply lies). Only the middle case can be rejected before ffmpeg
+    ever starts; ``unknown`` is a policy choice for the caller, not a measurement.
+    """
+
+    status: str
+    content_length: int | None = None
+
+
+def preflight_media_size(
+    url: str, max_bytes: int, *, session: requests.Session | None = None
+) -> MediaSizePreflight:
+    """Best-effort check of a remote media URL's advertised size before handing it to ffmpeg.
+
+    ffmpeg reads media URLs directly via libavformat — never through this session — so nothing
+    here can enforce a byte cap on the eventual fetch; it only refuses a source that *honestly
+    discloses* an oversized total before any ffmpeg process starts (issue #497 Option A). Tries
+    ``HEAD`` first (cheap, no body); falls back to a ``Range: bytes=0-0`` ``GET`` for the CDNs
+    that reject/ignore HEAD. Both go through :func:`make_session`'s SSRF/host-allowlist gate, so a
+    bad URL is rejected here exactly as it would be for any other guarded fetch.
+    """
+    sess = session or make_session()
+    try:
+        resp = sess.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
+        total = _advertised_total_bytes(resp.headers)
+        if total is None:
+            resp = sess.get(
+                url,
+                timeout=DEFAULT_TIMEOUT,
+                headers={"Range": "bytes=0-0"},
+                stream=True,
+            )
+            try:
+                total = _advertised_total_bytes(resp.headers)
+            finally:
+                resp.close()
+    except (requests.RequestException, SecurityError):
+        return MediaSizePreflight(status="unknown")
+    if total is None:
+        return MediaSizePreflight(status="unknown")
+    if total > max_bytes:
+        return MediaSizePreflight(status="known_too_large", content_length=total)
+    return MediaSizePreflight(status="known_ok", content_length=total)
