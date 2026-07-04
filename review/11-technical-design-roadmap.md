@@ -195,7 +195,12 @@ coordination → dedicated KV/DO fallback (trigger-gated — [`review/17`](17-st
 episodes (new, 2026-06-25 — see §5.5) · 17 findings from a manual follow-up audit (CodeRabbit CLI
 unavailable in-session), triaged for fix-over-time, incl. an unguarded SSRF gap in the legacy Swagit
 concat duration-probe and two more presigned-URL-into-GitHub-issue leaks beyond CR-CP-03 —
-[`review/21`](21-manual-code-audit-2026-07.md).
+[`review/21`](21-manual-code-audit-2026-07.md) · 100 open findings from a second full-repo CodeRabbit
+CLI sweep (2026-07-04), triaged for fix-over-time and cross-linked against both prior audits, incl.
+two still-unmitigated **critical** GitHub Actions bugs (a `UID`-named env var shadowed by bash's own
+readonly builtin, breaking `reset-backoff.yml`'s `--uid` filter; unsanitized `${{ inputs.run_id }}`
+shell interpolation in `clear-materialization.yml`) and a real gap in the core SSRF blocklist (RFC
+6598 shared address space not blocked) — [`review/23`](23-coderabbit-findings-audit-followup.md).
 **Deleted:** #5 entities/NER.
 
 ---
