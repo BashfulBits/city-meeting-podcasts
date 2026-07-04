@@ -29,6 +29,35 @@ class CASConflict(Exception):
         self.key = key
 
 
+def transient_download_errors() -> tuple[type[BaseException], ...]:
+    """Connectivity-level exceptions a ``get_file`` download can exhaust its retries on —
+    timeouts, dropped connections, DNS/routing blips. Deliberately excludes ``ClientError``
+    (e.g. 403 ``AccessDenied``): those signal a real credentials/permissions problem an
+    operator needs to see, not a blip worth papering over.
+
+    Returns an empty tuple if boto3 isn't installed (no S3 backend, so these can't occur) —
+    lets callers outside this module (e.g. ``statesync.pull_state``) build an ``except``
+    tuple without a hard dependency on the optional ``storage`` extra.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import (
+            ConnectionClosedError,
+            EndpointConnectionError,
+            ReadTimeoutError,
+        )
+        from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
+    except ImportError:
+        return ()
+    return (
+        boto3.exceptions.RetriesExceededError,
+        TransferRetriesExceededError,
+        EndpointConnectionError,
+        ReadTimeoutError,
+        ConnectionClosedError,
+    )
+
+
 class S3CompatibleStorage:
     def __init__(
         self,
@@ -139,24 +168,11 @@ class S3CompatibleStorage:
         return self.public_url(key), resp["ETag"]
 
     def get_file(self, key: str, local_path: Path) -> bool:
-        import boto3
-        from botocore.exceptions import (
-            ClientError,
-            ConnectionClosedError,
-            EndpointConnectionError,
-            ReadTimeoutError,
-        )
-        from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
+        from botocore.exceptions import ClientError
 
         local_path = Path(local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        transient_errors = (
-            boto3.exceptions.RetriesExceededError,
-            TransferRetriesExceededError,
-            EndpointConnectionError,
-            ReadTimeoutError,
-            ConnectionClosedError,
-        )
+        transient_errors = transient_download_errors()
         for attempt in range(3):
             try:
                 self._client.download_file(self.bucket, key, str(local_path))
