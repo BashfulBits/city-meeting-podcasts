@@ -139,7 +139,7 @@ and every other source-local record adopts that single CAS pointer (GH#421).
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
 | **Orchestration** | `run.py` — `SourcePipeline`, `build()`, the **global two-pass enrich queue** (`_run_enrich_global_queue`: newest-everywhere-first on-runner audio + decoupled transcript), run history, graceful yield, resource-guard wiring. `resources.py` — process resource snapshots + memory/load admission guard for expensive native work. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
 | **State** | `state.py` (build fingerprint), `statesync.py` (bucket↔local; bucket is truth), `storage/{base,local,s3}.py` (`S3CompatibleStorage` b2/r2 presets + local). |
-| **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status` (including provider-transcript rollout slices for fetch, align, diarize, confidence, rollback history, and recovery guidance); `validate.py` feed validation. |
+| **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status` (including provider-transcript rollout slices for fetch, align, diarize, confidence, rollback history, and recovery guidance); `validate.py` feed validation. `report._classify_record` assigns each episode one **mutually-exclusive state** — `served` / `stale` (hosted; `stale` = the current recipe would re-encode it, computed by recomputing `audio_spec_hash` per record, "legacy" treated as current) / `linked_video` (direct MP4, config says don't host) / `deferred` / `dead` / `transient_error` (in #120 backoff) / `pending` — which drives the dashboard taxonomy, `gb_exact` (false when any hosted record predates `audio.bytes`), and the archive-cap cost slider (#124). |
 
 Scoped workflow telemetry is append-only under `state/run_events/`. Sibling matrix events sharing
 `GITHUB_RUN_ID` + phase + lane form one logical run; status/projection aggregates them only after every
@@ -236,7 +236,10 @@ total on `/admin/status`.
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
   provider calls), `audit.yml` (daily feed-health → GitHub issues), `contracts.yml` (weekly live endpoint
-  contracts), `asr-bench.yml` (manual ASR benchmark).
+  contracts), `asr-bench.yml` (manual ASR benchmark), `audio-gc.yml` (weekly **dry-run** orphan-audio
+  report — restores bucket state via `gc_audio.py --pull-state`, opens/updates one rolling
+  `operations` issue with a per-city reclaimable table + `orphans.tsv` artifact; deletion only via
+  manual dispatch with `apply=true`, which also requires `main` — it never deletes on schedule).
 - **Tests** run fully offline against recorded fixtures; feeds have byte-for-byte snapshot tests.
 
 ## Provider notes & gotchas
@@ -246,11 +249,19 @@ Hard-won facts that bite anyone adding/debugging providers:
 - **Granicus RSS is hard-capped at 100 items per view.** Cities split bodies across multiple views, so
   a single feed can be incomplete — use `source.feed_urls` (merged + deduped by guid) to combine views,
   and the feed-health `view-cap` check flags any view sitting at exactly 100.
+- **Granicus HEAD responses carry no `ETag`/`Last-Modified`**, so `detect_change`'s cheap probe never
+  short-circuits — change detection for Granicus always falls through to the content-hash path
+  (`granicus.py:detect_change`; the incremental-build content hash in `state.py` is what actually
+  skips unchanged cities).
 - **Swagit serves a "Carmel, IN" placeholder page for unknown subdomains** — a false-positive trap when
   probing/discovering. Cross-check the returned locality against the requested city before trusting it.
-- **Swagit `/videos/{id}/download` is broken for older meetings** (returns a keyless presigned S3 URL
-  that 403s); the real media for old meetings is the per-segment files on the video page. Newer meetings
-  are fine. See `.claude` history / `swagit.py`.
+- **Swagit `/videos/{id}/download` is broken for older meetings.** The 302 presigns only the bucket
+  *prefix* — no object key — so ffmpeg fails (age-correlated across the Dallas archive; the presign is
+  freshly minted each call, so it is **not** URL expiry). `resolve_media_url` detects the keyless
+  redirect (`_s3_object_key()` empty, issue #120) and falls back to the per-agenda-item `dfile` MP4
+  segments scraped from the `/videos/{id}` page JSON (multi-segment meetings go through the #122 concat
+  planner). Newer meetings return a proper keyed object and are fine. Details in `swagit.py`'s module
+  docstring.
 - **Swagit's `/play/{id}/{t}` deep-link is a client-side SPA route** — the server `404`s it on a direct
   `HEAD`/`GET` (even the real chapter-anchor timestamps the watch page links), though it works in a
   browser. It's the correct user-facing format (the watch page's own anchors use it); just don't expect
@@ -284,7 +295,10 @@ Hard-won facts that bite anyone adding/debugging providers:
   `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The
   `provider_distributed_leases` layer adds **per-slot compare-and-swap leases** around ffprobe/ffmpeg
   media reads (H17 PR6), capping aggregate Granicus overlap across the four audio shard processes
-  (currently 2 total slots after the GH#300 Phase 1 reduction). A domain's N slots are N fixed keys
+  (reduced to 2 slots by the GH#300 Phase 1 reduction, then deliberately re-raised to 4 on 2026-06-23
+  as a concurrency test after H16 disproved the concurrency-causes-403 hypothesis; the operative caps
+  must match the declared `provider_audio_concurrency_ceiling` in `site_config.yml` — update both in
+  lockstep, or the H16 `concurrency_ceiling` criterion flags the drift). A domain's N slots are N fixed keys
   `provider-leases/<domain>/slot-<i>.json` (`i` in `0..N-1`), each an independent CAS object; a worker
   claims a free slot with `put_cas(if_none_match="*")` or an expired one (a dead owner) with
   `put_cas(if_match=<etag>)`, walking the slots from a per-owner offset so workers don't all collide on
@@ -360,7 +374,12 @@ Hard-won facts that bite anyone adding/debugging providers:
   shard records per-tenant direct Granicus success/403 and truncation telemetry alongside the
   Worker-fallback counters, scans its own log for credential-shaped material, and uploads
   only the run event plus redacted scan findings. The `validate-h16` job merges all four shards,
-  verifies the configured 1-local / 2-distributed ceiling, and writes JSON plus a GitHub summary.
+  verifies the operative concurrency knobs against the **declared**
+  `provider_audio_concurrency_ceiling` (`site_config.yml`; currently 1 local / 4 distributed — the
+  config key exists so a deliberate tune passes while accidental drift between the knobs is caught,
+  GH#421 run-#58 follow-up PR #449), and writes JSON plus a GitHub summary. The report is
+  observational — `validate-h16` never exits non-zero, so an `identity`/`concurrency` failure shows
+  as a report `fail`, not a red workflow run.
   The Audio lane also snapshots every Granicus record immediately after provider/persisted-record
   merge, then verifies post-media stable UID/GUID, official/source URLs, source duration, and
   deterministic content-addressed artifact identity — validating key/spec/url only for an artifact
