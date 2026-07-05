@@ -1961,7 +1961,9 @@ sticky-Worker routing choice remains open.
 
 **Maturity: L3** (finalized benchmark scope below). Measures the three built execution homes
 (local-sharded H6b + Modal H14b + Beam H14c) for combined free-tier transcript ceiling and diarization
-cost, guiding the decision to adopt paid backends for 1.0 launch.
+cost, guiding the decision to adopt paid backends for 1.0 launch. Final GPU-type profiling is gated on
+H14d's memory telemetry/admission work so the benchmark measures tuned worker behavior rather than
+avoidable OOM/preemption retries.
 
 **Benchmark scope (fixed, reproducible):**
 
@@ -2020,7 +2022,9 @@ The measured recommendation must also decide:
 
 **Acceptance.** For each backend + pipeline, report the measures above with sample counts and confidence
 intervals where meaningful. Record transcript boundary quality and speaker consistency, not only raw
-speed. Write the local-ceiling, preferred-routing, combined-flow, chunk-persistence, and first
+speed. Run final Modal/Beam GPU-type comparisons only after H14d has landed measured memory telemetry,
+initial admission defaults, and the chunking/checkpoint decision record. Write the local-ceiling,
+preferred-routing, combined-flow, chunk-persistence, and first
 paid/self-hosted decisions in `review/12 §H9`; update ARCHITECTURE.md only with capabilities actually
 measured and shipped.
 
@@ -2052,8 +2056,9 @@ diarization in normal operation.
 - **Graceful cancellation/preemption:** A killed Modal container leaves an R2 work lease and budget
   reservation behind. `compute reconcile` settles it if the artifact landed, or releases the reservation
   and requeues it after lease expiry if it did not. Workers renew leases during long inference.
-- **Long audio:** the worker uses the shared bounded-memory planner/stitcher and must pass a canary above
-  the local duration ceiling before catalog-wide enablement.
+- **Long audio:** the initial worker records peak RSS/GPU-VRAM telemetry for long meetings while staying
+  one active job per GPU container. H14d turns those observations into the shared bounded-memory
+  planner/stitcher and must pass a canary above the local duration ceiling before catalog-wide tuning.
 
 **Secrets & configuration:**
 
@@ -2095,7 +2100,8 @@ does not assign shards. An accepted external route contributes fixed dispatch co
 `.words.json`) is written to the object bucket by the worker; the next `render` reconciles it onto the
 feed. Budget tracking prevents overage; dispatch decline tries the next eligible route without failure
 backoff; accepted-job failures retry once; workflow cancellation gracefully orphans in-flight jobs;
-a recording above the local ceiling completes through bounded-memory assembly.
+a recording above the local ceiling either completes within measured headroom or remains queued for H14d
+chunk/admission tuning rather than falling back to an unsafe local run.
 
 ---
 
@@ -2139,7 +2145,8 @@ available for one-off manual runs.
 worker; the next `render` reconciles it. Budget tracking is separate from Modal; both backends' budgets
 can be managed independently. Dispatch tries the next configured external backend or an eligible
 `local` based on policy; otherwise work remains queued without transcript failure backoff. A recording
-above the local ceiling completes through the shared bounded-memory assembly path.
+above the local ceiling either completes within measured headroom or remains queued for H14d
+chunk/admission tuning rather than falling back to an unsafe local run.
 
 **Admin dashboard:** Add a prominent **"Free-tier budget remaining"** visual showing:
 - Modal: % of monthly GPU-seconds used
@@ -2149,6 +2156,60 @@ above the local ceiling completes through the shared bounded-memory assembly pat
 This allows the maintainer to see at a glance whether free tiers are near exhaustion, and plan upgrades
 or load reduction accordingly. **No automatic ticket generation on quota exhaustion**—it is expected
 operational behavior, not a code bug.
+
+---
+
+## H14d — GPU worker memory/admission optimization
+
+**Maturity: L3** (implementation-ready after H14b/H14c telemetry is live). H14d converts the initial
+Modal/Beam worker measurements into safe GPU throughput policy before H9 performs final GPU-type
+profiling. The first production posture remains conservative: one active ASR/diarization job per GPU
+container, no Modal per-container input concurrency, and no Beam multi-worker sharing of one GPU until
+repo-owned telemetry proves headroom.
+
+**Research basis.** Modal runs one input per container by default and per-container concurrency is
+opt-in; dynamic batching can improve throughput but must be sized to fit GPU memory. Beam concurrent
+inputs/workers share CPU, RAM, and GPU memory. Faster-whisper batch size increases VRAM use while int8
+lowers memory; this repo's current `list(segments)` whole-file path also grows CPU-side memory for long
+recordings. Therefore H14d should prefer measured admission and chunking before raising concurrency.
+
+**Implementation plan:**
+
+- Persisted H14b/H14c telemetry is the input: per accepted claim, collect backend, GPU class when
+  available from deployment env/log context, model, compute type, task, duration bucket, outcome,
+  elapsed seconds, peak RSS, peak GPU VRAM, and GPU total.
+- Build a telemetry-derived admission model keyed by `(backend, gpu_type, model, compute_type,
+  duration_bucket, task)`. Unknown combinations use the conservative default: admit one job only.
+  Known combinations require a configurable safety margin below both host RAM and GPU VRAM before
+  allowing more work.
+- Treat `compute_backends.<backend>.max_claims` as sequential claims per invocation, not GPU
+  concurrency. Any future Modal `allow_concurrent_inputs`/Beam worker-concurrency setting is a separate
+  H14d-controlled knob and starts disabled for ASR/diarization.
+- Prefer fixed-duration safe chunks for long recordings first, then evaluate silence/VAD-aware chunks.
+  Chunk-local segment/word timestamps must be rebased to the served meeting timeline and stitched into a
+  single VTT + word JSON only after validation succeeds.
+- Keep the worker combined-capable: ASR and diarization can share download/prep/chunk planning, but the
+  ASR transcript remains independently publishable if diarization fails.
+- Add optional per-chunk checkpoint artifacts only if telemetry shows whole-episode retry waste from
+  preemption/OOM is material. Completed chunk artifacts may survive a killed worker; final episode
+  assembly remains all-or-nothing.
+- Do not silently bump `ASR_PIPELINE_VERSION`. If chunking changes output under the same recipe, include
+  chunk planner settings in the ASR recipe or make an explicit version/backfill decision in the PR and
+  changelog.
+
+**Files.** Extend `citypods/compute/worker_telemetry.py`, `citypods/compute/external_worker.py`, the
+shared ASR/chunking helpers, `config/site_config.yml` for documented admission/chunking knobs, and
+`scripts/compute/report_workers.py` for headroom/admission reporting.
+
+**Testing & rollout.** Unit-test admission estimates, unknown-combination conservatism, chunk timestamp
+rebasing/stitch validation, and recipe/version behavior. Production rollout is canary-first: leave
+concurrency at one, gather telemetry on Modal and Beam, enable chunking for long meetings, then consider
+provider-specific concurrency only when measured peak RSS/VRAM leaves comfortable margin. H9 final
+GPU-type profiling starts after this canary record is documented.
+
+**Acceptance.** H14d ships with a reportable memory headroom model, documented default knobs, long-audio
+chunk/admission behavior that avoids known OOM classes, and a clear chunk-persistence decision. No
+transcript or diarization output format change lands without a recipe/version/backfill story.
 
 ---
 

@@ -16,6 +16,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **External worker resource telemetry (GH#276/GH#277).** Shared worker code
+  (`citypods/compute/worker_telemetry.py`, `external_worker.py`) records per-claim RSS / GPU-VRAM
+  peaks with backend, model, compute type, device, GPU type, and outcome, persisted to a single R2-CAS
+  object (`state/asr_worker_telemetry.json`) and surfaced in `asr-worker-report`. Applies to both the
+  Modal and Beam workers (it lives in the shared `run_worker` path). Telemetry failures never fail
+  transcript work.
+
 - **Modal external transcription worker pins dependencies + model to the runner (GH#276, part of #804).**
   `scripts/compute/modal_app.py` replaced its hand-maintained `>=` dependency list with
   `pip install '.[storage,asr-transcribe]' -c constraints/asr.txt` — the exact same versions

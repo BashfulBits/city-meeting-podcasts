@@ -20,6 +20,7 @@ from typing import Any
 
 from citypods.asr import transcribe
 from citypods.compute.budget import reserve_if_available, settle_reservation
+from citypods.compute.worker_telemetry import ResourceTracker, append_worker_telemetry
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City, Episode
 from citypods.ops import work_leases
@@ -75,6 +76,29 @@ class ExternalWorkerSummary:
     unsupported: int = 0
     skipped: int = 0
     gpu_seconds: float = 0.0
+    peak_rss_bytes: int | None = None
+    peak_gpu_vram_used_bytes: int | None = None
+    gpu_vram_total_bytes: int | None = None
+
+    def update_resource_peaks(self, tracker: ResourceTracker) -> None:
+        if tracker.peak_rss_bytes is not None:
+            self.peak_rss_bytes = (
+                tracker.peak_rss_bytes
+                if self.peak_rss_bytes is None
+                else max(self.peak_rss_bytes, tracker.peak_rss_bytes)
+            )
+        if tracker.peak_gpu_vram_used_bytes is not None:
+            self.peak_gpu_vram_used_bytes = (
+                tracker.peak_gpu_vram_used_bytes
+                if self.peak_gpu_vram_used_bytes is None
+                else max(self.peak_gpu_vram_used_bytes, tracker.peak_gpu_vram_used_bytes)
+            )
+        if tracker.gpu_vram_total_bytes is not None:
+            self.gpu_vram_total_bytes = (
+                tracker.gpu_vram_total_bytes
+                if self.gpu_vram_total_bytes is None
+                else max(self.gpu_vram_total_bytes, tracker.gpu_vram_total_bytes)
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +112,9 @@ class ExternalWorkerSummary:
             "unsupported": self.unsupported,
             "skipped": self.skipped,
             "gpu_seconds": round(self.gpu_seconds, 3),
+            "peak_rss_bytes": self.peak_rss_bytes,
+            "peak_gpu_vram_used_bytes": self.peak_gpu_vram_used_bytes,
+            "gpu_vram_total_bytes": self.gpu_vram_total_bytes,
         }
 
 
@@ -159,97 +186,124 @@ class ExternalTranscribeWorker:
 
     def run(self) -> ExternalWorkerSummary:
         summary = ExternalWorkerSummary(backend=self.config.backend, owner=self.config.owner)
-        if self.config.work_class in RESERVED_WORK_CLASSES:
-            summary.unsupported = 1
-            return summary
-        if self.config.work_class not in SUPPORTED_WORK_CLASSES:
-            raise ValueError(f"unsupported external worker class: {self.config.work_class!r}")
+        worker_tracker = self._resource_tracker()
+        worker_tracker.record("worker-start")
+        try:
+            if self.config.work_class in RESERVED_WORK_CLASSES:
+                summary.unsupported = 1
+                return summary
+            if self.config.work_class not in SUPPORTED_WORK_CLASSES:
+                raise ValueError(f"unsupported external worker class: {self.config.work_class!r}")
 
-        manifest = load_manifest(self.state_dir)
-        candidates = [
-            wi
-            for wi in manifest
-            if wi.work_class == self.config.work_class
-            and wi.state == "queued"
-            and wi.priority_bucket == BUCKET_FEED_VISIBLE
-        ]
-        summary.scanned = len(candidates)
-        ordered = self._ordered(candidates)
-        for item in ordered:
-            if summary.claimed >= self.config.max_claims:
-                break
-            held = work_leases.claim(
-                self.storage,
-                item.source_key,
-                item.episode_uid,
-                owner=self.config.owner,
-                ttl_seconds=self.config.lease_ttl_seconds,
-                pipeline_version=ASR_PIPELINE_VERSION,
-            )
-            if held is None:
-                summary.skipped += 1
-                continue
-            summary.claimed += 1
-            estimate = self._estimate_gpu_seconds(item)
-            caps = (self.defaults.get("compute_backends") or {}).get(self.config.backend) or {}
-            cap = float(caps.get("monthly_gpu_seconds", 0.0))
-            max_inflight = int(caps.get("max_inflight", 0))
-            if (
-                cap <= 0
-                or max_inflight <= 0
-                or not reserve_if_available(
-                    self.storage,
-                    self.config.owner,
-                    self.config.backend,
-                    est=estimate,
-                    cap=cap,
-                    max_inflight=max_inflight,
-                )
-            ):
-                work_leases.abandon(
-                    self.storage, item.source_key, item.episode_uid, owner=self.config.owner
-                )
-                summary.budget_declined += 1
-                break
-
-            started = time.monotonic()
-            try:
-                self._run_with_retry(item)
-            except Exception:
-                actual = max(0.0, time.monotonic() - started)
-                settle_reservation(
-                    self.storage, self.config.owner, self.config.backend, actual=actual
-                )
-                work_leases.release(
+            manifest = load_manifest(self.state_dir)
+            candidates = [
+                wi
+                for wi in manifest
+                if wi.work_class == self.config.work_class
+                and wi.state == "queued"
+                and wi.priority_bucket == BUCKET_FEED_VISIBLE
+            ]
+            summary.scanned = len(candidates)
+            ordered = self._ordered(candidates)
+            for item in ordered:
+                if summary.claimed >= self.config.max_claims:
+                    break
+                held = work_leases.claim(
                     self.storage,
                     item.source_key,
                     item.episode_uid,
                     owner=self.config.owner,
-                    state="failed",
+                    ttl_seconds=self.config.lease_ttl_seconds,
+                    pipeline_version=ASR_PIPELINE_VERSION,
                 )
-                summary.failed += 1
-                summary.gpu_seconds += actual
-            else:
-                actual = max(0.0, time.monotonic() - started)
-                settle_reservation(
-                    self.storage, self.config.owner, self.config.backend, actual=actual
-                )
-                summary.completed += 1
-                summary.gpu_seconds += actual
-        return summary
+                if held is None:
+                    summary.skipped += 1
+                    continue
+                summary.claimed += 1
+                estimate = self._estimate_gpu_seconds(item)
+                caps = (self.defaults.get("compute_backends") or {}).get(self.config.backend) or {}
+                cap = float(caps.get("monthly_gpu_seconds", 0.0))
+                max_inflight = int(caps.get("max_inflight", 0))
+                if (
+                    cap <= 0
+                    or max_inflight <= 0
+                    or not reserve_if_available(
+                        self.storage,
+                        self.config.owner,
+                        self.config.backend,
+                        est=estimate,
+                        cap=cap,
+                        max_inflight=max_inflight,
+                    )
+                ):
+                    work_leases.abandon(
+                        self.storage, item.source_key, item.episode_uid, owner=self.config.owner
+                    )
+                    summary.budget_declined += 1
+                    break
 
-    def _run_with_retry(self, item: WorkItem) -> None:
+                started_at = datetime.now(UTC).isoformat()
+                started = time.monotonic()
+                tracker = self._resource_tracker()
+                tracker.record("claim-start")
+                metadata: dict[str, Any] = {}
+                outcome = "failed"
+                actual = 0.0
+                try:
+                    metadata = self._telemetry_metadata(item)
+                    self._run_with_retry(item, tracker)
+                except Exception:
+                    actual = max(0.0, time.monotonic() - started)
+                    settle_reservation(
+                        self.storage, self.config.owner, self.config.backend, actual=actual
+                    )
+                    work_leases.release(
+                        self.storage,
+                        item.source_key,
+                        item.episode_uid,
+                        owner=self.config.owner,
+                        state="failed",
+                    )
+                    summary.failed += 1
+                    summary.gpu_seconds += actual
+                    outcome = "failed"
+                else:
+                    actual = max(0.0, time.monotonic() - started)
+                    settle_reservation(
+                        self.storage, self.config.owner, self.config.backend, actual=actual
+                    )
+                    summary.completed += 1
+                    summary.gpu_seconds += actual
+                    outcome = "success"
+                finally:
+                    tracker.record("claim-finish")
+                    summary.update_resource_peaks(tracker)
+                    worker_tracker.update_from(tracker)
+                    self._append_telemetry_sample(
+                        item=item,
+                        metadata=metadata,
+                        tracker=tracker,
+                        outcome=outcome,
+                        started_at=started_at,
+                        elapsed_seconds=actual,
+                    )
+            return summary
+        finally:
+            worker_tracker.record("worker-finish")
+            summary.update_resource_peaks(worker_tracker)
+
+    def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker) -> None:
         last: Exception | None = None
         for _attempt in range(2):
             try:
-                self._run_with_renewal(item)
+                self._run_with_renewal(item, tracker)
                 return
             except Exception as exc:  # noqa: BLE001
                 last = exc
         assert last is not None
         raise last
 
-    def _run_with_renewal(self, item: WorkItem) -> None:
+    def _run_with_renewal(self, item: WorkItem, tracker: ResourceTracker) -> None:
         stop = threading.Event()
         interval = max(60.0, min(300.0, self.config.lease_ttl_seconds / 3))
 
@@ -266,10 +320,13 @@ class ExternalTranscribeWorker:
         t = threading.Thread(target=_renew, name="citypods-worker-lease-renew", daemon=True)
         t.start()
         try:
-            self._run_transcribe_item(item)
+            self._run_transcribe_item(item, tracker)
         finally:
             stop.set()
             t.join(timeout=1)
+
+    def _resource_tracker(self) -> ResourceTracker:
+        return ResourceTracker(log=lambda msg: print(msg, flush=True))
 
     def _ordered(self, items: list[WorkItem]) -> list[WorkItem]:
         """Rotate *items* to this worker's scan offset. Delegates to the shared
@@ -301,7 +358,16 @@ class ExternalTranscribeWorker:
         estimated = hours * 3600 * self.config.gpu_seconds_per_audio_second
         return max(self.config.min_gpu_seconds, estimated)
 
-    def _model(self, city: City):
+    def _telemetry_metadata(self, item: WorkItem) -> dict[str, Any]:
+        city, ep, _records = self._episode_for(item)
+        hours, _source = _episode_duration_hours(ep)
+        return {
+            "duration_hours": hours,
+            "model": city.asr_model,
+            "compute_type": city.asr_compute_type,
+        }
+
+    def _model(self, city: City, tracker: ResourceTracker | None = None):
         key = (city.asr_model, city.asr_compute_type)
         if key not in self._models:
             from faster_whisper import WhisperModel
@@ -312,9 +378,11 @@ class ExternalTranscribeWorker:
                 compute_type=city.asr_compute_type,
                 cpu_threads=self.config.cpu_threads,
             )
+            if tracker is not None:
+                tracker.record("after-model-load")
         return self._models[key]
 
-    def _run_transcribe_item(self, item: WorkItem) -> None:
+    def _run_transcribe_item(self, item: WorkItem, tracker: ResourceTracker) -> None:
         city, ep, records = self._episode_for(item)
         if not ep.hosted_audio_url:
             raise RuntimeError(f"{item.source_key}/{item.episode_uid} has no hosted audio")
@@ -329,15 +397,19 @@ class ExternalTranscribeWorker:
             with tempfile.TemporaryDirectory() as td:
                 audio_path = Path(td) / "audio.m4a"
                 _download_audio_file(ep.hosted_audio_url, audio_path)
+                tracker.record("after-audio-download")
+                model = self._model(city, tracker)
+                tracker.record("before-asr")
                 artifacts = transcribe(
                     audio_path,
-                    self._model(city),
+                    model,
                     city.asr_language or None,
                     city.asr_compute_type,
                     city.asr_beam_size,
                     None,
                     self.config.cpu_threads,
                 )
+                tracker.record("after-asr")
                 vtt_path = Path(td) / "transcript.vtt"
                 vtt_path.write_bytes(artifacts.vtt)
                 words_path = Path(td) / "transcript.words.json"
@@ -356,6 +428,7 @@ class ExternalTranscribeWorker:
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True
                 _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
+                tracker.record("after-artifact-upload")
 
         records[item.episode_uid] = episode_to_record(ep)
         save_records(self.state_dir, item.source_key, records)
@@ -370,6 +443,40 @@ class ExternalTranscribeWorker:
             raise RuntimeError(
                 f"failed to push owned transcript record for {item.source_key}/{uid}"
             )
+
+    def _append_telemetry_sample(
+        self,
+        *,
+        item: WorkItem,
+        metadata: dict[str, Any],
+        tracker: ResourceTracker,
+        outcome: str,
+        started_at: str,
+        elapsed_seconds: float,
+    ) -> None:
+        sample = {
+            "backend": self.config.backend,
+            "owner": self.config.owner,
+            "work_class": self.config.work_class,
+            "source_key": item.source_key,
+            "episode_uid": item.episode_uid,
+            "outcome": outcome,
+            "started_at": started_at,
+            "finished_at": datetime.now(UTC).isoformat(),
+            "elapsed_seconds": round(max(0.0, elapsed_seconds), 3),
+            "duration_hours": metadata.get("duration_hours"),
+            "model": metadata.get("model"),
+            "compute_type": metadata.get("compute_type"),
+            "device": self.config.device,
+            "gpu_type": os.environ.get("CITYPODS_WORKER_GPU_TYPE"),
+            "peak_rss_bytes": tracker.peak_rss_bytes,
+            "peak_gpu_vram_used_bytes": tracker.peak_gpu_vram_used_bytes,
+            "gpu_vram_total_bytes": tracker.gpu_vram_total_bytes,
+        }
+        try:
+            append_worker_telemetry(self.storage, sample)
+        except Exception as exc:  # noqa: BLE001 - telemetry must not break completed work
+            print(f"[external-worker] telemetry warning: {exc}", flush=True)
 
 
 def run_worker(
