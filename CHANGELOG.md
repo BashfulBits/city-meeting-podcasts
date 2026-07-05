@@ -16,6 +16,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Beam external transcription worker pins dependencies + model to the runner (GH#277, part of #804).**
+  Same parity as the Modal worker, applied to `scripts/compute/beam_app.py`: the hand-maintained
+  package list is replaced with `pip install '.[storage,asr-transcribe]' -c constraints/asr.txt` (same
+  pinned versions as the runner, no torch), a digest-pinned CUDA 12 + cuDNN 9 `base_image`, and the
+  pinned Whisper model baked into the image via `ASR_MODEL_PATH`. Stacked on GH#276; validated on live
+  bounded single-recording Beam test runs.
+
 - **External worker resource telemetry (GH#276/GH#277).** Shared worker code
   (`citypods/compute/worker_telemetry.py`, `external_worker.py`) records per-claim RSS / GPU-VRAM
   peaks with backend, model, compute type, device, GPU type, and outcome, persisted to a single R2-CAS
