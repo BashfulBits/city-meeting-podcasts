@@ -16,6 +16,9 @@ the audit catches the next instance automatically instead of by manual investiga
                          all (keyless Swagit source with no usable page media, issue #120).
   * ``deferred-audio`` — one project-wide tracker of episodes parked in materialization backoff
                          (MEDIA_DEFERRED), so any recoverable backlog stays visible.
+  * ``media-too-large`` — the source-media size guard (issue #497) rejected an episode before
+                         ffmpeg started; rare by design, so each is its own visible finding
+                         rather than aggregate/backoff noise.
 
 The check functions are pure (no network) so they unit-test from fixtures; ``audit_city``
 does the one fetch and wires them together, taking injectable ``head`` / ``view_counts`` so
@@ -50,6 +53,7 @@ from citypods.integrity import (
 from citypods.media import AudioDurationProbe
 from citypods.models import City, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, ProviderError
+from citypods.security import MediaSourceTooLargeError
 from citypods.timeline import edl_duration, timeline_digest
 
 ERROR = "error"
@@ -382,6 +386,41 @@ def check_deferred_audio_aggregate(
     return Finding("(all)", "deferred-audio", WARN, msg)
 
 
+def check_media_too_large(slug: str, records: dict) -> list[Finding]:
+    """One finding per episode the source-media size guard rejected (issue #497).
+
+    This should be rare by design (the cap is a very conservative multiple of the longest known
+    meeting), so unlike a transient network error it must never be silently swallowed into the
+    generic backoff/retry noise — each occurrence is filed as its own always-visible, human-
+    reviewed finding rather than folded into an aggregate count, and the feed-health reconciler
+    consolidates same-named findings across feeds into one issue (see ``scripts/audit_feeds.py``).
+    Reads the persisted record store, so it reflects every rejection regardless of whether the
+    episode is in this run's fetch window.
+    """
+    findings: list[Finding] = []
+    for uid, rec in records.items():
+        audio = rec.get("audio") or {}
+        if audio.get("error") != MediaSourceTooLargeError.code:
+            continue
+        title = rec.get("title") or uid
+        links = rec.get("links") or {}
+        link = links.get("canonical_video") or links.get("agenda")
+        ref = f" — {link}" if link else f" (uid={uid!r}; no public link on record for verification)"
+        findings.append(
+            Finding(
+                slug,
+                "media-too-large",
+                ERROR,
+                f"{title!r}{ref} was rejected before ffmpeg started: the source honestly "
+                "advertised a size over the configured `source_media_max_bytes` ceiling. Verify "
+                "whether this is a genuinely oversized/misencoded source or the cap needs "
+                "raising — see the comment on `source_media_max_bytes` in "
+                "`config/site_config.yml` for how it was derived.",
+            )
+        )
+    return findings
+
+
 _STALL_LOOK_BACK = 5  # examine this many recent runs
 _STALL_THRESHOLD = 3  # pipeline is "active" when >= this many of those runs encoded audio
 
@@ -493,6 +532,10 @@ def check_enclosures(
     findings: list[Finding] = []
     checked = 0
     for e in episodes:
+        # Withheld media (silent/quarantined or unreachable) is excluded from the feed, so a stale
+        # hosted URL left on the record must not file a `dead-enclosure` finding (GH#795).
+        if e.media_availability is not None and e.media_availability.is_withheld():
+            continue
         url = enclosure_url(e, "audio")
         if not url:
             continue
@@ -551,6 +594,23 @@ _FRAME_TOLERANCE = 0.1
 # GH#702 cohort are ≥1s, so a 0.5s floor cleanly separates padding noise from genuine drift while
 # leaving the 1s finding/repair thresholds untouched (GH#702 de-noise).
 _RENDERED_DURATION_TOLERANCE = 0.5
+
+# Tolerance for comparing the header-only probe against a full-download reconciliation probe
+# (this task). Both reads should derive the same numbers from the same `moov` bytes, so this is
+# just float/string round-trip slack — not the structural/encoder-padding slack the constants
+# above cover. Anything beyond this is a real disagreement between the two probe methods.
+_PROBE_RECONCILE_TOLERANCE = 0.02
+
+
+def _probe_reconcile_delta(header: AudioDurationProbe, full: AudioDurationProbe) -> float | None:
+    """Largest disagreement between the header-only and full-download probes' duration fields,
+    or ``None`` if there's no comparable pair (e.g. one side lacks a value)."""
+    deltas: list[float] = []
+    if header.container_duration is not None and full.container_duration is not None:
+        deltas.append(abs(header.container_duration - full.container_duration))
+    if header.stream_sample_duration is not None and full.stream_sample_duration is not None:
+        deltas.append(abs(header.stream_sample_duration - full.stream_sample_duration))
+    return max(deltas) if deltas else None
 
 
 def _timeline_duration(ep: Episode) -> float | None:
@@ -625,6 +685,12 @@ def _classify_timeline_audio_duration(
     ep: Episode,
     probe: AudioDurationProbe | None,
 ) -> tuple[str, str, list[str]]:
+    # Withheld media (silent/quarantined or unreachable) is terminal for timeline-audio repair:
+    # the stale hosted object no longer represents anything we will serve, so a stream-vs-EDL
+    # mismatch is expected and must not drive a repair finding (GH#795). The availability lane owns
+    # the episode's lifecycle from here; the audit only records the observation.
+    if ep.media_availability is not None and ep.media_availability.is_withheld():
+        return "media-withheld", WARN, []
     timeline_duration = _timeline_duration(ep)
     if timeline_duration is None:
         return "duration-probe-inconclusive", WARN, []
@@ -680,6 +746,18 @@ def _timeline_audio_diagnostic(
     container = probe.container_duration if probe else None
     stream = probe.stream_sample_duration if probe else None
     probe_error = probe.probe_error if probe else "probe-not-run"
+    container_delta_signed = (
+        container - timeline_duration
+        if container is not None and timeline_duration is not None
+        else None
+    )
+    stream_delta_signed = (
+        stream - timeline_duration if stream is not None and timeline_duration is not None else None
+    )
+    media_availability = ep.media_availability
+    availability_state = (
+        media_availability.effective_state() if media_availability is not None else None
+    )
     return {
         "slug": slug,
         "uid": ep.uid or ep.guid,
@@ -690,14 +768,15 @@ def _timeline_audio_diagnostic(
         "container_duration": container,
         "stream_sample_duration": stream,
         "container_delta": (
-            abs(container - timeline_duration)
-            if container is not None and timeline_duration is not None
-            else None
+            abs(container_delta_signed) if container_delta_signed is not None else None
         ),
-        "stream_delta": (
-            abs(stream - timeline_duration)
-            if stream is not None and timeline_duration is not None
-            else None
+        "stream_delta": (abs(stream_delta_signed) if stream_delta_signed is not None else None),
+        "container_delta_signed": container_delta_signed,
+        "stream_delta_signed": stream_delta_signed,
+        "duration_drift_kind": (
+            "container-only"
+            if status == "container-duration-drift"
+            else ("stream" if status == "rendered-duration-mismatch" else None)
         ),
         "source_duration_delta": _source_duration_delta(ep),
         "repair": repair,
@@ -708,6 +787,8 @@ def _timeline_audio_diagnostic(
         "timeline_digest": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
         "prior_integrity": timeline_audio_integrity(ep) or None,
         "probe_error": probe_error,
+        "media_availability_state": availability_state,
+        "media_withheld": bool(media_availability and media_availability.is_withheld()),
         **_source_media_telemetry(ep),
     }
 
@@ -739,7 +820,12 @@ def _emit_timeline_audio_finding(
     *,
     min_delta: float,
 ) -> bool:
-    if status in {"ok", "container-duration-drift", "duration-probe-inconclusive"}:
+    if status in {
+        "ok",
+        "container-duration-drift",
+        "duration-probe-inconclusive",
+        "media-withheld",
+    }:
         return False
     if status == "rendered-duration-mismatch":
         delta = _diagnostic_delta(diag)
@@ -752,6 +838,7 @@ def check_timeline_integrity(
     episodes: list[Episode],
     *,
     probe_audio: Callable[[Episode], AudioDurationProbe | None] | None = None,
+    probe_audio_full: Callable[[Episode], AudioDurationProbe | None] | None = None,
     diagnostics: list[dict] | None = None,
     mutate_integrity: bool = False,
     max_kbps: int = 96,
@@ -760,6 +847,16 @@ def check_timeline_integrity(
     finding_min_delta: float = 1.0,
 ) -> list[Finding]:
     """Validate the Edit Decision Lists stored on episodes that have non-identity timelines.
+
+    ``probe_audio`` is the cheap header-only (range-read) duration probe. ``probe_audio_full``,
+    when given, is only ever invoked for an episode ``probe_audio`` already flagged as non-"ok"
+    (inconclusive, drifted, or mismatched) — it re-measures the same file with a full download
+    and (a) supersedes the header probe as the authoritative reading for that episode's finding/
+    repair decision, and (b) files a distinct ``timeline-audio-probe-divergence`` alert if the two
+    disagree beyond noise, since the header-only probe's core assumption (moov alone matches a
+    full read) would then be broken for a file class we should know about immediately. This never
+    fires for episodes the header probe already found "ok", so the expensive path stays scoped to
+    exactly the files worth double-checking.
 
     Checks (per episode with a non-identity Timeline):
       1. **Segment ordering**: segments are monotonically ordered and non-overlapping.
@@ -827,9 +924,52 @@ def check_timeline_integrity(
                 )
             )
 
-        # Resolve the live probe up front: §3 (cheap, stored-field) defers to §3b (precise,
-        # stream-sample) only when the probe actually yields a usable stream clock.
+        # Resolve the live probe up front — including reconciliation against a full download
+        # when the header-only probe already flags trouble (see the docstring on
+        # ``probe_audio_full``) — *before* §3 decides whether to suppress the cheap stored-field
+        # fallback. §3 defers to §3b only when the probe actually yields a usable stream clock;
+        # that decision must be made from the *final* (post-reconciliation) probe, not the raw
+        # header-only one — otherwise a header probe that looked usable but got overridden by an
+        # inconclusive full-probe reconciliation would suppress §3 without §3b having a usable
+        # clock either, and a real stored-duration mismatch could vanish from both checks.
+        # Withheld media is terminal for timeline-audio repair (GH#795): the cheap header probe
+        # still runs for the diagnostic record, but classification is forced to `media-withheld`
+        # (no finding, no repair), the expensive full-download reconciliation is skipped (the stale
+        # object will be ignored either way), and the §3 stored-field checks below are suppressed so
+        # they cannot re-file the same EDL-vs-hosted-file mismatch under a different key.
+        withheld = bool(ep.media_availability and ep.media_availability.is_withheld())
         probe = probe_audio(ep) if probe_audio is not None else None
+        status = severity = repair = None
+        probe_divergence: float | None = None
+        if probe_audio is not None:
+            status, severity, repair = _classify_timeline_audio_duration(ep, probe)
+
+            # Reconciliation: the header-only probe just flagged this episode as non-"ok", so
+            # re-measure it with a full download and let that (ground-truth) reading decide the
+            # actual finding/repair — and separately alert if the two methods disagree, since
+            # that means the header-only fast path's core assumption broke for this file.
+            if status != "ok" and not withheld and probe_audio_full is not None:
+                full_probe = probe_audio_full(ep)
+                if full_probe is not None:
+                    if probe is not None:
+                        probe_divergence = _probe_reconcile_delta(probe, full_probe)
+                    probe = full_probe
+                    status, severity, repair = _classify_timeline_audio_duration(ep, probe)
+                    if (
+                        probe_divergence is not None
+                        and probe_divergence > _PROBE_RECONCILE_TOLERANCE
+                    ):
+                        findings.append(
+                            Finding(
+                                slug,
+                                "timeline-audio-probe-divergence",
+                                ERROR,
+                                f"{uid}: header-only probe disagrees with full-download probe "
+                                f"by {probe_divergence:.3f}s — the moov-only fast-path "
+                                "assumption has broken for this file; do not trust header-only "
+                                "probes until this is root-caused",
+                            )
+                        )
         probe_has_stream = probe is not None and probe.stream_sample_duration is not None
 
         # 3. Cheap record-only duration match + end coverage, from stored fields alone.
@@ -841,7 +981,7 @@ def check_timeline_integrity(
         # if the probe is absent OR inconclusive (no stream_sample_duration), the cheap check still
         # runs so a real mismatch is not silently dropped.
         served_dur = ep.audio_duration_served
-        if served_dur is not None and not probe_has_stream:
+        if served_dur is not None and not probe_has_stream and not withheld:
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
             if delta > _FRAME_TOLERANCE:
@@ -870,9 +1010,9 @@ def check_timeline_integrity(
 
         # 3b. Rendered audio duration diagnostics. This compares the EDL to the stream sample
         # clock when the caller provides a probe; container-only drift is reported separately so
-        # it does not masquerade as cue drift.
+        # it does not masquerade as cue drift. Classification/reconciliation already happened
+        # above (before §3's suppression decision); this just emits the diagnostic/finding.
         if probe_audio is not None:
-            status, severity, repair = _classify_timeline_audio_duration(ep, probe)
             diag = _timeline_audio_diagnostic(
                 slug,
                 ep,
@@ -882,6 +1022,9 @@ def check_timeline_integrity(
                 repair,
                 max_kbps=max_kbps,
             )
+            if probe_divergence is not None:
+                diag["probe_reconciled"] = True
+                diag["probe_divergence_delta"] = probe_divergence
             repair_selected = _select_timeline_audio_repair(
                 diag,
                 repair,
@@ -1005,6 +1148,7 @@ def audit_city(
     resolve: Callable[[Episode], str] | None = None,
     run_history: list[dict] | None = None,
     probe_timeline_audio: Callable[[Episode], AudioDurationProbe | None] | None = None,
+    probe_timeline_audio_full: Callable[[Episode], AudioDurationProbe | None] | None = None,
     timeline_diagnostics: list[dict] | None = None,
     mutate_timeline_integrity: bool = False,
     max_kbps: int = 96,
@@ -1085,6 +1229,7 @@ def audit_city(
                     city.slug,
                     episodes,
                     probe_audio=probe_timeline_audio,
+                    probe_audio_full=probe_timeline_audio_full,
                     diagnostics=timeline_diagnostics,
                     mutate_integrity=mutate_timeline_integrity,
                     max_kbps=max_kbps,
@@ -1179,7 +1324,9 @@ def audit_all(
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
     per-source record store are gathered so the provider-specific checks apply."""
-    from citypods.media import _probe_audio_duration_details
+    import tempfile
+
+    from citypods.media import _probe_audio_duration_details, _probe_audio_duration_header
     from citypods.providers import get_provider
     from citypods.records import load_records, save_records, source_key
     from citypods.state import resolve_state_dir
@@ -1202,15 +1349,16 @@ def audit_all(
         except Exception as exc:  # noqa: BLE001 - diagnostics must not take down the audit
             print(f"timeline diagnostics: storage unavailable ({exc})")
 
-    def _probe_timeline_audio(ep: Episode) -> AudioDurationProbe | None:
+    def _probe_timeline_audio_full(ep: Episode) -> AudioDurationProbe | None:
+        """Full-download probe: ground truth, and the only path when the header-only probe
+        can't be used. Also invoked by ``check_timeline_integrity`` to reconcile against the
+        header-only probe for episodes it already flagged as non-"ok"."""
         if timeline_storage is None:
             return AudioDurationProbe(probe_error="storage-unavailable")
         if not ep.audio_key:
             return AudioDurationProbe(probe_error="missing-audio-key")
         if not hasattr(timeline_storage, "get_file"):
             return AudioDurationProbe(probe_error="storage-read-unsupported")
-        import tempfile
-
         with tempfile.TemporaryDirectory() as t:
             dest = Path(t) / "audio.m4a"
             try:
@@ -1220,12 +1368,37 @@ def audit_all(
             except Exception:  # noqa: BLE001 - one bad object becomes inconclusive diagnostics
                 return AudioDurationProbe(probe_error="download-exception")
 
+    def _probe_timeline_audio_header(ep: Episode) -> AudioDurationProbe | None:
+        """Cheap default probe: range-read just the MP4 header (ftyp+moov) instead of
+        downloading the whole hosted file — see ``media._probe_audio_duration_header``.
+        Returns ``None`` (not an error probe) whenever that isn't possible — missing
+        storage/key, a backend without ``get_range``, or the box walk giving up — so
+        ``check_timeline_integrity``'s reconciliation step falls back to
+        ``_probe_timeline_audio_full`` for that one episode instead of reporting a false
+        result."""
+        if timeline_storage is None or not ep.audio_key:
+            return None
+        if not hasattr(timeline_storage, "get_range"):
+            return None
+
+        def _get_range(start: int, end: int) -> bytes | None:
+            try:
+                return timeline_storage.get_range(ep.audio_key, start, end)
+            except Exception:  # noqa: BLE001 - a read hiccup just falls back to full download
+                return None
+
+        try:
+            return _probe_audio_duration_header(_get_range)
+        except Exception:  # noqa: BLE001 - the fast path must never take down the audit
+            return None
+
     findings: list[Finding] = []
     # Audio-failure tally is per *source* (per-body feeds share one record store), so accumulate
     # over unique source keys to avoid double-counting (issue #120). A representative slug per
     # source labels the prevalence examples.
     failures_by_source: dict[str, tuple[int, int]] = {}
     slug_by_source: dict[str, str] = {}
+    media_too_large_sources: set[str] = set()
     view_cap_contexts: dict[str, tuple[str, str]] = {}
     for city in cities:
         provider = get_provider(city.provider)
@@ -1248,6 +1421,11 @@ def audit_all(
         records = load_records(state_dir, src_key)
         failures_by_source.setdefault(src_key, count_audio_failures(records))
         slug_by_source.setdefault(src_key, city.slug)
+        # Per-body feeds share one record store (issue #120's dedup shape); only scan a given
+        # source once so a shared media-too-large rejection doesn't file once per body.
+        if src_key not in media_too_large_sources:
+            media_too_large_sources.add(src_key)
+            findings.extend(check_media_too_large(city.slug, records))
         findings.extend(
             audit_city(
                 city,
@@ -1260,7 +1438,10 @@ def audit_all(
                 resolve=resolve,
                 run_history=run_history,
                 probe_timeline_audio=(
-                    _probe_timeline_audio if timeline_diagnostics is not None else None
+                    _probe_timeline_audio_header if timeline_diagnostics is not None else None
+                ),
+                probe_timeline_audio_full=(
+                    _probe_timeline_audio_full if timeline_diagnostics is not None else None
                 ),
                 timeline_diagnostics=timeline_diagnostics,
                 mutate_timeline_integrity=persist_timeline_integrity,

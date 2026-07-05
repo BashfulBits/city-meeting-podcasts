@@ -109,6 +109,11 @@ class RoutingStorage:
             self._class_b += 1
         return self._route(key).get_file(key, local_path)
 
+    def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        if self._is_coordination(key):
+            self._class_b += 1
+        return self._route(key).get_range(key, start, end)
+
     def list_objects(self, prefix: str = ""):
         """List under ``prefix`` on the single backend that owns it — **namespace-scoped**.
 

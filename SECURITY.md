@@ -63,6 +63,13 @@ single-maintainer civic project.
   default; diarization is a later enablement and must not discard a successful transcript if speaker
   labeling fails.
 - **Least-privilege workflow tokens** — e.g. the feed-health audit runs with `issues: write` only.
+- **Supply-chain pinning** — dependencies are pinned by default so builds are reproducible and a
+  compromised upstream cannot silently change what runs: third-party GitHub Actions are pinned to
+  full commit SHAs (`@<40-hex> # vN`), the runner base image to a `@sha256:` digest, static ffmpeg to
+  an immutable URL + SHA256, Python libraries to compiled hash-pinned `constraints/*.txt`, and HF
+  Whisper models to pinned commit revisions. Renovate opens update PRs so pins do not stall past
+  security fixes; CI enforces the pins (`scripts/check_dependency_policy.py`). Full policy:
+  [`review/22`](review/22-dependency-and-reproducibility-policy.md).
 
 ## Rules for future work
 

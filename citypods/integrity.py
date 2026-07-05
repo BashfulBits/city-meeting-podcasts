@@ -34,7 +34,10 @@ def timeline_audio_integrity(ep: Episode) -> dict:
 
 
 def timeline_audio_repair_actions(ep: Episode) -> frozenset[str]:
-    repair = timeline_audio_integrity(ep).get("repair")
+    block = timeline_audio_integrity(ep)
+    if block.get("status") == "ok":
+        return frozenset()
+    repair = block.get("repair")
     if not isinstance(repair, list):
         return frozenset()
     return frozenset(str(action) for action in repair if str(action) in REPAIR_ACTIONS)
@@ -83,7 +86,10 @@ def set_timeline_audio_integrity(ep: Episode, block: dict | None) -> None:
     integrity = dict(ep.integrity or {})
     if block:
         current = dict(timeline_audio_integrity(ep))
-        integrity[TIMELINE_AUDIO] = {**current, **block}
+        next_block = {**current, **block}
+        if block.get("status") and block.get("status") != "ok":
+            next_block.pop("resolved_at", None)
+        integrity[TIMELINE_AUDIO] = next_block
     else:
         integrity.pop(TIMELINE_AUDIO, None)
     ep.integrity = integrity
@@ -111,16 +117,26 @@ def build_timeline_audio_integrity(
     return {k: v for k, v in block.items() if v is not None and v != []}
 
 
+def _write_cleared_timeline_audio_block(ep: Episode, block: dict, *, status: str) -> None:
+    """Rewrite the timeline-audio integrity block with its repair flags dropped and a terminal
+    ``status`` + ``resolved_at`` breadcrumb. Shared by the two clear paths so their write-back
+    cannot diverge if the integrity block schema changes."""
+    next_block = dict(block)
+    next_block.pop("repair", None)
+    next_block.pop("repair_tokens", None)
+    next_block["status"] = status
+    next_block["resolved_at"] = datetime.now(UTC).isoformat()
+    integrity = dict(ep.integrity or {})
+    integrity[TIMELINE_AUDIO] = next_block
+    ep.integrity = integrity
+
+
 def clear_resolved_timeline_audio_integrity(ep: Episode, status: str) -> bool:
     """Clear a prior repair flag after audit sees a healthy post-repair state."""
     if status != "ok" or not timeline_audio_integrity(ep):
         return False
-    block = dict(timeline_audio_integrity(ep))
+    block = timeline_audio_integrity(ep)
     if "repair" not in block:
         return False
-    block.pop("repair", None)
-    block.pop("repair_tokens", None)
-    block["status"] = "ok"
-    block["resolved_at"] = datetime.now(UTC).isoformat()
-    set_timeline_audio_integrity(ep, block)
+    _write_cleared_timeline_audio_block(ep, block, status="ok")
     return True

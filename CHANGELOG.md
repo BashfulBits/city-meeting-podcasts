@@ -14,8 +14,117 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
-### Fixed
+### Added
 
+- **Modal external transcription worker pins dependencies + model to the runner (GH#276, part of #804).**
+  `scripts/compute/modal_app.py` replaced its hand-maintained `>=` dependency list with
+  `pip install '.[storage,asr-transcribe]' -c constraints/asr.txt` — the exact same versions
+  (`faster-whisper`/`ctranslate2`/`av`) the in-Actions transcribe lane uses, resolved from the
+  pyproject extras (no duplicate list; enforced by `scripts/check_dependency_policy.py`), and without
+  torch (the `asr-transcribe` extra excludes `stable-ts`). The image base moved to a digest-pinned
+  **CUDA 12 + cuDNN 9 runtime** (provides ctranslate2's cuBLAS/cuDNN on GPU and is forward-compatible
+  with a future torch-based diarize step), and the **pinned Whisper model revision is baked into the
+  image** (fast cold start, same bytes as the runner via `ASR_MODEL_PATH`). The canonical model
+  repo+revision constants moved to `citypods.asr` so the runner (`prepare_whisper.py`) and the worker
+  share one Renovate-tracked source. First deployment — to be validated on bounded single-recording
+  test runs. Beam (GH#277) follows the same pattern.
+
+- **Hugging Face Whisper models are pinned to explicit commit revisions (GH#498).**
+  `scripts/prepare_whisper.py` downloaded via mutable `main` on both the direct-CDN and
+  `snapshot_download` paths, so model bytes could drift silently while `asr_spec_hash()` still
+  treated the recipe as unchanged. Both paths now pin `HF_PREFERRED_REVISION` /
+  `HF_FALLBACK_REVISION` commit SHAs, logs show `repo@revision`, and the B2 mirror prefix is
+  revision-scoped so a future bump lands under a fresh prefix instead of overwriting the old bytes.
+  Pinning the current revision is a reproducibility no-op — **no `ASR_PIPELINE_VERSION` bump and no
+  transcript reprocessing**; a later intentional revision bump decides invalidation separately
+  (review/22). Renovate surfaces upstream revision changes for Dashboard approval.
+- **Repository dependency pinning & update policy (GH#498, GH#734).** New normative contract in
+  [`review/22`](review/22-dependency-and-reproducibility-policy.md): pins are the default for
+  reproducible builds, and Renovate opens PRs so they do not stall past security/beneficial updates.
+  Foundation landed: compiled hash-pinned Python `constraints/*.txt` (source of truth for CI, the
+  runner image, and the external workers) with a `lock.yml` compile workflow and a `ci.yml` drift
+  gate; all third-party GitHub Actions pinned to full commit SHAs and unified to the current tips
+  (GH#734); `.github/renovate.json5` with a light-touch two-lane flow (hygiene auto-PRs; a
+  Dependency-Dashboard approval gate + per-source `dep-bump-smoke` for output-affecting bumps);
+  `scripts/check_dependency_policy.py` CI guard; and the "adding a dependency" contract in
+  CONTRIBUTING/AGENTS. Pure pinning is a reproducibility no-op — no pipeline-version bump, no artifact
+  reprocessing. HF model-revision pinning (GH#498) and external-worker (Modal/Beam) parity follow as
+  their own PRs.
+- **Production media fetches now have a size ceiling before ffmpeg reads a remote source
+  (issue #497).** `citypods/media.py:_download_audio()` and the direct-remote render paths
+  (identity render, multi-source concat fallback) previously handed ffmpeg a remote URL with no
+  byte cap at all — `MAX_RESPONSE_BYTES` only ever covered feed/JSON/HTML fetches through
+  `requests`, not media bytes ffmpeg reads directly via libavformat. A new
+  `citypods.http.preflight_media_size()` issues a `HEAD` (falling back to a ranged `GET` for CDNs
+  that reject/ignore it) before any ffmpeg process starts; a source that honestly discloses a size
+  over the new `source_media_max_bytes` config ceiling raises `MediaSourceTooLargeError` and is
+  never retried by falling back to an unguarded direct stream — it lands in the normal
+  materialize-failure/backoff path instead. Unverifiable ("unknown") sizes are logged and allowed
+  through, since ffmpeg's own fetch can't be bounded after the fact. `audio_encode_timeout_minutes`
+  (the existing per-encode wall-clock cap) is recalibrated from 45 to 360 minutes and
+  `source_media_max_bytes` defaults to 54 GB, both derived from a conservative 12-hour
+  longest-meeting ceiling (see the comments in `config/site_config.yml` for the full derivation).
+  `scripts/probe_granicus_worker.py`'s production-encode check now inherits this same guard instead
+  of its own probe-only `--full-download-max-mib` cap. A new `citypods.audit.check_media_too_large`
+  feed-health check files one always-visible finding per rejection (never folded into aggregate
+  backoff noise), since this should be rare and each occurrence needs a human to verify the meeting
+  and decide whether the cap needs raising.
+- **Timeline/audio diagnostics probe MP4 headers instead of downloading whole episodes.** When
+  `timeline_diagnostics=true`, `check_timeline_integrity` now defaults to a header-only probe that
+  range-reads just an episode's `ftyp`/`moov` boxes (`StorageBackend.get_range`, implemented for
+  S3-compatible and local storage) instead of downloading the full hosted `.m4a`. Every hosted
+  episode is written `-movflags +faststart`, so `format.duration` and the stream's
+  `duration_ts`/`time_base` live entirely in `moov` — ffprobe never reads `mdat` for these fields
+  either way, so this yields identical values at a fraction of the bytes (verified against a full
+  download for both short and multi-hour synthetic fixtures in `tests/test_media.py`). As a
+  standing guard against that assumption ever breaking for a real file, any episode the header
+  probe flags as non-"ok" is automatically re-measured with a full download
+  (`probe_audio_full`); the full read supersedes the header read for the actual finding/repair
+  decision, and a new `timeline-audio-probe-divergence` finding fires if the two disagree beyond
+  float noise.
+- **Feed-health audit returns to the cheap default path while audio queued work gains UID-level
+  evidence.** The audit workflow no longer downloads and ffprobes every hosted audio object on every
+  scheduled/default run just to emit the timeline canary artifact; full `timeline-audio-integrity`
+  diagnostics are now opt-in via `timeline_diagnostics=true` and still forced when
+  `timeline_repair=true` needs persisted repair rows. Audio materialization deferrals now log
+  `[enrich] audio materialize deferred ... uid=... reason=...` and carry reason counts/samples into
+  the run summary, so a lingering `queued` count can be tied back to specific UIDs.
+- **Correction: timeline/audio canary repair is now decoded-only and fails closed (GH#702).**
+  The canary stamp still forces targeted `timeline-replan` / `audio-rematerialize`, but a healthy
+  `status="ok"` now clears or ignores stale repair actions so resolved episodes stop re-keying.
+  `SilencePlanner` resolves media through `SourceCache`, runs `detect_silences` on the local cached
+  file only, and no longer falls back to container, provider, or stream-sample duration when the
+  decoded duration is missing. Cache/decode/degenerate failures defer as typed timeline reasons
+  (`deferred_cache_unavailable`, `deferred_decode_unavailable`, `deferred_degenerate_timeline`) with
+  timeline-specific materialization backoff; `AudioStage` skips same-run timeline deferrals so stale
+  timelines cannot be credited or encoded. This supersedes the earlier fallback-tier language below:
+  non-decoded clocks are diagnostic for this planner, not planning authority.
+- **Correction: the rendered-duration survivors were still selecting source spans on raw PTS
+  (GH#702).** The run 5 → run 6 audit artifacts showed the prior fix only partially converged:
+  9/63 original repair-cohort UIDs fixed, 54/63 still `rendered-duration-mismatch`, with nearly every
+  survivor showing a changed `timeline_digest` and `audio_key`. That proved the repair lanes were
+  firing and the planner had moved from `duration_basis="container"` to `"decoded"`, but the renderer
+  was still not using the same clock for selection. Root cause: `_build_streaming_single_source_filter`
+  applied `asetpts=N/SR/TB` **after** `aselect`, so the final served output was left-packed but the
+  selector still compared compacted EDL boundaries against raw source PTS. A source with a 2s PTS gap
+  therefore rendered a 10s EDL as ~8.056s. The streaming filter now rewrites PTS to the contiguous
+  decoded-sample clock before boundary framing / `aselect`, and keeps the post-select reset that packs
+  retained samples onto served time. A synthetic PTS-gap regression now renders a 10s EDL as 10.0s.
+- **Correction: the "decoded audio-stream end" fix below did not converge in production — fixed by
+  resetting the decode pass to a sample-index clock before measuring it (GH#702).** A before/after
+  production audit of the repair cohort showed 0/56 survivors improved despite genuine re-encodes and
+  re-planned EDLs for many of them. Root cause: ffmpeg's `time=` progress field is a
+  **presentation-timestamp clock, not a decoded-sample-count clock** — it carries forward any PTS
+  discontinuity in the source (a stream splice, an ad-insertion boundary, a dropped HLS segment) as if
+  the gap were real elapsed audio, so it overstates by exactly the gap size and lands on the same value
+  as the (also PTS-based) container `Duration` header — confirmed bit-identical for the three largest
+  survivors, one of which (`media_kind="direct"`) isn't even HLS, ruling out segment loss as the
+  mechanism. `detect_silences` now prepends `asetpts=N/SR/TB` ahead of `silencedetect`, so its `time=`
+  reading and silence boundaries are measured on a contiguous sample-index clock. A pure per-frame
+  timestamp rewrite at the native rate — no resampling, no second decode pass, a no-op on a source with
+  no discontinuity. Reproduced directly: a constructed 10s file with a deliberate 2s forward PTS jump
+  read `time=12.0x` unfixed (matching its container header) and `time=10.06s` fixed. The follow-up above
+  makes the renderer's selector use that same pre-select clock.
 - **`SilencePlanner` now anchors the single-file EDL on the *decoded* audio-stream end when no
   stream-sample clock is exposed, closing the GH#702 `rendered-duration-mismatch` survivor gap.** PR
   #704 made the planner prefer ffprobe's stream-sample duration over the container header, but for the
@@ -31,8 +140,65 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   audit artifact shows `source_duration_bases=["decoded"]` instead of `["container"]`. No second media
   pass; the container header remains the honest fallback when even the decode end is unparseable.
 
+### Fixed
+
+- **Withheld/dead episodes no longer file noisy `rendered-duration-mismatch` tickets, and get a
+  flat ~30-day recheck lifecycle (GH#795).** Once an episode's media is withheld — silent/quarantined
+  (`confirmed_empty`) or unreachable (`missing`/`invalid`) — the stale hosted object no longer
+  represents anything served, so the timeline-audit now classifies it as terminal `media-withheld`:
+  no finding, no repair, no integrity stamp, and it skips both the full-download reconciliation and
+  the cheap stored-field duration checks (`check_enclosures` also skips withheld). Separately, a
+  **confirmed-dead** episode now polls on a **flat 30-day cadence** (`confirmed_dead_recheck_due`,
+  anchored on the availability verdict's `last_check`) instead of the exponential #120 backoff — a
+  recheck that stays dead just sleeps another full interval with no new cooldown escalation or ticket;
+  `suspected_empty` keeps the exponential ramp so it can reach its second silent confirmation quickly.
+  A **repair flag bypasses the exponential #120 backoff** in `TimelineStage` so a flagged
+  transient/broken-EDL episode re-plans immediately (those flags clear via the post-repair audit,
+  which owns the integrity block). For **confirmed-dead** media the flat gate deliberately takes
+  precedence over the flag: the integrity/repair block is audit-owned and the audio lane preserves
+  it from remote on push, so a lane-side clear cannot persist — letting the flag bypass the flat gate
+  would re-download a quarantined episode every run. Anchoring the flat cadence on the
+  audio-lane-owned `media_availability.last_check` keeps it self-managing (recheck ≤ every 30 days)
+  without needing to clear the flag.
+- **Scoped state pushes no longer regress repaired timeline plans back to stale container-basis
+  records.** `push_records_merged` already re-read remote state to preserve sibling artifact blocks,
+  but timeline/source planning metadata lived in the unprotected whole-record body. A long-running
+  audio or ASR shard that started before a repair could therefore finish later and overwrite a remote
+  `duration_basis="decoded"` plan with its older local `container` or missing-source plan, while still
+  preserving enough artifact data to make the feed look partially repaired. The merge now ranks
+  planning metadata by timeline version and source duration basis, preserves the fresher remote
+  planning fields when they are strictly better, and keeps the matching remote artifact blocks so stale
+  local artifacts computed against the old EDL cannot be attached to the newer plan.
+- **A B2 connectivity blip on one `state/` key no longer fails the whole Build & Deploy run.**
+  `pull_state()` restores every object under `state/` from the durable bucket at build start;
+  `S3CompatibleStorage.get_file()` already retried transient connection errors in-process, but once
+  those retries were exhausted it re-raised, so a single key that kept timing out (Build & Deploy
+  runs #452-455 each failed on `boto3.exceptions.RetriesExceededError` inside `download_file`)
+  crashed the render-only deploy outright — even though render "must always finish so the deploy
+  isn't gated" and the bucket is meant to be a self-healing cache. `pull_state()` now catches the same
+  connectivity-level exceptions (`storage.s3.transient_download_errors()`, hoisted out of
+  `get_file()` so both call sites share one definition), logs a warning, and keeps whatever local copy
+  already exists for that key instead of aborting — the bucket resyncs it on a later run that can
+  reach it. A real (non-transient) error, e.g. a 403 from rotated/invalid credentials, still
+  propagates and fails the build loudly.
+
 ### Changed
 
+- **`audit_feeds.py` consolidates feed-health GitHub issues from one-per-feed to one-per-check.**
+  Filing a separate issue for every `(feed, check)` pair meant a single systemic regression (e.g. a
+  code bug affecting every feed's timeline check) could open dozens of near-duplicate issues in one
+  run. Every check now files a single issue covering all affected feeds — the title shows a live
+  `N feed(s) [across M cities]` count, and the body lists every affected feed with how long it's
+  been failing (tracked in a hidden JSON state block in the issue body, not an external file) plus a
+  representative example. `meetings-url-dead`/`meetings-url-changed` stay one-issue-per-city, since
+  each is a genuinely distinct problem needing a specific human to fix a specific city's YAML.
+  Issue matching now uses a hidden `<!-- citypods:feed-health:key=... -->` marker in the body
+  instead of the title, so the title can change every run without breaking run-to-run
+  create/update/close reconciliation. A visible comment posts only when the affected-feed *set*
+  changes (a feed newly failing or clearing), not on every cosmetic body refresh (e.g. a "since Nd
+  ago" day count ticking over) — the second-order goal being that fixing the "many issues" chattiness
+  doesn't just relocate it into "many comments on one issue." Every check's body also gained
+  substantially more verbose causes/resolution guidance specific to that check.
 - **`work_leases.py` gains a public `scan_offset`/`ordered_candidates` ordering primitive, extracted
   from `run_claim_loop` (review/18 §4).** The H14b Modal pull-worker prototype (unmerged) needed
   budget-gating/lease-renewal/retry `run_claim_loop` doesn't have, so it composed its own loop directly
@@ -60,6 +226,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `TranscriptStage` / `ProviderTranscriptDiarizeStage` now pass their real work class. Accepted
   tradeoff: a hard catalog-wide drain — one pathological multi-hour backlog can deprioritize all
   short-meeting transcript throughput until it clears; no reserved-capacity split is implemented.
+- **`SilencePlanner.version` bumped 2→3 to re-plan every single-file silence EDL on the stream-sample
+  clock (GH#702, PR6).** This re-trims the whole single-file silence catalog onto the corrected source
+  clock, eliminating the last container-basis EDLs. Because `Timeline.version` is part of
+  `timeline_digest`/`audio_spec_hash`, this re-encodes **every** single-file silence episode (and
+  regenerates transcripts), not only the gap-affected cohort — a deliberate but large cost. All four
+  GH#702 PR6 merge thresholds were confirmed before enabling: PR2–PR5 have run in production; a
+  post-GH#795 full-catalog audit shows zero `rendered-duration-mismatch` survivors (stronger evidence
+  than the cohort-scoped comparison the gate originally called for); the re-encode cost is accepted;
+  and both stragglers (Dallas, Pflugerville) resolved on their own — Dallas now only shows ordinary
+  `container-duration-drift`, and Pflugerville's `missing-audio-key` row resolved into the GH#795
+  withheld-media lifecycle (`media-withheld`, `confirmed_empty`). See review/20.
 - **The rendered-vs-EDL duration audit uses a 0.5s classification floor, separate from the 0.1s
   structural tolerance (GH#702, PR5).** A clean re-encode legitimately differs from the EDL sum by AAC
   priming/padding plus per-cut sample rounding (~0.1–0.4s) with no cue-integrity problem; classifying

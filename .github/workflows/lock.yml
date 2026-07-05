@@ -1,0 +1,46 @@
+name: Lock dependencies
+
+# Recompile the version-pinned constraint files in the pinned deploy target
+# (linux / CPython 3.12) and push the result to the dispatching branch. This is the
+# ONLY correct place to generate constraints/*.txt — a contributor laptop resolves the
+# wrong platform wheels (see review/22, constraints/README.md). The ci.yml "deps" job
+# enforces that the committed files stay in sync; this is how you refresh them: run it
+# via workflow_dispatch on the branch that changed pyproject.toml.
+#
+# Security: checkout uses persist-credentials:false so the token is not exposed while
+# pip-compile builds sdists; the write token is introduced only in the final push step,
+# after compilation. It pushes to the dispatching branch (branch protection blocks main).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.ref_name }}
+
+      - name: Recompile constraints (Docker, pinned python:3.12)
+        run: scripts/compile_constraints.sh # uses Docker; no token in env here
+
+      - name: Commit & push refreshed constraints to this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- constraints/; then
+            echo "constraints already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add constraints/
+          git commit -m "chore(deps): recompile constraints (lock.yml)"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" \
+            "HEAD:${{ github.ref_name }}"

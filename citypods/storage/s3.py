@@ -11,6 +11,7 @@ Requires ``boto3`` (extra: ``citypods[storage]``). Backends are built from env v
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 
@@ -26,6 +27,35 @@ class CASConflict(Exception):
     def __init__(self, key: str):
         super().__init__(f"compare-and-swap conflict on {key!r}")
         self.key = key
+
+
+def transient_download_errors() -> tuple[type[BaseException], ...]:
+    """Connectivity-level exceptions a ``get_file`` download can exhaust its retries on —
+    timeouts, dropped connections, DNS/routing blips. Deliberately excludes ``ClientError``
+    (e.g. 403 ``AccessDenied``): those signal a real credentials/permissions problem an
+    operator needs to see, not a blip worth papering over.
+
+    Returns an empty tuple if boto3 isn't installed (no S3 backend, so these can't occur) —
+    lets callers outside this module (e.g. ``statesync.pull_state``) build an ``except``
+    tuple without a hard dependency on the optional ``storage`` extra.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import (
+            ConnectionClosedError,
+            EndpointConnectionError,
+            ReadTimeoutError,
+        )
+        from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
+    except ImportError:
+        return ()
+    return (
+        boto3.exceptions.RetriesExceededError,
+        TransferRetriesExceededError,
+        EndpointConnectionError,
+        ReadTimeoutError,
+        ConnectionClosedError,
+    )
 
 
 class S3CompatibleStorage:
@@ -142,11 +172,43 @@ class S3CompatibleStorage:
 
         local_path = Path(local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
+        transient_errors = transient_download_errors()
+        for attempt in range(3):
+            try:
+                self._client.download_file(self.bucket, key, str(local_path))
+                return True
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code")
+                status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if code in ("NoSuchKey", "404") or status == 404:
+                    return False
+                raise
+            except transient_errors:
+                if attempt == 2:
+                    raise
+                time.sleep(2**attempt)
+        raise AssertionError("unreachable")
+
+    def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        """Partial GET via the standard HTTP ``Range`` header — a Class-B op, far cheaper than
+        ``get_file`` for a header-only read (e.g. an MP4 ``moov`` duration probe)."""
+        from botocore.exceptions import ClientError
+
         try:
-            self._client.download_file(self.bucket, key, str(local_path))
-            return True
-        except ClientError:
-            return False
+            resp = self._client.get_object(
+                Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("NoSuchKey", "404") or status in (404, 416):
+                return None
+            raise
+        body = resp["Body"]
+        try:
+            return body.read()
+        finally:
+            body.close()
 
     # --- orphan GC support (optional StorageBackend capability) ---
 

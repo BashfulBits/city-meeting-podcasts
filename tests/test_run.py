@@ -125,7 +125,14 @@ def _setup(tmp_path):
         'podcast_email: ""\n'
         'podcast_description: "desc"\n'
     )
-    (tmp_path / "site_config.yml").write_text(f"state_dir: {tmp_path / 'state'}\n")
+    # source_media_max_bytes: 0 disables the #497 preflight guard for these orchestration tests —
+    # they use a synthetic, deliberately non-resolvable host (https://x) with a fake ffmpeg double
+    # to avoid real network/subprocess calls, not to exercise the guard itself (covered directly in
+    # test_media.py/test_http.py). Without this, validate_source_url's DNS resolution failure would
+    # now surface as a SecurityError before the fake ffmpeg is ever reached.
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  source_media_max_bytes: 0\n"
+    )
     return config_dir
 
 
@@ -1067,7 +1074,10 @@ def _setup_multi(tmp_path):
             'podcast_email: ""\n'
             'podcast_description: "desc"\n'
         )
-    (tmp_path / "site_config.yml").write_text(f"state_dir: {tmp_path / 'state'}\n")
+    # See _setup(): disables the #497 preflight guard for these synthetic non-resolvable hosts.
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  source_media_max_bytes: 0\n"
+    )
     return config_dir
 
 
@@ -1547,7 +1557,8 @@ def test_enrich_phase_two_pass_and_manifest(tmp_path, fake_provider, capsys):
         ep.media_kind = "hls"
     cities = _setup(tmp_path)
     (tmp_path / "site_config.yml").write_text(
-        f"state_dir: {tmp_path / 'state'}\ndefaults:\n  asr_enabled: false\n"
+        f"state_dir: {tmp_path / 'state'}\n"
+        "defaults:\n  asr_enabled: false\n  source_media_max_bytes: 0\n"
     )
     ff = _CountingFfmpeg()
     _build_phase(tmp_path, cities, "enrich", ff)

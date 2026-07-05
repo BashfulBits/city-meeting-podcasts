@@ -6,6 +6,8 @@ import json
 import os
 import time
 
+import pytest
+
 from citypods.records import load_records, protected_blocks_for_lane, save_records
 from citypods.statesync import (
     STATE_PREFIX,
@@ -191,6 +193,49 @@ def test_push_records_merged_preserves_concurrent_audio(tmp_path):
     assert final["transcript"]["synced"] is True
     # The local on-disk copy is rewritten to match what was pushed (so a later reuse sees the URL).
     assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
+
+
+def test_push_records_merged_preserves_remote_decoded_plan_from_stale_audio_lane(tmp_path):
+    """An audio shard that started from stale state must not overwrite a repaired decoded plan."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(
+        bucket,
+        sk,
+        {
+            "u1": {
+                "uid": "u1",
+                "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+                "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+                "audio": {"url": "REMOTE", "key": "decoded-key", "spec_hash": "decoded-spec"},
+            }
+        },
+    )
+    save_records(
+        state_dir,
+        sk,
+        {
+            "u1": {
+                "uid": "u1",
+                "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+                "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+                "audio": {"url": "LOCAL", "key": "container-key", "spec_hash": "container-spec"},
+            }
+        },
+    )
+
+    pushed = push_records_merged(
+        bucket, state_dir, [sk], protected_blocks=protected_blocks_for_lane("audio")
+    )
+
+    assert pushed == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)["u1"]
+    assert final["sources"][0]["duration_basis"] == "decoded"
+    assert final["audio"]["key"] == "decoded-key"
+    assert load_records(state_dir, sk)["u1"]["sources"][0]["duration_basis"] == "decoded"
 
 
 def test_push_records_merged_owned_uids_no_sibling_shard_clobber(tmp_path):
@@ -407,6 +452,60 @@ def test_pull_state_skips_cas_managed_budget(tmp_path):
     assert not (state_dir / "compute_budget.json").exists()
     assert (state_dir / "sources" / "src1" / "episodes.json").exists()
     assert restored == 1
+
+
+class _FlakyKeyError(Exception):
+    """Stand-in for a real backend's connectivity-level error (timeout, dropped connection)."""
+
+
+class _FlakyBucket(LocalStorage):
+    """A backend where one specific key raises on every ``get_file`` — simulating the Backblaze
+    B2 object that reproducibly failed with ``RetriesExceededError`` in build 452-455 (GH#455)."""
+
+    flaky_key: str | None = None
+    flaky_error: type[BaseException] = _FlakyKeyError
+
+    def get_file(self, key, local_path) -> bool:
+        if key == self.flaky_key:
+            raise self.flaky_error("connection reset by peer")
+        return super().get_file(key, local_path)
+
+
+def test_pull_state_skips_key_with_transient_download_error(tmp_path, monkeypatch):
+    from citypods.storage import s3 as s3_module
+
+    monkeypatch.setattr(s3_module, "transient_download_errors", lambda: (_FlakyKeyError,))
+
+    bucket = _FlakyBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    bucket.flaky_key = f"{STATE_PREFIX}/sources/bad/episodes.json"
+    _seed_remote(bucket, "bad", {"u": {"uid": "u"}})
+    _seed_remote(bucket, "good", {"u": {"uid": "u"}})
+
+    state_dir = tmp_path / "state"
+    warnings = []
+    restored = pull_state(bucket, state_dir, log=warnings.append)
+
+    # The flaky key is skipped (not raised through) and the rest of the snapshot still restores.
+    assert restored == 1
+    assert (state_dir / "sources" / "good" / "episodes.json").exists()
+    assert not (state_dir / "sources" / "bad" / "episodes.json").exists()
+    assert any("bad" in w for w in warnings)
+
+
+def test_pull_state_propagates_non_transient_error(tmp_path, monkeypatch):
+    """Only the transient set is swallowed — a real (operator) error still surfaces, so a
+    regression that made ``pull_state`` catch everything wouldn't slip past this suite."""
+    from citypods.storage import s3 as s3_module
+
+    monkeypatch.setattr(s3_module, "transient_download_errors", lambda: (_FlakyKeyError,))
+
+    bucket = _FlakyBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    bucket.flaky_key = f"{STATE_PREFIX}/sources/bad/episodes.json"
+    bucket.flaky_error = RuntimeError
+    _seed_remote(bucket, "bad", {"u": {"uid": "u"}})
+
+    with pytest.raises(RuntimeError):
+        pull_state(bucket, tmp_path / "state")
 
 
 def test_reconcile_state_skips_cas_managed_budget(tmp_path):

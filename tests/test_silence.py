@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from citypods.http import StopRequested
+from citypods.integrity import (
+    REPAIR_TIMELINE_REPLAN,
+    needs_timeline_audio_repair,
+    set_timeline_audio_integrity,
+)
 from citypods.silence import (
     SilencePlanner,
+    _describe_media_locator,
+    _local_file_snapshot,
     _parse_ffmpeg_decoded_end,
     _parse_ffmpeg_duration,
     _probe_stream_sample_duration,
+    _silence_summary,
     build_silence_timeline,
     detect_silences,
     is_degenerate_served_duration,
@@ -57,6 +68,38 @@ class TestParseSilences:
             "[silencedetect @ 0x1] silence_start: 7200.0\n"
         )
         assert parse_silences(stderr) == [(0.0, 2.0)]
+
+
+class TestLoggingHelpers:
+    def test_describe_media_locator_redacts_query_tokens(self):
+        assert (
+            _describe_media_locator(
+                "https://archive-video.granicus.com/path/to/file.mp4?Signature=secret&Expires=1"
+            )
+            == "https://archive-video.granicus.com/file.mp4"
+        )
+
+    def test_describe_media_locator_keeps_local_filename(self):
+        assert _describe_media_locator("/tmp/citypods/source-cache/file.mka") == (
+            "/tmp/citypods/source-cache/file.mka"
+        )
+
+    def test_local_file_snapshot_reports_bytes(self, tmp_path):
+        path = tmp_path / "file.mka"
+        path.write_bytes(b"12345")
+        assert _local_file_snapshot(str(path)) == "path=file.mka bytes=5"
+
+    def test_local_file_snapshot_reports_unknown_on_oserror(self):
+        with patch("citypods.silence.Path.stat", side_effect=OSError):
+            assert _local_file_snapshot("/tmp/citypods/source-cache/file.mka") == (
+                "path=file.mka bytes=unknown"
+            )
+
+    def test_silence_summary_reports_count_duration_and_samples(self):
+        assert _silence_summary([(0.0, 4.0), (10.0, 11.5), (20.0, 22.0), (30.0, 31.0)]) == (
+            "count=4 total=8.500s longest=4.000s spans=0.000-4.000, "
+            "10.000-11.500, 20.000-22.000, ..."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -106,8 +149,136 @@ class TestParseFfmpegDecodedEnd:
 
     def test_zero_only_progress_returns_none(self):
         # A stats stream that never advances must not yield a zero-length clock the planner would
-        # then prefer over container/provider duration.
+        # stamp as a decoded source duration.
         assert _parse_ffmpeg_decoded_end("time=00:00:00.00\ntime=00:00:00.00\n") is None
+
+
+# ---------------------------------------------------------------------------
+# detect_silences — real ffmpeg, a genuine PTS-discontinuous source (GH#702)
+#
+# Reproduces the root cause: a presentation-timestamp gap (stream splice / ad-insertion
+# boundary / dropped HLS segment) makes both the container `Duration` header and the raw
+# `time=` progress clock overstate the true decodable audio by the gap size, while the render
+# path's `asetpts=N/SR/TB` reset naturally compacts the gap away. detect_silences must report
+# a decoded_duration close to the render's true output, not the gapped container value.
+# ---------------------------------------------------------------------------
+
+
+def _build_gapped_ts(tmp_path, gap_seconds: float = 2.0) -> str:
+    """A 10s real-audio MPEG-TS file with a genuine ``gap_seconds`` forward PTS discontinuity
+    spliced in at the 5s mark — a byte-level join of two independently-encoded segments, the
+    same shape a stream splice or a dropped HLS segment produces. Returns the file path."""
+    seg1 = tmp_path / "seg1.ts"
+    seg2 = tmp_path / "seg2.ts"
+    gapped = tmp_path / "gapped.ts"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg1),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=880:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-output_ts_offset",
+            str(5.0 + gap_seconds),
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg2),
+        ],
+        check=True,
+    )
+    with gapped.open("wb") as out:
+        out.write(seg1.read_bytes())
+        out.write(seg2.read_bytes())
+    return str(gapped)
+
+
+def _build_continuous_ts(tmp_path) -> str:
+    """A plain 10s real-audio MPEG-TS file with no discontinuity (the common case)."""
+    path = tmp_path / "normal.ts"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=10",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            str(path),
+        ],
+        check=True,
+    )
+    return str(path)
+
+
+class TestDetectSilencesPtsGapRealFfmpeg:
+    def test_decoded_end_is_gap_compacted_not_container_overstated(self, tmp_path):
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg is required for the PTS-gap integration check")
+        gapped = _build_gapped_ts(tmp_path, gap_seconds=2.0)
+
+        _silences, container_duration, decoded_duration = detect_silences(gapped)
+
+        assert container_duration is not None and decoded_duration is not None
+        # The container header is PTS-based and includes the gap: ~12s, not the true ~10s.
+        assert container_duration > 11.5
+        # Before this fix, decoded_duration matched container_duration exactly (both PTS-based).
+        # The asetpts=N/SR/TB reset must compact the gap away, landing near the true 10s content
+        # — and, critically, strictly below the container's gapped value.
+        assert decoded_duration < container_duration - 1.0
+        assert 9.5 < decoded_duration < 10.5
+
+    def test_no_discontinuity_is_unaffected(self, tmp_path):
+        # The fix is a pure timestamp rewrite: a source with no PTS gap must read the same
+        # decoded_duration with or without it (no regression on the common case).
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg is required for the PTS-gap integration check")
+        normal = _build_continuous_ts(tmp_path)
+
+        _silences, container_duration, decoded_duration = detect_silences(normal)
+
+        assert container_duration is not None and decoded_duration is not None
+        assert decoded_duration == pytest.approx(container_duration, abs=0.5)
+        assert 9.5 < decoded_duration < 10.5
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +462,9 @@ def _make_ctx(
     ctx.silence_min_served_fraction = min_served_fraction
     ctx.ffmpeg.binary = "ffmpeg"
     ctx.ffmpeg.timeout_seconds = None
+    ctx.ffmpeg.threads = None
+    ctx.source_cache.get_or_fetch.return_value = Path("/tmp/citypods-test-source.mka")
+    ctx.native_work_gate = None
     return ctx
 
 
@@ -309,9 +483,15 @@ def _make_episode(media_kind="hls", duration=3600, sources=None, video_url="http
     ep.duration = duration
     ep.sources = sources or []
     ep.video_url = video_url
+    ep.uid = "uid-1"
+    ep.guid = "guid-1"
     ep.links = {}
     ep.audio_key = None
     ep.hosted_audio_url = None
+    ep.materialize_attempts = 0
+    ep.materialize_last_attempt = None
+    ep.materialize_error = None
+    ep.timeline_defer_reason = ""
     # H16 PR3: the planner now reads these to fingerprint and stamp the availability verdict.
     ep.audio_url = None
     ep.resolved_audio_url.return_value = video_url
@@ -320,6 +500,12 @@ def _make_episode(media_kind="hls", duration=3600, sources=None, video_url="http
 
 
 class TestSilencePlanner:
+    def test_version_is_3(self):
+        # GH#702 PR6: bumped 2->3 to re-plan every single-file silence EDL onto the stream-sample
+        # clock. Bumping the version is a deliberate full-catalog re-trim/re-encode — keep this pin
+        # so the signature change is intentional, not accidental.
+        assert SilencePlanner.version == "3"
+
     def test_returns_none_when_disabled(self):
         planner = SilencePlanner()
         ctx = _make_ctx(trim_silence=False)
@@ -354,7 +540,7 @@ class TestSilencePlanner:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], 3600.0, None)
+            mock_detect.return_value = ([], 3600.0, 3600.0)
             result = planner.plan(provider, _make_city(extract_audio=True), ep, ctx, None)
         # No silence → identity timeline
         assert result is not None
@@ -376,7 +562,7 @@ class TestSilencePlanner:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], 3600.0, None)
+            mock_detect.return_value = ([], 3600.0, 3600.0)
             result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         assert result is not None
         assert timeline_digest(result) == ""  # identity → no re-encode
@@ -390,9 +576,8 @@ class TestSilencePlanner:
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
-            patch("citypods.silence._probe_stream_sample_duration", return_value=None),
         ):
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, None)
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, 3600.0)
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is not None
         assert timeline_digest(result) != ""  # non-identity → will re-encode
@@ -400,11 +585,11 @@ class TestSilencePlanner:
         assert result.segments[0].source_start == pytest.approx(5.0)
         assert len(ep.sources) == 1
         assert ep.sources[0].duration == pytest.approx(3600.0)
-        assert ep.sources[0].duration_basis == "container"
+        assert ep.sources[0].duration_basis == "decoded"
 
-    def test_edl_anchors_on_stream_sample_not_container(self):
+    def test_edl_anchors_on_decoded_end_not_container(self):
         """GH#702: when the container Duration overstates the audio stream, the EDL's final span
-        must end at the stream-sample clock so the rendered file is not shorter than the EDL."""
+        must end at the decoded clock so the rendered file is not shorter than the EDL."""
         planner = SilencePlanner()
         ctx = _make_ctx()
         provider = MagicMock()
@@ -413,52 +598,8 @@ class TestSilencePlanner:
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
-            # container header says 3600; the real audio stream is 3550.
-            patch("citypods.silence._probe_stream_sample_duration", return_value=3550.0),
         ):
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, None)  # 5s leading silence
-            result = planner.plan(provider, _make_city(), ep, ctx, None)
-        assert result is not None
-        # Single kept span [5, 3550] in source time → served total 3545, NOT 3595.
-        assert result.segments[-1].source_end == 3550.0
-        assert sum(s.served_end - s.served_start for s in result.segments) == 3545.0
-        assert ep.sources[0].duration == 3550.0
-        assert ep.sources[0].duration_basis == "stream-sample"
-
-    def test_falls_back_to_container_basis_when_stream_probe_unavailable(self):
-        planner = SilencePlanner()
-        ctx = _make_ctx()
-        provider = MagicMock()
-        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
-        ep = _make_episode(duration=3600)
-        with (
-            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences") as mock_detect,
-            patch("citypods.silence._probe_stream_sample_duration", return_value=None),
-        ):
-            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, None)
-            result = planner.plan(provider, _make_city(), ep, ctx, None)
-        assert result is not None
-        assert ep.sources[0].duration == 3600.0
-        assert ep.sources[0].duration_basis == "container"
-
-    def test_edl_anchors_on_decoded_end_when_stream_probe_unavailable(self):
-        """GH#702: HLS / fragmented-MP4 sources expose no stream-sample clock
-        (``_probe_stream_sample_duration`` → None) yet their container header overstates the audio.
-        The planner must fall back to the *decoded* end measured by the silence pass — not the
-        container header — so the re-planned EDL matches the rendered file. This is the tier whose
-        absence left the rendered-duration-mismatch survivors on the container clock."""
-        planner = SilencePlanner()
-        ctx = _make_ctx()
-        provider = MagicMock()
-        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
-        ep = _make_episode(duration=3600)
-        with (
-            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences") as mock_detect,
-            patch("citypods.silence._probe_stream_sample_duration", return_value=None),
-        ):
-            # container header 3600; decoded audio-stream end 3550 (the GH#702 gap), 5s lead trim.
+            # container header says 3600; decoded audio ends at 3550.
             mock_detect.return_value = ([(0.0, 5.0)], 3600.0, 3550.0)
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is not None
@@ -467,6 +608,24 @@ class TestSilencePlanner:
         assert sum(s.served_end - s.served_start for s in result.segments) == 3545.0
         assert ep.sources[0].duration == 3550.0
         assert ep.sources[0].duration_basis == "decoded"
+
+    def test_defers_when_decoded_duration_unavailable(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 5.0)], 3600.0, None)
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is None
+        assert ep.sources == []
+        assert ep.timeline_defer_reason == "deferred_decode_unavailable"
+        assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "timeline-decode"
 
 
 class TestProbeStreamSampleDuration:
@@ -491,7 +650,7 @@ class TestProbeStreamSampleDuration:
 
     def test_format_only_returns_none(self):
         # No stream-level clock → return None (do NOT return the container format.duration
-        # mislabeled as stream-sample); the caller then falls back to the container basis honestly.
+        # mislabeled as stream-sample).
         value, _ = self._run('{"streams":[],"format":{"duration":"1010.0"}}')
         assert value is None
 
@@ -518,6 +677,38 @@ class TestProbeStreamSampleDuration:
             _probe_stream_sample_duration("https://cdn.example.com/v.m3u8")
         assert "-user_agent" in mock_run.call_args[0][0]
 
+    def test_planner_detects_silence_from_source_cache_path_not_remote_url(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0, 3600.0)
+            planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
+        ctx.source_cache.get_or_fetch.assert_called_once_with("uid-1", "http://x.com/video.mp4")
+        assert mock_detect.call_args.args[0] == "/tmp/citypods-test-source.mka"
+
+    def test_defers_when_source_cache_unavailable(self):
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        ctx.source_cache.get_or_fetch.return_value = None
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is None
+        assert ep.timeline_defer_reason == "deferred_cache_unavailable"
+        assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "timeline-cache"
+        mock_detect.assert_not_called()
+
     def test_detect_silences_called_with_native_work_gate_threads(self):
         """The detect_silences call is pinned to CommandFfmpeg's configured thread count, the same
         budget AudioStage's encodes respect, so a planner pass can't oversubscribe the CPU."""
@@ -530,7 +721,7 @@ class TestProbeStreamSampleDuration:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([], 3600.0, None)
+            mock_detect.return_value = ([], 3600.0, 3600.0)
             planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         assert mock_detect.call_args.kwargs["threads"] == 2
 
@@ -539,6 +730,7 @@ class TestProbeStreamSampleDuration:
         pass — not run silencedetect unbounded and not raise."""
         planner = SilencePlanner()
         ctx = _make_ctx()
+        ctx.native_work_gate = MagicMock()
         ctx.native_work_gate.acquire.return_value = False
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
@@ -554,12 +746,13 @@ class TestProbeStreamSampleDuration:
     def test_releases_native_work_gate_after_detect_silences(self):
         planner = SilencePlanner()
         ctx = _make_ctx()
+        ctx.native_work_gate = MagicMock()
         ctx.native_work_gate.acquire.return_value = True
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences", return_value=([], 3600.0, None)),
+            patch("citypods.silence.detect_silences", return_value=([], 3600.0, 3600.0)),
         ):
             planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
         ctx.native_work_gate.release.assert_called_once_with(kind="audio")
@@ -600,8 +793,11 @@ class TestProbeStreamSampleDuration:
             mock_detect.return_value = ([], None, None)  # also no duration from ffmpeg
             result = planner.plan(provider, _make_city(), ep, ctx, None)
         assert result is None
+        assert ep.timeline_defer_reason == "deferred_decode_unavailable"
+        assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "timeline-decode"
 
-    def test_uses_ep_duration_as_fallback(self):
+    def test_provider_duration_does_not_replace_missing_decoded_duration(self):
         planner = SilencePlanner()
         ctx = _make_ctx()
         provider = MagicMock()
@@ -613,12 +809,11 @@ class TestProbeStreamSampleDuration:
         ):
             mock_detect.return_value = ([], None, None)  # no duration from ffmpeg
             result = planner.plan(provider, _make_city(), ep, ctx, None)
-        # No silence, ep.duration used → identity
-        assert result is not None
-        assert timeline_digest(result) == ""
-        assert len(ep.sources) == 1
-        assert ep.sources[0].duration == pytest.approx(7200.0)
-        assert ep.sources[0].duration_basis == "provider"
+        assert result is None
+        assert ep.sources == []
+        assert ep.timeline_defer_reason == "deferred_decode_unavailable"
+        assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "timeline-decode"
 
     def test_preserves_existing_single_source_metadata_when_refreshing_duration_telemetry(self):
         planner = SilencePlanner()
@@ -640,7 +835,7 @@ class TestProbeStreamSampleDuration:
         ]
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
-            patch("citypods.silence.detect_silences", return_value=([], 3600.0, None)),
+            patch("citypods.silence.detect_silences", return_value=([], 3600.0, 3600.0)),
         ):
             planner.plan(provider, _make_city(), ep, ctx, None)
         assert len(ep.sources) == 1
@@ -651,7 +846,7 @@ class TestProbeStreamSampleDuration:
         assert ep.sources[0].watch_url == "https://watch.example/123"
         assert ep.sources[0].backup_key == "audio/source-backup.m4a"
         assert ep.sources[0].duration == pytest.approx(3600.0)
-        assert ep.sources[0].duration_basis == "container"
+        assert ep.sources[0].duration_basis == "decoded"
 
     def test_returns_none_when_ffmpeg_not_installed(self):
         planner = SilencePlanner()
@@ -662,22 +857,25 @@ class TestProbeStreamSampleDuration:
         assert result is None
         provider.resolve_media_url.assert_not_called()  # no network call when ffmpeg absent
 
-    def test_degenerate_timeline_with_no_prior_falls_back_to_identity(self):
-        """A near-total-silence detection (bad probe) with no prior timeline → identity, not
-        a near-empty served timeline that would get hosted."""
+    def test_degenerate_timeline_with_no_prior_defers(self):
+        """A near-total-silence detection (bad probe) with no prior timeline defers rather than
+        stamping either identity or a near-empty served timeline that would get hosted."""
         planner = SilencePlanner()
         ctx = _make_ctx()
         provider = MagicMock()
         provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
         with (
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
             # Almost the entire (claimed) 3600s source flagged silent → 0.01s kept.
-            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, None)
-            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
-        assert result is not None
-        assert timeline_digest(result) == ""  # identity, not the degenerate trim
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, 3600.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is None
+        assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
+        assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "timeline-degenerate"
 
     def test_degenerate_timeline_with_prior_preserves_prior(self):
         """When a (good) prior timeline already exists, a degenerate re-detection must not
@@ -703,9 +901,59 @@ class TestProbeStreamSampleDuration:
             patch("citypods.silence.shutil.which", return_value="ffmpeg"),
             patch("citypods.silence.detect_silences") as mock_detect,
         ):
-            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, None)
-            result = planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, prior)
+            ep = _make_episode(duration=3600)
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, 3600.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, prior)
         assert result is None
+        assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
+        assert ep.materialize_attempts == 1
+        assert ep.materialize_error == "timeline-degenerate"
+
+    def test_degenerate_repair_timeline_clears_known_bad_prior(self):
+        """A repair-selected prior EDL is not a healthy fallback. If decoded re-planning produces a
+        degenerate result, clear the stale EDL so availability/deferred state owns the episode."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        prior = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=51.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0.0,
+                    source_end=51.0,
+                ),
+            ),
+        )
+        ep = _make_episode(duration=3600)
+        ep.timeline = prior
+        set_timeline_audio_integrity(
+            ep,
+            {
+                "status": "rendered-duration-mismatch",
+                "repair": [REPAIR_TIMELINE_REPLAN],
+            },
+        )
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, 3600.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, prior)
+
+        assert result is None
+        assert ep.timeline is None
+        assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
+        assert ep.materialize_error == "timeline-degenerate"
+        # The repair flag is NOT cleared by the lane: the integrity block is audit-owned and a
+        # lane-side clear would not survive the scoped push (GH#795). A confirmed-dead episode is
+        # instead governed by the flat dead-cooldown gate in TimelineStage, which takes precedence
+        # over the flag, so the un-clearable flag never forces an every-run re-decode.
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
 
 class TestSilencePlannerAvailability:
@@ -729,17 +977,17 @@ class TestSilencePlannerAvailability:
     def test_real_audio_is_available(self):
         from citypods.availability import AVAILABLE
 
-        av = self._plan(([(0.0, 5.0)], 3600.0, None))
+        av = self._plan(([(0.0, 5.0)], 3600.0, 3600.0))
         assert av is not None and av.state == AVAILABLE and not av.is_withheld()
 
     def test_near_total_silence_is_suspected_then_confirmed(self):
         from citypods.availability import CONFIRMED_EMPTY, SUSPECTED_EMPTY
 
         ep = _make_episode(duration=3600)
-        first = self._plan(([(0.0, 3599.99)], 3600.0, None), ep=ep)
+        first = self._plan(([(0.0, 3599.99)], 3600.0, 3600.0), ep=ep)
         assert first.state == SUSPECTED_EMPTY and first.is_withheld()
         ep.media_availability = first  # carry the verdict into the next independent run
-        second = self._plan(([(0.0, 3599.99)], 3600.0, None), ep=ep)
+        second = self._plan(([(0.0, 3599.99)], 3600.0, 3600.0), ep=ep)
         assert second.state == CONFIRMED_EMPTY and second.silent_confirmations == 2
 
     def test_silence_verdict_uses_decoded_end_over_container(self):
@@ -758,7 +1006,7 @@ class TestSilencePlannerAvailability:
         from citypods.availability import AVAILABLE
 
         ep = _make_episode(duration=3600)
-        ep.media_availability = self._plan(([(0.0, 5.0)], 3600.0, None), ep=ep)
+        ep.media_availability = self._plan(([(0.0, 5.0)], 3600.0, 3600.0), ep=ep)
         assert ep.media_availability.state == AVAILABLE
         # A later run whose fetch fails to decode (no probe duration) must NOT flip it to empty.
         after = self._plan(([], None, None), ep=ep)
@@ -777,6 +1025,27 @@ class TestSilencePlannerAvailability:
             planner.plan(provider, _make_city(), ep, ctx, None)
         assert ep.media_availability is not None
         assert ep.media_availability.state == MISSING and ep.media_availability.is_withheld()
+
+    def test_dead_media_recheck_retains_repair_flag(self):
+        """The lane must NOT clear a repair flag when it classifies an episode dead in-flight
+        (MEDIA_DEAD): the integrity block is audit-owned and a lane-side clear would not persist, so
+        the flat dead-cooldown gate — not flag-clearing — is what prevents every-run re-decode
+        (GH#795). This pins the removed lane-clear at the MEDIA_DEAD path itself."""
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
+
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.side_effect = MediaUnavailable("gone", code=MEDIA_DEAD)
+        ep = _make_episode(duration=3600)
+        set_timeline_audio_integrity(
+            ep,
+            {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]},
+        )
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            planner.plan(provider, _make_city(), ep, ctx, None)
+        assert ep.media_availability.is_withheld()
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
 
 # ---------------------------------------------------------------------------
