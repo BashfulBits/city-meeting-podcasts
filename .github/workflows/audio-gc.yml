@@ -47,7 +47,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install
-        run: pip install -e ".[storage]"
+        run: pip install -e ".[storage]" -c constraints/prod.txt
 
       # Never reap while an audio.yml run might be writing fresh objects whose records aren't
       # persisted yet. The --min-age-days floor already protects new objects; this just avoids racing

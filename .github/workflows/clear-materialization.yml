@@ -63,7 +63,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[storage]"
+        run: pip install -e ".[storage]" -c constraints/prod.txt
 
       - name: Clear run materializations
         run: |

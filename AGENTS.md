@@ -81,6 +81,11 @@ When you move a feature along the pipeline, update the listed docs in the **same
   artifacts are auto-invalidated (gradually re-done) or left as-is. A silent bump that *does* invalidate
   can queue weeks of catalog rework; one that *doesn't* can leave a stale-format catalog while the docs
   claim otherwise — both have bitten this project.
+- **Dependencies are pinned; adding one has a contract.** Declare `>=` floors in `pyproject.toml`,
+  recompile `constraints/*.txt` (`scripts/compile_constraints.sh`), never re-declare deps in the
+  external-worker image builders, and treat *output-affecting* bumps (`faster-whisper`, `ctranslate2`,
+  `stable-ts`, `Pillow`, ffmpeg, base image, model revisions) as version-coupled per the rule above.
+  Full policy + the light-touch update flow: [`review/22`](review/22-dependency-and-reproducibility-policy.md).
 - **Branch names:** `<type>/<slug>` — `feat/`, `fix/`, `docs/`, `refactor/`, `chore/` (issue number
   in the slug when one is tracked, e.g. `feat/110-asr-transcripts`). Full convention + examples in
   [CONTRIBUTING.md](CONTRIBUTING.md).
