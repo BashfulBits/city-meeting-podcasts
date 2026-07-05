@@ -364,10 +364,17 @@ def reap(
             continue  # a worker raced us (claimed/renewed) — leave it, re-sweep next cycle
         completed += outcome == "completed"
         requeued += outcome == "requeued"
-        if outcome == "completed" and on_completed is not None:
-            on_completed(owner)
-        elif outcome == "requeued" and on_requeued is not None:
-            on_requeued(owner)
+        # The lease has already been moved off "leased", so a raising callback (e.g. a
+        # budget settle that exhausts its CAS retries) must not abort the rest of the
+        # sweep — that item can't be re-swept. Log and keep going; the budget update for
+        # this one item is best-effort.
+        try:
+            if outcome == "completed" and on_completed is not None:
+                on_completed(owner)
+            elif outcome == "requeued" and on_requeued is not None:
+                on_requeued(owner)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[work-leases] reap callback ({outcome}) failed for {owner}: {exc}", flush=True)
     return {"completed": completed, "requeued": requeued, "in_flight": in_flight}
 
 
