@@ -134,9 +134,11 @@ def main() -> int:
         any_fixture = True
         try:
             got = _encode_metrics(clip)
-        except (subprocess.CalledProcessError, OSError) as exc:
-            # Never fail the step (docstring guarantees exit 0) — a missing/broken ffmpeg
-            # binary or a probe failure surfaces as an error row, not a crash.
+        except Exception as exc:
+            # Never fail the step (docstring guarantees exit 0). Catch broadly: a
+            # missing/broken ffmpeg binary (OSError), a non-zero ffmpeg/ffprobe
+            # (CalledProcessError), or malformed ffprobe output (KeyError/ValueError/
+            # JSONDecodeError) all surface as an error row, not a crash.
             stderr = getattr(exc, "stderr", None)
             rows.append(f"| {fam} | ffmpeg/ffprobe error | — | n/a | ✗ error |")
             print(stderr.decode(errors="replace") if isinstance(stderr, bytes) else exc)
