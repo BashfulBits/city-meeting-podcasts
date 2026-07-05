@@ -18,8 +18,12 @@ from pathlib import Path
 from citypods.cli import main as cli_main
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
+    REPAIR_TIMELINE_REPLAN,
     REPAIR_TRANSCRIPT_REGENERATE,
     build_timeline_audio_integrity,
+    clear_resolved_timeline_audio_integrity,
+    ensure_timeline_audio_repair_token,
+    needs_timeline_audio_repair,
     set_timeline_audio_integrity,
 )
 from citypods.models import City, Episode
@@ -213,6 +217,54 @@ class TestAudioSpecHashV1Compat:
 
         assert audio_spec_hash(ep, max_kbps=96) != base_audio
         assert transcript_media_hash(ep) != base_transcript
+
+    def test_status_ok_repair_list_is_ignored_for_existing_polluted_state(self):
+        ep = _ep()
+        base_audio = audio_spec_hash(ep, max_kbps=96)
+        base_transcript = transcript_media_hash(ep)
+
+        set_timeline_audio_integrity(
+            ep,
+            {
+                "status": "ok",
+                "repair": [
+                    REPAIR_AUDIO_REMATERIALIZE,
+                    REPAIR_TIMELINE_REPLAN,
+                    REPAIR_TRANSCRIPT_REGENERATE,
+                ],
+            },
+        )
+
+        assert not needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+        assert audio_spec_hash(ep, max_kbps=96) == base_audio
+        assert transcript_media_hash(ep) == base_transcript
+
+    def test_resolved_timeline_audio_repair_clears_targeted_rekeys(self):
+        ep = _ep()
+        base_audio = audio_spec_hash(ep, max_kbps=96)
+        set_timeline_audio_integrity(
+            ep,
+            build_timeline_audio_integrity(
+                status="rendered-duration-mismatch",
+                timeline_duration=100.0,
+                container_duration=104.0,
+                stream_sample_duration=104.0,
+                repair=[REPAIR_AUDIO_REMATERIALIZE, REPAIR_TIMELINE_REPLAN],
+            ),
+        )
+        ensure_timeline_audio_repair_token(ep, REPAIR_AUDIO_REMATERIALIZE)
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+        assert audio_spec_hash(ep, max_kbps=96) != base_audio
+
+        assert clear_resolved_timeline_audio_integrity(ep, "ok")
+
+        block = ep.integrity["timeline_audio"]
+        assert block["status"] == "ok"
+        assert "repair" not in block
+        assert "repair_tokens" not in block
+        assert "resolved_at" in block
+        assert not needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+        assert audio_spec_hash(ep, max_kbps=96) == base_audio
 
     def test_multi_source_uses_v2_format(self):
         ep = _ep()

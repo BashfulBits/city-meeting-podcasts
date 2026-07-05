@@ -8,13 +8,15 @@ Acceptance criteria:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from citypods.integrity import REPAIR_TIMELINE_REPLAN, set_timeline_audio_integrity
-from citypods.media import RateLimitedMediaFetchError
+from citypods.media import MaterializeStats, RateLimitedMediaFetchError
 from citypods.models import City, Episode
 from citypods.stages import (
+    AudioStage,
     StageContext,
     TimelineStage,
     default_stages,
@@ -173,6 +175,40 @@ class _NoOpPlanner:
         return None  # always passes through
 
 
+class _DeferredPlanner:
+    """Planner that explicitly defers after deciding the source cannot be planned safely."""
+
+    name = "deferred-fake"
+    version = "1"
+
+    def plan(self, provider, city, ep, ctx, current):
+        ep.timeline_defer_reason = "deferred_decode_unavailable"
+        return None
+
+
+class _CountingPlanner:
+    name = "counting-fake"
+    version = "1"
+
+    def __init__(self):
+        self.calls = 0
+
+    def plan(self, provider, city, ep, ctx, current):
+        self.calls += 1
+        return identity_timeline(
+            SourceMedia(
+                id="s0",
+                provider="civicplus",
+                ref=ep.video_url,
+                media_kind=ep.media_kind,
+                duration=float(ep.duration or 0),
+                watch_url=None,
+                duration_basis="decoded",
+            ),
+            float(ep.duration or 0),
+        )
+
+
 # ---------------------------------------------------------------------------
 # TimelineStage — no planners (identity path)
 # ---------------------------------------------------------------------------
@@ -192,6 +228,45 @@ class TestTimelineStageNoPlanner:
         assert stats.reused == 1
         assert stats.ran == 0
 
+    def test_deferred_planner_counts_reason_and_leaves_timeline_untouched(self, tmp_path):
+        ep = _ep()
+        stage = TimelineStage(planners=[_DeferredPlanner()])
+        stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert ep.timeline is None
+        assert stats.ran == 0
+        assert stats.skipped == 1
+        assert stats.defer_reasons == {"deferred_decode_unavailable": 1}
+        assert stats.defer_samples == ["uid-g1:deferred_decode_unavailable"]
+
+    def test_audio_stage_skips_episode_deferred_by_timeline_in_same_run(self, tmp_path):
+        ep = _ep()
+        ep.timeline_defer_reason = "deferred_decode_unavailable"
+        ctx = _ctx(tmp_path)
+        ctx.dry_run = False
+
+        with patch("citypods.stages.materialize_audio", return_value=MaterializeStats()) as mock:
+            stats = AudioStage().process(FakeProvider(), _city(), [ep], ctx)
+
+        assert stats.ran == 0
+        assert mock.call_args.args[1] == []
+
+    def test_timeline_specific_materialize_backoff_defers_planning(self, tmp_path):
+        ep = _ep()
+        ep.materialize_attempts = 1
+        ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+        ep.materialize_error = "timeline-decode"
+        planner = _CountingPlanner()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert ep.timeline is None
+        assert stats.skipped == 1
+        assert stats.defer_reasons == {"timeline-decode-backoff": 1}
+        assert stats.defer_samples == ["uid-g1:timeline-decode-backoff"]
+
     def test_already_set_timeline_stays_when_no_planners(self, tmp_path):
         src = SourceMedia(
             id="s0", provider="g", ref="u", media_kind="direct", duration=3600.0, watch_url=None
@@ -209,6 +284,97 @@ class TestTimelineStageNoPlanner:
         assert ep.timeline is None
         stats = stage.process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.reused == 1
+
+
+# ---------------------------------------------------------------------------
+# TimelineStage — confirmed-dead flat cadence + repair-flag one-shot recheck (GH#795)
+# ---------------------------------------------------------------------------
+
+
+class TestConfirmedDeadCadence:
+    """A confirmed-dead episode polls on a flat 30-day cadence; ``suspected_empty`` stays on the
+    exponential ramp; a repair flag forces an immediate recheck regardless of cooldown."""
+
+    @staticmethod
+    def _dead_ep(state, *, age_days: float):
+        from citypods.availability import MediaAvailability
+
+        ep = _ep()
+        last = (datetime.now(UTC) - timedelta(days=age_days)).isoformat()
+        ep.media_availability = MediaAvailability(state=state, last_check=last)
+        return ep
+
+    def test_confirmed_dead_within_window_defers_without_planning(self, tmp_path):
+        from citypods.availability import CONFIRMED_EMPTY
+
+        ep = self._dead_ep(CONFIRMED_EMPTY, age_days=1)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 0  # no download/decode
+        assert ep.timeline is None
+        assert stats.defer_reasons == {"dead-cooldown": 1}
+        assert stats.defer_samples == ["uid-g1:dead-cooldown"]
+
+    def test_confirmed_dead_past_window_replans(self, tmp_path):
+        from citypods.availability import MISSING
+
+        ep = self._dead_ep(MISSING, age_days=31)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1
+        assert stats.ran == 1
+
+    def test_suspected_empty_not_subject_to_flat_gate(self, tmp_path):
+        from citypods.availability import SUSPECTED_EMPTY
+
+        # A recent last_check would defer under the flat gate — but suspected_empty is not
+        # confirmed-dead, so it falls through and re-plans (its cadence is the exponential backoff).
+        ep = self._dead_ep(SUSPECTED_EMPTY, age_days=0)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1
+        assert stats.ran == 1
+
+    def test_repair_flag_does_not_bypass_dead_cooldown(self, tmp_path):
+        # The flat confirmed-dead gate takes precedence over a repair flag: the integrity block is
+        # audit-owned (the audio lane can't persist a clear), so if a flag bypassed this gate a
+        # quarantined episode would re-decode every run. It defers on dead-cooldown (GH#795).
+        from citypods.availability import CONFIRMED_EMPTY
+        from citypods.integrity import set_timeline_audio_integrity
+
+        ep = self._dead_ep(CONFIRMED_EMPTY, age_days=1)  # inside the flat window
+        set_timeline_audio_integrity(
+            ep, {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]}
+        )
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 0  # no re-download; flat gate wins over the flag
+        assert stats.defer_reasons == {"dead-cooldown": 1}
+
+    def test_repair_flag_bypasses_exponential_backoff(self, tmp_path):
+        from citypods.integrity import set_timeline_audio_integrity
+
+        ep = _ep()
+        ep.materialize_attempts = 1
+        ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+        ep.materialize_error = "timeline-degenerate"
+        set_timeline_audio_integrity(
+            ep, {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]}
+        )
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1  # repair flag overrides the fresh backoff window
+        assert stats.ran == 1
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +598,24 @@ class _CountingSilence(_SilencePlanner):
         return super().plan(*a, **kw)
 
 
+class _CountingDecodedSilence(_CountingSilence):
+    name = "silence"
+
+    def plan(self, provider, city, ep, ctx, current):
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider=city.provider,
+                ref=ep.video_url,
+                media_kind=ep.media_kind,
+                duration=3600.0,
+                watch_url=None,
+                duration_basis="decoded",
+            )
+        ]
+        return super().plan(provider, city, ep, ctx, current)
+
+
 class TestTimelineStageSkipAndStop:
     def test_skips_replanning_when_signature_matches(self, tmp_path):
         ep = _ep()
@@ -462,6 +646,203 @@ class TestTimelineStageSkipAndStop:
 
         assert planner.calls == 2
         assert stats.ran == 1
+
+    def test_replans_same_signature_silence_timeline_with_container_source_basis(self, tmp_path):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="granicus",
+                ref=ep.video_url,
+                media_kind="direct",
+                duration=3600.5,
+                watch_url=None,
+                duration_basis="container",
+            )
+        ]
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3900,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 1
+        assert stats.ran == 1 and stats.reused == 0
+        assert ep.sources[0].duration_basis == "decoded"
+
+    def test_reuses_same_signature_silence_timeline_with_missing_source_metadata(self, tmp_path):
+        ep = _ep()
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3900,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
+
+    def test_reuses_same_signature_silence_timeline_with_decoded_qualified_basis(self, tmp_path):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="granicus",
+                ref=ep.video_url,
+                media_kind="direct",
+                duration=3900,
+                watch_url=None,
+                duration_basis="decoded:48000",
+            )
+        ]
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3900,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
+
+    def test_reuses_same_signature_concat_timeline_with_stream_sample_basis(self, tmp_path):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="swagit",
+                ref="https://src/part-1.mp4",
+                media_kind="direct",
+                duration=100.0,
+                watch_url=None,
+                duration_basis="stream-sample",
+            ),
+            SourceMedia(
+                id="s1",
+                provider="swagit",
+                ref="https://src/part-2.mp4",
+                media_kind="direct",
+                duration=200.0,
+                watch_url=None,
+                duration_basis="stream-sample",
+            ),
+        ]
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=100,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=100,
+                ),
+                Segment(
+                    served_start=100,
+                    served_end=300,
+                    kind="source",
+                    source_id="s1",
+                    source_start=0,
+                    source_end=200,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
+
+    def test_reuses_same_signature_concat_timeline_with_legacy_missing_basis(self, tmp_path):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="swagit",
+                ref="https://src/part-1.mp4",
+                media_kind="direct",
+                duration=100.0,
+                watch_url=None,
+            ),
+            SourceMedia(
+                id="s1",
+                provider="swagit",
+                ref="https://src/part-2.mp4",
+                media_kind="direct",
+                duration=200.0,
+                watch_url=None,
+            ),
+        ]
+        ep.timeline = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=100,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=100,
+                ),
+                Segment(
+                    served_start=100,
+                    served_end=300,
+                    kind="source",
+                    source_id="s1",
+                    source_start=0,
+                    source_end=200,
+                ),
+            ),
+        )
+        planner = _CountingDecodedSilence()
+
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+
+        assert planner.calls == 0
+        assert stats.reused == 1 and stats.ran == 0
 
     def test_replans_when_planner_version_changes(self, tmp_path):
         ep = _ep()

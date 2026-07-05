@@ -23,8 +23,13 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
     import probe_granicus_transport as transport
 
-from citypods.media import PODCAST_SPEECH_PROFILE, CommandFfmpeg, SourceCache
-from citypods.security import validate_source_url
+from citypods.media import (
+    DEFAULT_SOURCE_MEDIA_MAX_BYTES,
+    PODCAST_SPEECH_PROFILE,
+    CommandFfmpeg,
+    SourceCache,
+)
+from citypods.security import MediaSourceTooLargeError, validate_source_url
 
 
 def _redact_proxy_endpoint(result, archive_url: str):
@@ -70,19 +75,41 @@ def _run_production_encode(
     ffmpeg: str,
     ffprobe: str,
     timeout: float,
+    max_media_bytes: int | None = DEFAULT_SOURCE_MEDIA_MAX_BYTES,
 ) -> dict:
-    """Exercise the production direct-first source cache and speech-mastering recipe end to end."""
+    """Exercise the production direct-first source cache and speech-mastering recipe end to end.
+
+    ``max_media_bytes`` (issue #497) is the *same* production media-size guard
+    ``SourceCache``/``CommandFfmpeg`` apply in the real Audio workflow — this probe must inherit
+    that behavior rather than duplicate a separate probe-only size check (the whole point of
+    #497 was that the probe's own ``--full-download-max-mib`` cap made this path look guarded
+    when production wasn't). ``media_size_guard_bytes`` in the result records what was applied so
+    a probe run makes that inheritance visible instead of implicit.
+    """
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="granicus-worker-production-encode-") as tmp:
         tmpdir = Path(tmp)
-        with SourceCache(ffmpeg_binary=ffmpeg, timeout_seconds=timeout) as cache:
-            source = cache.get_or_fetch(clip, archive_url)
+        with SourceCache(
+            ffmpeg_binary=ffmpeg, timeout_seconds=timeout, max_media_bytes=max_media_bytes
+        ) as cache:
+            try:
+                source = cache.get_or_fetch(clip, archive_url)
+            except MediaSourceTooLargeError as exc:
+                return {
+                    "clip": clip,
+                    "ok": False,
+                    "outcome": "media_too_large",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "media_size_guard_bytes": max_media_bytes,
+                    "error": str(exc),
+                }
             if source is None:
                 return {
                     "clip": clip,
                     "ok": False,
                     "outcome": "source_cache_failed",
                     "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "media_size_guard_bytes": max_media_bytes,
                 }
             output = tmpdir / "production.m4a"
             try:
@@ -91,6 +118,7 @@ def _run_production_encode(
                     max_kbps=96,
                     timeout_seconds=timeout,
                     threads=1,
+                    max_media_bytes=max_media_bytes,
                 )
                 runner.extract_audio(
                     None,
@@ -115,12 +143,22 @@ def _run_production_encode(
                     timeout=min(timeout, 120),
                     check=False,
                 )
+            except MediaSourceTooLargeError as exc:
+                return {
+                    "clip": clip,
+                    "ok": False,
+                    "outcome": "media_too_large",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "media_size_guard_bytes": max_media_bytes,
+                    "error": str(exc),
+                }
             except Exception as exc:  # noqa: BLE001 - this probe step must not abort the whole run
                 return {
                     "clip": clip,
                     "ok": False,
                     "outcome": "extract_or_probe_failed",
                     "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "media_size_guard_bytes": max_media_bytes,
                     "error": str(exc),
                 }
             output_bytes = output.stat().st_size if output.exists() else 0
@@ -130,6 +168,7 @@ def _run_production_encode(
                 "ok": ok,
                 "outcome": "success" if ok else "local_ffprobe_failed",
                 "elapsed_seconds": round(time.monotonic() - started, 3),
+                "media_size_guard_bytes": max_media_bytes,
                 "output_bytes": output_bytes,
                 "ffprobe_summary": " ".join(probe.stdout.strip().split())[:500],
             }

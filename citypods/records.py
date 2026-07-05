@@ -56,6 +56,13 @@ BACKOFF_MAX = timedelta(days=30)
 TRANSCRIPT_TIMEOUT_BACKOFF_BASE = timedelta(days=1)
 TRANSCRIPT_TIMEOUT_BACKOFF_MAX = timedelta(days=30)
 
+# Once an episode is *confirmed dead* (empty/missing/invalid) it is no longer "failing" — it is a
+# known-dead recording we poll occasionally in case the source is restored. Recheck it on a flat
+# cadence instead of the exponential #120 backoff, so a re-check that stays dead just sleeps another
+# full interval without escalating a cooldown or filing new findings (GH#795). ``suspected_empty``
+# stays on the exponential backoff so it can reach its second silent confirmation quickly.
+CONFIRMED_DEAD_RECHECK_INTERVAL = timedelta(days=30)
+
 # Audio shard planning uses recording seconds as its common cost proxy. A withheld recording still
 # reaches TimelineStage so it can recover, but it does not enter AudioStage; give that cheap recheck
 # a small non-zero cost without letting known-empty media dominate a shard. Unknown-duration
@@ -84,34 +91,52 @@ def _capped_exponential_backoff(
     return min(cap, base * (2**exponent))
 
 
+def _parse_iso_utc(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 timestamp and normalize it to UTC, or ``None`` if absent/unparseable.
+
+    Shared by the backoff/recheck gates (``_in_backoff``, ``confirmed_dead_recheck_due``,
+    ``transcript_timeout_backoff_until``) so they cannot drift in how they read persisted times."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
 def _in_backoff(ep: Episode, now: datetime) -> bool:
     """True if ``ep`` failed recently enough to still be inside its materialization backoff."""
-    if ep.materialize_attempts <= 0 or not ep.materialize_last_attempt:
+    if ep.materialize_attempts <= 0:
         return False
-    try:
-        last = datetime.fromisoformat(ep.materialize_last_attempt)
-    except ValueError:
+    last = _parse_iso_utc(ep.materialize_last_attempt)
+    if last is None:
         return False
-    if last.tzinfo is None:
-        last = last.replace(tzinfo=UTC)
-    else:
-        last = last.astimezone(UTC)
     delay = _capped_exponential_backoff(BACKOFF_BASE, BACKOFF_MAX, ep.materialize_attempts)
     return now < last + delay
 
 
+def confirmed_dead_recheck_due(ep: Episode, now: datetime) -> bool:
+    """True when a confirmed-dead episode is due for its periodic recheck.
+
+    Anchored on the availability verdict's ``last_check`` (stamped/refreshed every time the verdict
+    is recorded). A missing or unparseable anchor is treated as due, so a freshly-confirmed episode
+    rechecks once and then settles onto the flat cadence. Callers must gate on
+    ``media_availability.is_confirmed_dead()`` before consulting this."""
+    av = ep.media_availability
+    last = _parse_iso_utc(av.last_check if av is not None else None)
+    if last is None:
+        return True
+    return now >= last + CONFIRMED_DEAD_RECHECK_INTERVAL
+
+
 def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
     """When this episode's local-ASR timeout backoff expires, or ``None`` if not backing off."""
-    if ep.transcript_timeout_attempts <= 0 or not ep.transcript_timeout_last_attempt:
+    if ep.transcript_timeout_attempts <= 0:
         return None
-    try:
-        last = datetime.fromisoformat(ep.transcript_timeout_last_attempt)
-    except ValueError:
+    last = _parse_iso_utc(ep.transcript_timeout_last_attempt)
+    if last is None:
         return None
-    if last.tzinfo is None:
-        last = last.replace(tzinfo=UTC)
-    else:
-        last = last.astimezone(UTC)
     delay = _capped_exponential_backoff(
         TRANSCRIPT_TIMEOUT_BACKOFF_BASE,
         TRANSCRIPT_TIMEOUT_BACKOFF_MAX,
@@ -780,6 +805,7 @@ def episode_to_record(ep: Episode) -> dict:
             "attempts": ep.materialize_attempts,
             "last_attempt": ep.materialize_last_attempt,
             "error": ep.materialize_error,
+            "error_spec_hash": ep.materialize_error_spec_hash,
         },
         # Durable media-availability verdict (H16 PR3): omitted when never classified so the
         # record stays clean for direct enclosures we don't re-host and for pre-PR3 records.
@@ -900,6 +926,7 @@ def record_to_episode(rec: dict) -> Episode:
         materialize_attempts=audio.get("attempts") or 0,
         materialize_last_attempt=audio.get("last_attempt"),
         materialize_error=audio.get("error"),
+        materialize_error_spec_hash=audio.get("error_spec_hash"),
         audio_bytes=audio.get("bytes"),
         links=rec.get("links") or {},
         chapters=rec.get("chapters") or [],
@@ -957,6 +984,7 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 ARTIFACT_BLOCKS: frozenset[str] = frozenset(
     {"audio", "transcript", "provider_transcript", "speakers", "media_availability", "integrity"}
 )
+PLANNING_FIELDS: frozenset[str] = frozenset({"sources", "timeline", "chapters", "chapters_basis"})
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
 # full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
@@ -975,6 +1003,54 @@ def protected_blocks_for_lane(lane: str | None) -> frozenset[str]:
     is written fresh. ``None``/unknown lane owns every artifact, so nothing is protected."""
     owned = _LANE_OWNED_BLOCKS.get(lane, ARTIFACT_BLOCKS) if lane is not None else ARTIFACT_BLOCKS
     return ARTIFACT_BLOCKS - owned
+
+
+def _basis_rank(basis: object) -> int:
+    if isinstance(basis, str) and (basis == "decoded" or basis.startswith("decoded:")):
+        return 3
+    if basis == "stream-sample":
+        return 2
+    if basis == "container":
+        return 1
+    return 0
+
+
+def _record_source_basis_rank(rec: dict) -> int:
+    sources = rec.get("sources") or []
+    ranks = [_basis_rank(src.get("duration_basis")) for src in sources if isinstance(src, dict)]
+    return min(ranks) if ranks else 0
+
+
+def _record_timeline_version_rank(rec: dict) -> tuple[int, ...]:
+    timeline = rec.get("timeline")
+    version = timeline.get("version") if isinstance(timeline, dict) else ""
+    return tuple(int(n) for n in re.findall(r":(\d+)", str(version or "")))
+
+
+def _record_planning_rank(rec: dict) -> tuple[tuple[int, ...], int, int]:
+    return (
+        _record_timeline_version_rank(rec),
+        _record_source_basis_rank(rec),
+        1 if rec.get("timeline") else 0,
+    )
+
+
+def _preserve_remote_planning_if_better(rec: dict, remote_rec: dict) -> None:
+    """Keep decoded/newer planning metadata from being clobbered by a stale scoped push.
+
+    Scoped lanes re-read remote state to protect sibling artifact blocks, but the timeline/source
+    metadata sits in the whole-record body. A long-running shard that started before a repair can
+    therefore carry container/legacy planning locally and overwrite a fresher decoded remote plan.
+    When remote planning is strictly better, keep it and its associated artifact blocks; local
+    artifacts were computed against the stale plan and are not safe to attach to the newer EDL.
+    """
+    if _record_planning_rank(remote_rec) <= _record_planning_rank(rec):
+        return
+    for key in PLANNING_FIELDS | ARTIFACT_BLOCKS:
+        if key in remote_rec:
+            rec[key] = remote_rec[key]
+        else:
+            rec.pop(key, None)
 
 
 def merge_preserving_foreign(
@@ -1024,6 +1100,7 @@ def merge_preserving_foreign(
             for block in protected:
                 if remote_rec.get(block):
                     rec[block] = remote_rec[block]
+            _preserve_remote_planning_if_better(rec, remote_rec)
         merged[uid] = rec
     return merged
 
@@ -1072,6 +1149,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.materialize_attempts = audio.get("attempts") or 0
         ep.materialize_last_attempt = audio.get("last_attempt")
         ep.materialize_error = audio.get("error")
+        ep.materialize_error_spec_hash = audio.get("error_spec_hash")
         ep.audio_bytes = audio.get("bytes")
         ep.audio_encode_time = audio.get("encode_time")
         ep.audio_duration_served = audio.get("duration_served")

@@ -111,6 +111,8 @@ from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workit
 from citypods.progress import PROGRESS
 from citypods.records import (
     AUDIO_PIPELINE_VERSION,
+    _in_backoff,
+    confirmed_dead_recheck_due,
     transcript_media_hash,
     transcript_timeout_backoff_until,
 )
@@ -170,6 +172,21 @@ def _playable(episodes: list[Episode]) -> list[Episode]:
     return [
         ep for ep in episodes if not (ep.media_availability and ep.media_availability.is_withheld())
     ]
+
+
+def _timeline_ready(episodes: list[Episode]) -> list[Episode]:
+    """Drop episodes whose required timeline planning explicitly deferred in this run."""
+    return [ep for ep in episodes if not getattr(ep, "timeline_defer_reason", "")]
+
+
+_TIMELINE_BACKOFF_ERRORS = frozenset(
+    {
+        "timeline-cache",
+        "timeline-decode",
+        "timeline-degenerate",
+        "rate_limited",
+    }
+)
 
 
 class AsrArtifactCache:
@@ -374,11 +391,14 @@ class StageStats:
     asr_migration_regenerated: int = 0
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     defer_reasons: dict[str, int] = field(default_factory=dict)
+    defer_samples: list[str] = field(default_factory=list)
 
-    def defer(self, reason: str, count: int = 1) -> None:
+    def defer(self, reason: str, count: int = 1, *, sample: str | None = None) -> None:
         """Record restartable work left for a later run, grouped by a stable reason token."""
         self.skipped += count
         self.defer_reasons[reason] = self.defer_reasons.get(reason, 0) + count
+        if sample and len(self.defer_samples) < 5:
+            self.defer_samples.append(sample)
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -666,9 +686,14 @@ class AudioStage:
                 ep.audio_rebuild = token
         ms: MaterializeStats = materialize_audio(
             city,
-            _playable(
-                _materialize_set(
-                    episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            _timeline_ready(
+                _playable(
+                    _materialize_set(
+                        episodes,
+                        city.max_episodes,
+                        policy=ctx.backlog_policy,
+                        city_slug=city.slug,
+                    )
                 )
             ),
             storage=ctx.storage,
@@ -697,6 +722,8 @@ class AudioStage:
             encoded=ms.encoded,
             credited=ms.credited,
             rate_limited=ms.rate_limited,
+            defer_reasons=dict(ms.defer_reasons),
+            defer_samples=list(ms.defer_samples),
         )
 
 
@@ -777,11 +804,54 @@ class TimelineStage:
             return "identity"
         return "+".join(sorted(f"{p.name}:{getattr(p, 'version', '1')}" for p in self.planners))
 
+    def _requires_decoded_source_basis(self) -> bool:
+        return any(p.name == "silence" for p in self.planners)
+
+    @staticmethod
+    def _has_healthy_source_basis(basis: str | None, *, allow_concat_legacy: bool) -> bool:
+        if basis is None:
+            return allow_concat_legacy
+        if basis == "decoded" or basis.startswith("decoded:"):
+            return True
+        return allow_concat_legacy and basis == "stream-sample"
+
+    @staticmethod
+    def _has_healthy_decoded_source_basis(ep: Episode) -> bool:
+        if ep.timeline is None or timeline_digest(ep.timeline, ep.sources) == "":
+            return True
+
+        timeline_source_ids = {
+            seg.source_id
+            for seg in ep.timeline.segments
+            if seg.kind == "source" and seg.source_id is not None
+        }
+        if not timeline_source_ids:
+            return True
+
+        sources_by_id = {src.id: src for src in ep.sources}
+        if not sources_by_id:
+            # Legacy persisted silence timelines may not have saved SourceMedia alongside the
+            # EDL. Do not fan those out during the canary; explicit non-decoded source evidence
+            # is stale, but absent source evidence waits for the planned version bump.
+            return True
+        # Multi-source timelines are owned by SwagitConcatPlanner; SilencePlanner skips them.
+        # ``stream-sample`` is the concat planner's current basis, and older concat records may
+        # have persisted source entries before duration_basis was populated.
+        allow_concat_legacy = len(ep.sources) > 1
+        return all(
+            (src := sources_by_id.get(source_id)) is not None
+            and TimelineStage._has_healthy_source_basis(
+                src.duration_basis, allow_concat_legacy=allow_concat_legacy
+            )
+            for source_id in timeline_source_ids
+        )
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         stats = StageStats(self.name)
         sig = self._signature()
+        require_decoded_source_basis = self._requires_decoded_source_basis()
         all_eps = list(
             _materialize_set(
                 episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
@@ -796,19 +866,64 @@ class TimelineStage:
         lock = threading.Lock()
 
         def _plan_one(ep: Episode) -> None:
+            ep.timeline_defer_reason = ""
             # Already planned by this exact planner set+versions → don't recompute. A stale
             # signature (older set) falls through and re-plans.
             force_replan = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
-            if ep.timeline is not None and ep.timeline.version == sig and not force_replan:
+            stale_source_basis = (
+                require_decoded_source_basis and not self._has_healthy_decoded_source_basis(ep)
+            )
+            if (
+                ep.timeline is not None
+                and ep.timeline.version == sig
+                and not force_replan
+                and not stale_source_basis
+            ):
                 with lock:
                     stats.reused += 1
+                return
+
+            now = datetime.now(UTC)
+
+            # Confirmed-dead media (empty/missing/invalid) polls on a flat cadence, and this gate
+            # takes precedence over a repair flag. The integrity/repair block is audit-owned — the
+            # audio lane preserves it from remote on push (records.protected_blocks_for_lane), so a
+            # lane-side clear of the flag would not persist; if a repair flag could bypass this gate
+            # it would re-download + re-decode a quarantined episode on *every* run. The flat clock
+            # is anchored on the audio-lane-owned media_availability.last_check, so it is persistent
+            # and self-managing: when the recheck comes due the episode re-plans, refreshing
+            # last_check for another interval, and a genuinely recovered source is picked up then.
+            # ``suspected_empty`` is not confirmed-dead, so it keeps the exponential ramp below.
+            availability = ep.media_availability
+            if (
+                availability is not None
+                and availability.is_confirmed_dead()
+                and not confirmed_dead_recheck_due(ep, now)
+            ):
+                with lock:
+                    stats.defer("dead-cooldown", sample=f"{ep.uid or ep.guid}:dead-cooldown")
+                return
+
+            # A repair flag is a one-shot "recheck now" for transient failures / broken (non-dead)
+            # EDLs: it bypasses the exponential #120 backoff so a flagged episode re-plans
+            # immediately. Such flags are cleared by the post-repair audit once the episode is
+            # healthy (the audit owns the integrity block); a confirmed-dead episode is governed by
+            # the flat gate above, not here.
+            if (
+                not force_replan
+                and ep.materialize_error in _TIMELINE_BACKOFF_ERRORS
+                and _in_backoff(ep, now)
+            ):
+                with lock:
+                    reason = f"{ep.materialize_error}-backoff"
+                    stats.defer(reason, sample=f"{ep.uid or ep.guid}:{reason}")
                 return
 
             # Planning may be an expensive, restartable ffmpeg pass, so gate it on the shared
             # stop signal exactly like an encode — deferred to a later run, not an error.
             if ctx.stop is not None and ctx.stop():
                 with lock:
-                    stats.skipped += 1
+                    stats.defer("stop-signal")
                 return
 
             current: Timeline | None = ep.timeline
@@ -820,6 +935,13 @@ class TimelineStage:
                 try:
                     for planner in self.planners:
                         result = planner.plan(provider, city, ep, ctx, current)
+                        if ep.timeline_defer_reason:
+                            with lock:
+                                stats.defer(
+                                    ep.timeline_defer_reason,
+                                    sample=f"{ep.uid or ep.guid}:{ep.timeline_defer_reason}",
+                                )
+                            return
                         if result is not None:
                             current = result
                             changed = True

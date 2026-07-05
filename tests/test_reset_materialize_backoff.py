@@ -12,7 +12,7 @@ import reset_materialize_backoff as rmb  # noqa: E402
 from citypods.records import load_records, save_records  # noqa: E402
 
 
-def _rec(uid, *, key=None, url=None, attempts=0, last="t", error=None):
+def _rec(uid, *, key=None, url=None, attempts=0, last="t", error=None, error_spec_hash=None):
     return {
         "uid": uid,
         "title": "Meeting",
@@ -22,6 +22,7 @@ def _rec(uid, *, key=None, url=None, attempts=0, last="t", error=None):
             "attempts": attempts,
             "last_attempt": last,
             "error": error,
+            "error_spec_hash": error_spec_hash,
         },
     }
 
@@ -40,6 +41,74 @@ def test_reset_backoff_targets_only_unhosted_in_backoff_records():
     assert records["fresh"]["audio"]["attempts"] == 0
 
 
+def test_reset_backoff_can_target_hosted_uid_and_error():
+    records = {
+        "target": _rec(
+            "u1",
+            key="audio/k",
+            url="https://cdn/k",
+            attempts=3,
+            error="timeline-degenerate",
+            error_spec_hash="abc123",
+        ),
+        "wrong-error": _rec(
+            "u2",
+            key="audio/k2",
+            url="https://cdn/k2",
+            attempts=3,
+            error="timeline-cache",
+        ),
+        "wrong-uid": _rec(
+            "u3",
+            key="audio/k3",
+            url="https://cdn/k3",
+            attempts=3,
+            error="timeline-degenerate",
+        ),
+    }
+
+    assert (
+        rmb.reset_backoff(
+            records,
+            uids={"u1"},
+            errors={"timeline-degenerate"},
+            include_hosted=True,
+        )
+        == 1
+    )
+
+    audio = records["target"]["audio"]
+    assert audio["attempts"] == 0
+    assert audio["last_attempt"] is None
+    assert audio["error"] is None
+    assert audio["error_spec_hash"] is None
+    assert records["wrong-error"]["audio"]["attempts"] == 3
+    assert records["wrong-uid"]["audio"]["attempts"] == 3
+
+
+def test_reset_backoff_does_not_touch_hosted_without_include_hosted_even_if_uid_matches():
+    records = {
+        "target": _rec(
+            "u1",
+            key="audio/k",
+            url="https://cdn/k",
+            attempts=3,
+            error="timeline-degenerate",
+        )
+    }
+
+    assert (
+        rmb.reset_backoff(
+            records,
+            uids={"u1"},
+            errors={"timeline-degenerate"},
+            include_hosted=False,
+        )
+        == 0
+    )
+    assert records["target"]["audio"]["attempts"] == 3
+
+
 def test_reset_backoff_handles_missing_last_attempt():
     # Legacy record: attempts recorded but last_attempt absent → still in backoff, still reset.
     records = {"u1": _rec("u1", attempts=1, last=None)}
@@ -51,16 +120,31 @@ def test_select_sources_applies_provider_and_source_filters(tmp_path):
         save_records(tmp_path, sk, {"u": _rec("u", attempts=1)})
     s2p = {"gran-a": "granicus", "gran-b": "granicus", "swag-a": "swagit"}
 
-    assert rmb.select_sources(tmp_path, s2p, providers=None, sources=None) == [
+    selected, available_sources = rmb.select_sources(tmp_path, s2p, providers=None, sources=None)
+    assert selected == [
         "gran-a",
         "gran-b",
         "swag-a",
     ]
-    assert rmb.select_sources(tmp_path, s2p, providers={"granicus"}, sources=None) == [
+    assert available_sources == 3
+    selected, available_sources = rmb.select_sources(
+        tmp_path, s2p, providers={"granicus"}, sources=None
+    )
+    assert selected == [
         "gran-a",
         "gran-b",
     ]
-    assert rmb.select_sources(tmp_path, s2p, providers=None, sources={"swag-a"}) == ["swag-a"]
+    assert available_sources == 3
+    selected, available_sources = rmb.select_sources(
+        tmp_path, s2p, providers=None, sources={"swag-a"}
+    )
+    assert selected == ["swag-a"]
+    assert available_sources == 3
+
+
+def test_clean_filters_strips_workflow_input_whitespace():
+    assert rmb._clean_filters(["  ecc3710ac47f  ", ""]) == {"ecc3710ac47f"}
+    assert rmb._clean_filters(["  GRANICUS  "], lower=True) == {"granicus"}
 
 
 def test_reset_materialize_backoff_applies_and_persists(tmp_path):
@@ -87,3 +171,103 @@ def test_reset_materialize_backoff_dry_run_persists_nothing(tmp_path):
     summary = rmb.reset_materialize_backoff(tmp_path, ["gran-a"], apply=False)
     assert summary["reset"] == 1  # reports what it WOULD reset
     assert load_records(tmp_path, "gran-a")["stuck"]["audio"]["attempts"] == 2  # but unchanged
+
+
+def test_reset_materialize_backoff_filters_hosted_uid_and_error(tmp_path):
+    save_records(
+        tmp_path,
+        "gran-a",
+        {
+            "target": _rec(
+                "target",
+                key="audio/k",
+                url="https://cdn/k",
+                attempts=2,
+                error="timeline-degenerate",
+            ),
+            "other": _rec(
+                "other",
+                key="audio/other",
+                url="https://cdn/other",
+                attempts=2,
+                error="timeline-degenerate",
+            ),
+        },
+    )
+
+    summary = rmb.reset_materialize_backoff(
+        tmp_path,
+        ["gran-a"],
+        apply=True,
+        uids={"target"},
+        errors={"timeline-degenerate"},
+        include_hosted=True,
+    )
+
+    assert summary["reset"] == 1
+    recs = load_records(tmp_path, "gran-a")
+    assert recs["target"]["audio"]["attempts"] == 0
+    assert recs["other"]["audio"]["attempts"] == 2
+
+
+def test_describe_target_state_reports_not_in_backoff_uid(tmp_path):
+    save_records(
+        tmp_path,
+        "gran-a",
+        {
+            "target": _rec(
+                "target",
+                key="audio/k",
+                url="https://cdn/k",
+                attempts=0,
+                last=None,
+                error="timeline-degenerate",
+            )
+        },
+    )
+
+    assert rmb.describe_target_state(
+        tmp_path,
+        ["gran-a"],
+        uids={"target"},
+        errors={"timeline-degenerate"},
+        include_hosted=True,
+    ) == [
+        "  gran-a uid=target hosted=True attempts=0 last_attempt=None "
+        "error=timeline-degenerate reason=not-in-backoff"
+    ]
+
+
+def test_describe_target_state_reports_hosted_without_include_hosted(tmp_path):
+    save_records(
+        tmp_path,
+        "gran-a",
+        {
+            "target": _rec(
+                "target",
+                key="audio/k",
+                url="https://cdn/k",
+                attempts=2,
+                error="timeline-degenerate",
+            )
+        },
+    )
+
+    assert rmb.describe_target_state(
+        tmp_path,
+        ["gran-a"],
+        uids={"target"},
+        errors={"timeline-degenerate"},
+        include_hosted=False,
+    ) == [
+        "  gran-a uid=target hosted=True attempts=2 last_attempt=t "
+        "error=timeline-degenerate reason=hosted-without-include-hosted"
+    ]
+
+
+def test_describe_target_state_reports_missing_uid(tmp_path):
+    save_records(tmp_path, "gran-a", {"other": _rec("other", attempts=1, error="boom")})
+
+    assert rmb.describe_target_state(tmp_path, ["gran-a"], uids={"missing"}) == [
+        "  uid=missing missing from selected source records"
+    ]

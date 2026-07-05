@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from citypods.http import StopRequested
+from citypods.integrity import REPAIR_AUDIO_REMATERIALIZE, set_timeline_audio_integrity
 from citypods.media import (
     _ENCODE_RSS_COPY_BYTES,
     _ENCODE_RSS_MAX_BYTES,
@@ -19,7 +20,10 @@ from citypods.media import (
     SourceCache,
     _concat_local_sources,
     _concat_render_timeline,
+    _fetch_mp4_header,
+    _mp4_moov_extent,
     _probe_audio_duration_details,
+    _probe_audio_duration_header,
     _probe_duration_secs,
     encode_args,
     estimate_encode_rss_bytes,
@@ -289,7 +293,9 @@ def test_source_cache_fetch_happens_before_native_cpu_admission(tmp_path):
     assert events == ["fetch", "gate", "release"]
 
 
-def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_requested(tmp_path):
+def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_requested(
+    tmp_path, capsys
+):
     """The run's wall-clock budget expiring while queued on the source cache is not a source
     failure: defer without recording it as an error/backoff (#120-style false penalty)."""
 
@@ -308,9 +314,15 @@ def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_reque
         source_cache=_StoppingCache(),
     )
     assert stats.skipped_budget == 1
+    assert stats.defer_reasons == {"source-cache-stop": 1}
+    assert stats.defer_samples == ["uid-g1:source-cache-stop"]
     assert stats.encoded == 0
     assert stats.errors == []
     assert ep.materialize_attempts == 0  # no backoff recorded for a budget-expiry defer
+    out = capsys.readouterr().out
+    assert "audio materialize deferred" in out
+    assert "uid=uid-g1" in out
+    assert "reason=source-cache-stop" in out
 
 
 def test_audio_encode_defers_when_resource_admission_stops(tmp_path):
@@ -328,6 +340,7 @@ def test_audio_encode_defers_when_resource_admission_stops(tmp_path):
     )
     assert admission.calls == [("audio", "uid-g1")]
     assert stats.skipped_budget == 1
+    assert stats.defer_reasons == {"resource-admission": 1}
     assert stats.encoded == 0
     assert ff.calls == []
 
@@ -991,7 +1004,36 @@ def test_episode_in_backoff_is_skipped_without_consuming_budget(tmp_path):
     ff = _FailUrls()
     stats = _materialize(_city(), [ep], _store(tmp_path), ff)
     assert stats.skipped_backoff == 1 and stats.errors == []
+    assert stats.defer_reasons == {"error-backoff": 1}
+    assert stats.defer_samples == ["uid-bad:error-backoff"]
     assert ff.calls == []  # never attempted
+
+
+def test_repair_spec_change_bypasses_stale_materialize_backoff_once(tmp_path):
+    """A targeted repair recipe is new work, so an old generic backoff must not block its first
+    encode attempt. If that new spec fails, ``error_spec_hash`` keys normal backoff again."""
+    ep = _ep("bad", url="https://src/manifest.m3u8")
+    ep.materialize_attempts = 4
+    ep.materialize_last_attempt = datetime.now(UTC).isoformat()
+    ep.materialize_error = "error"
+    ep.materialize_error_spec_hash = None  # old record from before spec-keyed failure tracking
+    set_timeline_audio_integrity(
+        ep,
+        {
+            "status": "rendered-duration-mismatch",
+            "repair": [REPAIR_AUDIO_REMATERIALIZE],
+        },
+    )
+    ff = FakeFfmpeg()
+
+    stats = _materialize(_city(), [ep], _store(tmp_path), ff)
+
+    assert stats.encoded == 1
+    assert stats.skipped_backoff == 0
+    assert ff.calls == ["https://src/manifest.m3u8"]
+    assert ep.materialize_attempts == 0
+    assert ep.materialize_error is None
+    assert ep.materialize_error_spec_hash is None
 
 
 def test_old_loudness_error_retries_immediately_under_peak_fallback(tmp_path):
@@ -1159,6 +1201,310 @@ def test_probe_audio_duration_details_reports_ffprobe_error(tmp_path):
     assert probe.container_duration is None
     assert probe.stream_sample_duration is None
     assert probe.probe_error == "ffprobe-error"
+
+
+# ---------------------------------------------------------------------------
+# Header-only (range-read) duration probe
+# ---------------------------------------------------------------------------
+
+
+def _mp4_box(fourcc: bytes, payload: bytes = b"") -> bytes:
+    """A synthetic top-level MP4 box: 4-byte size + 4-byte type + payload. Only the box
+    header matters to ``_mp4_moov_extent``/``_fetch_mp4_header`` — the payload bytes never
+    need to be a real, parseable ``moov``/``ftyp`` for these unit tests."""
+    return (8 + len(payload)).to_bytes(4, "big") + fourcc + payload
+
+
+class TestMp4MoovExtent:
+    def test_locates_moov_between_ftyp_and_mdat(self):
+        ftyp = _mp4_box(b"ftyp", b"M4A \x00\x00\x02\x00")
+        moov = _mp4_box(b"moov", b"x" * 100)
+        mdat = _mp4_box(b"mdat", b"y" * 1000)
+        buf = ftyp + moov + mdat
+
+        assert _mp4_moov_extent(buf) == (len(ftyp), len(ftyp) + len(moov))
+
+    def test_skips_a_leading_64bit_largesize_box(self):
+        payload = b"z" * 50
+        large_free = (
+            (1).to_bytes(4, "big") + b"free" + (16 + len(payload)).to_bytes(8, "big") + payload
+        )
+        moov = _mp4_box(b"moov", b"x" * 20)
+        buf = large_free + moov
+
+        assert _mp4_moov_extent(buf) == (len(large_free), len(large_free) + len(moov))
+
+    def test_returns_none_when_huge_mdat_precedes_moov(self):
+        # A non-faststart object: mdat (declared far larger than any prefix read) comes first,
+        # so moov is unreachable from a bounded initial read — the fast path does not apply.
+        ftyp = _mp4_box(b"ftyp")
+        huge_mdat_header = (50_000_000).to_bytes(4, "big") + b"mdat"
+        buf = ftyp + huge_mdat_header
+
+        assert _mp4_moov_extent(buf) is None
+
+    def test_returns_none_for_a_zero_sized_extends_to_eof_box(self):
+        buf = _mp4_box(b"ftyp") + (0).to_bytes(4, "big") + b"mdat"
+
+        assert _mp4_moov_extent(buf) is None
+
+    def test_returns_none_for_a_too_short_buffer(self):
+        assert _mp4_moov_extent(b"abc") is None
+
+
+def _fake_get_range(buf: bytes):
+    calls: list[tuple[int, int]] = []
+
+    def _get(start: int, end: int) -> bytes:
+        calls.append((start, end))
+        return buf[start : end + 1]
+
+    return _get, calls
+
+
+class TestFetchMp4Header:
+    def test_single_round_trip_when_moov_fits_the_initial_chunk(self):
+        ftyp = _mp4_box(b"ftyp")
+        moov = _mp4_box(b"moov", b"x" * 100)
+        mdat = _mp4_box(b"mdat", b"y" * 100_000)
+        get_range, calls = _fake_get_range(ftyp + moov + mdat)
+
+        header = _fetch_mp4_header(get_range)
+
+        assert header == ftyp + moov
+        assert len(calls) == 1
+
+    def test_second_round_trip_when_moov_spans_the_initial_chunk(self):
+        import citypods.media as media
+
+        ftyp = _mp4_box(b"ftyp")
+        moov = _mp4_box(b"moov", b"x" * (media._MP4_INITIAL_RANGE_BYTES + 5000))
+        mdat = _mp4_box(b"mdat", b"y" * 1000)
+        get_range, calls = _fake_get_range(ftyp + moov + mdat)
+
+        header = _fetch_mp4_header(get_range)
+
+        assert header == ftyp + moov
+        assert len(calls) == 2
+        assert calls[0] == (0, media._MP4_INITIAL_RANGE_BYTES - 1)
+
+    def test_returns_none_when_moov_is_not_found(self):
+        ftyp = _mp4_box(b"ftyp")
+        huge_mdat_header = (50_000_000).to_bytes(4, "big") + b"mdat"
+        get_range, _ = _fake_get_range(ftyp + huge_mdat_header)
+
+        assert _fetch_mp4_header(get_range) is None
+
+    def test_returns_none_and_skips_second_read_past_the_safety_cap(self):
+        import citypods.media as media
+
+        ftyp = _mp4_box(b"ftyp")
+        size = media._MP4_MAX_MOOV_BYTES + 1000 + 8
+        moov_header_only = size.to_bytes(4, "big") + b"moov"
+        get_range, calls = _fake_get_range(ftyp + moov_header_only)
+
+        assert _fetch_mp4_header(get_range) is None
+        assert len(calls) == 1  # never attempts to fetch the oversized claimed moov
+
+    def test_returns_none_when_the_initial_range_read_fails(self):
+        assert _fetch_mp4_header(lambda s, e: None) is None
+        assert _fetch_mp4_header(lambda s, e: b"") is None
+
+    def test_returns_none_when_the_second_read_is_truncated(self):
+        # A storage backend is allowed to return fewer bytes than requested when the range
+        # extends past EOF (e.g. LocalStorage.get_range). If moov's second read comes back
+        # short — a corrupt/truncated object, not a normal EOF-at-file-end case since moov's
+        # end was computed from its own declared size — the header must not be trusted as
+        # complete; ffprobe could otherwise report a definitive-looking but wrong duration.
+        import citypods.media as media
+
+        ftyp = _mp4_box(b"ftyp")
+        moov = _mp4_box(b"moov", b"x" * (media._MP4_INITIAL_RANGE_BYTES + 5000))
+        full = ftyp + moov
+
+        def _get(start: int, end: int) -> bytes:
+            # Truncate the second read to 10 bytes short of what was asked for.
+            return full[start : min(end + 1, len(full) - 10)]
+
+        assert _fetch_mp4_header(_get) is None
+
+
+def _local_get_range(path: Path):
+    def _get(start: int, end: int) -> bytes:
+        with open(path, "rb") as f:
+            f.seek(start)
+            return f.read(end - start + 1)
+
+    return _get
+
+
+def _write_synthetic_m4a(path: Path, duration_seconds: float) -> None:
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=440:sample_rate=48000:duration={duration_seconds}",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            str(path),
+        ],
+        check=True,
+        timeout=60,
+    )
+
+
+def test_probe_audio_duration_header_matches_full_probe_short_clip(tmp_path):
+    """The core assumption behind the header-only probe (GH follow-up to review/20's
+    duration-measurement churn): for this project's own faststart-remuxed hosted audio, a
+    header-only (range-read) probe must report *exactly* what a full-download probe reports,
+    since both derive their numbers from the same `moov` bytes and neither touches `mdat`."""
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe required for the header-vs-full-probe parity check")
+
+    audio = tmp_path / "audio.m4a"
+    _write_synthetic_m4a(audio, 1.5)
+
+    full = _probe_audio_duration_details(audio)
+    header = _probe_audio_duration_header(_local_get_range(audio))
+
+    assert header is not None
+    assert header.container_duration == full.container_duration
+    assert header.stream_sample_duration == full.stream_sample_duration
+    assert header.stream_duration_source == full.stream_duration_source
+    assert header.probe_error == full.probe_error is None
+
+
+def test_probe_audio_duration_header_matches_full_probe_when_moov_spans_two_range_reads(
+    tmp_path,
+):
+    """Same parity check as above, but for a long enough episode that its `moov` (dominated by
+    per-frame stsz/stco tables) exceeds the initial range-read chunk — forcing the second,
+    exactly-sized read this project's episodes routinely need in production."""
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe required for the header-vs-full-probe parity check")
+
+    audio = tmp_path / "audio.m4a"
+    _write_synthetic_m4a(audio, 400)  # ~76KB moov, past the 64KB initial chunk
+
+    calls: list[tuple[int, int]] = []
+
+    def _get(start: int, end: int) -> bytes:
+        calls.append((start, end))
+        return _local_get_range(audio)(start, end)
+
+    full = _probe_audio_duration_details(audio)
+    header = _probe_audio_duration_header(_get)
+
+    assert len(calls) == 2, "fixture didn't actually exercise the two-round-trip path"
+    assert header is not None
+    assert header.container_duration == full.container_duration
+    assert header.stream_sample_duration == full.stream_sample_duration
+
+
+def _build_gapped_ts(tmp_path: Path, gap_seconds: float = 2.0) -> Path:
+    """Build a short source whose second half has a forward PTS discontinuity."""
+    seg1 = tmp_path / "seg1.ts"
+    seg2 = tmp_path / "seg2.ts"
+    gapped = tmp_path / "gapped.ts"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg1),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=880:duration=5",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-output_ts_offset",
+            str(5.0 + gap_seconds),
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            str(seg2),
+        ],
+        check=True,
+    )
+    gapped.write_bytes(seg1.read_bytes() + seg2.read_bytes())
+    return gapped
+
+
+def test_streaming_single_source_filter_selects_on_compacted_pts(tmp_path):
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe required for PTS-gap render check")
+
+    import citypods.media as media
+
+    source = _build_gapped_ts(tmp_path, gap_seconds=2.0)
+    timeline = Timeline(
+        version="silence-test",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=10.0,
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=10.0,
+            ),
+        ),
+    )
+    out = tmp_path / "out.m4a"
+
+    media.CommandFfmpeg(max_kbps=MAX_KBPS, timeout_seconds=120, threads=1).extract_audio(
+        timeline,
+        {"s0": str(source)},
+        out,
+        sources=[
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref=str(source),
+                media_kind="direct",
+                duration=12.0,
+                watch_url=None,
+            )
+        ],
+    )
+
+    assert _probe_duration_secs(out) == pytest.approx(10.0, abs=0.15)
 
 
 def test_audio_duration_served_set_from_probe(tmp_path):
@@ -2179,6 +2525,97 @@ def test_source_cache_rate_limit_does_not_immediately_retry_direct_render(tmp_pa
 
     assert ff.calls == []
     assert ep.materialize_error == "rate_limited"
+    assert len(stats.errors) == 1
+
+
+def test_download_audio_raises_before_ffmpeg_when_preflight_reports_too_large(monkeypatch):
+    """Issue #497: a source-cache fetch must reject an honestly-oversized source before ffmpeg
+    ever starts, and must not be swallowed into a plain ``return False`` (which callers treat as
+    "fall back to streaming the URL directly" — exactly what the guard must prevent)."""
+    import citypods.media as media
+    from citypods.http import MediaSizePreflight
+    from citypods.security import MediaSourceTooLargeError
+
+    monkeypatch.setattr(
+        media,
+        "preflight_media_size",
+        lambda url, max_bytes, **kw: MediaSizePreflight(
+            status="known_too_large", content_length=max_bytes + 1
+        ),
+    )
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+
+    with pytest.raises(MediaSourceTooLargeError):
+        media._download_audio(
+            "https://archive-video.granicus.com/x.mp4",
+            Path("/tmp/nope.mka"),
+            max_media_bytes=100,
+        )
+    assert cmds == []  # ffmpeg must never be invoked for a rejected source
+
+
+@pytest.mark.parametrize("status", ["known_ok", "unknown"])
+def test_download_audio_proceeds_when_preflight_does_not_reject(monkeypatch, status):
+    import citypods.media as media
+    from citypods.http import MediaSizePreflight
+
+    monkeypatch.setattr(
+        media,
+        "preflight_media_size",
+        lambda url, max_bytes, **kw: MediaSizePreflight(status=status, content_length=10),
+    )
+    cmds: list[list[str]] = []
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: cmds.append(cmd))
+
+    media._download_audio(
+        "https://archive-video.granicus.com/x.mp4", Path("/tmp/nope.mka"), max_media_bytes=100
+    )
+    assert len(cmds) == 1
+
+
+def test_download_audio_skips_preflight_for_truncated_probe_fetch(monkeypatch):
+    """A ``max_seconds``-truncated fetch (the live contract check) is already bounded regardless
+    of the source's real size, so it shouldn't pay for (or be rejected by) a preflight."""
+    import citypods.media as media
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        media, "preflight_media_size", lambda *a, **k: calls.append("called") or None
+    )
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", lambda cmd, **kw: None)
+
+    media._download_audio(
+        "https://x/y.mp4", Path("/tmp/nope.mka"), max_seconds=3, max_media_bytes=100
+    )
+    assert calls == []
+
+
+def test_source_cache_media_too_large_does_not_fall_back_to_direct_render(tmp_path):
+    """Issue #497 acceptance criterion: a guard-triggered rejection must not silently fall back to
+    an unguarded direct ffmpeg stream of the same oversized URL."""
+    from citypods.security import MediaSourceTooLargeError
+
+    class _TooLargeCache:
+        def get_or_fetch(self, uid, url):
+            raise MediaSourceTooLargeError(f"source {url} advertises 999 bytes, exceeds cap 100")
+
+    ep = _ep("g1", kind="direct", url="https://archive-video.granicus.com/x.mp4")
+    city = _city(extract_audio=True)
+    ff = FakeFfmpeg()
+
+    stats = materialize_audio(
+        city,
+        [ep],
+        storage=_store(tmp_path),
+        ffmpeg=ff,
+        max_kbps=MAX_KBPS,
+        resolve_media_url=lambda e: e.video_url,
+        source_cache=_TooLargeCache(),
+    )
+
+    assert ff.calls == []  # no unguarded direct-stream fallback
+    assert ep.materialize_error == "media-too-large"
     assert len(stats.errors) == 1
 
 

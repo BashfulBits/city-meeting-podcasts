@@ -256,6 +256,21 @@ Feed output is snapshot-tested byte-for-byte. After an **intentional** change, r
 `SNAPSHOT_UPDATE=1 pytest` and review the diff in the PR. Never change artifact **identity** (audio
 spec hash inputs, UID derivation) without a migration note in [MIGRATION.md](MIGRATION.md).
 
+## Adding or changing a dependency
+
+Pins are the default (reproducible builds); an automated bot moves them forward. Full policy:
+[`review/22`](review/22-dependency-and-reproducibility-policy.md). When you touch dependencies:
+
+1. Edit **`pyproject.toml`** only — add the abstract `>=` floor. Never pin exact versions there.
+2. **Recompile constraints** with `scripts/compile_constraints.sh` (runs `pip-compile` in the pinned
+   linux/3.12 image; needs Docker) and commit the updated `constraints/*.txt`. In CI the `lock.yml`
+   workflow does this; the `deps` job in `ci.yml` fails if they are stale.
+3. **Classify it** — hygiene, or *output-affecting* (touches produced audio/transcript bytes:
+   `faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`, ffmpeg, the base image, model revisions)?
+   Output-affecting bumps follow the `AGENTS.md` pipeline-version-bump contract.
+4. **Do not** re-declare deps in `scripts/compute/modal_app.py` / `beam_app.py` — the external workers
+   install from the same constraints (a CI guard enforces this).
+
 ## Security checklist (per PR)
 
 - No provider network calls in normal CI; no secrets committed (env-only).
@@ -269,4 +284,7 @@ spec hash inputs, UID derivation) without a migration note in [MIGRATION.md](MIG
 - [ ] Feed snapshots regenerated intentionally (if output changed).
 - [ ] Docs updated per the lifecycle contract (review/11 + CHANGELOG + ARCHITECTURE as applicable).
 - [ ] No artifact-identity change without a migration note.
+- [ ] Dependency changes follow [`review/22`](review/22-dependency-and-reproducibility-policy.md):
+      `constraints/*.txt` recompiled; output-affecting bumps version-coupled; deps not re-declared in
+      the external-worker image builders.
 - [ ] Security checklist satisfied.

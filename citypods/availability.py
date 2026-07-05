@@ -50,6 +50,12 @@ RECOVERED = "recovered"
 # ``recovered`` are playable; the rest are withheld until a fresh successful fetch recovers them.
 WITHHELD_STATES: frozenset[str] = frozenset({SUSPECTED_EMPTY, CONFIRMED_EMPTY, MISSING, INVALID})
 
+# The durable "confirmed dead" subset of the withheld states: media positively established as empty
+# (two silent confirmations) or unreachable (``DEAD``/``ABSENT`` are confirmed on first sight).
+# These get a flat long recheck cadence (GH#795); ``suspected_empty`` is deliberately excluded so it
+# stays on the exponential backoff and can reach its second silent confirmation quickly.
+CONFIRMED_DEAD_STATES: frozenset[str] = frozenset({CONFIRMED_EMPTY, MISSING, INVALID})
+
 # All states an operator override may legitimately force. ``available`` lets an operator clear a
 # false positive; the withheld states let one force-withhold a known-bad recording.
 OVERRIDE_STATES: frozenset[str] = WITHHELD_STATES | frozenset({AVAILABLE, RECOVERED})
@@ -99,6 +105,11 @@ class MediaAvailability:
 
     def is_withheld(self) -> bool:
         return self.effective_state() in WITHHELD_STATES
+
+    def is_confirmed_dead(self) -> bool:
+        """True for the durable withheld states (confirmed-empty / missing / invalid) that get a
+        flat long recheck cadence. ``suspected_empty`` is withheld but not yet confirmed dead."""
+        return self.effective_state() in CONFIRMED_DEAD_STATES
 
 
 @dataclass(frozen=True)
