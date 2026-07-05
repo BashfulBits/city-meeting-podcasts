@@ -78,10 +78,14 @@ image = (
     schedule=modal.Cron(CRON),
     timeout=24 * 3600,
 )
-def run_scheduled() -> dict:
+def run_scheduled(max_claims: int | None = None) -> dict:
     import json
     import sys
 
+    # Apply the override INSIDE the remote container — os.environ changes in the local
+    # CLI (main) never reach the deployed worker.
+    if max_claims is not None:
+        os.environ["CITYPODS_WORKER_MAX_CLAIMS"] = str(max_claims)
     sys.path.insert(0, "/root/citypods")
     from citypods.compute.external_worker import run_worker
 
@@ -92,6 +96,4 @@ def run_scheduled() -> dict:
 
 @app.local_entrypoint()
 def main(max_claims: int | None = None) -> None:
-    if max_claims is not None:
-        os.environ["CITYPODS_WORKER_MAX_CLAIMS"] = str(max_claims)
-    run_scheduled.remote()
+    run_scheduled.remote(max_claims=max_claims)

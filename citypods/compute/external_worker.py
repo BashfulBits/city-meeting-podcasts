@@ -309,13 +309,19 @@ class ExternalTranscribeWorker:
 
         def _renew() -> None:
             while not stop.wait(interval):
-                work_leases.renew(
-                    self.storage,
-                    item.source_key,
-                    item.episode_uid,
-                    owner=self.config.owner,
-                    ttl_seconds=self.config.lease_ttl_seconds,
-                )
+                # A transient storage/client error (not just CASConflict) must not kill
+                # the renewal thread and let the lease silently expire mid-transcribe —
+                # log and try again on the next interval.
+                try:
+                    work_leases.renew(
+                        self.storage,
+                        item.source_key,
+                        item.episode_uid,
+                        owner=self.config.owner,
+                        ttl_seconds=self.config.lease_ttl_seconds,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[external-worker] lease renew failed (will retry): {exc}", flush=True)
 
         t = threading.Thread(target=_renew, name="citypods-worker-lease-renew", daemon=True)
         t.start()
@@ -368,12 +374,17 @@ class ExternalTranscribeWorker:
         }
 
     def _model(self, city: City, tracker: ResourceTracker | None = None):
-        key = (city.asr_model, city.asr_compute_type)
+        # Key on the RESOLVED source, not city.asr_model: when ASR_MODEL_PATH is set
+        # (e.g. the baked model in the Modal/Beam image), every city loads the same
+        # bytes, so keying on city.asr_model would reload the identical model per model
+        # name instead of reusing one cached instance.
+        model_source = os.environ.get("ASR_MODEL_PATH") or city.asr_model
+        key = (model_source, city.asr_compute_type)
         if key not in self._models:
             from faster_whisper import WhisperModel
 
             self._models[key] = WhisperModel(
-                os.environ.get("ASR_MODEL_PATH") or city.asr_model,
+                model_source,
                 device=self.config.device,
                 compute_type=city.asr_compute_type,
                 cpu_threads=self.config.cpu_threads,
@@ -474,7 +485,12 @@ class ExternalTranscribeWorker:
             "gpu_vram_total_bytes": tracker.gpu_vram_total_bytes,
         }
         try:
-            append_worker_telemetry(self.storage, sample)
+            if not append_worker_telemetry(self.storage, sample):
+                print(
+                    "[external-worker] telemetry not persisted "
+                    "(non-CAS backend or CAS retries exhausted)",
+                    flush=True,
+                )
         except Exception as exc:  # noqa: BLE001 - telemetry must not break completed work
             print(f"[external-worker] telemetry warning: {exc}", flush=True)
 
