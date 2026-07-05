@@ -16,6 +16,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Hugging Face Whisper models are pinned to explicit commit revisions (GH#498).**
+  `scripts/prepare_whisper.py` downloaded via mutable `main` on both the direct-CDN and
+  `snapshot_download` paths, so model bytes could drift silently while `asr_spec_hash()` still
+  treated the recipe as unchanged. Both paths now pin `HF_PREFERRED_REVISION` /
+  `HF_FALLBACK_REVISION` commit SHAs, logs show `repo@revision`, and the B2 mirror prefix is
+  revision-scoped so a future bump lands under a fresh prefix instead of overwriting the old bytes.
+  Pinning the current revision is a reproducibility no-op — **no `ASR_PIPELINE_VERSION` bump and no
+  transcript reprocessing**; a later intentional revision bump decides invalidation separately
+  (review/22). Renovate surfaces upstream revision changes for Dashboard approval.
+
 - **Production media fetches now have a size ceiling before ffmpeg reads a remote source
   (issue #497).** `citypods/media.py:_download_audio()` and the direct-remote render paths
   (identity render, multi-source concat fallback) previously handed ffmpeg a remote URL with no

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Prepare the Whisper model for ASR transcription.
 
+All HuggingFace downloads are pinned to explicit commit revisions (never mutable
+``main``) so the bytes are reproducible across runs and fleets (GH#498).
+
 Cascade (in order):
   1. Local Actions cache hit  — ~0 s, no download needed.
-  2. HuggingFace Hub          — mobiuslabsgmbh/faster-whisper-large-v3-turbo
+  2. HuggingFace Hub          — mobiuslabsgmbh/faster-whisper-large-v3-turbo @ pinned rev
                                  On success: mirror to B2 so future runs use step 3.
-  3. B2 mirror                — models/faster-whisper-large-v3-turbo/ in our own bucket.
-  4. HuggingFace fallback     — distil-whisper/distil-large-v3 (HF's own org, separate
-                                 rate-limit bucket; slightly slower but reliable).
+  3. B2 mirror                — models/faster-whisper-large-v3-turbo/<rev>/ (revision-scoped).
+  4. HuggingFace fallback     — distil-whisper/distil-large-v3 @ pinned rev (HF's own org,
+                                 separate rate-limit bucket; slightly slower but reliable).
 
 Writes ASR_MODEL_PATH to $GITHUB_ENV so the enrich step picks it up automatically.
 The value is either a local directory path (steps 1-4 all produce one) so
@@ -26,10 +29,22 @@ from pathlib import Path
 PREFERRED_DIR = Path.home() / ".cache" / "faster-whisper-large-v3-turbo"
 FALLBACK_DIR = Path.home() / ".cache" / "faster-whisper-distil-large-v3"
 
-HF_PREFERRED = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
-HF_FALLBACK = "distil-whisper/distil-large-v3"
+# Models are pinned to explicit commit revisions so the downloaded bytes are
+# reproducible — an unpinned `main` can drift silently while asr_spec_hash() still
+# treats the recipe as unchanged (GH#498). Bumping a revision is an intentional,
+# smoke-gated change (review/22); pinning the *current* revision is a no-op that does
+# NOT bump ASR_PIPELINE_VERSION or reprocess transcripts. The `# renovate` markers let
+# Renovate surface upstream revision changes for Dashboard approval.
+HF_PREFERRED = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"  # renovate
+HF_PREFERRED_REVISION = "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf"
+HF_FALLBACK = "distil-whisper/distil-large-v3"  # renovate
+HF_FALLBACK_REVISION = "8031d2e6ce6631b7fc45629dddfc00271116d981"
 
-B2_PREFIX = "models/faster-whisper-large-v3-turbo"
+# The B2 mirror prefix is revision-scoped: a revision bump writes to a fresh prefix
+# instead of silently overwriting the old bytes under a shared prefix. The preferred
+# model re-populates its mirror once after a revision change (a model re-pull, not a
+# transcript reprocess). Only the preferred model is mirrored.
+B2_PREFIX = f"models/faster-whisper-large-v3-turbo/{HF_PREFERRED_REVISION}"
 SENTINEL = "model.bin"  # largest file; if present the download is complete
 
 
@@ -61,13 +76,18 @@ _CT2_FILES_OPTIONAL = [
 ]
 
 
-def _hf_download_direct(repo: str, dest: Path, token: str | None = None) -> bool:
-    """Download model files directly from the HuggingFace CDN.
+def _resolve_url(repo: str, revision: str, filename: str) -> str:
+    """CDN file URL for a specific pinned revision (never the mutable ``main``)."""
+    return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
-    ``snapshot_download`` always hits ``/api/models/{repo}/revision/main`` first —
+
+def _hf_download_direct(repo: str, dest: Path, revision: str, token: str | None = None) -> bool:
+    """Download model files directly from the HuggingFace CDN, pinned to *revision*.
+
+    ``snapshot_download`` always hits ``/api/models/{repo}/revision/{revision}`` first —
     a metadata endpoint that is aggressively rate-limited on GitHub Actions IPs
     (429 even with an authenticated token).  The actual file download endpoint
-    ``https://huggingface.co/{repo}/resolve/main/{filename}`` is served by a
+    ``https://huggingface.co/{repo}/resolve/{revision}/{filename}`` is served by a
     separate CDN and is not subject to the same API rate limit.
 
     We hardcode the well-known file list for CTranslate2 faster-whisper models
@@ -80,7 +100,7 @@ def _hf_download_direct(repo: str, dest: Path, token: str | None = None) -> bool
     headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     for filename in _CT2_FILES_REQUIRED + _CT2_FILES_OPTIONAL:
-        url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+        url = _resolve_url(repo, revision, filename)
         required = filename in _CT2_FILES_REQUIRED
         try:
             r = requests.get(url, headers=headers, stream=True, timeout=300)
@@ -106,18 +126,19 @@ def _hf_download_direct(repo: str, dest: Path, token: str | None = None) -> bool
     return _complete(dest)
 
 
-def _hf_download(repo: str, dest: Path, retries: int = 3) -> bool:
-    """Download repo to *dest* using direct CDN, with snapshot_download fallback.
+def _hf_download(repo: str, dest: Path, revision: str, retries: int = 3) -> bool:
+    """Download repo *at revision* to *dest* using direct CDN, snapshot_download fallback.
 
     Tries the direct CDN approach first (bypasses the rate-limited metadata API),
-    then falls back to ``snapshot_download`` in case file layout differs.
+    then falls back to ``snapshot_download`` in case file layout differs. Both paths
+    are pinned to *revision* — the mutable ``main`` is never used (GH#498).
     """
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
     dest.mkdir(parents=True, exist_ok=True)
 
     for attempt in range(1, retries + 1):
-        print(f"  CDN attempt {attempt}/{retries}: {repo} → {dest}")
-        if _hf_download_direct(repo, dest, token=token):
+        print(f"  CDN attempt {attempt}/{retries}: {repo}@{revision} → {dest}")
+        if _hf_download_direct(repo, dest, revision, token=token):
             print("  Download complete.")
             return True
 
@@ -127,7 +148,7 @@ def _hf_download(repo: str, dest: Path, retries: int = 3) -> bool:
                 print("  Trying snapshot_download as last resort…")
                 from huggingface_hub import snapshot_download
 
-                snapshot_download(repo, local_dir=str(dest))
+                snapshot_download(repo, revision=revision, local_dir=str(dest))
                 if _complete(dest):
                     print("  snapshot_download complete.")
                     return True
@@ -217,8 +238,8 @@ def main() -> int:
     client, bucket = _b2_client()
 
     # ── Step 2: HuggingFace Hub (preferred quality model) ────────────────────────
-    print(f"\n[2/4] Downloading {HF_PREFERRED} from HuggingFace Hub…")
-    if _hf_download(HF_PREFERRED, PREFERRED_DIR):
+    print(f"\n[2/4] Downloading {HF_PREFERRED}@{HF_PREFERRED_REVISION} from HuggingFace Hub…")
+    if _hf_download(HF_PREFERRED, PREFERRED_DIR, HF_PREFERRED_REVISION):
         _set_env("ASR_MODEL_PATH", str(PREFERRED_DIR))
         # Mirror to B2 so future runs use the faster step 3.
         if client:
@@ -251,9 +272,9 @@ def main() -> int:
         print("\n[3/4] B2 not configured — skipping.")
 
     # ── Step 4: distil-large-v3 fallback (HF's own org, separate rate-limit bucket) ──
-    print(f"\n[4/4] Falling back to {HF_FALLBACK} (slightly slower, more reliable)…")
+    print(f"\n[4/4] Falling back to {HF_FALLBACK}@{HF_FALLBACK_REVISION} (slower, more reliable)…")
     FALLBACK_DIR.mkdir(parents=True, exist_ok=True)
-    if _hf_download(HF_FALLBACK, FALLBACK_DIR, retries=3):
+    if _hf_download(HF_FALLBACK, FALLBACK_DIR, HF_FALLBACK_REVISION, retries=3):
         print("  distil-large-v3 ready.")
         _set_env("ASR_MODEL_PATH", str(FALLBACK_DIR))
         return 0
