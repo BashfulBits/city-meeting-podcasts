@@ -44,7 +44,9 @@ def make_storage(site_config: dict, base_url: str, output_dir: Path) -> StorageB
         primary = b2_from_env()
         if primary is None:
             return None
-        return RoutingStorage(primary=primary, coordination=r2_from_env())
+        return RoutingStorage(
+            primary=primary, coordination=r2_from_env(require_public_base_url=False)
+        )
     if backend in _S3_PRESETS:
         return _S3_PRESETS[backend]()
     raise ValueError(f"unknown audio_storage_backend: {backend!r}")

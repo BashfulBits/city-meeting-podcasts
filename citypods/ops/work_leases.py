@@ -270,11 +270,53 @@ def release(
     return True
 
 
+def abandon(
+    storage,
+    source_key: str,
+    uid: str,
+    *,
+    owner: str,
+    now: datetime | None = None,
+) -> bool:
+    """Return our own unexpired claim to ``queued`` before inference starts.
+
+    This is intentionally narrower than :func:`release`: it is only for pre-work declines such as
+    "budget was available when we scanned, but the atomic reservation lost the race." It clears the
+    owner/expiry so another worker can claim the item without waiting for TTL, but refuses expired
+    or non-owned leases so stale workers cannot undo reaper/worker progress.
+    """
+    from citypods.storage import CASConflict
+
+    now = now or datetime.now(UTC)
+    existing, etag = read_lease(storage, source_key, uid)
+    if (
+        existing is None
+        or etag is None
+        or existing.owner != owner
+        or existing.state != "leased"
+        or existing.is_expired(now)
+    ):
+        return False
+    existing.state = "queued"
+    existing.owner = ""
+    existing.lease_expiry = None
+    existing.updated_at = now
+    try:
+        storage.put_cas(
+            lease_key(source_key, uid), _serialize(existing), "application/json", if_match=etag
+        )
+    except CASConflict:
+        return False
+    return True
+
+
 def reap(
     storage,
     candidates: Iterable[tuple[str, str]],
     *,
     artifact_present: Callable[[str, str], bool],
+    on_completed: Callable[[str], None] | None = None,
+    on_requeued: Callable[[str], None] | None = None,
     now: datetime | None = None,
     dry_run: bool = False,
 ) -> dict:
@@ -295,6 +337,7 @@ def reap(
         existing, etag = read_lease(storage, source_key, uid)
         if existing is None or etag is None or existing.state != "leased":
             continue
+        owner = existing.owner
         if artifact_present(source_key, uid):
             existing.state, existing.lease_expiry, existing.updated_at = "done", None, now
             outcome = "completed"
@@ -321,6 +364,17 @@ def reap(
             continue  # a worker raced us (claimed/renewed) — leave it, re-sweep next cycle
         completed += outcome == "completed"
         requeued += outcome == "requeued"
+        # The lease has already been moved off "leased", so a raising callback (e.g. a
+        # budget settle that exhausts its CAS retries) must not abort the rest of the
+        # sweep — that item can't be re-swept. Log and keep going; the budget update for
+        # this one item is best-effort.
+        try:
+            if outcome == "completed" and on_completed is not None:
+                on_completed(owner)
+            elif outcome == "requeued" and on_requeued is not None:
+                on_requeued(owner)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[work-leases] reap callback ({outcome}) failed for {owner}: {exc}", flush=True)
     return {"completed": completed, "requeued": requeued, "in_flight": in_flight}
 
 

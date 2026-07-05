@@ -24,21 +24,20 @@ import sys
 import time
 from pathlib import Path
 
+# Pinned model repos + revisions are canonical in citypods.asr (shared with the
+# external Modal/Beam worker images); Renovate tracks them there. citypods is installed
+# before this script runs (asr.yml `pip install -e .[…]`).
+from citypods.asr import (
+    HF_FALLBACK,
+    HF_FALLBACK_REVISION,
+    HF_PREFERRED,
+    HF_PREFERRED_REVISION,
+)
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 PREFERRED_DIR = Path.home() / ".cache" / "faster-whisper-large-v3-turbo"
 FALLBACK_DIR = Path.home() / ".cache" / "faster-whisper-distil-large-v3"
-
-# Models are pinned to explicit commit revisions so the downloaded bytes are
-# reproducible — an unpinned `main` can drift silently while asr_spec_hash() still
-# treats the recipe as unchanged (GH#498). Bumping a revision is an intentional,
-# smoke-gated change (review/22); pinning the *current* revision is a no-op that does
-# NOT bump ASR_PIPELINE_VERSION or reprocess transcripts. The `# renovate` markers let
-# Renovate surface upstream revision changes for Dashboard approval.
-HF_PREFERRED = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"  # renovate
-HF_PREFERRED_REVISION = "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf"
-HF_FALLBACK = "distil-whisper/distil-large-v3"  # renovate
-HF_FALLBACK_REVISION = "8031d2e6ce6631b7fc45629dddfc00271116d981"
 
 # The B2 mirror prefix is revision-scoped: a revision bump writes to a fresh prefix
 # instead of silently overwriting the old bytes under a shared prefix. The preferred
