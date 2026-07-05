@@ -3,10 +3,13 @@
 
 Runs one short golden clip from every provider family (granicus, swagit, civicplus,
 civicclerk) through the ffmpeg-driven materialization metrics — encode SHA-256,
-duration, integrated loudness — and (when a reference transcript exists) the ASR
-path, then diffs against the committed golden manifest. The point is to prove, per
-source, whether an ffmpeg / base-image / inference-lib / model bump actually changed
+duration, integrated loudness — and diffs against the committed golden manifest. The
+point is to prove, per source, whether an ffmpeg / base-image bump actually changed
 produced bytes — so the reviewer's whole job is reading the emitted table.
+
+The ASR column is a planned extension (a whisper transcribe + WER diff for
+inference-lib/model bumps); it currently reports ``n/a`` rather than a blank cell so a
+not-yet-implemented check is never mistaken for "checked, no drift".
 
 Layout (fixtures are added out-of-band; this is tolerant of their absence so the
 workflow can be wired before they land):
@@ -49,40 +52,61 @@ def _ffmpeg() -> str:
     return os.environ.get("FFMPEG_BIN", "ffmpeg")
 
 
+def _ffprobe() -> str:
+    """Resolve ffprobe next to the pinned ffmpeg binary, so both come from the same build."""
+    ffmpeg = _ffmpeg()
+    if os.sep in ffmpeg or (os.altsep and os.altsep in ffmpeg):
+        sibling = Path(ffmpeg).with_name("ffprobe")
+        if sibling.exists():
+            return str(sibling)
+    return "ffprobe"
+
+
 def _encode_metrics(clip: Path) -> dict:
     """Re-encode to a normalized AAC m4a (as the audio lane does) and measure it."""
     tmp = clip.with_suffix(".smoke.m4a")
-    subprocess.run(
-        [
-            _ffmpeg(),
-            "-y",
-            "-i",
-            str(clip),
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "64k",
-            str(tmp),
-        ],
-        check=True,
-        capture_output=True,
-    )
-    data = tmp.read_bytes()
-    sha = hashlib.sha256(data).hexdigest()[:16]
-    probe = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "json", str(tmp)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    duration = round(float(json.loads(probe.stdout)["format"]["duration"]), 2)
-    lufs = _integrated_loudness(tmp)
-    tmp.unlink(missing_ok=True)
+    try:
+        subprocess.run(
+            [
+                _ffmpeg(),
+                "-y",
+                "-i",
+                str(clip),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "64k",
+                str(tmp),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        data = tmp.read_bytes()
+        sha = hashlib.sha256(data).hexdigest()[:16]
+        probe = subprocess.run(
+            [
+                _ffprobe(),
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(tmp),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        duration = round(float(json.loads(probe.stdout)["format"]["duration"]), 2)
+        lufs = _integrated_loudness(tmp)
+    finally:
+        tmp.unlink(missing_ok=True)  # never leak the temp encode, even if ffprobe fails
     return {"sha256": sha, "duration_s": duration, "lufs": lufs}
 
 
@@ -105,20 +129,23 @@ def main() -> int:
     for fam in FAMILIES:
         clip = _find_clip(fam)
         if clip is None:
-            rows.append(f"| {fam} | _no fixture yet_ | — | — | ⏳ pending |")
+            rows.append(f"| {fam} | _no fixture yet_ | — | n/a | ⏳ pending |")
             continue
         any_fixture = True
         try:
             got = _encode_metrics(clip)
-        except subprocess.CalledProcessError as exc:
-            rows.append(f"| {fam} | ffmpeg error | — | — | ✗ error |")
-            print(exc.stderr.decode(errors="replace") if exc.stderr else exc)
+        except (subprocess.CalledProcessError, OSError) as exc:
+            # Never fail the step (docstring guarantees exit 0) — a missing/broken ffmpeg
+            # binary or a probe failure surfaces as an error row, not a crash.
+            stderr = getattr(exc, "stderr", None)
+            rows.append(f"| {fam} | ffmpeg/ffprobe error | — | n/a | ✗ error |")
+            print(stderr.decode(errors="replace") if isinstance(stderr, bytes) else exc)
             continue
         ref = golden.get(fam)
         if ref is None:
             rows.append(
                 f"| {fam} | `{got['sha256']}` | {got['duration_s']}s / {got['lufs']} LUFS "
-                f"| _no golden_ | 🆕 baseline |"
+                f"| n/a | 🆕 baseline |"
             )
             continue
         changed = any(got.get(k) != ref.get(k) for k in ("sha256", "duration_s", "lufs"))
@@ -129,7 +156,9 @@ def main() -> int:
             if changed
             else f"{got['duration_s']}s / {got['lufs']} LUFS"
         )
-        rows.append(f"| {fam} | `{ref.get('sha256')}`→`{got['sha256']}` | {detail} | | {verdict} |")
+        rows.append(
+            f"| {fam} | `{ref.get('sha256')}`→`{got['sha256']}` | {detail} | n/a | {verdict} |"
+        )
 
     header = (
         "### Dependency-bump output-drift smoke (per source)\n\n"

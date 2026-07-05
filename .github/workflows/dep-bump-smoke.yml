@@ -7,11 +7,15 @@ name: Dependency bump smoke
 # drives the human merge decision.
 
 on:
+  workflow_dispatch: # manual runs (makes the `event_name != pull_request` branch reachable)
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     paths:
       - constraints/**
       - scripts/prepare_whisper.py
+      - scripts/dep_bump_smoke.py
+      - scripts/install_static_ffmpeg.py
+      - tests/fixtures/smoke/**
       - .github/audio-runner/Dockerfile
       - .github/workflows/*.yml # ffmpeg URL/SHA live in workflow env
       - pyproject.toml
@@ -58,7 +62,7 @@ jobs:
 
       - name: Comment table on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const fs = require('fs');

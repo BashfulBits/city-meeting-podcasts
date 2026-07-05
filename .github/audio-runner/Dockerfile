@@ -25,10 +25,8 @@ RUN python /usr/local/bin/install_static_ffmpeg.py \
 COPY pyproject.toml README.md /opt/citypods-src/
 COPY constraints /opt/citypods-src/constraints
 COPY citypods /opt/citypods-src/citypods
-# Pin transitive deps to the compiled constraints (review/22). Once constraints/*.txt
-# are populated by lock.yml, harden this to the hash-verified form:
-#   pip install --require-hashes -r /opt/citypods-src/constraints/prod.txt \
-#     && pip install --no-deps "/opt/citypods-src[storage]"
+# Pin transitive deps to the compiled version-pinned constraints (review/22). A future
+# hardening step can switch to a hash-verified install here (see constraints/README.md).
 RUN pip install --no-cache-dir -c /opt/citypods-src/constraints/prod.txt "/opt/citypods-src[storage]"
 
 WORKDIR /workspace

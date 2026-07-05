@@ -24,13 +24,18 @@ if [[ "${IN_CONTAINER:-0}" != "1" ]]; then
 fi
 
 # --- inside the pinned target environment ---
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet "pip-tools>=7.4"
+# pip itself is pinned by the base-image digest (above); pin the compiler exactly so
+# the resolved constraints only change when repo inputs change, not the toolchain.
+python -m pip install --quiet "pip-tools==7.4.1"
 
 compile() {
   local out="$1"; shift
   echo "→ compiling constraints/${out}"
-  pip-compile --quiet --strip-extras --generate-hashes --allow-unsafe \
+  # Version-pinned (no --generate-hashes): the constraints are consumed via `pip -c`
+  # alongside editable `pip install -e .`, and hash-checking mode is incompatible with
+  # an unhashable editable install. Hash-verified `--require-hashes -r` for the immutable
+  # images is a documented follow-up (see review/22 / constraints/README.md).
+  pip-compile --quiet --strip-extras --allow-unsafe \
     --output-file "constraints/${out}" "$@" pyproject.toml
 }
 

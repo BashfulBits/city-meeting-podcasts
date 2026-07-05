@@ -48,7 +48,7 @@ def check_pinned_actions() -> list[str]:
 
 
 # Package names that must live only in pyproject.toml + constraints, never re-declared
-# in the external-worker image builders.
+# in the external-worker image builders. Compared by PEP 503 normalized name.
 FORBIDDEN_IN_WORKERS = (
     "faster-whisper",
     "ctranslate2",
@@ -63,6 +63,17 @@ FORBIDDEN_IN_WORKERS = (
 WORKER_FILES = ("scripts/compute/modal_app.py", "scripts/compute/beam_app.py")
 
 
+def _normalize(name: str) -> str:
+    """PEP 503 name normalization (case-insensitive, - / _ / . collapse)."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+_FORBIDDEN_NORM = {_normalize(p) for p in FORBIDDEN_IN_WORKERS}
+# A quoted requirement token: the package name up to a version op, extras bracket, or the
+# closing quote. Anchored on the opening quote so it only matches string-literal specifiers.
+_REQ_TOKEN = re.compile(r"""['"]\s*([A-Za-z0-9][A-Za-z0-9._-]*?)\s*(?=['"<>=!~;\[ ])""")
+
+
 def check_external_worker_deps() -> list[str]:
     problems: list[str] = []
     for rel in WORKER_FILES:
@@ -72,10 +83,10 @@ def check_external_worker_deps() -> list[str]:
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue
-            for pkg in FORBIDDEN_IN_WORKERS:
-                if f'"{pkg}' in line or f"'{pkg}" in line:
+            for token in _REQ_TOKEN.findall(line):
+                if _normalize(token) in _FORBIDDEN_NORM:
                     problems.append(
-                        f"{rel}:{lineno}: hardcoded dependency '{pkg}' — install from "
+                        f"{rel}:{lineno}: hardcoded dependency '{token}' — install from "
                         f"constraints/asr.txt instead (see review/22)"
                     )
     return problems

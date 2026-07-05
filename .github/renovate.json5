@@ -15,15 +15,25 @@
   packageRules: [
     // ---- HYGIENE LANE: flows through with ~zero attention ----
     {
-      matchManagers: ["pip_requirements", "pip-compile", "pep621", "npm"],
-      matchDepTypes: ["devDependencies"],
-      groupName: "dev/test tooling (hygiene)",
-      automerge: true, // patch/minor of dev/test tools, on green CI
+      // Python dev/test tooling — matched by name (pep621 optional-dependencies has
+      // no per-extra depType granularity, so target the actual tool packages).
+      matchManagers: ["pep621", "pip_requirements", "pip-compile"],
+      matchPackageNames: ["ruff", "pytest", "pip-tools"],
       matchUpdateTypes: ["patch", "minor"],
+      groupName: "python dev/test tooling (hygiene)",
+      automerge: true, // on green CI
     },
     {
-      // Non-output-affecting runtime libs: grouped PRs, reviewed, not auto-merged.
-      matchManagers: ["pip_requirements", "pip-compile", "pep621"],
+      // npm dev tooling (the Cloudflare Worker).
+      matchManagers: ["npm"],
+      matchDepTypes: ["devDependencies"],
+      matchUpdateTypes: ["patch", "minor"],
+      groupName: "npm dev tooling (hygiene)",
+      automerge: true,
+    },
+    {
+      // Non-output-affecting Python runtime libs: grouped PRs, reviewed, not auto-merged.
+      matchManagers: ["pep621", "pip_requirements", "pip-compile"],
       matchPackageNames: ["requests", "PyYAML", "Jinja2", "defusedxml", "boto3", "jiwer"],
       groupName: "python runtime (hygiene)",
     },
@@ -39,26 +49,28 @@
     // PR until a human ticks the box. When the PR opens, dep-bump-smoke.yml proves
     // whether produced bytes changed (per-source), gating the merge decision.
     {
+      // Named Python inference/imaging libs that affect produced bytes.
+      matchManagers: ["pep621", "pip_requirements", "pip-compile"],
       matchPackageNames: ["faster-whisper", "ctranslate2", "stable-ts", "Pillow"],
-      matchManagers: ["custom.regex", "docker", "pip_requirements", "pip-compile", "pep621"],
-      matchDatasources: ["docker", "github-releases", "huggingface", "pypi"],
-      groupName: "output-affecting (needs approval + smoke)",
+      groupName: "output-affecting: python (needs approval + smoke)",
       dependencyDashboardApproval: true,
       automerge: false,
       labels: ["type:infrastructure", "deps", "output-affecting"],
       schedule: ["at any time"], // approval is the gate, not a cadence
     },
+    {
+      // The custom-regex + Dockerfile output-affecting pins: base image digest, the
+      // ffmpeg build, and the HF model revisions. Separate rule so these actually
+      // reach the approval lane (matchers of different types are AND-ed together).
+      matchManagers: ["custom.regex", "dockerfile"],
+      groupName: "output-affecting: image/ffmpeg/model (needs approval + smoke)",
+      dependencyDashboardApproval: true,
+      automerge: false,
+      labels: ["type:infrastructure", "deps", "output-affecting"],
+      schedule: ["at any time"],
+    },
   ],
   customManagers: [
-    {
-      // Base runner image digest in the Dockerfile.
-      customType: "regex",
-      managerFilePatterns: ["/^\\.github/audio-runner/Dockerfile$/"],
-      matchStrings: [
-        "FROM (?<depName>[^\\s@:]+):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]+)",
-      ],
-      datasourceTemplate: "docker",
-    },
     {
       // Static ffmpeg build (URL + SHA256) — output-affecting; monthly, smoke-gated.
       // BtbN nightly tags are date-shaped, so this surfaces the pin for review rather

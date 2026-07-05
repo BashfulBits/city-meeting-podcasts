@@ -11,13 +11,14 @@ fully-resolved pins that make installs reproducible. Policy: [`review/22`](../re
 
 ## Consuming them
 
-- **Editable CI path:** `pip install -e ".[dev]" -c constraints/dev.txt` — versions are pinned; the
-  editable local package cannot be hash-checked, so hash mode is not forced here.
-- **Immutable images:** install deps hash-verified first, then the local package without re-resolving:
-  ```dockerfile
-  pip install --require-hashes -r constraints/prod.txt
-  pip install --no-deps "/opt/citypods-src[storage]"
-  ```
+These files are **version-pinned** (exact `==`), not hashed. They are consumed via `pip … -c`
+alongside editable `pip install -e .`, and pip's hash-checking mode is incompatible with an
+unhashable editable install — so hashes are intentionally omitted.
+
+- **Everywhere (`-c`):** `pip install -e ".[dev]" -c constraints/dev.txt` — exact versions pinned.
+- **Immutable images (follow-up):** hash-verified installs (`--require-hashes -r` of a non-editable
+  build, then `pip install --no-deps` for the local package) are a documented future hardening for
+  the runner/worker images; not required for version reproducibility.
 
 ## Regenerating (the only correct way)
 

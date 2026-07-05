@@ -34,10 +34,10 @@ to the existing content-addressed model.
 
 | Class | Pin location | Granularity | Update mechanism | Determinism class |
 |---|---|---|---|---|
-| Python libraries | `constraints/*.txt` compiled from `pyproject.toml`, consumed via `pip install … -c` | exact `==`; `--generate-hashes` in the immutable-image profile | Renovate (pip) → recompile | **output-affecting:** `faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`; **hygiene:** everything else |
+| Python libraries | `constraints/*.txt` compiled from `pyproject.toml`, consumed via `pip install … -c` | exact `==` version pins (hash-verified `--require-hashes` for the immutable images is a documented follow-up) | Renovate (pip) → recompile | **output-affecting:** `faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`; **hygiene:** everything else |
 | GitHub Actions | `.github/workflows/*.yml` | full 40-hex commit SHA + `# vN` comment | Renovate (github-actions) | hygiene (build-time) |
 | Base runner image | `.github/audio-runner/Dockerfile` | `@sha256:` digest | Renovate (docker) | output-affecting (toolchain) |
-| Static ffmpeg | `FFMPEG_URL` + `FFMPEG_SHA256` (`audio-runner-image.yml`, `audio.yml`, `asr.yml`, `ci.yml`) | immutable release URL + SHA256 | Renovate custom regex, **monthly, smoke-gated** | output-affecting (encode) |
+| Static ffmpeg | `FFMPEG_URL` + `FFMPEG_SHA256` (`audio-runner-image.yml`, `audio.yml`, `asr.yml`, `ci.yml`, `dep-bump-smoke.yml`) | immutable release URL + SHA256 | Renovate custom regex, **monthly, smoke-gated** | output-affecting (encode) |
 | HF Whisper models | `HF_*_REVISION` constants in `scripts/prepare_whisper.py` | pinned commit-SHA revision | Renovate custom regex → **Dashboard approval** | output-affecting (transcripts) |
 | Node / Cloudflare Worker | `workers/*/package-lock.json`, `wranglerVersion`, `setup-node` node version | exact / lockfile | Renovate (npm) | hygiene |
 
@@ -46,7 +46,7 @@ to the existing content-addressed model.
 1. **Output-affecting bumps are deliberate and version-coupled.** A change to an inference lib, ffmpeg,
    the base image, or a model revision must pass the per-source image smoke test and — per the
    `AGENTS.md` pipeline-version-bump contract — the PR must state whether it bumps the relevant version
-   (`ASR_PIPELINE_VERSION`, `SilencePlanner.version`, `AudioStage`) and whether stored artifacts are
+   (`ASR_PIPELINE_VERSION`, `SilencePlanner.version`, `AUDIO_PIPELINE_VERSION`) and whether stored artifacts are
    invalidated. **Pinning a *current* version is a no-op reproducibility fix: it must NOT bump any
    pipeline version or reprocess artifacts** (explicit in GH#498).
 2. **One source of truth per class.** External workers do not re-declare dependencies — they install
@@ -71,9 +71,11 @@ there). Concrete, fully-resolved pins live in compiled constraint files:
 - `constraints/asr.txt` — adds the `asr-*` extras (`faster-whisper`, `ctranslate2`, `stable-ts`, `jiwer`)
 - `constraints/dev.txt` — adds the `dev` extra (`pytest`, `ruff`, `pip-tools`)
 
-Every install site adds `-c constraints/<profile>.txt`; the immutable container/worker images additionally
-install the fully-**hashed** set with `--require-hashes` (the editable `-e .` CI path cannot be
-hash-checked, so it uses version-pinned constraints without forced hash mode).
+Every install site adds `-c constraints/<profile>.txt`. Constraints are **version-pinned** (exact `==`)
+rather than hashed: they are consumed alongside editable `pip install -e .`, and pip's hash-checking
+mode is incompatible with an unhashable editable install. Adding hash verification for the immutable
+container/worker images (a `--require-hashes -r` install of a non-editable build) is a documented
+follow-up hardening, not a blocker for version reproducibility.
 
 **Constraints are compiled in the pinned target environment, not on a contributor laptop.** The deploy
 target is linux / CPython 3.12; resolving on a different OS or Python version yields wrong platform
