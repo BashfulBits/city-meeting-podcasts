@@ -14,6 +14,20 @@ from beam import Image, schedule
 APP_NAME = os.environ.get("CITYPODS_BEAM_APP", "citypods-beam-worker")
 GPU = os.environ.get("CITYPODS_BEAM_GPU", "A10G")
 WHEN = os.environ.get("CITYPODS_BEAM_SCHEDULE", "@daily")
+
+# Baked model location (pinned revision, same bytes as the runner). ASR_MODEL_PATH
+# points the worker at these local files, so cold start does no model download.
+_MODEL_DIR = "/opt/models/faster-whisper-large-v3-turbo"
+
+# Build-time command to bake the pinned model (repo+revision from citypods.asr).
+_BAKE_MODEL_CMD = (
+    'python -c "'
+    "from citypods.asr import HF_PREFERRED, HF_PREFERRED_REVISION; "
+    "from huggingface_hub import snapshot_download; "
+    f"snapshot_download(HF_PREFERRED, revision=HF_PREFERRED_REVISION, local_dir='{_MODEL_DIR}')"
+    '"'
+)
+
 RUNTIME_ENV = {
     "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
         "CITYPODS_WORKER_LEASE_TTL_SECONDS", "72000"
@@ -25,6 +39,7 @@ RUNTIME_ENV = {
     "CITYPODS_WORKER_ASR_DEVICE": os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
     "CITYPODS_WORKER_CPU_THREADS": os.environ.get("CITYPODS_WORKER_CPU_THREADS", "4"),
     "CITYPODS_WORKER_GPU_TYPE": GPU,
+    "ASR_MODEL_PATH": _MODEL_DIR,
 }
 if "CITYPODS_WORKER_MAX_CLAIMS" in os.environ:
     RUNTIME_ENV["CITYPODS_WORKER_MAX_CLAIMS"] = os.environ["CITYPODS_WORKER_MAX_CLAIMS"]
@@ -43,17 +58,27 @@ RUNTIME_SECRETS = [
 ]
 
 image = (
-    Image(python_version="python3.12")
-    .add_commands(["apt-get update -y", "apt-get install ffmpeg -y"])
-    .add_python_packages(
+    # Digest-pinned CUDA 12 + cuDNN 9 runtime — same base family as the Modal worker;
+    # provides ctranslate2's cuBLAS/cuDNN on GPU and is forward-compatible with a torch
+    # diarize step later (no base change needed then). PyTorch-free today.
+    Image(
+        python_version="python3.12",
+        base_image=(
+            "docker.io/nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04"
+            "@sha256:fa44193567d1908f7ca1f3abf8623ce9c63bc8cba7bcfdb32702eb04d326f7a8"
+        ),
+    )
+    .add_commands(
         [
-            "boto3>=1.34",
-            "defusedxml>=0.7",
-            "faster-whisper>=1.0",
-            "Jinja2>=3.1",
-            "Pillow>=10.0",
-            "PyYAML>=6.0",
-            "requests>=2.31",
+            "apt-get update -y && apt-get install -y --no-install-recommends ffmpeg",
+            # Pinned deps from the shared constraints — the SAME versions as the runner's
+            # transcribe lane, from the pyproject extras (no hand-maintained list; enforced
+            # by scripts/check_dependency_policy.py). asr-transcribe excludes stable-ts, so
+            # torch is NOT installed.
+            "pip install '.[storage,asr-transcribe]' -c constraints/asr.txt",
+            # Bake the pinned Whisper model into the image (fast cold start; same
+            # repo+revision as the runner, from the canonical citypods.asr constants).
+            _BAKE_MODEL_CMD,
         ]
     )
     .with_envs([f"{k}={v}" for k, v in RUNTIME_ENV.items()])
