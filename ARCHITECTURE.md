@@ -86,6 +86,11 @@ the timed-out episode records an exponential durable backoff while unrelated epi
 Packaging follows the lane boundary: scheduled fresh ASR installs `asr-transcribe` (faster-whisper
 only), a future align-only job installs `asr-align` (stable-ts), and diagnostics install `asr-bench`;
 the legacy aggregate `asr` extra remains available for contributors needing all three surfaces.
+All Python installs — CI, the runner image, and the external Modal/Beam worker images — resolve against
+compiled **version-pinned** `constraints/*.txt` (one source of truth; [`review/22`](review/22-dependency-and-reproducibility-policy.md)),
+so a fresh install cannot silently drift; third-party GitHub Actions are commit-SHA-pinned and the
+Hugging Face Whisper model revisions are pinned (canonical in `citypods.asr`, baked into the worker
+images), with Renovate opening update PRs and CI guards keeping the pins current and enforced.
 Encoding/transcription can never block or redden the Pages deploy (H11b), and concurrent shards clear
 the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
 records, leaving the
