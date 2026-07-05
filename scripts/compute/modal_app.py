@@ -31,19 +31,41 @@ if "CITYPODS_WORKER_MAX_CLAIMS" in os.environ:
 
 app = modal.App(APP_NAME)
 
+# Baked model location (pinned revision, same bytes as the runner). ASR_MODEL_PATH
+# points the worker at these local files, so cold start does no model download.
+_MODEL_DIR = "/opt/models/faster-whisper-large-v3-turbo"
+
 image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .apt_install("ffmpeg")
-    .pip_install(
-        "boto3>=1.34",
-        "defusedxml>=0.7",
-        "faster-whisper>=1.0",
-        "Jinja2>=3.1",
-        "Pillow>=10.0",
-        "PyYAML>=6.0",
-        "requests>=2.31",
+    # Prebuilt CUDA 12 + cuDNN 9 runtime (digest-pinned) provides the cuBLAS/cuDNN that
+    # ctranslate2 needs on GPU, and coexists with torch for a future combined
+    # transcribe+diarize worker — no base change needed then. PyTorch-free today.
+    modal.Image.from_registry(
+        "nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04@sha256:fa44193567d1908f7ca1f3abf8623ce9c63bc8cba7bcfdb32702eb04d326f7a8",
+        add_python="3.12",
     )
-    .env(RUNTIME_ENV)
+    .apt_install("ffmpeg")  # faster-whisper decodes via PyAV; harmless fallback
+    # Install the pinned dependency set from the shared constraints — the SAME versions
+    # as the runner's transcribe lane, resolved from the pyproject extras (no
+    # hand-maintained list; enforced by scripts/check_dependency_policy.py). The
+    # asr-transcribe extra deliberately excludes stable-ts, so torch is NOT installed.
+    .add_local_file("pyproject.toml", "/opt/citypods/pyproject.toml", copy=True)
+    .add_local_file("README.md", "/opt/citypods/README.md", copy=True)
+    .add_local_dir("constraints", "/opt/citypods/constraints", copy=True)
+    .add_local_dir("citypods", "/opt/citypods/citypods", copy=True)
+    .run_commands(
+        "cd /opt/citypods && pip install '.[storage,asr-transcribe]' -c constraints/asr.txt"
+    )
+    # Bake the pinned Whisper model into the image (fast cold start; same repo+revision
+    # as the runner, sourced from the canonical citypods.asr constants).
+    .run_commands(
+        'python -c "'
+        "from citypods.asr import HF_PREFERRED, HF_PREFERRED_REVISION; "
+        "from huggingface_hub import snapshot_download; "
+        f"snapshot_download(HF_PREFERRED, revision=HF_PREFERRED_REVISION, local_dir='{_MODEL_DIR}')"
+        '"'
+    )
+    .env({**RUNTIME_ENV, "ASR_MODEL_PATH": _MODEL_DIR})
+    # Fresh application code at runtime (sys.path prepends this over the baked copy).
     .add_local_dir("citypods", remote_path="/root/citypods/citypods")
 )
 

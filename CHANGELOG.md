@@ -16,6 +16,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Modal external transcription worker pins dependencies + model to the runner (GH#276, part of #804).**
+  `scripts/compute/modal_app.py` replaced its hand-maintained `>=` dependency list with
+  `pip install '.[storage,asr-transcribe]' -c constraints/asr.txt` — the exact same versions
+  (`faster-whisper`/`ctranslate2`/`av`) the in-Actions transcribe lane uses, resolved from the
+  pyproject extras (no duplicate list; enforced by `scripts/check_dependency_policy.py`), and without
+  torch (the `asr-transcribe` extra excludes `stable-ts`). The image base moved to a digest-pinned
+  **CUDA 12 + cuDNN 9 runtime** (provides ctranslate2's cuBLAS/cuDNN on GPU and is forward-compatible
+  with a future torch-based diarize step), and the **pinned Whisper model revision is baked into the
+  image** (fast cold start, same bytes as the runner via `ASR_MODEL_PATH`). The canonical model
+  repo+revision constants moved to `citypods.asr` so the runner (`prepare_whisper.py`) and the worker
+  share one Renovate-tracked source. First deployment — to be validated on bounded single-recording
+  test runs. Beam (GH#277) follows the same pattern.
+
 - **Hugging Face Whisper models are pinned to explicit commit revisions (GH#498).**
   `scripts/prepare_whisper.py` downloaded via mutable `main` on both the direct-CDN and
   `snapshot_download` paths, so model bytes could drift silently while `asr_spec_hash()` still
