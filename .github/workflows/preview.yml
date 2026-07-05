@@ -32,14 +32,14 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e .
+        run: pip install -e . -c constraints/prod.txt
 
       # Read-only restore of the record store the production deploy caches on `main`
       # (`build-state-*`, ~8 MiB). No B2 creds needed — a PR workflow can read its base branch's
       # Actions caches. This gives `--no-refresh` real records to render; on a cache miss (first run
       # / eviction) the render is empty-but-valid (it still verifies the build/render flow).
       - name: Restore build state
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           # Match the path set deploy.yml caches under, so a restore-keys hit extracts cleanly.
           # (docs/ is harmless here — the render below overwrites it.)

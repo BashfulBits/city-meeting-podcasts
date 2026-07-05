@@ -1,0 +1,48 @@
+name: Lock dependencies
+
+# Recompile the hash-pinned constraint files in the pinned deploy target
+# (linux / CPython 3.12) and open a PR with the result. This is the ONLY correct
+# place to generate constraints/*.txt — a contributor laptop resolves the wrong
+# platform wheels (see review/22, constraints/README.md). The ci.yml "deps" job
+# enforces that the committed files stay in sync; this is how you refresh them.
+#
+# Security: checkout uses persist-credentials:false so the token is not exposed
+# while pip-compile builds sdists; the write token is introduced only in the final
+# PR step, after compilation. It opens a PR (never pushes to main directly).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Recompile constraints (Docker, pinned python:3.12)
+        run: scripts/compile_constraints.sh # uses Docker; no token in env here
+
+      - name: Open PR if constraints changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- constraints/; then
+            echo "constraints already up to date"
+            exit 0
+          fi
+          branch="chore/relock-constraints-${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${branch}"
+          git add constraints/
+          git commit -m "chore(deps): recompile constraints (lock.yml)"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" "${branch}"
+          gh pr create --base main --head "${branch}" \
+            --title "chore(deps): recompile constraints" \
+            --body "Automated constraints recompile from lock.yml. See review/22."

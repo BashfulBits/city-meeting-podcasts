@@ -23,8 +23,13 @@ RUN python /usr/local/bin/install_static_ffmpeg.py \
 # checkout and PYTHONPATH points there, so application code comes from the exact workflow SHA while
 # dependency and native-tool setup comes from this prebuilt runtime.
 COPY pyproject.toml README.md /opt/citypods-src/
+COPY constraints /opt/citypods-src/constraints
 COPY citypods /opt/citypods-src/citypods
-RUN pip install --no-cache-dir "/opt/citypods-src[storage]"
+# Pin transitive deps to the compiled constraints (review/22). Once constraints/*.txt
+# are populated by lock.yml, harden this to the hash-verified form:
+#   pip install --require-hashes -r /opt/citypods-src/constraints/prod.txt \
+#     && pip install --no-deps "/opt/citypods-src[storage]"
+RUN pip install --no-cache-dir -c /opt/citypods-src/constraints/prod.txt "/opt/citypods-src[storage]"
 
 WORKDIR /workspace
 ENTRYPOINT ["python", "-m", "citypods.cli"]

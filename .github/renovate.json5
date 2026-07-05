@@ -1,0 +1,85 @@
+{
+  // Dependency update automation — implements the two-lane flow in review/22.
+  // Renovate opens PRs (or Dashboard-approval rows) so pins never rot past
+  // security/beneficial updates, without sacrificing reproducibility.
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard", // single self-updating issue unifying all pending bumps
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests", // keep Actions on 40-hex SHAs (GH#734)
+  ],
+  timezone: "America/Chicago",
+  schedule: ["before 9am on monday"],
+  labels: ["type:infrastructure", "deps"],
+  packageRules: [
+    // ---- HYGIENE LANE: flows through with ~zero attention ----
+    {
+      matchManagers: ["pip_requirements", "pip-compile", "pep621", "npm"],
+      matchDepTypes: ["devDependencies"],
+      groupName: "dev/test tooling (hygiene)",
+      automerge: true, // patch/minor of dev/test tools, on green CI
+      matchUpdateTypes: ["patch", "minor"],
+    },
+    {
+      // Non-output-affecting runtime libs: grouped PRs, reviewed, not auto-merged.
+      matchManagers: ["pip_requirements", "pip-compile", "pep621"],
+      matchPackageNames: ["requests", "PyYAML", "Jinja2", "defusedxml", "boto3", "jiwer"],
+      groupName: "python runtime (hygiene)",
+    },
+    // Actions & workflow files are SHA-pinned but NEVER auto-merged (a compromised
+    // update could move a pinned SHA — see review/22 / the Renovate malicious-SHA caveat).
+    {
+      matchManagers: ["github-actions"],
+      automerge: false,
+      groupName: "github actions (SHA-pinned)",
+    },
+    // ---- OUTPUT-AFFECTING LANE: one checkbox + one bot comment ----
+    // Renovate lists these under "Pending Approval" on the Dashboard and opens no
+    // PR until a human ticks the box. When the PR opens, dep-bump-smoke.yml proves
+    // whether produced bytes changed (per-source), gating the merge decision.
+    {
+      matchPackageNames: ["faster-whisper", "ctranslate2", "stable-ts", "Pillow"],
+      matchManagers: ["custom.regex", "docker", "pip_requirements", "pip-compile", "pep621"],
+      matchDatasources: ["docker", "github-releases", "huggingface", "pypi"],
+      groupName: "output-affecting (needs approval + smoke)",
+      dependencyDashboardApproval: true,
+      automerge: false,
+      labels: ["type:infrastructure", "deps", "output-affecting"],
+      schedule: ["at any time"], // approval is the gate, not a cadence
+    },
+  ],
+  customManagers: [
+    {
+      // Base runner image digest in the Dockerfile.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/audio-runner/Dockerfile$/"],
+      matchStrings: [
+        "FROM (?<depName>[^\\s@:]+):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]+)",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      // Static ffmpeg build (URL + SHA256) — output-affecting; monthly, smoke-gated.
+      // BtbN nightly tags are date-shaped, so this surfaces the pin for review rather
+      // than fully automating the bump; the human ticks the Dashboard box.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/.*\\.yml$/"],
+      matchStrings: [
+        "FFMPEG_URL:\\s*\\S+/(?<currentValue>autobuild-[0-9-]+)/\\S+\\n\\s*FFMPEG_SHA256:\\s*(?<currentDigest>[a-f0-9]+)",
+      ],
+      depNameTemplate: "BtbN/FFmpeg-Builds",
+      datasourceTemplate: "github-releases",
+    },
+    {
+      // Hugging Face Whisper model revisions (GH#498). Requires the huggingface
+      // datasource; output-affecting → Dashboard approval.
+      customType: "regex",
+      managerFilePatterns: ["/^scripts/prepare_whisper\\.py$/"],
+      matchStrings: [
+        "(?<depName>[\\w-]+/[\\w.-]+)\"\\s*#\\s*renovate\\s*\\n\\s*HF_\\w+_REVISION\\s*=\\s*\"(?<currentDigest>[a-f0-9]+)\"",
+      ],
+      datasourceTemplate: "huggingface",
+    },
+  ],
+}

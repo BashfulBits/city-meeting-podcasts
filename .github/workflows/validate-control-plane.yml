@@ -51,7 +51,7 @@ jobs:
           cache: pip
 
       - name: Install (with storage extra for boto3)
-        run: pip install -e ".[storage]"
+        run: pip install -e ".[storage]" -c constraints/prod.txt
 
       - name: Validate control plane on live B2 + R2
         env:
