@@ -91,7 +91,7 @@ image = (
     image=image,
     gpu=GPU,
     secrets=RUNTIME_SECRETS,
-    env_vars=RUNTIME_ENV,
+    env=RUNTIME_ENV,  # beam-client==0.2.198's Schedule kwarg is `env`, not `env_vars` (GH#814)
     timeout=24 * 3600,
 )
 def run_scheduled():
