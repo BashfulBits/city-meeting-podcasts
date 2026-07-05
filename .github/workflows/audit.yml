@@ -61,7 +61,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Install
-        run: pip install -e ".[storage]"
+        run: pip install -e ".[storage]" -c constraints/prod.txt
 
       - name: Run audit
         env:

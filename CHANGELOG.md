@@ -16,6 +16,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Repository dependency pinning & update policy (GH#498, GH#734).** New normative contract in
+  [`review/22`](review/22-dependency-and-reproducibility-policy.md): pins are the default for
+  reproducible builds, and Renovate opens PRs so they do not stall past security/beneficial updates.
+  Foundation landed: compiled hash-pinned Python `constraints/*.txt` (source of truth for CI, the
+  runner image, and the external workers) with a `lock.yml` compile workflow and a `ci.yml` drift
+  gate; all third-party GitHub Actions pinned to full commit SHAs and unified to the current tips
+  (GH#734); `.github/renovate.json5` with a light-touch two-lane flow (hygiene auto-PRs; a
+  Dependency-Dashboard approval gate + per-source `dep-bump-smoke` for output-affecting bumps);
+  `scripts/check_dependency_policy.py` CI guard; and the "adding a dependency" contract in
+  CONTRIBUTING/AGENTS. Pure pinning is a reproducibility no-op — no pipeline-version bump, no artifact
+  reprocessing. HF model-revision pinning (GH#498) and external-worker (Modal/Beam) parity follow as
+  their own PRs.
+
 - **Production media fetches now have a size ceiling before ffmpeg reads a remote source
   (issue #497).** `citypods/media.py:_download_audio()` and the direct-remote render paths
   (identity render, multi-source concat fallback) previously handed ffmpeg a remote URL with no

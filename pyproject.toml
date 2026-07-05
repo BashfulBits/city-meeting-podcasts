@@ -37,7 +37,7 @@ asr = [
     "stable-ts[fw]>=2.17",
     "jiwer>=3.0",
 ]
-dev = ["pytest>=8.0", "ruff>=0.6", "boto3>=1.34"]
+dev = ["pytest>=8.0", "ruff>=0.6", "boto3>=1.34", "pip-tools>=7.4"]
 
 [project.scripts]
 citypods = "citypods.cli:main"
