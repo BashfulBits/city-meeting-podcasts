@@ -36,8 +36,9 @@ maintainer adopts them.
 | **NotebookLM / podcast-generation tools** | LLM turns documents into a two-host audio discussion. | Phase C (AI-generated discussion podcast with real clips) is this, plus the project's unique asset — **real meeting audio via the EDL/clip machinery**. That clip-grounding is the differentiator NotebookLM can't replicate (it has no source audio). |
 | **Generic "meeting summarizer" SaaS (Otter, Fireflies, etc.)** | Transcribe + summarize corporate meetings. | Same ASR/LLM tech, entirely different trust model: those *overwrite* with AI freely; this project's **"never editorialize the factual record, LLM output is untrusted"** rule is a deliberate civic-integrity stance those products don't need. Worth keeping as a marketed *feature*, not just an internal invariant. |
 
-**Takeaway:** the project occupies a real and mostly-empty niche — *automated, breadth-first, subscribable
-+ searchable coverage of small-municipality meeting recordings, with a civic-integrity guarantee.* The
+**Takeaway:** the project occupies a real and mostly-empty niche — *automated, breadth-first,
+subscribable and searchable coverage of small-municipality meeting recordings, with a civic-integrity
+guarantee.* The
 adjacent projects validate the individual downstream features (entity model, speaker ID, calendar
 scraping, AI audio) and in several cases offer reusable prior-art schemas.
 
@@ -218,6 +219,7 @@ alert/API feature is built means every later interactive feature is an adapter/h
 re-architecture — the same bet the project already made (correctly) on storage and compute.
 
 ### 3.2 First PII & identity — design the trust boundary before the first subscriber
+
 Email/push alerts introduce the project's first personal data. The SSRF/untrusted-input boundary is
 already firm; a **subscriber-data boundary** is greenfield. Design it *with* the Interaction seam:
 double-opt-in, RSS/webhook-first (PII-free) as the default channel, minimal retention, no per-user
@@ -226,6 +228,7 @@ public static record and the private subscriber store. Getting this boundary exp
 same "trust boundary is firm before onboarding opens" move `security.py` made for sources.
 
 ### 3.3 Search that outgrows the client
+
 Pagefind/client-side search is right for hundreds of feeds (review/16's budget) and should ship as R2.
 The graduation path — stated so it isn't a surprise — is: (1) partitioned client-side index by
 city/source (already in review/13); (2) a Worker-backed full-text index (D1 FTS5) when the client
@@ -233,6 +236,7 @@ budget is crossed; (3) the Vectorize semantic layer (§2.1 #2) as a parallel ind
 All three are the Interaction seam; keyword and semantic are two backends behind one search handler.
 
 ### 3.4 The entity model — the missing data spine
+
 Votes (#8), attendees (#14), speaker directories (§2.3 #11), the knowledge graph (#12), and Councilmatic-
 class navigation all need a **normalized entity layer** the record model doesn't have today: `Person`,
 `Body`, `AgendaItem`, `Vote`, `Document`, with stable IDs and cross-meeting linkage. *Adjacency:* this
@@ -243,6 +247,7 @@ entity spine after the API ships is far more expensive than reserving it. This i
 of the compute-seam pre-lock.
 
 ### 3.5 Compute-seam extensions (already-designed seam, new verbs)
+
 The compute backend's task verbs (`transcribe`/`align`/`diarize` + reserved `summarize`/`tag`/
 `soundbite-select`) cover most LLM/GPU needs. The Part-2 features add three **NEW verbs** that fit the
 same `InferenceJob(task, inputs, recipe_hash)` contract with no seam change: **`embed`** (semantic
@@ -252,12 +257,14 @@ into the recipe hash (already the plan for LLM verbs) gives version-aware re-der
 Keep the untrusted-output rule on every one.
 
 ### 3.6 Provider Protocol extension for foresight
+
 Phase F's `upcoming`/agenda/`documents` capabilities are the one provider-Protocol *extension* (not just
 new adapters) on the horizon. Design it as additive capability tokens (like the existing `deeplink`
 capability) so providers that can't do foresight simply don't declare it — and read CityScrapers'
 normalized schema first (§1.1) rather than inventing one.
 
 ### 3.7 A crowdsourced-correction layer (community integrity, longer horizon) — NEW
+
 ASR is imperfect; the civic-integrity stance is a differentiator; Documenters proves communities will do
 this labor. A **human-correction layer** — suggest an edit to a transcript cue or a speaker label,
 maintainer/community-moderated, stored as an *overlay* on the content-addressed artifact (never

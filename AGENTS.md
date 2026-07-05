@@ -179,11 +179,14 @@ coderabbit review --agent --type committed --base-commit "$root" --dir citypods 
   skip `config/` (per-city data) and doc dirs.
 - Save raw NDJSON output (don't trust a UI preview — it truncates display only) and verify every
   finding against current code before fixing, same staleness caveat as reviewing old merged PRs.
-- **Free-tier rate limit:** the CLI free tier allows ~1 review before it blocks ("wait N minutes" or
-  enable billing), so 6 directory-scoped reviews back-to-back stall fast (a promotional credit can land
-  mid-run and unblock some unpredictably). Retry the blocked dirs with a backgrounded
-  `sleep 3600 && coderabbit review …` rather than blocking synchronously — the root-commit and
-  working-tree diff both resolve at execution time, so a `git pull` in between is picked up.
+- **Free-tier rate limit:** the CLI free tier is a **rolling allowance** (~3 reviews/hour/dev, no
+  queuing — you get a "limit reached" message, not a fixed cooldown), so 6 directory-scoped reviews
+  back-to-back stall fast (a promotional credit can land mid-run and unblock some unpredictably).
+  Don't sleep a fixed hour — check remaining budget (`@coderabbitai reviews remaining?` on a PR, or
+  `cr stats`) and retry each blocked dir from a **backgrounded** shell that re-polls as slots age out
+  of the rolling window (e.g. a short `sleep`-and-retry loop, minutes not an hour) rather than blocking
+  synchronously. The root-commit and working-tree diff both resolve at execution time, so a `git pull`
+  in between is picked up.
 - **Reconcile against overlapping audits, don't silo them.** When an audit doc already exists, cross-link
   every overlapping finding both directions by stable ID and state when one verdict supersedes another
   (e.g. code moved between the two runs); don't emit a fresh siloed list. Before finalizing a `review/NN`
