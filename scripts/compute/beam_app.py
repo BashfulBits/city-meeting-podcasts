@@ -68,6 +68,14 @@ image = (
             "@sha256:fa44193567d1908f7ca1f3abf8623ce9c63bc8cba7bcfdb32702eb04d326f7a8"
         ),
     )
+    # Beam has no Modal-style add_local_dir/add_local_file; add_local_path() stages local
+    # files (gitwildmatch patterns, rooted at the `beam deploy` working directory) into the
+    # build context BEFORE add_commands() runs. Without this, the repo files referenced
+    # below (pyproject.toml, constraints/, citypods/) do not exist inside the build (GH#816).
+    .add_local_path("pyproject.toml")
+    .add_local_path("README.md")  # referenced by pyproject.toml's readme field
+    .add_local_path("constraints/")
+    .add_local_path("citypods/")
     .add_commands(
         [
             "apt-get update -y && apt-get install -y --no-install-recommends ffmpeg",
