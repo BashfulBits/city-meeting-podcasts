@@ -16,6 +16,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Beam worker: resolve pinned deps/model locally instead of referencing build-time repo files (GH#816/#818).**
+  Beam's remote image build has no access to local repo files (confirmed against the installed SDK:
+  `Image.add_python_packages()` given a file path reads it locally, before anything reaches Beam's
+  backend — there is no Modal-style `add_local_dir()` build-time equivalent). `beam_app.py` now reads
+  `constraints/asr.txt` and `citypods/asr.py` on the machine invoking `beam deploy` and bakes the
+  resolved `package==version` list and HF model repo/revision into the image spec as literal values;
+  `add_local_path("citypods/")` is kept for what it actually does — staging the package for the
+  deployed function's own runtime import. `scripts/check_dependency_policy.py`'s external-worker
+  guard was sharpened to flag only an actual hardcoded version (`pkg==x`/`pkg>=x`), not a bare
+  package-name selector key with no adjacent version (the new pattern this fix relies on).
+
 - **Beam external transcription worker pins dependencies + model to the runner (GH#277, part of #804).**
   Same parity as the Modal worker, applied to `scripts/compute/beam_app.py`: the hand-maintained
   package list is replaced with `pip install '.[storage,asr-transcribe]' -c constraints/asr.txt` (same
