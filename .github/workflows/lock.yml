@@ -13,6 +13,14 @@ name: Lock dependencies
 
 on:
   workflow_dispatch:
+  # TEMPORARY (bootstrap): populate constraints on this branch, since workflow_dispatch
+  # requires the workflow on the default branch. Removed before merge.
+  push:
+    branches: [docs/dependency-pinning-policy]
+    paths:
+      - .github/workflows/lock.yml
+      - pyproject.toml
+      - scripts/compile_constraints.sh
 
 permissions:
   contents: write
