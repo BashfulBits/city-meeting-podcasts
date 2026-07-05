@@ -198,6 +198,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Changed
 
+- **Stage-2 work-lease reaper enabled now that H14b/H14c are live (GH#706 §4).**
+  `config/site_config.yml`'s `work_lease_reaper_enabled` flips from `false` to `true`: the per-item R2
+  lease ledger the Modal/Beam pull workers claim against was dormant (and its sweep skipped as
+  pointless backlog-scaled GETs) until those workers existed. With H14b (#807) and H14c (#808) merged,
+  `compute reconcile` now sweeps it — a crashed worker's claim is reclaimed/requeued instead of the
+  ledger going unswept.
+
 - **`audit_feeds.py` consolidates feed-health GitHub issues from one-per-feed to one-per-check.**
   Filing a separate issue for every `(feed, check)` pair meant a single systemic regression (e.g. a
   code bug affecting every feed's timeline check) could open dozens of near-duplicate issues in one
