@@ -69,9 +69,11 @@ def _normalize(name: str) -> str:
 
 
 _FORBIDDEN_NORM = {_normalize(p) for p in FORBIDDEN_IN_WORKERS}
-# A quoted requirement token: the package name up to a version op, extras bracket, or the
-# closing quote. Anchored on the opening quote so it only matches string-literal specifiers.
-_REQ_TOKEN = re.compile(r"""['"]\s*([A-Za-z0-9][A-Za-z0-9._-]*?)\s*(?=['"<>=!~;\[ ])""")
+# A quoted requirement token: the package name immediately followed by a version-specifier
+# character (==, >=, etc.) in the SAME string. A bare name with no adjacent specifier (e.g. a
+# selector key into a version dict resolved from constraints/*.txt, as beam_app.py does) is not
+# a hardcoded pin and is intentionally not flagged -- only an actual duplicated version is.
+_REQ_TOKEN = re.compile(r"""['"]\s*([A-Za-z0-9][A-Za-z0-9._-]*?)\s*(?=[<>=!~])""")
 
 
 def check_external_worker_deps() -> list[str]:

@@ -91,6 +91,13 @@ compiled **version-pinned** `constraints/*.txt` (one source of truth; [`review/2
 so a fresh install cannot silently drift; third-party GitHub Actions are commit-SHA-pinned and the
 Hugging Face Whisper model revisions are pinned (canonical in `citypods.asr`, baked into the worker
 images), with Renovate opening update PRs and CI guards keeping the pins current and enforced.
+Modal's build genuinely stages local repo files at build time (`add_local_dir`/`add_local_file`), so
+its image installs directly against `constraints/asr.txt`. Beam's remote build has **no** such
+access — its `add_local_path()` only syncs files for the deployed function's own runtime import, not
+for `add_commands()`'s build steps (confirmed against the SDK: `Image.add_python_packages()` given a
+file path reads it locally, before anything reaches Beam's backend). So `beam_app.py` resolves the
+same pinned package set and HF model constant **locally**, on the machine invoking `beam deploy`, and
+bakes the literal resolved values into the image spec instead of referencing the files by path.
 Encoding/transcription can never block or redden the Pages deploy (H11b), and concurrent shards clear
 the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
 records, leaving the
