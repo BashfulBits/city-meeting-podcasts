@@ -14,6 +14,17 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Added
+
+- **`citypods compute reclaim-transcript --source-key SK --episode-uid UID [--write]`.** Recovery
+  tool for the class of loss #833 fixed: an ASR artifact (VTT + words JSON) already uploaded to
+  storage, but the record's `transcript` block never got updated to reference it — the lease
+  reaper infers `done` from artifact presence, so nothing else would ever retry it. Recomputes the
+  same recipe hash the original transcribing worker used (`_asr_recipe_hash`, deterministic from
+  the current city config + episode fields) and re-attaches the existing keys if present — it
+  never re-transcribes. Dry-run by default (reports what it found); `--write` pushes the fix
+  through the same owned-block-scoped `push_records_merged` path a real worker uses.
+
 ### Fixed
 
 - **Owned-block merge: a better remote plan no longer silently drops an owning lane's just-written
