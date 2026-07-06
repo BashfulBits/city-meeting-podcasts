@@ -543,6 +543,89 @@ def test_credit_path_does_not_download_hosted_audio_for_duration(tmp_path, monke
     assert ep.audio_duration_served == pytest.approx(7200.0)
 
 
+def test_served_duration_uses_edl_for_identity_timeline():
+    """An identity (unedited) timeline still carries one real full-span segment from the
+    silence-planning pass that already downloaded and analyzed the source. Gating on
+    ``timeline_digest() != ""`` (a cache-invalidation sentinel, not a "no duration data" signal)
+    used to discard that already-known length and fall back to the frequently-unpopulated
+    ``ep.duration`` instead — this is exactly why the identity case must use ``edl_duration``
+    too, not skip it."""
+    import citypods.media as media
+    from citypods.timeline import identity_timeline
+
+    ep = _ep("g1")
+    ep.sources = [
+        SourceMedia(
+            id="s0",
+            provider="granicus",
+            ref="https://src/vid.mp4",
+            media_kind="direct",
+            duration=None,
+            watch_url=None,
+        )
+    ]
+    ep.timeline = identity_timeline(ep.sources[0], duration=5400.0)
+    ep.duration = None  # the provider never reports a duration in feed metadata (e.g. Granicus)
+
+    assert timeline_digest(ep.timeline, ep.sources) == ""  # confirms this genuinely is identity
+    assert media._served_duration(ep) == pytest.approx(5400.0)
+
+
+def test_served_duration_falls_back_to_source_when_edl_duration_is_degenerate():
+    """``edl_duration`` can itself return ``None`` even with non-empty segments (a degenerate
+    zero/negative-span timeline) — must still fall through to ``ep.duration`` rather than
+    propagating that ``None``, matching pre-fix behavior for this edge case."""
+    import citypods.media as media
+
+    ep = _ep("g1")
+    ep.timeline = Timeline(
+        version="degenerate",
+        segments=(
+            Segment(
+                served_start=10.0,
+                served_end=10.0,  # zero span -> edl_duration returns None
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=10.0,
+            ),
+        ),
+    )
+    ep.duration = 1800.0
+
+    assert media._served_duration(ep) == pytest.approx(1800.0)
+
+
+def test_credit_path_backfills_from_identity_timeline_when_source_duration_unknown(tmp_path):
+    """Integration counterpart: the reuse/credit path (no fresh probe) must backfill
+    ``audio_duration_served`` from an identity timeline's EDL length even when ``ep.duration``
+    (the raw provider-reported source duration) is unknown."""
+    from citypods.timeline import identity_timeline
+
+    city = _city()
+    store = _store(tmp_path)
+    ep = _ep("g1")
+    ep.sources = [
+        SourceMedia(
+            id="s0",
+            provider="granicus",
+            ref="https://src/vid.mp4",
+            media_kind="direct",
+            duration=None,
+            watch_url=None,
+        )
+    ]
+    ep.timeline = identity_timeline(ep.sources[0], duration=5400.0)
+    ep.duration = None
+    key = audio_object_key(city, ep, audio_spec_hash(ep, max_kbps=MAX_KBPS))
+    _seed_object(store, key)
+
+    stats = _materialize(city, [ep], store, FakeFfmpeg())
+
+    assert stats.credited == 1
+    assert ep.audio_duration_served == pytest.approx(5400.0)
+
+
 def test_credits_run_even_when_stopped(tmp_path):
     """Near-free storage re-credits are not gated by the stop predicate — only encodes are — so a
     superseded/over-window run still reconciles drifted records before it wraps up."""
