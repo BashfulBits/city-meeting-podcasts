@@ -25,6 +25,20 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `duration_hours`, `elapsed_seconds`, `finished_at` — reusing fields `_append_telemetry_sample`
   already wrote per-sample; no new storage writes. Defaults to `0` (unchanged report).
 
+- **`asr-worker-report` manifest-freshness and `long_first` backlog-composition diagnostics.**
+  Two canary sessions were spent trying to reason about whether `long_first` had "taken effect" by
+  cross-referencing GitHub Actions run *start* times against the config merge — which gave a wrong
+  answer once (a job starting after the merge can still finish, and rebuild `state/work.json`, well
+  after a canary run in between already read the stale pre-merge manifest). The report now reads
+  `state/work.json`'s own last-modified time directly from storage (`manifest_last_modified`, an
+  exact-key list, not a broad scan) instead of inferring freshness indirectly. It also reports
+  `transcript_asr_duration_band` — of the current feed-visible/queued transcript-asr backlog
+  (exactly `external_worker.py`'s own candidate filter), how many exceed
+  `asr_local_max_duration_hours` (what `long_first` actually floats), how many have unknown
+  duration (can never be floated regardless of true length), and the max known duration — so "why
+  didn't a canary land on a long meeting" is answered by one report call instead of a live-canary
+  guessing game.
+
 ### Changed
 
 - **`long_first: 4` enabled in `backlog_priority` — external-required (>4h) transcript work now

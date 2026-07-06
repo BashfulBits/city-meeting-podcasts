@@ -12,11 +12,16 @@ from citypods.compute.budget import load_budget, load_budget_cas, storage_suppor
 from citypods.compute.worker_telemetry import load_worker_telemetry, telemetry_report
 from citypods.config import load_site_config
 from citypods.ops.work_leases import read_lease
-from citypods.ops.workqueue import load_manifest, manifest_counts
+from citypods.ops.workqueue import (
+    BUCKET_FEED_VISIBLE,
+    MANIFEST_NAME,
+    load_manifest,
+    manifest_counts,
+)
 from citypods.report import _load_run_history
 from citypods.resources import format_bytes
 from citypods.state import resolve_state_dir
-from citypods.statesync import pull_state
+from citypods.statesync import STATE_PREFIX, pull_state
 from citypods.storage import make_storage
 
 
@@ -60,6 +65,50 @@ def _sample_sort_key(sample: dict) -> str:
     return str(sample.get("finished_at") or sample.get("started_at") or "")
 
 
+def _manifest_last_modified(storage) -> str | None:
+    """When ``state/work.json`` was last written, straight from the storage layer's own
+    metadata — cheap (an exact-key list, not a broad prefix scan) and avoids the trap of inferring
+    manifest freshness from GitHub Actions run *start* times, which was wrong once already: a job
+    starting after a config merge can still finish (and rebuild the manifest) well after a canary
+    that ran in between already read the stale pre-merge manifest."""
+    if not hasattr(storage, "list_objects"):
+        return None
+    key = f"{STATE_PREFIX}/{MANIFEST_NAME}"
+    try:
+        for obj_key, last_modified in storage.list_objects(key):
+            if obj_key == key and last_modified is not None:
+                return (
+                    last_modified.isoformat()
+                    if hasattr(last_modified, "isoformat")
+                    else str(last_modified)
+                )
+    except Exception:
+        # Some storage-like fakes deliberately implement list_objects only to raise (e.g.
+        # tests/_cas_fake.py's MemCAS, enforcing "never list the R2 lease prefix" elsewhere in
+        # this codebase). A raise here must degrade to "unknown," not crash every other
+        # unrelated diagnostic in this report.
+        return None
+    return None
+
+
+def _duration_band(items: list, threshold: float) -> dict:
+    """How much of the current *feed-visible, queued* transcript-asr backlog the ``long_first``
+    comparator actually has to work with — the missing piece that made ``long_first`` floating
+    nothing look like a bug when it may just be an empty band. ``unknown`` (duration_hours <= 0)
+    is called out separately: those items can never be floated by ``long_first`` regardless of
+    their true length, since an unknown duration reads as 0 hours."""
+    over = sum(1 for wi in items if wi.duration_hours > threshold)
+    unknown = sum(1 for wi in items if wi.duration_hours <= 0)
+    known = [wi.duration_hours for wi in items if wi.duration_hours > 0]
+    return {
+        "threshold_hours": threshold,
+        "total": len(items),
+        "over_threshold": over,
+        "unknown_duration": unknown,
+        "max_known_hours": round(max(known), 2) if known else None,
+    }
+
+
 def build_report(
     *, site_config_path: str, output_dir: str, base_url: str | None = None, recent: int = 0
 ) -> dict:
@@ -76,6 +125,18 @@ def build_report(
         pending = [
             wi for wi in manifest if wi.work_class == "transcript-asr" and wi.state != "done"
         ]
+        # Exactly external_worker.py's own candidate filter (work_class/state/bucket) — so this
+        # diagnostic answers "what would a canary actually see," not a broader/looser count.
+        claimable = [
+            wi
+            for wi in manifest
+            if wi.work_class == "transcript-asr"
+            and wi.state == "queued"
+            and wi.priority_bucket == BUCKET_FEED_VISIBLE
+        ]
+        threshold = float(
+            (site_config.get("defaults") or {}).get("asr_local_max_duration_hours", 4)
+        )
         leases = Counter()
         lease_states = Counter()
         recent_samples: list[dict] = []
@@ -103,13 +164,27 @@ def build_report(
             "github_asr": _stage_asr_totals(state_dir),
             "worker_telemetry": worker_telemetry,
             "recent_samples": recent_samples,
+            "manifest_last_modified": _manifest_last_modified(storage),
+            "transcript_asr_duration_band": _duration_band(claimable, threshold),
         }
 
 
 def _markdown(report: dict) -> str:
     budget = report.get("budget", {})
     lines = ["## ASR worker report", ""]
+    lines.append(
+        "- manifest (`state/work.json`) last modified: "
+        f"`{report.get('manifest_last_modified') or 'unknown'}`"
+    )
     lines.append(f"- transcript-asr pending: `{report.get('transcript_asr_pending', 0)}`")
+    band = report.get("transcript_asr_duration_band") or {}
+    if band:
+        lines.append(
+            f"- transcript-asr claimable (feed-visible, queued): `{band.get('total', 0)}` total, "
+            f"`{band.get('over_threshold', 0)}` over `{band.get('threshold_hours')}`h "
+            f"(what `long_first` floats), `{band.get('unknown_duration', 0)}` unknown duration, "
+            f"max known `{band.get('max_known_hours')}`h"
+        )
     lines.append(f"- work leases by state: `{report.get('work_leases', {}).get('by_state', {})}`")
     lines.append(f"- in-flight by backend: `{report.get('work_leases', {}).get('by_backend', {})}`")
     lines.append(f"- recent GitHub ASR completions: `{report.get('github_asr', {})}`")
