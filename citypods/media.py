@@ -2418,12 +2418,22 @@ def _concat_render_timeline(
 
 
 def _served_duration(ep: Episode) -> float | None:
-    """The EDL (cue) clock for an edited episode, or the source duration as a fallback.
+    """The EDL (cue) clock when a timeline plan exists, or the source duration as a fallback.
 
-    For a manipulated episode this returns the EDL/cue clock (the planned served length),
-    derived through the single :func:`citypods.timeline.edl_duration` primitive rather than a
-    local re-implementation. For identity episodes (no timeline / digest ``""``) it falls back
-    to ``ep.duration`` (the *source* duration, which equals the served length there).
+    Derived through the single :func:`citypods.timeline.edl_duration` primitive rather than a
+    local re-implementation, for both edited *and* identity timelines. An identity timeline
+    still carries one real, already-known full-span segment
+    (:func:`citypods.timeline.identity_timeline` / ``_is_identity``) from the same
+    silence-planning pass that already downloaded and analyzed the source — ``edl_duration``
+    reads it correctly either way. Gating on
+    ``timeline_digest(tl, ep.sources) != ""`` here would be a bug: that empty-string sentinel is a
+    cache-invalidation signal ("no edits, so don't force a re-encode"), not a "no duration data"
+    signal, and using it as one silently discarded an already-known length in favor of
+    ``ep.duration`` (raw provider-reported source duration) — frequently unpopulated for
+    providers that never advertise a meeting length in feed metadata (e.g. Granicus), leaving
+    ``audio_duration_served`` permanently unknown for otherwise-fully-processed episodes. Only a
+    genuinely absent timeline (no plan ever ran — true legacy v1 records) falls back to
+    ``ep.duration``.
 
     NOTE (review/20): the value this returns is the **EDL** clock, not the probed hosted-stream
     duration. It is still acceptable as a backfill estimate for ``audio_duration_served`` *when
@@ -2431,7 +2441,7 @@ def _served_duration(ep: Episode) -> float | None:
     makes the probed hosted-stream duration authoritative for ``audio_duration_served`` so the
     EDL and the real enclosure can no longer be conflated by construction."""
     tl = ep.timeline
-    if tl is not None and timeline_digest(tl, ep.sources) != "":
+    if tl is not None and tl.segments:
         return edl_duration(tl)
     if ep.duration is None:
         return None
