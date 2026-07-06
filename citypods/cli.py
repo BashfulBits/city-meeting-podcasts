@@ -242,6 +242,18 @@ def main(argv: list[str] | None = None) -> int:
     cps.add_argument("--site-config", default="config/site_config.yml")
     cps.add_argument("--config-dir", default="config")
     cps.add_argument("--output-dir", default="docs")
+    crt = cp_sub.add_parser(
+        "reclaim-transcript",
+        help="re-adopt an ASR artifact already in storage whose record transcript block was "
+        "lost (e.g. GH#833) -- never re-transcribes; dry-run unless --write is passed",
+    )
+    crt.add_argument("--source-key", required=True)
+    crt.add_argument("--episode-uid", required=True)
+    crt.add_argument("--write", action="store_true", help="actually push the reclaimed record")
+    crt.add_argument("--site-config", default="config/site_config.yml")
+    crt.add_argument("--config-dir", default="config")
+    crt.add_argument("--output-dir", default="docs")
+    crt.add_argument("--base-url", help="base URL (for resolving cloud storage)")
 
     args = parser.parse_args(argv)
 
@@ -277,6 +289,8 @@ def main(argv: list[str] | None = None) -> int:
             return _compute_reconcile(args)
         if args.compute_command == "plan-shards":
             return _compute_plan_shards(args)
+        if args.compute_command == "reclaim-transcript":
+            return _compute_reclaim_transcript(args)
 
     return 0
 
@@ -703,6 +717,99 @@ def _compute_reconcile(args) -> int:
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
         f"{summary['in_flight']} in-flight{lease_note}"
     )
+    return 0
+
+
+def _compute_reclaim_transcript(args) -> int:
+    """Re-adopt an ASR artifact already uploaded to storage whose record ``transcript`` block was
+    lost — e.g. GH#833's owned-block-merge bug, where a better remote plan silently dropped a
+    just-written transcript even though the VTT/words artifact had already landed. This never
+    re-transcribes: it recomputes the SAME recipe hash the original worker used
+    (``_asr_recipe_hash``, deterministic from the current city config + episode fields) and
+    re-attaches the existing keys if they're present. Read-only unless ``--write`` is passed."""
+    from pathlib import Path
+
+    from citypods.records import (
+        episode_to_record,
+        load_records,
+        protected_blocks_for_lane,
+        record_to_episode,
+        save_records,
+        source_key,
+    )
+    from citypods.stages import (
+        _adopt_asr_keys,
+        _asr_object_key,
+        _asr_recipe_hash,
+        _asr_words_object_key,
+    )
+    from citypods.state import resolve_state_dir
+    from citypods.statesync import pull_state, push_records_merged
+    from citypods.storage import make_storage
+
+    site_config = load_site_config(args.site_config)
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+    output_dir = Path(args.output_dir)
+    base_url = getattr(args, "base_url", None) or site_config.get("base_url", "")
+    storage = make_storage(site_config, base_url, output_dir)
+    if storage is None:
+        print("error: storage is not configured")
+        return 1
+
+    city = next((c for c in cities if source_key(c) == args.source_key), None)
+    if city is None:
+        print(f"error: no configured city has source_key={args.source_key!r}")
+        return 1
+
+    state_dir = resolve_state_dir(site_config, output_dir)
+    pull_state(storage, state_dir)
+    records = load_records(state_dir, args.source_key)
+    rec = records.get(args.episode_uid)
+    if rec is None:
+        print(f"error: no record for {args.source_key}/{args.episode_uid}")
+        return 1
+
+    ep = record_to_episode(rec)
+    if ep.transcript_key and ep.transcript_words_key:
+        print(
+            f"nothing to do: {args.source_key}/{args.episode_uid} already has a transcript "
+            f"(key={ep.transcript_key})"
+        )
+        return 0
+
+    recipe = _asr_recipe_hash(city, ep, None)
+    asr_key = _asr_object_key(args.source_key, args.episode_uid, recipe)
+    words_key = _asr_words_object_key(args.source_key, args.episode_uid, recipe)
+    if not (storage.exists(asr_key) and storage.exists(words_key)):
+        print(
+            f"error: no existing ASR artifact at recipe={recipe} for "
+            f"{args.source_key}/{args.episode_uid} (asr_key={asr_key}) -- nothing to reclaim; "
+            "this episode needs to be re-transcribed, not reclaimed"
+        )
+        return 1
+
+    print(
+        f"found existing artifact for {args.source_key}/{args.episode_uid}: "
+        f"recipe={recipe} asr_key={asr_key} words_key={words_key}"
+    )
+    if not args.write:
+        print("dry run (pass --write to actually reclaim): would adopt keys and push the record")
+        return 0
+
+    _adopt_asr_keys(ep, storage, asr_key, words_key, recipe)
+    records[args.episode_uid] = episode_to_record(ep)
+    save_records(state_dir, args.source_key, records)
+    pushed = push_records_merged(
+        storage,
+        state_dir,
+        [args.source_key],
+        protected_blocks=protected_blocks_for_lane("transcribe"),
+        owned_uids={args.source_key: frozenset({args.episode_uid})},
+    )
+    if pushed != 1:
+        print(f"error: failed to push reclaimed record for {args.source_key}/{args.episode_uid}")
+        return 1
+    print(f"reclaimed transcript for {args.source_key}/{args.episode_uid}")
     return 0
 
 
