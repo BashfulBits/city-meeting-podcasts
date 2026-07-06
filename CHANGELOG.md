@@ -26,13 +26,14 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   validation hit. `S3CompatibleStorage.__init__` now prepends `https://` when `endpoint_url` has no
   `://`, so a bare-host secret in any backend's env store no longer takes down the worker.
 
-- **`deploy.yml` retries `actions/deploy-pages` on transient GitHub Pages backend failures.**
-  Two scheduled/push `Build & Deploy` runs on 2026-07-05 failed at the deploy step with GitHub's
-  generic `Deployment failed, try again later.` after an otherwise-clean render (this repo's
-  `pages` concurrency group already prevents self-inflicted races, and neither failure overlapped
-  another Pages deploy) — a known intermittent backend hiccup in `actions/deploy-pages` itself.
-  The deploy step now retries up to 3 attempts total with backoff (15s, then 30s) before failing
-  the job, so a single transient GitHub-side error no longer reds out an otherwise-good build.
+- **H11d deploy resilience: `deploy.yml` retries `actions/deploy-pages` on transient GitHub Pages
+  backend failures.** Two scheduled/push `Build & Deploy` runs on 2026-07-05 failed at the deploy
+  step with GitHub's generic `Deployment failed, try again later.` after an otherwise-clean render
+  (this repo's `pages` concurrency group already prevents self-inflicted races, and neither failure
+  overlapped another Pages deploy) — a known intermittent backend hiccup in `actions/deploy-pages`
+  itself. The deploy step now retries up to 3 attempts total with backoff (15s, then 30s) before
+  failing the job, so a single transient GitHub-side error no longer reds out an otherwise-good
+  build. See [review/11 H11d](review/11-technical-design-roadmap.md).
 
 ### Added
 

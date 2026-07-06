@@ -228,7 +228,8 @@ total on `/admin/status`.
 - **Object storage** → Backblaze B2 (S3 API) fronted by a Cloudflare Worker/CDN (free egress) for
   audio + transcripts + durable state.
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
-  downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron),
+  downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
+  retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),
   `audio.yml` (sharded audio materialization, 4h cron; own `audio` concurrency group),
   `asr.yml` (sharded faster-whisper transcription, daily; own `asr` concurrency group) — the two heavy
   record-writers, each a `--shard K/N` × `--lane` matrix, `modal-deploy.yml` (path-scoped deploy of the
