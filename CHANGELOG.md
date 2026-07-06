@@ -14,6 +14,17 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Added
+
+- **`asr-worker-report`'s `--recent N` / `recent` workflow input.** The aggregated worker-telemetry
+  counts (success/failed, peak RSS/VRAM) never retained *which* episode a completion was — surfaced
+  during live H14b/H14c canary validation ([#706](https://github.com/BashfulBits/city-meeting-podcasts/issues/706))
+  when a completed run's log gave no way to identify the claimed episode for a post-canary spot-check.
+  `report_workers.py --recent N` (or the workflow's `recent` `workflow_dispatch` input) now also lists
+  the last N raw telemetry samples — `backend`, `source_key`/`episode_uid`, `outcome`,
+  `duration_hours`, `elapsed_seconds`, `finished_at` — reusing fields `_append_telemetry_sample`
+  already wrote per-sample; no new storage writes. Defaults to `0` (unchanged report).
+
 ### Changed
 
 - **`long_first: 4` enabled in `backlog_priority` — external-required (>4h) transcript work now

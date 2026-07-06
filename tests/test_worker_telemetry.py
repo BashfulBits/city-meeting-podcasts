@@ -13,7 +13,7 @@ from citypods.compute.worker_telemetry import (
     resource_snapshot,
     telemetry_report,
 )
-from scripts.compute.report_workers import _markdown
+from scripts.compute.report_workers import _markdown, _recent_samples
 from tests._cas_fake import MemCAS
 
 
@@ -160,3 +160,66 @@ def test_markdown_reports_backends_failures_and_unknown_gpu_metrics():
     assert "peak GPU VRAM `2.0MiB/4.0MiB`" in text
     assert "beam telemetry: `0` success, `1` failed" in text
     assert "peak GPU VRAM `unknown/unknown`" in text
+
+
+def test_recent_samples_returns_newest_first_with_identity(monkeypatch):
+    """A live canary's ``adopted``/completed summary counts don't retain which episode was
+    claimed; ``_recent_samples`` surfaces the identity fields already written per-sample by
+    ``external_worker._append_telemetry_sample`` so a manual run can be spot-checked."""
+    bucket = MemCAS()
+    for i, (backend, uid) in enumerate([("modal", "u1"), ("beam", "u2"), ("modal", "u3")]):
+        append_worker_telemetry(
+            bucket,
+            {
+                "backend": backend,
+                "source_key": "src-a",
+                "episode_uid": uid,
+                "outcome": "success",
+                "duration_hours": 1.5,
+                "elapsed_seconds": 42.0,
+                "finished_at": f"2026-07-06T00:00:0{i}+00:00",
+            },
+            sleep=lambda _s: None,
+        )
+
+    recent = _recent_samples(bucket, 2)
+
+    assert [s["episode_uid"] for s in recent] == ["u3", "u2"]  # newest first
+    assert recent[0] == {
+        "backend": "modal",
+        "source_key": "src-a",
+        "episode_uid": "u3",
+        "outcome": "success",
+        "duration_hours": 1.5,
+        "elapsed_seconds": 42.0,
+        "finished_at": "2026-07-06T00:00:02+00:00",
+    }
+
+
+def test_markdown_lists_recent_samples_when_present():
+    text = _markdown(
+        {
+            "worker_telemetry": {"samples": 0, "by_backend": {}},
+            "recent_samples": [
+                {
+                    "backend": "beam",
+                    "source_key": "abbf5e25e078",
+                    "episode_uid": "b22cd173fc9f5c40",
+                    "outcome": "success",
+                    "duration_hours": 4.8,
+                    "elapsed_seconds": 133.9,
+                    "finished_at": "2026-07-06T04:59:03+00:00",
+                }
+            ],
+        }
+    )
+
+    assert "Recent worker-telemetry samples" in text
+    assert "`beam` abbf5e25e078/b22cd173fc9f5c40" in text
+    assert "duration_h=`4.8`" in text
+
+
+def test_markdown_omits_recent_samples_section_when_empty():
+    text = _markdown({"worker_telemetry": {"samples": 0, "by_backend": {}}, "recent_samples": []})
+
+    assert "Recent worker-telemetry samples" not in text

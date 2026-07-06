@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "42 14 * * *"
   workflow_dispatch:
+    inputs:
+      recent:
+        description: "Also list this many recent raw telemetry samples (source/uid/duration/outcome), for identifying which episode a manual canary claimed"
+        required: false
+        default: "0"
 
 permissions:
   contents: read
@@ -35,4 +40,6 @@ jobs:
         run: pip install -e ".[storage]"
 
       - name: Build ASR worker report
-        run: python scripts/compute/report_workers.py --markdown | tee "$GITHUB_STEP_SUMMARY"
+        env:
+          RECENT: ${{ github.event.inputs.recent || '0' }}
+        run: python scripts/compute/report_workers.py --markdown --recent "$RECENT" | tee "$GITHUB_STEP_SUMMARY"
