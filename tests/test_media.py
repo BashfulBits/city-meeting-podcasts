@@ -571,6 +571,31 @@ def test_served_duration_uses_edl_for_identity_timeline():
     assert media._served_duration(ep) == pytest.approx(5400.0)
 
 
+def test_served_duration_falls_back_to_source_when_edl_duration_is_degenerate():
+    """``edl_duration`` can itself return ``None`` even with non-empty segments (a degenerate
+    zero/negative-span timeline) — must still fall through to ``ep.duration`` rather than
+    propagating that ``None``, matching pre-fix behavior for this edge case."""
+    import citypods.media as media
+
+    ep = _ep("g1")
+    ep.timeline = Timeline(
+        version="degenerate",
+        segments=(
+            Segment(
+                served_start=10.0,
+                served_end=10.0,  # zero span -> edl_duration returns None
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=10.0,
+            ),
+        ),
+    )
+    ep.duration = 1800.0
+
+    assert media._served_duration(ep) == pytest.approx(1800.0)
+
+
 def test_credit_path_backfills_from_identity_timeline_when_source_duration_unknown(tmp_path):
     """Integration counterpart: the reuse/credit path (no fresh probe) must backfill
     ``audio_duration_served`` from an identity timeline's EDL length even when ``ep.duration``

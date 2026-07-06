@@ -2442,7 +2442,11 @@ def _served_duration(ep: Episode) -> float | None:
     EDL and the real enclosure can no longer be conflated by construction."""
     tl = ep.timeline
     if tl is not None and tl.segments:
-        return edl_duration(tl)
+        # edl_duration can itself return None (a degenerate zero/negative-span timeline) even
+        # with non-empty segments — fall through to ep.duration rather than propagating that.
+        from_edl = edl_duration(tl)
+        if from_edl is not None:
+            return from_edl
     if ep.duration is None:
         return None
     duration = float(ep.duration)
