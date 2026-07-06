@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment2.outputs.page_url || steps.deployment3.outputs.page_url }}
     # Render-only: it reads the durable record store (restored from object storage by
     # citypods/statesync.py) to publish feeds/pages, so it needs the storage creds — but no
     # ffmpeg, no Whisper model, and no audio/ASR encodes. All heavy work runs in audio.yml/asr.yml.
@@ -123,6 +123,30 @@ jobs:
         with:
           path: docs
 
-      - name: Deploy to GitHub Pages
+      # actions/deploy-pages occasionally fails with a generic "Deployment failed, try again
+      # later." surfaced by GitHub's own Pages backend (a transient hiccup on GitHub's side, not
+      # anything this workflow controls or that our build state affects) — seen twice on 2026-07-05
+      # scheduled/push runs with an otherwise-clean render. Retry twice with backoff before failing.
+      - name: Deploy to GitHub Pages (attempt 1)
         id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        continue-on-error: true
+
+      - name: Wait before retry 1
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 15
+
+      - name: Deploy to GitHub Pages (attempt 2)
+        id: deployment2
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        continue-on-error: true
+
+      - name: Wait before retry 2
+        if: steps.deployment.outcome == 'failure' && steps.deployment2.outcome == 'failure'
+        run: sleep 30
+
+      - name: Deploy to GitHub Pages (attempt 3)
+        id: deployment3
+        if: steps.deployment.outcome == 'failure' && steps.deployment2.outcome == 'failure'
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
