@@ -50,12 +50,23 @@ from citypods.storage import make_storage
 SUPPORTED_WORK_CLASSES = frozenset({"transcript-asr"})
 RESERVED_WORK_CLASSES = frozenset({"transcript-diarize"})
 
+# How many already-done (adopted) head-of-queue items one run will skip past, beyond ``max_claims``,
+# before giving up — the default bound on stale-manifest scanning when ``max_scan`` is unset.
+_DEFAULT_ADOPT_HEADROOM = 50
+
 
 @dataclass(frozen=True)
 class ExternalWorkerConfig:
     backend: str
     owner: str
+    # ``max_claims`` caps NEW transcriptions performed in one run. Already-transcribed items that
+    # this run merely *adopts* (artifacts already in storage — a stale manifest, or a prior owner
+    # that uploaded then crashed before recording) do NOT consume a slot; the loop scans past them.
     max_claims: int = 1
+    # Hard bound on how many items one run will lease+examine, so a stale manifest whose head is
+    # all already-done can't make the loop walk the entire queue chasing ``max_claims`` fresh items.
+    # ``None`` -> ``max_claims`` + a fixed adopt-headroom (see ExternalTranscribeWorker.run).
+    max_scan: int | None = None
     lease_ttl_seconds: float = 6 * 3600
     work_class: str = "transcript-asr"
     gpu_seconds_per_audio_second: float = 0.25
@@ -71,6 +82,7 @@ class ExternalWorkerSummary:
     scanned: int = 0
     claimed: int = 0
     completed: int = 0
+    adopted: int = 0
     failed: int = 0
     budget_declined: int = 0
     unsupported: int = 0
@@ -107,6 +119,7 @@ class ExternalWorkerSummary:
             "scanned": self.scanned,
             "claimed": self.claimed,
             "completed": self.completed,
+            "adopted": self.adopted,
             "failed": self.failed,
             "budget_declined": self.budget_declined,
             "unsupported": self.unsupported,
@@ -145,12 +158,21 @@ def config_from_env(backend: str, *, site_config: dict | None = None) -> Externa
     owner = os.environ.get("CITYPODS_WORKER_OWNER") or f"{backend}:{uuid.uuid4().hex}"
     if not owner.startswith(f"{backend}:"):
         owner = f"{backend}:{owner}"
+    max_scan_env = os.environ.get("CITYPODS_WORKER_MAX_SCAN")
+    max_scan_setting = backend_settings.get("max_scan")
+    if max_scan_env not in (None, ""):
+        max_scan: int | None = int(max_scan_env)
+    elif max_scan_setting is not None:
+        max_scan = int(max_scan_setting)
+    else:
+        max_scan = None
     return ExternalWorkerConfig(
         backend=backend,
         owner=owner,
         max_claims=_int_env(
             "CITYPODS_WORKER_MAX_CLAIMS", int(backend_settings.get("max_claims", 1))
         ),
+        max_scan=max_scan,
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
         work_class=os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr"),
         gpu_seconds_per_audio_second=_float_env(
@@ -205,8 +227,20 @@ class ExternalTranscribeWorker:
             ]
             summary.scanned = len(candidates)
             ordered = self._ordered(candidates)
+            # ``worked`` counts NEW transcriptions attempted (succeeded or failed) — the thing
+            # ``max_claims`` caps. Items whose artifacts already exist are adopted (cheap, no GPU)
+            # and skipped past without consuming a slot. ``scan_cap`` bounds total leases so a stale
+            # manifest full of already-done items can't make us walk the whole queue.
+            worked = 0
+            scan_cap = (
+                self.config.max_scan
+                if self.config.max_scan is not None
+                else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
+            )
             for item in ordered:
-                if summary.claimed >= self.config.max_claims:
+                if worked >= self.config.max_claims:
+                    break
+                if summary.claimed >= scan_cap:
                     break
                 held = work_leases.claim(
                     self.storage,
@@ -251,7 +285,7 @@ class ExternalTranscribeWorker:
                 actual = 0.0
                 try:
                     metadata = self._telemetry_metadata(item)
-                    self._run_with_retry(item, tracker)
+                    adopted = self._run_with_retry(item, tracker)
                 except Exception:
                     actual = max(0.0, time.monotonic() - started)
                     settle_reservation(
@@ -266,6 +300,7 @@ class ExternalTranscribeWorker:
                     )
                     summary.failed += 1
                     summary.gpu_seconds += actual
+                    worked += 1  # a real (failed) transcription attempt still consumes a slot
                     outcome = "failed"
                 else:
                     actual = max(0.0, time.monotonic() - started)
@@ -274,6 +309,10 @@ class ExternalTranscribeWorker:
                     )
                     summary.completed += 1
                     summary.gpu_seconds += actual
+                    if adopted:
+                        summary.adopted += 1  # artifacts already existed; no slot consumed
+                    else:
+                        worked += 1
                     outcome = "success"
                 finally:
                     tracker.record("claim-finish")
@@ -292,18 +331,19 @@ class ExternalTranscribeWorker:
             worker_tracker.record("worker-finish")
             summary.update_resource_peaks(worker_tracker)
 
-    def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker) -> None:
+    def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker) -> bool:
+        """Returns True if the item was *adopted* (artifacts already present) rather than
+        freshly transcribed."""
         last: Exception | None = None
         for _attempt in range(2):
             try:
-                self._run_with_renewal(item, tracker)
-                return
+                return self._run_with_renewal(item, tracker)
             except Exception as exc:  # noqa: BLE001
                 last = exc
         assert last is not None
         raise last
 
-    def _run_with_renewal(self, item: WorkItem, tracker: ResourceTracker) -> None:
+    def _run_with_renewal(self, item: WorkItem, tracker: ResourceTracker) -> bool:
         stop = threading.Event()
         interval = max(60.0, min(300.0, self.config.lease_ttl_seconds / 3))
 
@@ -326,7 +366,7 @@ class ExternalTranscribeWorker:
         t = threading.Thread(target=_renew, name="citypods-worker-lease-renew", daemon=True)
         t.start()
         try:
-            self._run_transcribe_item(item, tracker)
+            return self._run_transcribe_item(item, tracker)
         finally:
             stop.set()
             t.join(timeout=1)
@@ -393,7 +433,9 @@ class ExternalTranscribeWorker:
                 tracker.record("after-model-load")
         return self._models[key]
 
-    def _run_transcribe_item(self, item: WorkItem, tracker: ResourceTracker) -> None:
+    def _run_transcribe_item(self, item: WorkItem, tracker: ResourceTracker) -> bool:
+        """Transcribe *item*, or adopt existing artifacts if they are already in storage.
+        Returns True when the item was adopted (no fresh transcription happened)."""
         city, ep, records = self._episode_for(item)
         if not ep.hosted_audio_url:
             raise RuntimeError(f"{item.source_key}/{item.episode_uid} has no hosted audio")
@@ -402,7 +444,8 @@ class ExternalTranscribeWorker:
         uid = ep.uid or ep.guid
         asr_key = _asr_object_key(item.source_key, uid, recipe)
         words_key = _asr_words_object_key(item.source_key, uid, recipe)
-        if self.storage.exists(asr_key) and self.storage.exists(words_key):
+        adopted = self.storage.exists(asr_key) and self.storage.exists(words_key)
+        if adopted:
             _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
         else:
             with tempfile.TemporaryDirectory() as td:
@@ -443,6 +486,7 @@ class ExternalTranscribeWorker:
 
         records[item.episode_uid] = episode_to_record(ep)
         save_records(self.state_dir, item.source_key, records)
+        return adopted
         pushed = push_records_merged(
             self.storage,
             self.state_dir,
