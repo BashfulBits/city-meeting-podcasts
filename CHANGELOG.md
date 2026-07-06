@@ -14,6 +14,21 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Fixed
+
+- **Owned-block merge: a better remote plan no longer silently drops an owning lane's just-written
+  artifact.** `_preserve_remote_planning_if_better` (part of `merge_preserving_foreign`) overwrote
+  *all* artifact blocks — including `transcript` — from remote whenever remote's timeline/source
+  planning rank was strictly better than the pushing worker's snapshot, bypassing the
+  `protected`/`owned_uids` scoping the rest of the merge respects. When remote had no value for that
+  block, it was popped. Surfaced on GH#831's first long ( ~6.6h ) Modal canary: the worker reported
+  `completed: 1` and its VTT/words artifact was uploaded, but the record showed `transcript: null` —
+  a permanent, invisible loss, because the lease reaper infers *done* from artifact presence while
+  nothing reconciles the empty record block. The preservation path now only *replaces* an owned
+  block when remote has a truthy (fresher) value for it — the legitimate stale-container-audio →
+  remote-decoded-audio case — and never *drops* one the run just produced; non-owned (`protected`)
+  blocks and planning fields keep the original replace-or-drop behavior.
+
 ### Added
 
 - **`asr-worker-report`'s `--recent N` / `recent` workflow input.** The aggregated worker-telemetry
