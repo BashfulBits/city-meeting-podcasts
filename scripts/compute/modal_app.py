@@ -68,6 +68,10 @@ image = (
     .env({**RUNTIME_ENV, "ASR_MODEL_PATH": _MODEL_DIR})
     # Fresh application code at runtime (sys.path prepends this over the baked copy).
     .add_local_dir("citypods", remote_path="/root/citypods/citypods")
+    # site_config.yml + per-city configs -- without this the run fails immediately with
+    # FileNotFoundError before any work happens (run_scheduled() below points run_worker
+    # at this path explicitly, rather than relying on the container's cwd).
+    .add_local_dir("config", remote_path="/root/config")
 )
 
 
@@ -89,7 +93,13 @@ def run_scheduled(max_claims: int | None = None) -> dict:
     sys.path.insert(0, "/root/citypods")
     from citypods.compute.external_worker import run_worker
 
-    summary = run_worker(backend="modal")
+    # Absolute paths -- avoids relying on whatever cwd Modal happens to launch the
+    # container with, unlike the "config/..." relative defaults in run_worker().
+    summary = run_worker(
+        backend="modal",
+        site_config_path="/root/config/site_config.yml",
+        config_dir="/root/config",
+    )
     print(json.dumps(summary, sort_keys=True), flush=True)
     return summary
 
