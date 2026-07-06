@@ -37,7 +37,32 @@ def _stage_asr_totals(state_dir: Path) -> dict:
     return {"recent_completed": total, "by_backend": dict(by_backend)}
 
 
-def build_report(*, site_config_path: str, output_dir: str, base_url: str | None = None) -> dict:
+def _recent_samples(storage, n: int) -> list[dict]:
+    """The last *n* raw telemetry samples (newest first), for identifying which episode a live
+    canary actually claimed — the aggregated ``telemetry_report()`` counts don't retain identity,
+    but ``append_worker_telemetry`` already writes ``source_key``/``episode_uid``/``duration_hours``
+    per sample (external_worker.py's ``_append_telemetry_sample``); this just surfaces them."""
+    samples = load_worker_telemetry(storage).get("samples") or []
+    ordered = sorted(samples, key=_sample_sort_key, reverse=True)
+    keys = (
+        "backend",
+        "source_key",
+        "episode_uid",
+        "outcome",
+        "duration_hours",
+        "elapsed_seconds",
+        "finished_at",
+    )
+    return [{k: s.get(k) for k in keys} for s in ordered[:n]]
+
+
+def _sample_sort_key(sample: dict) -> str:
+    return str(sample.get("finished_at") or sample.get("started_at") or "")
+
+
+def build_report(
+    *, site_config_path: str, output_dir: str, base_url: str | None = None, recent: int = 0
+) -> dict:
     site_config = load_site_config(site_config_path)
     output = Path(output_dir)
     storage = make_storage(site_config, base_url or site_config.get("base_url", ""), output)
@@ -53,6 +78,7 @@ def build_report(*, site_config_path: str, output_dir: str, base_url: str | None
         ]
         leases = Counter()
         lease_states = Counter()
+        recent_samples: list[dict] = []
         if storage_supports_cas(storage):
             for wi in pending:
                 lease, _etag = read_lease(storage, wi.source_key, wi.episode_uid)
@@ -64,6 +90,8 @@ def build_report(*, site_config_path: str, output_dir: str, base_url: str | None
                     leases[lease.owner.split(":", 1)[0]] += 1
             budget = load_budget_cas(storage)[0]
             worker_telemetry = telemetry_report(load_worker_telemetry(storage))
+            if recent > 0:
+                recent_samples = _recent_samples(storage, recent)
         else:
             budget = load_budget(resolve_state_dir(site_config, output))
             worker_telemetry = telemetry_report({})
@@ -74,6 +102,7 @@ def build_report(*, site_config_path: str, output_dir: str, base_url: str | None
             "budget": budget.to_dict(),
             "github_asr": _stage_asr_totals(state_dir),
             "worker_telemetry": worker_telemetry,
+            "recent_samples": recent_samples,
         }
 
 
@@ -102,6 +131,16 @@ def _markdown(report: dict) -> str:
         used = float((led or {}).get("used_gpu_seconds", 0.0))
         inflight = len((led or {}).get("inflight") or {})
         lines.append(f"- {name}: `{used:.1f}` GPU-second(s) used, `{inflight}` in flight")
+    recent_samples = report.get("recent_samples") or []
+    if recent_samples:
+        lines.append("")
+        lines.append("### Recent worker-telemetry samples (identity, for live-canary spot-checks)")
+        for s in recent_samples:
+            lines.append(
+                f"- `{s.get('backend')}` {s.get('source_key')}/{s.get('episode_uid')} "
+                f"outcome=`{s.get('outcome')}` duration_h=`{s.get('duration_hours')}` "
+                f"elapsed_s=`{s.get('elapsed_seconds')}` finished_at=`{s.get('finished_at')}`"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -111,11 +150,19 @@ def main() -> int:
     parser.add_argument("--output-dir", default="docs")
     parser.add_argument("--base-url")
     parser.add_argument("--markdown", action="store_true")
+    parser.add_argument(
+        "--recent",
+        type=int,
+        default=0,
+        help="also list the last N raw telemetry samples (source_key/episode_uid/duration/outcome) "
+        "for identifying which episode a live canary claimed",
+    )
     args = parser.parse_args()
     report = build_report(
         site_config_path=args.site_config,
         output_dir=args.output_dir,
         base_url=args.base_url,
+        recent=args.recent,
     )
     if args.markdown:
         print(_markdown(report))
