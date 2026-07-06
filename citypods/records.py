@@ -1035,7 +1035,9 @@ def _record_planning_rank(rec: dict) -> tuple[tuple[int, ...], int, int]:
     )
 
 
-def _preserve_remote_planning_if_better(rec: dict, remote_rec: dict) -> None:
+def _preserve_remote_planning_if_better(
+    rec: dict, remote_rec: dict, protected: frozenset[str]
+) -> None:
     """Keep decoded/newer planning metadata from being clobbered by a stale scoped push.
 
     Scoped lanes re-read remote state to protect sibling artifact blocks, but the timeline/source
@@ -1043,12 +1045,29 @@ def _preserve_remote_planning_if_better(rec: dict, remote_rec: dict) -> None:
     therefore carry container/legacy planning locally and overwrite a fresher decoded remote plan.
     When remote planning is strictly better, keep it and its associated artifact blocks; local
     artifacts were computed against the stale plan and are not safe to attach to the newer EDL.
+
+    **Never DROP an artifact block this lane owns and just produced.** A block outside ``protected``
+    is one this run authoritatively wrote (e.g. ``transcript`` for the transcribe lane). If remote's
+    plan is strictly better but remote has no value for that owned block, the old code popped/nulled
+    it — silently discarding a just-completed transcript. That is uniquely catastrophic for the
+    transcribe lane: the VTT/words artifact is already uploaded, so the lease reaper infers the item
+    is *done* from artifact presence, yet the record shows ``transcript: null`` and nothing ever
+    reconciles the two → a permanent, invisible loss (surfaced live on GH#831's first long Modal
+    canary). So an owned block is only ever *replaced* by a truthy remote value (the legitimate
+    audio-vs-decoded-plan case remote HAS the fresher artifact), never deleted. Non-owned
+    (``protected``) blocks and planning fields keep the original replace-or-drop behavior — the
+    freshest remote plan governs those, and the local copy for them is snapshot-stale anyway.
     """
     if _record_planning_rank(remote_rec) <= _record_planning_rank(rec):
         return
+    owned_artifacts = ARTIFACT_BLOCKS - protected
     for key in PLANNING_FIELDS | ARTIFACT_BLOCKS:
-        if key in remote_rec:
+        if key in remote_rec and remote_rec[key]:
             rec[key] = remote_rec[key]
+        elif key in owned_artifacts:
+            # This run owns and just produced this block; a better remote plan that simply lacks it
+            # must not erase it. Keep local's value.
+            continue
         else:
             rec.pop(key, None)
 
@@ -1100,7 +1119,7 @@ def merge_preserving_foreign(
             for block in protected:
                 if remote_rec.get(block):
                     rec[block] = remote_rec[block]
-            _preserve_remote_planning_if_better(rec, remote_rec)
+            _preserve_remote_planning_if_better(rec, remote_rec, protected)
         merged[uid] = rec
     return merged
 

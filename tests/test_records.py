@@ -1235,6 +1235,69 @@ def test_merge_preserving_foreign_unowned_new_uid_carries_no_artifact_block():
     assert "transcript" not in merged["newbie"]
 
 
+def test_merge_preserving_foreign_better_remote_plan_keeps_owned_transcript():
+    """Regression (GH#831 first long Modal canary): a transcribe worker's just-written transcript
+    was silently deleted when remote's plan rank advanced mid-run and remote had no transcript.
+    The VTT/words artifact is already uploaded (lease reaper infers done from artifact presence),
+    so a null transcript block is a permanent, invisible loss. The owned block must survive a
+    better-but-transcript-less remote plan."""
+    remote = {
+        "u1": {
+            "uid": "u1",
+            # Strictly-better remote plan (decoded > container) — triggers the preservation path.
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "REMOTE", "key": "decoded-key", "spec_hash": "decoded-spec"},
+            # ...but remote has NO transcript yet (this is the first transcription).
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "LOCAL", "key": "container-key", "spec_hash": "container-spec"},
+            "transcript": {"key": "transcripts/src/u1-asr-abc.vtt", "synced": True},
+        }
+    }
+
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("transcribe"), owned_uids=frozenset({"u1"})
+    )
+
+    # The freshly-written, owned transcript survives...
+    assert merged["u1"]["transcript"] == {"key": "transcripts/src/u1-asr-abc.vtt", "synced": True}
+    # ...while the non-owned audio + the better remote plan still win (protected/planning behavior).
+    assert merged["u1"]["audio"] == remote["u1"]["audio"]
+    assert merged["u1"]["sources"] == remote["u1"]["sources"]
+
+
+def test_merge_preserving_foreign_better_remote_plan_still_replaces_owned_from_truthy_remote():
+    """The preservation path must still REPLACE an owned block when remote actually has a fresher
+    value for it (the legitimate audio-lane case: a stale container-plan audio yields to remote's
+    decoded-plan audio). Only *dropping* an owned block remote lacks is disallowed."""
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "REMOTE-DECODED", "key": "decoded-key", "spec_hash": "decoded-spec"},
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "LOCAL-CONTAINER", "key": "container-key", "spec_hash": "c-spec"},
+        }
+    }
+
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+
+    assert merged["u1"]["audio"] == remote["u1"]["audio"]  # owned audio yields to fresher remote
+
+
 def test_legacy_manifest_carryover(tmp_path):
     # Old per-slug manifest keyed by provider guid.
     slug_dir = tmp_path / "denton-tx"
