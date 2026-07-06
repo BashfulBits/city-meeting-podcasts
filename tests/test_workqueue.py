@@ -735,6 +735,7 @@ def test_manifest_save_load_round_trip(tmp_path):
             city_slug="d",
             body="City Council",
             priority_bucket=BUCKET_FEED_VISIBLE,
+            duration_hours=3.25,
             state="queued",
         ),
         WorkItem("s", "u2", "transcript-align", published=None, state="alignment-disabled"),
@@ -744,7 +745,12 @@ def test_manifest_save_load_round_trip(tmp_path):
     assert len(loaded) == 2
     assert loaded[0].episode_uid == "u1" and loaded[0].published == NOW
     assert loaded[0].priority_bucket == BUCKET_FEED_VISIBLE and loaded[0].state == "queued"
+    # ``duration_hours`` must survive the round trip: it feeds ``long_first`` and the report
+    # duration-band, both of which read it back off the persisted manifest. Dropping it here reset
+    # every reloaded item to 0.0h ("unknown duration") regardless of the real served length.
+    assert loaded[0].duration_hours == pytest.approx(3.25)
     assert loaded[1].published is None and loaded[1].state == "alignment-disabled"
+    assert loaded[1].duration_hours == 0.0
 
 
 def test_load_manifest_absent_returns_empty(tmp_path):
