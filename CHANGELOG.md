@@ -14,6 +14,18 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Fixed
+
+- **`S3CompatibleStorage` normalizes a bare-host `endpoint_url`.** First live Beam
+  (H14c) scheduled run crashed in `b2_from_env()` — `boto3.client(endpoint_url=...)` raises
+  `ValueError: Invalid endpoint` when the URL has no scheme. The Beam secret for `B2_ENDPOINT` had
+  been set to the bare host (`s3.us-west-002.backblazeb2.com`), unlike the GitHub Actions secret of
+  the same name which includes `https://` — the two secret stores are populated independently, so
+  they silently drifted. `_region_from_b2_endpoint()` already tolerated a missing scheme (its
+  `split("://")` is a no-op without one), which masked the gap until boto3's stricter endpoint
+  validation hit. `S3CompatibleStorage.__init__` now prepends `https://` when `endpoint_url` has no
+  `://`, so a bare-host secret in any backend's env store no longer takes down the worker.
+
 ### Added
 
 - **Beam worker: resolve pinned deps/model locally instead of referencing build-time repo files (GH#816/#818).**

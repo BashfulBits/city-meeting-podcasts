@@ -81,6 +81,11 @@ class S3CompatibleStorage:
         # atomicity must gate on ``cas_capable`` (set True only for R2 via ``r2_from_env``), so a
         # B2-backed deployment falls back to the bulk-synced local-file path instead.
         self.cas_capable = cas_capable
+        if "://" not in endpoint_url:
+            # Secrets stores outside GitHub Actions (Beam, Modal, ...) are populated by hand from
+            # the same value; it's easy to paste the bare host and drop the scheme, which boto3
+            # rejects outright. Normalize rather than fail the whole worker run.
+            endpoint_url = f"https://{endpoint_url}"
         self._client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
