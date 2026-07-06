@@ -595,6 +595,13 @@ def _workitem_to_dict(wi: WorkItem) -> dict:
         "city_slug": wi.city_slug,
         "body": wi.body,
         "priority_bucket": wi.priority_bucket,
+        # ``duration_hours`` is a computed ordering input (from ``audio.duration_served``), not an
+        # inert reserved field: ``long_first`` (H13/H14) and the report duration-band read it back
+        # off the persisted manifest, so it must round-trip. Omitting it silently reset every
+        # reloaded item to 0.0h — which read as "unknown duration," stalling ``long_first`` and
+        # making 100% of the feed-visible transcript-asr backlog look length-unknown even though
+        # the records carried a real served duration.
+        "duration_hours": wi.duration_hours,
         "state": wi.state,
         "stage_version": wi.stage_version,
         "input_hashes": list(wi.input_hashes),
@@ -616,6 +623,7 @@ def _workitem_from_dict(d: dict) -> WorkItem:
         city_slug=d.get("city_slug", ""),
         body=d.get("body", ""),
         priority_bucket=d.get("priority_bucket", BUCKET_FEED_VISIBLE),
+        duration_hours=float(d.get("duration_hours", 0.0)),
         state=d.get("state", "queued"),
         stage_version=d.get("stage_version", ""),
         input_hashes=tuple(d.get("input_hashes") or ()),
