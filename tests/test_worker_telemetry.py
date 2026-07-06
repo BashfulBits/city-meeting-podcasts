@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import UTC, datetime
 
 from citypods.compute.external_worker import ExternalWorkerSummary
 from citypods.compute.worker_telemetry import (
@@ -13,8 +14,29 @@ from citypods.compute.worker_telemetry import (
     resource_snapshot,
     telemetry_report,
 )
-from scripts.compute.report_workers import _markdown, _recent_samples
+from citypods.ops.workqueue import WorkItem
+from scripts.compute.report_workers import (
+    _duration_band,
+    _manifest_last_modified,
+    _markdown,
+    _recent_samples,
+)
 from tests._cas_fake import MemCAS
+
+
+class _ListableStorage:
+    """A minimal ``list_objects``-capable fake distinct from ``MemCAS`` — that fake deliberately
+    raises on ``list_objects`` to enforce "never list the R2 lease/work prefix"
+    (review/18 §4.6), but ``state/work.json`` lives on the B2 primary (routing.py: a broad
+    ``state/`` prefix lists B2 only), where listing is legitimate."""
+
+    def __init__(self, objects: list[tuple[str, object]]) -> None:
+        self._objects = objects
+
+    def list_objects(self, prefix: str = ""):
+        for key, last_modified in self._objects:
+            if key.startswith(prefix):
+                yield key, last_modified
 
 
 def test_gpu_vram_probe_parses_nvidia_smi_rows():
@@ -223,3 +245,53 @@ def test_markdown_omits_recent_samples_section_when_empty():
     text = _markdown({"worker_telemetry": {"samples": 0, "by_backend": {}}, "recent_samples": []})
 
     assert "Recent worker-telemetry samples" not in text
+
+
+def test_manifest_last_modified_finds_exact_key_not_a_prefix_match():
+    """Diagnostic added after inferring manifest freshness from GitHub Actions run *start* times
+    gave a wrong answer once (a job starting after a config merge can finish well after a canary
+    that already ran against the stale pre-merge manifest) — this reads the storage layer's own
+    last-modified metadata for ``state/work.json`` directly instead."""
+    when = datetime(2026, 7, 6, 5, 31, 41, tzinfo=UTC)
+    storage = _ListableStorage(
+        [
+            ("state/work.json", when),
+            ("state/work.json.bak", datetime(2026, 1, 1, tzinfo=UTC)),  # must NOT match
+        ]
+    )
+
+    assert _manifest_last_modified(storage) == "2026-07-06T05:31:41+00:00"
+
+
+def test_manifest_last_modified_none_when_unsupported_or_absent():
+    assert _manifest_last_modified(object()) is None  # no list_objects at all
+    assert _manifest_last_modified(_ListableStorage([])) is None  # supported but absent
+
+
+def test_duration_band_counts_over_threshold_and_unknown():
+    items = [
+        WorkItem(source_key="s", episode_uid="a", work_class="transcript-asr", duration_hours=1.2),
+        WorkItem(source_key="s", episode_uid="b", work_class="transcript-asr", duration_hours=5.0),
+        WorkItem(source_key="s", episode_uid="c", work_class="transcript-asr", duration_hours=0.0),
+        WorkItem(source_key="s", episode_uid="d", work_class="transcript-asr", duration_hours=6.5),
+    ]
+
+    band = _duration_band(items, threshold=4.0)
+
+    assert band == {
+        "threshold_hours": 4.0,
+        "total": 4,
+        "over_threshold": 2,
+        "unknown_duration": 1,
+        "max_known_hours": 6.5,
+    }
+
+
+def test_duration_band_empty_backlog():
+    assert _duration_band([], threshold=4.0) == {
+        "threshold_hours": 4.0,
+        "total": 0,
+        "over_threshold": 0,
+        "unknown_duration": 0,
+        "max_known_hours": None,
+    }
