@@ -234,7 +234,10 @@ defaults:
   # guarantee); `max_inflight` bounds concurrent in-flight jobs. No external adapter is registered yet
   # (the Modal/Beam adapters land in H14b/H14c), so today every job overflows to "local" — behavior-
   # identical to "local", but with the dispatch/lease/budget machinery live and reconciled each run.
-  # `max_claims` is the per-run pull-worker cap; deployment env may override it temporarily for a canary.
+  # `max_claims` caps NEW transcriptions per run (already-done items this run merely adopts don't
+  # count); deployment env may override it temporarily for a canary. Optional `max_scan` bounds how
+  # many items one run leases+examines before giving up (default: max_claims + 50), so a stale manifest
+  # whose head is all already-done can't make the run walk the entire queue.
   compute_backends:
     modal: { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }   # ≈ free credits — pin to the live plan
     beam:  { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }

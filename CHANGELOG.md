@@ -16,6 +16,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Pull-worker `max_claims` counts only new transcriptions, not adopted items.** The claim loop
+  (`compute/external_worker.py`) incremented `claimed` and checked `max_claims` at lease acquisition —
+  before the transcribe path discovers whether the item's ASR artifacts already exist. An
+  already-transcribed item that got re-claimed (stale `work.json`, or a prior owner that uploaded then
+  crashed before recording) was *adopted* (state reconciled, no GPU work) yet still consumed a
+  `max_claims` slot and ended the run, so a manual `max_claims=1` canary would adopt the head-of-queue
+  item and stop instead of transcribing a fresh one (surfaced smoke-testing the Modal worker:
+  `completed: 1` but `peak_gpu_vram_used_bytes: 0`). `max_claims` now caps new transcriptions:
+  adopted items increment a distinct `adopted` summary counter, don't consume a slot, and the loop
+  scans past them. A new `max_scan` bound (default `max_claims + 50`; overridable via
+  `CITYPODS_WORKER_MAX_SCAN` or the per-backend `site_config` `max_scan`) keeps a fully-stale manifest
+  from making one run walk the entire queue. Failed attempts still consume a slot (real work / budget).
+
 - **`S3CompatibleStorage` normalizes a bare-host `endpoint_url`.** First live Beam
   (H14c) scheduled run crashed in `b2_from_env()` — `boto3.client(endpoint_url=...)` raises
   `ValueError: Invalid endpoint` when the URL has no scheme. The Beam secret for `B2_ENDPOINT` had
