@@ -295,3 +295,33 @@ def test_duration_band_empty_backlog():
         "unknown_duration": 0,
         "max_known_hours": None,
     }
+
+
+def test_markdown_includes_manifest_freshness_and_duration_band():
+    text = _markdown(
+        {
+            "manifest_last_modified": "2026-07-06T05:31:41+00:00",
+            "transcript_asr_duration_band": {
+                "threshold_hours": 4.0,
+                "total": 4,
+                "over_threshold": 2,
+                "unknown_duration": 1,
+                "max_known_hours": 6.5,
+            },
+            "worker_telemetry": {"samples": 0, "by_backend": {}},
+            "recent_samples": [],
+        }
+    )
+
+    assert "manifest (`state/work.json`) last modified: `2026-07-06T05:31:41+00:00`" in text
+    assert (
+        "transcript-asr claimable (feed-visible, queued): `4` total, "
+        "`2` over `4.0`h (what `long_first` floats), `1` unknown duration, "
+        "max known `6.5`h" in text
+    )
+
+
+def test_markdown_defaults_manifest_last_modified_to_unknown_when_absent():
+    text = _markdown({"worker_telemetry": {"samples": 0, "by_backend": {}}, "recent_samples": []})
+
+    assert "manifest (`state/work.json`) last modified: `unknown`" in text

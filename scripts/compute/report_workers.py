@@ -74,13 +74,20 @@ def _manifest_last_modified(storage) -> str | None:
     if not hasattr(storage, "list_objects"):
         return None
     key = f"{STATE_PREFIX}/{MANIFEST_NAME}"
-    for obj_key, last_modified in storage.list_objects(key):
-        if obj_key == key and last_modified is not None:
-            return (
-                last_modified.isoformat()
-                if hasattr(last_modified, "isoformat")
-                else str(last_modified)
-            )
+    try:
+        for obj_key, last_modified in storage.list_objects(key):
+            if obj_key == key and last_modified is not None:
+                return (
+                    last_modified.isoformat()
+                    if hasattr(last_modified, "isoformat")
+                    else str(last_modified)
+                )
+    except Exception:
+        # Some storage-like fakes deliberately implement list_objects only to raise (e.g.
+        # tests/_cas_fake.py's MemCAS, enforcing "never list the R2 lease prefix" elsewhere in
+        # this codebase). A raise here must degrade to "unknown," not crash every other
+        # unrelated diagnostic in this report.
+        return None
     return None
 
 
@@ -166,7 +173,8 @@ def _markdown(report: dict) -> str:
     budget = report.get("budget", {})
     lines = ["## ASR worker report", ""]
     lines.append(
-        f"- manifest (`state/work.json`) last modified: `{report.get('manifest_last_modified')}`"
+        "- manifest (`state/work.json`) last modified: "
+        f"`{report.get('manifest_last_modified') or 'unknown'}`"
     )
     lines.append(f"- transcript-asr pending: `{report.get('transcript_asr_pending', 0)}`")
     band = report.get("transcript_asr_duration_band") or {}
