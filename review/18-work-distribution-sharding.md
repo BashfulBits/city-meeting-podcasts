@@ -427,7 +427,11 @@ writes) so nothing else leaks Class A.
   work-distribution half of **H14b/H14c**; H13's backend interface and H14a's lease lifecycle are reused
   unchanged.
 - **review/11 catalog:** H17 + [GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390)
-  are the single active implementation entry for review/17 + review/18.
+  tracked review/17 + this doc's Stage 1/Stage 2 substrate — **shipped, GH#390 closed.** §4.3/§6 step 4
+  (in-Actions shards convert to the claim loop) was always this doc's own designed final step but was
+  never split into its own tracked item; now that its trigger has fired (H14b/H14c both live), it is
+  tracked separately as **H19** ([GH#831](https://github.com/BashfulBits/city-meeting-podcasts/issues/831)),
+  not folded back into the closed H17 entry.
 - **At Stage-1 ship time** (per [`review/11`](11-technical-design-roadmap.md) §2), update
   update [`ARCHITECTURE.md`](../ARCHITECTURE.md) (transcribe ownership is now per-episode) +
   [`CHANGELOG.md`](../CHANGELOG.md); flip the catalog entry; mature this doc's Stage-1 row to **Shipped**.
