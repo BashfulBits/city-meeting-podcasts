@@ -65,10 +65,13 @@ provider_transport_telemetry_domains:
 # city_order list below — partial lists fall through), body_order, feed_visible_first, long_first
 # (transcript-lane work over N hours — bare `long_first` defaults to asr_local_max_duration_hours
 # below — ranks first catalog-wide, ahead of every later key; never reorders audio). See
-# review/12 §H5. Today: keep the last 30 days complete first, then fall to the default order.
+# review/12 §H5. Today: float the >4h external-required transcript backlog to the front (only the
+# capped external GPU tier can ever transcribe those — H14), then keep the last 30 days complete,
+# then fall to the default order. `long_first` never reorders `audio`, and the local ASR lane simply
+# defers the floated >4h items at preflight (cheap, pre-download) — see workqueue.DURATION_AWARE_*.
 backlog_priority:
+  - long_first: 4                          # >4h transcript work first (== asr_local_max_duration_hours)
   - recency: {order: desc, within_days: 30}
-# - long_first: 4                          # drain the >4h transcript backlog before <4h (unset today)
 # city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
 
 defaults:
