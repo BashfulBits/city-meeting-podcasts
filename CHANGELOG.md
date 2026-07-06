@@ -14,6 +14,28 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Changed
+
+- **`long_first: 4` enabled in `backlog_priority` — external-required (>4h) transcript work now
+  drains first.** Recordings over `asr_local_max_duration_hours` (4h) can only be transcribed by the
+  capped external GPU tier (the in-process backend refuses them), so with recency-only ordering a
+  steady stream of short episodes could starve them indefinitely. `long_first` floats the >4h
+  transcript band ahead of `recency`, catalog-wide. It never reorders `audio`
+  (`workqueue.DURATION_AWARE_WORK_CLASSES` excludes it), and the local ASR lane simply defers the
+  floated >4h items at preflight (a cheap, pre-download duration check) — so local throughput on
+  short meetings is unchanged; only the ordering the external workers see changes. Also lets a
+  `max_claims`-elevated canary walk into the long band to validate long-audio + lease renewal.
+
+### Added
+
+- **External-worker adopt/renewal log lines.** The pull worker now prints `[external-worker] adopted
+  <source>/<uid>` when it reconciles an already-present artifact instead of transcribing, and
+  `[external-worker] lease renewed <source>/<uid> expiry=…` (or `… renew skipped … (no longer held)`)
+  each time the renewal thread fires during a long inference. Renewal success was previously silent,
+  making it unobservable in a live canary; the interval is now a `_renew_interval()` method so tests
+  drive the renewal thread deterministically without a real long transcription. New tests cover the
+  renewal-thread wiring and the budget-decline → abandon-to-`queued` path.
+
 ### Fixed
 
 - **Pull-worker `max_claims` counts only new transcriptions, not adopted items.** The claim loop

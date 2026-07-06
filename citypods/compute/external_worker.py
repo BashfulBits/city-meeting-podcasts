@@ -343,9 +343,16 @@ class ExternalTranscribeWorker:
         assert last is not None
         raise last
 
+    def _renew_interval(self) -> float:
+        """Seconds between lease renewals during one inference. Capped at 300s so a renewal always
+        lands well inside even a short TTL; floored at 60s so a small TTL can't spin the thread.
+        Its own method so tests can shrink it below the 60s floor without a real long inference."""
+        return max(60.0, min(300.0, self.config.lease_ttl_seconds / 3))
+
     def _run_with_renewal(self, item: WorkItem, tracker: ResourceTracker) -> bool:
         stop = threading.Event()
-        interval = max(60.0, min(300.0, self.config.lease_ttl_seconds / 3))
+        interval = self._renew_interval()
+        ref = f"{item.source_key}/{item.episode_uid}"
 
         def _renew() -> None:
             while not stop.wait(interval):
@@ -353,7 +360,7 @@ class ExternalTranscribeWorker:
                 # the renewal thread and let the lease silently expire mid-transcribe —
                 # log and try again on the next interval.
                 try:
-                    work_leases.renew(
+                    renewed = work_leases.renew(
                         self.storage,
                         item.source_key,
                         item.episode_uid,
@@ -362,6 +369,17 @@ class ExternalTranscribeWorker:
                     )
                 except Exception as exc:  # noqa: BLE001
                     print(f"[external-worker] lease renew failed (will retry): {exc}", flush=True)
+                    continue
+                if renewed is None:
+                    # We no longer hold it (owner changed / reaped / expired past TTL). Surface it —
+                    # a re-claim of content-addressed work is wasteful, not corrupting, but silent
+                    # loss of a long job's lease is exactly what an operator wants to see.
+                    print(
+                        f"[external-worker] lease renew skipped {ref} (no longer held)", flush=True
+                    )
+                else:
+                    expiry = renewed.lease_expiry.isoformat() if renewed.lease_expiry else None
+                    print(f"[external-worker] lease renewed {ref} expiry={expiry}", flush=True)
 
         t = threading.Thread(target=_renew, name="citypods-worker-lease-renew", daemon=True)
         t.start()
@@ -446,6 +464,11 @@ class ExternalTranscribeWorker:
         words_key = _asr_words_object_key(item.source_key, uid, recipe)
         adopted = self.storage.exists(asr_key) and self.storage.exists(words_key)
         if adopted:
+            print(
+                f"[external-worker] adopted {item.source_key}/{item.episode_uid} "
+                "(artifacts already present, no transcription)",
+                flush=True,
+            )
             _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
         else:
             with tempfile.TemporaryDirectory() as td:

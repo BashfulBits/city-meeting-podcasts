@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import time
+from datetime import UTC, datetime
+from types import SimpleNamespace
+
 import citypods.compute.external_worker as ew
 from citypods.compute.external_worker import (
     ExternalTranscribeWorker,
@@ -162,3 +166,63 @@ def test_config_from_env_env_override_beats_site_config(monkeypatch):
         site_config={"defaults": {"compute_backends": {"beam": {"max_claims": 2}}}},
     )
     assert cfg.max_claims == 7
+
+
+def test_renewal_thread_renews_lease_during_inference(tmp_path, monkeypatch):
+    """The renewal thread must call ``work_leases.renew`` for the held item while inference runs.
+    ``_renew_interval`` is shrunk below its 60s floor so this needs no real long transcription."""
+    worker = _loop_worker(tmp_path, ["a"])
+    monkeypatch.setattr(worker, "_renew_interval", lambda: 0.01)
+
+    renew_calls: list[dict] = []
+
+    def _fake_renew(storage, source_key, uid, *, owner, ttl_seconds, **kw):
+        renew_calls.append({"uid": uid, "owner": owner, "ttl_seconds": ttl_seconds})
+        return SimpleNamespace(lease_expiry=datetime(2026, 1, 1, tzinfo=UTC))
+
+    monkeypatch.setattr(ew.work_leases, "renew", _fake_renew)
+
+    def _fake_transcribe(item, tracker):  # block until the renewal thread has fired at least once
+        for _ in range(200):
+            if renew_calls:
+                return False
+            time.sleep(0.01)
+        return False
+
+    monkeypatch.setattr(worker, "_run_transcribe_item", _fake_transcribe)
+
+    adopted = worker._run_with_renewal(_queued("a"), ew.ResourceTracker())
+
+    assert adopted is False
+    assert renew_calls, "renewal thread never renewed the lease"
+    assert renew_calls[0] == {
+        "uid": "a",
+        "owner": "modal:test",
+        "ttl_seconds": worker.config.lease_ttl_seconds,
+    }
+
+
+def test_budget_decline_abandons_claim_back_to_queued(tmp_path, monkeypatch):
+    """A budget/inflight decline must abandon the claim back to ``queued`` (not mark it failed) and
+    stop the run — the item stays available for another worker without waiting out the TTL."""
+    worker = _loop_worker(tmp_path, ["a", "b"], max_claims=1)
+    monkeypatch.setattr(ew.work_leases, "claim", lambda *a, **k: object())
+    monkeypatch.setattr(worker, "_ordered", lambda items: list(items))
+    monkeypatch.setattr(worker, "_estimate_gpu_seconds", lambda item: 60.0)
+    monkeypatch.setattr(ew, "reserve_if_available", lambda *a, **k: False)
+
+    abandon_calls: list[dict] = []
+
+    def _fake_abandon(storage, source_key, uid, *, owner, **kw):
+        abandon_calls.append({"uid": uid, "owner": owner})
+        return True
+
+    monkeypatch.setattr(ew.work_leases, "abandon", _fake_abandon)
+
+    summary = worker.run()
+
+    assert summary.budget_declined == 1
+    assert summary.claimed == 1
+    assert summary.completed == 0
+    assert summary.failed == 0
+    assert abandon_calls == [{"uid": "a", "owner": "modal:test"}]
