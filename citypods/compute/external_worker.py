@@ -371,15 +371,17 @@ class ExternalTranscribeWorker:
                     print(f"[external-worker] lease renew failed (will retry): {exc}", flush=True)
                     continue
                 if renewed is None:
-                    # We no longer hold it (owner changed / reaped / expired past TTL). Surface it —
-                    # a re-claim of content-addressed work is wasteful, not corrupting, but silent
-                    # loss of a long job's lease is exactly what an operator wants to see.
+                    # We no longer hold it (owner changed / reaped / expired past TTL) — and can't
+                    # regain it, so stop renewing rather than re-logging every interval for the rest
+                    # of a multi-hour job. Surface it once: a re-claim of content-addressed work is
+                    # wasteful, not corrupting, but silent loss of a long job's lease is exactly
+                    # what an operator wants to see. The inference itself proceeds regardless.
                     print(
                         f"[external-worker] lease renew skipped {ref} (no longer held)", flush=True
                     )
-                else:
-                    expiry = renewed.lease_expiry.isoformat() if renewed.lease_expiry else None
-                    print(f"[external-worker] lease renewed {ref} expiry={expiry}", flush=True)
+                    return
+                expiry = renewed.lease_expiry.isoformat() if renewed.lease_expiry else None
+                print(f"[external-worker] lease renewed {ref} expiry={expiry}", flush=True)
 
         t = threading.Thread(target=_renew, name="citypods-worker-lease-renew", daemon=True)
         t.start()

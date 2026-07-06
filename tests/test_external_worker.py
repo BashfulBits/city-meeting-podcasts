@@ -202,6 +202,36 @@ def test_renewal_thread_renews_lease_during_inference(tmp_path, monkeypatch):
     }
 
 
+def test_renewal_thread_stops_after_lease_lost(tmp_path, monkeypatch, capsys):
+    """When ``work_leases.renew`` returns None (lease lost — owner changed / reaped), the thread
+    surfaces it once and stops renewing rather than re-logging every interval for a long job."""
+    worker = _loop_worker(tmp_path, ["a"])
+    monkeypatch.setattr(worker, "_renew_interval", lambda: 0.01)
+
+    renew_calls: list[int] = []
+
+    def _fake_renew(storage, source_key, uid, *, owner, ttl_seconds, **kw):
+        renew_calls.append(1)
+        return None  # we no longer hold the lease
+
+    monkeypatch.setattr(ew.work_leases, "renew", _fake_renew)
+
+    def _fake_transcribe(item, tracker):
+        for _ in range(200):  # wait until the first (lost) renewal is observed
+            if renew_calls:
+                break
+            time.sleep(0.01)
+        time.sleep(0.05)  # leave time for a buggy thread to spam further renewals
+        return False
+
+    monkeypatch.setattr(worker, "_run_transcribe_item", _fake_transcribe)
+
+    worker._run_with_renewal(_queued("a"), ew.ResourceTracker())
+
+    assert "lease renew skipped src/a (no longer held)" in capsys.readouterr().out
+    assert len(renew_calls) == 1  # returned after the first lost-lease observation, no re-spam
+
+
 def test_budget_decline_abandons_claim_back_to_queued(tmp_path, monkeypatch):
     """A budget/inflight decline must abandon the claim back to ``queued`` (not mark it failed) and
     stop the run — the item stays available for another worker without waiting out the TTL."""
