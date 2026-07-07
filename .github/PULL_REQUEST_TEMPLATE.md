@@ -13,6 +13,8 @@
 - [ ] No artifact-identity change (audio spec hash / UID derivation) without a `MIGRATION.md` note.
 - [ ] Dependency changes follow [`review/22`](../review/22-dependency-and-reproducibility-policy.md):
       `constraints/*.txt` recompiled; deps not re-declared in the external-worker image builders.
+- [ ] CodeRabbit findings resolved (fixed, fixed-and-expanded, or pushed back with a stated reason)
+      and CI green — see [AGENTS.md § Working with CodeRabbit on a PR](../AGENTS.md#working-with-coderabbit-on-a-pr).
 
 <!-- OUTPUT-AFFECTING dependency bump (faster-whisper/ctranslate2/stable-ts/Pillow, ffmpeg, base
      image, or an HF model revision)? Then also: -->

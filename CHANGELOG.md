@@ -16,6 +16,22 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **`.coderabbit.yaml` settings-as-code, tuned for the free OSS rate limit.** Excludes non-code
+  paths from review (per-city/feed data under `config/`, compiled `constraints/*.txt`, all
+  `**/*.md`, generated `docs/**`) while keeping every real source dir — including
+  `.github/workflows/**` — in scope; skips Renovate-authored PRs (already CI-gated); pauses
+  auto-re-review after 2 pushes per PR (`auto_pause_after_reviewed_commits: 2`, needs an explicit
+  `@coderabbitai review` comment to resume); and preloads `AGENTS.md`/`ARCHITECTURE.md`/
+  `CONTRIBUTING.md` as knowledge-base context plus per-path instructions covering this repo's
+  documented invariants (append-only records, split hashes, stage ordering, the wall-clock budget,
+  untrusted LLM output, the SSRF gate) so they aren't flagged as bugs. Also turns on
+  `auto_apply_labels` (inferred from prior-PR history, not a hardcoded list, so it tracks the
+  `type:*`/`area:*` taxonomy without a second place to keep in sync) and an advisory
+  (`warning`-mode, non-blocking) custom pre-merge check that flags source-changing PRs missing a
+  `CHANGELOG.md`/`ARCHITECTURE.md`/`review/*.md` update per the doc-update contract. AGENTS.md
+  gained a "Working with CodeRabbit on a PR" section: agents must triage findings with a
+  strong-reasoning model (Opus/GPT-5.5, not the fast default), push back/fix/fix-and-expand per
+  comment, resolve CI, and report a summary — now also a `PULL_REQUEST_TEMPLATE.md` checklist item.
 - **Austin, TX coverage via Swagit.** Added Austin entity config plus City Council, work session,
   special/budget, Austin Housing Finance Corporation, and active board/commission feeds whose official
   Austin boards list has a matching non-empty Swagit historical subcategory.

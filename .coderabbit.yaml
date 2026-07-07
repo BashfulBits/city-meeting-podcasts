@@ -1,0 +1,142 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# Settings-as-code for CodeRabbit. This repo runs on CodeRabbit's free (public-repo) tier, which
+# has a rolling per-hour allowance on both files scanned and reviews triggered -- see AGENTS.md
+# ("Running a full-codebase CodeRabbit review" / "Working with CodeRabbit on a PR") for the
+# agent-side process this config supports and for how to check remaining budget.
+#
+# Comment "@coderabbitai configuration" on any PR to see the full effective config, including every
+# field left at its default here.
+
+language: "en-US"
+early_access: false
+
+# tone_instructions is capped at 250 chars by CodeRabbit's schema -- the actual repo invariants
+# (append-only records, split hashes, stage ordering, the wall-clock budget, untrusted LLM output,
+# the SSRF gate) live in AGENTS.md's "Conventions you must respect", which knowledge_base.
+# code_guidelines below already ingests, and are repeated per-path in path_instructions.
+tone_instructions: >
+  Solo-maintainer OSS project. Prioritize correctness, security, and this repo's documented
+  invariants (AGENTS.md) over style nits -- ruff/ruff-format already enforce style in CI.
+
+reviews:
+  profile: chill
+  collapse_walkthrough: true
+  poem: false
+  sequence_diagrams: false
+  suggested_reviewers: false
+  enable_prompt_for_ai_agents: true
+  # No labeling_instructions list here on purpose: a static list would duplicate the type:*/area:*
+  # taxonomy documented in CONTRIBUTING.md's "Project fields" table, and the two would drift the
+  # next time a label is added/renamed. Leaving labeling_instructions unset makes CodeRabbit infer
+  # suggestions purely from labels already used on prior PRs in this repo -- it self-updates as the
+  # taxonomy evolves, at the cost of somewhat less precise suggestions than an explicit list.
+  auto_apply_labels: true
+
+  # Exclude non-code / generated / data-only paths so reviews stay focused on files an LLM review
+  # can actually add value to, and so doc-only or city-onboarding-data PRs don't burn file/review
+  # quota. Everything under citypods/, scripts/, tests/, workers/, templates/, and
+  # .github/workflows/ stays in scope -- including workflow YAML, which is security-relevant
+  # (permissions, secrets, pinned Action SHAs) rather than "just config".
+  path_filters:
+    - "!config/**" # per-city/per-feed data (config/cities/*.yml, config/feeds/*.yml) -- no logic
+    - "!constraints/*.txt" # pip-compile output; drift is enforced by CI, not worth an LLM pass
+    - "!**/*.md" # documentation-only content across the repo (root docs + review/*.md)
+    - "!docs/**" # generated GitHub Pages output (gitignored today; excluded defensively)
+    - "!**/package-lock.json"
+    - "!**/*.lock"
+
+  path_instructions:
+    - path: "citypods/stages.py"
+      instructions: |
+        Any stage that writes or derives audio bytes must run before AudioStage; feed-only stages
+        run after. Check reordering against this rule rather than assuming later in the list is
+        wrong.
+    - path: "citypods/**/*.py"
+      instructions: |
+        Watch for: (a) code that lets LLM-generated content overwrite provider-sourced
+        titles/links/dates/transcript text without a clear untrusted-output boundary (SECURITY.md);
+        (b) a fetch of a provider- or user-influenced URL that bypasses validate_source_url()
+        (citypods/security.py); (c) a ctx.stop() check newly added around cheap idempotent
+        bookkeeping (it should only gate expensive restartable per-item work) or code that treats a
+        deferred item as failed; (d) any path that could drop or clobber a previously-persisted
+        meeting record instead of merging (records.merge_persisted is append-only).
+    - path: "workers/**/*.js"
+      instructions: |
+        This is a Cloudflare Worker acting as a media proxy in front of provider audio. Flag
+        anything that could turn it into an open proxy/SSRF vector (an unvalidated upstream
+        host/URL) or that weakens existing origin/path checks.
+    - path: "templates/**/*.j2"
+      instructions: |
+        Jinja2 templates rendering into RSS/HTML feeds. Flag any output path that disables
+        autoescaping or interpolates unescaped provider- or LLM-sourced text.
+    - path: ".github/workflows/**/*.yml"
+      instructions: |
+        Third-party Actions must stay pinned to a full 40-hex commit SHA (see
+        review/22-dependency-and-reproducibility-policy.md and renovate.json5's
+        helpers:pinGitHubActionDigests) -- flag any moving tag/branch reference. Also check that
+        job `permissions:` stay minimal and no secret is echoed or logged.
+    - path: "tests/**/*.py"
+      instructions: |
+        Parsers/providers are tested from offline fixtures (tests/fixtures/); live-network tests
+        must be marked `@pytest.mark.live` so they're skipped by default. Flag unmarked tests that
+        make live calls, or a hand-edited golden snapshot instead of one regenerated via
+        `SNAPSHOT_UPDATE=1 pytest`.
+
+  # Advisory (non-blocking) nudge for the doc-update contract in CONTRIBUTING.md/AGENTS.md: a PR
+  # that changes real source but touches none of CHANGELOG.md/ARCHITECTURE.md/review/*.md is
+  # usually missing a doc update, which is exactly how this project's design docs have gone stale
+  # before. "warning" mode only ever posts a comment -- it cannot block merge.
+  pre_merge_checks:
+    custom_checks:
+      - name: "Doc-update contract"
+        mode: "warning"
+        instructions: |
+          This repo requires a doc update alongside most behavior-affecting changes (see the
+          "doc-update contract" in CONTRIBUTING.md and AGENTS.md's lifecycle table).
+
+          PASS if any of these is true:
+          - No file under citypods/, scripts/, workers/, or templates/ was changed (e.g. the PR only
+            touches tests/, config/, constraints/, docs/*.md, or CI/tooling files).
+          - The PR also modifies at least one of: CHANGELOG.md, ARCHITECTURE.md, or any file under
+            review/ (a review/NN-*.md breakout doc, including review/11-technical-design-roadmap.md).
+          - The PR description or title explicitly states no doc update is needed and why (e.g.
+            "no doc update needed", "pure refactor, no behavior change", or the PR is already
+            labeled type:docs / chore).
+
+          Otherwise FAIL (post as a warning, not a blocker): flag that this PR appears to change
+          behavior without a corresponding CHANGELOG.md entry, ARCHITECTURE.md update, or review/
+          doc update, and point the author to CONTRIBUTING.md's doc-update contract.
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    # After 2 reviewed pushes, CodeRabbit pauses and waits for an explicit "@coderabbitai review"
+    # comment instead of auto-re-reviewing every subsequent commit. Agents are expected to send
+    # that comment once fixes for a review round are pushed (see AGENTS.md) -- this trades a small
+    # amount of agent discipline for meaningfully less quota burned on long fix-iteration threads.
+    auto_pause_after_reviewed_commits: 2
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    # Renovate PRs are gated by CI already (the `deps` job's constraints drift check, plus
+    # dep-bump-smoke.yml for output-affecting libs); an LLM pass over a version-bump-only diff adds
+    # little and these can be frequent. Revisit if Renovate starts opening PRs with real logic
+    # changes (it shouldn't -- packageRules in renovate.json5 keep it to version bumps).
+    ignore_usernames:
+      - "renovate[bot]"
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    # AGENTS.md and CLAUDE.md are already scanned by CodeRabbit's built-in defaults; add this
+    # repo's other two canonical docs so reviews are checked against them too.
+    filePatterns:
+      - "ARCHITECTURE.md"
+      - "CONTRIBUTING.md"
+  learnings:
+    scope: "auto"
+
+chat:
+  auto_reply: true

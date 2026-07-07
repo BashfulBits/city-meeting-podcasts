@@ -198,3 +198,49 @@ Full procedure and per-finding validity verdicts live in the numbered audit docs
 one first (`ls review/`), since new sweeps supersede: [`review/19`](review/19-coderabbit-findings-audit.md)
 (2026-06-25, 129 findings), [`review/21`](review/21-manual-code-audit-2026-07.md) (manual, 20),
 [`review/23`](review/23-coderabbit-findings-audit-followup.md) (2026-07-04, 115, cross-linked to both).
+
+### Working with CodeRabbit on a PR
+
+[`.coderabbit.yaml`](.coderabbit.yaml) is the settings-as-code config for the bot's normal
+PR-triggered reviews (separate from the manual full-repo CLI sweeps above). It exists mainly to
+stay inside the free-tier OSS rate limit (a rolling per-hour allowance on both files scanned and
+reviews triggered — query `@coderabbitai reviews remaining?` on a PR, or `cr stats` locally, for the
+current numbers). At a glance:
+
+- **Excluded from review:** per-city/per-feed data (`config/**`), compiled lockfiles
+  (`constraints/*.txt`), all documentation (`**/*.md`), and generated output (`docs/**`). None of
+  these benefit from an LLM pass, and doc-only or city-onboarding PRs are common here.
+- **Always in scope:** every real source dir — `citypods/`, `scripts/`, `tests/`, `workers/`,
+  `templates/`, **and `.github/workflows/**` (workflow YAML is treated as security-relevant code,
+  not filtered out with the rest of the repo's YAML).
+- **`auto_pause_after_reviewed_commits: 2`** — CodeRabbit auto-re-reviews the first two pushes to a
+  PR, then pauses. If you push further fix commits after that, **comment `@coderabbitai review`**
+  once you're done iterating and want a final pass before merge — it will not happen on its own.
+- **Renovate PRs are skipped** (`ignore_usernames`) — dependency bumps are already gated by the
+  `deps` CI job and `dep-bump-smoke.yml`.
+- `tone_instructions` / `path_instructions` preload the invariants from "Conventions you must
+  respect" below so CodeRabbit doesn't flag intentional patterns (append-only records, split
+  hashes, stage ordering, the wall-clock budget, untrusted LLM output, the SSRF gate) as bugs.
+- **Auto-labeling** (`auto_apply_labels: true`) infers labels from prior-PR history rather than a
+  static list, so it tracks the `type:*`/`area:*` taxonomy in CONTRIBUTING.md without needing a
+  second place to update when that taxonomy changes.
+- **Doc-update-contract pre-merge check** (`pre_merge_checks.custom_checks`, `warning` mode —
+  advisory only, never blocks merge) flags a PR that changes real source but touches none of
+  `CHANGELOG.md` / `ARCHITECTURE.md` / `review/*.md`, per the lifecycle contract above.
+
+**When a PR you opened gets CodeRabbit comments, close the loop before calling the PR done:**
+
+1. **Triage with your strongest-reasoning model** (e.g. Opus or GPT-5.5), not the fast/default one
+   (Sonnet, GPT-5.4) — CodeRabbit doesn't have this repo's full design context and its suggestions
+   are sometimes wrong (misreading an intentional pattern above as a bug, missing why a stage runs
+   where it does, etc.), so triaging needs real judgment, not just pattern-matched agreement.
+2. For **every** comment, do one of:
+   - **Push back**, with a concrete reason (cite the convention/doc it's consistent with) if the
+     suggestion is incorrect or out of scope — don't silently dismiss, reply explaining why.
+   - **Agree and fix** the flagged instance.
+   - **Agree, fix, and expand** — if the finding is a pattern (not a one-off), grep for other
+     call-sites with the same issue and fix those too rather than only the flagged line.
+3. Resolve any **CI failures** on the PR (lint, tests, etc.), not just CodeRabbit's comments —
+   the review loop isn't done until both are clean.
+4. **Report a summary**: what CodeRabbit flagged, the disposition of each item (fixed / pushed back
+   + why / fixed-and-expanded), and final CI status.
