@@ -35,7 +35,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   is opened in time to restore the B2 version before it purges. Also promotes **"R2 holds only
   ephemeral/derivable objects"** to a test-enforced invariant (`routing.py` `_EPHEMERAL_R2_PREFIXES`):
   adding a coordination prefix without declaring it ephemeral now fails at import and in tests, so a
-  canonical (backup-less) record can't be routed to R2 by accident.
+  canonical (backup-less) record can't be routed to R2 by accident. **The rolling GC issue's
+  open/update/close lifecycle moved from workflow-YAML `if:` conditions into Python**
+  (`reconcile_gc_issue` in `gc_audio.py`, gated behind `--reconcile-issue`), mirroring
+  `scripts/audit_feeds.py`'s established `reconcile()`/`_gh()` pattern instead of a second, less
+  testable variant — this also fixed a real gap where a scheduled auto-confirm run that fully
+  cleared the backlog matched neither the old open nor close step, leaving the ticket open forever.
 
 - **`.coderabbit.yaml` settings-as-code for CodeRabbit reviews.** A measurement of the last 100 PRs
   showed the repo already runs near the review floor (~1.65 review-runs/PR; ~97% of runs are the

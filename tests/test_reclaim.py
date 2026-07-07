@@ -349,21 +349,53 @@ def test_issue_body_reflects_auto_reaped_count():
         "total_files": 2,
         "total_bytes": 2048,
     }
-    body = gc_audio.render_issue_body(summary, applied=False, auto_reaped=3)
+    body = gc_audio.render_issue_body(
+        summary, applied=False, auto_mode=True, auto_reaped=3, quarantine_days=21
+    )
     assert "3 object(s) were auto-reaped" in body
     assert "remain" in body.lower()
     assert "dry-run" not in body.lower()  # not a plain dry-run when objects were auto-reaped
 
 
-def test_issue_body_plain_dry_run_when_nothing_reaped():
+def test_issue_body_plain_dry_run_when_not_auto_mode():
+    # A bare manual invocation (no --auto-confirm, no --apply) is a genuine dry-run — auto_mode
+    # defaults to False, matching the real call pattern (auto_reaped is only ever >0 when auto_mode
+    # is True, so this combination never occurs from main()).
     summary = {
         "by_city": {"Austin": {"files": 1, "bytes": 1024}},
         "total_files": 1,
         "total_bytes": 1024,
     }
-    body = gc_audio.render_issue_body(summary, applied=False, auto_reaped=0)
+    body = gc_audio.render_issue_body(summary, applied=False)
     assert "dry-run" in body.lower()
     assert "auto-reaped" not in body.lower()
+
+
+def test_issue_body_explains_burndown_when_auto_mode_reaps_nothing_yet():
+    # Scheduled run, auto-confirm enabled, but nothing matured past the quarantine window this
+    # cycle (auto_reaped=0). The ticket must still explain it's under active double-confirm
+    # tracking — not read as an idle plain dry-run — so a reader understands the clear timeline.
+    summary = {
+        "by_city": {"Austin": {"files": 5, "bytes": 5120}},
+        "total_files": 5,
+        "total_bytes": 5120,
+    }
+    body = gc_audio.render_issue_body(
+        summary, applied=False, auto_mode=True, auto_reaped=0, quarantine_days=21
+    )
+    assert "dry-run" not in body.lower()
+    assert "no objects matured for auto-reap this run" in body.lower()
+    assert "≥2 scheduled runs" in body
+    assert "≥21 days" in body
+    assert "auto-closes on its own" in body.lower()
+
+
+def test_issue_body_quarantine_days_formats_without_trailing_zero():
+    summary = {"by_city": {}, "total_files": 0, "total_bytes": 0}
+    body = gc_audio.render_issue_body(
+        summary, applied=False, auto_mode=True, auto_reaped=1, quarantine_days=21.0
+    )
+    assert "≥21 days" in body  # not "21.0 days"
 
 
 # ── gc_audio: reclaim log is committed per-key BEFORE each delete ─────────────────────
@@ -447,3 +479,86 @@ def test_reclaim_log_records_all_keys_on_clean_apply(monkeypatch, tmp_path):
         "granicus/src1/a-spec.m4a",
         "granicus/src1/b-spec.m4a",
     }
+
+
+# ── gc_audio: reconcile_gc_issue — Python-owned, mirroring audit_feeds.py's reconcile() ──────
+#
+# GH#496 follow-up: the rolling GC issue's open/update/close logic originally lived as three
+# separate workflow-YAML `if:` conditions gated on read-back JSON files — the same shape
+# audit_feeds.py already solved (for a harder N-issue problem) by keeping the decision in Python
+# and calling a mocked `_gh()`. These tests exercise that function directly instead of needing a
+# hand-rolled GitHub Actions expression evaluator to check YAML conditions.
+
+
+def _mock_gh(monkeypatch, existing_number: str | None):
+    """Patch gc_audio._gh and _find_open_gc_issue; return the list of captured (args) tuples."""
+    calls: list[tuple] = []
+    monkeypatch.setattr(gc_audio, "_find_open_gc_issue", lambda: existing_number)
+
+    def fake_gh(*args, check=True):
+        calls.append(args)
+        if args[:2] == ("issue", "create"):
+            return "https://github.com/org/repo/issues/999\n"
+        return ""
+
+    monkeypatch.setattr(gc_audio, "_gh", fake_gh)
+    return calls
+
+
+def test_reconcile_creates_issue_when_orphans_remain_and_none_exists(monkeypatch):
+    calls = _mock_gh(monkeypatch, existing_number=None)
+    action = gc_audio.reconcile_gc_issue(
+        "body text", has_orphans=True, applied=False, run_url="https://run"
+    )
+    assert action == "created"
+    assert calls[0][:2] == ("issue", "create")
+    assert any(c[:2] == ("issue", "edit") and "--add-label" in c for c in calls)
+
+
+def test_reconcile_updates_existing_issue_when_orphans_remain(monkeypatch):
+    calls = _mock_gh(monkeypatch, existing_number="42")
+    action = gc_audio.reconcile_gc_issue(
+        "body text", has_orphans=True, applied=False, run_url="https://run"
+    )
+    assert action == "updated"
+    expected_body = "body text\n\n> Full object list (`orphans.tsv`): https://run\n"
+    assert calls == [("issue", "edit", "42", "--body", expected_body)]
+
+
+def test_reconcile_closes_after_manual_apply_regardless_of_has_orphans(monkeypatch):
+    calls = _mock_gh(monkeypatch, existing_number="42")
+    action = gc_audio.reconcile_gc_issue(
+        "body", has_orphans=True, applied=True, run_url="https://run"
+    )
+    assert action == "closed-apply"
+    assert ("issue", "comment", "42", "--body", "Reaped by apply run: https://run") in calls
+    assert ("issue", "close", "42") in calls
+
+
+def test_reconcile_closes_when_autoconfirm_clears_backlog(monkeypatch):
+    # The gap this whole refactor fixes: has_orphans=False, applied=False (a scheduled
+    # auto-confirm run that reaped everything) must still close the ticket.
+    calls = _mock_gh(monkeypatch, existing_number="42")
+    action = gc_audio.reconcile_gc_issue(
+        "body", has_orphans=False, applied=False, run_url="https://run"
+    )
+    assert action == "closed-auto"
+    assert any(c[:2] == ("issue", "comment") and "cleared" in c[-1].lower() for c in calls)
+    assert ("issue", "close", "42") in calls
+
+
+def test_reconcile_noop_when_nothing_outstanding_and_no_issue_exists(monkeypatch):
+    calls = _mock_gh(monkeypatch, existing_number=None)
+    action = gc_audio.reconcile_gc_issue("body", has_orphans=False, applied=False)
+    assert action == "noop"
+    assert calls == []
+
+
+def test_reconcile_dry_run_never_calls_gh(monkeypatch):
+    calls = _mock_gh(monkeypatch, existing_number="42")
+    for has_orphans, applied in ((True, False), (False, False), (True, True)):
+        action = gc_audio.reconcile_gc_issue(
+            "body", has_orphans=has_orphans, applied=applied, dry_run=True
+        )
+        assert action in {"updated", "created", "closed-auto", "closed-apply"}
+    assert calls == []  # _find_open_gc_issue is mocked, not _gh — no gh call should fire

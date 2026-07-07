@@ -31,7 +31,10 @@ Safe by default:
 
 With ``--out DIR`` it writes a machine-readable report for the scheduled workflow:
 ``orphans.tsv`` (every candidate key + size + city), ``summary.json``, ``issue-body.md`` (a
-per-city table), and ``has_orphans`` (``true``/``false``).
+per-city table), and ``has_orphans`` (``true``/``false``). ``--reconcile-issue`` additionally
+open/updates/closes the single rolling "Audio storage GC" issue via ``gh`` to match this run's
+outcome (Python-owned reconcile, mirroring ``audit_feeds.py``'s pattern — see
+``reconcile_gc_issue``) — no workflow-YAML conditionals needed.
 
 By default it scans the whole bucket (``--prefix ""``); pass ``--prefix`` to scope it. The
 allow-list (``is_managed_artifact``) keeps the unscoped sweep safe — only audio/transcript
@@ -48,6 +51,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -225,19 +229,43 @@ def human_bytes(n: int) -> str:
     return f"{n} B"
 
 
-def render_issue_body(summary: dict, *, applied: bool, auto_reaped: int = 0) -> str:
+def render_issue_body(
+    summary: dict,
+    *,
+    applied: bool,
+    auto_mode: bool = False,
+    auto_reaped: int = 0,
+    quarantine_days: float | None = None,
+) -> str:
     verb = "reclaimed" if applied else "reclaimable"
-    # In --auto-confirm mode (auto_reaped > 0) matured double-confirmed orphans WERE deleted this
-    # run even though args.apply is False, so the body must not read as a pure dry-run — the
-    # `summary` here already counts only the still-reclaimable remainder.
+    # In --auto-confirm mode matured double-confirmed orphans WERE deleted this run even though
+    # args.apply is False, so the body must not read as a pure dry-run — branch on auto_mode (not
+    # auto_reaped) so the burndown explanation still shows up on a run that matured zero this cycle
+    # (still tracking toward the quarantine window, not idle).
     if applied:
         preamble = "These objects were **deleted** by a manual `apply` run of the GC workflow."
-    elif auto_reaped:
+    elif auto_mode:
+        quarantine_note = (
+            f"**≥{quarantine_days:g} days** since first observed orphaned"
+            if quarantine_days is not None
+            else "the configured quarantine window"
+        )
+        reaped_note = (
+            f"**{auto_reaped} object(s) were auto-reaped this run.**"
+            if auto_reaped
+            else (
+                "**No objects matured for auto-reap this run** — everything below is still "
+                "within the quarantine window."
+            )
+        )
         preamble = (
-            f"**{auto_reaped} object(s) were auto-reaped this run** (double-confirmed: orphaned "
-            f"across ≥2 runs past the quarantine window). The {summary['total_files']} below "
-            "remain reclaimable — they are not yet matured for auto-apply. No human action is "
-            "required; matured orphans auto-reap and drop off this list on a later run."
+            f"{reaped_note} The double-confirmed auto-reap policy only deletes an orphan once it "
+            f"has been observed unreferenced across **≥2 scheduled runs** and {quarantine_note} "
+            "— a safety window against a false-positive orphan (e.g. a GH#421-style identity "
+            "flip-flop). An object that becomes referenced again before then drops off this list "
+            "entirely; no action needed. **This ticket auto-closes on its own** once nothing "
+            "remains outstanding — no human step is required unless you want to reclaim everything "
+            "immediately (see below)."
         )
     else:
         preamble = (
@@ -274,17 +302,128 @@ def _write_report(
     summary: dict,
     *,
     applied: bool,
+    auto_mode: bool = False,
     auto_reaped: int = 0,
-) -> None:
+    quarantine_days: float | None = None,
+) -> str:
+    """Write the tsv/json/md report files and return the rendered issue body (so a caller wiring
+    up ``reconcile_gc_issue`` doesn't need to recompute it or re-read it off disk)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = ["key\tbytes\tcity\tlast_modified"]
     rows += [f"{o.key}\t{o.bytes}\t{o.city}\t{o.last_modified or ''}" for o in orphans]
     (out_dir / "orphans.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    (out_dir / "issue-body.md").write_text(
-        render_issue_body(summary, applied=applied, auto_reaped=auto_reaped), encoding="utf-8"
+    body = render_issue_body(
+        summary,
+        applied=applied,
+        auto_mode=auto_mode,
+        auto_reaped=auto_reaped,
+        quarantine_days=quarantine_days,
     )
+    (out_dir / "issue-body.md").write_text(body, encoding="utf-8")
     (out_dir / "has_orphans").write_text("true" if orphans else "false", encoding="utf-8")
+    return body
+
+
+# ---------------------------------------------------------------------------
+# Rolling GC issue reconcile — Python-owned, mirroring scripts/audit_feeds.py's `reconcile()` /
+# `_gh()` pattern rather than encoding this state machine as workflow-YAML `if:` conditions.
+# Three terminal states from one (has_orphans, applied) pair, and no per-condition step can be unit
+# tested without reimplementing a GitHub Actions expression evaluator — audit_feeds.py already
+# solved the harder version of this problem (N issues, per-slug dedup, label diffing) this way, so
+# the simpler one-rolling-issue case here follows the same, already-proven shape.
+# ---------------------------------------------------------------------------
+
+GC_ISSUE_TITLE = "Audio storage GC — reclaimable orphans"
+
+
+def _gh(*args: str, check: bool = True) -> str:
+    proc = subprocess.run(["gh", *args], capture_output=True, text=True, check=False)
+    if check and proc.returncode != 0:
+        raise RuntimeError(f"gh {' '.join(args)} failed: {proc.stderr.strip()}")
+    return proc.stdout
+
+
+def _find_open_gc_issue() -> str | None:
+    """The rolling GC issue's number, or ``None`` — dedup by exact title match (there is only ever
+    one of these, unlike feed-health's many per-check/per-slug issues, so a title search is enough
+    and avoids the embedded-marker parsing that model needs)."""
+    out = _gh(
+        "issue",
+        "list",
+        "--state",
+        "open",
+        "--search",
+        f"in:title {GC_ISSUE_TITLE}",
+        "--json",
+        "number,title",
+    )
+    for issue in json.loads(out or "[]"):
+        if issue.get("title") == GC_ISSUE_TITLE:
+            return str(issue["number"])
+    return None
+
+
+def reconcile_gc_issue(
+    body: str,
+    *,
+    has_orphans: bool,
+    applied: bool,
+    run_url: str | None = None,
+    dry_run: bool = False,
+) -> str:
+    """Open/update/close the single rolling GC issue to match this run's outcome. Returns one of
+    ``"created"``, ``"updated"``, ``"closed-apply"``, ``"closed-auto"``, ``"noop"`` (for logging and
+    tests — never parsed by a caller). The three branches are exactly the three (has_orphans,
+    applied) terminal states gc_audio.py's GC step can produce:
+
+    * still-reclaimable remainder (``has_orphans and not applied``) → open or refresh the ticket;
+    * a full manual ``--apply`` reaped everything reported → close, regardless of has_orphans;
+    * nothing remains outstanding on a scheduled run (``not has_orphans and not applied``) → close
+      — the case that used to fall through neither of the above and leave the ticket open forever.
+    """
+    existing = _find_open_gc_issue()
+
+    if has_orphans and not applied:
+        full_body = body + (
+            f"\n\n> Full object list (`orphans.tsv`): {run_url}\n" if run_url else ""
+        )
+        if dry_run:
+            return "updated" if existing else "created"
+        if existing:
+            _gh("issue", "edit", existing, "--body", full_body)
+            return "updated"
+        url = _gh("issue", "create", "--title", GC_ISSUE_TITLE, "--body", full_body)
+        number = url.strip().rsplit("/", 1)[-1]
+        _gh(
+            "issue",
+            "edit",
+            number,
+            "--add-label",
+            "area:ops",
+            "--add-label",
+            "type:operations",
+            check=False,
+        )
+        return "created"
+
+    if not existing:
+        return "noop"
+    if applied:
+        comment = f"Reaped by apply run: {run_url}" if run_url else "Reaped by apply run."
+        action = "closed-apply"
+    else:
+        comment = (
+            f"Backlog cleared (double-confirmed auto-reap and/or objects re-referenced): {run_url}"
+            if run_url
+            else "Backlog cleared (double-confirmed auto-reap and/or objects re-referenced)."
+        )
+        action = "closed-auto"
+    if dry_run:
+        return action
+    _gh("issue", "comment", existing, "--body", comment)
+    _gh("issue", "close", existing)
+    return action
 
 
 def _non_negative_days(value: str) -> float:
@@ -340,6 +479,13 @@ def main(argv: list[str] | None = None) -> int:
         help="push the reclaim log + orphan ledger back to the bucket so they persist across runs "
         "(scoped push — never clobbers sibling state)",
     )
+    ap.add_argument(
+        "--reconcile-issue",
+        action="store_true",
+        help="open/update/close the single rolling GC issue via `gh` to match this run's outcome "
+        "(requires GH_TOKEN in the environment; off by default so local/test runs never hit the "
+        "GitHub API unless asked)",
+    )
     args = ap.parse_args(argv)
 
     site_config = load_site_config(args.site_config)
@@ -387,14 +533,16 @@ def main(argv: list[str] | None = None) -> int:
     candidate_keys = {k for k, _, _ in candidates}
 
     # Double-confirm tier — only on a scheduled run (auto-confirm without a full --apply). Advance
-    # ledger and take the matured subset; a full --apply still deletes everything reported.
+    # ledger and take the matured subset; a full --apply still deletes everything reported. The
+    # quarantine value is resolved unconditionally (not just under auto_mode) so the issue body can
+    # always explain the burndown timeline in terms of the actual configured window.
     auto_mode = args.auto_confirm and not args.apply
+    quarantine = args.orphan_quarantine_days
+    if quarantine is None:
+        quarantine = orphan_quarantine_days(defaults)
     auto_delete_keys: set[str] = set()
     ledger_path = Path(args.ledger) if args.ledger else state_dir / ORPHAN_LEDGER_NAME
     if auto_mode:
-        quarantine = args.orphan_quarantine_days
-        if quarantine is None:
-            quarantine = orphan_quarantine_days(defaults)
         ledger = _load_ledger(ledger_path)
         auto_delete_keys = _update_orphan_ledger(
             ledger, candidate_keys, now=now, quarantine_days=quarantine
@@ -496,7 +644,23 @@ def main(argv: list[str] | None = None) -> int:
     summary = summarize(orphans)
     auto_reaped = len(auto_delete_keys) if auto_mode else 0
     if args.out:
-        _write_report(Path(args.out), orphans, summary, applied=args.apply, auto_reaped=auto_reaped)
+        body = _write_report(
+            Path(args.out),
+            orphans,
+            summary,
+            applied=args.apply,
+            auto_mode=auto_mode,
+            auto_reaped=auto_reaped,
+            quarantine_days=quarantine,
+        )
+        if args.reconcile_issue:
+            gc_action = reconcile_gc_issue(
+                body,
+                has_orphans=bool(orphans),
+                applied=args.apply,
+                run_url=run_url,
+            )
+            print(f"gc-issue: {gc_action}")
 
     action = "deleted" if args.apply else "orphaned (dry-run)"
     auto_note = f"; {len(auto_delete_keys)} auto-reaped (double-confirmed)" if auto_mode else ""

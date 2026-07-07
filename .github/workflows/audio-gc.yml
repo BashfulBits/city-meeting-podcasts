@@ -91,7 +91,10 @@ jobs:
 
       # Backstop 2: orphan GC. Scheduled → double-confirmed auto-apply (--auto-confirm); manual
       # apply=true (main only) → delete all reported. Either way --push-state persists the orphan
-      # ledger + reclaim log (scoped push, never clobbers sibling state).
+      # ledger + reclaim log (scoped push, never clobbers sibling state). --reconcile-issue lets the
+      # script itself open/update/close the single rolling GC issue (Python-owned, mirroring
+      # audit_feeds.py's reconcile() pattern — see reconcile_gc_issue in gc_audio.py — rather than
+      # encoding that state machine as workflow-YAML `if:` conditions on read-back JSON files).
       - name: Run orphan GC
         id: gc
         # Pass workflow context through env (never inline ${{ }} inside a shell [ ] test): a
@@ -103,7 +106,7 @@ jobs:
           MIN_AGE_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.min_age_days || '7' }}
         run: |
           APPLY=""
-          EXTRA="--push-state"
+          EXTRA="--push-state --reconcile-issue"
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$APPLY_INPUT" = "true" ]; then
             if [ "$GIT_REF" != "refs/heads/main" ]; then
               echo "::error title=Storage reclaim apply mode::apply=true is only allowed when dispatched from main (got $GIT_REF)"
@@ -120,7 +123,6 @@ jobs:
             --out gc-audio \
             $APPLY $EXTRA
           echo "has_orphans=$(cat gc-audio/has_orphans 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
-          echo "applied=$([ -n "$APPLY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Upload object list
         if: steps.gc.outputs.has_orphans == 'true'
@@ -131,43 +133,6 @@ jobs:
             gc-audio/orphans.tsv
             gc-audio/summary.json
           if-no-files-found: warn
-
-      # Dry-run/auto-confirm with orphans still awaiting reclaim → open or update ONE rolling
-      # operations issue. The per-city table is in issue-body.md; the artifact URL is appended here.
-      - name: Open or update GC issue
-        if: steps.gc.outputs.has_orphans == 'true' && steps.gc.outputs.applied == 'false'
-        run: |
-          TITLE="Audio storage GC — reclaimable orphans"
-          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          printf '\n\n> Full object list (`orphans.tsv`): %s\n' "$ARTIFACT_URL" >> gc-audio/issue-body.md
-          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
-            | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
-          if [ -n "$EXISTING" ]; then
-            gh issue edit "$EXISTING" --body-file gc-audio/issue-body.md
-            echo "Updated GC issue #$EXISTING"
-          else
-            # Create first, then label as a best-effort step: a missing/renamed label must never
-            # drop the report (the original `operations` label did not exist — use the repo taxonomy).
-            URL=$(gh issue create --title "$TITLE" --body-file gc-audio/issue-body.md)
-            echo "Opened a new GC issue: $URL"
-            gh issue edit "$URL" --add-label "area:ops" --add-label "type:operations" \
-              || echo "::warning title=GC issue label::could not add labels (issue still created)"
-          fi
-
-      # A full manual apply reaped everything reported → close the rolling issue if one is open. (An
-      # auto-confirm run leaves not-yet-matured orphans, so it keeps the issue open above.)
-      - name: Close GC issue after apply
-        if: steps.gc.outputs.applied == 'true'
-        run: |
-          TITLE="Audio storage GC — reclaimable orphans"
-          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
-            | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
-          if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body "Reaped by apply run: ${ARTIFACT_URL}"
-            gh issue close "$EXISTING"
-            echo "Closed GC issue #$EXISTING"
-          fi
 
       # Backstop 3: resurrection watchdog. --no-fail keeps this step green so the issue-filing steps
       # below always run; a final step re-fails the run if a hit was found (after the issue is opened).
