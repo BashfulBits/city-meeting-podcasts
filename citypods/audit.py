@@ -861,7 +861,10 @@ def check_timeline_integrity(
     Checks (per episode with a non-identity Timeline):
       1. **Segment ordering**: segments are monotonically ordered and non-overlapping.
       2. **Coverage start**: first segment starts at 0.
-      3. **Duration match**: Σ segment lengths == ``audio_duration_served`` (±frame).
+      3. **Duration match / end coverage**: stored and probed served duration data agree with the
+         EDL within the applicable tolerance. The stored-field fallback defaults to
+         ``max(_FRAME_TOLERANCE, finding_min_delta)``; live probe reconciliation uses the
+         stream/container tolerances documented above.
       4. **Source span bounds**: source segment ``[source_start, source_end]`` lies within
          ``SourceMedia.duration`` (when the source duration is known).
       5. **Chapter alignment**: served-time chapters (``chapters_basis == "served"``) fall
@@ -981,6 +984,7 @@ def check_timeline_integrity(
         # if the probe is absent OR inconclusive (no stream_sample_duration), the cheap check still
         # runs so a real mismatch is not silently dropped.
         served_dur = ep.audio_duration_served
+        stored_integrity_stamped = False
         if served_dur is not None and not probe_has_stream and not withheld:
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
@@ -1011,29 +1015,35 @@ def check_timeline_integrity(
                     )
                 )
             if mutate_integrity and stored_duration_delta >= stored_duration_threshold:
-                repair = [
+                stored_repair = [
                     REPAIR_TIMELINE_REPLAN,
                     REPAIR_AUDIO_REMATERIALIZE,
                     REPAIR_TRANSCRIPT_REGENERATE,
                 ]
-                block = build_timeline_audio_integrity(
-                    status="timeline-duration-mismatch",
+                stored_status = (
+                    "timeline-duration-mismatch"
+                    if delta >= stored_duration_threshold
+                    else "timeline-short-coverage"
+                )
+                stored_block = build_timeline_audio_integrity(
+                    status=stored_status,
                     timeline_duration=seg_total,
                     container_duration=None,
                     stream_sample_duration=None,
-                    repair=repair,
+                    repair=stored_repair,
                     source_duration_delta=_source_duration_delta(ep),
                 )
                 if repair_min_delta is not None:
-                    block["repair_min_delta"] = repair_min_delta
+                    stored_block["repair_min_delta"] = repair_min_delta
                 if repair_cohort:
-                    block["repair_cohort"] = repair_cohort
+                    stored_block["repair_cohort"] = repair_cohort
                 if _select_timeline_audio_repair(
                     {"stream_delta": stored_duration_delta},
-                    repair,
+                    stored_repair,
                     min_delta=repair_min_delta,
                 ):
-                    set_timeline_audio_integrity(ep, block)
+                    set_timeline_audio_integrity(ep, stored_block)
+                    stored_integrity_stamped = True
 
         # 3b. Rendered audio duration diagnostics. This compares the EDL to the stream sample
         # clock when the caller provides a probe; container-only drift is reported separately so
@@ -1084,7 +1094,7 @@ def check_timeline_integrity(
             if status == "ok":
                 if mutate_integrity:
                     clear_resolved_timeline_audio_integrity(ep, status)
-            elif mutate_integrity and repair_selected:
+            elif mutate_integrity and repair_selected and not stored_integrity_stamped:
                 set_timeline_audio_integrity(ep, block)
             if _emit_timeline_audio_finding(
                 status,
