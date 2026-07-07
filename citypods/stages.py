@@ -102,7 +102,7 @@ from citypods.media import (
     ProviderTransportTelemetry,
     RateLimitedMediaFetchError,
     SourceCache,
-    _probe_duration_secs,
+    _probe_served_duration_secs,
     materialize_audio,
     record_materialize_failure,
 )
@@ -1656,8 +1656,10 @@ def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_bi
     therefore probe the actual object for **every** timeline — identity and edited alike — rather
     than trusting the EDL sum for edited episodes (the prior behavior, which masked a render that
     came out shorter than its EDL). The EDL is only a fallback when the probe is unavailable, so the
-    field still gets populated."""
-    probed = _probe_duration_secs(audio_path, ffmpeg_binary)
+    field still gets populated. Uses the exact stream-sample clock, not the container's advisory
+    ``format.duration`` (issue #849), so this field can't drift from the timeline-audio audit's own
+    ``stream_sample_duration`` reading by container-rounding noise."""
+    probed = _probe_served_duration_secs(audio_path, ffmpeg_binary)
     if probed is not None and probed > 0:
         if ep.audio_duration_served is None or abs(ep.audio_duration_served - probed) > 1.0:
             ep.audio_duration_served = probed

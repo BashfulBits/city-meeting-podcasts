@@ -975,6 +975,28 @@ def check_timeline_integrity(
                         )
         probe_has_stream = probe is not None and probe.stream_sample_duration is not None
 
+        # 2b. Self-heal a stale audio_duration_served (issue #849): when this run actually probed
+        # the hosted object, the probe is ground truth for what's served — whatever its
+        # relationship to the EDL, which is §3b's concern, not this one. Nothing else reliably
+        # rewrites this field once an object is reused rather than freshly re-encoded (the encode
+        # and ASR paths only set it on their own write), so a pre-repair value can fossilize
+        # indefinitely and the no-probe §3 check below re-files a mismatch against reality forever.
+        # Gated on mutate_integrity so this only ever writes during an explicit
+        # ``--persist-timeline-integrity`` pass, mirroring how repair blocks are persisted; skipped
+        # for withheld media, whose served duration is moot (GH#795 keeps that lifecycle
+        # audit-only).
+        if (
+            mutate_integrity
+            and not withheld
+            and probe is not None
+            and probe.stream_sample_duration is not None
+            and (
+                ep.audio_duration_served is None
+                or abs(ep.audio_duration_served - probe.stream_sample_duration) > _FRAME_TOLERANCE
+            )
+        ):
+            ep.audio_duration_served = probe.stream_sample_duration
+
         # 3. Cheap record-only duration match + end coverage, from stored fields alone.
         # audio_duration_served is now the *probed hosted-stream* duration (review/20 / GH#702), so
         # a mismatch against the EDL means the real file diverged from the cue clock — the same
