@@ -16,6 +16,20 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **H14d policy substrate for external-worker pacing and characterization.** `citypods/compute/policy.py`
+  now parses a richer per-backend YAML policy shape from `config/site_config.yml`: generic budget
+  units + soft reserve, per-backend preferred run days (`all` / `even` / `odd`), long-meeting
+  preference, freshness windows, and fixed-per-run / fixed-per-claim planning knobs.
+  `citypods/compute/budget.py` remains backward-compatible with the old `used_gpu_seconds` ledger field
+  but now stores generic `used_units`, so future Beam/Modal/diarize cost models are not forced to
+  pretend billing is pure elapsed GPU-seconds. `external_worker.py` consumes the parsed policy to pace
+  **sequential** claims per invocation against remaining monthly budget and remaining preferred run
+  slots, while off-days admit only fresh work so daily freshness can be preserved even when backlog
+  burn is staggered. The current production cap remains one active transcription at a time per
+  container; the backlog lever here is sequential multi-claim throughput, not in-container GPU
+  concurrency. Also adds `scripts/compute/beam_canary.py`, a one-off characterization wrapper used to
+  collect live Beam telemetry without touching the production schedule path.
+
 - **Unified storage-reclaim policy with a data-loss recovery backstop
   ([GH#496](https://github.com/BashfulBits/city-meeting-podcasts/issues/496)).** The weekly `audio-gc`
   workflow is now **"Storage reclaim"** and runs three backstops on its existing cron. (1) **Bucket

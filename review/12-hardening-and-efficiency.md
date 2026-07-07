@@ -2201,11 +2201,31 @@ recordings. Therefore H14d should prefer measured admission and chunking before 
 shared ASR/chunking helpers, `config/site_config.yml` for documented admission/chunking knobs, and
 `scripts/compute/report_workers.py` for headroom/admission reporting.
 
+**Initial characterization (2026-07-07).** First live H14d canaries confirmed the expected shape:
+GPU VRAM is lightly used while host RSS is the tighter bound. A warm Modal run on a ~2.08 h meeting
+peaked around **2.2 GiB RSS / 1.3 GiB VRAM**; the first cold Modal run hit **2.9 GiB RSS / 1.3 GiB
+VRAM** because image/model startup dominated. A Beam canary that adopted two already-finished items and
+fresh-transcribed one new meeting peaked around **2.0 GiB RSS / 1.2 GiB VRAM**. That result supports
+the first implementation posture: keep **per-container GPU concurrency disabled**, prefer **sequential
+multi-claim** throughput within one invocation, and continue to prefer **long meetings externally**
+while GitHub runners absorb the short tail.
+
+**Implemented H14d posture in this branch.** Backend policy is now YAML-driven through
+`compute_backends.<backend>.{budget,dispatch,tasks}` with generic budget units, soft reserves,
+per-backend preferred days (`all` / `even` / `odd`), freshness windows, long-meeting preference, and
+both **fixed-per-run** and **fixed-per-claim** planning knobs. The worker paces `max_claims_per_run`
+against remaining monthly budget and remaining preferred run slots in the month, while off-days admit
+only fresh work so daily freshness is preserved even when backlog burn is staggered. The default
+production cap remains **sequential** (multiple new claims per invocation, still only one active
+transcription at a time inside the container). Chunking remains **off by default** until telemetry
+shows sequential whole-recording work leaves throughput on the table or a memory-shaped fallback is
+required.
+
 **Testing & rollout.** Unit-test admission estimates, unknown-combination conservatism, chunk timestamp
 rebasing/stitch validation, and recipe/version behavior. Production rollout is canary-first: leave
-concurrency at one, gather telemetry on Modal and Beam, enable chunking for long meetings, then consider
-provider-specific concurrency only when measured peak RSS/VRAM leaves comfortable margin. H9 final
-GPU-type profiling starts after this canary record is documented.
+per-container concurrency at one, gather telemetry on Modal and Beam, keep chunking disabled, then
+consider provider-specific concurrency or chunking only when measured peak RSS/VRAM leaves comfortable
+margin. H9 final GPU-type profiling starts after this canary record is documented.
 
 **Acceptance.** H14d ships with a reportable memory headroom model, documented default knobs, long-audio
 chunk/admission behavior that avoids known OOM classes, and a clear chunk-persistence decision. No
