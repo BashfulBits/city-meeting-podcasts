@@ -405,6 +405,8 @@ def main(argv: list[str] | None = None) -> int:
     run_url = _github_run_url()
     retention = b2_retention_days(defaults)
 
+    from citypods.statesync import push_state
+
     # Pass 2 — delete + report. Report the still-reclaimable set: for a full --apply everything is
     # deleted (rendered "reclaimed"); in auto/dry-run mode the not-yet-matured remainder stays on
     # rolling issue while matured orphans auto-reap and drop off it.
@@ -418,6 +420,27 @@ def main(argv: list[str] | None = None) -> int:
     # alert for a still-live object, versus the batched approach's silent miss (a real deletion
     # with no record at all). Correctness over throughput: this is a weekly, bounded-size run, so
     # the many small append+prune cycles are an acceptable cost.
+    #
+    # But the local write only survives on a disk that lives long enough to be pushed. On a GitHub
+    # Actions runner the workspace is ephemeral and torn down the instant the job ends — cleanly, or
+    # via the same SIGTERM/OOM/timeout/cancellation that motivated the per-key log-write. A single
+    # end-of-loop push_state() is therefore not enough: a kill after (say) 50 of 100 deletes never
+    # reaches it, the VM is destroyed, and all 50 durable-on-paper log entries vanish; the next
+    # run's --pull-state restores a stale bucket copy without them and the watchdog can never see
+    # the reap. So the reclaim log is pushed to the durable bucket AFTER EACH delete, at the same
+    # per-key granularity as the local write, under the same correctness-over-throughput reasoning
+    # — one B2 PUT (whole-file put_file overwrite) per deletion, a small, bounded, acceptable cost
+    # for a weekly job. push_state() is a no-op unless args.push_state was requested, so
+    # tests/local/offline runs are never forced into a push.
+    #
+    # The orphan LEDGER is deliberately NOT pushed per-key here. Unlike the reclaim log it is not
+    # the resurrection watchdog's safety record: it only decides which orphans have matured for
+    # auto-delete on a FUTURE run. Losing a mid-run ledger update just makes the next run re-observe
+    # some keys as if this run hadn't advanced them — an extra observation cycle (a bounded delay)
+    # before auto-reap, never a silent data-loss/missed-recovery. It is already persisted locally
+    # once before this loop, and the end-of-run push below covers it; that lower-stakes
+    # end-of-run-only durability is an acceptable tradeoff (mirroring why 106c14e left
+    # run_history.jsonl on end-of-run batching).
     orphans: list[Orphan] = []
     deleted_count = 0
     for key, last_modified, size in candidates:
@@ -441,6 +464,14 @@ def main(argv: list[str] | None = None) -> int:
             storage.delete(key)
             deleted_count += 1
             print(f"DELETED  {key}")
+            if args.push_state:
+                # Make the just-written recover_by record durable NOW, not at end-of-loop — the only
+                # way a mid-loop kill on an ephemeral runner still leaves the watchdog a record.
+                push_state(
+                    storage,
+                    state_dir,
+                    only_prefixes=[reclaim_log.RECLAIM_LOG_NAME],
+                )
         else:
             print(f"ORPHAN   {key}")
         if args.apply or key not in auto_delete_keys:
@@ -454,8 +485,8 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     if args.push_state and (auto_mode or deleted_count):
-        from citypods.statesync import push_state
-
+        # Final push covers the orphan ledger (end-of-run-only durability, see above) and re-asserts
+        # the reclaim log — a cheap consistency backstop on a clean finish.
         push_state(
             storage,
             state_dir,

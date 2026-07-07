@@ -429,6 +429,7 @@ def test_reclaim_log_written_before_each_delete_survives_midloop_kill(monkeypatc
     assert "granicus/src1/a-spec.m4a" in logged
     # The crashing key was logged just before its (failed) delete — a harmless phantom entry, the
     # deliberately-safer failure mode; the third key was never reached.
+    assert "granicus/src1/b-spec.m4a" in logged
     assert "granicus/src1/c-spec.m4a" not in logged
 
 
