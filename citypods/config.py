@@ -196,3 +196,17 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
                 )
             seen_aliases[alias] = city.slug
     return cities
+
+
+def filter_city_configs(cities: list[City], selector: str) -> list[City]:
+    """Select feeds by feed slug or city-entity slug.
+
+    Historically CLI ``--city`` matched a single feed slug. Since feeds now reference shared
+    ``config/cities/<entity>.yml`` records, the documented and more useful behavior is for an entity
+    slug (for example ``austin-tx``) to select every feed for that city. Preserve exact feed-slug
+    selection when present so targeted one-feed runs stay stable.
+    """
+    by_feed = [c for c in cities if c.slug == selector]
+    if by_feed:
+        return by_feed
+    return [c for c in cities if c.city_entity == selector]

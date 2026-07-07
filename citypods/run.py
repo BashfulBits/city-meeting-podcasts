@@ -30,6 +30,7 @@ from citypods.config import (
     RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
 )
 from citypods.config import (
+    filter_city_configs,
     load_backlog_policy,
     load_city_configs,
     load_site_config,
@@ -1052,9 +1053,9 @@ def _build_impl(
     HOST_LIMITER.configure(site_config.get("provider_rate_limits", {}))
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
     if only_slug:
-        cities = [c for c in cities if c.slug == only_slug]
+        cities = filter_city_configs(cities, only_slug)
         if not cities:
-            raise ValueError(f"no city with slug {only_slug!r}")
+            raise ValueError(f"no feed or city entity with slug {only_slug!r}")
     # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
     # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
     scoped = bool(source or shard)

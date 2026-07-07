@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from citypods.config import load_city_configs, load_site_config
+from citypods.config import filter_city_configs, load_city_configs, load_site_config
 
 DEFAULTS = {"podcast_language": "en-us", "podcast_category": "Government", "max_episodes": 50}
 
@@ -190,3 +190,22 @@ def test_entity_template_file_skipped(tmp_path):
     _write(tmp_path, "foo-tx.yml", VALID)  # no city: ref, loads fine; entity _template ignored
     cities = load_city_configs(tmp_path, DEFAULTS)
     assert len(cities) == 1 and cities[0].city_entity is None
+
+
+def test_filter_city_configs_accepts_feed_or_entity_slug(tmp_path):
+    _write_entity(tmp_path, "foo.yml", ENTITY)
+    _write(
+        tmp_path,
+        "foo-council.yml",
+        FEED_WITH_ENTITY.replace("slug: foo-tx", "slug: foo-council"),
+    )
+    _write(
+        tmp_path,
+        "foo-planning.yml",
+        FEED_WITH_ENTITY.replace("slug: foo-tx", "slug: foo-planning"),
+    )
+    cities = load_city_configs(tmp_path, DEFAULTS)
+
+    assert [c.slug for c in filter_city_configs(cities, "foo-council")] == ["foo-council"]
+    assert [c.slug for c in filter_city_configs(cities, "foo")] == ["foo-council", "foo-planning"]
+    assert filter_city_configs(cities, "missing") == []

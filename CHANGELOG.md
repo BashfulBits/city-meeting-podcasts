@@ -14,6 +14,12 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Added
+
+- **Austin, TX coverage via Swagit.** Added Austin entity config plus City Council, work session,
+  special/budget, Austin Housing Finance Corporation, and active board/commission feeds whose official
+  Austin boards list has a matching non-empty Swagit historical subcategory.
+
 ### Fixed
 
 - **Feed-health audit returns to the cheap default path while audio queued work gains UID-level

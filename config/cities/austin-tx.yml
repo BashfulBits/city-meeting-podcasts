@@ -1,0 +1,7 @@
+# Entity record for City of Austin, TX
+city_website: https://www.austintexas.gov
+colors:
+- '#0049A8'
+- '#D7A900'
+meetings_url: https://www.austintexas.gov/council/meetings
+state: TX

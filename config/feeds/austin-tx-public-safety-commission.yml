@@ -1,0 +1,11 @@
+slug: austin-tx-public-safety-commission
+city: austin-tx
+provider: swagit
+source:
+  list_url: https://austintx.new.swagit.com/views/117/public-safety-commission
+  body: "Public Safety Commission"
+podcast_title: "Austin: Public Safety Commission"
+podcast_author: "City of Austin, TX"
+podcast_email: ""
+podcast_description: "Public Safety Commission meetings for Austin."
+max_episodes: 25
