@@ -6,6 +6,7 @@ characterization calls without changing the deployed cron path.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -34,13 +35,37 @@ GPU, RUNTIME_ENV, RUNTIME_SECRETS, image = _runtime_config()
     env=RUNTIME_ENV,
     timeout=24 * 3600,
 )
-def canary() -> dict[str, object]:
-    from citypods.compute.external_worker import run_worker
+def canary(
+    mode: str = "sequential",
+    claim_count: int = 2,
+    concurrency: int = 2,
+) -> dict[str, object]:
+    from citypods.compute.external_worker import run_characterization_worker
 
-    summary = run_worker(backend="beam")
+    summary = run_characterization_worker(
+        backend="beam",
+        mode=mode,
+        claim_count=claim_count,
+        concurrency=concurrency,
+    )
     print(json.dumps(summary, sort_keys=True), flush=True)
     return summary
 
 
 if __name__ == "__main__":
-    print(json.dumps(canary.remote(), sort_keys=True), flush=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("sequential", "concurrent"), default="sequential")
+    parser.add_argument("--claim-count", type=int, default=2)
+    parser.add_argument("--concurrency", type=int, default=2)
+    args = parser.parse_args()
+    print(
+        json.dumps(
+            canary.remote(
+                mode=args.mode,
+                claim_count=args.claim_count,
+                concurrency=args.concurrency,
+            ),
+            sort_keys=True,
+        ),
+        flush=True,
+    )

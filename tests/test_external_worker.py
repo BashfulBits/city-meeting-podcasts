@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -406,14 +407,23 @@ def _patch_transcribe_item(monkeypatch, worker, *, exists):
     the adopted (``exists=True``) or the fresh-transcription (``exists=False``) branch without real
     audio, a model, or storage. Returns the captured ``push_records_merged`` call list."""
     ep = SimpleNamespace(uid="a", hosted_audio_url="https://audio/a.m4a")
-    city = SimpleNamespace(asr_language="en", asr_compute_type="int8", asr_beam_size=5)
+    city = SimpleNamespace(
+        asr_model="large-v3-turbo",
+        asr_language="en",
+        asr_compute_type="int8",
+        asr_beam_size=5,
+    )
     monkeypatch.setattr(worker, "_episode_for", lambda item: (city, ep, {}))
     monkeypatch.setattr(ew, "_asr_recipe_hash", lambda *a, **k: "recipe")
     monkeypatch.setattr(ew, "_asr_object_key", lambda *a, **k: "asr-key")
     monkeypatch.setattr(ew, "_asr_words_object_key", lambda *a, **k: "words-key")
     monkeypatch.setattr(ew, "_adopt_asr_keys", lambda *a, **k: None)
     monkeypatch.setattr(ew, "_download_audio_file", lambda *a, **k: None)
-    monkeypatch.setattr(worker, "_model", lambda city, tracker=None: object())
+    monkeypatch.setattr(
+        worker,
+        "_model_with_workers",
+        lambda city, tracker=None, *, num_workers=1: object(),
+    )
     monkeypatch.setattr(
         ew, "transcribe", lambda *a, **k: SimpleNamespace(vtt=b"WEBVTT", words=b"[]")
     )
@@ -460,3 +470,41 @@ def test_adopted_item_pushes_owned_record(tmp_path, monkeypatch):
 
     assert adopted is True
     assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
+
+
+def test_model_cache_keys_num_workers(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, [])
+    worker.config = ExternalWorkerConfig(
+        backend="modal",
+        owner="modal:test",
+        cpu_threads=4,
+        device="cuda",
+    )
+    city = SimpleNamespace(asr_model="large-v3-turbo", asr_compute_type="float16")
+    loads: list[dict] = []
+
+    class _FakeWhisperModel:
+        def __init__(self, model_source, *, device, compute_type, cpu_threads, num_workers):
+            loads.append(
+                {
+                    "model_source": model_source,
+                    "device": device,
+                    "compute_type": compute_type,
+                    "cpu_threads": cpu_threads,
+                    "num_workers": num_workers,
+                }
+            )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "faster_whisper",
+        SimpleNamespace(WhisperModel=_FakeWhisperModel),
+    )
+
+    model_a = worker._model_with_workers(city, num_workers=1)
+    model_b = worker._model_with_workers(city, num_workers=1)
+    model_c = worker._model_with_workers(city, num_workers=2)
+
+    assert model_a is model_b
+    assert model_c is not model_a
+    assert [row["num_workers"] for row in loads] == [1, 2]
