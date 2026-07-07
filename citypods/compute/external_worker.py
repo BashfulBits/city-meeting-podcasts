@@ -511,7 +511,11 @@ class ExternalTranscribeWorker:
 
         records[item.episode_uid] = episode_to_record(ep)
         save_records(self.state_dir, item.source_key, records)
-        return adopted
+        # Durably persist the owned transcript block back to canonical storage. This MUST run for
+        # both fresh transcriptions and adoptions: the local ``save_records`` above only touches
+        # the ephemeral worker filesystem, which is discarded when the Modal/Beam function exits.
+        # Without this push the artifact lands in object storage but the record silently loses its
+        # ``transcript`` block (GH#833 symptom), so the item looks un-transcribed to later runs.
         pushed = push_records_merged(
             self.storage,
             self.state_dir,
@@ -523,6 +527,7 @@ class ExternalTranscribeWorker:
             raise RuntimeError(
                 f"failed to push owned transcript record for {item.source_key}/{uid}"
             )
+        return adopted
 
     def _append_telemetry_sample(
         self,

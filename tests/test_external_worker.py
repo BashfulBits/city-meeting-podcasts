@@ -256,3 +256,64 @@ def test_budget_decline_abandons_claim_back_to_queued(tmp_path, monkeypatch):
     assert summary.completed == 0
     assert summary.failed == 0
     assert abandon_calls == [{"uid": "a", "owner": "modal:test"}]
+
+
+def _patch_transcribe_item(monkeypatch, worker, *, exists):
+    """Stub the artifact/record plumbing around ``_run_transcribe_item`` so a test can drive either
+    the adopted (``exists=True``) or the fresh-transcription (``exists=False``) branch without real
+    audio, a model, or storage. Returns the captured ``push_records_merged`` call list."""
+    ep = SimpleNamespace(uid="a", hosted_audio_url="https://audio/a.m4a")
+    city = SimpleNamespace(asr_language="en", asr_compute_type="int8", asr_beam_size=5)
+    monkeypatch.setattr(worker, "_episode_for", lambda item: (city, ep, {}))
+    monkeypatch.setattr(ew, "_asr_recipe_hash", lambda *a, **k: "recipe")
+    monkeypatch.setattr(ew, "_asr_object_key", lambda *a, **k: "asr-key")
+    monkeypatch.setattr(ew, "_asr_words_object_key", lambda *a, **k: "words-key")
+    monkeypatch.setattr(ew, "_adopt_asr_keys", lambda *a, **k: None)
+    monkeypatch.setattr(ew, "_download_audio_file", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "_model", lambda city, tracker=None: object())
+    monkeypatch.setattr(
+        ew, "transcribe", lambda *a, **k: SimpleNamespace(vtt=b"WEBVTT", words=b"[]")
+    )
+    monkeypatch.setattr(ew, "episode_to_record", lambda e: {"uid": e.uid})
+    monkeypatch.setattr(ew, "save_records", lambda *a, **k: None)
+    worker.storage = SimpleNamespace(
+        exists=lambda key: exists,
+        put_file=lambda key, path, mime: f"https://cdn/{key}",
+    )
+
+    push_calls: list[dict] = []
+
+    def _fake_push(storage, state_dir, sources, *, protected_blocks, owned_uids):
+        push_calls.append({"sources": sources, "owned_uids": owned_uids})
+        return 1
+
+    monkeypatch.setattr(ew, "push_records_merged", _fake_push)
+    return push_calls
+
+
+def test_fresh_transcription_pushes_owned_record(tmp_path, monkeypatch):
+    """Regression (GH#706): a fresh transcription MUST push its owned transcript block back to
+    canonical storage. A stray ``return`` once orphaned the ``push_records_merged`` call, so the
+    artifact landed but the record silently lost its ``transcript`` block on every external run."""
+    worker = _loop_worker(tmp_path, ["a"])
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
+
+    adopted = worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
+
+    assert adopted is False
+    assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}], (
+        "fresh transcription did not durably push its owned transcript record"
+    )
+
+
+def test_adopted_item_pushes_owned_record(tmp_path, monkeypatch):
+    """Adoption (artifacts already in storage) must also push the record: the local ``save_records``
+    only touches the ephemeral worker filesystem, so without the push an adopted item stays
+    record-less. The push runs after the adopt/transcribe join and returns the adoption flag."""
+    worker = _loop_worker(tmp_path, ["a"])
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=True)
+
+    adopted = worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
+
+    assert adopted is True
+    assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
