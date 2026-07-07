@@ -123,6 +123,21 @@ _GUIDANCE: dict[str, str] = {
         "records for a specific error signature, and check recent `audio.yml` run logs for "
         "this `source_key`."
     ),
+    "media-too-large": (
+        "**What this means:** the source-media size guard (issue #497) rejected this episode "
+        "before ffmpeg started — the source honestly advertised (via HEAD or a ranged GET) a "
+        "size over the configured `source_media_max_bytes` ceiling.\n\n"
+        "**Common causes:** a genuinely oversized/misencoded source (e.g. an accidental "
+        "high-bitrate or unusually long recording), a provider serving the wrong/full-length "
+        "asset for this episode, or the cap simply needs raising for a legitimately long "
+        "meeting.\n\n"
+        "**Resolution:** verify the meeting via the link in this finding (or the recorded `uid` if "
+        "no public link is on record). If it's a real, legitimate meeting, raise "
+        "`source_media_max_bytes` in `config/site_config.yml` (see the comment there for how the "
+        "current value was derived) and re-run. If it's a broken/mislabeled source, fix or "
+        "exclude it upstream — this finding will clear automatically once the episode is no "
+        "longer rejected."
+    ),
     "dead-enclosure": (
         "**What this means:** a sample of this feed's hosted-audio URLs returned 4xx/5xx.\n\n"
         "**Common causes:** a signed/presigned URL expired, the object was deleted from storage "
@@ -191,6 +206,22 @@ _GUIDANCE: dict[str, str] = {
         "`timeline-replan` + `audio-rematerialize` repair flags via a manual `timeline_repair` "
         "dispatch of the feed-health workflow, then letting the audio lane drain and "
         "re-auditing."
+    ),
+    "timeline-audio-probe-divergence": (
+        "**What this means:** the cheap header-only duration probe (range-reads just the "
+        "MP4 `moov` box instead of downloading the whole hosted file) disagreed with a "
+        "full-download probe of the same file beyond floating-point noise.\n\n"
+        "**Common causes:** this is a code bug, not a data issue — the header-only fast path "
+        "assumes the hosted `.m4a` is a single, non-fragmented, `moov`-before-`mdat` "
+        "(faststart) file, so `format.duration`/stream `duration_ts`/`time_base` are fully "
+        "contained in `moov` and identical to what a full download would report. A divergence "
+        "means that assumption broke for this file — e.g. a new encode path stopped writing "
+        "`-movflags +faststart`, a fragmented/multi-moov MP4 slipped through, or the `moov`-"
+        "location box walk mis-parsed a malformed/unusual object.\n\n"
+        "**Resolution:** code bug. Check `audio_spec_hash`/the encode path that produced this "
+        "episode's `audio_key` for a missing `+faststart`, and inspect the object's box layout "
+        "directly (e.g. `ffprobe -show_entries format` vs. a manual `moov` box scan) to see "
+        "where the header-only read diverged."
     ),
     "timeline-source-duration-mismatch": (
         "**What this means:** for a multi-source (concat) episode, a source segment's actual "

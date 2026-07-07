@@ -1,0 +1,46 @@
+name: Deploy Modal Worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "citypods/compute/**"
+      - "citypods/ops/work_leases.py"
+      - "citypods/asr.py" # image bakes the pinned model by importing this at build
+      - "config/site_config.yml"
+      - "constraints/asr.txt" # image installs pinned deps from this
+      - "pyproject.toml"
+      - "scripts/compute/**"
+      - ".github/workflows/modal-deploy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: modal-production
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      CITYPODS_MODAL_APP: citypods-modal-worker
+      CITYPODS_MODAL_SECRET: citypods-modal-worker
+      CITYPODS_MODAL_GPU: L4
+      CITYPODS_MODAL_CRON: "17 7 * * *"
+      CITYPODS_WORKER_LEASE_TTL_SECONDS: "72000"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Modal CLI
+        run: python -m pip install "modal==1.5.1" # pinned for reproducible deploys (Renovate-tracked)
+
+      - name: Deploy Modal pull worker
+        run: modal deploy scripts/compute/modal_app.py

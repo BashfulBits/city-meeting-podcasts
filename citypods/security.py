@@ -71,6 +71,25 @@ class SecurityError(ValueError):
     """
 
 
+class MediaSourceTooLargeError(SecurityError):
+    """A source media URL preflight (issue #497) found — or ``-rw_timeout``-bounded streaming
+    later confirmed — an advertised size over the configured media-specific ceiling.
+
+    Deliberately **not** caught anywhere as a "download failed, fall back to streaming the URL
+    directly" signal: that fallback is exactly what would defeat the guard. Callers must let this
+    propagate to the same materialize-failure/backoff path as any other encode error.
+
+    ``code`` follows the same convention as ``ProviderError`` subclasses (e.g.
+    ``RateLimitedMediaFetchError.code``) so ``record_materialize_failure``'s
+    ``getattr(exc, "code", None)`` picks it up without a special case, and the feed-health audit
+    (``citypods.audit.check_media_too_large``) can find every rejection by this stable string —
+    rare enough that it should surface as a visible, human-reviewed ticket rather than silently
+    joining the generic retry/backoff noise.
+    """
+
+    code = "media-too-large"
+
+
 def redact_subprocess_text(value: bytes | str | None) -> bytes | str | None:
     """Redact credentials and URL queries from subprocess diagnostics.
 

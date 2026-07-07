@@ -33,6 +33,16 @@ class StorageBackend(Protocol):
         """Download ``key`` into ``local_path``. Return False if the object is absent."""
         ...
 
+    def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        """Return bytes ``[start, end]`` of ``key`` (inclusive, HTTP Range semantics), or
+        ``None`` if the object is absent. ``end`` may exceed the object's actual size; the
+        returned bytes are then just shorter than requested (never an error).
+
+        Optional capability for partial reads (e.g. an MP4 header-only duration probe)
+        without downloading the whole object. Callers feature-detect via ``hasattr``.
+        """
+        ...
+
     def list_objects(self, prefix: str = ""):
         """Yield ``(key, last_modified)`` for every object under ``prefix``."""
         ...

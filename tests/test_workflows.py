@@ -51,12 +51,15 @@ HEAVY_WORKFLOWS = [("audio.yml", "audio", "audio"), ("asr.yml", "transcribe", "a
 
 
 def test_workflows_use_node24_cache_actions_without_force_flag():
-    """actions/cache v5 runs on Node 24; the old force flag should not linger."""
+    """actions/cache v5 runs on Node 24; the old force flag should not linger. Cache actions are
+    SHA-pinned to the current v5 tip (review/22 / GH#734), not the movable @v5 tag."""
     workflow_text = "\n".join(path.read_text() for path in WORKFLOWS.glob("*.yml"))
     assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24" not in workflow_text
     assert "actions/cache@v4" not in workflow_text
     assert "actions/cache/restore@v4" not in workflow_text
-    assert "actions/cache@v5" in workflow_text
+    # SHA-pinned with a `# v5` readability comment; the bare movable tag must not linger.
+    assert "actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5" in workflow_text
+    assert "actions/cache@v5" not in workflow_text
 
 
 @pytest.mark.parametrize("workflow,lane,job_name", HEAVY_WORKFLOWS)
@@ -402,7 +405,8 @@ def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
     test_step = next(step for step in job["steps"] if step.get("name") == "Test Worker")
     assert test_step["working-directory"] == "workers/granicus-media-proxy"
     deploy = next(step for step in job["steps"] if step.get("name") == "Deploy Worker")
-    assert deploy["uses"] == "cloudflare/wrangler-action@v3"
+    # SHA-pinned per review/22 / GH#734 (the `# v3` comment is stripped by the YAML parser).
+    assert deploy["uses"] == "cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd"
     assert deploy["with"]["workingDirectory"] == "workers/granicus-media-proxy"
     assert deploy["with"]["apiToken"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
     assert deploy["with"]["accountId"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
@@ -553,3 +557,25 @@ def test_audit_workflow_exposes_guarded_timeline_repair_cohort_dispatch():
     assert "--timeline-repair-cohort" in run
     assert 'github.ref }}" != "refs/heads/main"' in run
     assert "timeline_repair_cohort is required" in run
+
+
+def test_reset_backoff_workflow_exposes_targeted_hosted_filters():
+    wf, job = _job("reset-backoff.yml")
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+
+    assert inputs["provider"]["default"] == ""
+    assert inputs["source"]["default"] == ""
+    assert inputs["uid"]["default"] == ""
+    assert inputs["error"]["default"] == ""
+    assert inputs["include_hosted"]["type"] == "boolean"
+    assert inputs["include_hosted"]["default"] is False
+    assert inputs["apply"]["type"] == "boolean"
+    assert inputs["apply"]["default"] is False
+
+    run = next(s for s in job["steps"] if s.get("name") == "Reset materialization backoff")["run"]
+    assert 'ARGS+=(--provider "$PROVIDER")' in run
+    assert 'ARGS+=(--source "$SOURCE")' in run
+    assert 'ARGS+=(--uid "$UID")' in run
+    assert 'ARGS+=(--error "$ERROR_CODE")' in run
+    assert "ARGS+=(--include-hosted)" in run
+    assert "ARGS+=(--apply)" in run

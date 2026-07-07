@@ -1,0 +1,84 @@
+name: Dependency bump smoke
+
+# Output-drift proof for output-affecting dependency bumps (review/22). Runs one
+# short golden clip per provider family through the ffmpeg materialization metrics
+# (and, when a reference transcript exists, the ASR path) and comments a per-source
+# before/after table on the PR. Informational: it never fails the build — its output
+# drives the human merge decision.
+
+on:
+  workflow_dispatch: # manual runs (makes the `event_name != pull_request` branch reachable)
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - constraints/**
+      - scripts/prepare_whisper.py
+      - scripts/dep_bump_smoke.py
+      - scripts/install_static_ffmpeg.py
+      - tests/fixtures/smoke/**
+      - .github/audio-runner/Dockerfile
+      - .github/workflows/*.yml # ffmpeg URL/SHA live in workflow env
+      - pyproject.toml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  smoke:
+    # Only run for output-affecting bumps (the Renovate label) or manual pushes.
+    if: contains(github.event.pull_request.labels.*.name, 'output-affecting') || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
+      FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned ffmpeg
+        run: |
+          python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" --sha256 "${FFMPEG_SHA256}" --install-dir "${FFMPEG_DIR}"
+
+      - name: Run per-source smoke
+        env:
+          FFMPEG_BIN: ${{ env.FFMPEG_DIR }}/bin/ffmpeg
+          SMOKE_TABLE_OUT: smoke-table.md
+        run: |
+          export PATH="${FFMPEG_DIR}/bin:${PATH}"
+          python scripts/dep_bump_smoke.py
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dep-bump-smoke
+          path: smoke-table.md
+
+      - name: Comment table on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('smoke-table.md', 'utf8');
+            const marker = '<!-- dep-bump-smoke -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            const payload = `${marker}\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body: payload,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body: payload,
+              });
+            }

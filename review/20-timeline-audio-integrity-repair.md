@@ -90,8 +90,39 @@ change that warrants separate review:
   for the rendered/container duration classification, separate from the 0.1s `_FRAME_TOLERANCE` used by
   structural checks, so the AAC-priming/sample-rounding band stops producing sub-finding
   `rendered-duration-mismatch` artifact noise. Plus this remediation runbook.
-- **GH#702 PR6 (gated, build-but-do-not-merge):** `silence:3` catalog version bump for the permanent
-  guarantee.
+- **GH#702 PR6 (#709, merged):** `silence:3` catalog version bump.
+  `SilencePlanner.version` 2→3 forces every single-file silence EDL to re-plan on the stream-sample clock
+  (PR2). Because `Timeline.version` is folded into `timeline_digest`/`audio_spec_hash`, this re-encodes
+  **the whole single-file silence catalog** and regenerates transcripts — not just the gap cohort. Merge
+  thresholds below (all confirmed satisfied before merge).
+
+### GH#702 PR6 (silence:3) merge thresholds
+
+Merged once **all** of these held:
+
+1. **PR2–PR5 are merged and have run in production** for at least one full audio cycle (the planner now
+   plans on the stream clock; served=probe; the OOM guard is live; the audit is de-noised). ✅ Confirmed
+   — PR2–PR5 were live across many audio/audit cycles before PR6 landed.
+2. **The cohort is proven clean.** The review/20 remediation runbook has been executed on the
+   over-threshold cohort and `scripts/compare_timeline_diagnostics.py --cohort <label>` shows the
+   selected rows returning with `stream_delta ≤ 0.5s`, `fixed` covering the cohort, and **no** `worsened`
+   or unexpected `missing-after`. ✅ Confirmed with stronger evidence than a cohort-scoped comparison
+   requires: a full-catalog `timeline-audio-integrity` audit (Feed health run #68, 2026-07-02) showed
+   **zero** `rendered-duration-mismatch` survivors catalog-wide — every episode the stream-sample planner
+   fix touches was already `ok` or resolved into the GH#795 `media-withheld` terminal state.
+3. **The full-re-encode cost is accepted and scheduled.** Bumping the version re-encodes every single-file
+   silence episode and regenerates transcripts, draining over multiple runs under the wall-clock stop
+   budget. Confirm there is operational headroom (provider rate limits, B2 storage/bandwidth, ASR
+   capacity) and, ideally, run it during a low-traffic window. There is no way to bound the re-encode to
+   only gap episodes without removing `version` from the digest (out of scope; would break the
+   version-bump-forces-re-encode contract). ✅ Accepted by the operator; drains under the existing stop
+   budget like any other catalog-wide planner version bump.
+4. **The two stragglers are triaged** (Dallas never-rematerialized; Pflugerville `missing-audio-key`) so
+   the post-bump audit can distinguish a genuinely-new regression from these known, separate audio-lane
+   issues. ✅ Both resolved independently by the time of the run #68 audit: Dallas's only non-`ok` rows
+   are ordinary `container-duration-drift` (no longer never-rematerialized), and Pflugerville's episode
+   resolved into the GH#795 `confirmed_empty`/`media-withheld` lifecycle rather than staying
+   `missing-audio-key`.
 
 ### GH#702 remediation runbook (operator steps)
 
@@ -127,6 +158,41 @@ production and drains over multiple runs under the stop budget:
      issue, not a planner/renderer one.
    - **Pflugerville `missing-audio-key`** (`duration-probe-inconclusive`): the audio object is absent
      (never materialized or GC'd). Confirm whether the episode should re-materialize or is withheld.
+
+## Follow-up: withheld/dead episode lifecycle (GH#795)
+
+The GH#702 repair cohort drained to a single survivor — an Arlington episode the audio lane had
+already re-decoded, found near-totally silent, and moved to `confirmed_empty` (`media_withheld=true`).
+The audio lane was correct; the remaining defect was **audit-side**: `check_timeline_integrity`
+classified duration purely from stream/container-vs-EDL drift and never consulted
+`ep.media_availability.is_withheld()`, so the stale hosted object kept filing
+`rendered-duration-mismatch` and re-selecting repair on an episode that is already quarantined and
+excluded from both the feed and `AudioStage`. This resolved into a small lifecycle for
+unreachable/empty media:
+
+- **Withheld media is terminal for timeline-audio repair.** `_classify_timeline_audio_duration`
+  returns `("media-withheld", WARN, [])` when `is_withheld()`, before any mismatch classification.
+  The cheap header probe still runs (diagnostic record kept), but the full-download reconciliation
+  and the §3 cheap stored-field checks are skipped, `media-withheld` is a non-finding status, and no
+  `integrity.timeline_audio` block is stamped. `check_enclosures` likewise skips withheld episodes.
+- **Flat recheck cadence for confirmed-dead media.** A new `CONFIRMED_DEAD_STATES` subset
+  (`confirmed_empty`/`missing`/`invalid`) and `MediaAvailability.is_confirmed_dead()` gate a flat
+  `CONFIRMED_DEAD_RECHECK_INTERVAL` (30d) recheck in `TimelineStage` (`confirmed_dead_recheck_due`,
+  anchored on the verdict's `last_check`), independent of the exponential #120 backoff. A recheck
+  that stays dead just refreshes `last_check` and sleeps another interval — no escalation, no new
+  ticket. `suspected_empty` is deliberately excluded so it keeps the exponential ramp and reaches its
+  second silent confirmation quickly.
+- **Repair flag bypasses only the exponential backoff; the flat gate wins for confirmed-dead.** A
+  `timeline-replan` flag bypasses the exponential `#120` timeline backoff in
+  `TimelineStage._plan_one`, so a flagged transient/broken-EDL episode re-plans immediately. It does
+  **not** bypass the flat confirmed-dead gate, because the integrity/repair block is audit-owned and
+  the audio lane preserves it from remote on push (`records.protected_blocks_for_lane`) — a lane-side
+  clear cannot persist, so if the flag bypassed the flat gate a quarantined episode would re-download
+  every run. The flat gate is anchored on the audio-lane-owned `media_availability.last_check`, so it
+  is self-managing (recheck ≤ every 30 days) without clearing the flag; a genuinely recovered source
+  is picked up at the next due recheck. Broken-EDL (non-withheld) repair flags are cleared by the
+  post-repair audit once it confirms `served ≈ EDL` (`clear_resolved_timeline_audio_integrity`) — the
+  audit owns the integrity block, so that clear persists.
 
 ## Problem
 
@@ -287,6 +353,28 @@ disable automatic repair stamping.
 
 Backfill story: only confirmed affected records enter the repair queues; all work drains gradually under
 existing stop budgets.
+
+## Follow-up: header-only (range-read) duration probe, with continuous full-download reconciliation
+
+The diagnostics probe (`_probe_timeline_audio` in `citypods/audit.py`, feeding
+`_classify_timeline_audio_duration`) used to download every non-identity-timeline episode's whole
+hosted `.m4a` just to read `format.duration`/`stream.duration_ts`/`time_base` — fields that live
+entirely in the MP4 `moov` box. Every hosted episode is written `-movflags +faststart` (moov
+before mdat), so a small range read of just `ftyp`+`moov` (`StorageBackend.get_range`,
+`media._probe_audio_duration_header`) yields bit-identical values to a full download; `mdat` was
+never read for these fields either way. This cut the diagnostics-enabled audit's data transfer by
+roughly two orders of magnitude (moov is typically well under 1% of a multi-hour episode's file
+size).
+
+Given this project's history of subtle duration-measurement bugs in this exact area (the GH#702
+decoded-vs-container/PTS-gap saga above), the header-only probe is not trusted silently: any
+episode it flags as non-"ok" is automatically re-measured with a full-download probe
+(`probe_audio_full` in `check_timeline_integrity`). The full read is authoritative for that
+episode's actual finding/repair decision, and a new `timeline-audio-probe-divergence` finding
+(ERROR) fires if the two methods disagree beyond float noise — a live, ongoing check of the
+moov-only assumption against exactly the "problem" files this project periodically hits, not just
+a one-time validation. `tests/test_media.py` also pins the assumption directly against real
+ffmpeg/ffprobe output (short clip and a multi-round-trip long clip).
 
 ## Acceptance
 

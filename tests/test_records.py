@@ -1025,6 +1025,85 @@ def test_merge_preserving_foreign_audio_lane_keeps_remote_transcript():
     assert merged["u1"]["audio"]["url"] == "NEW"  # local audio written (this lane owns it)
 
 
+def test_merge_preserving_foreign_keeps_remote_decoded_plan_over_stale_audio_snapshot():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "title": "old title",
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "chapters": [{"title": "remote chapter", "start": 1.0}],
+            "chapters_basis": "served:silence:2+swagit-concat:1",
+            "audio": {"url": "REMOTE", "key": "decoded-key", "spec_hash": "decoded-spec"},
+            "transcript": {"key": "remote-transcript"},
+        },
+        "u2": {
+            "uid": "u2",
+            "sources": [{"id": "s0", "duration": 200.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "audio": {"url": "REMOTE2", "key": "decoded-key-2", "spec_hash": "decoded-spec-2"},
+        },
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "title": "fresh title",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "chapters": [{"title": "local stale chapter", "start": 2.0}],
+            "chapters_basis": "served:silence:2+swagit-concat:1",
+            "audio": {"url": "LOCAL", "key": "container-key", "spec_hash": "container-spec"},
+            "transcript": {"key": "local-stale-transcript"},
+        },
+        "u2": {
+            "uid": "u2",
+            "sources": [],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "chapters": [{"title": "stale local chapter", "start": 3.0}],
+            "audio": {"url": "LOCAL2", "key": "missing-source-key", "spec_hash": "missing-spec"},
+            "transcript": {"key": "stale-local-transcript"},
+        },
+    }
+
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+
+    assert merged["u1"]["title"] == "fresh title"
+    assert merged["u1"]["sources"] == remote["u1"]["sources"]
+    assert merged["u1"]["timeline"] == remote["u1"]["timeline"]
+    assert merged["u1"]["chapters"] == remote["u1"]["chapters"]
+    assert merged["u1"]["audio"] == remote["u1"]["audio"]
+    assert merged["u1"]["transcript"] == remote["u1"]["transcript"]
+    assert merged["u2"]["sources"] == remote["u2"]["sources"]
+    assert merged["u2"]["audio"] == remote["u2"]["audio"]
+    assert "chapters" not in merged["u2"]
+    assert "transcript" not in merged["u2"]
+
+
+def test_merge_preserving_foreign_writes_local_decoded_plan_over_remote_container_plan():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "audio": {"url": "REMOTE", "key": "container-key", "spec_hash": "container-spec"},
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2+swagit-concat:1", "segments": []},
+            "audio": {"url": "LOCAL", "key": "decoded-key", "spec_hash": "decoded-spec"},
+        }
+    }
+
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+
+    assert merged["u1"]["sources"] == local["u1"]["sources"]
+    assert merged["u1"]["timeline"] == local["u1"]["timeline"]
+    assert merged["u1"]["audio"] == local["u1"]["audio"]
+
+
 def test_merge_preserving_foreign_audio_lane_keeps_remote_provider_transcript():
     remote = {
         "u1": {
@@ -1156,6 +1235,69 @@ def test_merge_preserving_foreign_unowned_new_uid_carries_no_artifact_block():
     assert "transcript" not in merged["newbie"]
 
 
+def test_merge_preserving_foreign_better_remote_plan_keeps_owned_transcript():
+    """Regression (GH#831 first long Modal canary): a transcribe worker's just-written transcript
+    was silently deleted when remote's plan rank advanced mid-run and remote had no transcript.
+    The VTT/words artifact is already uploaded (lease reaper infers done from artifact presence),
+    so a null transcript block is a permanent, invisible loss. The owned block must survive a
+    better-but-transcript-less remote plan."""
+    remote = {
+        "u1": {
+            "uid": "u1",
+            # Strictly-better remote plan (decoded > container) — triggers the preservation path.
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "REMOTE", "key": "decoded-key", "spec_hash": "decoded-spec"},
+            # ...but remote has NO transcript yet (this is the first transcription).
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "LOCAL", "key": "container-key", "spec_hash": "container-spec"},
+            "transcript": {"key": "transcripts/src/u1-asr-abc.vtt", "synced": True},
+        }
+    }
+
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("transcribe"), owned_uids=frozenset({"u1"})
+    )
+
+    # The freshly-written, owned transcript survives...
+    assert merged["u1"]["transcript"] == {"key": "transcripts/src/u1-asr-abc.vtt", "synced": True}
+    # ...while the non-owned audio + the better remote plan still win (protected/planning behavior).
+    assert merged["u1"]["audio"] == remote["u1"]["audio"]
+    assert merged["u1"]["sources"] == remote["u1"]["sources"]
+
+
+def test_merge_preserving_foreign_better_remote_plan_still_replaces_owned_from_truthy_remote():
+    """The preservation path must still REPLACE an owned block when remote actually has a fresher
+    value for it (the legitimate audio-lane case: a stale container-plan audio yields to remote's
+    decoded-plan audio). Only *dropping* an owned block remote lacks is disallowed."""
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 100.0, "duration_basis": "decoded"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "REMOTE-DECODED", "key": "decoded-key", "spec_hash": "decoded-spec"},
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "sources": [{"id": "s0", "duration": 101.0, "duration_basis": "container"}],
+            "timeline": {"version": "silence:2", "segments": []},
+            "audio": {"url": "LOCAL-CONTAINER", "key": "container-key", "spec_hash": "c-spec"},
+        }
+    }
+
+    merged = merge_preserving_foreign(remote, local, protected_blocks_for_lane("audio"))
+
+    assert merged["u1"]["audio"] == remote["u1"]["audio"]  # owned audio yields to fresher remote
+
+
 def test_legacy_manifest_carryover(tmp_path):
     # Old per-slug manifest keyed by provider guid.
     slug_dir = tmp_path / "denton-tx"
@@ -1169,3 +1311,29 @@ def test_legacy_manifest_carryover(tmp_path):
     assert seeded == 1
     assert ep.hosted_audio_url == "https://cdn/old.m4a"
     assert ep.audio_spec_hash == "legacy"  # reused, not re-encoded
+
+
+def test_confirmed_dead_recheck_due_flat_interval():
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+    from citypods.records import CONFIRMED_DEAD_RECHECK_INTERVAL, confirmed_dead_recheck_due
+
+    now = datetime.now(UTC)
+    ep = _ep("g1")
+
+    # Inside the flat window → not due (poll on the flat cadence, no re-download).
+    ep.media_availability = MediaAvailability(
+        state=CONFIRMED_EMPTY,
+        last_check=(now - CONFIRMED_DEAD_RECHECK_INTERVAL / 2).isoformat(),
+    )
+    assert not confirmed_dead_recheck_due(ep, now)
+
+    # Past the flat window → due for its one periodic recheck.
+    ep.media_availability = MediaAvailability(
+        state=CONFIRMED_EMPTY,
+        last_check=(now - CONFIRMED_DEAD_RECHECK_INTERVAL - timedelta(days=1)).isoformat(),
+    )
+    assert confirmed_dead_recheck_due(ep, now)
+
+    # No verdict / no anchor → treated as due so a freshly-confirmed episode rechecks once.
+    ep.media_availability = None
+    assert confirmed_dead_recheck_due(ep, now)

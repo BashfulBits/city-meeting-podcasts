@@ -10,11 +10,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from citypods.http import StopRequested
+from citypods.integrity import (
+    REPAIR_TIMELINE_REPLAN,
+    needs_timeline_audio_repair,
+    set_timeline_audio_integrity,
+)
 from citypods.silence import (
     SilencePlanner,
+    _describe_media_locator,
+    _local_file_snapshot,
     _parse_ffmpeg_decoded_end,
     _parse_ffmpeg_duration,
     _probe_stream_sample_duration,
+    _silence_summary,
     build_silence_timeline,
     detect_silences,
     is_degenerate_served_duration,
@@ -60,6 +68,38 @@ class TestParseSilences:
             "[silencedetect @ 0x1] silence_start: 7200.0\n"
         )
         assert parse_silences(stderr) == [(0.0, 2.0)]
+
+
+class TestLoggingHelpers:
+    def test_describe_media_locator_redacts_query_tokens(self):
+        assert (
+            _describe_media_locator(
+                "https://archive-video.granicus.com/path/to/file.mp4?Signature=secret&Expires=1"
+            )
+            == "https://archive-video.granicus.com/file.mp4"
+        )
+
+    def test_describe_media_locator_keeps_local_filename(self):
+        assert _describe_media_locator("/tmp/citypods/source-cache/file.mka") == (
+            "/tmp/citypods/source-cache/file.mka"
+        )
+
+    def test_local_file_snapshot_reports_bytes(self, tmp_path):
+        path = tmp_path / "file.mka"
+        path.write_bytes(b"12345")
+        assert _local_file_snapshot(str(path)) == "path=file.mka bytes=5"
+
+    def test_local_file_snapshot_reports_unknown_on_oserror(self):
+        with patch("citypods.silence.Path.stat", side_effect=OSError):
+            assert _local_file_snapshot("/tmp/citypods/source-cache/file.mka") == (
+                "path=file.mka bytes=unknown"
+            )
+
+    def test_silence_summary_reports_count_duration_and_samples(self):
+        assert _silence_summary([(0.0, 4.0), (10.0, 11.5), (20.0, 22.0), (30.0, 31.0)]) == (
+            "count=4 total=8.500s longest=4.000s spans=0.000-4.000, "
+            "10.000-11.500, 20.000-22.000, ..."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +500,12 @@ def _make_episode(media_kind="hls", duration=3600, sources=None, video_url="http
 
 
 class TestSilencePlanner:
+    def test_version_is_3(self):
+        # GH#702 PR6: bumped 2->3 to re-plan every single-file silence EDL onto the stream-sample
+        # clock. Bumping the version is a deliberate full-catalog re-trim/re-encode — keep this pin
+        # so the signature change is intentional, not accidental.
+        assert SilencePlanner.version == "3"
+
     def test_returns_none_when_disabled(self):
         planner = SilencePlanner()
         ctx = _make_ctx(trim_silence=False)
@@ -863,6 +909,52 @@ class TestProbeStreamSampleDuration:
         assert ep.materialize_attempts == 1
         assert ep.materialize_error == "timeline-degenerate"
 
+    def test_degenerate_repair_timeline_clears_known_bad_prior(self):
+        """A repair-selected prior EDL is not a healthy fallback. If decoded re-planning produces a
+        degenerate result, clear the stale EDL so availability/deferred state owns the episode."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        prior = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=51.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0.0,
+                    source_end=51.0,
+                ),
+            ),
+        )
+        ep = _make_episode(duration=3600)
+        ep.timeline = prior
+        set_timeline_audio_integrity(
+            ep,
+            {
+                "status": "rendered-duration-mismatch",
+                "repair": [REPAIR_TIMELINE_REPLAN],
+            },
+        )
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, 3600.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, prior)
+
+        assert result is None
+        assert ep.timeline is None
+        assert ep.timeline_defer_reason == "deferred_degenerate_timeline"
+        assert ep.materialize_error == "timeline-degenerate"
+        # The repair flag is NOT cleared by the lane: the integrity block is audit-owned and a
+        # lane-side clear would not survive the scoped push (GH#795). A confirmed-dead episode is
+        # instead governed by the flat dead-cooldown gate in TimelineStage, which takes precedence
+        # over the flag, so the un-clearable flag never forces an every-run re-decode.
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+
 
 class TestSilencePlannerAvailability:
     """H16 PR3: the silence decode pass also stamps the durable media-availability verdict."""
@@ -933,6 +1025,27 @@ class TestSilencePlannerAvailability:
             planner.plan(provider, _make_city(), ep, ctx, None)
         assert ep.media_availability is not None
         assert ep.media_availability.state == MISSING and ep.media_availability.is_withheld()
+
+    def test_dead_media_recheck_retains_repair_flag(self):
+        """The lane must NOT clear a repair flag when it classifies an episode dead in-flight
+        (MEDIA_DEAD): the integrity block is audit-owned and a lane-side clear would not persist, so
+        the flat dead-cooldown gate — not flag-clearing — is what prevents every-run re-decode
+        (GH#795). This pins the removed lane-clear at the MEDIA_DEAD path itself."""
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
+
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.side_effect = MediaUnavailable("gone", code=MEDIA_DEAD)
+        ep = _make_episode(duration=3600)
+        set_timeline_audio_integrity(
+            ep,
+            {"status": "rendered-duration-mismatch", "repair": [REPAIR_TIMELINE_REPLAN]},
+        )
+        with patch("citypods.silence.shutil.which", return_value="ffmpeg"):
+            planner.plan(provider, _make_city(), ep, ctx, None)
+        assert ep.media_availability.is_withheld()
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
 
 # ---------------------------------------------------------------------------

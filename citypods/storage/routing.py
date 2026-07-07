@@ -28,11 +28,15 @@ from citypods.storage.base import StorageBackend
 #   - ``work-leases/`` (H17 PR4): the Stage-2 per-item competitive-claim ledger (review/18 §4); each
 #     ``work-leases/<source>/<uid>.json`` is an independent CAS object. Derived/GET by key, never
 #     listed (listing is a Class-A op on R2).
+#   - ``state/asr_worker_telemetry.json`` (H14b/H14c): bounded, non-secret worker memory samples
+#     used by ``asr-worker-report`` and H14d admission tuning. One fixed CAS object avoids listing
+#     a telemetry prefix on R2.
 #   - ``provider-leases/`` (H17 PR6): the cross-process provider concurrency slots; each
 #     ``provider-leases/<domain>/slot-<i>.json`` is an independent CAS object claimed by
 #     ``put_cas``. Slot keys are derived (``0..N-1``), never listed.
 COORDINATION_PREFIXES: tuple[str, ...] = (
     "state/compute_budget.json",
+    "state/asr_worker_telemetry.json",
     "work-leases/",
     "provider-leases/",
 )
@@ -104,6 +108,11 @@ class RoutingStorage:
         if self._is_coordination(key):
             self._class_b += 1
         return self._route(key).get_file(key, local_path)
+
+    def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        if self._is_coordination(key):
+            self._class_b += 1
+        return self._route(key).get_range(key, start, end)
 
     def list_objects(self, prefix: str = ""):
         """List under ``prefix`` on the single backend that owns it — **namespace-scoped**.

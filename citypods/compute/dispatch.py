@@ -373,7 +373,11 @@ def reconcile_compute(
     # Candidates are the not-yet-done transcript-asr items, so the sweep tracks backlog, not all.
     leases = {"completed": 0, "requeued": 0, "in_flight": 0}
     if cas and sweep_work_leases:
+        from citypods.compute.budget import release_reservation, settle_reservation
         from citypods.ops.work_leases import reap as reap_work_leases
+
+        def _backend(owner: str) -> str:
+            return owner.split(":", 1)[0]
 
         candidates = [
             (wi.source_key, wi.episode_uid)
@@ -384,6 +388,8 @@ def reconcile_compute(
             storage,
             candidates,
             artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+            on_completed=lambda owner: settle_reservation(storage, owner, _backend(owner), now=now),
+            on_requeued=lambda owner: release_reservation(storage, owner, _backend(owner), now=now),
             now=now,
         )
     return {"reaped": reaped, "settled": settled, "in_flight": in_flight, "leases": leases}

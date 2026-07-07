@@ -40,7 +40,14 @@ from pathlib import Path
 from typing import Protocol
 
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
-from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
+from citypods.http import (
+    HOST_LIMITER,
+    USER_AGENT,
+    StopRequested,
+    _redact_url,
+    preflight_media_size,
+)
+from citypods.integrity import REPAIR_AUDIO_REMATERIALIZE, needs_timeline_audio_repair
 from citypods.models import City, Episode
 from citypods.progress import PROGRESS
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
@@ -58,7 +65,12 @@ from citypods.resources import (
     current_snapshot,
     format_bytes,
 )
-from citypods.security import redact_subprocess_command, redact_subprocess_text
+from citypods.security import (
+    MediaSourceTooLargeError,
+    SecurityError,
+    redact_subprocess_command,
+    redact_subprocess_text,
+)
 from citypods.storage.base import StorageBackend
 from citypods.timeline import Segment, SourceMedia, Timeline, edl_duration, timeline_digest
 
@@ -86,6 +98,18 @@ _MIN_PLAUSIBLE_AUDIO_BYTES = 4096
 # subprocess ``timeout=`` is the hard backstop that guarantees the worker returns. Both surface as a
 # materialization failure → the #120 backoff, so a chronically-stalling source stops being retried.
 _STALL_TIMEOUT_US = 120_000_000  # ffmpeg aborts after 120s with zero I/O progress (microseconds)
+
+# Media-specific size ceiling (issue #497): ffmpeg reads source media URLs directly via
+# libavformat, bypassing every HTTP-layer byte cap in this codebase (``MAX_RESPONSE_BYTES`` is
+# sized for small feed/JSON/HTML responses, not hours of audio/video — see citypods/security.py).
+# Calibrated 2026-07-02 against the longest known/observed meeting class: the ASR pipeline already
+# assumes up to ``asr_backstop_minutes`` = 350min (5h50m), and a real production Audio run log
+# showed an episode whose 96kbps-capped output lower-bounds its served duration at ~5.2h. Given a
+# very conservative 12h duration ceiling (well above both) and an assumed worst-case 10 Mbps source
+# bitrate (providers serve video containers, not just the audio-only output this codebase can
+# measure): 12h * 10 Mbps / 8 = 54,000,000,000 bytes. Overridable via ``source_media_max_bytes`` in
+# site_config.yml; 0/blank disables the preflight guard entirely.
+DEFAULT_SOURCE_MEDIA_MAX_BYTES = 54_000_000_000
 _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
 # How often the guard wakes to poll the child + sample memory. Kept short so reported ``seconds``
 # reflects the child's *real* runtime: at 5s a fast/throttled fetch that exits in 0.3s was logged as
@@ -215,6 +239,7 @@ def record_materialize_failure(
     code: str,
     *,
     now: datetime | None = None,
+    spec_hash: str | None = None,
 ) -> None:
     """Persist one direct materialization failure on an episode.
 
@@ -225,6 +250,7 @@ def record_materialize_failure(
     ep.materialize_attempts += 1
     ep.materialize_last_attempt = (now or datetime.now(UTC)).isoformat()
     ep.materialize_error = code
+    ep.materialize_error_spec_hash = spec_hash
 
 
 def _rate_limited_status(stderr: bytes | str | None) -> str | None:
@@ -683,6 +709,7 @@ def _download_audio(
     log: Callable[[str], None] | None = print,
     transport_telemetry: ProviderTransportTelemetry | None = None,
     stop: Callable[[], bool] | None = None,
+    max_media_bytes: int | None = None,
 ) -> bool:
     """Copy the source audio stream from *url* to *dest* without re-encoding.
 
@@ -692,7 +719,27 @@ def _download_audio(
 
     The source cache uses a Matroska audio container so it can preserve common provider codecs
     (AAC, MP3, MP2, PCM, AC-3, etc.) without pretending they are already podcast-ready M4A files.
+
+    ``max_media_bytes`` (issue #497): before ffmpeg starts, preflight the source's advertised size
+    (HEAD, falling back to a ranged GET) and refuse a source that *honestly discloses* a size over
+    this ceiling — ffmpeg reads ``url`` directly via libavformat, bypassing every other byte cap in
+    this codebase, so this is the only guard on it. Raises :class:`MediaSourceTooLargeError`
+    (never returns False for this case) so the caller cannot silently fall back to streaming the
+    same oversized URL unguarded. Skipped for a truncated (``max_seconds``) probe fetch, which is
+    already bounded regardless of the source's real size.
     """
+    if max_media_bytes and not max_seconds:
+        preflight = preflight_media_size(url, max_media_bytes)
+        _log_ffmpeg_event(
+            log,
+            f"[enrich] media preflight {preflight.status} url={_redact_url(url)} "
+            f"content_length={preflight.content_length} cap={max_media_bytes}",
+        )
+        if preflight.status == "known_too_large":
+            raise MediaSourceTooLargeError(
+                f"source {_redact_url(url)} advertises {preflight.content_length} bytes, "
+                f"exceeds media cap {max_media_bytes}"
+            )
     cmd = [
         ffmpeg_binary,
         "-y",
@@ -731,6 +778,30 @@ def _download_audio(
         raise
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
         return False
+
+
+def _preflight_remote_source(url: str, max_media_bytes: int | None) -> None:
+    """Reject a remote source URL up front (issue #497) before a *direct* ffmpeg/ffprobe read.
+
+    ``_download_audio``'s preflight only covers the source-cache path. The identity/filter render
+    paths (:meth:`CommandFfmpeg._render_identity` / ``_render_filter``) invoke ffmpeg on a remote
+    URL directly whenever no local source-cache copy exists yet (dry-run, a failed/skipped cache
+    fetch, or a multi-source concat that fell back) — the exact "direct remote render path" #497
+    calls out as needing the same guard. No-op for a local (already-cached) path.
+    """
+    if not max_media_bytes or not url.startswith(("http://", "https://")):
+        return
+    preflight = preflight_media_size(url, max_media_bytes)
+    print(
+        f"[enrich] media preflight {preflight.status} url={_redact_url(url)} "
+        f"content_length={preflight.content_length} cap={max_media_bytes}",
+        flush=True,
+    )
+    if preflight.status == "known_too_large":
+        raise MediaSourceTooLargeError(
+            f"source {_redact_url(url)} advertises {preflight.content_length} bytes, "
+            f"exceeds media cap {max_media_bytes}"
+        )
 
 
 def _concat_local_sources(
@@ -818,6 +889,7 @@ class SourceCache:
         memory_floor_bytes: int | None = None,
         transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
+        max_media_bytes: int | None = None,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
         self._paths: dict[str, Path] = {}
@@ -827,6 +899,9 @@ class SourceCache:
         self.timeout_seconds = timeout_seconds
         self.memory_floor_bytes = memory_floor_bytes
         self.transport_telemetry = transport_telemetry
+        # Media-specific size ceiling (issue #497), separate from any HTTP response cap — see
+        # ``config.source_media_max_bytes``. None/0 disables the preflight guard.
+        self.max_media_bytes = max_media_bytes
         # Shared run-budget predicate (set once for the whole run); lets a caller queued behind
         # another thread's fetch of the same uid yield once the budget expires instead of waiting
         # out that fetch's full timeout.
@@ -873,6 +948,7 @@ class SourceCache:
                 self.memory_floor_bytes,
                 transport_telemetry=self.transport_telemetry,
                 stop=self._stop,
+                max_media_bytes=self.max_media_bytes,
             ):
                 self._paths[uid] = dest
                 return dest
@@ -1353,6 +1429,7 @@ class CommandFfmpeg:
         finalize_workers: int = 0,
         transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
+        max_media_bytes: int | None = None,
     ):
         self.binary = binary
         self.max_kbps = max_kbps
@@ -1366,6 +1443,9 @@ class CommandFfmpeg:
         self.phase_gate = phase_gate
         self.transport_telemetry = transport_telemetry
         self.manages_audio_phases = phase_gate is not None
+        # Media-specific size ceiling (issue #497) for remote sources this runner reads directly
+        # (the identity/filter render paths below, used when no source-cache copy exists yet).
+        self.max_media_bytes = max_media_bytes
         # Shared run-budget predicate; used for the pre-subprocess coordination waits (phase-gate
         # slot, per-host rate limit, distributed lease) so a queued encode yields once the run's
         # wall-clock budget expires instead of waiting out the queue. The ffmpeg subprocess call
@@ -1459,6 +1539,7 @@ class CommandFfmpeg:
         chapters: list[dict] | None = None,
     ) -> None:
         source_url = next(iter(sources_by_id.values()))
+        _preflight_remote_source(source_url, self.max_media_bytes)
         probe_timeout = (
             None if self.timeout_seconds is None else min(self.timeout_seconds, _PROBE_TIMEOUT_S)
         )
@@ -1562,6 +1643,12 @@ class CommandFfmpeg:
                 source_ids.append(seg.source_id)  # type: ignore[arg-type]
         if not source_ids:
             source_ids = [next(iter(sources_by_id))]
+
+        # Multi-source concat can fall back to streaming remote URLs directly (no source-cache
+        # copy) — same direct-remote-read gap as the identity path, so every source this render
+        # will actually read gets the same preflight (issue #497); no-op for cached local paths.
+        for sid in source_ids:
+            _preflight_remote_source(sources_by_id[sid], self.max_media_bytes)
 
         source_input_idx = {sid: i for i, sid in enumerate(source_ids)}
         next_idx = len(source_ids)
@@ -2038,6 +2125,111 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
 
 
 # ---------------------------------------------------------------------------
+# Header-only duration probe (range reads, no full download)
+# ---------------------------------------------------------------------------
+#
+# Every hosted episode is a single-moov MP4/M4A written by this project's own ffmpeg finalize
+# pass with ``-movflags +faststart`` (moov before mdat) — see the encode call sites in this
+# module. ``format.duration`` and the stream's ``duration_ts``/``time_base`` (the exact fields
+# ``_probe_audio_duration_details`` reads) live entirely in ``moov``; ffprobe never touches
+# ``mdat`` to answer that query, whether it's given the whole file or just the header. So
+# fetching only ``ftyp``+``moov`` via range reads yields bit-identical values to a full
+# download, at a fraction of the bytes (moov is typically well under 1% of file size). See
+# review's timeline-audio-integrity notes for the empirical check that backs this claim, and
+# ``check_timeline_integrity``'s ``probe_audio_full`` reconciliation for the ongoing guard.
+
+# First range read when locating `moov`. Comfortably covers `ftyp`+`moov` for most episodes in
+# one round trip; `moov` grows with episode length (its per-frame stsz/stco tables dominate), so
+# the longest meetings need a second, exactly-sized read (see ``_fetch_mp4_header``).
+_MP4_INITIAL_RANGE_BYTES = 65536
+
+# Sanity cap on a claimed `moov` size before trusting it enough to issue the second range read.
+# Guards against parsing garbage as a box header (a non-MP4 or corrupt object) and turning that
+# into an unbounded fetch — if the declared size is implausible, fall back to a full download.
+_MP4_MAX_MOOV_BYTES = 32 * 1024 * 1024
+
+
+def _mp4_moov_extent(buf: bytes) -> tuple[int, int] | None:
+    """Scan top-level MP4 box headers in a *prefix* of a file to find ``moov``'s exact
+    ``[start, end)`` byte extent.
+
+    Returns ``None`` when ``moov``'s header isn't present in ``buf`` yet (need a larger initial
+    read), or a box with an unresolvable size (0-sized "extends to EOF", or malformed) is hit
+    before ``moov`` is found — e.g. ``mdat`` appears first, meaning the object was not written
+    moov-before-mdat and this fast path does not apply.
+    """
+    pos = 0
+    n = len(buf)
+    while pos + 8 <= n:
+        size = int.from_bytes(buf[pos : pos + 4], "big")
+        box_type = buf[pos + 4 : pos + 8]
+        header_len = 8
+        if size == 1:
+            if pos + 16 > n:
+                return None  # 64-bit largesize field not fully read yet
+            size = int.from_bytes(buf[pos + 8 : pos + 16], "big")
+            header_len = 16
+        if box_type == b"moov":
+            if size < header_len:
+                return None
+            return pos, pos + size
+        if size == 0 or size < header_len:
+            return None  # box extends to EOF, or malformed — not resolvable from a prefix
+        pos += size
+    return None
+
+
+def _fetch_mp4_header(get_range: Callable[[int, int], bytes | None]) -> bytes | None:
+    """Fetch just the ``ftyp``+``moov`` bytes of an MP4/M4A object via ``get_range(start, end)``
+    (inclusive byte offsets, HTTP Range semantics), or ``None`` if that isn't possible.
+
+    At most two range reads: an initial chunk to locate ``moov``'s header, and — only if
+    ``moov`` extends past that chunk — one more sized exactly to its declared length. Never
+    reads ``mdat``.
+    """
+    buf = get_range(0, _MP4_INITIAL_RANGE_BYTES - 1)
+    if not buf:
+        return None
+    extent = _mp4_moov_extent(buf)
+    if extent is None:
+        return None
+    start, end = extent
+    if end <= len(buf):
+        return buf[:end]
+    if end - start > _MP4_MAX_MOOV_BYTES:
+        return None
+    rest = get_range(len(buf), end - 1)
+    if not rest:
+        return None
+    header = buf + rest
+    if len(header) < end:
+        return None  # short second read (e.g. a truncated/corrupt object) — don't trust it
+    return header[:end]
+
+
+def _probe_audio_duration_header(
+    get_range: Callable[[int, int], bytes | None],
+    ffmpeg_binary: str = "ffmpeg",
+) -> AudioDurationProbe | None:
+    """Header-only variant of :func:`_probe_audio_duration_details`: fetches only the
+    ``ftyp``/``moov`` boxes (via range reads, see :func:`_fetch_mp4_header`) instead of
+    downloading the whole object, then runs the identical ffprobe query against just those
+    bytes.
+
+    Returns ``None`` (not an error probe) when the header can't be isolated this way — e.g. the
+    object isn't moov-before-mdat, or a range read failed — so the caller falls back to a full
+    download + :func:`_probe_audio_duration_details` instead of reporting a false result.
+    """
+    header = _fetch_mp4_header(get_range)
+    if header is None:
+        return None
+    with tempfile.TemporaryDirectory() as t:
+        dest = Path(t) / "header.m4a"
+        dest.write_bytes(header)
+        return _probe_audio_duration_details(dest, ffmpeg_binary=ffmpeg_binary)
+
+
+# ---------------------------------------------------------------------------
 # Materialization stats + pipeline
 # ---------------------------------------------------------------------------
 
@@ -2226,12 +2418,22 @@ def _concat_render_timeline(
 
 
 def _served_duration(ep: Episode) -> float | None:
-    """The EDL (cue) clock for an edited episode, or the source duration as a fallback.
+    """The EDL (cue) clock when a timeline plan exists, or the source duration as a fallback.
 
-    For a manipulated episode this returns the EDL/cue clock (the planned served length),
-    derived through the single :func:`citypods.timeline.edl_duration` primitive rather than a
-    local re-implementation. For identity episodes (no timeline / digest ``""``) it falls back
-    to ``ep.duration`` (the *source* duration, which equals the served length there).
+    Derived through the single :func:`citypods.timeline.edl_duration` primitive rather than a
+    local re-implementation, for both edited *and* identity timelines. An identity timeline
+    still carries one real, already-known full-span segment
+    (:func:`citypods.timeline.identity_timeline` / ``_is_identity``) from the same
+    silence-planning pass that already downloaded and analyzed the source — ``edl_duration``
+    reads it correctly either way. Gating on
+    ``timeline_digest(tl, ep.sources) != ""`` here would be a bug: that empty-string sentinel is a
+    cache-invalidation signal ("no edits, so don't force a re-encode"), not a "no duration data"
+    signal, and using it as one silently discarded an already-known length in favor of
+    ``ep.duration`` (raw provider-reported source duration) — frequently unpopulated for
+    providers that never advertise a meeting length in feed metadata (e.g. Granicus), leaving
+    ``audio_duration_served`` permanently unknown for otherwise-fully-processed episodes. Only a
+    genuinely absent timeline (no plan ever ran — true legacy v1 records) falls back to
+    ``ep.duration``.
 
     NOTE (review/20): the value this returns is the **EDL** clock, not the probed hosted-stream
     duration. It is still acceptable as a backfill estimate for ``audio_duration_served`` *when
@@ -2239,8 +2441,12 @@ def _served_duration(ep: Episode) -> float | None:
     makes the probed hosted-stream duration authoritative for ``audio_duration_served`` so the
     EDL and the real enclosure can no longer be conflated by construction."""
     tl = ep.timeline
-    if tl is not None and timeline_digest(tl, ep.sources) != "":
-        return edl_duration(tl)
+    if tl is not None and tl.segments:
+        # edl_duration can itself return None (a degenerate zero/negative-span timeline) even
+        # with non-empty segments — fall through to ep.duration rather than propagating that.
+        from_edl = edl_duration(tl)
+        if from_edl is not None:
+            return from_edl
     if ep.duration is None:
         return None
     duration = float(ep.duration)
@@ -2441,6 +2647,7 @@ def materialize_audio(
         ep.materialize_attempts = 0
         ep.materialize_last_attempt = None
         ep.materialize_error = None
+        ep.materialize_error_spec_hash = None
         _backfill_served_duration(ep)
 
     for ep in episodes:
@@ -2455,6 +2662,7 @@ def materialize_audio(
             ep.materialize_attempts = 0
             ep.materialize_last_attempt = None
             ep.materialize_error = None
+            ep.materialize_error_spec_hash = None
 
         spec = audio_spec_hash(
             ep,
@@ -2507,7 +2715,11 @@ def materialize_audio(
 
         # Recently-failed episodes back off (exponential) so a permanently-broken source (e.g. a
         # Swagit meeting with no usable media — #120) stops re-trying and churning budget/time.
-        if _in_backoff(ep, now):
+        repair_spec_changed = (
+            needs_timeline_audio_repair(ep, REPAIR_AUDIO_REMATERIALIZE)
+            and ep.materialize_error_spec_hash != spec
+        )
+        if _in_backoff(ep, now) and not repair_spec_changed:
             if audio_artifact_cache is not None:
                 audio_artifact_cache.abort(cache_key)
             _log_audio_defer(
@@ -2517,6 +2729,14 @@ def materialize_audio(
                 detail=f"attempts={ep.materialize_attempts}",
             )
             continue
+        if repair_spec_changed and ep.materialize_attempts > 0:
+            print(
+                f"[enrich] audio repair retry bypassed stale backoff slug={city.slug} "
+                f"provider={city.provider} source={src_key} uid={uid} "
+                f"old_error_spec={ep.materialize_error_spec_hash or 'unknown'} "
+                f"new_spec={spec} attempts={ep.materialize_attempts}",
+                flush=True,
+            )
 
         canonical_source = (
             audio_artifact_cache.canonical_source(city.provider, src_key, uid)
@@ -2695,6 +2915,7 @@ def materialize_audio(
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None
             ep.materialize_error = None
+            ep.materialize_error_spec_hash = None
             if audio_artifact_cache is not None and cache_key is not None:
                 audio_artifact_cache.complete(cache_key, _artifact(ep))
                 cache_completed = True
@@ -2719,7 +2940,14 @@ def materialize_audio(
             subprocess.CalledProcessError,
             OSError,
             ProviderError,
+            SecurityError,
         ) as exc:
+            # SecurityError here is specifically MediaSourceTooLargeError (issue #497): the source
+            # preflight rejected an honestly-oversized media URL before ffmpeg started. It must
+            # land in the same backoff path as any other encode error, never a silent retry with
+            # an unguarded direct stream — record_materialize_failure below + the "media-too-large"
+            # `.code` is what lets citypods.audit.check_media_too_large surface it as a visible,
+            # human-reviewed finding instead of generic retry noise.
             if isinstance(exc, TruncatedAudioError) and transport_telemetry is not None:
                 transport_telemetry.record_truncation(source_urls)
             if isinstance(exc, RateLimitedMediaFetchError):
@@ -2736,6 +2964,7 @@ def materialize_audio(
                 if isinstance(exc, subprocess.TimeoutExpired)
                 else getattr(exc, "code", None) or "error",
                 now=now,
+                spec_hash=spec,
             )
             with stats_lock:
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")

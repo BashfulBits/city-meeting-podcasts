@@ -1961,7 +1961,9 @@ sticky-Worker routing choice remains open.
 
 **Maturity: L3** (finalized benchmark scope below). Measures the three built execution homes
 (local-sharded H6b + Modal H14b + Beam H14c) for combined free-tier transcript ceiling and diarization
-cost, guiding the decision to adopt paid backends for 1.0 launch.
+cost, guiding the decision to adopt paid backends for 1.0 launch. Final GPU-type profiling is gated on
+H14d's memory telemetry/admission work so the benchmark measures tuned worker behavior rather than
+avoidable OOM/preemption retries.
 
 **Benchmark scope (fixed, reproducible):**
 
@@ -2020,46 +2022,67 @@ The measured recommendation must also decide:
 
 **Acceptance.** For each backend + pipeline, report the measures above with sample counts and confidence
 intervals where meaningful. Record transcript boundary quality and speaker consistency, not only raw
-speed. Write the local-ceiling, preferred-routing, combined-flow, chunk-persistence, and first
+speed. Run final Modal/Beam GPU-type comparisons only after H14d has landed measured memory telemetry,
+initial admission defaults, and the chunking/checkpoint decision record. Write the local-ceiling,
+preferred-routing, combined-flow, chunk-persistence, and first
 paid/self-hosted decisions in `review/12 §H9`; update ARCHITECTURE.md only with capabilities actually
 measured and shipped.
 
 ---
 
-## H14b — Modal transcription adapter (Async dispatch backend)
+## H14b — Modal transcription pull worker (Async GPU backend)
 
-**Maturity: L3** (finalized implementation details below). Implements the H13 `Backend` protocol for
-Modal serverless GPU, dispatching transcription (and future diarization) jobs asynchronously.
+**Maturity: L3** (finalized implementation details below). Implements the H17/review/18 Stage-2
+pull-worker contract for Modal serverless GPU. The older H14a `DispatchBackend` remains the internal
+GitHub-worker dispatch substrate; Modal/Beam workers are not passive jobs pushed by `asr.yml`.
+They read the `work.json` discovery index, CAS-claim `work-leases/<source>/<uid>.json`, reserve the
+Modal budget under the same owner, run inference, write content-addressed artifacts, and commit only
+the owned UID's transcript block.
+
+**Implementation decision (2026-06-29).** H14b is combined-capable but transcribe-only by default:
+`transcript-asr` is the only live claim class. `transcript-diarize` is reserved for future diarize-only
+work over episodes transcribed by GitHub Actions, and fused ASR+diarization remains a worker-internal
+flow once diarization is enabled. The maintainer accepted the `pyannote/speaker-diarization-community-1`
+Hugging Face conditions for that future path, but H14b does not spend pyannote credits or require
+diarization in normal operation.
 
 **Job lifecycle & error handling:**
 
-- **Accepted-job failures** (Modal container crash, timeout, network interruption): automatically retry
-  **once** on the same backend. If the retry also fails, record an actual worker failure and release or
-  re-queue according to the existing lease/backoff policy; content addressing keeps a later retry
-  idempotent.
-- **Dispatch declines** (monthly budget unavailable, in-flight cap reached, missing capability, or
-  pre-acceptance provider unavailability): return declined without marking the transcript failed. The
-  router may try Beam, then an eligible local backend; otherwise the item remains queued.
-- **Graceful cancellation:** If workflow is cancelled or runner dies mid-dispatch, allow Modal jobs to
-  complete silently. The next deploy's `render` phase reconciles any completed artifacts onto the feed.
-  No cancellation API call needed (jobs are content-addressed; re-dispatch is idempotent).
-- **Long audio:** the worker uses the shared bounded-memory planner/stitcher and must pass a canary above
-  the local duration ceiling before catalog-wide enablement.
+- **Accepted-job failures** (Modal container crash, timeout, network interruption): retry **once** on the
+  same backend. If the retry also fails, mark the Stage-2 lease failed so it is not immediately reclaimed;
+  content addressing keeps a later operator retry idempotent.
+- **Budget/capacity declines** (monthly budget unavailable or in-flight cap reached): abandon the fresh
+  claim back to `queued` before inference starts. This is not an ASR failure/backoff event.
+- **Graceful cancellation/preemption:** A killed Modal container leaves an R2 work lease and budget
+  reservation behind. `compute reconcile` settles it if the artifact landed, or releases the reservation
+  and requeues it after lease expiry if it did not. Workers renew leases during long inference.
+- **Long audio:** the initial worker records peak RSS/GPU-VRAM telemetry for long meetings while staying
+  one active job per GPU container. H14d turns those observations into the shared bounded-memory
+  planner/stitcher and must pass a canary above the local duration ceiling before catalog-wide tuning.
 
 **Secrets & configuration:**
 
-- Modal API token: `secrets.MODAL_TOKEN` in GitHub Actions environment.
+- Runtime storage/model secrets live in Modal Secret `citypods-modal-worker`, not GitHub:
+  provider-specific B2 app key + public base URL, R2 API token/access key for the private
+  coordination bucket, and future `HF_TOKEN`. `R2_PUBLIC_BASE_URL` is not required for workers because
+  R2 stores only private CAS coordination objects in the routing setup.
+- GitHub stores only deploy credentials (`MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET`) in the
+  `modal-production` Environment. `.github/workflows/modal-deploy.yml` is path-scoped to worker-affecting
+  files, so a normal `main` merge does not redeploy Modal unless worker code/config changes.
 - Config (per `compute_backends.modal` in `site_config.yml`): `monthly_gpu_seconds` (pin to Modal's
-  current free tier), `max_inflight` (concurrent job limit).
+  current free tier), `max_inflight` (concurrent job limit), `max_claims` (per-run pull cap; env
+  may override temporarily for a canary/manual run).
 
-**Job serialization:** Uses the shared H13 `InferenceJob` format (job `task`, `inputs` audio URL,
-`recipe_hash`, etc.). No Modal-specific serialization needed; the `modal_backend.py` adapter translates
-to Modal's API at dispatch time.
+**Job serialization:** The Modal wrapper is thin (`scripts/compute/modal_app.py`); artifact semantics live
+in `citypods/compute/external_worker.py`. It computes the same ASR recipe/key as the GitHub ASR lane,
+uses the configured ASR compute type for key compatibility, writes VTT + `.words.json`, then pushes
+records through `push_records_merged(..., owned_uids={uid})`.
 
-**Testing:** (1) Mock Modal backend for unit tests (cheap, catches serialization/logic bugs). (2) One
-minimal live integration test on CI (short 5-min audio dispatch) **only when Modal code changes**
-(path filter on `citypods/compute/modal*` + `scripts/compute/modal_app.py`). (3) Production canary:
-after merge, test on 1–2 real backlog files before enabling on full catalog.
+**Testing:** (1) Offline unit tests for lease abandon/reap callbacks, budget settlement, and worker
+record-merge behavior. (2) No live Modal calls in PR CI. (3) Path-scoped deploy from `main` after
+Environment approval. (4) Production canary starts with `compute_backends.modal.max_claims: 1`
+and reports via `asr-worker-report.yml` before raising the schedule/cap; a deploy-time env override
+remains available for one-off manual runs.
 
 **Dispatch priority & budget:** Follow the shared router policy rather than embedding transcript
 semantics in this adapter. Initial policy may prefer Modal or rotate providers, but it must preserve
@@ -2068,59 +2091,62 @@ deadline-, and cost-aware routing. The adapter reports those inputs to the once-
 does not assign shards. An accepted external route contributes fixed dispatch cost to
 `TranscribeShardWork`, while an already leased Modal job contributes zero new shard work.
 
-**Files.** `citypods/compute/modal_backend.py`, `scripts/compute/modal_app.py`,
-`citypods/compute/budget.py` (Modal budget ledger), `.github/workflows/asr.yml` (dispatch + compute
-reconcile), `tests/test_compute_dispatch.py` (mock dispatch, budget tracking), `SECURITY.md` (free-tier
-ToS, external-worker trust boundary).
+**Files.** `citypods/compute/external_worker.py`, `scripts/compute/modal_app.py`,
+`citypods/compute/budget.py`, `citypods/ops/work_leases.py`, `.github/workflows/modal-deploy.yml`,
+`.github/workflows/asr-worker-report.yml`, tests for lease/budget cleanup, `ARCHITECTURE.md`,
+`SECURITY.md`.
 
 **Acceptance.** A Modal job is dispatched successfully; artifact (`<uid>-<recipe>.vtt` +
 `.words.json`) is written to the object bucket by the worker; the next `render` reconciles it onto the
 feed. Budget tracking prevents overage; dispatch decline tries the next eligible route without failure
 backoff; accepted-job failures retry once; workflow cancellation gracefully orphans in-flight jobs;
-a recording above the local ceiling completes through bounded-memory assembly.
+a recording above the local ceiling either completes within measured headroom or remains queued for H14d
+chunk/admission tuning rather than falling back to an unsafe local run.
 
 ---
 
 ## H14c — Beam transcription adapter (Async dispatch backend, parallel with H14b)
 
-**Maturity: L3** (finalized implementation details below). Implements the H13 `Backend` protocol for
-Beam Cloud serverless GPU, dispatching transcription and future diarization jobs asynchronously.
-**Fully parallelizable with H14b** — both are thin wrappers on the same dispatch infrastructure.
+**Maturity: L3** (finalized implementation details below). Implements the same H17/review/18 Stage-2
+pull-worker contract as H14b, using Beam Cloud serverless GPU. H14c is stacked after H14b and reuses
+`citypods/compute/external_worker.py`; Beam-specific code is limited to `scripts/compute/beam_app.py`
+and `.github/workflows/beam-deploy.yml`.
 
-**Job lifecycle & error handling:** Identical to H14b: distinguish pre-acceptance routing declines from
-accepted-job failures, retry an accepted transient failure once, preserve leases/reconciliation, and
-support bounded-memory long audio.
+**Job lifecycle & error handling:** Identical to H14b: claim one `transcript-asr` item, reserve Beam
+budget, renew the lease during long inference, retry an accepted transient failure once, write
+content-addressed VTT + word JSON, and let `compute reconcile` settle/release any reservation left by
+preemption. Budget/capacity decline abandons the fresh claim back to `queued`, not failed.
 
 **Budget tracking:** Separate from Modal. `compute_budget.json` tracks `beam_budget` separately so
 differing credit periods and free-tier allotments can be managed independently. Each provider has its
 own `monthly_gpu_seconds` and `max_inflight`.
 
-**Dispatch & routing:** Participate in the same configured target order as Modal. A Beam budget,
-capacity, or capability decline allows the router to try another external target and then only a
-locally eligible fallback. If no backend is eligible, retain the item as queued (`external-required`
-or a more specific routing reason); do not classify normal free-tier exhaustion as an ASR failure.
-Beam reports capability, budget, and capacity inputs to the once-per-run planner and consumes the
-published assignment; it must not compute source ownership against live state inside a matrix shard.
+**Dispatch & routing:** Beam is not dispatched by `asr.yml`; it is a provider-scheduled puller over the
+same global discovery index/lease ledger. The GitHub ASR lane continues as the local worker pool, while
+Modal and Beam independently drain claimable `transcript-asr` items within their own budgets.
 
-**Secrets & configuration:** Beam API token as `secrets.BEAM_TOKEN` in GitHub Actions. Config per
-`compute_backends.beam` in `site_config.yml`: `monthly_gpu_seconds`, `max_inflight`.
+**Secrets & configuration:** Beam runtime secrets are provider-local and named after their environment
+variables (`B2_*`, `R2_*`, future `HF_TOKEN`). GitHub stores only `BEAM_TOKEN` in the
+`beam-production` Environment for path-scoped deploys. Config per `compute_backends.beam` in
+`site_config.yml`: `monthly_gpu_seconds`, `max_inflight`, `max_claims`.
 
-**Job serialization:** Shares the same H13 `InferenceJob` format as Modal (no conversion logic in
-H14c; serialization happens in the `beam_backend.py` adapter at dispatch time).
+**Job serialization:** Shares H14b's pull-worker artifact semantics; Beam only supplies image, schedule,
+GPU class, and secret binding.
 
-**Testing:** (1) Mock Beam backend for unit tests. (2) One minimal live integration test on CI (short
-5-min audio dispatch) **only when Beam code changes** (path filter on `citypods/compute/beam*` +
-`scripts/compute/beam_app.py`). (3) Production canary: after merge, test on 1–2 real backlog files.
+**Testing:** No live Beam calls in PR CI. Path-scoped deploy from `main` after Environment approval.
+Production starts at `compute_backends.beam.max_claims: 1`; `asr-worker-report.yml` reports Beam
+leases, budget, and completions before raising schedule/cap. A deploy-time env override remains
+available for one-off manual runs.
 
-**Files.** `citypods/compute/beam_backend.py`, `scripts/compute/beam_app.py`, `citypods/compute/budget.py`
-(Beam budget ledger), `.github/workflows/asr.yml` (dispatch + compute reconcile), `tests/test_compute_dispatch.py`
-(mock dispatch, budget tracking), `SECURITY.md` (free-tier ToS).
+**Files.** `scripts/compute/beam_app.py`, `.github/workflows/beam-deploy.yml`, plus H14b's shared
+`citypods/compute/external_worker.py` / budget / work-lease substrate.
 
 **Acceptance.** A Beam job is dispatched successfully; artifact is written to the object bucket by the
 worker; the next `render` reconciles it. Budget tracking is separate from Modal; both backends' budgets
 can be managed independently. Dispatch tries the next configured external backend or an eligible
 `local` based on policy; otherwise work remains queued without transcript failure backoff. A recording
-above the local ceiling completes through the shared bounded-memory assembly path.
+above the local ceiling either completes within measured headroom or remains queued for H14d
+chunk/admission tuning rather than falling back to an unsafe local run.
 
 **Admin dashboard:** Add a prominent **"Free-tier budget remaining"** visual showing:
 - Modal: % of monthly GPU-seconds used
@@ -2130,6 +2156,60 @@ above the local ceiling completes through the shared bounded-memory assembly pat
 This allows the maintainer to see at a glance whether free tiers are near exhaustion, and plan upgrades
 or load reduction accordingly. **No automatic ticket generation on quota exhaustion**—it is expected
 operational behavior, not a code bug.
+
+---
+
+## H14d — GPU worker memory/admission optimization
+
+**Maturity: L3** (implementation-ready after H14b/H14c telemetry is live). H14d converts the initial
+Modal/Beam worker measurements into safe GPU throughput policy before H9 performs final GPU-type
+profiling. The first production posture remains conservative: one active ASR/diarization job per GPU
+container, no Modal per-container input concurrency, and no Beam multi-worker sharing of one GPU until
+repo-owned telemetry proves headroom.
+
+**Research basis.** Modal runs one input per container by default and per-container concurrency is
+opt-in; dynamic batching can improve throughput but must be sized to fit GPU memory. Beam concurrent
+inputs/workers share CPU, RAM, and GPU memory. Faster-whisper batch size increases VRAM use while int8
+lowers memory; this repo's current `list(segments)` whole-file path also grows CPU-side memory for long
+recordings. Therefore H14d should prefer measured admission and chunking before raising concurrency.
+
+**Implementation plan:**
+
+- Persisted H14b/H14c telemetry is the input: per accepted claim, collect backend, GPU class when
+  available from deployment env/log context, model, compute type, task, duration bucket, outcome,
+  elapsed seconds, peak RSS, peak GPU VRAM, and GPU total.
+- Build a telemetry-derived admission model keyed by `(backend, gpu_type, model, compute_type,
+  duration_bucket, task)`. Unknown combinations use the conservative default: admit one job only.
+  Known combinations require a configurable safety margin below both host RAM and GPU VRAM before
+  allowing more work.
+- Treat `compute_backends.<backend>.max_claims` as sequential claims per invocation, not GPU
+  concurrency. Any future Modal `allow_concurrent_inputs`/Beam worker-concurrency setting is a separate
+  H14d-controlled knob and starts disabled for ASR/diarization.
+- Prefer fixed-duration safe chunks for long recordings first, then evaluate silence/VAD-aware chunks.
+  Chunk-local segment/word timestamps must be rebased to the served meeting timeline and stitched into a
+  single VTT + word JSON only after validation succeeds.
+- Keep the worker combined-capable: ASR and diarization can share download/prep/chunk planning, but the
+  ASR transcript remains independently publishable if diarization fails.
+- Add optional per-chunk checkpoint artifacts only if telemetry shows whole-episode retry waste from
+  preemption/OOM is material. Completed chunk artifacts may survive a killed worker; final episode
+  assembly remains all-or-nothing.
+- Do not silently bump `ASR_PIPELINE_VERSION`. If chunking changes output under the same recipe, include
+  chunk planner settings in the ASR recipe or make an explicit version/backfill decision in the PR and
+  changelog.
+
+**Files.** Extend `citypods/compute/worker_telemetry.py`, `citypods/compute/external_worker.py`, the
+shared ASR/chunking helpers, `config/site_config.yml` for documented admission/chunking knobs, and
+`scripts/compute/report_workers.py` for headroom/admission reporting.
+
+**Testing & rollout.** Unit-test admission estimates, unknown-combination conservatism, chunk timestamp
+rebasing/stitch validation, and recipe/version behavior. Production rollout is canary-first: leave
+concurrency at one, gather telemetry on Modal and Beam, enable chunking for long meetings, then consider
+provider-specific concurrency only when measured peak RSS/VRAM leaves comfortable margin. H9 final
+GPU-type profiling starts after this canary record is documented.
+
+**Acceptance.** H14d ships with a reportable memory headroom model, documented default knobs, long-audio
+chunk/admission behavior that avoids known OOM classes, and a clear chunk-persistence decision. No
+transcript or diarization output format change lands without a recipe/version/backfill story.
 
 ---
 

@@ -39,6 +39,7 @@ from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.h16_identity import H16IdentityTracker
 from citypods.http import HOST_LIMITER
 from citypods.media import (
+    DEFAULT_SOURCE_MEDIA_MAX_BYTES,
     CommandFfmpeg,
     FfmpegRunner,
     HostedKeysCache,
@@ -1210,7 +1211,18 @@ def _build_impl(
     # Hard per-encode wall-clock cap: ffmpeg/ffprobe read the (remote) source directly, so a source
     # that stalls would otherwise hang a worker indefinitely — and ``stop()`` can't preempt a thread
     # parked in subprocess.run, so it would pin the whole build until GitHub's 6h cap. 0 = no cap.
-    encode_timeout_min = float(defaults.get("audio_encode_timeout_minutes", 45))
+    # Recalibrated 2026-07-02 (issue #497) from 45min against a very conservative 12h longest-
+    # meeting ceiling (see ``DEFAULT_SOURCE_MEDIA_MAX_BYTES`` in citypods/media.py for how that
+    # figure was derived) and a conservative 20 Mbps floor for a legitimately slow-but-not-stalled
+    # transfer of the new 54 GB size cap: 54e9 bytes * 8 / 20 Mbps = 21,600s ≈ 360min. The
+    # independent ``-rw_timeout``/``_STALL_TIMEOUT_US`` (120s zero-progress) stall detector is the
+    # first line of defense for a truly hung connection; this is the belt-and-suspenders backstop
+    # for a degraded-but-still-progressing one.
+    encode_timeout_min = float(defaults.get("audio_encode_timeout_minutes", 360))
+    # Media-specific size ceiling (issue #497) for direct ffmpeg source fetches — separate from any
+    # HTTP response cap. 0/blank disables the preflight guard.
+    media_max_bytes_raw = defaults.get("source_media_max_bytes", DEFAULT_SOURCE_MEDIA_MAX_BYTES)
+    media_max_bytes = int(media_max_bytes_raw) if media_max_bytes_raw else None
     ffmpeg_threads_raw = defaults.get("audio_ffmpeg_threads")
     if ffmpeg_threads_raw is None:
         ffmpeg_threads = max(1, (os.cpu_count() or 1) // max(1, native_audio_max_active))
@@ -1252,6 +1264,7 @@ def _build_impl(
         finalize_workers=int(defaults.get("audio_finalize_workers", 2)),
         transport_telemetry=_transport_telemetry,
         stop=stop,
+        max_media_bytes=media_max_bytes,
     )
     source_cache = (
         SourceCache(
@@ -1260,6 +1273,7 @@ def _build_impl(
             memory_floor_bytes=getattr(ffmpeg, "memory_floor_bytes", None),
             transport_telemetry=_transport_telemetry,
             stop=stop,
+            max_media_bytes=getattr(ffmpeg, "max_media_bytes", media_max_bytes),
         )
         if not dry_run
         else None

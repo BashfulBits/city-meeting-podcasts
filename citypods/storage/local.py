@@ -45,6 +45,14 @@ class LocalStorage:
         shutil.copyfile(src, local_path)
         return True
 
+    def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        src = self._path(key)
+        if not src.exists():
+            return None
+        with open(src, "rb") as f:
+            f.seek(start)
+            return f.read(end - start + 1)
+
     # --- orphan GC support (optional StorageBackend capability) ---
 
     def list_objects(self, prefix: str = "") -> Iterator[tuple[str, datetime]]:

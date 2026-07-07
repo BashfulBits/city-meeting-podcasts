@@ -10,6 +10,7 @@ from citypods.models import City, Episode
 from citypods.ops.workqueue import (
     BUCKET_DEEP_ARCHIVE,
     BUCKET_FEED_VISIBLE,
+    DURATION_AWARE_WORK_CLASSES,
     BacklogPolicy,
     WorkItem,
     build_manifest,
@@ -252,6 +253,17 @@ def test_long_first_does_not_reorder_audio():
     policy = _policy({"long_first": 4}, {"recency": "desc"})
     # Both fall through long_first's constant rank ⇒ recency alone governs ⇒ newest first.
     assert _uids(order(items, policy)) == ["short_audio", "long_audio"]
+
+
+def test_long_first_includes_reserved_diarize_only_lane():
+    assert "transcript-diarize" in DURATION_AWARE_WORK_CLASSES
+
+    items = [
+        _wi("short", work_class="transcript-diarize", duration_hours=1.0),
+        _wi("long", work_class="transcript-diarize", duration_hours=5.0),
+    ]
+    policy = _policy({"long_first": 4})
+    assert _uids(order(items, policy)) == ["long", "short"]
 
 
 def test_long_first_requires_positive_threshold():
@@ -723,6 +735,7 @@ def test_manifest_save_load_round_trip(tmp_path):
             city_slug="d",
             body="City Council",
             priority_bucket=BUCKET_FEED_VISIBLE,
+            duration_hours=3.25,
             state="queued",
         ),
         WorkItem("s", "u2", "transcript-align", published=None, state="alignment-disabled"),
@@ -732,7 +745,12 @@ def test_manifest_save_load_round_trip(tmp_path):
     assert len(loaded) == 2
     assert loaded[0].episode_uid == "u1" and loaded[0].published == NOW
     assert loaded[0].priority_bucket == BUCKET_FEED_VISIBLE and loaded[0].state == "queued"
+    # ``duration_hours`` must survive the round trip: it feeds ``long_first`` and the report
+    # duration-band, both of which read it back off the persisted manifest. Dropping it here reset
+    # every reloaded item to 0.0h ("unknown duration") regardless of the real served length.
+    assert loaded[0].duration_hours == pytest.approx(3.25)
     assert loaded[1].published is None and loaded[1].state == "alignment-disabled"
+    assert loaded[1].duration_hours == 0.0
 
 
 def test_load_manifest_absent_returns_empty(tmp_path):

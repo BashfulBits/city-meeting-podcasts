@@ -23,9 +23,12 @@ import re
 import shutil
 import subprocess
 from fractions import Fraction
+from pathlib import Path
+from urllib.parse import urlparse
 
 from citypods.availability import is_effectively_silent
 from citypods.http import USER_AGENT, StopRequested
+from citypods.integrity import REPAIR_TIMELINE_REPLAN, needs_timeline_audio_repair
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 
 DEFER_CACHE_UNAVAILABLE = "deferred_cache_unavailable"
@@ -41,6 +44,45 @@ def _defer_timeline_plan(ep, reason: str, *, failure_code: str | None = None) ->
         from citypods.media import record_materialize_failure
 
         record_materialize_failure(ep, failure_code)
+
+
+def _describe_media_locator(locator: str) -> str:
+    """Stable, log-safe locator summary without query tokens."""
+    if not locator:
+        return "unknown"
+    if locator.startswith(("http://", "https://")):
+        parsed = urlparse(locator)
+        tail = Path(parsed.path).name or parsed.path or "/"
+        return f"{parsed.scheme}://{parsed.netloc}/{tail.lstrip('/')}"
+    path = Path(locator)
+    return str(path)
+
+
+def _local_file_snapshot(path: str) -> str:
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return f"path={Path(path).name} bytes=unknown"
+    return f"path={Path(path).name} bytes={stat.st_size}"
+
+
+def _silence_summary(silences: list[tuple[float, float]], *, limit: int = 3) -> str:
+    if not silences:
+        return "count=0 total=0.000s longest=0.000s spans=none"
+    total = sum(max(0.0, end - start) for start, end in silences)
+    longest = max(max(0.0, end - start) for start, end in silences)
+    spans = ", ".join(f"{start:.3f}-{end:.3f}" for start, end in silences[:limit])
+    if len(silences) > limit:
+        spans += ", ..."
+    return f"count={len(silences)} total={total:.3f}s longest={longest:.3f}s spans={spans}"
+
+
+def _source_context(source_url: str, detect_url: str, silences: list[tuple[float, float]]) -> str:
+    return (
+        f"source={_describe_media_locator(source_url)} "
+        f"cache={_local_file_snapshot(detect_url)} "
+        f"silences={_silence_summary(silences)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -425,10 +467,21 @@ class SilencePlanner:
     ``version`` bumped 1->2 (audio workflow review, 2026-06) to re-examine episodes that may
     already carry a degenerate stamped timeline from before ``is_degenerate_served_duration``
     existed — a one-time full-catalog re-trim, bounded as always by the enrich wall-clock window.
+
+    ``version`` bumped 2->3 (GH#702 PR6) so every single-file silence EDL is re-planned against the
+    source *stream-sample* clock that ``plan`` now measures (PR2), eliminating the last
+    container-basis EDLs whose tail over-claimed the real audio. NOTE: ``Timeline.version`` is part
+    of ``timeline_digest`` (and therefore ``audio_spec_hash``), so this re-encodes **every**
+    single-file silence episode — not only the gap-affected cohort — and regenerates their
+    transcripts. That cost is intentional (a uniform, permanently-correct catalog) but large, so
+    this bump was held behind the review/20 runbook's GH#702 PR6 merge thresholds (cohort proven
+    clean, cost accepted, stragglers triaged) before landing. Bounding the re-encode to only gap
+    episodes is not possible without removing ``version`` from the digest, which would break the
+    version-bump-forces-re-encode contract and is out of scope here.
     """
 
     name = "silence"
-    version = "2"
+    version = "3"
 
     def plan(self, provider, city, ep, ctx, current: Timeline | None) -> Timeline | None:
         from citypods.providers.base import MEDIA_DEAD, MediaUnavailable, ProviderError
@@ -521,6 +574,11 @@ class SilencePlanner:
         # clear a known-good episode, and it cannot author an audio-affecting EDL.
         probed_duration = decoded_duration
         if probed_duration is None:
+            print(
+                f"[enrich] silence planner decode unavailable uid={ep.uid or ep.guid} "
+                f"{_source_context(source_url, detect_url, silences)}",
+                flush=True,
+            )
             _stamp_availability(ep, "transport_failed", profile)
             _defer_timeline_plan(ep, DEFER_DECODE_UNAVAILABLE, failure_code="timeline-decode")
             return None
@@ -575,17 +633,37 @@ class SilencePlanner:
             min_fraction=ctx.silence_min_served_fraction,
         ):
             served_total = tl.segments[-1].served_end if tl.segments else 0.0
+            current_version = current.version if current is not None else "none"
+            existing_basis = existing_src.duration_basis if existing_src is not None else "none"
+            container_label = (
+                f"{_container_duration:.3f}s" if _container_duration is not None else "None"
+            )
+            decoded_label = f"{decoded_duration:.3f}s" if decoded_duration is not None else "None"
+            repair_selected = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
             print(
                 f"[enrich] silence planner rejected degenerate timeline uid={ep.uid or ep.guid} "
                 f"served_total={served_total:.3f}s source_duration={source_duration:.1f}s "
-                "— likely a bad/truncated source probe, not a real near-total silence wipeout",
+                "— likely a bad/truncated source probe, not a real near-total silence wipeout; "
+                f"{_source_context(source_url, detect_url, silences)} "
+                f"current_timeline={current_version} "
+                f"existing_basis={existing_basis} "
+                f"repair_selected={repair_selected} "
+                f"container_duration={container_label} "
+                f"decoded_duration={decoded_label} "
+                f"kept_segments={len(tl.segments)}",
                 flush=True,
             )
             if current is not None:
+                if repair_selected:
+                    # The canary repair path has already proven the prior EDL is bad. Do not keep
+                    # serving it as "current" when the fresh decoded plan is withheld as degenerate;
+                    # let media availability/deferred state own the episode until it recovers.
+                    ep.timeline = None
                 _defer_timeline_plan(
                     ep, DEFER_DEGENERATE_TIMELINE, failure_code="timeline-degenerate"
                 )
-                return None  # preserve the prior (non-degenerate) timeline as-is
+                # Preserve ordinary prior timelines; repair-selected bad EDLs are cleared above.
+                return None
             _defer_timeline_plan(ep, DEFER_DEGENERATE_TIMELINE, failure_code="timeline-degenerate")
             return None
 

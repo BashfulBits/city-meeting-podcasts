@@ -1,0 +1,52 @@
+name: Deploy Beam Worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "citypods/compute/**"
+      - "citypods/ops/work_leases.py"
+      - "citypods/asr.py" # image bakes the pinned model by importing this at build
+      - "config/site_config.yml"
+      - "constraints/asr.txt" # image installs pinned deps from this
+      - "pyproject.toml"
+      - "scripts/compute/**"
+      - ".github/workflows/beam-deploy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: beam-production
+    env:
+      BEAM_TOKEN: ${{ secrets.BEAM_TOKEN }}
+      CITYPODS_BEAM_APP: citypods-beam-worker
+      CITYPODS_BEAM_GPU: A10G
+      CITYPODS_BEAM_SCHEDULE: "@daily"
+      CITYPODS_WORKER_LEASE_TTL_SECONDS: "72000"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Beam CLI
+        # beta9==0.1.253 (forced by beam-client==0.2.198) imports `packaging` in its CLI
+        # (beam/cli/utils.py) but omits it from its own declared dependencies -- an upstream
+        # metadata bug (confirmed: still the latest release on PyPI as of this fix, so it is
+        # not specific to pinning). Installed explicitly, pinned to the same version already
+        # used elsewhere in the repo (constraints/*.txt) for consistency. See GH#812.
+        run: python -m pip install "beam-client==0.2.198" "packaging==26.2" # pinned for reproducible deploys (Renovate-tracked)
+
+      - name: Configure Beam CLI
+        run: beam configure default --token "$BEAM_TOKEN"
+
+      - name: Deploy Beam pull worker
+        run: beam deploy scripts/compute/beam_app.py:run_scheduled

@@ -43,8 +43,10 @@ WORK_CLASSES = (
     "provider-transcript-align",
     "provider-transcript-diarize",
 )
-# Reserved — recognized but not emitted in H5 (reserve-now, no migration later).
-RESERVED_WORK_CLASSES = ("transcript-merge",)
+# Reserved — recognized but not emitted yet (reserve-now, no migration later).
+# ``transcript-diarize`` is the future diarize-only queue for episodes whose transcript was
+# produced by the GitHub ASR lane; external GPU workers will claim it once diarization is enabled.
+RESERVED_WORK_CLASSES = ("transcript-merge", "transcript-diarize")
 
 # Work classes the ``long_first`` comparator (H13/H14) is allowed to reorder: every
 # transcript-producing lane, since those are the ones a capped *external* GPU free tier is the
@@ -52,9 +54,11 @@ RESERVED_WORK_CLASSES = ("transcript-merge",)
 # refuses it outright — ``stages._asr_local_duration_eligible``). ``audio`` is deliberately
 # excluded: it is not capacity-gated by duration the same way (a long encode gets a bigger memory
 # reservation, never a refusal), so reordering it would just delay publishing the common case of
-# short meetings with no corresponding benefit. ``transcript-merge`` is included for forward
-# compatibility even though H5 does not yet emit it.
-DURATION_AWARE_WORK_CLASSES = (frozenset(WORK_CLASSES) - {"audio"}) | {"transcript-merge"}
+# short meetings with no corresponding benefit. Reserved transcript lanes are included for forward
+# compatibility even though H5 does not yet emit them.
+DURATION_AWARE_WORK_CLASSES = (frozenset(WORK_CLASSES) - {"audio"}) | frozenset(
+    RESERVED_WORK_CLASSES
+)
 
 # Priority buckets. feed-visible ≡ materialized today, so the archive buckets are
 # reserved-but-inert until the opt-in archive-backfill feature populates them (review/12 §H5).
@@ -591,6 +595,13 @@ def _workitem_to_dict(wi: WorkItem) -> dict:
         "city_slug": wi.city_slug,
         "body": wi.body,
         "priority_bucket": wi.priority_bucket,
+        # ``duration_hours`` is a computed ordering input (from ``audio.duration_served``), not an
+        # inert reserved field: ``long_first`` (H13/H14) and the report duration-band read it back
+        # off the persisted manifest, so it must round-trip. Omitting it silently reset every
+        # reloaded item to 0.0h — which read as "unknown duration," stalling ``long_first`` and
+        # making 100% of the feed-visible transcript-asr backlog look length-unknown even though
+        # the records carried a real served duration.
+        "duration_hours": wi.duration_hours,
         "state": wi.state,
         "stage_version": wi.stage_version,
         "input_hashes": list(wi.input_hashes),
@@ -612,6 +623,7 @@ def _workitem_from_dict(d: dict) -> WorkItem:
         city_slug=d.get("city_slug", ""),
         body=d.get("body", ""),
         priority_bucket=d.get("priority_bucket", BUCKET_FEED_VISIBLE),
+        duration_hours=float(d.get("duration_hours", 0.0)),
         state=d.get("state", "queued"),
         stage_version=d.get("stage_version", ""),
         input_hashes=tuple(d.get("input_hashes") or ()),

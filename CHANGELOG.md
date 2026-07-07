@@ -19,9 +19,230 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 - **Austin, TX coverage via Swagit.** Added Austin entity config plus City Council, work session,
   special/budget, Austin Housing Finance Corporation, and active board/commission feeds whose official
   Austin boards list has a matching non-empty Swagit historical subcategory.
+- **`citypods compute reclaim-transcript --source-key SK --episode-uid UID [--write]`.** Recovery
+  tool for the class of loss #833 fixed: an ASR artifact (VTT + words JSON) already uploaded to
+  storage, but the record's `transcript` block never got updated to reference it — the lease
+  reaper infers `done` from artifact presence, so nothing else would ever retry it. Recomputes the
+  same recipe hash the original transcribing worker used (`_asr_recipe_hash`, deterministic from
+  the current city config + episode fields) and re-attaches the existing keys if present — it
+  never re-transcribes. Dry-run by default (reports what it found); `--write` pushes the fix
+  through the same owned-block-scoped `push_records_merged` path a real worker uses.
 
 ### Fixed
 
+- **Work-manifest persistence dropped `duration_hours`, making 100% of the feed-visible
+  transcript-asr backlog read as unknown-duration.** `_workitem_to_dict` / `_workitem_from_dict`
+  serialized every `WorkItem` field *except* `duration_hours` — a computed ordering input (from
+  `audio.duration_served`), not one of the inert reserved fields. `build_manifest` set it correctly
+  in memory, but `save_manifest`→`load_manifest` silently reset it to `0.0` on every round trip, so
+  every consumer that reads the persisted `state/work.json` (the `long_first` comparator, the
+  `asr-worker-report` duration band) saw *unknown duration* for the entire backlog even though the
+  records carried a real served duration (confirmed by the pending-unknown diagnostic: 2292/2391
+  sampled records had `audio.duration_served` populated while the manifest reported them all as 0h).
+  This is what made `long_first` float nothing and kept the duration band pinned at 2393/2393
+  unknown across every rebuild. `duration_hours` now round-trips; the manifest self-heals on the
+  next `build_manifest`+`save_manifest` (no backfill needed — it is rederived from records each run).
+- **Owned-block merge: a better remote plan no longer silently drops an owning lane's just-written
+  artifact.** `_preserve_remote_planning_if_better` (part of `merge_preserving_foreign`) overwrote
+  *all* artifact blocks — including `transcript` — from remote whenever remote's timeline/source
+  planning rank was strictly better than the pushing worker's snapshot, bypassing the
+  `protected`/`owned_uids` scoping the rest of the merge respects. When remote had no value for that
+  block, it was popped. Surfaced on GH#831's first long ( ~6.6h ) Modal canary: the worker reported
+  `completed: 1` and its VTT/words artifact was uploaded, but the record showed `transcript: null` —
+  a permanent, invisible loss, because the lease reaper infers *done* from artifact presence while
+  nothing reconciles the empty record block. The preservation path now only *replaces* an owned
+  block when remote has a truthy (fresher) value for it — the legitimate stale-container-audio →
+  remote-decoded-audio case — and never *drops* one the run just produced; non-owned (`protected`)
+  blocks and planning fields keep the original replace-or-drop behavior.
+- **External worker never persisted its transcript record: an orphaned `return` made the
+  `push_records_merged` call dead code.** `_run_transcribe_item` (Modal/Beam pull worker) wrote the
+  transcript block into the worker's *local* `state_dir` (`save_records`) and then hit `return
+  adopted` — placed directly *above* the `push_records_merged` that durably commits the owned block
+  to canonical storage, so the push never executed. The VTT/words artifact still uploaded via
+  `put_file`, but the record's `transcript` block only ever lived on the ephemeral worker
+  filesystem, discarded when the function exited — so *every* external transcription since the
+  regression (PR #824, 2026-07-05) landed its artifact but silently lost its record block, the same
+  invisible loss the owned-block-merge fix above guards against but one layer earlier (the guarded
+  push was simply never reached). This is why fresh completions kept reading back as un-transcribed
+  and needed `reclaim-transcript`. The `return adopted` now runs *after* the push; a regression test
+  asserts `push_records_merged` is invoked (with `owned_uids` scoping) on both the fresh-transcription
+  and adopted branches. Affected episodes are recoverable via `reclaim-transcript --write` — the
+  artifacts were never lost.
+
+### Added
+
+- **`asr-worker-report`'s `--recent N` / `recent` workflow input.** The aggregated worker-telemetry
+  counts (success/failed, peak RSS/VRAM) never retained *which* episode a completion was — surfaced
+  during live H14b/H14c canary validation ([#706](https://github.com/BashfulBits/city-meeting-podcasts/issues/706))
+  when a completed run's log gave no way to identify the claimed episode for a post-canary spot-check.
+  `report_workers.py --recent N` (or the workflow's `recent` `workflow_dispatch` input) now also lists
+  the last N raw telemetry samples — `backend`, `source_key`/`episode_uid`, `outcome`,
+  `duration_hours`, `elapsed_seconds`, `finished_at` — reusing fields `_append_telemetry_sample`
+  already wrote per-sample; no new storage writes. Defaults to `0` (unchanged report).
+
+- **`asr-worker-report` manifest-freshness and `long_first` backlog-composition diagnostics.**
+  Two canary sessions were spent trying to reason about whether `long_first` had "taken effect" by
+  cross-referencing GitHub Actions run *start* times against the config merge — which gave a wrong
+  answer once (a job starting after the merge can still finish, and rebuild `state/work.json`, well
+  after a canary run in between already read the stale pre-merge manifest). The report now reads
+  `state/work.json`'s own last-modified time directly from storage (`manifest_last_modified`, an
+  exact-key list, not a broad scan) instead of inferring freshness indirectly. It also reports
+  `transcript_asr_duration_band` — of the current feed-visible/queued transcript-asr backlog
+  (exactly `external_worker.py`'s own candidate filter), how many exceed
+  `asr_local_max_duration_hours` (what `long_first` actually floats), how many have unknown
+  duration (can never be floated regardless of true length), and the max known duration — so "why
+  didn't a canary land on a long meeting" is answered by one report call instead of a live-canary
+  guessing game.
+
+### Changed
+
+- **`long_first: 4` enabled in `backlog_priority` — external-required (>4h) transcript work now
+  drains first.** Recordings over `asr_local_max_duration_hours` (4h) can only be transcribed by the
+  capped external GPU tier (the in-process backend refuses them), so with recency-only ordering a
+  steady stream of short episodes could starve them indefinitely. `long_first` floats the >4h
+  transcript band ahead of `recency`, catalog-wide. It never reorders `audio`
+  (`workqueue.DURATION_AWARE_WORK_CLASSES` excludes it), and the local ASR lane simply defers the
+  floated >4h items at preflight (a cheap, pre-download duration check) — so local throughput on
+  short meetings is unchanged; only the ordering the external workers see changes. Also lets a
+  `max_claims`-elevated canary walk into the long band to validate long-audio + lease renewal.
+
+### Added
+
+- **External-worker adopt/renewal log lines.** The pull worker now prints `[external-worker] adopted
+  <source>/<uid>` when it reconciles an already-present artifact instead of transcribing, and
+  `[external-worker] lease renewed <source>/<uid> expiry=…` (or `… renew skipped … (no longer held)`)
+  each time the renewal thread fires during a long inference. Renewal success was previously silent,
+  making it unobservable in a live canary; the interval is now a `_renew_interval()` method so tests
+  drive the renewal thread deterministically without a real long transcription. New tests cover the
+  renewal-thread wiring and the budget-decline → abandon-to-`queued` path.
+
+### Fixed
+
+- **Pull-worker `max_claims` counts only new transcriptions, not adopted items.** The claim loop
+  (`compute/external_worker.py`) incremented `claimed` and checked `max_claims` at lease acquisition —
+  before the transcribe path discovers whether the item's ASR artifacts already exist. An
+  already-transcribed item that got re-claimed (stale `work.json`, or a prior owner that uploaded then
+  crashed before recording) was *adopted* (state reconciled, no GPU work) yet still consumed a
+  `max_claims` slot and ended the run, so a manual `max_claims=1` canary would adopt the head-of-queue
+  item and stop instead of transcribing a fresh one (surfaced smoke-testing the Modal worker:
+  `completed: 1` but `peak_gpu_vram_used_bytes: 0`). `max_claims` now caps new transcriptions:
+  adopted items increment a distinct `adopted` summary counter, don't consume a slot, and the loop
+  scans past them. A new `max_scan` bound (default `max_claims + 50`; overridable via
+  `CITYPODS_WORKER_MAX_SCAN` or the per-backend `site_config` `max_scan`) keeps a fully-stale manifest
+  from making one run walk the entire queue. Failed attempts still consume a slot (real work / budget).
+
+- **`S3CompatibleStorage` normalizes a bare-host `endpoint_url`.** First live Beam
+  (H14c) scheduled run crashed in `b2_from_env()` — `boto3.client(endpoint_url=...)` raises
+  `ValueError: Invalid endpoint` when the URL has no scheme. The Beam secret for `B2_ENDPOINT` had
+  been set to the bare host (`s3.us-west-002.backblazeb2.com`), unlike the GitHub Actions secret of
+  the same name which includes `https://` — the two secret stores are populated independently, so
+  they silently drifted. `_region_from_b2_endpoint()` already tolerated a missing scheme (its
+  `split("://")` is a no-op without one), which masked the gap until boto3's stricter endpoint
+  validation hit. `S3CompatibleStorage.__init__` now prepends `https://` when `endpoint_url` has no
+  `://`, so a bare-host secret in any backend's env store no longer takes down the worker.
+
+- **H11d deploy resilience: `deploy.yml` retries `actions/deploy-pages` on transient GitHub Pages
+  backend failures.** Two scheduled/push `Build & Deploy` runs on 2026-07-05 failed at the deploy
+  step with GitHub's generic `Deployment failed, try again later.` after an otherwise-clean render
+  (this repo's `pages` concurrency group already prevents self-inflicted races, and neither failure
+  overlapped another Pages deploy) — a known intermittent backend hiccup in `actions/deploy-pages`
+  itself. The deploy step now retries up to 3 attempts total with backoff (15s, then 30s) before
+  failing the job, so a single transient GitHub-side error no longer reds out an otherwise-good
+  build. See [review/11 H11d](review/11-technical-design-roadmap.md).
+
+### Added
+
+- **Beam worker: resolve pinned deps/model locally instead of referencing build-time repo files (GH#816/#818).**
+  Beam's remote image build has no access to local repo files (confirmed against the installed SDK:
+  `Image.add_python_packages()` given a file path reads it locally, before anything reaches Beam's
+  backend — there is no Modal-style `add_local_dir()` build-time equivalent). `beam_app.py` now reads
+  `constraints/asr.txt` and `citypods/asr.py` on the machine invoking `beam deploy` and bakes the
+  resolved `package==version` list and HF model repo/revision into the image spec as literal values;
+  `add_local_path("citypods/")` is kept for what it actually does — staging the package for the
+  deployed function's own runtime import. `scripts/check_dependency_policy.py`'s external-worker
+  guard was sharpened to flag only an actual hardcoded version (`pkg==x`/`pkg>=x`), not a bare
+  package-name selector key with no adjacent version (the new pattern this fix relies on).
+
+- **Beam external transcription worker pins dependencies + model to the runner (GH#277, part of #804).**
+  Same parity as the Modal worker, applied to `scripts/compute/beam_app.py`: the hand-maintained
+  package list is replaced with `pip install '.[storage,asr-transcribe]' -c constraints/asr.txt` (same
+  pinned versions as the runner, no torch), a digest-pinned CUDA 12 + cuDNN 9 `base_image`, and the
+  pinned Whisper model baked into the image via `ASR_MODEL_PATH`. Stacked on GH#276; validated on live
+  bounded single-recording Beam test runs.
+
+- **External worker resource telemetry (GH#276/GH#277).** Shared worker code
+  (`citypods/compute/worker_telemetry.py`, `external_worker.py`) records per-claim RSS / GPU-VRAM
+  peaks with backend, model, compute type, device, GPU type, and outcome, persisted to a single R2-CAS
+  object (`state/asr_worker_telemetry.json`) and surfaced in `asr-worker-report`. Applies to both the
+  Modal and Beam workers (it lives in the shared `run_worker` path). Telemetry failures never fail
+  transcript work.
+
+- **Modal external transcription worker pins dependencies + model to the runner (GH#276, part of #804).**
+  `scripts/compute/modal_app.py` replaced its hand-maintained `>=` dependency list with
+  `pip install '.[storage,asr-transcribe]' -c constraints/asr.txt` — the exact same versions
+  (`faster-whisper`/`ctranslate2`/`av`) the in-Actions transcribe lane uses, resolved from the
+  pyproject extras (no duplicate list; enforced by `scripts/check_dependency_policy.py`), and without
+  torch (the `asr-transcribe` extra excludes `stable-ts`). The image base moved to a digest-pinned
+  **CUDA 12 + cuDNN 9 runtime** (provides ctranslate2's cuBLAS/cuDNN on GPU and is forward-compatible
+  with a future torch-based diarize step), and the **pinned Whisper model revision is baked into the
+  image** (fast cold start, same bytes as the runner via `ASR_MODEL_PATH`). The canonical model
+  repo+revision constants moved to `citypods.asr` so the runner (`prepare_whisper.py`) and the worker
+  share one Renovate-tracked source. First deployment — to be validated on bounded single-recording
+  test runs. Beam (GH#277) follows the same pattern.
+
+- **Hugging Face Whisper models are pinned to explicit commit revisions (GH#498).**
+  `scripts/prepare_whisper.py` downloaded via mutable `main` on both the direct-CDN and
+  `snapshot_download` paths, so model bytes could drift silently while `asr_spec_hash()` still
+  treated the recipe as unchanged. Both paths now pin `HF_PREFERRED_REVISION` /
+  `HF_FALLBACK_REVISION` commit SHAs, logs show `repo@revision`, and the B2 mirror prefix is
+  revision-scoped so a future bump lands under a fresh prefix instead of overwriting the old bytes.
+  Pinning the current revision is a reproducibility no-op — **no `ASR_PIPELINE_VERSION` bump and no
+  transcript reprocessing**; a later intentional revision bump decides invalidation separately
+  (review/22). Renovate surfaces upstream revision changes for Dashboard approval.
+- **Repository dependency pinning & update policy (GH#498, GH#734).** New normative contract in
+  [`review/22`](review/22-dependency-and-reproducibility-policy.md): pins are the default for
+  reproducible builds, and Renovate opens PRs so they do not stall past security/beneficial updates.
+  Foundation landed: compiled hash-pinned Python `constraints/*.txt` (source of truth for CI, the
+  runner image, and the external workers) with a `lock.yml` compile workflow and a `ci.yml` drift
+  gate; all third-party GitHub Actions pinned to full commit SHAs and unified to the current tips
+  (GH#734); `.github/renovate.json5` with a light-touch two-lane flow (hygiene auto-PRs; a
+  Dependency-Dashboard approval gate + per-source `dep-bump-smoke` for output-affecting bumps);
+  `scripts/check_dependency_policy.py` CI guard; and the "adding a dependency" contract in
+  CONTRIBUTING/AGENTS. Pure pinning is a reproducibility no-op — no pipeline-version bump, no artifact
+  reprocessing. HF model-revision pinning (GH#498) and external-worker (Modal/Beam) parity follow as
+  their own PRs.
+- **Production media fetches now have a size ceiling before ffmpeg reads a remote source
+  (issue #497).** `citypods/media.py:_download_audio()` and the direct-remote render paths
+  (identity render, multi-source concat fallback) previously handed ffmpeg a remote URL with no
+  byte cap at all — `MAX_RESPONSE_BYTES` only ever covered feed/JSON/HTML fetches through
+  `requests`, not media bytes ffmpeg reads directly via libavformat. A new
+  `citypods.http.preflight_media_size()` issues a `HEAD` (falling back to a ranged `GET` for CDNs
+  that reject/ignore it) before any ffmpeg process starts; a source that honestly discloses a size
+  over the new `source_media_max_bytes` config ceiling raises `MediaSourceTooLargeError` and is
+  never retried by falling back to an unguarded direct stream — it lands in the normal
+  materialize-failure/backoff path instead. Unverifiable ("unknown") sizes are logged and allowed
+  through, since ffmpeg's own fetch can't be bounded after the fact. `audio_encode_timeout_minutes`
+  (the existing per-encode wall-clock cap) is recalibrated from 45 to 360 minutes and
+  `source_media_max_bytes` defaults to 54 GB, both derived from a conservative 12-hour
+  longest-meeting ceiling (see the comments in `config/site_config.yml` for the full derivation).
+  `scripts/probe_granicus_worker.py`'s production-encode check now inherits this same guard instead
+  of its own probe-only `--full-download-max-mib` cap. A new `citypods.audit.check_media_too_large`
+  feed-health check files one always-visible finding per rejection (never folded into aggregate
+  backoff noise), since this should be rare and each occurrence needs a human to verify the meeting
+  and decide whether the cap needs raising.
+- **Timeline/audio diagnostics probe MP4 headers instead of downloading whole episodes.** When
+  `timeline_diagnostics=true`, `check_timeline_integrity` now defaults to a header-only probe that
+  range-reads just an episode's `ftyp`/`moov` boxes (`StorageBackend.get_range`, implemented for
+  S3-compatible and local storage) instead of downloading the full hosted `.m4a`. Every hosted
+  episode is written `-movflags +faststart`, so `format.duration` and the stream's
+  `duration_ts`/`time_base` live entirely in `moov` — ffprobe never reads `mdat` for these fields
+  either way, so this yields identical values at a fraction of the bytes (verified against a full
+  download for both short and multi-hour synthetic fixtures in `tests/test_media.py`). As a
+  standing guard against that assumption ever breaking for a real file, any episode the header
+  probe flags as non-"ok" is automatically re-measured with a full download
+  (`probe_audio_full`); the full read supersedes the header read for the actual finding/repair
+  decision, and a new `timeline-audio-probe-divergence` finding fires if the two disagree beyond
+  float noise.
 - **Feed-health audit returns to the cheap default path while audio queued work gains UID-level
   evidence.** The audit workflow no longer downloads and ffprobes every hosted audio object on every
   scheduled/default run just to emit the timeline canary artifact; full `timeline-audio-integrity`
@@ -80,7 +301,56 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   audit artifact shows `source_duration_bases=["decoded"]` instead of `["container"]`. No second media
   pass; the container header remains the honest fallback when even the decode end is unparseable.
 
+### Fixed
+
+- **Withheld/dead episodes no longer file noisy `rendered-duration-mismatch` tickets, and get a
+  flat ~30-day recheck lifecycle (GH#795).** Once an episode's media is withheld — silent/quarantined
+  (`confirmed_empty`) or unreachable (`missing`/`invalid`) — the stale hosted object no longer
+  represents anything served, so the timeline-audit now classifies it as terminal `media-withheld`:
+  no finding, no repair, no integrity stamp, and it skips both the full-download reconciliation and
+  the cheap stored-field duration checks (`check_enclosures` also skips withheld). Separately, a
+  **confirmed-dead** episode now polls on a **flat 30-day cadence** (`confirmed_dead_recheck_due`,
+  anchored on the availability verdict's `last_check`) instead of the exponential #120 backoff — a
+  recheck that stays dead just sleeps another full interval with no new cooldown escalation or ticket;
+  `suspected_empty` keeps the exponential ramp so it can reach its second silent confirmation quickly.
+  A **repair flag bypasses the exponential #120 backoff** in `TimelineStage` so a flagged
+  transient/broken-EDL episode re-plans immediately (those flags clear via the post-repair audit,
+  which owns the integrity block). For **confirmed-dead** media the flat gate deliberately takes
+  precedence over the flag: the integrity/repair block is audit-owned and the audio lane preserves
+  it from remote on push, so a lane-side clear cannot persist — letting the flag bypass the flat gate
+  would re-download a quarantined episode every run. Anchoring the flat cadence on the
+  audio-lane-owned `media_availability.last_check` keeps it self-managing (recheck ≤ every 30 days)
+  without needing to clear the flag.
+- **Scoped state pushes no longer regress repaired timeline plans back to stale container-basis
+  records.** `push_records_merged` already re-read remote state to preserve sibling artifact blocks,
+  but timeline/source planning metadata lived in the unprotected whole-record body. A long-running
+  audio or ASR shard that started before a repair could therefore finish later and overwrite a remote
+  `duration_basis="decoded"` plan with its older local `container` or missing-source plan, while still
+  preserving enough artifact data to make the feed look partially repaired. The merge now ranks
+  planning metadata by timeline version and source duration basis, preserves the fresher remote
+  planning fields when they are strictly better, and keeps the matching remote artifact blocks so stale
+  local artifacts computed against the old EDL cannot be attached to the newer plan.
+- **A B2 connectivity blip on one `state/` key no longer fails the whole Build & Deploy run.**
+  `pull_state()` restores every object under `state/` from the durable bucket at build start;
+  `S3CompatibleStorage.get_file()` already retried transient connection errors in-process, but once
+  those retries were exhausted it re-raised, so a single key that kept timing out (Build & Deploy
+  runs #452-455 each failed on `boto3.exceptions.RetriesExceededError` inside `download_file`)
+  crashed the render-only deploy outright — even though render "must always finish so the deploy
+  isn't gated" and the bucket is meant to be a self-healing cache. `pull_state()` now catches the same
+  connectivity-level exceptions (`storage.s3.transient_download_errors()`, hoisted out of
+  `get_file()` so both call sites share one definition), logs a warning, and keeps whatever local copy
+  already exists for that key instead of aborting — the bucket resyncs it on a later run that can
+  reach it. A real (non-transient) error, e.g. a 403 from rotated/invalid credentials, still
+  propagates and fails the build loudly.
+
 ### Changed
+
+- **Stage-2 work-lease reaper enabled now that H14b/H14c are live (GH#706 §4).**
+  `config/site_config.yml`'s `work_lease_reaper_enabled` flips from `false` to `true`: the per-item R2
+  lease ledger the Modal/Beam pull workers claim against was dormant (and its sweep skipped as
+  pointless backlog-scaled GETs) until those workers existed. With H14b (#807) and H14c (#808) merged,
+  `compute reconcile` now sweeps it — a crashed worker's claim is reclaimed/requeued instead of the
+  ledger going unswept.
 
 - **`audit_feeds.py` consolidates feed-health GitHub issues from one-per-feed to one-per-check.**
   Filing a separate issue for every `(feed, check)` pair meant a single systemic regression (e.g. a
@@ -124,6 +394,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   `TranscriptStage` / `ProviderTranscriptDiarizeStage` now pass their real work class. Accepted
   tradeoff: a hard catalog-wide drain — one pathological multi-hour backlog can deprioritize all
   short-meeting transcript throughput until it clears; no reserved-capacity split is implemented.
+- **`SilencePlanner.version` bumped 2→3 to re-plan every single-file silence EDL on the stream-sample
+  clock (GH#702, PR6).** This re-trims the whole single-file silence catalog onto the corrected source
+  clock, eliminating the last container-basis EDLs. Because `Timeline.version` is part of
+  `timeline_digest`/`audio_spec_hash`, this re-encodes **every** single-file silence episode (and
+  regenerates transcripts), not only the gap-affected cohort — a deliberate but large cost. All four
+  GH#702 PR6 merge thresholds were confirmed before enabling: PR2–PR5 have run in production; a
+  post-GH#795 full-catalog audit shows zero `rendered-duration-mismatch` survivors (stronger evidence
+  than the cohort-scoped comparison the gate originally called for); the re-encode cost is accepted;
+  and both stragglers (Dallas, Pflugerville) resolved on their own — Dallas now only shows ordinary
+  `container-duration-drift`, and Pflugerville's `missing-audio-key` row resolved into the GH#795
+  withheld-media lifecycle (`media-withheld`, `confirmed_empty`). See review/20.
 - **The rendered-vs-EDL duration audit uses a 0.5s classification floor, separate from the 0.1s
   structural tolerance (GH#702, PR5).** A clean re-encode legitimately differs from the EDL sum by AAC
   priming/padding plus per-cut sample rounding (~0.1–0.4s) with no cue-integrity problem; classifying

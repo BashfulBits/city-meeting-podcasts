@@ -86,6 +86,18 @@ the timed-out episode records an exponential durable backoff while unrelated epi
 Packaging follows the lane boundary: scheduled fresh ASR installs `asr-transcribe` (faster-whisper
 only), a future align-only job installs `asr-align` (stable-ts), and diagnostics install `asr-bench`;
 the legacy aggregate `asr` extra remains available for contributors needing all three surfaces.
+All Python installs — CI, the runner image, and the external Modal/Beam worker images — resolve against
+compiled **version-pinned** `constraints/*.txt` (one source of truth; [`review/22`](review/22-dependency-and-reproducibility-policy.md)),
+so a fresh install cannot silently drift; third-party GitHub Actions are commit-SHA-pinned and the
+Hugging Face Whisper model revisions are pinned (canonical in `citypods.asr`, baked into the worker
+images), with Renovate opening update PRs and CI guards keeping the pins current and enforced.
+Modal's build genuinely stages local repo files at build time (`add_local_dir`/`add_local_file`), so
+its image installs directly against `constraints/asr.txt`. Beam's remote build has **no** such
+access — its `add_local_path()` only syncs files for the deployed function's own runtime import, not
+for `add_commands()`'s build steps (confirmed against the SDK: `Image.add_python_packages()` given a
+file path reads it locally, before anything reaches Beam's backend). So `beam_app.py` resolves the
+same pinned package set and HF model constant **locally**, on the machine invoking `beam deploy`, and
+bakes the literal resolved values into the image spec instead of referencing the files by path.
 Encoding/transcription can never block or redden the Pages deploy (H11b), and concurrent shards clear
 the backlog without clobbering records (H6b). The render phase writes **only `docs/`**: it persists no
 records, leaving the
@@ -123,11 +135,11 @@ and every other source-local record adopts that single CAS pointer (GH#421).
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |
 | **Media / audio** | `media.py` — timeline-aware ffmpeg mastering, pinned threads, sample-accurate bounded-memory single-source timeline cuts, versioned multi-mic speech profile (high-pass → dynamic leveling → gentle compression), two-pass measured **linear** EBU R128 normalization via a temporary FLAC, a constant-gain + 192 kHz short-lookahead limiter fallback for peak-constrained recordings, content-addressed upload, and run-local duplicate-view artifact coalescing. |
 | **Transcripts** | `asr.py` — forced alignment (stable-ts) / fresh transcription (faster-whisper) with align-error fallback; emits a clean **segment-cue VTT** (served via `<podcast:transcript>`) **plus a word-level JSON sidecar** (`…-asr-<recipe>.words.json`) for search/clips/diarization; version-aware re-transcribe on an `ASR_PIPELINE_VERSION` bump (provider transcripts never invalidated); ASR keys are content-addressed by transcript media/timeline + ASR recipe, not by audio mastering bytes, and old audio-spec-derived ASR VTT/word objects migrate by copy before any missing artifact regenerates. `stages.py` also fetches city/provider source transcript documents into `provider_transcript.candidate` under content-addressed `provider-` keys, remaps timed provider VTT/SRT cues through `timeline.py` into served-time `provider-align` VTT artifacts, stores `float \| null` confidence, and promotes candidates to `known_good` only when they are at least as good as the prior known-good; selected provider-aligned VTTs can produce a separate content-addressed `speakers.json` block when they already contain `SPEAKER: text` labels, and diarization failures never discard the active transcript. Render/feed code exposes `known_good` as **Original city-provided transcript** and lets it fill `<podcast:transcript>` only until an ASR/provider-aligned transcript is complete. `bench.py` — `asr-bench` diagnostic. |
-| **Compute backend** | `compute/{base,local,budget,dispatch}.py` (H13 + H14a, **pre-1.0 lock**) — the pluggable GPU/ASR execution seam, peer of `storage/`. `base.py` defines `InferenceJob(task, inputs, recipe_hash)` (`task` typed for the full §5.5 verb set: ASR `transcribe`/`align`/`diarize` + reserved LLM `summarize`/`tag`/`soundbite-select`), `JobResult`/`JobHandle`, a `runtime_checkable` `Backend` protocol `run_inference(job)`, and (H14a) a `DispatchBackend` protocol (returns a `JobHandle` + `estimate_gpu_seconds`). `local.py` runs faster-whisper/stable-ts in-process (**byte-identical** to the pre-refactor path). **H14a substrate:** `budget.py` is the free-tier ledger (`state/compute_budget.json`) that makes exceeding a backend's `monthly_gpu_seconds`/`max_inflight` structurally impossible (the **$0 guarantee**); on an R2 (`cas_capable`) backend it is **CAS-backed** — `reserve`/`settle`/`release` are compare-and-swap read-modify-writes (`mutate_budget`), so concurrent shards can't lose a reservation or overspend the cap (H17, review/17 §5; `statesync` excludes it from the bulk sync), with a local-file fallback for non-R2/local/dry-run; `dispatch.py` adds the router (fill free tiers → consider `local`), a thread-safe `DispatchCoordinator` (records a live `work.json` lease `lease_owner="modal:<job_id>"` + decrements budget), and `reconcile_compute` (reap dead workers → re-queue; settle completed jobs; run at `asr.yml` start via `citypods compute reconcile`). `make_compute` selects by `compute_backend`: `local` (bypass) or `auto` (default). `TranscriptStage` attempts external dispatch first; only a declined job enters local admission. Known recordings above `asr_local_max_duration_hours` (production: 4h; non-positive disables) remain queued with `reason=external-required` instead of starting in-process inference. H14b/H14c register the real Modal/Beam **dispatch** adapters into the coordinator with no protocol change. |
+| **Compute backend** | `compute/{base,local,budget,dispatch,external_worker,worker_telemetry}.py` (H13 + H14a/H14b/H14c, **pre-1.0 lock**) — the pluggable GPU/ASR execution seam, peer of `storage/`. `base.py` defines `InferenceJob(task, inputs, recipe_hash)` (`task` typed for the full §5.5 verb set: ASR `transcribe`/`align`/`diarize` + reserved LLM `summarize`/`tag`/`soundbite-select`), `JobResult`/`JobHandle`, a `runtime_checkable` `Backend` protocol `run_inference(job)`, and the internal-GitHub `DispatchBackend` protocol (returns a `JobHandle` + `estimate_gpu_seconds`). `local.py` runs faster-whisper/stable-ts in-process. `budget.py` is the free-tier ledger (`state/compute_budget.json`) that makes exceeding a backend's `monthly_gpu_seconds`/`max_inflight` structurally impossible (the **$0 guarantee**); on an R2 (`cas_capable`) backend it is CAS-backed, so concurrent reservations cannot overspend. `dispatch.py` remains the internal coordinator for GitHub workers and `compute reconcile`; it also reaps Stage-2 pull-worker leases and releases/settles any preempted worker budget reservation. `external_worker.py` is the H14 pull-worker core used by Modal and Beam: read `work.json`, CAS-claim `work-leases/<source>/<uid>.json`, reserve provider budget under the same owner, renew the lease during long inference, retry once, write content-addressed ASR VTT + word JSON, and push only the owned UID's transcript block with foreign-block preservation. `worker_telemetry.py` records non-secret per-claim peak RSS/GPU-VRAM samples in the CAS-managed `state/asr_worker_telemetry.json` object for `asr-worker-report` and H14d admission tuning. H14b/H14c are combined-capable by contract but enable only `transcript-asr`; `transcript-diarize` is reserved for future diarize-only claims over transcripts produced by GitHub ASR. Per-backend worker caps such as `max_claims` now default from `config/site_config.yml` (`compute_backends.<backend>`) and may be overridden by deploy env for canaries/manual runs; `max_claims` caps **new transcriptions** — an item whose content-addressed artifacts already exist is *adopted* (state reconciled, no GPU) without consuming a slot, so the loop scans past a stale-manifest head of already-done items to reach fresh work, bounded by `max_scan` (default `max_claims + 50`). Known recordings above `asr_local_max_duration_hours` (production: 4h; non-positive disables) remain queued with `reason=external-required` instead of starting in-process inference. |
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
 | **Orchestration** | `run.py` — `SourcePipeline`, `build()`, the **global two-pass enrich queue** (`_run_enrich_global_queue`: newest-everywhere-first on-runner audio + decoupled transcript), run history, graceful yield, resource-guard wiring. `resources.py` — process resource snapshots + memory/load admission guard for expensive native work. `cli.py` — `build / render / enrich / report / doctor / bodies / asr-bench / rebuild-audio / admin`. |
 | **State** | `state.py` (build fingerprint), `statesync.py` (bucket↔local; bucket is truth), `storage/{base,local,s3}.py` (`S3CompatibleStorage` b2/r2 presets + local). |
-| **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status` (including provider-transcript rollout slices for fetch, align, diarize, confidence, rollback history, and recovery guidance); `validate.py` feed validation. |
+| **Ops / QA** | `audit.py` (+ `scripts/audit_feeds.py`) feed-health; `contracts.py` endpoint contracts; `report.py` + `projection.py` cost/throughput + `/admin/status` (including provider-transcript rollout slices for fetch, align, diarize, confidence, rollback history, and recovery guidance); `validate.py` feed validation. `report._classify_record` assigns each episode one **mutually-exclusive state** — `served` / `stale` (hosted; `stale` = the current recipe would re-encode it, computed by recomputing `audio_spec_hash` per record; a `legacy`/`None` spec hash counts as `served` only under the default profile, but classifies `stale` when a loudness or processing profile override is set) / `linked_video` (direct MP4, config says don't host) / `deferred` / `dead` / `transient_error` (in #120 backoff) / `pending` — which drives the dashboard taxonomy, `gb_exact` (false when any hosted record predates `audio.bytes`), and the archive-cap cost slider (#124). |
 
 Scoped workflow telemetry is append-only under `state/run_events/`. Sibling matrix events sharing
 `GITHUB_RUN_ID` + phase + lane form one logical run; status/projection aggregates them only after every
@@ -156,6 +168,13 @@ total on `/admin/status`.
   page. Confirmation needs two independent successful silent fetches — a transport failure never
   confirms — and re-evaluation (detector version / source fingerprint / detect profile / operator
   override) is decoupled from `AUDIO_PIPELINE_VERSION`, so re-classifying never re-encodes (H16 PR3).
+  A **confirmed-dead** verdict (`confirmed_empty`/`missing`/`invalid`) polls on a flat 30-day cadence
+  (`records.confirmed_dead_recheck_due`) rather than the exponential #120 backoff, and the audit
+  treats withheld media as terminal for timeline-audio repair — no `rendered-duration-mismatch`
+  finding for a quarantined episode. A `timeline-replan` repair flag bypasses the exponential backoff
+  for transient/broken-EDL episodes, but the flat confirmed-dead cadence takes precedence (the
+  audit-owned integrity block can't be lane-cleared, so a flag never forces an every-run re-decode of
+  quarantined media) (GH#795, [`review/20`](review/20-timeline-audio-integrity-repair.md)).
 - **Timeline served↔source EDL** — silence-trim/concat/intro/transcripts/clips all reduce to one
   served-vs-source time map (see [`review/08`](review/08-timeline-and-content-transforms.md)).
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.
@@ -209,11 +228,19 @@ total on `/admin/status`.
 - **Object storage** → Backblaze B2 (S3 API) fronted by a Cloudflare Worker/CDN (free egress) for
   audio + transcripts + durable state.
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
-  downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron),
+  downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
+  retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),
   `audio.yml` (sharded audio materialization, 4h cron; own `audio` concurrency group),
   `asr.yml` (sharded faster-whisper transcription, daily; own `asr` concurrency group) — the two heavy
-  record-writers, each a `--shard K/N` × `--lane` matrix, `audit.yml` (daily feed-health → GitHub
-  issues), `contracts.yml` (weekly live endpoint contracts), `asr-bench.yml` (manual ASR benchmark).
+  record-writers, each a `--shard K/N` × `--lane` matrix, `modal-deploy.yml` (path-scoped deploy of the
+  Modal pull worker from `main`, protected by the `modal-production` GitHub Environment),
+  `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
+  `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
+  provider calls), `audit.yml` (daily feed-health → GitHub issues), `contracts.yml` (weekly live endpoint
+  contracts), `asr-bench.yml` (manual ASR benchmark), `audio-gc.yml` (weekly **dry-run** orphan-audio
+  report — restores bucket state via `gc_audio.py --pull-state`, opens/updates one rolling
+  `operations` issue with a per-city reclaimable table + `orphans.tsv` artifact; deletion only via
+  manual dispatch with `apply=true`, which also requires `main` — it never deletes on schedule).
 - **Tests** run fully offline against recorded fixtures; feeds have byte-for-byte snapshot tests.
 
 ## Provider notes & gotchas
@@ -223,11 +250,19 @@ Hard-won facts that bite anyone adding/debugging providers:
 - **Granicus RSS is hard-capped at 100 items per view.** Cities split bodies across multiple views, so
   a single feed can be incomplete — use `source.feed_urls` (merged + deduped by guid) to combine views,
   and the feed-health `view-cap` check flags any view sitting at exactly 100.
+- **Granicus HEAD responses carry no `ETag`/`Last-Modified`**, so `detect_change`'s cheap probe never
+  short-circuits — change detection for Granicus always falls through to the content-hash path
+  (`granicus.py:detect_change`; the incremental-build content hash in `state.py` is what actually
+  skips unchanged cities).
 - **Swagit serves a "Carmel, IN" placeholder page for unknown subdomains** — a false-positive trap when
   probing/discovering. Cross-check the returned locality against the requested city before trusting it.
-- **Swagit `/videos/{id}/download` is broken for older meetings** (returns a keyless presigned S3 URL
-  that 403s); the real media for old meetings is the per-segment files on the video page. Newer meetings
-  are fine. See `.claude` history / `swagit.py`.
+- **Swagit `/videos/{id}/download` is broken for older meetings.** The 302 presigns only the bucket
+  *prefix* — no object key — so ffmpeg fails (age-correlated across the Dallas archive; the presign is
+  freshly minted each call, so it is **not** URL expiry). `resolve_media_url` detects the keyless
+  redirect (`_s3_object_key()` empty, issue #120) and falls back to the per-agenda-item `dfile` MP4
+  segments scraped from the `/videos/{id}` page JSON (multi-segment meetings go through the #122 concat
+  planner). Newer meetings return a proper keyed object and are fine. Details in `swagit.py`'s module
+  docstring.
 - **Swagit's `/play/{id}/{t}` deep-link is a client-side SPA route** — the server `404`s it on a direct
   `HEAD`/`GET` (even the real chapter-anchor timestamps the watch page links), though it works in a
   browser. It's the correct user-facing format (the watch page's own anchors use it); just don't expect
@@ -261,7 +296,10 @@ Hard-won facts that bite anyone adding/debugging providers:
   `GuardedHTTPAdapter.send`, ffprobe bitrate/duration probes, and ffmpeg fetch paths. The
   `provider_distributed_leases` layer adds **per-slot compare-and-swap leases** around ffprobe/ffmpeg
   media reads (H17 PR6), capping aggregate Granicus overlap across the four audio shard processes
-  (currently 2 total slots after the GH#300 Phase 1 reduction). A domain's N slots are N fixed keys
+  (reduced to 2 slots by the GH#300 Phase 1 reduction, then deliberately re-raised to 4 on 2026-06-23
+  as a concurrency test after H16 disproved the concurrency-causes-403 hypothesis; the operative caps
+  must match the declared `provider_audio_concurrency_ceiling` in `site_config.yml` — update both in
+  lockstep, or the H16 `concurrency_ceiling` criterion flags the drift). A domain's N slots are N fixed keys
   `provider-leases/<domain>/slot-<i>.json` (`i` in `0..N-1`), each an independent CAS object; a worker
   claims a free slot with `put_cas(if_none_match="*")` or an expired one (a dead owner) with
   `put_cas(if_match=<etag>)`, walking the slots from a per-owner offset so workers don't all collide on
@@ -337,7 +375,12 @@ Hard-won facts that bite anyone adding/debugging providers:
   shard records per-tenant direct Granicus success/403 and truncation telemetry alongside the
   Worker-fallback counters, scans its own log for credential-shaped material, and uploads
   only the run event plus redacted scan findings. The `validate-h16` job merges all four shards,
-  verifies the configured 1-local / 2-distributed ceiling, and writes JSON plus a GitHub summary.
+  verifies the operative concurrency knobs against the **declared**
+  `provider_audio_concurrency_ceiling` (`site_config.yml`; currently 1 local / 4 distributed — the
+  config key exists so a deliberate tune passes while accidental drift between the knobs is caught,
+  GH#421 run-#58 follow-up PR #449), and writes JSON plus a GitHub summary. The report is
+  observational — `validate-h16` never exits non-zero, so an `identity`/`concurrency` failure shows
+  as a report `fail`, not a red workflow run.
   The Audio lane also snapshots every Granicus record immediately after provider/persisted-record
   merge, then verifies post-media stable UID/GUID, official/source URLs, source duration, and
   deterministic content-addressed artifact identity — validating key/spec/url only for an artifact
@@ -384,3 +427,10 @@ opens to submissions: https-only, per-provider host allowlists, private/loopback
 rejection, bounded redirects + response size, ffmpeg `-protocol_whitelist`, defusedxml parsing. See
 [SECURITY.md](SECURITY.md). **Any future LLM output is treated as untrusted** and must never overwrite
 official links, titles, dates, or transcript text.
+
+`MAX_RESPONSE_BYTES` only bounds fetches that go through `requests` (feeds/JSON/HTML) — ffmpeg reads
+media URLs directly via libavformat, bypassing that cap entirely. `citypods.http.preflight_media_size()`
+(issue #497) closes that gap with a `HEAD`/ranged-`GET` check against a separate, much larger
+`source_media_max_bytes` ceiling before any ffmpeg process starts; a source that honestly discloses an
+oversized total raises `MediaSourceTooLargeError` and is never retried unguarded. An unverifiable size is
+logged and allowed through — nothing can enforce a cap on bytes ffmpeg itself will fetch regardless.

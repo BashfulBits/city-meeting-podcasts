@@ -11,6 +11,7 @@ Requires ``boto3`` (extra: ``citypods[storage]``). Backends are built from env v
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 
@@ -26,6 +27,35 @@ class CASConflict(Exception):
     def __init__(self, key: str):
         super().__init__(f"compare-and-swap conflict on {key!r}")
         self.key = key
+
+
+def transient_download_errors() -> tuple[type[BaseException], ...]:
+    """Connectivity-level exceptions a ``get_file`` download can exhaust its retries on —
+    timeouts, dropped connections, DNS/routing blips. Deliberately excludes ``ClientError``
+    (e.g. 403 ``AccessDenied``): those signal a real credentials/permissions problem an
+    operator needs to see, not a blip worth papering over.
+
+    Returns an empty tuple if boto3 isn't installed (no S3 backend, so these can't occur) —
+    lets callers outside this module (e.g. ``statesync.pull_state``) build an ``except``
+    tuple without a hard dependency on the optional ``storage`` extra.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import (
+            ConnectionClosedError,
+            EndpointConnectionError,
+            ReadTimeoutError,
+        )
+        from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
+    except ImportError:
+        return ()
+    return (
+        boto3.exceptions.RetriesExceededError,
+        TransferRetriesExceededError,
+        EndpointConnectionError,
+        ReadTimeoutError,
+        ConnectionClosedError,
+    )
 
 
 class S3CompatibleStorage:
@@ -51,6 +81,11 @@ class S3CompatibleStorage:
         # atomicity must gate on ``cas_capable`` (set True only for R2 via ``r2_from_env``), so a
         # B2-backed deployment falls back to the bulk-synced local-file path instead.
         self.cas_capable = cas_capable
+        if "://" not in endpoint_url:
+            # Secrets stores outside GitHub Actions (Beam, Modal, ...) are populated by hand from
+            # the same value; it's easy to paste the bare host and drop the scheme, which boto3
+            # rejects outright. Normalize rather than fail the whole worker run.
+            endpoint_url = f"https://{endpoint_url}"
         self._client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -142,11 +177,43 @@ class S3CompatibleStorage:
 
         local_path = Path(local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
+        transient_errors = transient_download_errors()
+        for attempt in range(3):
+            try:
+                self._client.download_file(self.bucket, key, str(local_path))
+                return True
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code")
+                status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if code in ("NoSuchKey", "404") or status == 404:
+                    return False
+                raise
+            except transient_errors:
+                if attempt == 2:
+                    raise
+                time.sleep(2**attempt)
+        raise AssertionError("unreachable")
+
+    def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        """Partial GET via the standard HTTP ``Range`` header — a Class-B op, far cheaper than
+        ``get_file`` for a header-only read (e.g. an MP4 ``moov`` duration probe)."""
+        from botocore.exceptions import ClientError
+
         try:
-            self._client.download_file(self.bucket, key, str(local_path))
-            return True
-        except ClientError:
-            return False
+            resp = self._client.get_object(
+                Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("NoSuchKey", "404") or status in (404, 416):
+                return None
+            raise
+        body = resp["Body"]
+        try:
+            return body.read()
+        finally:
+            body.close()
 
     # --- orphan GC support (optional StorageBackend capability) ---
 
@@ -166,9 +233,13 @@ class S3CompatibleStorage:
         self._client.delete_object(Bucket=self.bucket, Key=key)
 
 
-def r2_from_env() -> S3CompatibleStorage | None:
+def r2_from_env(*, require_public_base_url: bool = True) -> S3CompatibleStorage | None:
     """Cloudflare R2. Env: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL.
+
+    ``R2_PUBLIC_BASE_URL`` is required when R2 is the public artifact backend. It is optional for
+    routing coordination-only use, where R2 stores private CAS objects (budget/work/provider leases)
+    that are never rendered into feeds.
 
     Optional: R2_ENDPOINT overrides the default endpoint (needed for
     jurisdiction-specific buckets, e.g. https://<id>.eu.r2.cloudflarestorage.com).
@@ -176,13 +247,16 @@ def r2_from_env() -> S3CompatibleStorage | None:
     try:
         account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
         endpoint = os.environ.get("R2_ENDPOINT", f"https://{account}.r2.cloudflarestorage.com")
+        public_base_url = os.environ.get("R2_PUBLIC_BASE_URL")
+        if require_public_base_url and not public_base_url:
+            raise KeyError("R2_PUBLIC_BASE_URL")
         return S3CompatibleStorage(
             name="r2",
             endpoint_url=endpoint,
             access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
             bucket=os.environ["R2_BUCKET"],
-            public_base_url=os.environ["R2_PUBLIC_BASE_URL"],
+            public_base_url=public_base_url or endpoint,
             cas_capable=True,  # R2 enforces If-Match/If-None-Match (real compare-and-swap)
         )
     except KeyError:

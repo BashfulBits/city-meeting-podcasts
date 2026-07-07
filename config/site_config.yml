@@ -65,10 +65,13 @@ provider_transport_telemetry_domains:
 # city_order list below — partial lists fall through), body_order, feed_visible_first, long_first
 # (transcript-lane work over N hours — bare `long_first` defaults to asr_local_max_duration_hours
 # below — ranks first catalog-wide, ahead of every later key; never reorders audio). See
-# review/12 §H5. Today: keep the last 30 days complete first, then fall to the default order.
+# review/12 §H5. Today: float the >4h external-required transcript backlog to the front (only the
+# capped external GPU tier can ever transcribe those — H14), then keep the last 30 days complete,
+# then fall to the default order. `long_first` never reorders `audio`, and the local ASR lane simply
+# defers the floated >4h items at preflight (cheap, pre-download) — see workqueue.DURATION_AWARE_*.
 backlog_priority:
+  - long_first: 4                          # >4h transcript work first (== asr_local_max_duration_hours)
   - recency: {order: desc, within_days: 30}
-# - long_first: 4                          # drain the >4h transcript backlog before <4h (unset today)
 # city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
 
 defaults:
@@ -129,8 +132,24 @@ defaults:
   # preserved; with no prior timeline the episode is stamped identity (untrimmed) instead.
   silence_min_served_seconds: 5.0
   silence_min_served_fraction: 0.02
-  audio_encode_timeout_minutes: 45       # hard cap per probe+encode; a stalled source can't pin a
-                                         # worker (which stop() can't preempt) past this. 0 = no cap.
+  # Hard cap per probe+encode; a stalled source can't pin a worker (which stop() can't preempt)
+  # past this. 0 = no cap. Recalibrated 2026-07-02 (issue #497) from 45min: a very conservative
+  # 12h longest-meeting ceiling (well above the asr_backstop_minutes=350min/5h50m the ASR pipeline
+  # already assumes, and a real production Audio run log floor of ~5.2h) at a conservative 20 Mbps
+  # floor throughput for the new 54 GB source_media_max_bytes cap below: 54e9*8/20e6 = 21,600s ≈
+  # 360min. The independent 120s stall detector (-rw_timeout) is the first line of defense for a
+  # truly hung connection; this is the backstop for a degraded-but-still-progressing one.
+  audio_encode_timeout_minutes: 360
+  # Media-specific size ceiling for direct ffmpeg source fetches (issue #497): ffmpeg reads media
+  # URLs directly via libavformat, bypassing every HTTP-layer byte cap (MAX_RESPONSE_BYTES is 64
+  # MiB, sized for feed/JSON/HTML, not hours of audio/video). Before ffmpeg starts, a HEAD/ranged-
+  # GET preflight refuses a source that *honestly discloses* a size over this cap; an unverifiable
+  # ("unknown") size is logged and allowed through, since nothing can enforce a cap ffmpeg itself
+  # doesn't respect. Calibrated from the same 12h duration ceiling as audio_encode_timeout_minutes
+  # above, at an assumed worst-case 10 Mbps source bitrate (providers serve video containers, not
+  # just the audio-only output this codebase can measure): 12h * 10 Mbps / 8 = 54,000,000,000
+  # bytes. 0/blank disables the guard. See DEFAULT_SOURCE_MEDIA_MAX_BYTES in citypods/media.py.
+  source_media_max_bytes: 54000000000
   audio_ffmpeg_threads: 1                # per-encode AAC threads; filter paths also pin
                                          # -filter_threads/-filter_complex_threads to this value.
                                          # Production enrich runs this as a one-core audio lane
@@ -218,15 +237,20 @@ defaults:
   # guarantee); `max_inflight` bounds concurrent in-flight jobs. No external adapter is registered yet
   # (the Modal/Beam adapters land in H14b/H14c), so today every job overflows to "local" — behavior-
   # identical to "local", but with the dispatch/lease/budget machinery live and reconciled each run.
+  # `max_claims` caps NEW transcriptions per run (already-done items this run merely adopts don't
+  # count); deployment env may override it temporarily for a canary. Optional `max_scan` bounds how
+  # many items one run leases+examines before giving up (default: max_claims + 50), so a stale manifest
+  # whose head is all already-done can't make the run walk the entire queue.
   compute_backends:
-    modal: { monthly_gpu_seconds: 108000, max_inflight: 8 }   # ≈ free credits — pin to the live plan
-    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8 }
+    modal: { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }   # ≈ free credits — pin to the live plan
+    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }
   # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull
-  # workers (H14b/H14c) claim against is DORMANT until those workers exist, so `compute reconcile`
-  # skips its sweep by default — otherwise it spends one R2 GET per pending transcript item only to
-  # find every lease absent (cheap Class-B, but pointless and backlog-scaled). Flip to true when
-  # external pull workers are live so a crashed worker's claim is reclaimed/requeued.
-  work_lease_reaper_enabled: false
+  # workers (H14b/H14c) claim against was DORMANT until those workers existed, so `compute reconcile`
+  # skipped its sweep by default — otherwise it spends one R2 GET per pending transcript item only to
+  # find every lease absent (cheap Class-B, but pointless and backlog-scaled). H14b (#807) and H14c
+  # (#808) are merged and going live (pre-live checklist GH#706 §4): enabled so a crashed worker's
+  # claim is reclaimed/requeued instead of the ledger going unswept.
+  work_lease_reaper_enabled: true
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

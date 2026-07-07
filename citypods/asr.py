@@ -23,6 +23,18 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+# ── Pinned Whisper model repos + revisions ───────────────────────────────────
+# Canonical single source of truth for the model bytes, shared by the GitHub-Actions
+# runner (scripts/prepare_whisper.py downloads these) and the external Modal/Beam
+# worker images (which bake the same pinned revision). Renovate tracks the revisions
+# via the `# renovate` markers (see .github/renovate.json5). Pinning the *current*
+# revision is a no-op reproducibility fix — it does NOT bump ASR_PIPELINE_VERSION or
+# reprocess transcripts (GH#498). See review/22.
+HF_PREFERRED = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"  # renovate
+HF_PREFERRED_REVISION = "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf"
+HF_FALLBACK = "distil-whisper/distil-large-v3"  # renovate
+HF_FALLBACK_REVISION = "8031d2e6ce6631b7fc45629dddfc00271116d981"
+
 # ── Module-level model cache ─────────────────────────────────────────────────
 # The Whisper model is large (~800 MB) and downloading / loading it is expensive.
 # We cache it here (keyed by model name + compute type + cpu_threads) so it is

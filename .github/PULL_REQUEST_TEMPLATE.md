@@ -11,6 +11,15 @@
       `review/11` catalog status, added a `CHANGELOG.md` entry, updated `ARCHITECTURE.md` if the
       architecture changed, and stamped the breakout doc "Implemented in PR #N" if applicable.
 - [ ] No artifact-identity change (audio spec hash / UID derivation) without a `MIGRATION.md` note.
+- [ ] Dependency changes follow [`review/22`](../review/22-dependency-and-reproducibility-policy.md):
+      `constraints/*.txt` recompiled; deps not re-declared in the external-worker image builders.
+
+<!-- OUTPUT-AFFECTING dependency bump (faster-whisper/ctranslate2/stable-ts/Pillow, ffmpeg, base
+     image, or an HF model revision)? Then also: -->
+- [ ] `dep-bump-smoke` per-source table reviewed (granicus/swagit/civicplus/civicclerk) — states
+      whether produced bytes/WER changed. If output **changed**, this PR either bumps the relevant
+      pipeline version (`ASR_PIPELINE_VERSION` / `SilencePlanner.version`) and states the backfill
+      story, or holds. Pure re-pinning of the current version does **not** bump any version.
 - [ ] Security: no provider network calls in normal CI; no secrets committed; any user-influenced URL
       goes through `validate_source_url`; no LLM/generated output overwrites official
       links/titles/dates/transcript text.
