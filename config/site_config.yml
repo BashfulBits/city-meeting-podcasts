@@ -243,10 +243,7 @@ defaults:
   # whose head is all already-done can't make the run walk the entire queue.
   compute_backends:
     modal: { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }   # ≈ free credits — pin to the live plan
-    # TEMPORARY (GH#706 §6(c) live canary): cap dropped below the ~2170.8 GPU-sec already used this
-    # month so the next real claim attempt is forced to decline, live-confirming the abandon-to-
-    # queued path (never unit-tested to completion). Revert to 108000 once observed.
-    beam:  { monthly_gpu_seconds: 2000, max_inflight: 8, max_claims: 1 }
+    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }
   # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull
   # workers (H14b/H14c) claim against was DORMANT until those workers existed, so `compute reconcile`
   # skipped its sweep by default — otherwise it spends one R2 GET per pending transcript item only to
