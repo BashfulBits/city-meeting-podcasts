@@ -14,14 +14,18 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from citypods.asr import transcribe
-from citypods.compute.budget import reserve_if_available, settle_reservation
+from citypods.compute.budget import load_budget_cas, reserve_if_available, settle_reservation
 from citypods.compute.policy import backend_policy
-from citypods.compute.worker_telemetry import ResourceTracker, append_worker_telemetry
+from citypods.compute.worker_telemetry import (
+    ResourceTracker,
+    append_worker_telemetry,
+    load_worker_telemetry,
+)
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City, Episode
 from citypods.ops import work_leases
@@ -70,6 +74,8 @@ class ExternalWorkerConfig:
     max_scan: int | None = None
     lease_ttl_seconds: float = 6 * 3600
     work_class: str = "transcript-asr"
+    min_claims_per_run: int = 1
+    preferred_days: str = "all"
     budget_units_per_audio_second: float = 0.25
     min_budget_units: float = 60.0
     fixed_budget_units_per_claim: float = 0.0
@@ -166,10 +172,15 @@ def config_from_env(backend: str, *, site_config: dict | None = None) -> Externa
     return ExternalWorkerConfig(
         backend=backend,
         owner=owner,
+        min_claims_per_run=max(0, policy.dispatch.min_claims_per_run),
         max_claims=_int_env("CITYPODS_WORKER_MAX_CLAIMS", policy.dispatch.max_claims_per_run),
         max_scan=max_scan,
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
         work_class=os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr"),
+        preferred_days=os.environ.get(
+            "CITYPODS_WORKER_PREFERRED_DAYS",
+            policy.dispatch.preferred_days,
+        ),
         budget_units_per_audio_second=_float_env(
             "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
             _float_env(
@@ -239,7 +250,9 @@ class ExternalTranscribeWorker:
                 and wi.state == "queued"
                 and wi.priority_bucket == BUCKET_FEED_VISIBLE
                 and self._preferred_duration(wi)
+                and self._preferred_freshness(wi)
             ]
+            effective_claims = self._effective_max_claims(candidates)
             summary.scanned = len(candidates)
             ordered = self._ordered(candidates)
             # ``worked`` counts NEW transcriptions attempted (succeeded or failed) — the thing
@@ -253,7 +266,7 @@ class ExternalTranscribeWorker:
                 else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
             )
             for item in ordered:
-                if worked >= self.config.max_claims:
+                if worked >= effective_claims:
                     break
                 if summary.claimed >= scan_cap:
                     break
@@ -447,6 +460,77 @@ class ExternalTranscribeWorker:
     def _preferred_duration(self, item: WorkItem) -> bool:
         min_hours = max(0.0, self.config.prefer_min_duration_hours)
         return min_hours <= 0 or item.duration_hours <= 0 or item.duration_hours >= min_hours
+
+    def _preferred_freshness(self, item: WorkItem) -> bool:
+        if self._is_preferred_day():
+            return True
+        if item.published is None:
+            return False
+        age_days = (datetime.now(UTC) - item.published).total_seconds() / 86400
+        return age_days <= max(0.0, self.config.fresh_within_days)
+
+    def _is_preferred_day(self, now: datetime | None = None) -> bool:
+        now = now or datetime.now(UTC)
+        if self.config.preferred_days == "all":
+            return True
+        day_is_even = now.day % 2 == 0
+        return day_is_even if self.config.preferred_days == "even" else not day_is_even
+
+    def _remaining_run_slots(self, now: datetime | None = None) -> int:
+        now = now or datetime.now(UTC)
+        if now.month == 12:
+            rollover = datetime(now.year + 1, 1, 1, tzinfo=UTC)
+        else:
+            rollover = datetime(now.year, now.month + 1, 1, tzinfo=UTC)
+        slots = 0
+        cursor = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        while cursor.date() < rollover.date():
+            if self._is_preferred_day(cursor):
+                slots += 1
+            cursor += timedelta(days=1)
+        return max(1, slots)
+
+    def _effective_max_claims(self, candidates: list[WorkItem]) -> int:
+        hard_cap = max(0, self.config.max_claims)
+        if hard_cap <= 0 or not candidates:
+            return 0
+        policy = backend_policy(
+            self.site_config,
+            self.config.backend,
+            work_class=self.config.work_class,
+        )
+        if not getattr(self.storage, "cas_capable", False):
+            return hard_cap
+        budget, _etag = load_budget_cas(self.storage)
+        ledger = budget.backends.get(self.config.backend)
+        used_units = ledger.used_units if ledger is not None else 0.0
+        remaining_units = max(0.0, policy.budget.spendable_units - used_units)
+        if remaining_units <= 0:
+            return 0
+        claim_units = self._planned_units_per_claim()
+        if claim_units <= 0:
+            return hard_cap
+        target_units = remaining_units / self._remaining_run_slots()
+        paced_cap = int(target_units // claim_units)
+        if self._is_preferred_day():
+            paced_cap = max(self.config.min_claims_per_run, paced_cap)
+        elif candidates:
+            paced_cap = max(1, paced_cap)
+        return min(hard_cap, max(0, paced_cap))
+
+    def _planned_units_per_claim(self) -> float:
+        telemetry = load_worker_telemetry(self.storage)
+        rows = telemetry.get("samples") if isinstance(telemetry, dict) else []
+        estimates = [
+            float(row["budget_units_estimate"])
+            for row in rows or []
+            if isinstance(row, dict)
+            and row.get("backend") == self.config.backend
+            and isinstance(row.get("budget_units_estimate"), (int, float))
+        ]
+        if estimates:
+            return max(self.config.min_budget_units, sum(estimates[-10:]) / min(10, len(estimates)))
+        return self.config.min_budget_units
 
     def _telemetry_metadata(self, item: WorkItem) -> dict[str, Any]:
         city, ep, _records = self._episode_for(item)

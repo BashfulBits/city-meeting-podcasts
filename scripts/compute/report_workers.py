@@ -209,7 +209,9 @@ def build_report(
                     },
                     "dispatch": {
                         "max_inflight": modal_policy.dispatch.max_inflight,
+                        "min_claims_per_run": modal_policy.dispatch.min_claims_per_run,
                         "max_claims_per_run": modal_policy.dispatch.max_claims_per_run,
+                        "preferred_days": modal_policy.dispatch.preferred_days,
                     },
                     "task": {
                         "prefer_min_duration_hours": modal_policy.task.prefer_min_duration_hours,
@@ -224,7 +226,9 @@ def build_report(
                     },
                     "dispatch": {
                         "max_inflight": beam_policy.dispatch.max_inflight,
+                        "min_claims_per_run": beam_policy.dispatch.min_claims_per_run,
                         "max_claims_per_run": beam_policy.dispatch.max_claims_per_run,
+                        "preferred_days": beam_policy.dispatch.preferred_days,
                     },
                     "task": {
                         "prefer_min_duration_hours": beam_policy.task.prefer_min_duration_hours,
@@ -297,7 +301,8 @@ def _markdown(report: dict) -> str:
                 else ""
             )
             + f", `{inflight}` in flight, max_claims/run "
-            f"`{dispatch.get('max_claims_per_run')}`, max_inflight "
+            f"`{dispatch.get('min_claims_per_run')}`-`{dispatch.get('max_claims_per_run')}`, "
+            f"preferred_days `{dispatch.get('preferred_days')}`, max_inflight "
             f"`{dispatch.get('max_inflight')}`, prefer duration >= "
             f"`{task.get('prefer_min_duration_hours')}`h"
         )

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import citypods.compute.external_worker as ew
+from citypods.compute.budget import Budget
 from citypods.compute.external_worker import (
     ExternalTranscribeWorker,
     ExternalWorkerConfig,
@@ -148,6 +149,76 @@ def test_external_worker_scans_only_feed_visible_transcript_claims(tmp_path):
     summary = worker.run()
 
     assert summary.scanned == 1
+
+
+def test_effective_max_claims_paces_against_remaining_budget(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a", "b", "c"], max_claims=5)
+    worker.config = ExternalWorkerConfig(
+        backend="modal",
+        owner="modal:test",
+        max_claims=5,
+        min_claims_per_run=1,
+        min_budget_units=60.0,
+        preferred_days="all",
+    )
+    worker.site_config = {
+        "defaults": {
+            "compute_backends": {
+                "modal": {
+                    "budget": {"monthly_units": 300, "reserve_units": 0},
+                    "dispatch": {"max_claims_per_run": 5, "min_claims_per_run": 1},
+                }
+            }
+        }
+    }
+    worker.storage = SimpleNamespace(cas_capable=True, get_bytes=lambda key: None)
+    budget = Budget(month="2026-07")
+    budget.reserve("modal:old", "modal", 180.0)
+    monkeypatch.setattr(ew, "load_budget_cas", lambda storage: (budget, None))
+    monkeypatch.setattr(ew, "load_worker_telemetry", lambda storage: {"samples": []})
+    monkeypatch.setattr(worker, "_remaining_run_slots", lambda now=None: 2)
+
+    cap = worker._effective_max_claims([_queued("a"), _queued("b"), _queued("c")])
+
+    assert cap == 1
+
+
+def test_off_day_allows_fresh_claims_only(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a"])
+    worker.config = ExternalWorkerConfig(
+        backend="beam",
+        owner="beam:test",
+        max_claims=1,
+        preferred_days="even",
+        fresh_within_days=7.0,
+    )
+    fresh = WorkItem(
+        source_key="src",
+        episode_uid="fresh",
+        work_class="transcript-asr",
+        state="queued",
+        priority_bucket=BUCKET_FEED_VISIBLE,
+        published=datetime(2026, 7, 7, tzinfo=UTC),
+    )
+    backlog = WorkItem(
+        source_key="src",
+        episode_uid="old",
+        work_class="transcript-asr",
+        state="queued",
+        priority_bucket=BUCKET_FEED_VISIBLE,
+        published=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    monkeypatch.setattr(worker, "_is_preferred_day", lambda now=None: False)
+
+    class _FakeDateTime:
+        @staticmethod
+        def now(_tz=None):
+            return datetime(2026, 7, 7, tzinfo=UTC)
+
+    monkeypatch.setattr(ew, "datetime", _FakeDateTime)
+
+    assert worker._preferred_freshness(fresh) is True
+    assert worker._preferred_freshness(backlog) is False
 
 
 def test_external_worker_prefers_long_meetings_for_claim_scan(tmp_path):

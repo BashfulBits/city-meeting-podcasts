@@ -249,7 +249,9 @@ defaults:
         unit_label: gpu-second
       dispatch:
         max_inflight: 8
+        min_claims_per_run: 1
         max_claims_per_run: 1
+        preferred_days: all
       tasks:
         transcript-asr:
           prefer_min_duration_hours: 4
@@ -264,7 +266,9 @@ defaults:
         unit_label: gpu-second
       dispatch:
         max_inflight: 8
+        min_claims_per_run: 1
         max_claims_per_run: 1
+        preferred_days: all
       tasks:
         transcript-asr:
           prefer_min_duration_hours: 4

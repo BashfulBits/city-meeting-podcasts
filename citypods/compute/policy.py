@@ -44,8 +44,10 @@ class BackendBudgetPolicy:
 @dataclass(frozen=True)
 class BackendDispatchPolicy:
     max_inflight: int = 0
+    min_claims_per_run: int = 1
     max_claims_per_run: int = 1
     max_scan: int | None = None
+    preferred_days: str = "all"
 
 
 @dataclass(frozen=True)
@@ -109,9 +111,13 @@ def backend_policy(
     unit_label = str(budget_raw.get("unit_label") or "gpu-second")
 
     max_inflight = _as_int(dispatch_raw.get("max_inflight", raw.get("max_inflight")), 0)
+    min_claims = _as_int(dispatch_raw.get("min_claims_per_run"), 1)
     max_claims = _as_int(dispatch_raw.get("max_claims_per_run", raw.get("max_claims")), 1)
     max_scan_raw = dispatch_raw.get("max_scan", raw.get("max_scan"))
     max_scan = None if max_scan_raw in (None, "") else _as_int(max_scan_raw, 0)
+    preferred_days = str(dispatch_raw.get("preferred_days") or "all")
+    if preferred_days not in {"all", "even", "odd"}:
+        preferred_days = "all"
 
     task = TaskPolicy(
         prefer_min_duration_hours=max(
@@ -150,8 +156,10 @@ def backend_policy(
         ),
         dispatch=BackendDispatchPolicy(
             max_inflight=max(0, max_inflight),
+            min_claims_per_run=max(0, min_claims),
             max_claims_per_run=max(0, max_claims),
             max_scan=max_scan if max_scan is None or max_scan > 0 else None,
+            preferred_days=preferred_days,
         ),
         task=task,
     )

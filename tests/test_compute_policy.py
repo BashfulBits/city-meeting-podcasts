@@ -23,8 +23,10 @@ def test_backend_policy_loads_legacy_flat_shape():
     assert policy.budget.monthly_units == 108000
     assert policy.budget.spendable_units == 108000
     assert policy.dispatch.max_inflight == 8
+    assert policy.dispatch.min_claims_per_run == 1
     assert policy.dispatch.max_claims_per_run == 2
     assert policy.dispatch.max_scan == 15
+    assert policy.dispatch.preferred_days == "all"
     assert policy.task.prefer_min_duration_hours == 0
 
 
@@ -41,7 +43,12 @@ def test_backend_policy_prefers_nested_h14d_shape():
                             "reserve_units": 25,
                             "unit_label": "credit-unit",
                         },
-                        "dispatch": {"max_inflight": 4, "max_claims_per_run": 3},
+                        "dispatch": {
+                            "max_inflight": 4,
+                            "min_claims_per_run": 2,
+                            "max_claims_per_run": 3,
+                            "preferred_days": "odd",
+                        },
                         "tasks": {
                             "transcript-asr": {
                                 "prefer_min_duration_hours": 4,
@@ -63,7 +70,9 @@ def test_backend_policy_prefers_nested_h14d_shape():
     assert policy.budget.spendable_units == 375
     assert policy.budget.unit_label == "credit-unit"
     assert policy.dispatch.max_inflight == 4
+    assert policy.dispatch.min_claims_per_run == 2
     assert policy.dispatch.max_claims_per_run == 3
+    assert policy.dispatch.preferred_days == "odd"
     assert policy.task.prefer_min_duration_hours == 4
     assert policy.task.fresh_within_days == 3
     assert policy.task.budget_units_per_audio_second == 0.5
