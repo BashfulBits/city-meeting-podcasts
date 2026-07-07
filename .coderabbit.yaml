@@ -1,9 +1,11 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# Settings-as-code for CodeRabbit. This repo runs on CodeRabbit's free (public-repo) tier, which
-# has a rolling per-hour allowance on both files scanned and reviews triggered -- see AGENTS.md
-# ("Running a full-codebase CodeRabbit review" / "Working with CodeRabbit on a PR") for the
-# agent-side process this config supports and for how to check remaining budget.
+# Settings-as-code for CodeRabbit. This repo runs on CodeRabbit's free (public-repo) tier, whose
+# rolling allowance has TWO independent dimensions: ~reviews/hour AND ~files-scanned/hour. The
+# "backoff delays" we hit come from the reviews/hour dimension, so the primary lever here is
+# reducing how often a review *fires* (the draft-PR workflow below + drafts:false), not just how
+# many files each review scans (path_filters). See AGENTS.md ("Running a full-codebase CodeRabbit
+# review" / "Working with CodeRabbit on a PR") for the agent-side process and how to check budget.
 #
 # Comment "@coderabbitai configuration" on any PR to see the full effective config, including every
 # field left at its default here.
@@ -20,28 +22,34 @@ tone_instructions: >
   invariants (AGENTS.md) over style nits -- ruff/ruff-format already enforce style in CI.
 
 reviews:
-  profile: chill
+  # assertive > chill here on purpose: more precise, structured findings that agents can interpret
+  # cleanly. Profile affects how much is *said*, not how many review-events fire, so it costs no
+  # extra rate-limit budget (that's governed by the auto_review block below).
+  profile: assertive
   collapse_walkthrough: true
   poem: false
   sequence_diagrams: false
   suggested_reviewers: false
   enable_prompt_for_ai_agents: true
-  # No labeling_instructions list here on purpose: a static list would duplicate the type:*/area:*
-  # taxonomy documented in CONTRIBUTING.md's "Project fields" table, and the two would drift the
-  # next time a label is added/renamed. Leaving labeling_instructions unset makes CodeRabbit infer
-  # suggestions purely from labels already used on prior PRs in this repo -- it self-updates as the
-  # taxonomy evolves, at the cost of somewhat less precise suggestions than an explicit list.
-  auto_apply_labels: true
+  # Suggest labels in the walkthrough but do NOT auto-apply them. There's deliberately no inline
+  # labeling_instructions list: the type:*/area:* taxonomy has exactly one home -- CONTRIBUTING.md's
+  # "Project fields" table -- which humans, agents, AND CodeRabbit all consume (CodeRabbit ingests
+  # it via knowledge_base.code_guidelines below). An inline list would duplicate that table and
+  # drift from it; CodeRabbit can't import a taxonomy file for label application, so suggest-only
+  # (a human/agent confirms from the walkthrough) is the least-duplication option and avoids
+  # auto-mutating PR metadata on a guess.
+  auto_apply_labels: false
 
-  # Exclude non-code / generated / data-only paths so reviews stay focused on files an LLM review
-  # can actually add value to, and so doc-only or city-onboarding-data PRs don't burn file/review
-  # quota. Everything under citypods/, scripts/, tests/, workers/, templates/, and
-  # .github/workflows/ stays in scope -- including workflow YAML, which is security-relevant
-  # (permissions, secrets, pinned Action SHAs) rather than "just config".
+  # Exclude only genuinely non-reviewable paths: machine-generated output and pure data. Note we do
+  # NOT exclude **/*.md -- this repo's docs (ARCHITECTURE, review/NN, AGENTS, CHANGELOG) are
+  # load-bearing and worth a single sanity pass. Docs don't cause *repeated* review cost because of
+  # the draft-PR workflow (see auto_review below): a doc-only PR gets one review when flipped to
+  # "ready", and agents are told not to re-push/re-request on doc-only changes since the author
+  # knows the docs better than CodeRabbit. (CodeRabbit has no per-path "review once" knob -- the
+  # incremental toggle is repo-wide -- so this behavior is workflow-enforced, not config-enforced.)
   path_filters:
     - "!config/**" # per-city/per-feed data (config/cities/*.yml, config/feeds/*.yml) -- no logic
     - "!constraints/*.txt" # pip-compile output; drift is enforced by CI, not worth an LLM pass
-    - "!**/*.md" # documentation-only content across the repo (root docs + review/*.md)
     - "!docs/**" # generated GitHub Pages output (gitignored today; excluded defensively)
     - "!**/package-lock.json"
     - "!**/*.lock"
@@ -109,13 +117,15 @@ reviews:
 
   auto_review:
     enabled: true
+    # Draft-PR workflow -- this is the primary reviews/hour lever. Agents/contributors open PRs as
+    # DRAFT and iterate freely there (drafts:false => zero reviews during self-directed churn, the
+    # main source of wasted review-events). Flipping to "ready for review" triggers the first
+    # review; subsequent pushes get incremental re-reviews. The failure mode is benign: if someone
+    # forgets to open as draft, they just get reviewed sooner -- never an unreviewed final commit.
+    # (Preferred over auto_pause_after_reviewed_commits, which left the last/riskiest commit
+    # un-re-reviewed; left at its default 5 here as a passive safety valve, not the main mechanism.)
     drafts: false
     auto_incremental_review: true
-    # After 2 reviewed pushes, CodeRabbit pauses and waits for an explicit "@coderabbitai review"
-    # comment instead of auto-re-reviewing every subsequent commit. Agents are expected to send
-    # that comment once fixes for a review round are pushed (see AGENTS.md) -- this trades a small
-    # amount of agent discipline for meaningfully less quota burned on long fix-iteration threads.
-    auto_pause_after_reviewed_commits: 2
     ignore_title_keywords:
       - "WIP"
       - "DO NOT MERGE"

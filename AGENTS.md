@@ -203,27 +203,38 @@ one first (`ls review/`), since new sweeps supersede: [`review/19`](review/19-co
 
 [`.coderabbit.yaml`](.coderabbit.yaml) is the settings-as-code config for the bot's normal
 PR-triggered reviews (separate from the manual full-repo CLI sweeps above). It exists mainly to
-stay inside the free-tier OSS rate limit (a rolling per-hour allowance on both files scanned and
-reviews triggered — query `@coderabbitai reviews remaining?` on a PR, or `cr stats` locally, for the
-current numbers). At a glance:
+stay inside the free-tier OSS rate limit, which throttles on **two** dimensions — reviews/hour
+*and* files-scanned/hour (query `@coderabbitai reviews remaining?` on a PR, or `cr stats` locally,
+for the current numbers). Our backoff pain is the reviews/hour dimension, so the main lever is
+firing fewer reviews (the draft workflow below), not just scanning fewer files.
+
+> **Open PRs as DRAFT and iterate there; flip to "Ready for review" only when you want the review.**
+> CodeRabbit does not review draft PRs (`drafts: false`), so all your self-directed churn costs zero
+> review-events. Marking the PR **ready for review** triggers the first review; pushes after that get
+> incremental re-reviews. This is the single biggest quota saver — do it for every PR. (If you forget
+> and open a normal PR, nothing breaks — you just get reviewed a bit sooner.)
+
+At a glance:
 
 - **Excluded from review:** per-city/per-feed data (`config/**`), compiled lockfiles
-  (`constraints/*.txt`), all documentation (`**/*.md`), and generated output (`docs/**`). None of
-  these benefit from an LLM pass, and doc-only or city-onboarding PRs are common here.
-- **Always in scope:** every real source dir — `citypods/`, `scripts/`, `tests/`, `workers/`,
-  `templates/`, **and `.github/workflows/**` (workflow YAML is treated as security-relevant code,
-  not filtered out with the rest of the repo's YAML).
-- **`auto_pause_after_reviewed_commits: 2`** — CodeRabbit auto-re-reviews the first two pushes to a
-  PR, then pauses. If you push further fix commits after that, **comment `@coderabbitai review`**
-  once you're done iterating and want a final pass before merge — it will not happen on its own.
+  (`constraints/*.txt`), and generated GitHub Pages output (`docs/**`). Docs (`**/*.md`) are **not**
+  excluded — ARCHITECTURE / review/NN / AGENTS / CHANGELOG are load-bearing and get one sanity pass.
+- **In scope:** every real source dir — `citypods/`, `scripts/`, `tests/`, `workers/`, `templates/`,
+  `**and `.github/workflows/**`** (workflow YAML is security-relevant code — permissions, secrets,
+  pinned Action SHAs — not filtered out like the repo's data YAML), plus all `*.md`.
+- **Doc-only PRs: one review, then stop.** For a PR that only touches docs, do your editing in draft,
+  flip to ready for the single review, and then **don't re-push or re-request review** — you know the
+  docs better than CodeRabbit, and re-reviews of prose just burn throttled review-events. (CodeRabbit
+  has no per-path "review once" setting; this is a workflow rule, not something the config enforces.)
 - **Renovate PRs are skipped** (`ignore_usernames`) — dependency bumps are already gated by the
   `deps` CI job and `dep-bump-smoke.yml`.
 - `tone_instructions` / `path_instructions` preload the invariants from "Conventions you must
   respect" below so CodeRabbit doesn't flag intentional patterns (append-only records, split
   hashes, stage ordering, the wall-clock budget, untrusted LLM output, the SSRF gate) as bugs.
-- **Auto-labeling** (`auto_apply_labels: true`) infers labels from prior-PR history rather than a
-  static list, so it tracks the `type:*`/`area:*` taxonomy in CONTRIBUTING.md without needing a
-  second place to update when that taxonomy changes.
+- **Label suggestions, not auto-apply** (`auto_apply_labels: false`). CodeRabbit suggests `type:*`/
+  `area:*` labels in the walkthrough (informed by CONTRIBUTING.md's "Project fields" table, which it
+  ingests via `knowledge_base.code_guidelines`, and by prior-PR history); a human/agent applies them.
+  That table is the single source of truth for the taxonomy — do not add a duplicate list to the YAML.
 - **Doc-update-contract pre-merge check** (`pre_merge_checks.custom_checks`, `warning` mode —
   advisory only, never blocks merge) flags a PR that changes real source but touches none of
   `CHANGELOG.md` / `ARCHITECTURE.md` / `review/*.md`, per the lifecycle contract above.
