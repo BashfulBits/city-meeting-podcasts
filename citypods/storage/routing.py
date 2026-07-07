@@ -41,6 +41,52 @@ COORDINATION_PREFIXES: tuple[str, ...] = (
     "provider-leases/",
 )
 
+# INVARIANT — R2 holds ONLY ephemeral, derivable objects. Two forces make a canonical record on R2
+# unrecoverable: (a) the storage-reclaim lifecycle rules aggressively expire R2 scratch (GH#496),
+# (b) R2 coordination keys are excluded from the bulk B2 state sync (``statesync._is_cas_managed``),
+# so they have no backup on B2. Every prefix routed to R2 must therefore be reconstructible from the
+# B2-resident record store / discovery index if it vanishes. This allow-list is the *declaration*
+# that each coordination prefix satisfies that: adding a new R2 prefix without a matching entry
+# ``assert_coordination_prefixes_ephemeral`` (called at import) and a test, forcing a reviewer to
+# confirm the new data carries nothing canonical. Never add a prefix that stores the sole copy of
+# anything (audio, transcripts, records, or state that isn't recomputable).
+_EPHEMERAL_R2_PREFIXES: dict[str, str] = {
+    # Free-tier GPU budget ledger: derivable — a lost/expired budget object re-initializes to the
+    # period cap; worst case is one over-count window, never lost artifacts.
+    "state/compute_budget.json": "GPU budget ledger; re-initializes to the period cap if lost",
+    # Bounded, non-secret worker memory samples for admission tuning; a lost object just restarts
+    # sampling. No durable/canonical data.
+    "state/asr_worker_telemetry.json": "bounded worker telemetry samples; restarts if lost",
+    # Stage-2 per-item work-lease ledger: a claim token, not a work product. If lost, the item
+    # looks unclaimed and is re-derived from the B2 discovery index and re-claimed.
+    "work-leases/": "per-item claim tokens; re-derived from the B2 discovery index",
+    # Provider concurrency slots: transient N-fixed CAS objects; a lost slot just frees capacity and
+    # is re-created on the next claim. Carries no durable state.
+    "provider-leases/": "transient concurrency slots; re-created on next claim",
+}
+
+
+def assert_coordination_prefixes_ephemeral(
+    prefixes: tuple[str, ...] = COORDINATION_PREFIXES,
+    *,
+    allow: dict[str, str] = _EPHEMERAL_R2_PREFIXES,
+) -> None:
+    """Guard the R2-is-ephemeral invariant: every coordination prefix routed to R2 must be declared
+    ephemeral/derivable in ``_EPHEMERAL_R2_PREFIXES``. Raises ``AssertionError`` naming the offender
+    so a new R2 prefix can't ship without a reviewer consciously affirming it stores no canonical
+    (backup-less) data. See the invariant note above ``_EPHEMERAL_R2_PREFIXES``."""
+    undeclared = [p for p in prefixes if p not in allow]
+    if undeclared:
+        raise AssertionError(
+            "R2 coordination prefix(es) not declared ephemeral in _EPHEMERAL_R2_PREFIXES "
+            f"(routing.py): {undeclared}. R2 has no backup and is aggressively expired — a "
+            "canonical record here would be unrecoverable. Add each prefix to the allow-list with "
+            "the reason it is derivable, or route it to the B2 primary instead."
+        )
+
+
+assert_coordination_prefixes_ephemeral()
+
 
 class RoutingStorage:
     """Dispatch storage calls to ``primary`` or ``coordination`` by key prefix.

@@ -226,7 +226,16 @@ total on `/admin/status`.
 - **Static site** → Jinja2 templates render to `docs/`; Jekyll disabled (`docs/.nojekyll`); served by
   GitHub Pages at the configured custom domain.
 - **Object storage** → Backblaze B2 (S3 API) fronted by a Cloudflare Worker/CDN (free egress) for
-  audio + transcripts + durable state.
+  audio + transcripts + durable state. The coordination control-plane (budget/work/provider leases)
+  routes to Cloudflare R2 for compare-and-swap (`RoutingStorage`, `COORDINATION_PREFIXES`).
+  **Lifecycle backstops** (as-code, `scripts/apply_bucket_lifecycle.py`, GH#496): R2 expires the
+  validator's scratch prefixes `work-leases/__validate__/` + `provider-leases/validate-` after **1 day**
+  (so a crashed runner's un-run cleanup can't leak scratch); B2 keeps deleted/overwritten object
+  **versions for `defaults.b2_retention_days` (default 30d)** before purge — the recoverable-delete
+  window the resurrection watchdog relies on. **Invariant — R2 holds only ephemeral/derivable objects:**
+  R2 has no soft-delete and is aggressively expired, and its keys are excluded from the B2 state backup,
+  so a canonical record there would be unrecoverable; `routing.py` enforces this (`_EPHEMERAL_R2_PREFIXES`
+  + an import-time/test guard fails if a coordination prefix isn't declared ephemeral).
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
   downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
   retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),
@@ -237,10 +246,14 @@ total on `/admin/status`.
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
   provider calls), `audit.yml` (daily feed-health → GitHub issues), `contracts.yml` (weekly live endpoint
-  contracts), `asr-bench.yml` (manual ASR benchmark), `audio-gc.yml` (weekly **dry-run** orphan-audio
-  report — restores bucket state via `gc_audio.py --pull-state`, opens/updates one rolling
-  `operations` issue with a per-city reclaimable table + `orphans.tsv` artifact; deletion only via
-  manual dispatch with `apply=true`, which also requires `main` — it never deletes on schedule).
+  contracts), `asr-bench.yml` (manual ASR benchmark), `audio-gc.yml` (**"Storage reclaim"**, weekly —
+  the unified reclaim policy, GH#496): reconciles the R2/B2 lifecycle rules, runs the orphan GC
+  (a scheduled run **auto-deletes only the double-confirmed subset** — orphans seen across ≥2 runs past
+  `defaults.orphan_quarantine_days`, tracked in `state/orphan-ledger.json`; full deletion still needs a
+  manual `apply=true` dispatch from `main`), and runs the **resurrection watchdog** — every delete is
+  logged to `state/reclaim-log.jsonl` with a `recover_by` deadline and, if a live record re-references a
+  still-restorable reaped key, opens a `priority:high` issue to restore the B2 version before it purges.
+  Opens/updates one rolling reclaimable-orphans issue + `orphans.tsv` artifact.
 - **Tests** run fully offline against recorded fixtures; feeds have byte-for-byte snapshot tests.
 
 ## Provider notes & gotchas

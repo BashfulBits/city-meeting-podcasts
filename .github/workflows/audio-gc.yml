@@ -1,13 +1,20 @@
-name: Audio orphan GC
+name: Storage reclaim
 
-# Reports (and, on demand, deletes) content-addressed audio/transcript objects in the bucket that no
-# record references — regenerated artifacts, retired recipes, and coalesced duplicate source views
-# (GH#421). Scheduled runs are ALWAYS dry-run: they only open/update an operations issue with a
-# per-city summary and attach the full object list as an artifact. To actually reclaim the space, run
-# this workflow manually (Run workflow) with `apply = true`.
+# Unified storage-reclaim policy (GH#496). One weekly maintenance job, three backstops:
 #
-# Maintenance job, not part of PR CI. Like the availability digest, it restores the durable bucket
-# state first so the live set is current — it never reaps against a stale/partial set of records.
+#   1. LIFECYCLE — idempotently (re)apply the bucket lifecycle rules: expire the validator's R2
+#      scratch prefixes (work-leases/__validate__/, provider-leases/validate-) after 1 day, and keep
+#      deleted/overwritten B2 versions for a bounded recovery window. See apply_bucket_lifecycle.py.
+#   2. ORPHAN GC — report content-addressed audio/transcript objects no record references (regenerated
+#      artifacts, retired recipes, coalesced duplicate source views GH#421). A SCHEDULED run now also
+#      auto-deletes the provably-safe subset (--auto-confirm: orphaned across >=2 runs past the
+#      quarantine window); a MANUAL "Run workflow" with apply=true still deletes everything reported.
+#   3. RESURRECTION WATCHDOG — if a live record has come to reference an object a prior GC deleted
+#      while it is still restorable from the B2 version window, open a HIGH-priority issue in time to
+#      restore it. See check_reclaim_resurrection.py.
+#
+# Maintenance job, not part of PR CI. Restores the durable bucket state first so the live set is
+# current — it never reaps against a stale/partial set of records.
 
 on:
   schedule:
@@ -15,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       apply:
-        description: "Actually delete the orphans (default: dry-run report only)"
+        description: "Delete ALL reported orphans now (default: scheduled double-confirmed auto-apply only)"
         type: boolean
         default: false
       min_age_days:
@@ -35,8 +42,10 @@ concurrency:
 jobs:
   gc:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
+    # Credentials are scoped per step (never at job level), so checkout/setup-python/pip — which need
+    # none of them — can't see B2/R2/Cloudflare secrets or GH_TOKEN. Storage steps get B2+R2 (make_storage
+    # builds the routing backend from them; apply_bucket_lifecycle.py targets each backend directly);
+    # gh-shelling steps get GH_TOKEN. Matches validate-control-plane.yml's step-scoped secret pattern.
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -49,10 +58,34 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
 
+      # Backstop 1: reconcile the bucket lifecycle rules. Idempotent — a no-op when already configured.
+      # continue-on-error so a transient lifecycle-API failure (or a B2 endpoint that needs a native
+      # rule shape, surfaced as a red step) never blocks the watchdog; it re-applies next week. But its
+      # `outcome` is read below (id: lifecycle): the whole double-confirm / resurrection-watchdog safety
+      # model assumes the B2 retention window is actually configured, so a failure here downgrades the
+      # GC step to report-only — no deletions run against an unverified retention window.
+      - name: Configure bucket lifecycle rules
+        id: lifecycle
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+        run: python scripts/apply_bucket_lifecycle.py --apply
+
       # Never reap while an audio.yml run might be writing fresh objects whose records aren't
       # persisted yet. The --min-age-days floor already protects new objects; this just avoids racing
       # the state pull. Best-effort: proceed after the window so a stuck run never blocks GC forever.
       - name: Wait for active audio runs to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           for i in $(seq 1 15); do
             ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
@@ -62,9 +95,25 @@ jobs:
           done
           echo "Timed out after 30 minutes. Proceeding anyway."
 
+      # Backstop 2: orphan GC. Scheduled → double-confirmed auto-apply (--auto-confirm); manual
+      # apply=true (main only) → delete all reported. Either way --push-state persists the orphan
+      # ledger + reclaim log (scoped push, never clobbers sibling state). --reconcile-issue lets the
+      # script itself open/update/close the single rolling GC issue (Python-owned, mirroring
+      # audit_feeds.py's reconcile() pattern — see reconcile_gc_issue in gc_audio.py — rather than
+      # encoding that state machine as workflow-YAML `if:` conditions on read-back JSON files).
       - name: Run orphan GC
         id: gc
+        # Pass workflow context through env (never inline ${{ }} inside a shell [ ] test): a
+        # branch-controllable value interpolated pre-shell could otherwise break out of the test.
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          MIN_AGE_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.min_age_days || '7' }}
+          # Report-only unless the lifecycle step above actually succeeded: no deletion path may run
+          # against an unverified B2 retention window (the watchdog's recovery guarantee depends on it).
+          LIFECYCLE_OUTCOME: ${{ steps.lifecycle.outcome }}
+          GH_TOKEN: ${{ github.token }} # --reconcile-issue shells out to `gh` (gc_audio.py:_gh)
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
@@ -77,21 +126,38 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
           APPLY=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.apply }}" = "true" ]; then
-            if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-              echo "::error title=Audio GC apply mode::apply=true is only allowed when dispatched from main (got ${{ github.ref }})"
+          EXTRA="--push-state --reconcile-issue"
+          # Lifecycle reconciliation is the precondition for any deletion. If it failed, fall back to
+          # report-only: refuse a manual apply=true dispatch loudly, and drop --auto-confirm on a
+          # scheduled run so it degrades to plain dry-run reporting (safety over throughput).
+          LIFECYCLE_OK=true
+          if [ "$LIFECYCLE_OUTCOME" != "success" ]; then
+            LIFECYCLE_OK=false
+            echo "::warning title=Storage reclaim lifecycle::lifecycle reconciliation did not succeed (outcome=$LIFECYCLE_OUTCOME); this run is report-only."
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$APPLY_INPUT" = "true" ]; then
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
+              echo "::error title=Storage reclaim apply mode::apply=true is only allowed when dispatched from main (got $GIT_REF)"
+              exit 1
+            fi
+            if [ "$LIFECYCLE_OK" != "true" ]; then
+              echo "::error title=Storage reclaim apply mode::refusing apply=true because lifecycle reconciliation failed (outcome=$LIFECYCLE_OUTCOME); the B2 retention window is unverified. Re-run after it succeeds."
               exit 1
             fi
             APPLY="--apply"
-            echo "::warning title=Audio GC apply mode::Deleting orphaned objects (manual apply run)."
+            echo "::warning title=Storage reclaim apply mode::Deleting ALL reported orphaned objects (manual apply run)."
+          elif [ "$EVENT_NAME" = "schedule" ] && [ "$LIFECYCLE_OK" = "true" ]; then
+            # --auto-confirm is for the unattended weekly cron only. A manual workflow_dispatch with
+            # apply=false is someone asking for an on-demand report — it must stay a pure dry-run,
+            # not silently also auto-reap the double-confirmed subset behind their back.
+            EXTRA="$EXTRA --auto-confirm"
           fi
           python scripts/gc_audio.py \
             --pull-state \
-            --min-age-days "${{ github.event_name == 'workflow_dispatch' && inputs.min_age_days || '7' }}" \
+            --min-age-days "$MIN_AGE_DAYS" \
             --out gc-audio \
-            $APPLY
+            $APPLY $EXTRA
           echo "has_orphans=$(cat gc-audio/has_orphans 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
-          echo "applied=$([ -n "$APPLY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Upload object list
         if: steps.gc.outputs.has_orphans == 'true'
@@ -103,39 +169,73 @@ jobs:
             gc-audio/summary.json
           if-no-files-found: warn
 
-      # Dry-run with orphans → open or update ONE rolling operations issue. The per-city table is in
-      # issue-body.md; the artifact URL (full object list) is appended here.
-      - name: Open or update GC issue
-        if: steps.gc.outputs.has_orphans == 'true' && steps.gc.outputs.applied == 'false'
+      # Backstop 3: resurrection watchdog. --no-fail keeps this step green so the issue-filing steps
+      # below always run; a final step re-fails the run if a hit was found (after the issue is opened).
+      - name: Reclaim resurrection watchdog
+        id: watchdog
+        # The watchdog is the safety backstop for a bad/interrupted GC run: it does its own
+        # --pull-state and never depends on the GC step succeeding, so run it even if GC failed
+        # (only skip on an outright cancel). The downstream issue steps gate on !cancelled() too.
+        if: '!cancelled()'
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
-          TITLE="Audio storage GC — reclaimable orphans"
+          python scripts/check_reclaim_resurrection.py --pull-state --out reclaim-watchdog --no-fail
+          echo "has_resurrection=$(cat reclaim-watchdog/has_resurrection 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
+
+      # A reaped object is referenced again while still restorable → open/refresh ONE HIGH-priority
+      # issue. Stable title (deadline lives in the body) so it dedups across runs.
+      - name: Open or update resurrection issue
+        if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''true'''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="🚨 Reclaimed storage object re-referenced — data-loss risk"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          printf '\n\n> Full object list (`orphans.tsv`): %s\n' "$ARTIFACT_URL" >> gc-audio/issue-body.md
+          printf '\n\n> Watchdog run: %s\n' "$ARTIFACT_URL" >> reclaim-watchdog/issue-body.md
+          # Urgency lives in the 🚨 title + "data-loss risk" body, not a label: CONTRIBUTING.md forbids
+          # encoding priority in labels (the Project `Priority` field owns that dimension, set out-of-band).
           EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
             | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
           if [ -n "$EXISTING" ]; then
-            gh issue edit "$EXISTING" --body-file gc-audio/issue-body.md
-            echo "Updated GC issue #$EXISTING"
+            gh issue edit "$EXISTING" --body-file reclaim-watchdog/issue-body.md
+            echo "Updated resurrection issue #$EXISTING"
           else
-            # Create first, then label as a best-effort step: a missing/renamed label must never
-            # drop the report (the original `operations` label did not exist — use the repo taxonomy).
-            URL=$(gh issue create --title "$TITLE" --body-file gc-audio/issue-body.md)
-            echo "Opened a new GC issue: $URL"
+            URL=$(gh issue create --title "$TITLE" --body-file reclaim-watchdog/issue-body.md)
+            echo "Opened resurrection issue: $URL"
             gh issue edit "$URL" --add-label "area:ops" --add-label "type:operations" \
-              || echo "::warning title=GC issue label::could not add labels (issue still created)"
+              || echo "::warning title=Resurrection issue label::could not add labels (issue still created)"
           fi
 
-      # Any manual apply run → close the rolling issue if one is open (the orphans it tracked are
-      # gone now, whether this run reaped them or a prior one did).
-      - name: Close GC issue after apply
-        if: steps.gc.outputs.applied == 'true'
+      # Clean sweep → close any open resurrection issue (the re-referenced key was restored or its
+      # window passed).
+      - name: Close resurrection issue when clear
+        if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''false'''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TITLE="Audio storage GC — reclaimable orphans"
-          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TITLE="🚨 Reclaimed storage object re-referenced — data-loss risk"
           EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
             | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
           if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body "Reaped by apply run: ${ARTIFACT_URL}"
+            gh issue comment "$EXISTING" --body "No re-referenced reclaimed object detected this run — closing."
             gh issue close "$EXISTING"
-            echo "Closed GC issue #$EXISTING"
+            echo "Closed resurrection issue #$EXISTING"
           fi
+
+      # Re-fail the run AFTER the issue is filed, so a data-loss event is loud (red run) without
+      # suppressing the issue-filing steps above.
+      - name: Fail run on unresolved resurrection
+        if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''true'''
+        run: |
+          echo "::error title=Data-loss risk::A reclaimed object is referenced again; see the opened HIGH-priority issue."
+          exit 1
