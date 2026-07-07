@@ -984,7 +984,10 @@ def check_timeline_integrity(
         if served_dur is not None and not probe_has_stream and not withheld:
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
-            if delta > _FRAME_TOLERANCE:
+            end_delta = abs(segs[-1].served_end - served_dur)
+            stored_duration_delta = max(delta, end_delta)
+            stored_duration_threshold = max(_FRAME_TOLERANCE, finding_min_delta)
+            if delta >= stored_duration_threshold:
                 findings.append(
                     Finding(
                         slug,
@@ -997,7 +1000,7 @@ def check_timeline_integrity(
                 )
             # End coverage: the last segment must reach the served duration. Sum-vs-duration
             # alone can be fooled by an internal gap plus an equal overrun; this pins the end.
-            if abs(segs[-1].served_end - served_dur) > _FRAME_TOLERANCE:
+            if end_delta >= stored_duration_threshold:
                 findings.append(
                     Finding(
                         slug,
@@ -1007,6 +1010,30 @@ def check_timeline_integrity(
                         f"audio_duration_served {served_dur:.3f}s",
                     )
                 )
+            if mutate_integrity and stored_duration_delta >= stored_duration_threshold:
+                repair = [
+                    REPAIR_TIMELINE_REPLAN,
+                    REPAIR_AUDIO_REMATERIALIZE,
+                    REPAIR_TRANSCRIPT_REGENERATE,
+                ]
+                block = build_timeline_audio_integrity(
+                    status="timeline-duration-mismatch",
+                    timeline_duration=seg_total,
+                    container_duration=None,
+                    stream_sample_duration=None,
+                    repair=repair,
+                    source_duration_delta=_source_duration_delta(ep),
+                )
+                if repair_min_delta is not None:
+                    block["repair_min_delta"] = repair_min_delta
+                if repair_cohort:
+                    block["repair_cohort"] = repair_cohort
+                if _select_timeline_audio_repair(
+                    {"stream_delta": stored_duration_delta},
+                    repair,
+                    min_delta=repair_min_delta,
+                ):
+                    set_timeline_audio_integrity(ep, block)
 
         # 3b. Rendered audio duration diagnostics. This compares the EDL to the stream sample
         # clock when the caller provides a probe; container-only drift is reported separately so

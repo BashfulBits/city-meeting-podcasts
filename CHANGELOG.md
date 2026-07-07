@@ -30,6 +30,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Cheap timeline-duration fallback no longer files sub-second padding noise, and large fallback
+  mismatches can now self-heal through targeted repair.** GH#798/GH#799 were paired
+  `timeline-duration-mismatch` / `timeline-short-coverage` issues from the record-only fallback
+  path used when no live hosted-audio stream probe is available. That fallback was still using the
+  structural 0.1s EDL tolerance, so normal AAC/sample-rounding deltas below the live
+  `rendered-duration-mismatch` issue threshold kept opening operational issues. The fallback now
+  uses the same `timeline_finding_min_delta` floor (1.0s by default) for feed-health findings, while
+  genuinely large stored EDL-vs-served-duration mismatches stamp `timeline-replan`,
+  `audio-rematerialize`, and `transcript-regenerate` repair actions when the explicit repair gate is
+  enabled. Repairable timeline feed-health issue bodies now link directly to the Feed health audit
+  workflow and list the `timeline_repair=true` / `timeline_repair_cohort` inputs to run. Existing
+  sub-second rows should clear on the next audit after this ships; truly stale rows remain visible
+  and repairable.
 - **Work-manifest persistence dropped `duration_hours`, making 100% of the feed-visible
   transcript-asr backlog read as unknown-duration.** `_workitem_to_dict` / `_workitem_from_dict`
   serialized every `WorkItem` field *except* `duration_hours` — a computed ordering input (from

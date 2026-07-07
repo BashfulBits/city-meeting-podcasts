@@ -73,6 +73,23 @@ _DEAD_MEETINGS_URL_STATUSES = frozenset({404, 410, 451})
 # first-seen date regardless of the display cap, so nothing is lost across runs.
 _MAX_ROWS = 60
 _MAX_EXAMPLE_CHARS = 180
+_AUDIT_WORKFLOW_URL = (
+    "https://github.com/BashfulBits/city-meeting-podcasts/actions/workflows/audit.yml"
+)
+
+
+def _timeline_repair_workflow_guidance(*, default_min_delta: str = "1.0") -> str:
+    return (
+        f"\n\n**Repair action:** open the "
+        f"[Feed health audit workflow]({_AUDIT_WORKFLOW_URL}), choose **Run workflow** on "
+        "`main`, and set `timeline_repair=true`. Leave "
+        f"`timeline_repair_min_delta={default_min_delta}` unless you intentionally want a "
+        "different repair threshold, and set `timeline_repair_cohort` to a short label such as "
+        "`issue-<number>-YYYYMMDD`. That dispatch stamps targeted repair flags; the normal "
+        "build/audio stages then re-plan, re-materialize, and re-generate dependent transcripts. "
+        "This issue auto-closes after a later feed-health audit sees no remaining failures."
+    )
+
 
 # Per-check guidance: what usually causes it, and how an operator should investigate/resolve it.
 # Shown in every issue body (consolidated or per-slug) beneath the severity/summary line.
@@ -185,7 +202,7 @@ _GUIDANCE: dict[str, str] = {
         "**Resolution:** force a re-materialize for the affected episode(s) (a "
         "`timeline-replan`/`audio-rematerialize` repair flag). If a live audio probe becomes "
         "available on a later run, the more precise `rendered-duration-mismatch` check "
-        "supersedes this one for the same episode."
+        "supersedes this one for the same episode." + _timeline_repair_workflow_guidance()
     ),
     "timeline-short-coverage": (
         "**What this means:** an episode's last EDL segment doesn't reach "
@@ -193,6 +210,7 @@ _GUIDANCE: dict[str, str] = {
         "**Common causes:** same as `timeline-duration-mismatch` — the EDL and the recorded "
         "served duration have fallen out of sync.\n\n"
         "**Resolution:** force a re-materialize for the affected episode(s)."
+        + _timeline_repair_workflow_guidance()
     ),
     "rendered-duration-mismatch": (
         "**What this means:** the *live-probed* rendered audio duration disagrees with the "
@@ -205,7 +223,7 @@ _GUIDANCE: dict[str, str] = {
         "**Resolution:** see the GH#702 runbook in `review/20`. Typically requires re-stamping "
         "`timeline-replan` + `audio-rematerialize` repair flags via a manual `timeline_repair` "
         "dispatch of the feed-health workflow, then letting the audio lane drain and "
-        "re-auditing."
+        "re-auditing." + _timeline_repair_workflow_guidance()
     ),
     "timeline-audio-probe-divergence": (
         "**What this means:** the cheap header-only duration probe (range-reads just the "
@@ -230,14 +248,14 @@ _GUIDANCE: dict[str, str] = {
         "or (for legacy multi-part meetings) a part was re-uploaded/replaced upstream after "
         "being measured.\n\n"
         "**Resolution:** re-plan the episode's timeline to force a fresh source-duration probe, "
-        "then re-materialize."
+        "then re-materialize." + _timeline_repair_workflow_guidance()
     ),
     "timeline-source-underrun": (
         "**What this means:** an EDL segment's source-time span starts before 0.\n\n"
         "**Common causes:** a stale/incorrect `SourceMedia.duration`, or a planner bug computing "
         "segment bounds.\n\n"
         "**Resolution:** re-plan the episode's timeline to refresh the source-duration "
-        "measurement."
+        "measurement." + _timeline_repair_workflow_guidance()
     ),
     "timeline-source-overrun": (
         "**What this means:** an EDL segment's source-time span extends past "
@@ -245,7 +263,7 @@ _GUIDANCE: dict[str, str] = {
         "**Common causes:** a stale/incorrect `SourceMedia.duration` recorded before the actual "
         "source changed, or a planner bug computing segment bounds.\n\n"
         "**Resolution:** re-plan the episode's timeline to refresh the source-duration "
-        "measurement."
+        "measurement." + _timeline_repair_workflow_guidance()
     ),
     "timeline-chapter-out-of-range": (
         "**What this means:** a served-time chapter marker falls outside "
