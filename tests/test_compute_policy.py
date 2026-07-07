@@ -55,6 +55,7 @@ def test_backend_policy_prefers_nested_h14d_shape():
                                 "fresh_within_days": 3,
                                 "budget_units_per_audio_second": 0.5,
                                 "min_budget_units": 90,
+                                "fixed_budget_units_per_run": 8,
                                 "fixed_budget_units_per_claim": 12,
                             }
                         },
@@ -77,4 +78,5 @@ def test_backend_policy_prefers_nested_h14d_shape():
     assert policy.task.fresh_within_days == 3
     assert policy.task.budget_units_per_audio_second == 0.5
     assert policy.task.min_budget_units == 90
+    assert policy.task.fixed_budget_units_per_run == 8
     assert policy.task.fixed_budget_units_per_claim == 12

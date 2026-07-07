@@ -183,6 +183,38 @@ def test_effective_max_claims_paces_against_remaining_budget(tmp_path, monkeypat
     assert cap == 1
 
 
+def test_effective_max_claims_accounts_for_fixed_run_overhead(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a", "b", "c"], max_claims=5)
+    worker.config = ExternalWorkerConfig(
+        backend="beam",
+        owner="beam:test",
+        max_claims=5,
+        min_claims_per_run=1,
+        min_budget_units=60.0,
+        fixed_budget_units_per_run=95.0,
+        preferred_days="all",
+    )
+    worker.site_config = {
+        "defaults": {
+            "compute_backends": {
+                "beam": {
+                    "budget": {"monthly_units": 400, "reserve_units": 0},
+                    "dispatch": {"max_claims_per_run": 5, "min_claims_per_run": 1},
+                    "tasks": {"transcript-asr": {"fixed_budget_units_per_run": 95.0}},
+                }
+            }
+        }
+    }
+    worker.storage = SimpleNamespace(cas_capable=True, get_bytes=lambda key: None)
+    monkeypatch.setattr(ew, "load_budget_cas", lambda storage: (Budget(month="2026-07"), None))
+    monkeypatch.setattr(ew, "load_worker_telemetry", lambda storage: {"samples": []})
+    monkeypatch.setattr(worker, "_remaining_run_slots", lambda now=None: 2)
+
+    cap = worker._effective_max_claims([_queued("a"), _queued("b"), _queued("c")])
+
+    assert cap == 1
+
+
 def test_off_day_allows_fresh_claims_only(tmp_path, monkeypatch):
     worker = _loop_worker(tmp_path, ["a"])
     worker.config = ExternalWorkerConfig(

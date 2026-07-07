@@ -78,6 +78,7 @@ class ExternalWorkerConfig:
     preferred_days: str = "all"
     budget_units_per_audio_second: float = 0.25
     min_budget_units: float = 60.0
+    fixed_budget_units_per_run: float = 0.0
     fixed_budget_units_per_claim: float = 0.0
     prefer_min_duration_hours: float = 0.0
     fresh_within_days: float = 7.0
@@ -191,6 +192,10 @@ def config_from_env(backend: str, *, site_config: dict | None = None) -> Externa
         min_budget_units=_float_env(
             "CITYPODS_WORKER_MIN_BUDGET_UNITS",
             _float_env("CITYPODS_WORKER_MIN_GPU_SECONDS", policy.task.min_budget_units),
+        ),
+        fixed_budget_units_per_run=_float_env(
+            "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+            policy.task.fixed_budget_units_per_run,
         ),
         fixed_budget_units_per_claim=_float_env(
             "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
@@ -511,6 +516,7 @@ class ExternalTranscribeWorker:
         if claim_units <= 0:
             return hard_cap
         target_units = remaining_units / self._remaining_run_slots()
+        target_units = max(0.0, target_units - self.config.fixed_budget_units_per_run)
         paced_cap = int(target_units // claim_units)
         if self._is_preferred_day():
             paced_cap = max(self.config.min_claims_per_run, paced_cap)

@@ -237,10 +237,12 @@ defaults:
   # elapsed GPU seconds are the provider's billing model; the default unit label remains gpu-second
   # for backwards compatibility with the initial H14 rollout. `reserve_units` intentionally leaves a
   # soft buffer near the provider reset boundary. `max_claims_per_run` caps NEW transcriptions per
-  # worker invocation (already-done items this run merely adopts don't count); deploy env may
-  # override it temporarily for canaries/manual optimization runs. `prefer_min_duration_hours`
-  # lets external workers skip short meetings that the GitHub runner can handle, while still
-  # respecting the manifest's queue order for the long-meeting backlog they do claim.
+  # worker invocation (already-done items this run merely adopt don't count); deploy env may
+  # override it temporarily for canaries/manual optimization runs. `fixed_budget_units_per_run`
+  # captures provider billing/setup overhead that scales with invocation count rather than claim
+  # count, which is what enables future even/odd-day staggering without changing code. `prefer_min_`
+  # `duration_hours` lets external workers skip short meetings that the GitHub runner can handle,
+  # while still respecting the manifest's queue order for the long-meeting backlog they do claim.
   compute_backends:
     modal:
       budget:
@@ -250,7 +252,7 @@ defaults:
       dispatch:
         max_inflight: 8
         min_claims_per_run: 1
-        max_claims_per_run: 1
+        max_claims_per_run: 4
         preferred_days: all
       tasks:
         transcript-asr:
@@ -258,6 +260,7 @@ defaults:
           fresh_within_days: 7
           budget_units_per_audio_second: 0.25
           min_budget_units: 60
+          fixed_budget_units_per_run: 0
           fixed_budget_units_per_claim: 0
     beam:
       budget:
@@ -267,7 +270,7 @@ defaults:
       dispatch:
         max_inflight: 8
         min_claims_per_run: 1
-        max_claims_per_run: 1
+        max_claims_per_run: 4
         preferred_days: all
       tasks:
         transcript-asr:
@@ -275,6 +278,7 @@ defaults:
           fresh_within_days: 7
           budget_units_per_audio_second: 0.25
           min_budget_units: 60
+          fixed_budget_units_per_run: 0
           fixed_budget_units_per_claim: 0
   # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull
   # workers (H14b/H14c) claim against was DORMANT until those workers existed, so `compute reconcile`

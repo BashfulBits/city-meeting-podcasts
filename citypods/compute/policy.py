@@ -56,6 +56,7 @@ class TaskPolicy:
     fresh_within_days: float = 7.0
     budget_units_per_audio_second: float = 0.25
     min_budget_units: float = 60.0
+    fixed_budget_units_per_run: float = 0.0
     fixed_budget_units_per_claim: float = 0.0
 
 
@@ -141,6 +142,10 @@ def backend_policy(
         min_budget_units=max(
             0.0,
             _as_float(task_raw.get("min_budget_units", raw.get("min_gpu_seconds", 60.0)), 60.0),
+        ),
+        fixed_budget_units_per_run=max(
+            0.0,
+            _as_float(task_raw.get("fixed_budget_units_per_run"), 0.0),
         ),
         fixed_budget_units_per_claim=max(
             0.0,
