@@ -198,3 +198,78 @@ Full procedure and per-finding validity verdicts live in the numbered audit docs
 one first (`ls review/`), since new sweeps supersede: [`review/19`](review/19-coderabbit-findings-audit.md)
 (2026-06-25, 129 findings), [`review/21`](review/21-manual-code-audit-2026-07.md) (manual, 20),
 [`review/23`](review/23-coderabbit-findings-audit-followup.md) (2026-07-04, 115, cross-linked to both).
+
+### Working with CodeRabbit on a PR
+
+[`.coderabbit.yaml`](.coderabbit.yaml) is the settings-as-code config for the bot's normal
+PR-triggered reviews (separate from the manual full-repo CLI sweeps above). Its main *value* is
+review **quality** (the `path_instructions` / `knowledge_base` / `tone` context that keeps CR from
+flagging intentional patterns) — not a big cut in review volume. A measured look at the last 100 PRs
+found the repo already runs near the review floor (~1.65 review-runs/PR; ~97% of runs are the
+unavoidable first review plus fix-response re-reviews), so the config's exclusions and the draft
+option only shave a couple percent. The free-tier OSS limit throttles on two dimensions —
+reviews/hour and files-scanned/hour — and our backoff is a **burst** problem (several reviews in one
+hour), not a volume problem. The levers that actually help bursts are behavioral:
+
+> **To avoid backoff bursts:**
+> 1. **Batch all fixes for a review round into a single push** — CodeRabbit re-reviews per push, so
+>    addressing five findings in one commit is 1 re-review; five separate pushes is up to 5. This is
+>    the highest-leverage habit (fix-response re-reviews are ~36% of all review volume here).
+> 2. **Space out PR openings** — don't fire a batch of PRs in the same hour.
+> 3. **When near the limit, check `@coderabbitai reviews remaining?`** and pace, rather than pushing
+>    into a backoff.
+
+> **Draft PRs — conditional, not a default.** Open a PR as **draft** *only when you expect to iterate
+> substantially in the PR itself before it's ready* (an exploratory/long-churn change). CodeRabbit
+> skips draft PRs (`drafts: false`), so that in-PR churn costs zero review-events until you flip to
+> "ready for review". For the normal "open near-complete, then address findings" flow — which is most
+> PRs here — drafting buys effectively nothing, so don't bother. If you do draft: don't manually
+> `@coderabbitai review` while still draft (it overrides `drafts: false`), and flip to ready only once
+> (the ready-flip is the single billable review, batched over all draft commits — never a double
+> review, since CR never reviewed the draft).
+
+At a glance:
+
+- **Excluded from review:** per-city/per-feed data (`config/**`), compiled lockfiles
+  (`constraints/*.txt`), and generated GitHub Pages output (`docs/**`). Docs (`**/*.md`) are **not**
+  excluded — ARCHITECTURE / review/NN / AGENTS / CHANGELOG are load-bearing and get one sanity pass.
+- **In scope:** every real source dir — `citypods/`, `scripts/`, `tests/`, `workers/`, `templates/`,
+  `**and `.github/workflows/**`** (workflow YAML is security-relevant code — permissions, secrets,
+  pinned Action SHAs — not filtered out like the repo's data YAML), plus all `*.md`.
+- **Doc-only PRs: aim for one review, then merge.** You know the docs better than CodeRabbit, and its
+  review is advisory (doesn't block merge). After the first review: if it's clean, or the findings are
+  prose nits you judge don't warrant a change, **resolve them by replying in the thread — a comment,
+  not a commit, so no re-review fires — and merge.** Only if a finding is genuinely worth fixing do
+  you push a commit, which *is* one more incremental review (unavoidable — there's no way to add a
+  commit to a ready PR without re-review, and no per-path "review once" knob). So doc PRs cost 1
+  review-event usually, 2 if you fix something — don't iterate past that. Never sit in a re-push loop
+  over prose.
+- **Renovate PRs are skipped** (`ignore_usernames`) — dependency bumps are already gated by the
+  `deps` CI job and `dep-bump-smoke.yml`.
+- `tone_instructions` / `path_instructions` preload the invariants from "Conventions you must
+  respect" below so CodeRabbit doesn't flag intentional patterns (append-only records, split
+  hashes, stage ordering, the wall-clock budget, untrusted LLM output, the SSRF gate) as bugs.
+- **Label suggestions, not auto-apply** (`auto_apply_labels: false`). CodeRabbit suggests `type:*`/
+  `area:*` labels in the walkthrough (informed by CONTRIBUTING.md's "Project fields" table, which it
+  ingests via `knowledge_base.code_guidelines`, and by prior-PR history); a human/agent applies them.
+  That table is the single source of truth for the taxonomy — do not add a duplicate list to the YAML.
+- **Doc-update-contract pre-merge check** (`pre_merge_checks.custom_checks`, `warning` mode —
+  advisory only, never blocks merge) flags a PR that changes real source but touches none of
+  `CHANGELOG.md` / `ARCHITECTURE.md` / `review/*.md`, per the lifecycle contract above.
+
+**When a PR you opened gets CodeRabbit comments, close the loop before calling the PR done:**
+
+1. **Triage with your strongest-reasoning model** (e.g. Opus or GPT-5.5), not the fast/default one
+   (Sonnet, GPT-5.4) — CodeRabbit doesn't have this repo's full design context and its suggestions
+   are sometimes wrong (misreading an intentional pattern above as a bug, missing why a stage runs
+   where it does, etc.), so triaging needs real judgment, not just pattern-matched agreement.
+2. For **every** comment, do one of:
+   - **Push back**, with a concrete reason (cite the convention/doc it's consistent with) if the
+     suggestion is incorrect or out of scope — don't silently dismiss, reply explaining why.
+   - **Agree and fix** the flagged instance.
+   - **Agree, fix, and expand** — if the finding is a pattern (not a one-off), grep for other
+     call-sites with the same issue and fix those too rather than only the flagged line.
+3. Resolve any **CI failures** on the PR (lint, tests, etc.), not just CodeRabbit's comments —
+   the review loop isn't done until both are clean.
+4. **Report a summary**: what CodeRabbit flagged, the disposition of each item (fixed / pushed back
+   + why / fixed-and-expanded), and final CI status.

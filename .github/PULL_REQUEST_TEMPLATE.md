@@ -1,4 +1,7 @@
 <!-- Merge with a merge commit (--merge), NOT squash. See CONTRIBUTING.md. -->
+<!-- CodeRabbit tips (see AGENTS.md § Working with CodeRabbit on a PR): batch all fixes for a review
+     round into ONE push (fewer re-reviews); open as DRAFT only if you'll iterate substantially in
+     the PR before it's ready (CR skips drafts) — not needed for a normal ready-to-review PR. -->
 
 ## Summary
 
@@ -13,6 +16,8 @@
 - [ ] No artifact-identity change (audio spec hash / UID derivation) without a `MIGRATION.md` note.
 - [ ] Dependency changes follow [`review/22`](../review/22-dependency-and-reproducibility-policy.md):
       `constraints/*.txt` recompiled; deps not re-declared in the external-worker image builders.
+- [ ] CodeRabbit findings resolved (fixed, fixed-and-expanded, or pushed back with a stated reason)
+      and CI green — see [AGENTS.md § Working with CodeRabbit on a PR](../AGENTS.md#working-with-coderabbit-on-a-pr).
 
 <!-- OUTPUT-AFFECTING dependency bump (faster-whisper/ctranslate2/stable-ts/Pillow, ffmpeg, base
      image, or an HF model revision)? Then also: -->

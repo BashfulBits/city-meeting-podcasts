@@ -16,6 +16,30 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **`.coderabbit.yaml` settings-as-code for CodeRabbit reviews.** A measurement of the last 100 PRs
+  showed the repo already runs near the review floor (~1.65 review-runs/PR; ~97% of runs are the
+  unavoidable first review plus fix-response re-reviews), so this config's real value is review
+  **quality**, not a cut in review volume — and backoff is a per-hour **burst** problem best handled
+  by agent behavior (batch all fixes for a review round into one push; space out PR openings; check
+  `@coderabbitai reviews remaining?` when near the limit), which the docs now spell out. On quality:
+  sets `profile: assertive` (more precise findings, no extra review-event cost) and preloads
+  `AGENTS.md`/`ARCHITECTURE.md`/`CONTRIBUTING.md` as knowledge-base context plus per-path
+  instructions covering this repo's documented invariants (append-only records, split hashes, stage
+  ordering, the wall-clock budget, untrusted LLM output, the SSRF gate) so they aren't flagged as
+  bugs. Excludes only genuinely non-reviewable paths (per-city/feed data under `config/`, compiled
+  `constraints/*.txt`, generated `docs/**`, lockfiles) — docs (`**/*.md`) stay in scope for a single
+  sanity pass since ARCHITECTURE/review/AGENTS/CHANGELOG are load-bearing here; skips
+  Renovate-authored PRs; suggests `type:*`/`area:*` labels without auto-applying them
+  (`auto_apply_labels: false`), keeping CONTRIBUTING.md's "Project fields" table as the single
+  taxonomy source (ingested via `code_guidelines`) rather than a duplicate list in the YAML; and adds
+  an advisory (`warning`-mode, non-blocking) custom pre-merge check that flags source-changing PRs
+  missing a `CHANGELOG.md`/`ARCHITECTURE.md`/`review/*.md` update per the doc-update contract. Draft
+  PRs (`drafts: false`, CR's default) are documented as a **conditional** tool — worth it only for
+  genuinely iterative/long-churn PRs, since measurement put their saving at ~1–2%. AGENTS.md gained a
+  "Working with CodeRabbit on a PR" section (burst-avoidance habits; doc-only PRs get one review then
+  stop): agents must triage findings with a strong-reasoning model (Opus/GPT-5.5, not the fast
+  default), push back/fix/fix-and-expand per comment, resolve CI, and report a summary — now also a
+  `PULL_REQUEST_TEMPLATE.md` checklist item.
 - **Austin, TX coverage via Swagit.** Added Austin entity config plus City Council, work session,
   special/budget, Austin Housing Finance Corporation, and active board/commission feeds whose official
   Austin boards list has a matching non-empty Swagit historical subcategory.
