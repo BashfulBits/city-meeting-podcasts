@@ -51,6 +51,20 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   block when remote has a truthy (fresher) value for it — the legitimate stale-container-audio →
   remote-decoded-audio case — and never *drops* one the run just produced; non-owned (`protected`)
   blocks and planning fields keep the original replace-or-drop behavior.
+- **External worker never persisted its transcript record: an orphaned `return` made the
+  `push_records_merged` call dead code.** `_run_transcribe_item` (Modal/Beam pull worker) wrote the
+  transcript block into the worker's *local* `state_dir` (`save_records`) and then hit `return
+  adopted` — placed directly *above* the `push_records_merged` that durably commits the owned block
+  to canonical storage, so the push never executed. The VTT/words artifact still uploaded via
+  `put_file`, but the record's `transcript` block only ever lived on the ephemeral worker
+  filesystem, discarded when the function exited — so *every* external transcription since the
+  regression (PR #824, 2026-07-05) landed its artifact but silently lost its record block, the same
+  invisible loss the owned-block-merge fix above guards against but one layer earlier (the guarded
+  push was simply never reached). This is why fresh completions kept reading back as un-transcribed
+  and needed `reclaim-transcript`. The `return adopted` now runs *after* the push; a regression test
+  asserts `push_records_merged` is invoked (with `owned_uids` scoping) on both the fresh-transcription
+  and adopted branches. Affected episodes are recoverable via `reclaim-transcript --write` — the
+  artifacts were never lost.
 
 ### Added
 
