@@ -16,6 +16,9 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Austin, TX coverage via Swagit.** Added Austin entity config plus City Council, work session,
+  special/budget, Austin Housing Finance Corporation, and active board/commission feeds whose official
+  Austin boards list has a matching non-empty Swagit historical subcategory.
 - **`citypods compute reclaim-transcript --source-key SK --episode-uid UID [--write]`.** Recovery
   tool for the class of loss #833 fixed: an ASR artifact (VTT + words JSON) already uploaded to
   storage, but the record's `transcript` block never got updated to reference it — the lease

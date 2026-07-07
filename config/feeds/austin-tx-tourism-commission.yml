@@ -1,0 +1,11 @@
+slug: austin-tx-tourism-commission
+city: austin-tx
+provider: swagit
+source:
+  list_url: https://austintx.new.swagit.com/views/117/tourism-commission
+  body: "Tourism Commission"
+podcast_title: "Austin: Tourism Commission"
+podcast_author: "City of Austin, TX"
+podcast_email: ""
+podcast_description: "Tourism Commission meetings for Austin."
+max_episodes: 25

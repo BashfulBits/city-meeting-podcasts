@@ -1,0 +1,11 @@
+slug: austin-tx-parks-and-recreation-board
+city: austin-tx
+provider: swagit
+source:
+  list_url: https://austintx.new.swagit.com/views/117/parks-and-recreation-board
+  body: "Parks and Recreation Board"
+podcast_title: "Austin: Parks and Recreation Board"
+podcast_author: "City of Austin, TX"
+podcast_email: ""
+podcast_description: "Parks and Recreation Board meetings for Austin."
+max_episodes: 25

@@ -8,7 +8,7 @@ import json
 import sys
 
 from citypods.bodies import is_excluded
-from citypods.config import load_city_configs, load_site_config
+from citypods.config import filter_city_configs, load_city_configs, load_site_config
 from citypods.providers import get_provider
 from citypods.run import build, install_signal_handlers, interrupt_requested
 
@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     b = sub.add_parser("build", help="build feeds and pages into docs/")
-    b.add_argument("--city", help="build only this city slug")
+    b.add_argument("--city", help="build only this city entity slug or feed slug")
     b.add_argument("--dry-run", action="store_true", help="fetch but write nothing")
     b.add_argument("--site-config", default="config/site_config.yml")
     b.add_argument("--config-dir", default="config")
@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         help="heavy backfill (chapters + audio) into object storage; no render/deploy. "
         "Run AFTER deploying `build --phase render`; output appears in the next render.",
     )
-    e.add_argument("--city", help="enrich only this city slug")
+    e.add_argument("--city", help="enrich only this city entity slug or feed slug")
     e.add_argument("--site-config", default="config/site_config.yml")
     e.add_argument("--config-dir", default="config")
     e.add_argument("--output-dir", default="docs")
@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--config-dir", default="config")
 
     h = sub.add_parser("doctor", help="run feed-health checks (no GitHub side effects)")
-    h.add_argument("--city", help="check only this city slug")
+    h.add_argument("--city", help="check only this city entity slug or feed slug")
     h.add_argument("--enclosures", action="store_true", help="also HEAD-probe enclosures (slow)")
     h.add_argument("--site-config", default="config/site_config.yml")
     h.add_argument("--config-dir", default="config")
@@ -461,9 +461,9 @@ def _doctor(args) -> int:
     site_config = load_site_config(args.site_config)
     cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
     if args.city:
-        cities = [c for c in cities if c.slug == args.city]
+        cities = filter_city_configs(cities, args.city)
         if not cities:
-            print(f"no city with slug {args.city!r}")
+            print(f"no feed or city entity with slug {args.city!r}")
             return 1
 
     findings = audit_all(cities, site_config=site_config, check_enclosures_net=args.enclosures)
