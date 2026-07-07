@@ -101,8 +101,7 @@ reviews:
           - The PR also modifies at least one of: CHANGELOG.md, ARCHITECTURE.md, or any file under
             review/ (a review/NN-*.md breakout doc, including review/11-technical-design-roadmap.md).
           - The PR description or title explicitly states no doc update is needed and why (e.g.
-            "no doc update needed", "pure refactor, no behavior change", or the PR is already
-            labeled type:docs / chore).
+            "no doc update needed" or "pure refactor, no behavior change").
 
           Otherwise FAIL (post as a warning, not a blocker): flag that this PR appears to change
           behavior without a corresponding CHANGELOG.md entry, ARCHITECTURE.md update, or review/
