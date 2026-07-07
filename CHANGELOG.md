@@ -93,6 +93,23 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   workflow and list the `timeline_repair=true` / `timeline_repair_cohort` inputs to run. Existing
   sub-second rows should clear on the next audit after this ships; truly stale rows remain visible
   and repairable.
+- **`audio_duration_served` could fossilize at a pre-repair value and re-file a resolved
+  `timeline-duration-mismatch` forever ([GH#847](https://github.com/BashfulBits/city-meeting-podcasts/issues/847),
+  [GH#849](https://github.com/BashfulBits/city-meeting-podcasts/issues/849)).** The field is only
+  written by the encode path (on a fresh upload) and by ASR; when a post-repair episode's audio
+  object was reused rather than re-encoded and ASR hadn't (re)run, neither writer fired, so the
+  stored value never advanced past whatever it was before the repair — and the daily no-probe
+  audit trusted it indefinitely. Separately, both writers probed the MP4 container's advisory
+  `format.duration` rather than the exact audio-stream sample clock; that field legitimately
+  disagrees with the played audio by up to ~1s (AAC/`mvhd` rounding), which is what let a benign
+  sub-1s band form in the first place. Both writers (`AudioStage` finalize, ASR's served-duration
+  refresh) now probe the stream-sample clock (`duration_ts * time_base`, falling back to the
+  container only when stream timing is absent) via a new `_probe_served_duration_secs`, so the
+  stored field can't drift from the timeline-audio audit's own measurement. `check_timeline_integrity`
+  also now self-heals a stale `audio_duration_served` in place whenever a run actually probes the
+  hosted object and `--persist-timeline-integrity` is set — the same bounded, audit-owned write
+  path used for repair blocks — so an already-repaired episode's fossil clears on the next
+  diagnostics-enabled audit instead of waiting on an unrelated re-encode/ASR pass.
 - **Work-manifest persistence dropped `duration_hours`, making 100% of the feed-visible
   transcript-asr backlog read as unknown-duration.** `_workitem_to_dict` / `_workitem_from_dict`
   serialized every `WorkItem` field *except* `duration_hours` — a computed ordering input (from

@@ -983,3 +983,113 @@ class TestProbeAudioFullReconciliation:
 
         assert any(f.check == "rendered-duration-mismatch" for f in fs)
         assert "probe_reconciled" not in diagnostics[0]
+
+
+class TestServedDurationSelfHeal:
+    """issue #849: a live probe is ground truth for what's served, so a run that actually probes
+    the hosted object should correct a stale ``audio_duration_served`` fossil, not just report
+    the disagreement. Reuses the same ``mutate_integrity`` gate the repair blocks use."""
+
+    def test_stale_served_duration_is_corrected_when_mutate_integrity(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 519.6  # pre-repair fossil; EDL/stream both agree at 3300.0
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(3300.0)
+        assert not any(f.check == "timeline-duration-mismatch" for f in fs)
+
+    def test_stale_served_duration_left_alone_without_mutate_integrity(self):
+        # Read-only default: a probing run must still be able to report/diagnose without writing
+        # anything back, exactly like the existing repair-block gating.
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 519.6
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+        )
+
+        assert ep.audio_duration_served == pytest.approx(519.6)
+
+    def test_served_duration_within_tolerance_is_not_rewritten(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 3300.05  # within _FRAME_TOLERANCE of the probed 3300.0
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(3300.05)
+
+    def test_withheld_media_served_duration_is_not_self_healed(self):
+        # GH#795: a withheld/quarantined object's served duration is moot — the audit stays
+        # observation-only for it, so self-heal must not touch the field either.
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_EMPTY))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 50.8
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(50.8)
+
+    def test_self_heal_fills_missing_served_duration(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = None
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(3300.0)
