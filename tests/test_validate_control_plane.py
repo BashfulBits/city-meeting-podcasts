@@ -114,3 +114,18 @@ def test_validate_uses_isolated_scratch_namespace_per_run():
     vcp.validate(bucket, run_id="abc123", now=NOW)
     # All created keys were under the scratch namespace (then cleaned); nothing else was written.
     assert bucket.objs == {}
+
+
+def test_cleanup_failure_never_fails_the_run(monkeypatch):
+    """CR-SC-15 / GH#496: cleanup is best-effort. A backend that raises on every delete (as a killed
+    runner effectively does) must not flip a passing validation to failing — the R2 scratch
+    lifecycle rule is the backstop that expires the leaked objects instead."""
+    bucket = _MemCAS()
+
+    def _raise(_key):
+        raise RuntimeError("delete unavailable (simulated crashed/killed runner)")
+
+    monkeypatch.setattr(bucket, "delete", _raise)
+    report = vcp.validate(bucket, run_id="t3", now=NOW)
+    assert report["overall_pass"] is True, [c for c in report["checks"] if not c["pass"]]
+    assert report["scratch_cleaned"] == 0  # nothing cleaned, yet the run still passes

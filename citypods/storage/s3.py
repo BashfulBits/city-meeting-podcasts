@@ -232,6 +232,35 @@ class S3CompatibleStorage:
     def delete(self, key: str) -> None:
         self._client.delete_object(Bucket=self.bucket, Key=key)
 
+    # --- bucket lifecycle (storage-reclaim backstop, GH#496) ---
+
+    def get_lifecycle_rules(self) -> list[dict]:
+        """Current S3 lifecycle rules for the bucket, or ``[]`` when none are configured.
+
+        A bucket with no lifecycle policy answers ``GetBucketLifecycleConfiguration`` with the
+        ``NoSuchLifecycleConfiguration`` error rather than an empty list, so normalize that to
+        ``[]``. Used by ``scripts/apply_bucket_lifecycle.py`` to diff before writing (idempotence)
+        and to read back after writing (verify the PUT took effect on this endpoint)."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = self._client.get_bucket_lifecycle_configuration(Bucket=self.bucket)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in ("NoSuchLifecycleConfiguration", "NoSuchLifecycleConfigurationError"):
+                return []
+            raise
+        return list(resp.get("Rules", []))
+
+    def put_lifecycle_rules(self, rules: list[dict]) -> None:
+        """Replace the bucket's lifecycle policy with ``rules`` (whole-policy PUT, S3 semantics).
+
+        The caller owns building the rule set; this is a thin transport wrapper so scripts never
+        reach into ``self._client``."""
+        self._client.put_bucket_lifecycle_configuration(
+            Bucket=self.bucket, LifecycleConfiguration={"Rules": rules}
+        )
+
 
 def r2_from_env(*, require_public_base_url: bool = True) -> S3CompatibleStorage | None:
     """Cloudflare R2. Env: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID,

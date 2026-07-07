@@ -129,6 +129,30 @@ def test_make_storage_routing_without_b2_env_returns_none(tmp_path, monkeypatch)
     assert make_storage(cfg, "https://site", tmp_path) is None
 
 
+# ── R2-is-ephemeral invariant (Component 0, GH#496) ──────────────────────────────────
+
+
+def test_every_coordination_prefix_is_declared_ephemeral():
+    """R2 has no backup and is aggressively expired by the reclaim lifecycle, so a canonical record
+    routed there would be unrecoverable. Every COORDINATION_PREFIXES entry must be declared
+    ephemeral/derivable — adding a new R2 prefix without that declaration must fail loudly."""
+    from citypods.storage import routing
+
+    # The production tuple must already satisfy the invariant (import guard also enforces this).
+    routing.assert_coordination_prefixes_ephemeral()
+    for prefix in routing.COORDINATION_PREFIXES:
+        assert prefix in routing._EPHEMERAL_R2_PREFIXES
+
+
+def test_undeclared_coordination_prefix_trips_the_guard():
+    from citypods.storage import routing
+
+    with pytest.raises(AssertionError, match="not declared ephemeral"):
+        routing.assert_coordination_prefixes_ephemeral(
+            ("audio/",), allow={"work-leases/": "declared"}
+        )
+
+
 # ── RoutingStorage ─────────────────────────────────────────────────────────────────
 
 
@@ -292,6 +316,8 @@ class _FakeS3Client:
         self.store: dict[str, tuple[bytes, str]] = {}
         self.bodies: dict[str, _FakeBody] = {}
         self._n = 0
+        self.lifecycle: list | None = None
+        self.lifecycle_puts = 0
 
     def _next_etag(self):
         self._n += 1
@@ -319,6 +345,15 @@ class _FakeS3Client:
         body = _FakeBody(data)
         self.bodies[Key] = body
         return {"Body": body, "ETag": etag}
+
+    def get_bucket_lifecycle_configuration(self, *, Bucket):
+        if self.lifecycle is None:
+            raise _client_error("NoSuchLifecycleConfiguration", 404)
+        return {"Rules": list(self.lifecycle)}
+
+    def put_bucket_lifecycle_configuration(self, *, Bucket, LifecycleConfiguration):
+        self.lifecycle = list(LifecycleConfiguration["Rules"])
+        self.lifecycle_puts += 1
 
 
 def _s3_with_fake_client():
@@ -358,6 +393,21 @@ def test_get_bytes_roundtrip_and_absent():
     data, got_etag = store.get_bytes("k.json")
     assert data == b"hello" and got_etag == etag
     assert store._client.bodies["k.json"].closed is True
+
+
+def test_lifecycle_rules_empty_then_put_readback():
+    store = _s3_with_fake_client()
+    assert store.get_lifecycle_rules() == []  # NoSuchLifecycleConfiguration → []
+    rules = [
+        {
+            "ID": "reclaim-r2-scratch-work-leases-validate",
+            "Filter": {"Prefix": "work-leases/__validate__/"},
+            "Status": "Enabled",
+            "Expiration": {"Days": 1},
+        }
+    ]
+    store.put_lifecycle_rules(rules)
+    assert store.get_lifecycle_rules() == rules
 
 
 def test_get_range_reads_a_byte_window_and_absent():

@@ -20,6 +20,11 @@ name: Validate R2/CAS control plane
 # (work-leases/__validate__/<run-id>/…) and deleted on exit. It never reads or writes the real
 # budget/lease keys, and the production discovery index never references __validate__, so reconcile
 # never sweeps these. Re-runnable any time; also runs weekly as a control-plane health check.
+#
+# Cleanup is best-effort by design (never fails the run). The infrastructure backstop for a crashed
+# runner that skips cleanup is the R2 scratch lifecycle rule applied by the "Storage reclaim" workflow
+# (scripts/apply_bucket_lifecycle.py, GH#496): it expires work-leases/__validate__/ and
+# provider-leases/validate- objects after 1 day regardless of whether this script's cleanup ran.
 
 on:
   workflow_dispatch:

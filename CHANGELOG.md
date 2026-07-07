@@ -16,6 +16,27 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Unified storage-reclaim policy with a data-loss recovery backstop
+  ([GH#496](https://github.com/BashfulBits/city-meeting-podcasts/issues/496)).** The weekly `audio-gc`
+  workflow is now **"Storage reclaim"** and runs three backstops on its existing cron. (1) **Bucket
+  lifecycle as-code** (`scripts/apply_bucket_lifecycle.py`): idempotently expires the control-plane
+  validator's R2 scratch prefixes (`work-leases/__validate__/`, `provider-leases/validate-`) after 1
+  day — the infrastructure fix for CR-SC-15, since a killed runner can't run the validator's
+  best-effort cleanup — and configures a bounded B2 version-retention window (`defaults.b2_retention_days`,
+  default 30d) so a mistaken delete stays restorable. A hard guardrail refuses any R2 rule broader than
+  a scratch prefix (an over-broad `work-leases/` rule would expire live leases). (2) **Double-confirmed
+  auto-apply orphan GC** (`gc_audio.py --auto-confirm`): a scheduled run now deletes the provably-safe
+  subset without a human — orphans seen unreferenced across ≥2 runs past `defaults.orphan_quarantine_days`
+  (default 21d), tracked in `state/orphan-ledger.json`; a key that reappears in the live set drops from
+  the ledger, so a GH#421 flip-flop never matures. Manual `apply=true` (main only) still deletes
+  everything reported. (3) **Resurrection watchdog** (`check_reclaim_resurrection.py`): every delete is
+  logged to the append-only `state/reclaim-log.jsonl` with a `recover_by` deadline; if a live record
+  comes to reference a reaped key while it is still restorable, a HIGH-priority (`priority:high`) issue
+  is opened in time to restore the B2 version before it purges. Also promotes **"R2 holds only
+  ephemeral/derivable objects"** to a test-enforced invariant (`routing.py` `_EPHEMERAL_R2_PREFIXES`):
+  adding a coordination prefix without declaring it ephemeral now fails at import and in tests, so a
+  canonical (backup-less) record can't be routed to R2 by accident.
+
 - **`.coderabbit.yaml` settings-as-code for CodeRabbit reviews.** A measurement of the last 100 PRs
   showed the repo already runs near the review floor (~1.65 review-runs/PR; ~97% of runs are the
   unavoidable first review plus fix-response re-reviews), so this config's real value is review

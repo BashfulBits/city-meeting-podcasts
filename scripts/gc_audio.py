@@ -9,8 +9,16 @@ This sweep deletes those orphans.
 The live set comes from ``records.referenced_audio_keys`` (despite the name, it returns both
 audio AND transcript keys), so hosted transcripts are protected, not reaped.
 
+Auto-apply tier (``--auto-confirm``, GH#496): a *scheduled* run may delete the provably-safe subset
+without a human — orphans observed unreferenced across ``>= 2`` runs AND past the
+``orphan_quarantine_days`` quarantine window (tracked in ``state/orphan-ledger.json``; a key that
+reappears in the live set is dropped from the ledger, so a GH#421 flip-flop never matures). Every
+delete (auto or manual ``--apply``) is recorded in the append-only reclaim log
+(``state/reclaim-log.jsonl``) with a ``recover_by`` deadline, so the resurrection watchdog script
+can raise a HIGH-priority issue if a reaped key is re-referenced while still restorable from B2.
+
 Safe by default:
-  * dry-run unless ``--apply`` is given;
+  * dry-run unless ``--apply`` (delete all reported) or ``--auto-confirm`` (matured subset only);
   * ``--pull-state`` first restores the durable bucket state so the live set is current — never
     reap against a stale/partial set of records;
   * only deletes objects older than ``--min-age-days`` (default 7) so an object written by a
@@ -39,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -46,6 +55,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.config import load_city_configs, load_site_config
+from citypods.ops import reclaim_log
+from citypods.ops.reclaim import b2_retention_days, orphan_quarantine_days
 from citypods.records import referenced_audio_keys, source_key
 from citypods.state import resolve_state_dir
 from citypods.statesync import STATE_PREFIX
@@ -80,6 +91,83 @@ def is_managed_artifact(key: str) -> bool:
     if key.startswith(_TRANSCRIPT_PREFIX):
         return True
     return key.endswith(".m4a") and not key.startswith(_CLIPS_PREFIX)
+
+
+ORPHAN_LEDGER_NAME = "orphan-ledger.json"
+
+
+def _github_run_url() -> str | None:
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    return f"https://github.com/{repo}/actions/runs/{run_id}" if run_id and repo else None
+
+
+def _artifact_backend(storage) -> str:
+    """The backend that actually holds managed artifacts. Under ``RoutingStorage`` audio/transcripts
+    live on the B2 primary (coordination prefixes route to R2, but those aren't managed artifacts),
+    report the primary's name; a plain backend reports its own. Drives ``recover_by`` in the reclaim
+    log — only B2 has a recoverable-delete window."""
+    primary = getattr(storage, "primary", storage)
+    return getattr(primary, "name", "local")
+
+
+def _load_ledger(path: Path) -> dict[str, dict]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_ledger(path: Path, ledger: dict[str, dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _update_orphan_ledger(
+    ledger: dict[str, dict],
+    current_orphan_keys: set[str],
+    *,
+    now: datetime,
+    quarantine_days: float,
+) -> set[str]:
+    """Advance the double-confirm ledger and return the keys cleared to auto-delete.
+
+    * Drop any tracked key that is **no longer** a candidate orphan (re-referenced, or already
+      deleted): this reset is the flip-flop guard (GH#421) — an oscillating object never matures.
+    * Bump ``run_count``/``last_seen`` for each still-orphan key (first sighting seeds first_seen).
+    * A key is auto-deletable once observed across ``>= 2`` runs AND its ``first_seen`` is at least
+      ``quarantine_days`` old — the pre-delete quarantine window (distinct from the object's age,
+      which ``--min-age-days`` already guards, and from the post-delete B2 recovery window).
+    """
+    for key in list(ledger):
+        if key not in current_orphan_keys:
+            del ledger[key]
+    auto_delete: set[str] = set()
+    for key in current_orphan_keys:
+        rec = ledger.get(key)
+        if rec is None:
+            rec = {"first_seen": now.isoformat(), "run_count": 0, "last_seen": None}
+            ledger[key] = rec
+        rec["run_count"] = int(rec.get("run_count", 0)) + 1
+        rec["last_seen"] = now.isoformat()
+        first_seen = _parse_iso(rec.get("first_seen")) or now
+        mature = first_seen <= now - timedelta(days=quarantine_days)
+        if rec["run_count"] >= 2 and mature:
+            auto_delete.add(key)
+    return auto_delete
+
+
+def _parse_iso(raw) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -209,9 +297,34 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--config-dir", default="config", help="config dir for per-city attribution")
     ap.add_argument("--output-dir", default="docs")
     ap.add_argument("--out", default=None, help="write the GC report (tsv/json/md) into this dir")
+    ap.add_argument(
+        "--auto-confirm",
+        action="store_true",
+        help="enable the double-confirmed auto-apply tier: on a scheduled run, delete only orphans "
+        "observed across >=2 runs past the quarantine window (safe subset). Ignored with --apply, "
+        "which deletes all reported orphans.",
+    )
+    ap.add_argument(
+        "--orphan-quarantine-days",
+        type=_non_negative_days,
+        default=None,
+        help="pre-delete quarantine window for --auto-confirm (default: orphan_quarantine_days)",
+    )
+    ap.add_argument(
+        "--ledger",
+        default=None,
+        help="path to the double-confirm ledger (default: <state_dir>/orphan-ledger.json)",
+    )
+    ap.add_argument(
+        "--push-state",
+        action="store_true",
+        help="push the reclaim log + orphan ledger back to the bucket so they persist across runs "
+        "(scoped push — never clobbers sibling state)",
+    )
     args = ap.parse_args(argv)
 
     site_config = load_site_config(args.site_config)
+    defaults = site_config.get("defaults", {})
     storage = make_storage(site_config, "https://example.invalid", args.output_dir)
     if storage is None or not hasattr(storage, "iter_objects"):
         print("no storage backend with GC support configured; nothing to do")
@@ -234,8 +347,12 @@ def main(argv: list[str] | None = None) -> int:
         cities = []
     mapping = source_to_city(cities)
 
-    cutoff = datetime.now(UTC) - timedelta(days=args.min_age_days)
-    orphans: list[Orphan] = []
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=args.min_age_days)
+
+    # Pass 1 — candidate orphans: unreferenced, a managed artifact, and older than --min-age-days
+    # (the object-age guard against a just-written object whose record hasn't synced yet).
+    candidates: list[tuple[str, datetime | None, int]] = []
     kept_young = 0
     kept_unmanaged = 0
     for key, last_modified, size in storage.iter_objects(args.prefix):
@@ -247,18 +364,72 @@ def main(argv: list[str] | None = None) -> int:
         if last_modified is not None and last_modified > cutoff:
             kept_young += 1
             continue
-        if args.apply:
+        candidates.append((key, last_modified, int(size or 0)))
+    candidate_keys = {k for k, _, _ in candidates}
+
+    # Double-confirm tier — only on a scheduled run (auto-confirm without a full --apply). Advance
+    # ledger and take the matured subset; a full --apply still deletes everything reported.
+    auto_mode = args.auto_confirm and not args.apply
+    auto_delete_keys: set[str] = set()
+    ledger_path = Path(args.ledger) if args.ledger else state_dir / ORPHAN_LEDGER_NAME
+    if auto_mode:
+        quarantine = args.orphan_quarantine_days
+        if quarantine is None:
+            quarantine = orphan_quarantine_days(defaults)
+        ledger = _load_ledger(ledger_path)
+        auto_delete_keys = _update_orphan_ledger(
+            ledger, candidate_keys, now=now, quarantine_days=quarantine
+        )
+        _write_ledger(ledger_path, ledger)
+
+    backend = _artifact_backend(storage)
+    run_url = _github_run_url()
+    retention = b2_retention_days(defaults)
+
+    # Pass 2 — delete + report. Report the still-reclaimable set: for a full --apply everything is
+    # deleted (rendered "reclaimed"); in auto/dry-run mode the not-yet-matured remainder stays on
+    # rolling issue while matured orphans auto-reap and drop off it.
+    orphans: list[Orphan] = []
+    deleted_entries: list[reclaim_log.DeletionEntry] = []
+    for key, last_modified, size in candidates:
+        delete_now = args.apply or (key in auto_delete_keys)
+        if delete_now:
             storage.delete(key)
+            deleted_entries.append(
+                reclaim_log.make_entry(
+                    key,
+                    backend=backend,
+                    reason="orphan-manual" if args.apply else "orphan-auto",
+                    run_url=run_url,
+                    retention_days=retention,
+                    now=now,
+                )
+            )
             print(f"DELETED  {key}")
         else:
             print(f"ORPHAN   {key}")
-        orphans.append(
-            Orphan(
-                key=key,
-                bytes=int(size or 0),
-                city=attribute(key, mapping),
-                last_modified=last_modified.isoformat() if last_modified is not None else None,
+        if args.apply or key not in auto_delete_keys:
+            orphans.append(
+                Orphan(
+                    key=key,
+                    bytes=size,
+                    city=attribute(key, mapping),
+                    last_modified=last_modified.isoformat() if last_modified is not None else None,
+                )
             )
+
+    # Record deletions in the append-only reclaim log so the resurrection watchdog can catch a later
+    # re-reference of a reaped key while it is still restorable from the B2 version window.
+    if deleted_entries:
+        reclaim_log.append_deletions(state_dir, deleted_entries, retention_days=retention, now=now)
+
+    if args.push_state and (auto_mode or deleted_entries):
+        from citypods.statesync import push_state
+
+        push_state(
+            storage,
+            state_dir,
+            only_prefixes=[reclaim_log.RECLAIM_LOG_NAME, ORPHAN_LEDGER_NAME],
         )
 
     summary = summarize(orphans)
@@ -266,9 +437,10 @@ def main(argv: list[str] | None = None) -> int:
         _write_report(Path(args.out), orphans, summary, applied=args.apply)
 
     action = "deleted" if args.apply else "orphaned (dry-run)"
+    auto_note = f"; {len(auto_delete_keys)} auto-reaped (double-confirmed)" if auto_mode else ""
     print(
         f"\n{len(referenced)} referenced; {summary['total_files']} {action} "
-        f"({human_bytes(summary['total_bytes'])}); "
+        f"({human_bytes(summary['total_bytes'])}){auto_note}; "
         f"{kept_young} skipped (younger than {args.min_age_days}d); "
         f"{kept_unmanaged} non-artifact objects protected (state/, models/, clips/, …)."
     )
