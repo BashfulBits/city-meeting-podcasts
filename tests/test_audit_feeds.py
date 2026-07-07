@@ -242,6 +242,37 @@ def test_render_grouped_body_contains_marker_key_and_severity():
     assert "`cityA`" in body
 
 
+def test_render_grouped_body_timeline_repair_checks_link_to_workflow_dispatch():
+    rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=ERROR, example="ex")}
+    first_seen = {"cityA": _NOW.isoformat()}
+    body = _render_grouped_body(
+        "timeline-duration-mismatch",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        severity=ERROR,
+        now=_NOW,
+    )
+    assert "actions/workflows/audit.yml" in body
+    assert "timeline_repair=true" in body
+    assert "timeline_repair_cohort" in body
+    assert "auto-closes after a later feed-health audit" in body
+
+
+def test_repairable_timeline_guidance_links_to_workflow_dispatch():
+    for check in (
+        "timeline-duration-mismatch",
+        "timeline-short-coverage",
+        "rendered-duration-mismatch",
+        "timeline-source-duration-mismatch",
+        "timeline-source-underrun",
+        "timeline-source-overrun",
+    ):
+        guidance = _mod._guidance_for(check)
+        assert "actions/workflows/audit.yml" in guidance
+        assert "timeline_repair=true" in guidance
+
+
 def test_render_grouped_body_truncates_past_max_rows(monkeypatch):
     monkeypatch.setattr(_mod, "_MAX_ROWS", 2)
     rows = {

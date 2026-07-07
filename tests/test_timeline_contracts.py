@@ -14,6 +14,12 @@ import pytest
 
 from citypods.audit import check_timeline_integrity
 from citypods.availability import CONFIRMED_EMPTY, MISSING, MediaAvailability
+from citypods.integrity import (
+    REPAIR_AUDIO_REMATERIALIZE,
+    REPAIR_TIMELINE_REPLAN,
+    REPAIR_TRANSCRIPT_REGENERATE,
+    needs_timeline_audio_repair,
+)
 from citypods.media import AudioDurationProbe
 from citypods.models import Episode
 from citypods.timeline import Segment, SourceMedia, Timeline
@@ -221,6 +227,40 @@ class TestDurationMismatch:
         ep.audio_duration_served = 3300.0 + 0.05  # within 0.1s frame tolerance
         fs = _findings([ep])
         assert not any(f.check == "timeline-duration-mismatch" for f in fs)
+
+    def test_cheap_duration_padding_band_not_flagged_without_live_probe(self):
+        # When the live probe is unavailable, the stored-field fallback compares the EDL clock to
+        # the last probed hosted-stream duration. Sub-1s AAC/sample-rounding deltas are not
+        # actionable feed-health findings, matching the live rendered-duration finding threshold.
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3300.7
+        fs = _findings([ep])
+        assert not any(f.check == "timeline-duration-mismatch" for f in fs)
+        assert not any(f.check == "timeline-short-coverage" for f in fs)
+
+    def test_large_cheap_duration_mismatch_can_stamp_targeted_repair(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3290.0
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            mutate_integrity=True,
+            repair_min_delta=1.0,
+            repair_cohort="cheap-fallback",
+            finding_min_delta=1.0,
+        )
+
+        assert any(f.check == "timeline-duration-mismatch" for f in fs)
+        assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
+        assert needs_timeline_audio_repair(ep, REPAIR_AUDIO_REMATERIALIZE)
+        assert needs_timeline_audio_repair(ep, REPAIR_TRANSCRIPT_REGENERATE)
+        block = ep.integrity["timeline_audio"]
+        assert block["status"] == "timeline-duration-mismatch"
+        assert block["repair_min_delta"] == 1.0
+        assert block["repair_cohort"] == "cheap-fallback"
 
     def test_container_only_drift_is_diagnostic_not_error(self):
         ep = _ep()
@@ -641,6 +681,12 @@ class TestGapAndCoverage:
         ep.timeline = _good_timeline()  # last segment ends at 3300
         ep.audio_duration_served = 3600.0  # enclosure is 3600 → 300s uncovered at the end
         assert any(f.check == "timeline-short-coverage" for f in _findings([ep]))
+
+    def test_subsecond_end_padding_not_short_coverage_without_live_probe(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3300.7
+        assert not any(f.check == "timeline-short-coverage" for f in _findings([ep]))
 
     def test_full_coverage_ok(self):
         ep = _ep()
