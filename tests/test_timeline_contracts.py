@@ -262,6 +262,32 @@ class TestDurationMismatch:
         assert block["repair_min_delta"] == 1.0
         assert block["repair_cohort"] == "cheap-fallback"
 
+    def test_large_cheap_short_coverage_stamps_short_coverage_status(self):
+        ep = _ep()
+        ep.timeline = Timeline(
+            version="gap-v1",
+            segments=(
+                _seg(0, 300, 0, 300),
+                _seg(302, 3302, 600, 3600),
+            ),
+        )
+        ep.audio_duration_served = 3300.5
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            mutate_integrity=True,
+            repair_min_delta=1.0,
+            repair_cohort="cheap-fallback",
+            finding_min_delta=1.0,
+        )
+
+        assert any(f.check == "timeline-gap" for f in fs)
+        assert any(f.check == "timeline-short-coverage" for f in fs)
+        assert not any(f.check == "timeline-duration-mismatch" for f in fs)
+        block = ep.integrity["timeline_audio"]
+        assert block["status"] == "timeline-short-coverage"
+
     def test_container_only_drift_is_diagnostic_not_error(self):
         ep = _ep()
         ep.timeline = _good_timeline()
@@ -468,6 +494,29 @@ class TestDurationMismatch:
 
         assert fs == []
         assert diagnostics[0]["probe_error"] == "missing-audio-key"
+
+    def test_inconclusive_probe_does_not_overwrite_stored_field_repair_stamp(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_duration_served = 3290.0
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(probe_error="missing-audio-key"),
+            diagnostics=diagnostics,
+            mutate_integrity=True,
+            repair_cohort="cheap-fallback",
+            finding_min_delta=1.0,
+        )
+
+        assert any(f.check == "timeline-duration-mismatch" for f in fs)
+        assert diagnostics[0]["check"] == "duration-probe-inconclusive"
+        assert diagnostics[0]["repair"] == []
+        block = ep.integrity["timeline_audio"]
+        assert block["status"] == "timeline-duration-mismatch"
+        assert block["repair_cohort"] == "cheap-fallback"
 
     def test_multi_part_diagnostic_carries_part_durations(self):
         ep = _ep()
