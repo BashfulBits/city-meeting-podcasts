@@ -20,6 +20,7 @@ from typing import Any
 
 from citypods.asr import transcribe
 from citypods.compute.budget import reserve_if_available, settle_reservation
+from citypods.compute.policy import backend_policy
 from citypods.compute.worker_telemetry import ResourceTracker, append_worker_telemetry
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City, Episode
@@ -69,8 +70,11 @@ class ExternalWorkerConfig:
     max_scan: int | None = None
     lease_ttl_seconds: float = 6 * 3600
     work_class: str = "transcript-asr"
-    gpu_seconds_per_audio_second: float = 0.25
-    min_gpu_seconds: float = 60.0
+    budget_units_per_audio_second: float = 0.25
+    min_budget_units: float = 60.0
+    fixed_budget_units_per_claim: float = 0.0
+    prefer_min_duration_hours: float = 0.0
+    fresh_within_days: float = 7.0
     device: str = "cuda"
     cpu_threads: int = 4
 
@@ -145,40 +149,50 @@ def _float_env(name: str, default: float) -> float:
     return float(raw)
 
 
-def _backend_settings(site_config: dict, backend: str) -> dict:
-    defaults = site_config.get("defaults", {}) if isinstance(site_config, dict) else {}
-    backends = defaults.get("compute_backends", {}) if isinstance(defaults, dict) else {}
-    settings = backends.get(backend, {}) if isinstance(backends, dict) else {}
-    return settings if isinstance(settings, dict) else {}
-
-
 def config_from_env(backend: str, *, site_config: dict | None = None) -> ExternalWorkerConfig:
     site_config = site_config or {}
-    backend_settings = _backend_settings(site_config, backend)
+    policy = backend_policy(site_config, backend)
     owner = os.environ.get("CITYPODS_WORKER_OWNER") or f"{backend}:{uuid.uuid4().hex}"
     if not owner.startswith(f"{backend}:"):
         owner = f"{backend}:{owner}"
     max_scan_env = os.environ.get("CITYPODS_WORKER_MAX_SCAN")
-    max_scan_setting = backend_settings.get("max_scan")
+    max_scan_setting = policy.dispatch.max_scan
     if max_scan_env not in (None, ""):
         max_scan: int | None = int(max_scan_env)
     elif max_scan_setting is not None:
-        max_scan = int(max_scan_setting)
+        max_scan = max_scan_setting
     else:
         max_scan = None
     return ExternalWorkerConfig(
         backend=backend,
         owner=owner,
-        max_claims=_int_env(
-            "CITYPODS_WORKER_MAX_CLAIMS", int(backend_settings.get("max_claims", 1))
-        ),
+        max_claims=_int_env("CITYPODS_WORKER_MAX_CLAIMS", policy.dispatch.max_claims_per_run),
         max_scan=max_scan,
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
         work_class=os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr"),
-        gpu_seconds_per_audio_second=_float_env(
-            "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND", 0.25
+        budget_units_per_audio_second=_float_env(
+            "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
+            _float_env(
+                "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+                policy.task.budget_units_per_audio_second,
+            ),
         ),
-        min_gpu_seconds=_float_env("CITYPODS_WORKER_MIN_GPU_SECONDS", 60.0),
+        min_budget_units=_float_env(
+            "CITYPODS_WORKER_MIN_BUDGET_UNITS",
+            _float_env("CITYPODS_WORKER_MIN_GPU_SECONDS", policy.task.min_budget_units),
+        ),
+        fixed_budget_units_per_claim=_float_env(
+            "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
+            policy.task.fixed_budget_units_per_claim,
+        ),
+        prefer_min_duration_hours=_float_env(
+            "CITYPODS_WORKER_PREFER_MIN_DURATION_HOURS",
+            policy.task.prefer_min_duration_hours,
+        ),
+        fresh_within_days=_float_env(
+            "CITYPODS_WORKER_FRESH_WITHIN_DAYS",
+            policy.task.fresh_within_days,
+        ),
         device=os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
         cpu_threads=_int_env("CITYPODS_WORKER_CPU_THREADS", 4),
     )
@@ -224,6 +238,7 @@ class ExternalTranscribeWorker:
                 if wi.work_class == self.config.work_class
                 and wi.state == "queued"
                 and wi.priority_bucket == BUCKET_FEED_VISIBLE
+                and self._preferred_duration(wi)
             ]
             summary.scanned = len(candidates)
             ordered = self._ordered(candidates)
@@ -255,9 +270,13 @@ class ExternalTranscribeWorker:
                     continue
                 summary.claimed += 1
                 estimate = self._estimate_gpu_seconds(item)
-                caps = (self.defaults.get("compute_backends") or {}).get(self.config.backend) or {}
-                cap = float(caps.get("monthly_gpu_seconds", 0.0))
-                max_inflight = int(caps.get("max_inflight", 0))
+                policy = backend_policy(
+                    self.site_config,
+                    self.config.backend,
+                    work_class=item.work_class,
+                )
+                cap = policy.budget.spendable_units
+                max_inflight = policy.dispatch.max_inflight
                 if (
                     cap <= 0
                     or max_inflight <= 0
@@ -421,8 +440,13 @@ class ExternalTranscribeWorker:
     def _estimate_gpu_seconds(self, item: WorkItem) -> float:
         _city, ep, _records = self._episode_for(item)
         hours, _source = _episode_duration_hours(ep)
-        estimated = hours * 3600 * self.config.gpu_seconds_per_audio_second
-        return max(self.config.min_gpu_seconds, estimated)
+        estimated = hours * 3600 * self.config.budget_units_per_audio_second
+        estimated += self.config.fixed_budget_units_per_claim
+        return max(self.config.min_budget_units, estimated)
+
+    def _preferred_duration(self, item: WorkItem) -> bool:
+        min_hours = max(0.0, self.config.prefer_min_duration_hours)
+        return min_hours <= 0 or item.duration_hours <= 0 or item.duration_hours >= min_hours
 
     def _telemetry_metadata(self, item: WorkItem) -> dict[str, Any]:
         city, ep, _records = self._episode_for(item)
@@ -550,10 +574,12 @@ class ExternalTranscribeWorker:
             "finished_at": datetime.now(UTC).isoformat(),
             "elapsed_seconds": round(max(0.0, elapsed_seconds), 3),
             "duration_hours": metadata.get("duration_hours"),
+            "duration_bucket": _duration_bucket_hours(metadata.get("duration_hours")),
             "model": metadata.get("model"),
             "compute_type": metadata.get("compute_type"),
             "device": self.config.device,
             "gpu_type": os.environ.get("CITYPODS_WORKER_GPU_TYPE"),
+            "budget_units_estimate": round(self._estimate_gpu_seconds(item), 3),
             "peak_rss_bytes": tracker.peak_rss_bytes,
             "peak_gpu_vram_used_bytes": tracker.peak_gpu_vram_used_bytes,
             "gpu_vram_total_bytes": tracker.gpu_vram_total_bytes,
@@ -601,3 +627,21 @@ def run_worker(
     summary = worker.run().to_dict()
     summary["finished_at"] = datetime.now(UTC).isoformat()
     return summary
+
+
+def _duration_bucket_hours(duration_hours: Any) -> str:
+    try:
+        hours = float(duration_hours)
+    except (TypeError, ValueError):
+        return "unknown"
+    if hours <= 0:
+        return "unknown"
+    if hours < 1:
+        return "<1h"
+    if hours < 2:
+        return "1-2h"
+    if hours < 4:
+        return "2-4h"
+    if hours < 6:
+        return "4-6h"
+    return "6h+"

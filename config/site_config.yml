@@ -232,18 +232,46 @@ defaults:
   # "auto" (H14a) routes through the dispatcher below — filling each external free-tier GPU budget
   # first, then overflowing to "local". Override: COMPUTE_BACKEND=local (a hard bypass of the seam).
   compute_backend: "auto"                # "local" | "auto"
-  # Free-tier GPU dispatch budgets (H14). The dispatcher fills these in config order, then overflows
-  # to "local". `monthly_gpu_seconds` is a HARD per-backend cap — structurally never exceeded (the $0
-  # guarantee); `max_inflight` bounds concurrent in-flight jobs. No external adapter is registered yet
-  # (the Modal/Beam adapters land in H14b/H14c), so today every job overflows to "local" — behavior-
-  # identical to "local", but with the dispatch/lease/budget machinery live and reconciled each run.
-  # `max_claims` caps NEW transcriptions per run (already-done items this run merely adopts don't
-  # count); deployment env may override it temporarily for a canary. Optional `max_scan` bounds how
-  # many items one run leases+examines before giving up (default: max_claims + 50), so a stale manifest
-  # whose head is all already-done can't make the run walk the entire queue.
+  # External-compute policy (H14/H14d). The dispatcher fills these backends in config order, then
+  # overflows to "local". The budget ledger now tracks generic budget units rather than assuming
+  # elapsed GPU seconds are the provider's billing model; the default unit label remains gpu-second
+  # for backwards compatibility with the initial H14 rollout. `reserve_units` intentionally leaves a
+  # soft buffer near the provider reset boundary. `max_claims_per_run` caps NEW transcriptions per
+  # worker invocation (already-done items this run merely adopts don't count); deploy env may
+  # override it temporarily for canaries/manual optimization runs. `prefer_min_duration_hours`
+  # lets external workers skip short meetings that the GitHub runner can handle, while still
+  # respecting the manifest's queue order for the long-meeting backlog they do claim.
   compute_backends:
-    modal: { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }   # ≈ free credits — pin to the live plan
-    beam:  { monthly_gpu_seconds: 108000, max_inflight: 8, max_claims: 1 }
+    modal:
+      budget:
+        monthly_units: 108000           # ≈ current free credits — pin to the live plan
+        reserve_units: 3600
+        unit_label: gpu-second
+      dispatch:
+        max_inflight: 8
+        max_claims_per_run: 1
+      tasks:
+        transcript-asr:
+          prefer_min_duration_hours: 4
+          fresh_within_days: 7
+          budget_units_per_audio_second: 0.25
+          min_budget_units: 60
+          fixed_budget_units_per_claim: 0
+    beam:
+      budget:
+        monthly_units: 108000
+        reserve_units: 3600
+        unit_label: gpu-second
+      dispatch:
+        max_inflight: 8
+        max_claims_per_run: 1
+      tasks:
+        transcript-asr:
+          prefer_min_duration_hours: 4
+          fresh_within_days: 7
+          budget_units_per_audio_second: 0.25
+          min_budget_units: 60
+          fixed_budget_units_per_claim: 0
   # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull
   # workers (H14b/H14c) claim against was DORMANT until those workers existed, so `compute reconcile`
   # skipped its sweep by default — otherwise it spends one R2 GET per pending transcript item only to

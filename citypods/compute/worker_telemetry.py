@@ -211,12 +211,23 @@ def _backend_summary(samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
             ),
             default=None,
         )
+        duration_buckets = Counter(str(r.get("duration_bucket") or "unknown") for r in rows)
+        budget_estimates = [
+            float(r["budget_units_estimate"])
+            for r in rows
+            if isinstance(r.get("budget_units_estimate"), (int, float))
+        ]
         out[backend] = {
             "samples": len(rows),
             "success": outcomes.get("success", 0),
             "failed": outcomes.get("failed", 0),
             "outcomes": dict(outcomes),
+            "duration_buckets": dict(sorted(duration_buckets.items())),
             "latest_finished_at": rows[-1].get("finished_at"),
+            "max_budget_units_estimate": max(budget_estimates) if budget_estimates else None,
+            "avg_budget_units_estimate": (
+                sum(budget_estimates) / len(budget_estimates) if budget_estimates else None
+            ),
             "peak_rss_bytes": peak_rss,
             "peak_gpu_vram_used_bytes": peak_gpu,
             "gpu_vram_total_bytes": gpu_total,

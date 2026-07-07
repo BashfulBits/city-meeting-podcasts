@@ -150,6 +150,46 @@ def test_external_worker_scans_only_feed_visible_transcript_claims(tmp_path):
     assert summary.scanned == 1
 
 
+def test_external_worker_prefers_long_meetings_for_claim_scan(tmp_path):
+    save_manifest(
+        tmp_path,
+        [
+            WorkItem(
+                source_key="src",
+                episode_uid="short",
+                work_class="transcript-asr",
+                state="queued",
+                priority_bucket=BUCKET_FEED_VISIBLE,
+                duration_hours=1.0,
+            ),
+            WorkItem(
+                source_key="src",
+                episode_uid="long",
+                work_class="transcript-asr",
+                state="queued",
+                priority_bucket=BUCKET_FEED_VISIBLE,
+                duration_hours=5.0,
+            ),
+        ],
+    )
+    worker = ExternalTranscribeWorker(
+        config=ExternalWorkerConfig(
+            backend="modal",
+            owner="modal:test",
+            max_claims=0,
+            prefer_min_duration_hours=4.0,
+        ),
+        site_config={},
+        cities=[],
+        state_dir=tmp_path,
+        storage=object(),
+    )
+
+    summary = worker.run()
+
+    assert summary.scanned == 1
+
+
 def test_config_from_env_uses_site_config_max_claims_by_default(monkeypatch):
     monkeypatch.delenv("CITYPODS_WORKER_MAX_CLAIMS", raising=False)
     cfg = config_from_env(
