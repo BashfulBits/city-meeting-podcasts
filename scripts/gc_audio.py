@@ -225,19 +225,31 @@ def human_bytes(n: int) -> str:
     return f"{n} B"
 
 
-def render_issue_body(summary: dict, *, applied: bool) -> str:
+def render_issue_body(summary: dict, *, applied: bool, auto_reaped: int = 0) -> str:
     verb = "reclaimed" if applied else "reclaimable"
+    # In --auto-confirm mode (auto_reaped > 0) matured double-confirmed orphans WERE deleted this
+    # run even though args.apply is False, so the body must not read as a pure dry-run — the
+    # `summary` here already counts only the still-reclaimable remainder.
+    if applied:
+        preamble = "These objects were **deleted** by a manual `apply` run of the GC workflow."
+    elif auto_reaped:
+        preamble = (
+            f"**{auto_reaped} object(s) were auto-reaped this run** (double-confirmed: orphaned "
+            f"across ≥2 runs past the quarantine window). The {summary['total_files']} below "
+            "remain reclaimable — they are not yet matured for auto-apply. No human action is "
+            "required; matured orphans auto-reap and drop off this list on a later run."
+        )
+    else:
+        preamble = (
+            "These content-addressed audio/transcript objects are no longer referenced by any "
+            "record (regenerated artifacts, retired recipes, or coalesced duplicate source views, "
+            "GH#421). This run was a **dry-run** — nothing was deleted."
+        )
     lines = [
         f"## Audio storage GC — {summary['total_files']} orphan object(s), "
         f"{human_bytes(summary['total_bytes'])} {verb}",
         "",
-        (
-            "These content-addressed audio/transcript objects are no longer referenced by any "
-            "record (regenerated artifacts, retired recipes, or coalesced duplicate source views, "
-            "GH#421). This run was a **dry-run** — nothing was deleted."
-            if not applied
-            else "These objects were **deleted** by a manual `apply` run of the GC workflow."
-        ),
+        preamble,
         "",
         "| City | Files | Size |",
         "|---|---:|---:|",
@@ -256,14 +268,21 @@ def render_issue_body(summary: dict, *, applied: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _write_report(out_dir: Path, orphans: list[Orphan], summary: dict, *, applied: bool) -> None:
+def _write_report(
+    out_dir: Path,
+    orphans: list[Orphan],
+    summary: dict,
+    *,
+    applied: bool,
+    auto_reaped: int = 0,
+) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = ["key\tbytes\tcity\tlast_modified"]
     rows += [f"{o.key}\t{o.bytes}\t{o.city}\t{o.last_modified or ''}" for o in orphans]
     (out_dir / "orphans.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (out_dir / "issue-body.md").write_text(
-        render_issue_body(summary, applied=applied), encoding="utf-8"
+        render_issue_body(summary, applied=applied, auto_reaped=auto_reaped), encoding="utf-8"
     )
     (out_dir / "has_orphans").write_text("true" if orphans else "false", encoding="utf-8")
 
@@ -389,22 +408,38 @@ def main(argv: list[str] | None = None) -> int:
     # Pass 2 — delete + report. Report the still-reclaimable set: for a full --apply everything is
     # deleted (rendered "reclaimed"); in auto/dry-run mode the not-yet-matured remainder stays on
     # rolling issue while matured orphans auto-reap and drop off it.
+    #
+    # The reclaim-log entry for each key is committed BEFORE that key's storage.delete(), one key
+    # at a time — not batched after the whole loop. If the process is killed mid-loop (SIGTERM, OOM,
+    # the Actions job timeout), every key already deleted has a durable recover_by record, so the
+    # resurrection watchdog can still catch a false-positive reap of any of them. The failure this
+    # trades into — a crash between log-write and delete leaves a log entry for an object that was
+    # never actually removed — is strictly safer: at worst it later raises a harmless resurrection
+    # alert for a still-live object, versus the batched approach's silent miss (a real deletion
+    # with no record at all). Correctness over throughput: this is a weekly, bounded-size run, so
+    # the many small append+prune cycles are an acceptable cost.
     orphans: list[Orphan] = []
-    deleted_entries: list[reclaim_log.DeletionEntry] = []
+    deleted_count = 0
     for key, last_modified, size in candidates:
         delete_now = args.apply or (key in auto_delete_keys)
         if delete_now:
-            storage.delete(key)
-            deleted_entries.append(
-                reclaim_log.make_entry(
-                    key,
-                    backend=backend,
-                    reason="orphan-manual" if args.apply else "orphan-auto",
-                    run_url=run_url,
-                    retention_days=retention,
-                    now=now,
-                )
+            reclaim_log.append_deletions(
+                state_dir,
+                [
+                    reclaim_log.make_entry(
+                        key,
+                        backend=backend,
+                        reason="orphan-manual" if args.apply else "orphan-auto",
+                        run_url=run_url,
+                        retention_days=retention,
+                        now=now,
+                    )
+                ],
+                retention_days=retention,
+                now=now,
             )
+            storage.delete(key)
+            deleted_count += 1
             print(f"DELETED  {key}")
         else:
             print(f"ORPHAN   {key}")
@@ -418,12 +453,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
 
-    # Record deletions in the append-only reclaim log so the resurrection watchdog can catch a later
-    # re-reference of a reaped key while it is still restorable from the B2 version window.
-    if deleted_entries:
-        reclaim_log.append_deletions(state_dir, deleted_entries, retention_days=retention, now=now)
-
-    if args.push_state and (auto_mode or deleted_entries):
+    if args.push_state and (auto_mode or deleted_count):
         from citypods.statesync import push_state
 
         push_state(
@@ -433,8 +463,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     summary = summarize(orphans)
+    auto_reaped = len(auto_delete_keys) if auto_mode else 0
     if args.out:
-        _write_report(Path(args.out), orphans, summary, applied=args.apply)
+        _write_report(Path(args.out), orphans, summary, applied=args.apply, auto_reaped=auto_reaped)
 
     action = "deleted" if args.apply else "orphaned (dry-run)"
     auto_note = f"; {len(auto_delete_keys)} auto-reaped (double-confirmed)" if auto_mode else ""

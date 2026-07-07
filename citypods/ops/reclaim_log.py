@@ -26,6 +26,7 @@ Entry fields:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -88,6 +89,24 @@ def make_entry(
 
 def _log_path(state_dir: Path) -> Path:
     return Path(state_dir) / RECLAIM_LOG_NAME
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically: write a sibling temp file, fsync, then rename over
+    the target. A crash/SIGTERM mid-write can never truncate the existing log — the rename is
+    atomic on POSIX, so a reader sees either the old file or the fully-written new one. This log is
+    the resurrection watchdog's only durable record of what is still recoverable, so a partial write
+    (unlike lower-stakes telemetry such as ``run_history.jsonl``) would silently defeat the safety
+    mechanism."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def load(state_dir: Path) -> list[DeletionEntry]:
@@ -163,8 +182,8 @@ def append_deletions(
 
     kept = [e for e in load(state_dir) if _keep(e, now, retention_days)]
     kept.extend(entries)
-    path.write_text(
+    _atomic_write_text(
+        path,
         "\n".join(json.dumps(asdict(e)) for e in kept) + ("\n" if kept else ""),
-        encoding="utf-8",
     )
     return path

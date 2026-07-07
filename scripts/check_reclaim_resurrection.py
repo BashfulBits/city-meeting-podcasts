@@ -112,7 +112,16 @@ def main(argv: list[str] | None = None) -> int:
     site_config = load_site_config(args.site_config)
     storage = make_storage(site_config, "https://example.invalid", args.output_dir)
     state_dir = resolve_state_dir(site_config, args.output_dir)
-    if args.pull_state and storage is not None:
+    if args.pull_state:
+        if storage is None:
+            # A safety-critical watchdog must never scan a stale/empty local state_dir and report
+            # a clean sweep when the durable bucket state was never restored. If --pull-state was
+            # asked for but no backend is configured, fail loudly instead of silently proceeding.
+            print(
+                "::error title=Reclaim watchdog::--pull-state requested but no storage backend is "
+                "configured; refusing to scan possibly-stale local state."
+            )
+            return 2
         from citypods.statesync import pull_state
 
         pull_state(storage, state_dir)

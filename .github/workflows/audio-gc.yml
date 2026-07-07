@@ -94,12 +94,19 @@ jobs:
       # ledger + reclaim log (scoped push, never clobbers sibling state).
       - name: Run orphan GC
         id: gc
+        # Pass workflow context through env (never inline ${{ }} inside a shell [ ] test): a
+        # branch-controllable value interpolated pre-shell could otherwise break out of the test.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          MIN_AGE_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.min_age_days || '7' }}
         run: |
           APPLY=""
           EXTRA="--push-state"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.apply }}" = "true" ]; then
-            if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-              echo "::error title=Storage reclaim apply mode::apply=true is only allowed when dispatched from main (got ${{ github.ref }})"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$APPLY_INPUT" = "true" ]; then
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
+              echo "::error title=Storage reclaim apply mode::apply=true is only allowed when dispatched from main (got $GIT_REF)"
               exit 1
             fi
             APPLY="--apply"
@@ -109,7 +116,7 @@ jobs:
           fi
           python scripts/gc_audio.py \
             --pull-state \
-            --min-age-days "${{ github.event_name == 'workflow_dispatch' && inputs.min_age_days || '7' }}" \
+            --min-age-days "$MIN_AGE_DAYS" \
             --out gc-audio \
             $APPLY $EXTRA
           echo "has_orphans=$(cat gc-audio/has_orphans 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
@@ -166,6 +173,10 @@ jobs:
       # below always run; a final step re-fails the run if a hit was found (after the issue is opened).
       - name: Reclaim resurrection watchdog
         id: watchdog
+        # The watchdog is the safety backstop for a bad/interrupted GC run: it does its own
+        # --pull-state and never depends on the GC step succeeding, so run it even if GC failed
+        # (only skip on an outright cancel). The downstream issue steps gate on !cancelled() too.
+        if: '!cancelled()'
         run: |
           python scripts/check_reclaim_resurrection.py --pull-state --out reclaim-watchdog --no-fail
           echo "has_resurrection=$(cat reclaim-watchdog/has_resurrection 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
@@ -173,7 +184,7 @@ jobs:
       # A reaped object is referenced again while still restorable → open/refresh ONE HIGH-priority
       # issue. Stable title (deadline lives in the body) so it dedups across runs.
       - name: Open or update resurrection issue
-        if: steps.watchdog.outputs.has_resurrection == 'true'
+        if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''true'''
         run: |
           TITLE="🚨 Reclaimed storage object re-referenced — data-loss risk"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -196,7 +207,7 @@ jobs:
       # Clean sweep → close any open resurrection issue (the re-referenced key was restored or its
       # window passed).
       - name: Close resurrection issue when clear
-        if: steps.watchdog.outputs.has_resurrection == 'false'
+        if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''false'''
         run: |
           TITLE="🚨 Reclaimed storage object re-referenced — data-loss risk"
           EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
@@ -210,7 +221,7 @@ jobs:
       # Re-fail the run AFTER the issue is filed, so a data-loss event is loud (red run) without
       # suppressing the issue-filing steps above.
       - name: Fail run on unresolved resurrection
-        if: steps.watchdog.outputs.has_resurrection == 'true'
+        if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''true'''
         run: |
           echo "::error title=Data-loss risk::A reclaimed object is referenced again; see the opened HIGH-priority issue."
           exit 1

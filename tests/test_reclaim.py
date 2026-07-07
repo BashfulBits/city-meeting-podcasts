@@ -336,3 +336,113 @@ def test_apply_lifecycle_dry_run_never_writes():
     rules = reclaim.build_r2_scratch_rules()
     assert apply_bucket_lifecycle._reconcile(backend, rules, label="r2", apply=False) is True
     assert backend.puts == 0
+
+
+# ── gc_audio: report body reflects auto-reaped counts ────────────────────────────────
+
+
+def test_issue_body_reflects_auto_reaped_count():
+    # In --auto-confirm mode matured orphans WERE deleted even though args.apply is False, so the
+    # persisted issue body must not read as a pure dry-run (GH#496 CodeRabbit finding #6).
+    summary = {
+        "by_city": {"Austin": {"files": 2, "bytes": 2048}},
+        "total_files": 2,
+        "total_bytes": 2048,
+    }
+    body = gc_audio.render_issue_body(summary, applied=False, auto_reaped=3)
+    assert "3 object(s) were auto-reaped" in body
+    assert "remain" in body.lower()
+    assert "dry-run" not in body.lower()  # not a plain dry-run when objects were auto-reaped
+
+
+def test_issue_body_plain_dry_run_when_nothing_reaped():
+    summary = {
+        "by_city": {"Austin": {"files": 1, "bytes": 1024}},
+        "total_files": 1,
+        "total_bytes": 1024,
+    }
+    body = gc_audio.render_issue_body(summary, applied=False, auto_reaped=0)
+    assert "dry-run" in body.lower()
+    assert "auto-reaped" not in body.lower()
+
+
+# ── gc_audio: reclaim log is committed per-key BEFORE each delete ─────────────────────
+
+
+class _FakeGcStorage:
+    """Minimal storage double: lists a fixed object set, records deletes, and can be told to raise
+    on a specific key to simulate a mid-loop kill."""
+
+    name = "b2"
+
+    def __init__(self, objects, *, fail_on=None):
+        self._objects = objects  # list[(key, last_modified, size)]
+        self.deleted: list[str] = []
+        self._fail_on = fail_on
+
+    def iter_objects(self, prefix):
+        for key, lm, size in self._objects:
+            if key.startswith(prefix):
+                yield key, lm, size
+
+    def delete(self, key):
+        if key == self._fail_on:
+            raise RuntimeError(f"simulated kill deleting {key}")
+        self.deleted.append(key)
+
+
+def _run_gc_main(monkeypatch, tmp_path, storage, argv):
+    """Drive gc_audio.main() against a fake storage, stubbing config/record lookups."""
+    monkeypatch.setattr(gc_audio, "make_storage", lambda *a, **k: storage)
+    monkeypatch.setattr(gc_audio, "load_site_config", lambda *a, **k: {"defaults": {}})
+    monkeypatch.setattr(gc_audio, "load_city_configs", lambda *a, **k: [])
+    monkeypatch.setattr(gc_audio, "resolve_state_dir", lambda *a, **k: tmp_path)
+    # A non-empty live set so the "refuse to GC" guard passes; none of the candidates are in it.
+    monkeypatch.setattr(gc_audio, "referenced_audio_keys", lambda *a, **k: {"live/keep.m4a"})
+    return gc_audio.main(argv)
+
+
+def test_reclaim_log_written_before_each_delete_survives_midloop_kill(monkeypatch, tmp_path):
+    # Three matured orphans; the storage raises while deleting the second. Because the reclaim-log
+    # entry is committed BEFORE each delete, the log must already contain the key that was
+    # successfully deleted first — no silent miss (GH#496 CodeRabbit finding #5, the MAJOR one).
+    old = (datetime.now(UTC) - timedelta(days=400)).replace(microsecond=0)
+    objects = [
+        ("granicus/src1/a-spec.m4a", old, 10),
+        ("granicus/src1/b-spec.m4a", old, 20),
+        ("granicus/src1/c-spec.m4a", old, 30),
+    ]
+    storage = _FakeGcStorage(objects, fail_on="granicus/src1/b-spec.m4a")
+
+    with pytest.raises(RuntimeError, match="simulated kill"):
+        _run_gc_main(
+            monkeypatch,
+            tmp_path,
+            storage,
+            ["--apply", "--min-age-days", "0"],
+        )
+
+    # First key was deleted; the crash hit the second before it was removed.
+    assert storage.deleted == ["granicus/src1/a-spec.m4a"]
+    logged = {e.key for e in reclaim_log.load(tmp_path)}
+    # The successfully-deleted key has a durable record (would be caught by the watchdog).
+    assert "granicus/src1/a-spec.m4a" in logged
+    # The crashing key was logged just before its (failed) delete — a harmless phantom entry, the
+    # deliberately-safer failure mode; the third key was never reached.
+    assert "granicus/src1/c-spec.m4a" not in logged
+
+
+def test_reclaim_log_records_all_keys_on_clean_apply(monkeypatch, tmp_path):
+    old = (datetime.now(UTC) - timedelta(days=400)).replace(microsecond=0)
+    objects = [
+        ("granicus/src1/a-spec.m4a", old, 10),
+        ("granicus/src1/b-spec.m4a", old, 20),
+    ]
+    storage = _FakeGcStorage(objects)
+    rc = _run_gc_main(monkeypatch, tmp_path, storage, ["--apply", "--min-age-days", "0"])
+    assert rc == 0
+    assert set(storage.deleted) == {"granicus/src1/a-spec.m4a", "granicus/src1/b-spec.m4a"}
+    assert {e.key for e in reclaim_log.load(tmp_path)} == {
+        "granicus/src1/a-spec.m4a",
+        "granicus/src1/b-spec.m4a",
+    }
