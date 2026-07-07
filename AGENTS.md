@@ -213,6 +213,14 @@ firing fewer reviews (the draft workflow below), not just scanning fewer files.
 > review-events. Marking the PR **ready for review** triggers the first review; pushes after that get
 > incremental re-reviews. This is the single biggest quota saver — do it for every PR. (If you forget
 > and open a normal PR, nothing breaks — you just get reviewed a bit sooner.)
+>
+> Two things that would defeat this, so don't do them: (1) **manually commenting `@coderabbitai
+> review` on a still-draft PR** — that overrides `drafts: false` and forces a review; wait until
+> you've flipped to ready. (2) Pointlessly toggling **ready → draft → ready** — the ready-flip is the
+> billable event, so only flip to ready once, when you actually want the (one) review. Because
+> CodeRabbit never reviews the draft, there is no "already-approved draft" that gets redundantly
+> re-reviewed on the flip: the ready-flip *is* the first and only review, batched over all your draft
+> commits — total cost 1 review-event, never 2.
 
 At a glance:
 
