@@ -555,10 +555,18 @@ def test_reconcile_noop_when_nothing_outstanding_and_no_issue_exists(monkeypatch
 
 
 def test_reconcile_dry_run_never_calls_gh(monkeypatch):
+    # existing_number="42" → an issue already exists, so dry-run must report the *exact* action each
+    # (has_orphans, applied) case would take live (matching the non-dry-run tests above), not merely
+    # "one of the valid actions": orphans remaining refresh the existing ticket ("updated"); a
+    # cleared scheduled backlog closes it ("closed-auto"); a manual apply closes ("closed-apply").
     calls = _mock_gh(monkeypatch, existing_number="42")
-    for has_orphans, applied in ((True, False), (False, False), (True, True)):
+    for has_orphans, applied, expected in (
+        (True, False, "updated"),
+        (False, False, "closed-auto"),
+        (True, True, "closed-apply"),
+    ):
         action = gc_audio.reconcile_gc_issue(
             "body", has_orphans=has_orphans, applied=applied, dry_run=True
         )
-        assert action in {"updated", "created", "closed-auto", "closed-apply"}
+        assert action == expected
     assert calls == []  # _find_open_gc_issue is mocked, not _gh — no gh call should fire

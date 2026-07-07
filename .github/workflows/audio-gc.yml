@@ -42,21 +42,10 @@ concurrency:
 jobs:
   gc:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      # Storage credentials shared by the lifecycle, GC, and watchdog steps. make_storage builds the
-      # routing backend (B2 primary + R2 coordination) from these; apply_bucket_lifecycle.py targets
-      # each backend directly.
-      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
-      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
-      B2_BUCKET: ${{ secrets.B2_BUCKET }}
-      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
-      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    # Credentials are scoped per step (never at job level), so checkout/setup-python/pip — which need
+    # none of them — can't see B2/R2/Cloudflare secrets or GH_TOKEN. Storage steps get B2+R2 (make_storage
+    # builds the routing backend from them; apply_bucket_lifecycle.py targets each backend directly);
+    # gh-shelling steps get GH_TOKEN. Matches validate-control-plane.yml's step-scoped secret pattern.
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -71,15 +60,32 @@ jobs:
 
       # Backstop 1: reconcile the bucket lifecycle rules. Idempotent — a no-op when already configured.
       # continue-on-error so a transient lifecycle-API failure (or a B2 endpoint that needs a native
-      # rule shape, surfaced as a red step) never blocks the GC/watchdog; it re-applies next week.
+      # rule shape, surfaced as a red step) never blocks the watchdog; it re-applies next week. But its
+      # `outcome` is read below (id: lifecycle): the whole double-confirm / resurrection-watchdog safety
+      # model assumes the B2 retention window is actually configured, so a failure here downgrades the
+      # GC step to report-only — no deletions run against an unverified retention window.
       - name: Configure bucket lifecycle rules
+        id: lifecycle
         continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
         run: python scripts/apply_bucket_lifecycle.py --apply
 
       # Never reap while an audio.yml run might be writing fresh objects whose records aren't
       # persisted yet. The --min-age-days floor already protects new objects; this just avoids racing
       # the state pull. Best-effort: proceed after the window so a stuck run never blocks GC forever.
       - name: Wait for active audio runs to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           for i in $(seq 1 15); do
             ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
@@ -104,17 +110,43 @@ jobs:
           GIT_REF: ${{ github.ref }}
           APPLY_INPUT: ${{ inputs.apply }}
           MIN_AGE_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.min_age_days || '7' }}
+          # Report-only unless the lifecycle step above actually succeeded: no deletion path may run
+          # against an unverified B2 retention window (the watchdog's recovery guarantee depends on it).
+          LIFECYCLE_OUTCOME: ${{ steps.lifecycle.outcome }}
+          GH_TOKEN: ${{ github.token }} # --reconcile-issue shells out to `gh` (gc_audio.py:_gh)
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
           APPLY=""
           EXTRA="--push-state --reconcile-issue"
+          # Lifecycle reconciliation is the precondition for any deletion. If it failed, fall back to
+          # report-only: refuse a manual apply=true dispatch loudly, and drop --auto-confirm on a
+          # scheduled run so it degrades to plain dry-run reporting (safety over throughput).
+          LIFECYCLE_OK=true
+          if [ "$LIFECYCLE_OUTCOME" != "success" ]; then
+            LIFECYCLE_OK=false
+            echo "::warning title=Storage reclaim lifecycle::lifecycle reconciliation did not succeed (outcome=$LIFECYCLE_OUTCOME); this run is report-only."
+          fi
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$APPLY_INPUT" = "true" ]; then
             if [ "$GIT_REF" != "refs/heads/main" ]; then
               echo "::error title=Storage reclaim apply mode::apply=true is only allowed when dispatched from main (got $GIT_REF)"
               exit 1
             fi
+            if [ "$LIFECYCLE_OK" != "true" ]; then
+              echo "::error title=Storage reclaim apply mode::refusing apply=true because lifecycle reconciliation failed (outcome=$LIFECYCLE_OUTCOME); the B2 retention window is unverified. Re-run after it succeeds."
+              exit 1
+            fi
             APPLY="--apply"
             echo "::warning title=Storage reclaim apply mode::Deleting ALL reported orphaned objects (manual apply run)."
-          else
+          elif [ "$LIFECYCLE_OK" = "true" ]; then
             EXTRA="$EXTRA --auto-confirm"
           fi
           python scripts/gc_audio.py \
@@ -142,6 +174,17 @@ jobs:
         # --pull-state and never depends on the GC step succeeding, so run it even if GC failed
         # (only skip on an outright cancel). The downstream issue steps gate on !cancelled() too.
         if: '!cancelled()'
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
           python scripts/check_reclaim_resurrection.py --pull-state --out reclaim-watchdog --no-fail
           echo "has_resurrection=$(cat reclaim-watchdog/has_resurrection 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
@@ -150,13 +193,14 @@ jobs:
       # issue. Stable title (deadline lives in the body) so it dedups across runs.
       - name: Open or update resurrection issue
         if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''true'''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="🚨 Reclaimed storage object re-referenced — data-loss risk"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           printf '\n\n> Watchdog run: %s\n' "$ARTIFACT_URL" >> reclaim-watchdog/issue-body.md
-          # Ensure the priority label exists (best-effort; the taxonomy has no high-priority label yet).
-          gh label create "priority:high" --color B60205 \
-            --description "Time-critical: act before a recovery/expiry window closes" 2>/dev/null || true
+          # Urgency lives in the 🚨 title + "data-loss risk" body, not a label: CONTRIBUTING.md forbids
+          # encoding priority in labels (the Project `Priority` field owns that dimension, set out-of-band).
           EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
             | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
           if [ -n "$EXISTING" ]; then
@@ -165,7 +209,7 @@ jobs:
           else
             URL=$(gh issue create --title "$TITLE" --body-file reclaim-watchdog/issue-body.md)
             echo "Opened resurrection issue: $URL"
-            gh issue edit "$URL" --add-label "priority:high" --add-label "area:ops" --add-label "type:operations" \
+            gh issue edit "$URL" --add-label "area:ops" --add-label "type:operations" \
               || echo "::warning title=Resurrection issue label::could not add labels (issue still created)"
           fi
 
@@ -173,6 +217,8 @@ jobs:
       # window passed).
       - name: Close resurrection issue when clear
         if: '!cancelled() && steps.watchdog.outputs.has_resurrection == ''false'''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="🚨 Reclaimed storage object re-referenced — data-loss risk"
           EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \

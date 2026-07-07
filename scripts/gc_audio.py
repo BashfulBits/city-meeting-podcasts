@@ -575,10 +575,19 @@ def main(argv: list[str] | None = None) -> int:
     # end-of-loop push_state() is therefore not enough: a kill after (say) 50 of 100 deletes never
     # reaches it, the VM is destroyed, and all 50 durable-on-paper log entries vanish; the next
     # run's --pull-state restores a stale bucket copy without them and the watchdog can never see
-    # the reap. So the reclaim log is pushed to the durable bucket AFTER EACH delete, at the same
-    # per-key granularity as the local write, under the same correctness-over-throughput reasoning
-    # — one B2 PUT (whole-file put_file overwrite) per deletion, a small, bounded, acceptable cost
-    # for a weekly job. push_state() is a no-op unless args.push_state was requested, so
+    # the reap. So the reclaim log is pushed to the durable bucket per-key, at the same granularity
+    # as the local write, under the same correctness-over-throughput reasoning — one B2 PUT
+    # (whole-file put_file overwrite) per deletion, a small, bounded, acceptable cost for a weekly
+    # job.
+    #
+    # And that per-key push must happen BEFORE this key's storage.delete(), not after: the same
+    # ephemeral-runner argument that forces a push at all also dictates its ordering. If we deleted
+    # first and a kill landed in the gap before the push, the object would be gone from the bucket
+    # while its only proof-of-deletion sat unpushed on the dying VM's disk — the exact silent miss
+    # this design prevents. Pushing first inverts the failure into the harmless direction: a crash
+    # after push, before delete, leaves a durable log entry for a still-live object — at worst a
+    # phantom resurrection alert that self-clears next run. A harmless phantom log entry beats a
+    # silent unlogged deletion. push_state() is a no-op unless args.push_state was requested, so
     # tests/local/offline runs are never forced into a push.
     #
     # The orphan LEDGER is deliberately NOT pushed per-key here. Unlike the reclaim log it is not
@@ -609,17 +618,17 @@ def main(argv: list[str] | None = None) -> int:
                 retention_days=retention,
                 now=now,
             )
-            storage.delete(key)
-            deleted_count += 1
-            print(f"DELETED  {key}")
             if args.push_state:
-                # Make the just-written recover_by record durable NOW, not at end-of-loop — the only
-                # way a mid-loop kill on an ephemeral runner still leaves the watchdog a record.
+                # Push BEFORE storage.delete(), never after — see the ordering rationale in the
+                # block above ("that per-key push must happen BEFORE this key's storage.delete()").
                 push_state(
                     storage,
                     state_dir,
                     only_prefixes=[reclaim_log.RECLAIM_LOG_NAME],
                 )
+            storage.delete(key)
+            deleted_count += 1
+            print(f"DELETED  {key}")
         else:
             print(f"ORPHAN   {key}")
         if args.apply or key not in auto_delete_keys:
