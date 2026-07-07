@@ -301,9 +301,9 @@ def test_fresh_transcription_pushes_owned_record(tmp_path, monkeypatch):
     adopted = worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
 
     assert adopted is False
-    assert push_calls == [
-        {"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}
-    ], "fresh transcription did not durably push its owned transcript record"
+    assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}], (
+        "fresh transcription did not durably push its owned transcript record"
+    )
 
 
 def test_adopted_item_pushes_owned_record(tmp_path, monkeypatch):
