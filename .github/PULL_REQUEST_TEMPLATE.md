@@ -1,7 +1,7 @@
 <!-- Merge with a merge commit (--merge), NOT squash. See CONTRIBUTING.md. -->
-<!-- Open as DRAFT and iterate here; flip to "Ready for review" only when you want CodeRabbit's
-     review (it skips drafts). Saves throttled review-events on self-directed churn. See AGENTS.md
-     § Working with CodeRabbit on a PR. -->
+<!-- CodeRabbit tips (see AGENTS.md § Working with CodeRabbit on a PR): batch all fixes for a review
+     round into ONE push (fewer re-reviews); open as DRAFT only if you'll iterate substantially in
+     the PR before it's ready (CR skips drafts) — not needed for a normal ready-to-review PR. -->
 
 ## Summary
 

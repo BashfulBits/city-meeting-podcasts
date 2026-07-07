@@ -202,25 +202,31 @@ one first (`ls review/`), since new sweeps supersede: [`review/19`](review/19-co
 ### Working with CodeRabbit on a PR
 
 [`.coderabbit.yaml`](.coderabbit.yaml) is the settings-as-code config for the bot's normal
-PR-triggered reviews (separate from the manual full-repo CLI sweeps above). It exists mainly to
-stay inside the free-tier OSS rate limit, which throttles on **two** dimensions — reviews/hour
-*and* files-scanned/hour (query `@coderabbitai reviews remaining?` on a PR, or `cr stats` locally,
-for the current numbers). Our backoff pain is the reviews/hour dimension, so the main lever is
-firing fewer reviews (the draft workflow below), not just scanning fewer files.
+PR-triggered reviews (separate from the manual full-repo CLI sweeps above). Its main *value* is
+review **quality** (the `path_instructions` / `knowledge_base` / `tone` context that keeps CR from
+flagging intentional patterns) — not a big cut in review volume. A measured look at the last 100 PRs
+found the repo already runs near the review floor (~1.65 review-runs/PR; ~97% of runs are the
+unavoidable first review plus fix-response re-reviews), so the config's exclusions and the draft
+option only shave a couple percent. The free-tier OSS limit throttles on two dimensions —
+reviews/hour and files-scanned/hour — and our backoff is a **burst** problem (several reviews in one
+hour), not a volume problem. The levers that actually help bursts are behavioral:
 
-> **Open PRs as DRAFT and iterate there; flip to "Ready for review" only when you want the review.**
-> CodeRabbit does not review draft PRs (`drafts: false`), so all your self-directed churn costs zero
-> review-events. Marking the PR **ready for review** triggers the first review; pushes after that get
-> incremental re-reviews. This is the single biggest quota saver — do it for every PR. (If you forget
-> and open a normal PR, nothing breaks — you just get reviewed a bit sooner.)
->
-> Two things that would defeat this, so don't do them: (1) **manually commenting `@coderabbitai
-> review` on a still-draft PR** — that overrides `drafts: false` and forces a review; wait until
-> you've flipped to ready. (2) Pointlessly toggling **ready → draft → ready** — the ready-flip is the
-> billable event, so only flip to ready once, when you actually want the (one) review. Because
-> CodeRabbit never reviews the draft, there is no "already-approved draft" that gets redundantly
-> re-reviewed on the flip: the ready-flip *is* the first and only review, batched over all your draft
-> commits — total cost 1 review-event, never 2.
+> **To avoid backoff bursts:**
+> 1. **Batch all fixes for a review round into a single push** — CodeRabbit re-reviews per push, so
+>    addressing five findings in one commit is 1 re-review; five separate pushes is up to 5. This is
+>    the highest-leverage habit (fix-response re-reviews are ~36% of all review volume here).
+> 2. **Space out PR openings** — don't fire a batch of PRs in the same hour.
+> 3. **When near the limit, check `@coderabbitai reviews remaining?`** and pace, rather than pushing
+>    into a backoff.
+
+> **Draft PRs — conditional, not a default.** Open a PR as **draft** *only when you expect to iterate
+> substantially in the PR itself before it's ready* (an exploratory/long-churn change). CodeRabbit
+> skips draft PRs (`drafts: false`), so that in-PR churn costs zero review-events until you flip to
+> "ready for review". For the normal "open near-complete, then address findings" flow — which is most
+> PRs here — drafting buys effectively nothing, so don't bother. If you do draft: don't manually
+> `@coderabbitai review` while still draft (it overrides `drafts: false`), and flip to ready only once
+> (the ready-flip is the single billable review, batched over all draft commits — never a double
+> review, since CR never reviewed the draft).
 
 At a glance:
 
@@ -230,14 +236,14 @@ At a glance:
 - **In scope:** every real source dir — `citypods/`, `scripts/`, `tests/`, `workers/`, `templates/`,
   `**and `.github/workflows/**`** (workflow YAML is security-relevant code — permissions, secrets,
   pinned Action SHAs — not filtered out like the repo's data YAML), plus all `*.md`.
-- **Doc-only PRs: aim for one review, then merge.** Edit in draft, flip to ready for the single
-  review. Then, since you know the docs better than CodeRabbit and its review is advisory (doesn't
-  block merge): if it's clean, or the findings are prose nits you judge don't warrant a change,
-  **resolve them by replying in the thread — a comment, not a commit, so no re-review fires — and
-  merge.** Only if a finding is genuinely worth fixing do you push a commit, which *is* one more
-  incremental review (unavoidable — there's no way to add a commit to a ready PR without re-review,
-  and no per-path "review once" knob). So doc PRs cost 1 review-event usually, 2 if you fix
-  something — don't iterate past that. Never sit in a re-push loop over prose.
+- **Doc-only PRs: aim for one review, then merge.** You know the docs better than CodeRabbit, and its
+  review is advisory (doesn't block merge). After the first review: if it's clean, or the findings are
+  prose nits you judge don't warrant a change, **resolve them by replying in the thread — a comment,
+  not a commit, so no re-review fires — and merge.** Only if a finding is genuinely worth fixing do
+  you push a commit, which *is* one more incremental review (unavoidable — there's no way to add a
+  commit to a ready PR without re-review, and no per-path "review once" knob). So doc PRs cost 1
+  review-event usually, 2 if you fix something — don't iterate past that. Never sit in a re-push loop
+  over prose.
 - **Renovate PRs are skipped** (`ignore_usernames`) — dependency bumps are already gated by the
   `deps` CI job and `dep-bump-smoke.yml`.
 - `tone_instructions` / `path_instructions` preload the invariants from "Conventions you must

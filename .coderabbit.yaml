@@ -1,11 +1,12 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
 # Settings-as-code for CodeRabbit. This repo runs on CodeRabbit's free (public-repo) tier, whose
-# rolling allowance has TWO independent dimensions: ~reviews/hour AND ~files-scanned/hour. The
-# "backoff delays" we hit come from the reviews/hour dimension, so the primary lever here is
-# reducing how often a review *fires* (the draft-PR workflow below + drafts:false), not just how
-# many files each review scans (path_filters). See AGENTS.md ("Running a full-codebase CodeRabbit
-# review" / "Working with CodeRabbit on a PR") for the agent-side process and how to check budget.
+# rolling allowance has two dimensions: ~reviews/hour and ~files-scanned/hour. NOTE: a measurement of
+# the last 100 PRs found this config barely reduces review *volume* (~1.65 review-runs/PR already;
+# ~97% of runs are the unavoidable first review + fix-response re-reviews). Its real value is review
+# QUALITY -- the path_instructions/knowledge_base/tone context below that stops CR flagging
+# intentional patterns as bugs. Backoff is a burst problem, addressed by agent behavior (batch fixes
+# into one push; space out PR openings) documented in AGENTS.md "Working with CodeRabbit on a PR".
 #
 # Comment "@coderabbitai configuration" on any PR to see the full effective config, including every
 # field left at its default here.
@@ -117,13 +118,11 @@ reviews:
 
   auto_review:
     enabled: true
-    # Draft-PR workflow -- this is the primary reviews/hour lever. Agents/contributors open PRs as
-    # DRAFT and iterate freely there (drafts:false => zero reviews during self-directed churn, the
-    # main source of wasted review-events). Flipping to "ready for review" triggers the first
-    # review; subsequent pushes get incremental re-reviews. The failure mode is benign: if someone
-    # forgets to open as draft, they just get reviewed sooner -- never an unreviewed final commit.
-    # (Preferred over auto_pause_after_reviewed_commits, which left the last/riskiest commit
-    # un-re-reviewed; left at its default 5 here as a passive safety valve, not the main mechanism.)
+    # drafts:false is CodeRabbit's default, kept explicit. Draft PRs are a CONDITIONAL tool, not a
+    # blanket workflow: measurement showed drafting saves ~1-2% of review-runs here because nearly
+    # all re-review volume is fix-responses (which happen post-"ready" regardless), not in-PR churn.
+    # So AGENTS.md recommends draft only for genuinely iterative/long-churn PRs. (Chosen over
+    # auto_pause_after_reviewed_commits, which would have left the last/riskiest commit un-re-reviewed.)
     drafts: false
     auto_incremental_review: true
     ignore_title_keywords:
