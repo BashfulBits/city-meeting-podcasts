@@ -230,10 +230,14 @@ At a glance:
 - **In scope:** every real source dir — `citypods/`, `scripts/`, `tests/`, `workers/`, `templates/`,
   `**and `.github/workflows/**`** (workflow YAML is security-relevant code — permissions, secrets,
   pinned Action SHAs — not filtered out like the repo's data YAML), plus all `*.md`.
-- **Doc-only PRs: one review, then stop.** For a PR that only touches docs, do your editing in draft,
-  flip to ready for the single review, and then **don't re-push or re-request review** — you know the
-  docs better than CodeRabbit, and re-reviews of prose just burn throttled review-events. (CodeRabbit
-  has no per-path "review once" setting; this is a workflow rule, not something the config enforces.)
+- **Doc-only PRs: aim for one review, then merge.** Edit in draft, flip to ready for the single
+  review. Then, since you know the docs better than CodeRabbit and its review is advisory (doesn't
+  block merge): if it's clean, or the findings are prose nits you judge don't warrant a change,
+  **resolve them by replying in the thread — a comment, not a commit, so no re-review fires — and
+  merge.** Only if a finding is genuinely worth fixing do you push a commit, which *is* one more
+  incremental review (unavoidable — there's no way to add a commit to a ready PR without re-review,
+  and no per-path "review once" knob). So doc PRs cost 1 review-event usually, 2 if you fix
+  something — don't iterate past that. Never sit in a re-push loop over prose.
 - **Renovate PRs are skipped** (`ignore_usernames`) — dependency bumps are already gated by the
   `deps` CI job and `dep-bump-smoke.yml`.
 - `tone_instructions` / `path_instructions` preload the invariants from "Conventions you must
