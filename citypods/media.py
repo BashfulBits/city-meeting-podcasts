@@ -2435,11 +2435,13 @@ def _served_duration(ep: Episode) -> float | None:
     genuinely absent timeline (no plan ever ran — true legacy v1 records) falls back to
     ``ep.duration``.
 
-    NOTE (review/20): the value this returns is the **EDL** clock, not the probed hosted-stream
-    duration. It is still acceptable as a backfill estimate for ``audio_duration_served`` *when
-    no probe is available*, and as the size input to encode-RSS estimation — but a follow-up PR
-    makes the probed hosted-stream duration authoritative for ``audio_duration_served`` so the
-    EDL and the real enclosure can no longer be conflated by construction."""
+    NOTE (review/20, GH#702 PR3 / #705): the value this returns is the **EDL** clock, not the
+    probed hosted-stream duration. It is only acceptable as a backfill estimate for
+    ``audio_duration_served`` *when no probe is available* (``_backfill_served_duration`` is
+    fill-when-missing) and as the size input to encode-RSS estimation. The probed hosted-stream
+    duration is authoritative for ``audio_duration_served`` — see
+    :func:`citypods.stages._refresh_served_duration_from_audio`, which probes every timeline
+    (identity and edited alike) so the EDL and the real enclosure are not conflated."""
     tl = ep.timeline
     if tl is not None and tl.segments:
         # edl_duration can itself return None (a degenerate zero/negative-span timeline) even
