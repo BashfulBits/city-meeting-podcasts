@@ -110,6 +110,29 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   hosted object and `--persist-timeline-integrity` is set — the same bounded, audit-owned write
   path used for repair blocks — so an already-repaired episode's fossil clears on the next
   diagnostics-enabled audit instead of waiting on an unrelated re-encode/ASR pass.
+- **The GH#849 self-heal never actually persisted** — `check_timeline_integrity` corrected
+  `ep.audio_duration_served` on the transient `Episode` object, but `audit_city` only ever copied
+  the `integrity` block back into the saved record, not the served-duration field, so the
+  correction was silently discarded the moment the audit returned. Extracted the write-back into
+  `sync_timeline_integrity_mutations`, which now copies back both fields, and added direct tests
+  for it so this can't regress unnoticed again.
+- **Same uid, different `audio_key`/`audio_spec_hash`/`audio_duration_served`/integrity across two
+  feed shards ([GH#850](https://github.com/BashfulBits/city-meeting-podcasts/issues/850)).** A
+  combined feed and its per-board siblings are meant to share one `sources/<source_key>/episodes.json`
+  store (`source_key()` deliberately ignores `body`), but `config/feeds/fort-worth-tx.yml`'s
+  `feed_urls` list had been missing one `view_id` since the file was created — silently hashing
+  the combined feed to a different `source_key` than its 17 per-board siblings (fixed; all 18
+  Fort Worth feeds now agree). Once split, `AudioArtifactCache.canonical_source` (GH#421) only
+  synchronizes a shared uid's audio fields across the two stores at the moment both need a fresh
+  encode/credit in the very same run — a later run touching only one of them leaves the other
+  stale indefinitely with nothing to reconcile it. Added `reconcile_cross_source_audio`: after
+  every city is audited, it groups sources by `city_entity`, finds any uid present in more than
+  one store whose audio-owned fields disagree, and (when `--persist-timeline-integrity` is set)
+  corrects the stale copies to match a canonical one — preferring whichever copy this run's live
+  probe classified `ok`, falling back to the newest `audio_encode_time`, and leaving genuinely
+  ambiguous cases unresolved (with a `cross-source-audio-divergence` finding) rather than
+  guessing. A whole-catalog scan found Fort Worth was the only city with this specific
+  majority-consensus-with-one-outlier config pattern; no other city needed the config fix.
 - **Work-manifest persistence dropped `duration_hours`, making 100% of the feed-visible
   transcript-asr backlog read as unknown-duration.** `_workitem_to_dict` / `_workitem_from_dict`
   serialized every `WorkItem` field *except* `duration_hours` — a computed ordering input (from

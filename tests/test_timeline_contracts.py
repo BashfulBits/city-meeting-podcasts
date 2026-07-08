@@ -12,7 +12,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from citypods.audit import check_timeline_integrity
+from citypods.audit import (
+    ERROR,
+    check_timeline_integrity,
+    reconcile_cross_source_audio,
+    sync_timeline_integrity_mutations,
+)
 from citypods.availability import CONFIRMED_EMPTY, MISSING, MediaAvailability
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
@@ -1093,3 +1098,243 @@ class TestServedDurationSelfHeal:
         )
 
         assert ep.audio_duration_served == pytest.approx(3300.0)
+
+
+class TestSyncTimelineIntegrityMutations:
+    """issue #849/#850: check_timeline_integrity mutates ep.integrity and (self-heal)
+    ep.audio_duration_served in place on the transient Episode object; audit_city must copy
+    both back into the raw ``records`` dict or the correction is silently lost when the
+    caller saves records. sync_timeline_integrity_mutations is the extracted, directly
+    testable write-back step."""
+
+    def test_copies_back_self_healed_served_duration(self):
+        ep = _ep()
+        ep.audio_duration_served = 3300.0  # already corrected by check_timeline_integrity
+        records = {ep.uid: {"audio": {"duration_served": 519.6, "key": "k"}}}
+
+        sync_timeline_integrity_mutations([ep], records)
+
+        assert records[ep.uid]["audio"]["duration_served"] == pytest.approx(3300.0)
+        assert records[ep.uid]["audio"]["key"] == "k"  # untouched fields survive
+
+    def test_leaves_unchanged_served_duration_alone(self):
+        ep = _ep()
+        ep.audio_duration_served = 3300.0
+        records = {ep.uid: {"audio": {"duration_served": 3300.0}}}
+        original_audio_dict = records[ep.uid]["audio"]
+
+        sync_timeline_integrity_mutations([ep], records)
+
+        assert records[ep.uid]["audio"] is original_audio_dict  # no-op: no new dict written
+
+    def test_copies_back_integrity_block(self):
+        ep = _ep()
+        ep.integrity = {"timeline_audio": {"status": "ok"}}
+        records = {ep.uid: {"audio": {}}}
+
+        sync_timeline_integrity_mutations([ep], records)
+
+        assert records[ep.uid]["integrity"] == {"timeline_audio": {"status": "ok"}}
+
+    def test_skips_uid_not_present_in_records(self):
+        ep = _ep(uid="unknown-uid")
+        ep.audio_duration_served = 3300.0
+        records: dict = {}
+
+        sync_timeline_integrity_mutations([ep], records)  # must not raise
+
+        assert records == {}
+
+
+class TestReconcileCrossSourceAudio:
+    """issue #850: a combined feed and a per-board feed can end up as two separate
+    source-key stores that both hold the same uid (e.g. via GH#421's audio_artifact_cache
+    crediting), and nothing durably reconciles their audio-owned fields on later runs."""
+
+    def _audio(self, **over):
+        base = {
+            "key": "granicus/src/uid-spec.m4a",
+            "url": "https://example.com/uid-spec.m4a",
+            "spec_hash": "spec",
+            "bytes": 1000,
+            "encode_time": "2026-06-30T15:00:00+00:00",
+            "duration_served": 100.0,
+        }
+        base.update(over)
+        return base
+
+    def test_no_findings_when_already_converged(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()
+
+    def test_handles_non_none_differing_integrity_blocks(self):
+        # Regression: comparing per-source signatures must not hash a dict (integrity blocks
+        # are dicts, not just None-vs-None) — this must not raise TypeError: unhashable type.
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": {"timeline_audio": {"status": "rendered-duration-mismatch"}},
+                }
+            },
+            "srcB": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": {"timeline_audio": {"status": "ok"}},
+                }
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcB", "uid1"): "ok"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, status, mutate=True
+        )
+
+        assert touched == {"srcA"}
+        assert records_by_source["srcA"]["uid1"]["integrity"] == {
+            "timeline_audio": {"status": "ok"}
+        }
+
+    def test_prefers_the_source_with_live_probe_ok(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(spec_hash="stale"), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="fresh"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcA", "uid1"): "rendered-duration-mismatch", ("srcB", "uid1"): "ok"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, status, mutate=True
+        )
+
+        assert any(f.check == "cross-source-audio-divergence" for f in findings)
+        assert touched == {"srcA"}
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "fresh"
+        assert (
+            records_by_source["srcB"]["uid1"]["audio"]["spec_hash"] == "fresh"
+        )  # winner unchanged
+
+    def test_falls_back_to_newest_encode_time_when_no_single_ok(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": self._audio(
+                        spec_hash="older", encode_time="2026-06-01T00:00:00+00:00"
+                    ),
+                    "integrity": None,
+                }
+            },
+            "srcB": {
+                "uid1": {
+                    "audio": self._audio(
+                        spec_hash="newer", encode_time="2026-07-01T00:00:00+00:00"
+                    ),
+                    "integrity": None,
+                }
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert touched == {"srcA"}
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "newer"
+
+    def test_leaves_unresolved_when_no_tiebreak_available(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {"audio": self._audio(spec_hash="a", encode_time=None), "integrity": None}
+            },
+            "srcB": {
+                "uid1": {"audio": self._audio(spec_hash="b", encode_time=None), "integrity": None}
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert touched == set()
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "a"
+        assert records_by_source["srcB"]["uid1"]["audio"]["spec_hash"] == "b"
+        assert any(f.check == "cross-source-audio-divergence" for f in findings)
+
+    def test_dry_run_reports_but_never_mutates(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(spec_hash="stale"), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="fresh"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcA", "uid1"): "container-duration-drift", ("srcB", "uid1"): "ok"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, status, mutate=False
+        )
+
+        assert touched == set()
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "stale"
+        assert any(
+            f.check == "cross-source-audio-divergence" and f.severity == ERROR for f in findings
+        )
+
+    def test_single_source_entity_is_a_noop(self):
+        records_by_source = {"srcA": {"uid1": {"audio": self._audio(), "integrity": None}}}
+        entity_of_source = {"srcA": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()
+
+    def test_entityless_sources_are_never_grouped(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(spec_hash="a"), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="b"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": None, "srcB": None}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()
+
+    def test_resets_follower_materialize_backoff_state_on_credit(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": {
+                        **self._audio(spec_hash="stale"),
+                        "attempts": 3,
+                        "error": "truncated",
+                    },
+                    "integrity": None,
+                }
+            },
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="fresh"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcB", "uid1"): "ok"}
+
+        reconcile_cross_source_audio(records_by_source, entity_of_source, status, mutate=True)
+
+        healed = records_by_source["srcA"]["uid1"]["audio"]
+        assert healed["attempts"] == 0
+        assert healed["error"] is None
