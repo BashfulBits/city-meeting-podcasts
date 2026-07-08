@@ -23,7 +23,7 @@ from pathlib import Path
 from beam import Image, schedule
 
 APP_NAME = os.environ.get("CITYPODS_BEAM_APP", "citypods-beam-worker")
-GPU = os.environ.get("CITYPODS_BEAM_GPU", "A10G")
+GPU = os.environ.get("CITYPODS_BEAM_GPU", "RTX4090")
 WHEN = os.environ.get("CITYPODS_BEAM_SCHEDULE", "@daily")
 
 # Baked model location (pinned revision, same bytes as the runner). ASR_MODEL_PATH
@@ -118,21 +118,33 @@ _BAKE_MODEL_CMD = (
     '"'
 )
 
-RUNTIME_ENV = {
-    "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
-        "CITYPODS_WORKER_LEASE_TTL_SECONDS", "72000"
-    ),
-    "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND": os.environ.get(
-        "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND", "0.25"
-    ),
-    "CITYPODS_WORKER_MIN_GPU_SECONDS": os.environ.get("CITYPODS_WORKER_MIN_GPU_SECONDS", "60"),
-    "CITYPODS_WORKER_ASR_DEVICE": os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
-    "CITYPODS_WORKER_CPU_THREADS": os.environ.get("CITYPODS_WORKER_CPU_THREADS", "4"),
-    "CITYPODS_WORKER_GPU_TYPE": GPU,
-    "ASR_MODEL_PATH": _MODEL_DIR,
-}
-if "CITYPODS_WORKER_MAX_CLAIMS" in os.environ:
-    RUNTIME_ENV["CITYPODS_WORKER_MAX_CLAIMS"] = os.environ["CITYPODS_WORKER_MAX_CLAIMS"]
+def _runtime_env() -> dict[str, str]:
+    env = {
+        "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
+            "CITYPODS_WORKER_LEASE_TTL_SECONDS", "72000"
+        ),
+        "CITYPODS_WORKER_ASR_DEVICE": os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
+        "CITYPODS_WORKER_CPU_THREADS": os.environ.get("CITYPODS_WORKER_CPU_THREADS", "4"),
+        "CITYPODS_WORKER_GPU_TYPE": GPU,
+        "ASR_MODEL_PATH": _MODEL_DIR,
+    }
+    for key in (
+        "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
+        "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+        "CITYPODS_WORKER_MIN_BUDGET_UNITS",
+        "CITYPODS_WORKER_MIN_GPU_SECONDS",
+        "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+        "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
+        "CITYPODS_WORKER_MAX_CLAIMS",
+        "CITYPODS_WORKER_PREFERRED_DAYS",
+    ):
+        raw = os.environ.get(key)
+        if raw not in (None, ""):
+            env[key] = raw
+    return env
+
+
+RUNTIME_ENV = _runtime_env()
 
 RUNTIME_SECRETS = [
     "B2_ENDPOINT",

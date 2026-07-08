@@ -233,51 +233,51 @@ defaults:
   # first, then overflowing to "local". Override: COMPUTE_BACKEND=local (a hard bypass of the seam).
   compute_backend: "auto"                # "local" | "auto"
   # External-compute policy (H14/H14d). The dispatcher fills these backends in config order, then
-  # overflows to "local". The budget ledger now tracks generic budget units rather than assuming
-  # elapsed GPU seconds are the provider's billing model; the default unit label remains gpu-second
-  # for backwards compatibility with the initial H14 rollout. `reserve_units` intentionally leaves a
-  # soft buffer near the provider reset boundary. `max_claims_per_run` caps NEW transcriptions per
-  # worker invocation (already-done items this run merely adopt don't count); deploy env may
-  # override it temporarily for canaries/manual optimization runs. `fixed_budget_units_per_run`
-  # captures provider billing/setup overhead that scales with invocation count rather than claim
-  # count, which is what enables future even/odd-day staggering without changing code. `prefer_min_`
+  # overflows to "local". The budget ledger uses generic budget units; production currently treats
+  # one unit as one *effective worker-runtime second* so actual settlement can continue to reconcile
+  # directly from observed claim runtime while the per-backend monthly cap is conservatively scaled
+  # down to absorb GPU plus CPU/RAM billing. `reserve_units` leaves a soft buffer near the provider
+  # reset boundary. `max_claims_per_run` caps NEW transcriptions per worker invocation
+  # (already-done items this run merely adopt don't count); deploy env may override it temporarily
+  # for canaries/manual optimization runs. `fixed_budget_units_per_run` captures provider
+  # billing/setup overhead that scales with invocation count rather than claim count. `prefer_min_`
   # `duration_hours` lets external workers skip short meetings that the GitHub runner can handle,
   # while still respecting the manifest's queue order for the long-meeting backlog they do claim.
   compute_backends:
     modal:
       budget:
-        monthly_units: 108000           # ≈ current free credits — pin to the live plan
+        monthly_units: 108000           # ~80% of L4-only free-credit runtime to absorb CPU/RAM
         reserve_units: 3600
-        unit_label: gpu-second
+        unit_label: effective-runtime-second
       dispatch:
         max_inflight: 8
         min_claims_per_run: 1
-        max_claims_per_run: 4
-        preferred_days: all
+        max_claims_per_run: 24
+        preferred_days: even
       tasks:
         transcript-asr:
           prefer_min_duration_hours: 4
           fresh_within_days: 7
-          budget_units_per_audio_second: 0.25
-          min_budget_units: 60
+          budget_units_per_audio_second: 0.023
+          min_budget_units: 240
           fixed_budget_units_per_run: 0
           fixed_budget_units_per_claim: 0
     beam:
       budget:
-        monthly_units: 108000
+        monthly_units: 125000           # ~80% of RTX4090-only free-credit runtime to absorb CPU/RAM
         reserve_units: 3600
-        unit_label: gpu-second
+        unit_label: effective-runtime-second
       dispatch:
         max_inflight: 8
         min_claims_per_run: 1
-        max_claims_per_run: 4
-        preferred_days: all
+        max_claims_per_run: 32
+        preferred_days: odd
       tasks:
         transcript-asr:
           prefer_min_duration_hours: 4
           fresh_within_days: 7
-          budget_units_per_audio_second: 0.25
-          min_budget_units: 60
+          budget_units_per_audio_second: 0.0175
+          min_budget_units: 180
           fixed_budget_units_per_run: 0
           fixed_budget_units_per_claim: 0
   # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull

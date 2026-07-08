@@ -24,11 +24,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   but now stores generic `used_units`, so future Beam/Modal/diarize cost models are not forced to
   pretend billing is pure elapsed GPU-seconds. `external_worker.py` consumes the parsed policy to pace
   **sequential** claims per invocation against remaining monthly budget and remaining preferred run
-  slots, while off-days admit only fresh work so daily freshness can be preserved even when backlog
-  burn is staggered. The current production cap remains one active transcription at a time per
-  container; the backlog lever here is sequential multi-claim throughput, not in-container GPU
-  concurrency. Also adds `scripts/compute/beam_canary.py`, a one-off characterization wrapper used to
-  collect live Beam telemetry without touching the production schedule path.
+  slots. Off-days now stay deliberately conservative while backlog still exists: they admit only fresh
+  work and cap that freshness maintenance to one claim, then reopen full pacing once the long-meeting
+  backlog is actually cleared. `config/site_config.yml` now carries the first empirical production
+  defaults from the H14d benchmark loop: Modal tuned for `L4`, Beam tuned for `RTX4090`, both using
+  `effective-runtime-second` budget units with monthly caps conservatively scaled down from raw GPU
+  credits to absorb CPU/RAM billing, plus much higher sequential `max_claims_per_run` ceilings so the
+  preferred-day planner can actually spend the monthly budget. The current production cap remains one
+  active transcription at a time per container; the backlog lever here is sequential multi-claim
+  throughput, not in-container GPU concurrency. Also adds `scripts/compute/beam_canary.py`, a one-off
+  characterization wrapper used to collect live Beam telemetry without touching the production
+  schedule path.
 
 - **Unified storage-reclaim policy with a data-loss recovery backstop
   ([GH#496](https://github.com/BashfulBits/city-meeting-podcasts/issues/496)).** The weekly `audio-gc`

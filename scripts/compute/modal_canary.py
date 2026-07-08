@@ -66,6 +66,9 @@ def canary(
     mode: str = "sequential",
     claim_count: int = 2,
     concurrency: int = 2,
+    source_keys: tuple[str, ...] = (),
+    episode_uids: tuple[str, ...] = (),
+    persist_results: bool = True,
 ) -> dict[str, object]:
     import sys
 
@@ -77,6 +80,9 @@ def canary(
         mode=mode,
         claim_count=claim_count,
         concurrency=concurrency,
+        source_keys=source_keys,
+        episode_uids=episode_uids,
+        persist_results=persist_results,
         site_config_path="/root/config/site_config.yml",
         config_dir="/root/config",
     )
@@ -89,5 +95,15 @@ def main(
     mode: str = "sequential",
     claim_count: int = 2,
     concurrency: int = 2,
+    source_keys: str = "",
+    episode_uids: str = "",
+    persist_results: bool = True,
 ) -> None:
-    canary.remote(mode=mode, claim_count=claim_count, concurrency=concurrency)
+    canary.remote(
+        mode=mode,
+        claim_count=claim_count,
+        concurrency=concurrency,
+        source_keys=tuple(part for part in source_keys.split(",") if part),
+        episode_uids=tuple(part for part in episode_uids.split(",") if part),
+        persist_results=persist_results,
+    )

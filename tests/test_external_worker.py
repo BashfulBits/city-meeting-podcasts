@@ -216,6 +216,76 @@ def test_effective_max_claims_accounts_for_fixed_run_overhead(tmp_path, monkeypa
     assert cap == 1
 
 
+def test_effective_max_claims_caps_off_day_fresh_work_while_backlog_remains(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a", "b", "c"], max_claims=5)
+    worker.config = ExternalWorkerConfig(
+        backend="beam",
+        owner="beam:test",
+        max_claims=5,
+        min_claims_per_run=1,
+        min_budget_units=60.0,
+        preferred_days="odd",
+    )
+    worker.site_config = {
+        "defaults": {
+            "compute_backends": {
+                "beam": {
+                    "budget": {"monthly_units": 1000, "reserve_units": 0},
+                    "dispatch": {"max_claims_per_run": 5, "min_claims_per_run": 1},
+                }
+            }
+        }
+    }
+    worker.storage = SimpleNamespace(cas_capable=True, get_bytes=lambda key: None)
+    monkeypatch.setattr(ew, "load_budget_cas", lambda storage: (Budget(month="2026-07"), None))
+    monkeypatch.setattr(ew, "load_worker_telemetry", lambda storage: {"samples": []})
+    monkeypatch.setattr(worker, "_remaining_run_slots", lambda now=None: 2)
+    monkeypatch.setattr(worker, "_is_preferred_day", lambda now=None: False)
+
+    cap = worker._effective_max_claims(
+        [_queued("a"), _queued("b"), _queued("c")],
+        backlog_present=True,
+    )
+
+    assert cap == 1
+
+
+def test_effective_max_claims_allows_full_off_day_pacing_once_backlog_is_cleared(
+    tmp_path, monkeypatch
+):
+    worker = _loop_worker(tmp_path, ["a", "b", "c"], max_claims=5)
+    worker.config = ExternalWorkerConfig(
+        backend="beam",
+        owner="beam:test",
+        max_claims=5,
+        min_claims_per_run=1,
+        min_budget_units=60.0,
+        preferred_days="odd",
+    )
+    worker.site_config = {
+        "defaults": {
+            "compute_backends": {
+                "beam": {
+                    "budget": {"monthly_units": 1000, "reserve_units": 0},
+                    "dispatch": {"max_claims_per_run": 5, "min_claims_per_run": 1},
+                }
+            }
+        }
+    }
+    worker.storage = SimpleNamespace(cas_capable=True, get_bytes=lambda key: None)
+    monkeypatch.setattr(ew, "load_budget_cas", lambda storage: (Budget(month="2026-07"), None))
+    monkeypatch.setattr(ew, "load_worker_telemetry", lambda storage: {"samples": []})
+    monkeypatch.setattr(worker, "_remaining_run_slots", lambda now=None: 2)
+    monkeypatch.setattr(worker, "_is_preferred_day", lambda now=None: False)
+
+    cap = worker._effective_max_claims(
+        [_queued("a"), _queued("b"), _queued("c")],
+        backlog_present=False,
+    )
+
+    assert cap == 5
+
+
 def test_off_day_allows_fresh_claims_only(tmp_path, monkeypatch):
     worker = _loop_worker(tmp_path, ["a"])
     worker.config = ExternalWorkerConfig(
@@ -472,6 +542,20 @@ def test_adopted_item_pushes_owned_record(tmp_path, monkeypatch):
     assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
 
 
+def test_benchmark_transcription_skips_record_persist(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a"])
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
+
+    adopted = worker._run_transcribe_item(
+        _queued("a"),
+        ew.ResourceTracker(),
+        persist_results=False,
+    )
+
+    assert adopted is False
+    assert push_calls == []
+
+
 def test_model_cache_keys_num_workers(tmp_path, monkeypatch):
     worker = _loop_worker(tmp_path, [])
     worker.config = ExternalWorkerConfig(
@@ -508,3 +592,60 @@ def test_model_cache_keys_num_workers(tmp_path, monkeypatch):
     assert model_a is model_b
     assert model_c is not model_a
     assert [row["num_workers"] for row in loads] == [1, 2]
+
+
+def test_characterization_filters_to_requested_uids(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a", "b", "c"], max_claims=3)
+    worker.config = ExternalWorkerConfig(
+        backend="modal",
+        owner="modal:test",
+        max_claims=3,
+    )
+    claimed: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        ew.work_leases,
+        "claim",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("benchmark path must not claim")),
+    )
+    monkeypatch.setattr(ew.work_leases, "release", lambda *a, **k: None)
+    monkeypatch.setattr(ew.work_leases, "abandon", lambda *a, **k: None)
+    monkeypatch.setattr(
+        ew,
+        "reserve_if_available",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("benchmark path must not reserve")),
+    )
+    monkeypatch.setattr(
+        ew,
+        "settle_reservation",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("benchmark path must not settle")),
+    )
+    monkeypatch.setattr(worker, "_estimate_gpu_seconds", lambda item: 60.0)
+    monkeypatch.setattr(worker, "_telemetry_metadata", lambda item: {})
+    monkeypatch.setattr(worker, "_append_telemetry_sample", lambda **k: None)
+    monkeypatch.setattr(worker, "_city_for", lambda item: SimpleNamespace())
+    monkeypatch.setattr(
+        worker,
+        "_model_with_workers",
+        lambda city, tracker=None, *, num_workers=1: object(),
+    )
+
+    def _fake_run(item, tracker, *, model_num_workers=1, persist_results=True, allow_adopt=True):
+        claimed.append((item.episode_uid, persist_results, allow_adopt))
+        return False
+
+    monkeypatch.setattr(worker, "_run_transcribe_item", _fake_run)
+
+    summary = ew._run_characterization(
+        worker,
+        mode="sequential",
+        claim_count=2,
+        concurrency=1,
+        source_keys=("src",),
+        episode_uids=("b", "c"),
+        persist_results=False,
+    )
+
+    assert summary["claimed"] == 2
+    assert summary["requested_episode_uids"] == ["b", "c"]
+    assert summary["persist_results"] is False
+    assert sorted(claimed) == [("b", False, False), ("c", False, False)]

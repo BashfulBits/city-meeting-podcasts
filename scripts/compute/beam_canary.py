@@ -39,6 +39,9 @@ def canary(
     mode: str = "sequential",
     claim_count: int = 2,
     concurrency: int = 2,
+    source_keys: tuple[str, ...] = (),
+    episode_uids: tuple[str, ...] = (),
+    persist_results: bool = True,
 ) -> dict[str, object]:
     from citypods.compute.external_worker import run_characterization_worker
 
@@ -47,6 +50,9 @@ def canary(
         mode=mode,
         claim_count=claim_count,
         concurrency=concurrency,
+        source_keys=source_keys,
+        episode_uids=episode_uids,
+        persist_results=persist_results,
     )
     print(json.dumps(summary, sort_keys=True), flush=True)
     return summary
@@ -57,6 +63,9 @@ if __name__ == "__main__":
     parser.add_argument("--mode", choices=("sequential", "concurrent"), default="sequential")
     parser.add_argument("--claim-count", type=int, default=2)
     parser.add_argument("--concurrency", type=int, default=2)
+    parser.add_argument("--source-key", action="append", default=[])
+    parser.add_argument("--episode-uid", action="append", default=[])
+    parser.add_argument("--no-persist", action="store_true")
     args = parser.parse_args()
     print(
         json.dumps(
@@ -64,6 +73,9 @@ if __name__ == "__main__":
                 mode=args.mode,
                 claim_count=args.claim_count,
                 concurrency=args.concurrency,
+                source_keys=tuple(args.source_key),
+                episode_uids=tuple(args.episode_uid),
+                persist_results=not args.no_persist,
             ),
             sort_keys=True,
         ),

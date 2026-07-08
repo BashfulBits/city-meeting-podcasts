@@ -250,16 +250,24 @@ class ExternalTranscribeWorker:
                 raise ValueError(f"unsupported external worker class: {self.config.work_class!r}")
 
             manifest = load_manifest(self.state_dir)
-            candidates = [
+            base_candidates = [
                 wi
                 for wi in manifest
                 if wi.work_class == self.config.work_class
                 and wi.state == "queued"
                 and wi.priority_bucket == BUCKET_FEED_VISIBLE
                 and self._preferred_duration(wi)
-                and self._preferred_freshness(wi)
             ]
-            effective_claims = self._effective_max_claims(candidates)
+            backlog_present = False
+            if self._is_preferred_day():
+                candidates = base_candidates
+            else:
+                candidates = [wi for wi in base_candidates if self._is_fresh_candidate(wi)]
+                backlog_present = any(not self._is_fresh_candidate(wi) for wi in base_candidates)
+            effective_claims = self._effective_max_claims(
+                candidates,
+                backlog_present=backlog_present,
+            )
             summary.scanned = len(candidates)
             ordered = self._ordered(candidates)
             # ``worked`` counts NEW transcriptions attempted (succeeded or failed) — the thing
@@ -471,6 +479,9 @@ class ExternalTranscribeWorker:
     def _preferred_freshness(self, item: WorkItem) -> bool:
         if self._is_preferred_day():
             return True
+        return self._is_fresh_candidate(item)
+
+    def _is_fresh_candidate(self, item: WorkItem) -> bool:
         if item.published is None:
             return False
         age_days = (datetime.now(UTC) - item.published).total_seconds() / 86400
@@ -497,7 +508,12 @@ class ExternalTranscribeWorker:
             cursor += timedelta(days=1)
         return max(1, slots)
 
-    def _effective_max_claims(self, candidates: list[WorkItem]) -> int:
+    def _effective_max_claims(
+        self,
+        candidates: list[WorkItem],
+        *,
+        backlog_present: bool = False,
+    ) -> int:
         hard_cap = max(0, self.config.max_claims)
         if hard_cap <= 0 or not candidates:
             return 0
@@ -522,6 +538,8 @@ class ExternalTranscribeWorker:
         paced_cap = int(target_units // claim_units)
         if self._is_preferred_day():
             paced_cap = max(self.config.min_claims_per_run, paced_cap)
+        elif backlog_present:
+            paced_cap = 1
         elif candidates:
             paced_cap = max(1, paced_cap)
         return min(hard_cap, max(0, paced_cap))
@@ -587,6 +605,8 @@ class ExternalTranscribeWorker:
         tracker: ResourceTracker,
         *,
         model_num_workers: int = 1,
+        persist_results: bool = True,
+        allow_adopt: bool = True,
     ) -> bool:
         """Transcribe *item*, or adopt existing artifacts if they are already in storage.
         Returns True when the item was adopted (no fresh transcription happened)."""
@@ -598,7 +618,7 @@ class ExternalTranscribeWorker:
         uid = ep.uid or ep.guid
         asr_key = _asr_object_key(item.source_key, uid, recipe)
         words_key = _asr_words_object_key(item.source_key, uid, recipe)
-        adopted = self.storage.exists(asr_key) and self.storage.exists(words_key)
+        adopted = allow_adopt and self.storage.exists(asr_key) and self.storage.exists(words_key)
         if adopted:
             print(
                 f"[external-worker] adopted {item.source_key}/{item.episode_uid} "
@@ -623,6 +643,8 @@ class ExternalTranscribeWorker:
                     self.config.cpu_threads,
                 )
                 tracker.record("after-asr")
+                if not persist_results:
+                    return False
                 vtt_path = Path(td) / "transcript.vtt"
                 vtt_path.write_bytes(artifacts.vtt)
                 words_path = Path(td) / "transcript.words.json"
@@ -642,6 +664,9 @@ class ExternalTranscribeWorker:
                 ep.transcript_synced = True
                 _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
                 tracker.record("after-artifact-upload")
+
+        if not persist_results:
+            return adopted
 
         records[item.episode_uid] = episode_to_record(ep)
         save_records(self.state_dir, item.source_key, records)
@@ -749,6 +774,9 @@ def run_characterization_worker(
     mode: str,
     claim_count: int,
     concurrency: int,
+    source_keys: tuple[str, ...] = (),
+    episode_uids: tuple[str, ...] = (),
+    persist_results: bool = True,
     site_config_path: str = "config/site_config.yml",
     config_dir: str = "config",
     output_dir: str = "docs",
@@ -787,6 +815,9 @@ def run_characterization_worker(
         mode=mode,
         claim_count=claim_count,
         concurrency=concurrency,
+        source_keys=source_keys,
+        episode_uids=episode_uids,
+        persist_results=persist_results,
     )
     summary["finished_at"] = datetime.now(UTC).isoformat()
     return summary
@@ -798,6 +829,9 @@ def _run_characterization(
     mode: str,
     claim_count: int,
     concurrency: int,
+    source_keys: tuple[str, ...],
+    episode_uids: tuple[str, ...],
+    persist_results: bool,
 ) -> dict[str, Any]:
     policy = backend_policy(
         worker.site_config,
@@ -810,52 +844,69 @@ def _run_characterization(
     selected: list[dict[str, Any]] = []
     try:
         manifest = load_manifest(worker.state_dir)
+        targeted = bool(source_keys or episode_uids)
+        benchmark_only = targeted and not persist_results
         candidates = [
             wi
             for wi in manifest
             if wi.work_class == worker.config.work_class
             and wi.state == "queued"
             and wi.priority_bucket == BUCKET_FEED_VISIBLE
-            and worker._preferred_duration(wi)
-            and worker._preferred_freshness(wi)
+            and (targeted or worker._preferred_duration(wi))
+            and (targeted or worker._preferred_freshness(wi))
         ]
+        if source_keys:
+            source_filter = set(source_keys)
+            candidates = [wi for wi in candidates if wi.source_key in source_filter]
+        if episode_uids:
+            uid_filter = set(episode_uids)
+            candidates = [wi for wi in candidates if wi.episode_uid in uid_filter]
         summary.scanned = len(candidates)
         ordered = worker._ordered(candidates)
         for item in ordered:
             if len(selected) >= claim_count:
                 break
             owner = f"{worker.config.owner}:{len(selected)}"
-            held = work_leases.claim(
-                worker.storage,
-                item.source_key,
-                item.episode_uid,
-                owner=owner,
-                ttl_seconds=worker.config.lease_ttl_seconds,
-                pipeline_version=ASR_PIPELINE_VERSION,
-            )
-            if held is None:
-                summary.skipped += 1
-                continue
-            estimate = worker._estimate_gpu_seconds(item)
-            if (
-                policy.budget.spendable_units <= 0
-                or policy.dispatch.max_inflight <= 0
-                or not reserve_if_available(
+            lease_claimed = False
+            if not benchmark_only:
+                held = work_leases.claim(
                     worker.storage,
-                    owner,
-                    worker.config.backend,
-                    est=estimate,
-                    cap=policy.budget.spendable_units,
-                    max_inflight=policy.dispatch.max_inflight,
+                    item.source_key,
+                    item.episode_uid,
+                    owner=owner,
+                    ttl_seconds=worker.config.lease_ttl_seconds,
+                    pipeline_version=ASR_PIPELINE_VERSION,
                 )
-            ):
-                work_leases.abandon(worker.storage, item.source_key, item.episode_uid, owner=owner)
-                summary.budget_declined += 1
-                break
+                if held is None:
+                    summary.skipped += 1
+                    continue
+                lease_claimed = True
+                estimate = worker._estimate_gpu_seconds(item)
+                if (
+                    policy.budget.spendable_units <= 0
+                    or policy.dispatch.max_inflight <= 0
+                    or not reserve_if_available(
+                        worker.storage,
+                        owner,
+                        worker.config.backend,
+                        est=estimate,
+                        cap=policy.budget.spendable_units,
+                        max_inflight=policy.dispatch.max_inflight,
+                    )
+                ):
+                    work_leases.abandon(
+                        worker.storage,
+                        item.source_key,
+                        item.episode_uid,
+                        owner=owner,
+                    )
+                    summary.budget_declined += 1
+                    break
             selected.append(
                 {
                     "item": item,
                     "owner": owner,
+                    "lease_claimed": lease_claimed,
                     "metadata": worker._telemetry_metadata(item),
                 }
             )
@@ -868,6 +919,9 @@ def _run_characterization(
                     "requested_claims": claim_count,
                     "requested_concurrency": concurrency,
                     "actual_concurrency": 0,
+                    "persist_results": persist_results,
+                    "requested_source_keys": list(source_keys),
+                    "requested_episode_uids": list(episode_uids),
                 }
             )
             return out
@@ -879,6 +933,7 @@ def _run_characterization(
         def _run_one(entry: dict[str, Any]) -> None:
             item = entry["item"]
             owner = entry["owner"]
+            lease_claimed = bool(entry["lease_claimed"])
             metadata = dict(entry["metadata"])
             tracker = worker._resource_tracker()
             tracker.record("claim-start")
@@ -891,23 +946,27 @@ def _run_characterization(
                     item,
                     tracker,
                     model_num_workers=model_workers,
+                    persist_results=persist_results,
+                    allow_adopt=not benchmark_only,
                 )
             except Exception:
                 actual = max(0.0, time.monotonic() - started)
-                settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
-                work_leases.release(
-                    worker.storage,
-                    item.source_key,
-                    item.episode_uid,
-                    owner=owner,
-                    state="failed",
-                )
+                if lease_claimed:
+                    settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
+                    work_leases.release(
+                        worker.storage,
+                        item.source_key,
+                        item.episode_uid,
+                        owner=owner,
+                        state="failed",
+                    )
                 summary.failed += 1
                 summary.gpu_seconds += actual
                 outcome = "failed"
             else:
                 actual = max(0.0, time.monotonic() - started)
-                settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
+                if lease_claimed:
+                    settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
                 summary.completed += 1
                 if adopted:
                     summary.adopted += 1
@@ -951,6 +1010,9 @@ def _run_characterization(
                 "requested_concurrency": concurrency,
                 "actual_concurrency": actual_concurrency,
                 "model_num_workers": model_workers,
+                "persist_results": persist_results,
+                "requested_source_keys": list(source_keys),
+                "requested_episode_uids": list(episode_uids),
             }
         )
         return out
