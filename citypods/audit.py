@@ -1298,15 +1298,34 @@ def audit_city(
                 )
             )
             if mutate_timeline_integrity:
-                for ep in episodes:
-                    uid = ep.uid or ""
-                    if not uid or uid not in records:
-                        continue
-                    if ep.integrity:
-                        records[uid] = {**records[uid], "integrity": ep.integrity}
-                    elif records[uid].get("integrity"):
-                        records[uid] = {**records[uid], "integrity": None}
+                sync_timeline_integrity_mutations(episodes, records)
     return findings
+
+
+def sync_timeline_integrity_mutations(episodes: list[Episode], records: dict) -> None:
+    """Copy back the two fields ``check_timeline_integrity`` may mutate in place on an
+    ``Episode`` when ``mutate_integrity`` is set, into the raw ``records`` dict that actually
+    gets persisted.
+
+    ``episodes`` here is a fresh provider fetch overlaid with ``merge_persisted``, not a
+    round-trip-safe copy of ``records`` — so a mutation left only on the ``Episode`` object
+    (the ``integrity`` block, and issue #849's ``audio_duration_served`` self-heal) is silently
+    lost the moment ``audit_city`` returns unless it is copied back here first.
+    """
+    for ep in episodes:
+        uid = ep.uid or ""
+        if not uid or uid not in records:
+            continue
+        if ep.integrity:
+            records[uid] = {**records[uid], "integrity": ep.integrity}
+        elif records[uid].get("integrity"):
+            records[uid] = {**records[uid], "integrity": None}
+        stored_audio = records[uid].get("audio") or {}
+        if stored_audio.get("duration_served") != ep.audio_duration_served:
+            records[uid] = {
+                **records[uid],
+                "audio": {**stored_audio, "duration_served": ep.audio_duration_served},
+            }
 
 
 def _load_run_history(state_dir: Path, *, limit: int = _STALL_LOOK_BACK) -> list[dict]:
@@ -1365,6 +1384,146 @@ def _net_head() -> Callable[[str], int]:
         return resp.status_code
 
     return head
+
+
+# Audio-lane-owned fields that a shared/coalesced artifact (GH#421's audio_artifact_cache) can
+# leave inconsistent across two source-key stores of one uid (issue #850). Deliberately excludes
+# ``attempts``/``last_attempt``/``error``/``error_spec_hash`` (per-source materialize backoff
+# state, not a property of the shared artifact) and ``rebuild`` (a per-source repair nonce).
+_CROSS_SOURCE_AUDIO_FIELDS = ("key", "url", "spec_hash", "bytes", "encode_time", "duration_served")
+
+
+def reconcile_cross_source_audio(
+    records_by_source: dict[str, dict],
+    entity_of_source: dict[str, str | None],
+    status_by_source_uid: dict[tuple[str, str], str],
+    *,
+    mutate: bool,
+) -> tuple[list[Finding], set[str]]:
+    """Detect (and, when ``mutate``, correct) a uid whose audio-lane-owned fields disagree
+    across two or more source-key stores that share one ``city_entity`` (issue #850).
+
+    A combined feed and its per-board siblings are meant to share one record store
+    (``source_key()`` deliberately ignores ``body``), but a combined feed's ``feed_urls`` can
+    still legitimately or accidentally differ from its siblings', landing the same uid in two
+    separate ``sources/<key>/episodes.json`` files. ``AudioArtifactCache.canonical_source``
+    (GH#421) only synchronizes the audio-key *namespace* at the moment both sources need a
+    fresh encode/credit in the very same run; it does not durably reconcile the two stores on
+    every later run, so once each store looks internally consistent on its own, they can drift
+    apart forever with nothing to notice.
+
+    Canonical selection, per a uid's present-in sources: prefer whichever source this run's
+    live probe classified ``"ok"`` (ground truth for what's actually served); if none or more
+    than one source qualifies, fall back to the source with the newest ``audio_encode_time``;
+    if that is also tied or unavailable, leave the uid unresolved (a finding is still emitted,
+    no record is mutated) rather than guess.
+
+    Returns ``(findings, touched_source_keys)`` — ``touched_source_keys`` is empty unless
+    ``mutate`` is set, letting the caller persist only the sources actually corrected.
+    """
+    findings: list[Finding] = []
+    touched: set[str] = set()
+
+    by_entity: dict[str, list[str]] = {}
+    for src_key, entity in entity_of_source.items():
+        if not entity:
+            continue
+        by_entity.setdefault(entity, []).append(src_key)
+
+    for entity, src_keys in by_entity.items():
+        if len(src_keys) < 2:
+            continue
+        uid_sources: dict[str, list[str]] = {}
+        for src_key in src_keys:
+            for uid in records_by_source.get(src_key, {}):
+                uid_sources.setdefault(uid, []).append(src_key)
+
+        for uid, present_in in uid_sources.items():
+            if len(present_in) < 2:
+                continue
+            audio_copies = {
+                sk: (records_by_source[sk][uid].get("audio") or {}) for sk in present_in
+            }
+            integrity_copies = {
+                sk: records_by_source[sk][uid].get("integrity") for sk in present_in
+            }
+            signatures = [
+                (
+                    tuple(audio_copies[sk].get(f) for f in _CROSS_SOURCE_AUDIO_FIELDS),
+                    integrity_copies[sk],
+                )
+                for sk in present_in
+            ]
+            # Plain equality, not a set: integrity_copies values are dicts (unhashable).
+            if all(sig == signatures[0] for sig in signatures):
+                continue  # already converged
+
+            ok_sources = [sk for sk in present_in if status_by_source_uid.get((sk, uid)) == "ok"]
+            canonical: str | None = ok_sources[0] if len(ok_sources) == 1 else None
+            if canonical is None:
+                candidates = ok_sources if ok_sources else present_in
+                dated = sorted(
+                    (audio_copies[sk].get("encode_time"), sk)
+                    for sk in candidates
+                    if audio_copies[sk].get("encode_time")
+                )
+                if dated:
+                    newest_time = dated[-1][0]
+                    newest = [sk for t, sk in dated if t == newest_time]
+                    if len(newest) == 1:
+                        canonical = newest[0]
+
+            slugs = ", ".join(sorted(present_in))
+            if canonical is None:
+                findings.append(
+                    Finding(
+                        entity,
+                        "cross-source-audio-divergence",
+                        WARN,
+                        f"{uid}: audio fields disagree across sources sharing city_entity "
+                        f"{entity!r} ({slugs}) and no live-probe/encode-time tiebreak resolved "
+                        "a canonical copy; left unresolved.",
+                    )
+                )
+                continue
+
+            findings.append(
+                Finding(
+                    entity,
+                    "cross-source-audio-divergence",
+                    WARN if mutate else ERROR,
+                    f"{uid}: audio fields disagree across sources sharing city_entity "
+                    f"{entity!r} ({slugs}); canonical source is {canonical!r}"
+                    + ("" if mutate else " (dry run: rerun with repair persistence to fix)"),
+                )
+            )
+            if not mutate:
+                continue
+
+            canonical_audio = audio_copies[canonical]
+            canonical_integrity = integrity_copies[canonical]
+            for sk in present_in:
+                if sk == canonical:
+                    continue
+                rec = records_by_source[sk][uid]
+                new_audio = dict(rec.get("audio") or {})
+                for f in _CROSS_SOURCE_AUDIO_FIELDS:
+                    new_audio[f] = canonical_audio.get(f)
+                # A credited-from-canonical follower's own materialize backoff/error history no
+                # longer applies to the object it now points at (mirrors media._apply_artifact's
+                # reset semantics for the same "adopt a shared artifact" situation).
+                new_audio["attempts"] = 0
+                new_audio["last_attempt"] = None
+                new_audio["error"] = None
+                new_audio["error_spec_hash"] = None
+                records_by_source[sk][uid] = {
+                    **rec,
+                    "audio": new_audio,
+                    "integrity": canonical_integrity,
+                }
+                touched.add(sk)
+
+    return findings, touched
 
 
 def audit_all(
@@ -1459,6 +1618,12 @@ def audit_all(
     slug_by_source: dict[str, str] = {}
     media_too_large_sources: set[str] = set()
     view_cap_contexts: dict[str, tuple[str, str]] = {}
+    # issue #850: cross-source audio-field reconciliation needs every source's final records
+    # dict, which city_entity groups them, and (when diagnostics ran) each source's per-uid
+    # live-probe verdict as the canonical-copy tiebreak.
+    records_by_source: dict[str, dict] = {}
+    entity_of_source: dict[str, str | None] = {}
+    status_by_source_uid: dict[tuple[str, str], str] = {}
     for city in cities:
         provider = get_provider(city.provider)
         view_cap_contexts[city.slug] = (city.provider, city.city_entity or city.slug)
@@ -1478,6 +1643,7 @@ def audit_all(
                 view_counts = None  # an unreachable source is caught by audit_city's fetch
         src_key = source_key(city)
         records = load_records(state_dir, src_key)
+        entity_of_source[src_key] = city.city_entity
         failures_by_source.setdefault(src_key, count_audio_failures(records))
         slug_by_source.setdefault(src_key, city.slug)
         # Per-body feeds share one record store (issue #120's dedup shape); only scan a given
@@ -1485,6 +1651,7 @@ def audit_all(
         if src_key not in media_too_large_sources:
             media_too_large_sources.add(src_key)
             findings.extend(check_media_too_large(city.slug, records))
+        _diag_before = len(timeline_diagnostics) if timeline_diagnostics is not None else 0
         findings.extend(
             audit_city(
                 city,
@@ -1510,8 +1677,25 @@ def audit_all(
                 timeline_finding_min_delta=timeline_finding_min_delta,
             )
         )
+        if timeline_diagnostics is not None:
+            for diag in timeline_diagnostics[_diag_before:]:
+                status_by_source_uid[(src_key, diag["uid"])] = diag["check"]
         if persist_timeline_integrity and records:
             save_records(state_dir, src_key, records)
+        # Last write for a src_key wins: multiple cities sharing one source_key each load+save
+        # it independently in this same sequential loop, so the last one reflects every prior
+        # sibling's self-heal by the time we get here.
+        records_by_source[src_key] = records
+
+    cross_findings, cross_touched = reconcile_cross_source_audio(
+        records_by_source,
+        entity_of_source,
+        status_by_source_uid,
+        mutate=persist_timeline_integrity,
+    )
+    findings.extend(cross_findings)
+    for touched_key in cross_touched:
+        save_records(state_dir, touched_key, records_by_source[touched_key])
 
     findings = aggregate_view_cap_findings(findings, view_cap_contexts)
 

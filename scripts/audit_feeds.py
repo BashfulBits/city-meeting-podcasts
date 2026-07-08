@@ -241,6 +241,25 @@ _GUIDANCE: dict[str, str] = {
         "directly (e.g. `ffprobe -show_entries format` vs. a manual `moov` box scan) to see "
         "where the header-only read diverged."
     ),
+    "cross-source-audio-divergence": (
+        "**What this means:** the same uid lives in more than one per-source record store "
+        "under one `city_entity` (e.g. a combined feed and a per-board feed), and their "
+        "`audio_key`/`audio_spec_hash`/`audio_duration_served`/integrity fields disagree "
+        "(GH#850).\n\n"
+        "**Common causes:** a combined feed's `feed_urls` doesn't exactly match its per-board "
+        "siblings', so it hashes to a different `source_key` and gets its own independent "
+        "record store instead of sharing one. `AudioArtifactCache.canonical_source` (GH#421) "
+        "only synchronizes the two stores' audio fields at the moment both need a fresh "
+        "encode/credit in the very same run; a later run touching only one of the sources "
+        "leaves the other stale with nothing to reconcile it afterward.\n\n"
+        "**Resolution:** this self-heals automatically on the next `timeline_repair=true` "
+        "feed-health dispatch (or any run with repair persistence enabled) — the canonical "
+        "copy is chosen from the freshest live-probe `ok` result, falling back to the newest "
+        "`audio_encode_time`. If the finding names a specific `canonical` and recurs, verify "
+        "the feed configs listed actually intend to share one source; if they should, align "
+        "their `feed_urls` (see `config/feeds/fort-worth-tx.yml` for the GH#850 fix)."
+        + _timeline_repair_workflow_guidance()
+    ),
     "timeline-source-duration-mismatch": (
         "**What this means:** for a multi-source (concat) episode, a source segment's actual "
         "duration disagrees with its registered `SourceMedia.duration`.\n\n"
