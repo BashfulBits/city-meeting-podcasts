@@ -79,9 +79,7 @@ def test_fetch_episodes_merges_and_dedups_multiple_list_urls(monkeypatch):
             return FakeResp(page_a if url == f"{ORIGIN}/a" else page_b)
 
     monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
-    eps = SwagitProvider().fetch_episodes(
-        {"list_urls": [f"{ORIGIN}/a", f"{ORIGIN}/b"]}
-    )
+    eps = SwagitProvider().fetch_episodes({"list_urls": [f"{ORIGIN}/a", f"{ORIGIN}/b"]})
     assert [e.guid for e in eps] == ["100", "101", "102", "200"]  # 102 deduped
 
 
