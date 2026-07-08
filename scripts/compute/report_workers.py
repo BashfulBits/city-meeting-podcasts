@@ -6,18 +6,23 @@ import argparse
 import json
 import tempfile
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.compute.budget import load_budget, load_budget_cas, storage_supports_cas
+from citypods.compute.policy import backend_policy
 from citypods.compute.worker_telemetry import load_worker_telemetry, telemetry_report
-from citypods.config import load_site_config
+from citypods.config import load_city_configs, load_site_config
 from citypods.ops.work_leases import read_lease
 from citypods.ops.workqueue import (
     BUCKET_FEED_VISIBLE,
     MANIFEST_NAME,
+    build_manifest,
     load_manifest,
     manifest_counts,
+    overlay_persisted_operational_state,
 )
+from citypods.records import load_records, source_key
 from citypods.report import _load_run_history
 from citypods.resources import format_bytes
 from citypods.state import resolve_state_dir
@@ -109,6 +114,24 @@ def _duration_band(items: list, threshold: float) -> dict:
     }
 
 
+def _claimable_mix(items: list, *, long_threshold: float, fresh_within_days: float) -> dict:
+    now = datetime.now(UTC)
+    fresh_after = now - timedelta(days=max(0.0, fresh_within_days))
+    mix = Counter()
+    for wi in items:
+        is_long = wi.duration_hours > long_threshold if long_threshold > 0 else False
+        is_fresh = wi.published is not None and wi.published >= fresh_after
+        if is_long and is_fresh:
+            mix["fresh_long"] += 1
+        elif is_long:
+            mix["backlog_long"] += 1
+        elif is_fresh:
+            mix["fresh_short"] += 1
+        else:
+            mix["backlog_short"] += 1
+    return dict(mix)
+
+
 def build_report(
     *, site_config_path: str, output_dir: str, base_url: str | None = None, recent: int = 0
 ) -> dict:
@@ -120,7 +143,16 @@ def build_report(
     with tempfile.TemporaryDirectory() as td:
         state_dir = Path(td)
         pull_state(storage, state_dir)
-        manifest = load_manifest(state_dir)
+        city_by_source = {}
+        for city in load_city_configs("config", site_config.get("defaults", {})):
+            city_by_source.setdefault(source_key(city), city)
+        manifest_sources = [
+            (key, city, load_records(state_dir, key)) for key, city in city_by_source.items()
+        ]
+        manifest = overlay_persisted_operational_state(
+            build_manifest(manifest_sources),
+            load_manifest(state_dir),
+        )
         counts = manifest_counts(manifest)
         pending = [
             wi for wi in manifest if wi.work_class == "transcript-asr" and wi.state != "done"
@@ -137,6 +169,8 @@ def build_report(
         threshold = float(
             (site_config.get("defaults") or {}).get("asr_local_max_duration_hours", 4)
         )
+        modal_policy = backend_policy(site_config, "modal")
+        beam_policy = backend_policy(site_config, "beam")
         leases = Counter()
         lease_states = Counter()
         recent_samples: list[dict] = []
@@ -166,6 +200,54 @@ def build_report(
             "recent_samples": recent_samples,
             "manifest_last_modified": _manifest_last_modified(storage),
             "transcript_asr_duration_band": _duration_band(claimable, threshold),
+            "transcript_asr_claimable_mix": {
+                "modal": _claimable_mix(
+                    claimable,
+                    long_threshold=modal_policy.task.prefer_min_duration_hours,
+                    fresh_within_days=modal_policy.task.fresh_within_days,
+                ),
+                "beam": _claimable_mix(
+                    claimable,
+                    long_threshold=beam_policy.task.prefer_min_duration_hours,
+                    fresh_within_days=beam_policy.task.fresh_within_days,
+                ),
+            },
+            "backend_policies": {
+                "modal": {
+                    "budget": {
+                        "monthly_units": modal_policy.budget.monthly_units,
+                        "reserve_units": modal_policy.budget.reserve_units,
+                        "unit_label": modal_policy.budget.unit_label,
+                    },
+                    "dispatch": {
+                        "max_inflight": modal_policy.dispatch.max_inflight,
+                        "min_claims_per_run": modal_policy.dispatch.min_claims_per_run,
+                        "max_claims_per_run": modal_policy.dispatch.max_claims_per_run,
+                        "preferred_days": modal_policy.dispatch.preferred_days,
+                    },
+                    "task": {
+                        "prefer_min_duration_hours": modal_policy.task.prefer_min_duration_hours,
+                        "fresh_within_days": modal_policy.task.fresh_within_days,
+                    },
+                },
+                "beam": {
+                    "budget": {
+                        "monthly_units": beam_policy.budget.monthly_units,
+                        "reserve_units": beam_policy.budget.reserve_units,
+                        "unit_label": beam_policy.budget.unit_label,
+                    },
+                    "dispatch": {
+                        "max_inflight": beam_policy.dispatch.max_inflight,
+                        "min_claims_per_run": beam_policy.dispatch.min_claims_per_run,
+                        "max_claims_per_run": beam_policy.dispatch.max_claims_per_run,
+                        "preferred_days": beam_policy.dispatch.preferred_days,
+                    },
+                    "task": {
+                        "prefer_min_duration_hours": beam_policy.task.prefer_min_duration_hours,
+                        "fresh_within_days": beam_policy.task.fresh_within_days,
+                    },
+                },
+            },
         }
 
 
@@ -185,6 +267,14 @@ def _markdown(report: dict) -> str:
             f"(what `long_first` floats), `{band.get('unknown_duration', 0)}` unknown duration, "
             f"max known `{band.get('max_known_hours')}`h"
         )
+    mixes = report.get("transcript_asr_claimable_mix") or {}
+    for backend, mix in sorted(mixes.items()):
+        if mix:
+            lines.append(
+                f"- {backend} claimable mix: fresh long `{mix.get('fresh_long', 0)}`, "
+                f"backlog long `{mix.get('backlog_long', 0)}`, fresh short "
+                f"`{mix.get('fresh_short', 0)}`, backlog short `{mix.get('backlog_short', 0)}`"
+            )
     lines.append(f"- work leases by state: `{report.get('work_leases', {}).get('by_state', {})}`")
     lines.append(f"- in-flight by backend: `{report.get('work_leases', {}).get('by_backend', {})}`")
     lines.append(f"- recent GitHub ASR completions: `{report.get('github_asr', {})}`")
@@ -199,13 +289,34 @@ def _markdown(report: dict) -> str:
                 f"`{row.get('failed', 0)}` failed, peak RSS "
                 f"`{format_bytes(row.get('peak_rss_bytes'))}`, peak GPU VRAM "
                 f"`{format_bytes(row.get('peak_gpu_vram_used_bytes'))}/"
-                f"{format_bytes(row.get('gpu_vram_total_bytes'))}`"
+                f"{format_bytes(row.get('gpu_vram_total_bytes'))}`, duration buckets "
+                f"`{row.get('duration_buckets', {})}`"
             )
     lines.append(f"- compute budget month: `{budget.get('month', '')}`")
+    policies = report.get("backend_policies") or {}
     for name, led in sorted((budget.get("backends") or {}).items()):
-        used = float((led or {}).get("used_gpu_seconds", 0.0))
+        used = float((led or {}).get("used_units", (led or {}).get("used_gpu_seconds", 0.0)))
         inflight = len((led or {}).get("inflight") or {})
-        lines.append(f"- {name}: `{used:.1f}` GPU-second(s) used, `{inflight}` in flight")
+        policy = policies.get(name) or {}
+        unit_label = ((policy.get("budget") or {}).get("unit_label")) or "unit"
+        monthly = (policy.get("budget") or {}).get("monthly_units")
+        reserve = (policy.get("budget") or {}).get("reserve_units")
+        dispatch = policy.get("dispatch") or {}
+        task = policy.get("task") or {}
+        lines.append(
+            f"- {name}: `{used:.1f}` {unit_label}(s) used"
+            + (f" / `{monthly:.1f}` budget" if isinstance(monthly, (int, float)) else "")
+            + (
+                f", reserve `{reserve:.1f}`"
+                if isinstance(reserve, (int, float)) and reserve > 0
+                else ""
+            )
+            + f", `{inflight}` in flight, max_claims/run "
+            f"`{dispatch.get('min_claims_per_run')}`-`{dispatch.get('max_claims_per_run')}`, "
+            f"preferred_days `{dispatch.get('preferred_days')}`, max_inflight "
+            f"`{dispatch.get('max_inflight')}`, prefer duration >= "
+            f"`{task.get('prefer_min_duration_hours')}`h"
+        )
     recent_samples = report.get("recent_samples") or []
     if recent_samples:
         lines.append("")

@@ -15,20 +15,34 @@ APP_NAME = os.environ.get("CITYPODS_MODAL_APP", "citypods-modal-worker")
 SECRET_NAME = os.environ.get("CITYPODS_MODAL_SECRET", "citypods-modal-worker")
 GPU = os.environ.get("CITYPODS_MODAL_GPU", "L4")
 CRON = os.environ.get("CITYPODS_MODAL_CRON", "17 7 * * *")
-RUNTIME_ENV = {
-    "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
-        "CITYPODS_WORKER_LEASE_TTL_SECONDS", "72000"
-    ),
-    "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND": os.environ.get(
-        "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND", "0.25"
-    ),
-    "CITYPODS_WORKER_MIN_GPU_SECONDS": os.environ.get("CITYPODS_WORKER_MIN_GPU_SECONDS", "60"),
-    "CITYPODS_WORKER_ASR_DEVICE": os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
-    "CITYPODS_WORKER_CPU_THREADS": os.environ.get("CITYPODS_WORKER_CPU_THREADS", "4"),
-    "CITYPODS_WORKER_GPU_TYPE": GPU,
-}
-if "CITYPODS_WORKER_MAX_CLAIMS" in os.environ:
-    RUNTIME_ENV["CITYPODS_WORKER_MAX_CLAIMS"] = os.environ["CITYPODS_WORKER_MAX_CLAIMS"]
+
+
+def _runtime_env() -> dict[str, str]:
+    env = {
+        "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
+            "CITYPODS_WORKER_LEASE_TTL_SECONDS", "72000"
+        ),
+        "CITYPODS_WORKER_ASR_DEVICE": os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
+        "CITYPODS_WORKER_CPU_THREADS": os.environ.get("CITYPODS_WORKER_CPU_THREADS", "4"),
+        "CITYPODS_WORKER_GPU_TYPE": GPU,
+    }
+    for key in (
+        "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
+        "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+        "CITYPODS_WORKER_MIN_BUDGET_UNITS",
+        "CITYPODS_WORKER_MIN_GPU_SECONDS",
+        "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+        "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
+        "CITYPODS_WORKER_MAX_CLAIMS",
+        "CITYPODS_WORKER_PREFERRED_DAYS",
+    ):
+        raw = os.environ.get(key)
+        if raw not in (None, ""):
+            env[key] = raw
+    return env
+
+
+RUNTIME_ENV = _runtime_env()
 
 app = modal.App(APP_NAME)
 

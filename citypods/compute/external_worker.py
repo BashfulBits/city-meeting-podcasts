@@ -13,18 +13,30 @@ import tempfile
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from citypods.asr import transcribe
-from citypods.compute.budget import reserve_if_available, settle_reservation
-from citypods.compute.worker_telemetry import ResourceTracker, append_worker_telemetry
+from citypods.compute.budget import load_budget_cas, reserve_if_available, settle_reservation
+from citypods.compute.policy import backend_policy
+from citypods.compute.worker_telemetry import (
+    ResourceTracker,
+    append_worker_telemetry,
+    load_worker_telemetry,
+)
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City, Episode
 from citypods.ops import work_leases
-from citypods.ops.workqueue import BUCKET_FEED_VISIBLE, WorkItem, load_manifest
+from citypods.ops.workqueue import (
+    BUCKET_FEED_VISIBLE,
+    WorkItem,
+    build_manifest,
+    load_manifest,
+    overlay_persisted_operational_state,
+)
 from citypods.records import (
     episode_to_record,
     load_records,
@@ -69,8 +81,14 @@ class ExternalWorkerConfig:
     max_scan: int | None = None
     lease_ttl_seconds: float = 6 * 3600
     work_class: str = "transcript-asr"
-    gpu_seconds_per_audio_second: float = 0.25
-    min_gpu_seconds: float = 60.0
+    min_claims_per_run: int = 1
+    preferred_days: str = "all"
+    budget_units_per_audio_second: float = 0.25
+    min_budget_units: float = 60.0
+    fixed_budget_units_per_run: float = 0.0
+    fixed_budget_units_per_claim: float = 0.0
+    prefer_min_duration_hours: float = 0.0
+    fresh_within_days: float = 7.0
     device: str = "cuda"
     cpu_threads: int = 4
 
@@ -145,40 +163,59 @@ def _float_env(name: str, default: float) -> float:
     return float(raw)
 
 
-def _backend_settings(site_config: dict, backend: str) -> dict:
-    defaults = site_config.get("defaults", {}) if isinstance(site_config, dict) else {}
-    backends = defaults.get("compute_backends", {}) if isinstance(defaults, dict) else {}
-    settings = backends.get(backend, {}) if isinstance(backends, dict) else {}
-    return settings if isinstance(settings, dict) else {}
-
-
 def config_from_env(backend: str, *, site_config: dict | None = None) -> ExternalWorkerConfig:
     site_config = site_config or {}
-    backend_settings = _backend_settings(site_config, backend)
+    policy = backend_policy(site_config, backend)
     owner = os.environ.get("CITYPODS_WORKER_OWNER") or f"{backend}:{uuid.uuid4().hex}"
     if not owner.startswith(f"{backend}:"):
         owner = f"{backend}:{owner}"
     max_scan_env = os.environ.get("CITYPODS_WORKER_MAX_SCAN")
-    max_scan_setting = backend_settings.get("max_scan")
+    max_scan_setting = policy.dispatch.max_scan
     if max_scan_env not in (None, ""):
         max_scan: int | None = int(max_scan_env)
     elif max_scan_setting is not None:
-        max_scan = int(max_scan_setting)
+        max_scan = max_scan_setting
     else:
         max_scan = None
     return ExternalWorkerConfig(
         backend=backend,
         owner=owner,
-        max_claims=_int_env(
-            "CITYPODS_WORKER_MAX_CLAIMS", int(backend_settings.get("max_claims", 1))
-        ),
+        min_claims_per_run=max(0, policy.dispatch.min_claims_per_run),
+        max_claims=_int_env("CITYPODS_WORKER_MAX_CLAIMS", policy.dispatch.max_claims_per_run),
         max_scan=max_scan,
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
         work_class=os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr"),
-        gpu_seconds_per_audio_second=_float_env(
-            "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND", 0.25
+        preferred_days=os.environ.get(
+            "CITYPODS_WORKER_PREFERRED_DAYS",
+            policy.dispatch.preferred_days,
         ),
-        min_gpu_seconds=_float_env("CITYPODS_WORKER_MIN_GPU_SECONDS", 60.0),
+        budget_units_per_audio_second=_float_env(
+            "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
+            _float_env(
+                "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+                policy.task.budget_units_per_audio_second,
+            ),
+        ),
+        min_budget_units=_float_env(
+            "CITYPODS_WORKER_MIN_BUDGET_UNITS",
+            _float_env("CITYPODS_WORKER_MIN_GPU_SECONDS", policy.task.min_budget_units),
+        ),
+        fixed_budget_units_per_run=_float_env(
+            "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+            policy.task.fixed_budget_units_per_run,
+        ),
+        fixed_budget_units_per_claim=_float_env(
+            "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
+            policy.task.fixed_budget_units_per_claim,
+        ),
+        prefer_min_duration_hours=_float_env(
+            "CITYPODS_WORKER_PREFER_MIN_DURATION_HOURS",
+            policy.task.prefer_min_duration_hours,
+        ),
+        fresh_within_days=_float_env(
+            "CITYPODS_WORKER_FRESH_WITHIN_DAYS",
+            policy.task.fresh_within_days,
+        ),
         device=os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
         cpu_threads=_int_env("CITYPODS_WORKER_CPU_THREADS", 4),
     )
@@ -203,6 +240,7 @@ class ExternalTranscribeWorker:
         self._city_by_source: dict[str, City] = {}
         self._city_by_slug = {c.slug: c for c in cities}
         self._models: dict[tuple[str, str], object] = {}
+        self._models_lock = threading.Lock()
         for city in cities:
             self._city_by_source.setdefault(source_key(city), city)
 
@@ -217,14 +255,25 @@ class ExternalTranscribeWorker:
             if self.config.work_class not in SUPPORTED_WORK_CLASSES:
                 raise ValueError(f"unsupported external worker class: {self.config.work_class!r}")
 
-            manifest = load_manifest(self.state_dir)
-            candidates = [
+            manifest = self._manifest()
+            base_candidates = [
                 wi
                 for wi in manifest
                 if wi.work_class == self.config.work_class
                 and wi.state == "queued"
                 and wi.priority_bucket == BUCKET_FEED_VISIBLE
+                and self._preferred_duration(wi)
             ]
+            backlog_present = False
+            if self._is_preferred_day():
+                candidates = base_candidates
+            else:
+                candidates = [wi for wi in base_candidates if self._is_fresh_candidate(wi)]
+                backlog_present = any(not self._is_fresh_candidate(wi) for wi in base_candidates)
+            effective_claims = self._effective_max_claims(
+                candidates,
+                backlog_present=backlog_present,
+            )
             summary.scanned = len(candidates)
             ordered = self._ordered(candidates)
             # ``worked`` counts NEW transcriptions attempted (succeeded or failed) — the thing
@@ -238,7 +287,7 @@ class ExternalTranscribeWorker:
                 else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
             )
             for item in ordered:
-                if worked >= self.config.max_claims:
+                if worked >= effective_claims:
                     break
                 if summary.claimed >= scan_cap:
                     break
@@ -255,9 +304,13 @@ class ExternalTranscribeWorker:
                     continue
                 summary.claimed += 1
                 estimate = self._estimate_gpu_seconds(item)
-                caps = (self.defaults.get("compute_backends") or {}).get(self.config.backend) or {}
-                cap = float(caps.get("monthly_gpu_seconds", 0.0))
-                max_inflight = int(caps.get("max_inflight", 0))
+                policy = backend_policy(
+                    self.site_config,
+                    self.config.backend,
+                    work_class=item.work_class,
+                )
+                cap = policy.budget.spendable_units
+                max_inflight = policy.dispatch.max_inflight
                 if (
                     cap <= 0
                     or max_inflight <= 0
@@ -402,6 +455,23 @@ class ExternalTranscribeWorker:
         still differs between this worker and that reference loop)."""
         return work_leases.ordered_candidates(items, self.config.owner)
 
+    def _manifest(self) -> list[WorkItem]:
+        from citypods.ops.workqueue import BacklogPolicy
+
+        defaults = self.site_config.get("defaults") or {}
+        persisted = load_manifest(self.state_dir)
+        if not self._city_by_source:
+            return persisted
+        backlog_policy = None
+        if self.site_config.get("backlog_priority") or defaults.get("backlog_priority"):
+            backlog_policy = BacklogPolicy.from_site_config(self.site_config)
+        manifest_sources = [
+            (src, city, load_records(self.state_dir, src))
+            for src, city in self._city_by_source.items()
+        ]
+        derived = build_manifest(manifest_sources, policy=backlog_policy)
+        return overlay_persisted_operational_state(derived, persisted)
+
     def _city_for(self, item: WorkItem) -> City:
         if item.city_slug and item.city_slug in self._city_by_slug:
             return self._city_by_slug[item.city_slug]
@@ -421,8 +491,96 @@ class ExternalTranscribeWorker:
     def _estimate_gpu_seconds(self, item: WorkItem) -> float:
         _city, ep, _records = self._episode_for(item)
         hours, _source = _episode_duration_hours(ep)
-        estimated = hours * 3600 * self.config.gpu_seconds_per_audio_second
-        return max(self.config.min_gpu_seconds, estimated)
+        estimated = hours * 3600 * self.config.budget_units_per_audio_second
+        estimated += self.config.fixed_budget_units_per_claim
+        return max(self.config.min_budget_units, estimated)
+
+    def _preferred_duration(self, item: WorkItem) -> bool:
+        min_hours = max(0.0, self.config.prefer_min_duration_hours)
+        return min_hours <= 0 or item.duration_hours <= 0 or item.duration_hours >= min_hours
+
+    def _preferred_freshness(self, item: WorkItem) -> bool:
+        if self._is_preferred_day():
+            return True
+        return self._is_fresh_candidate(item)
+
+    def _is_fresh_candidate(self, item: WorkItem) -> bool:
+        if item.published is None:
+            return False
+        age_days = (datetime.now(UTC) - item.published).total_seconds() / 86400
+        return age_days <= max(0.0, self.config.fresh_within_days)
+
+    def _is_preferred_day(self, now: datetime | None = None) -> bool:
+        now = now or datetime.now(UTC)
+        if self.config.preferred_days == "all":
+            return True
+        day_is_even = now.day % 2 == 0
+        return day_is_even if self.config.preferred_days == "even" else not day_is_even
+
+    def _remaining_run_slots(self, now: datetime | None = None) -> int:
+        now = now or datetime.now(UTC)
+        if now.month == 12:
+            rollover = datetime(now.year + 1, 1, 1, tzinfo=UTC)
+        else:
+            rollover = datetime(now.year, now.month + 1, 1, tzinfo=UTC)
+        slots = 0
+        cursor = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        while cursor.date() < rollover.date():
+            if self._is_preferred_day(cursor):
+                slots += 1
+            cursor += timedelta(days=1)
+        return max(1, slots)
+
+    def _effective_max_claims(
+        self,
+        candidates: list[WorkItem],
+        *,
+        backlog_present: bool = False,
+    ) -> int:
+        hard_cap = max(0, self.config.max_claims)
+        if hard_cap <= 0 or not candidates:
+            return 0
+        policy = backend_policy(
+            self.site_config,
+            self.config.backend,
+            work_class=self.config.work_class,
+        )
+        if not getattr(self.storage, "cas_capable", False):
+            return hard_cap
+        budget, _etag = load_budget_cas(self.storage)
+        budget.roll_month()
+        ledger = budget.backends.get(self.config.backend)
+        used_units = ledger.used_units if ledger is not None else 0.0
+        remaining_units = max(0.0, policy.budget.spendable_units - used_units)
+        if remaining_units <= 0:
+            return 0
+        claim_units = self._planned_units_per_claim()
+        if claim_units <= 0:
+            return hard_cap
+        target_units = remaining_units / self._remaining_run_slots()
+        target_units = max(0.0, target_units - self.config.fixed_budget_units_per_run)
+        paced_cap = int(target_units // claim_units)
+        if self._is_preferred_day():
+            paced_cap = max(self.config.min_claims_per_run, paced_cap)
+        elif backlog_present:
+            paced_cap = 1
+        elif candidates:
+            paced_cap = max(1, paced_cap)
+        return min(hard_cap, max(0, paced_cap))
+
+    def _planned_units_per_claim(self) -> float:
+        telemetry = load_worker_telemetry(self.storage)
+        rows = telemetry.get("samples") if isinstance(telemetry, dict) else []
+        estimates = [
+            float(row["budget_units_estimate"])
+            for row in rows or []
+            if isinstance(row, dict)
+            and row.get("backend") == self.config.backend
+            and isinstance(row.get("budget_units_estimate"), (int, float))
+        ]
+        if estimates:
+            return max(self.config.min_budget_units, sum(estimates[-10:]) / min(10, len(estimates)))
+        return self.config.min_budget_units
 
     def _telemetry_metadata(self, item: WorkItem) -> dict[str, Any]:
         city, ep, _records = self._episode_for(item)
@@ -434,26 +592,46 @@ class ExternalTranscribeWorker:
         }
 
     def _model(self, city: City, tracker: ResourceTracker | None = None):
+        return self._model_with_workers(city, tracker=tracker, num_workers=1)
+
+    def _model_with_workers(
+        self,
+        city: City,
+        tracker: ResourceTracker | None = None,
+        *,
+        num_workers: int = 1,
+    ):
         # Key on the RESOLVED source, not city.asr_model: when ASR_MODEL_PATH is set
         # (e.g. the baked model in the Modal/Beam image), every city loads the same
         # bytes, so keying on city.asr_model would reload the identical model per model
         # name instead of reusing one cached instance.
         model_source = os.environ.get("ASR_MODEL_PATH") or city.asr_model
-        key = (model_source, city.asr_compute_type)
+        key = (model_source, city.asr_compute_type, max(1, int(num_workers)))
         if key not in self._models:
-            from faster_whisper import WhisperModel
+            with self._models_lock:
+                if key not in self._models:
+                    from faster_whisper import WhisperModel
 
-            self._models[key] = WhisperModel(
-                model_source,
-                device=self.config.device,
-                compute_type=city.asr_compute_type,
-                cpu_threads=self.config.cpu_threads,
-            )
-            if tracker is not None:
-                tracker.record("after-model-load")
+                    self._models[key] = WhisperModel(
+                        model_source,
+                        device=self.config.device,
+                        compute_type=city.asr_compute_type,
+                        cpu_threads=self.config.cpu_threads,
+                        num_workers=max(1, int(num_workers)),
+                    )
+                    if tracker is not None:
+                        tracker.record("after-model-load")
         return self._models[key]
 
-    def _run_transcribe_item(self, item: WorkItem, tracker: ResourceTracker) -> bool:
+    def _run_transcribe_item(
+        self,
+        item: WorkItem,
+        tracker: ResourceTracker,
+        *,
+        model_num_workers: int = 1,
+        persist_results: bool = True,
+        allow_adopt: bool = True,
+    ) -> bool:
         """Transcribe *item*, or adopt existing artifacts if they are already in storage.
         Returns True when the item was adopted (no fresh transcription happened)."""
         city, ep, records = self._episode_for(item)
@@ -464,7 +642,7 @@ class ExternalTranscribeWorker:
         uid = ep.uid or ep.guid
         asr_key = _asr_object_key(item.source_key, uid, recipe)
         words_key = _asr_words_object_key(item.source_key, uid, recipe)
-        adopted = self.storage.exists(asr_key) and self.storage.exists(words_key)
+        adopted = allow_adopt and self.storage.exists(asr_key) and self.storage.exists(words_key)
         if adopted:
             print(
                 f"[external-worker] adopted {item.source_key}/{item.episode_uid} "
@@ -477,7 +655,7 @@ class ExternalTranscribeWorker:
                 audio_path = Path(td) / "audio.m4a"
                 _download_audio_file(ep.hosted_audio_url, audio_path)
                 tracker.record("after-audio-download")
-                model = self._model(city, tracker)
+                model = self._model_with_workers(city, tracker, num_workers=model_num_workers)
                 tracker.record("before-asr")
                 artifacts = transcribe(
                     audio_path,
@@ -489,6 +667,8 @@ class ExternalTranscribeWorker:
                     self.config.cpu_threads,
                 )
                 tracker.record("after-asr")
+                if not persist_results:
+                    return False
                 vtt_path = Path(td) / "transcript.vtt"
                 vtt_path.write_bytes(artifacts.vtt)
                 words_path = Path(td) / "transcript.words.json"
@@ -508,6 +688,9 @@ class ExternalTranscribeWorker:
                 ep.transcript_synced = True
                 _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
                 tracker.record("after-artifact-upload")
+
+        if not persist_results:
+            return adopted
 
         records[item.episode_uid] = episode_to_record(ep)
         save_records(self.state_dir, item.source_key, records)
@@ -538,10 +721,11 @@ class ExternalTranscribeWorker:
         outcome: str,
         started_at: str,
         elapsed_seconds: float,
+        owner: str | None = None,
     ) -> None:
         sample = {
             "backend": self.config.backend,
-            "owner": self.config.owner,
+            "owner": owner or self.config.owner,
             "work_class": self.config.work_class,
             "source_key": item.source_key,
             "episode_uid": item.episode_uid,
@@ -550,10 +734,15 @@ class ExternalTranscribeWorker:
             "finished_at": datetime.now(UTC).isoformat(),
             "elapsed_seconds": round(max(0.0, elapsed_seconds), 3),
             "duration_hours": metadata.get("duration_hours"),
+            "duration_bucket": _duration_bucket_hours(metadata.get("duration_hours")),
             "model": metadata.get("model"),
             "compute_type": metadata.get("compute_type"),
             "device": self.config.device,
             "gpu_type": os.environ.get("CITYPODS_WORKER_GPU_TYPE"),
+            "canary_mode": metadata.get("canary_mode"),
+            "characterization_concurrency": metadata.get("characterization_concurrency"),
+            "model_num_workers": metadata.get("model_num_workers"),
+            "budget_units_estimate": round(self._estimate_gpu_seconds(item), 3),
             "peak_rss_bytes": tracker.peak_rss_bytes,
             "peak_gpu_vram_used_bytes": tracker.peak_gpu_vram_used_bytes,
             "gpu_vram_total_bytes": tracker.gpu_vram_total_bytes,
@@ -601,3 +790,279 @@ def run_worker(
     summary = worker.run().to_dict()
     summary["finished_at"] = datetime.now(UTC).isoformat()
     return summary
+
+
+def run_characterization_worker(
+    *,
+    backend: str,
+    mode: str,
+    claim_count: int,
+    concurrency: int,
+    source_keys: tuple[str, ...] = (),
+    episode_uids: tuple[str, ...] = (),
+    persist_results: bool = True,
+    site_config_path: str = "config/site_config.yml",
+    config_dir: str = "config",
+    output_dir: str = "docs",
+    base_url: str | None = None,
+    worker_config: ExternalWorkerConfig | None = None,
+) -> dict[str, Any]:
+    if mode not in {"sequential", "concurrent"}:
+        raise ValueError(f"unsupported characterization mode: {mode!r}")
+    if claim_count <= 0:
+        raise ValueError("claim_count must be positive")
+    if concurrency <= 0:
+        raise ValueError("concurrency must be positive")
+
+    site_config = load_site_config(site_config_path)
+    base_url = base_url or site_config.get("base_url", "")
+    output = Path(output_dir)
+    storage = make_storage(site_config, base_url, output)
+    if storage is None:
+        raise RuntimeError("external worker requires configured routing storage")
+    if not getattr(storage, "cas_capable", False):
+        raise RuntimeError("external worker requires CAS-capable routing storage for work leases")
+
+    cfg = worker_config or config_from_env(backend, site_config=site_config)
+    cities = load_city_configs(config_dir, site_config.get("defaults", {}))
+    state_dir = resolve_state_dir(site_config, output)
+    pull_state(storage, state_dir)
+    worker = ExternalTranscribeWorker(
+        config=cfg,
+        site_config=site_config,
+        cities=cities,
+        state_dir=state_dir,
+        storage=storage,
+    )
+    summary = _run_characterization(
+        worker,
+        mode=mode,
+        claim_count=claim_count,
+        concurrency=concurrency,
+        source_keys=source_keys,
+        episode_uids=episode_uids,
+        persist_results=persist_results,
+    )
+    summary["finished_at"] = datetime.now(UTC).isoformat()
+    return summary
+
+
+def _run_characterization(
+    worker: ExternalTranscribeWorker,
+    *,
+    mode: str,
+    claim_count: int,
+    concurrency: int,
+    source_keys: tuple[str, ...],
+    episode_uids: tuple[str, ...],
+    persist_results: bool,
+) -> dict[str, Any]:
+    policy = backend_policy(
+        worker.site_config,
+        worker.config.backend,
+        work_class=worker.config.work_class,
+    )
+    summary = ExternalWorkerSummary(backend=worker.config.backend, owner=worker.config.owner)
+    worker_tracker = worker._resource_tracker()
+    worker_tracker.record("characterize-start")
+    selected: list[dict[str, Any]] = []
+    try:
+        manifest = worker._manifest()
+        targeted = bool(source_keys or episode_uids)
+        benchmark_only = not persist_results
+        candidates = [
+            wi
+            for wi in manifest
+            if wi.work_class == worker.config.work_class
+            and wi.state == "queued"
+            and wi.priority_bucket == BUCKET_FEED_VISIBLE
+            and (targeted or worker._preferred_duration(wi))
+            and (targeted or worker._preferred_freshness(wi))
+        ]
+        if source_keys:
+            source_filter = set(source_keys)
+            candidates = [wi for wi in candidates if wi.source_key in source_filter]
+        if episode_uids:
+            uid_filter = set(episode_uids)
+            candidates = [wi for wi in candidates if wi.episode_uid in uid_filter]
+        summary.scanned = len(candidates)
+        ordered = worker._ordered(candidates)
+        for item in ordered:
+            if len(selected) >= claim_count:
+                break
+            owner = f"{worker.config.owner}:{len(selected)}"
+            lease_claimed = False
+            if not benchmark_only:
+                held = work_leases.claim(
+                    worker.storage,
+                    item.source_key,
+                    item.episode_uid,
+                    owner=owner,
+                    ttl_seconds=worker.config.lease_ttl_seconds,
+                    pipeline_version=ASR_PIPELINE_VERSION,
+                )
+                if held is None:
+                    summary.skipped += 1
+                    continue
+                lease_claimed = True
+                estimate = worker._estimate_gpu_seconds(item)
+                if (
+                    policy.budget.spendable_units <= 0
+                    or policy.dispatch.max_inflight <= 0
+                    or not reserve_if_available(
+                        worker.storage,
+                        owner,
+                        worker.config.backend,
+                        est=estimate,
+                        cap=policy.budget.spendable_units,
+                        max_inflight=policy.dispatch.max_inflight,
+                    )
+                ):
+                    work_leases.abandon(
+                        worker.storage,
+                        item.source_key,
+                        item.episode_uid,
+                        owner=owner,
+                    )
+                    summary.budget_declined += 1
+                    break
+            selected.append(
+                {
+                    "item": item,
+                    "owner": owner,
+                    "lease_claimed": lease_claimed,
+                    "metadata": worker._telemetry_metadata(item),
+                }
+            )
+        summary.claimed = len(selected)
+        if not selected:
+            out = summary.to_dict()
+            out.update(
+                {
+                    "canary_mode": mode,
+                    "requested_claims": claim_count,
+                    "requested_concurrency": concurrency,
+                    "actual_concurrency": 0,
+                    "persist_results": persist_results,
+                    "requested_source_keys": list(source_keys),
+                    "requested_episode_uids": list(episode_uids),
+                }
+            )
+            return out
+
+        model_workers = 1 if mode == "sequential" else max(1, concurrency)
+        for entry in selected:
+            worker._model_with_workers(worker._city_for(entry["item"]), num_workers=model_workers)
+
+        summary_lock = threading.Lock()
+
+        def _run_one(entry: dict[str, Any]) -> None:
+            item = entry["item"]
+            owner = entry["owner"]
+            lease_claimed = bool(entry["lease_claimed"])
+            metadata = dict(entry["metadata"])
+            tracker = worker._resource_tracker()
+            tracker.record("claim-start")
+            started_at = datetime.now(UTC).isoformat()
+            started = time.monotonic()
+            outcome = "failed"
+            actual = 0.0
+            try:
+                adopted = worker._run_transcribe_item(
+                    item,
+                    tracker,
+                    model_num_workers=model_workers,
+                    persist_results=persist_results,
+                    allow_adopt=not benchmark_only,
+                )
+            except Exception:
+                actual = max(0.0, time.monotonic() - started)
+                if lease_claimed:
+                    settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
+                    work_leases.release(
+                        worker.storage,
+                        item.source_key,
+                        item.episode_uid,
+                        owner=owner,
+                        state="failed",
+                    )
+                with summary_lock:
+                    summary.failed += 1
+                    summary.gpu_seconds += actual
+                outcome = "failed"
+            else:
+                actual = max(0.0, time.monotonic() - started)
+                if lease_claimed:
+                    settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
+                with summary_lock:
+                    summary.completed += 1
+                    if adopted:
+                        summary.adopted += 1
+                    summary.gpu_seconds += actual
+                outcome = "success"
+            finally:
+                tracker.record("claim-finish")
+                with summary_lock:
+                    summary.update_resource_peaks(tracker)
+                    worker_tracker.update_from(tracker)
+                worker._append_telemetry_sample(
+                    item=item,
+                    metadata=metadata
+                    | {
+                        "canary_mode": mode,
+                        "characterization_concurrency": max(
+                            1, concurrency if mode == "concurrent" else 1
+                        ),
+                        "model_num_workers": model_workers,
+                    },
+                    tracker=tracker,
+                    outcome=outcome,
+                    started_at=started_at,
+                    elapsed_seconds=actual,
+                    owner=owner,
+                )
+
+        actual_concurrency = 1 if mode == "sequential" else min(len(selected), max(1, concurrency))
+        if mode == "sequential" or actual_concurrency == 1:
+            for entry in selected:
+                _run_one(entry)
+        else:
+            with ThreadPoolExecutor(max_workers=actual_concurrency) as pool:
+                futures = [pool.submit(_run_one, entry) for entry in selected]
+                for future in as_completed(futures):
+                    future.result()
+        out = summary.to_dict()
+        out.update(
+            {
+                "canary_mode": mode,
+                "requested_claims": claim_count,
+                "requested_concurrency": concurrency,
+                "actual_concurrency": actual_concurrency,
+                "model_num_workers": model_workers,
+                "persist_results": persist_results,
+                "requested_source_keys": list(source_keys),
+                "requested_episode_uids": list(episode_uids),
+            }
+        )
+        return out
+    finally:
+        worker_tracker.record("characterize-finish")
+        summary.update_resource_peaks(worker_tracker)
+
+
+def _duration_bucket_hours(duration_hours: Any) -> str:
+    try:
+        hours = float(duration_hours)
+    except (TypeError, ValueError):
+        return "unknown"
+    if hours <= 0:
+        return "unknown"
+    if hours < 1:
+        return "<1h"
+    if hours < 2:
+        return "1-2h"
+    if hours < 4:
+        return "2-4h"
+    if hours < 6:
+        return "4-6h"
+    return "6h+"

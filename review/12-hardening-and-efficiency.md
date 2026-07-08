@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-06-27 (H18 source-duration-aware timeline identity follow-up)**
+last updated 2026-07-08 (H14d GPU characterization results + rerun instructions)**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -2201,11 +2201,146 @@ recordings. Therefore H14d should prefer measured admission and chunking before 
 shared ASR/chunking helpers, `config/site_config.yml` for documented admission/chunking knobs, and
 `scripts/compute/report_workers.py` for headroom/admission reporting.
 
+**Initial characterization (2026-07-07).** First live H14d canaries confirmed the expected shape:
+GPU VRAM is lightly used while host RSS is the tighter bound. A warm Modal run on a ~2.08 h meeting
+peaked around **2.2 GiB RSS / 1.3 GiB VRAM**; the first cold Modal run hit **2.9 GiB RSS / 1.3 GiB
+VRAM** because image/model startup dominated. A Beam canary that adopted two already-finished items and
+fresh-transcribed one new meeting peaked around **2.0 GiB RSS / 1.2 GiB VRAM**. That result supports
+the first implementation posture: keep **per-container GPU concurrency disabled**, prefer **sequential
+multi-claim** throughput within one invocation, and continue to prefer **long meetings externally**
+while GitHub runners absorb the short tail.
+
+**Implemented H14d posture in this branch.** Backend policy is now YAML-driven through
+`compute_backends.<backend>.{budget,dispatch,tasks}` with generic budget units, soft reserves,
+per-backend preferred days (`all` / `even` / `odd`), freshness windows, long-meeting preference, and
+both **fixed-per-run** and **fixed-per-claim** planning knobs. The worker paces `max_claims_per_run`
+against remaining monthly budget and remaining preferred run slots in the month. Off-days now have one
+extra backlog guardrail: while any non-fresh backlog still exists, they admit only fresh work and cap
+that freshness maintenance to one claim; once the backlog is cleared, off-days reopen normal pacing for
+fresh work. The default production cap remains **sequential** (multiple new claims per invocation,
+still only one active transcription at a time inside the container). Chunking remains **off by
+default** until telemetry shows sequential whole-recording work leaves throughput on the table or a
+memory-shaped fallback is required.
+
+**Manifest-freshness follow-up (2026-07-08).** Live validation uncovered a separate control-plane bug
+outside the GPU-cost tuning itself: external workers and `asr-worker-report` were reading persisted
+`state/work.json` as though it were canonical for derivable ordering fields such as
+`duration_hours`. That made the report show `2393 total, 0 over 4.0h, 2393 unknown duration` even
+though the backing records mostly already had `audio.duration_served`. H14d now rebuilds a fresh
+manifest from canonical records and overlays only persisted operational sidecar state
+(`running`/`backoff`/`dead`, leases, retry/error/estimate fields). The first post-fix report recovered
+the intended queue composition immediately: `2108 total, 91 over 4.0h, 77 unknown duration`, with
+both backends seeing `backlog long 91` and `fresh short 3`.
+
+**Documented characterization corpus and rerun procedure (2026-07-08).** H14d's first GPU-type
+comparison was run against one fixed Denton pair so every backend/GPU comparison stayed apples-to-apples:
+
+- `source_key=3b7588310856`
+- `episode_uid=7eb301427fceaa6d` (`2.412035h`)
+- `episode_uid=7e4cce5064c7fef8` (`1.986422222222222h`)
+- total audio duration: `4.398457222222222h`
+
+All comparison runs used:
+
+- `mode=sequential`
+- `claim_count=2`
+- `concurrency=1`
+- explicit `source_key` + `episode_uid` selection
+- benchmark-only mode (`persist_results=False` / `--no-persist`) so the run bypasses leases, budget
+  reservations, and artifact adoption and always fresh-transcribes the requested UIDs
+
+**Pricing basis used for normalization (checked 2026-07-08).** H14d normalizes the benchmark to
+**effective dollars per audio hour completed**, not just raw GPU-seconds:
+
+- Modal official pricing page: `T4 $0.000164/s`, `L4 $0.000222/s`, `A10 $0.000306/s`,
+  `L40S $0.000542/s`, `A100 40GB $0.000583/s`
+- Beam official pricing page: `RTX4090 $0.000192/s`, `A10G $0.000292/s`
+
+The decision metric is:
+
+- `gpu_seconds`: summed per-claim worker runtime already recorded by H14d telemetry
+- `cost_run = price_per_second * gpu_seconds`
+- `cost_audio_hour = cost_run / total_audio_hours`
+
+Provider billing/cold-start behavior can change, so future re-evaluations should refresh the official
+pricing page before comparing new GPU classes.
+
+**Measured sequential transcribe-only results (same fixed Denton pair).**
+
+| Provider | GPU | GPU seconds | Cost / run | Cost / audio hour | Peak RSS | Peak VRAM |
+|---|---|---:|---:|---:|---:|---:|
+| Beam | `RTX4090` | `238.907` | `$0.0459` | `$0.0104` | `1.43 GiB` | `1.50 GiB` |
+| Beam | `A10G` | `277.301` | `$0.0810` | `$0.0184` | `1.44 GiB` | `1.12 GiB` |
+| Modal | `L4` | `314.173` | `$0.0697` | `$0.0159` | `2.24 GiB` | `1.30 GiB` |
+| Modal | `T4` | `511.745` | `$0.0839` | `$0.0191` | `2.19 GiB` | `1.21 GiB` |
+| Modal | `A10` | `302.820` | `$0.0927` | `$0.0211` | `2.25 GiB` | `1.34 GiB` |
+| Modal | `L40S` | `247.712` | `$0.1343` | `$0.0305` | `2.24 GiB` | `1.54 GiB` |
+| Modal | `A100-40GB` | `383.513` | `$0.2236` | `$0.0508` | `2.28 GiB` | `1.53 GiB` |
+
+**Current default recommendation from those measurements.**
+
+- Beam default GPU target: `RTX4090`
+- Beam fallback only if capacity becomes a real operational issue: `A10G`
+- Modal default GPU target: `L4`
+- Production budget defaults should stay in **effective runtime seconds**, not dollars, so actual
+  reservation settlement can continue to reconcile directly from observed claim runtime. The monthly
+  caps are therefore set conservatively below the raw GPU-only free-credit runtime to absorb CPU/RAM
+  billing: Modal `108000`, Beam `125000`.
+- Production estimation knobs from this characterization pass: Modal `budget_units_per_audio_second:
+  0.023`, `min_budget_units: 240`, `max_claims_per_run: 24`, `preferred_days: even`; Beam
+  `budget_units_per_audio_second: 0.0175`, `min_budget_units: 180`, `max_claims_per_run: 32`,
+  `preferred_days: odd`.
+- Do **not** enable recording-level concurrency above `1` for the current transcribe-only lane; the
+  same fixed-pair canaries showed worse cost efficiency for `concurrency=2` on both Beam and Modal
+- Do **not** enable chunking by default; the current data does not justify the complexity for this lane
+
+**How to rerun the benchmark when a new GPU type is added.** Always compare on the same corpus first,
+then optionally add a second medium-length pair if two candidates are within a narrow cost band.
+
+Beam (replace `RTX4090` with the candidate GPU string):
+
+```bash
+CITYPODS_BEAM_GPU=RTX4090 /usr/bin/time -p \
+python scripts/compute/beam_canary.py \
+  --mode sequential \
+  --claim-count 2 \
+  --concurrency 1 \
+  --source-key 3b7588310856 \
+  --episode-uid 7eb301427fceaa6d \
+  --episode-uid 7e4cce5064c7fef8 \
+  --no-persist
+```
+
+Modal (replace `L4` with the candidate GPU string):
+
+```bash
+CITYPODS_MODAL_GPU=L4 /usr/bin/time -p \
+modal run scripts/compute/modal_canary.py \
+  --mode sequential \
+  --claim-count 2 \
+  --concurrency 1 \
+  --source-keys 3b7588310856 \
+  --episode-uids 7eb301427fceaa6d,7e4cce5064c7fef8 \
+  --no-persist-results
+```
+
+**How to evaluate a future GPU candidate.**
+
+1. Refresh official provider pricing from the provider's pricing page.
+2. Run the candidate with `concurrency=1` on the fixed Denton pair above.
+3. Record `gpu_seconds`, peak RSS, peak VRAM, and the provider/GPU string.
+4. Compute `cost_audio_hour`.
+5. Reject a candidate that is materially worse on `cost_audio_hour`, or that gets too close to the
+   host-RSS cliff even if it is slightly cheaper.
+6. Only add a multi-GPU target list when the provider exposes a clean preference/fallback mechanism and
+   two candidates are close enough in `cost_audio_hour` that capacity flexibility is worth the extra
+   routing complexity.
+
 **Testing & rollout.** Unit-test admission estimates, unknown-combination conservatism, chunk timestamp
 rebasing/stitch validation, and recipe/version behavior. Production rollout is canary-first: leave
-concurrency at one, gather telemetry on Modal and Beam, enable chunking for long meetings, then consider
-provider-specific concurrency only when measured peak RSS/VRAM leaves comfortable margin. H9 final
-GPU-type profiling starts after this canary record is documented.
+per-container concurrency at one, gather telemetry on Modal and Beam, keep chunking disabled, then
+consider provider-specific concurrency or chunking only when measured peak RSS/VRAM leaves comfortable
+margin. H9 final GPU-type profiling starts after this canary record is documented.
 
 **Acceptance.** H14d ships with a reportable memory headroom model, documented default knobs, long-audio
 chunk/admission behavior that avoids known OOM classes, and a clear chunk-persistence decision. No
