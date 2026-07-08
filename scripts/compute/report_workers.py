@@ -295,13 +295,12 @@ def _markdown(report: dict) -> str:
     lines.append(f"- compute budget month: `{budget.get('month', '')}`")
     policies = report.get("backend_policies") or {}
     for name, led in sorted((budget.get("backends") or {}).items()):
-        used = float((led or {}).get("used_units", (led or {}).get("used_gpu_seconds", 0.0))
-        )
+        used = float((led or {}).get("used_units", (led or {}).get("used_gpu_seconds", 0.0)))
         inflight = len((led or {}).get("inflight") or {})
         policy = policies.get(name) or {}
         unit_label = ((policy.get("budget") or {}).get("unit_label")) or "unit"
-        monthly = ((policy.get("budget") or {}).get("monthly_units"))
-        reserve = ((policy.get("budget") or {}).get("reserve_units"))
+        monthly = (policy.get("budget") or {}).get("monthly_units")
+        reserve = (policy.get("budget") or {}).get("reserve_units")
         dispatch = policy.get("dispatch") or {}
         task = policy.get("task") or {}
         lines.append(

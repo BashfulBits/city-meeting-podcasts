@@ -118,6 +118,7 @@ _BAKE_MODEL_CMD = (
     '"'
 )
 
+
 def _runtime_env() -> dict[str, str]:
     env = {
         "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
