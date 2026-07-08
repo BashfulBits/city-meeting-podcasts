@@ -548,6 +548,7 @@ class ExternalTranscribeWorker:
         if not getattr(self.storage, "cas_capable", False):
             return hard_cap
         budget, _etag = load_budget_cas(self.storage)
+        budget.roll_month()
         ledger = budget.backends.get(self.config.backend)
         used_units = ledger.used_units if ledger is not None else 0.0
         remaining_units = max(0.0, policy.budget.spendable_units - used_units)
@@ -866,9 +867,9 @@ def _run_characterization(
     worker_tracker.record("characterize-start")
     selected: list[dict[str, Any]] = []
     try:
-        manifest = load_manifest(worker.state_dir)
+        manifest = worker._manifest()
         targeted = bool(source_keys or episode_uids)
-        benchmark_only = targeted and not persist_results
+        benchmark_only = not persist_results
         candidates = [
             wi
             for wi in manifest
@@ -953,6 +954,8 @@ def _run_characterization(
         for entry in selected:
             worker._model_with_workers(worker._city_for(entry["item"]), num_workers=model_workers)
 
+        summary_lock = threading.Lock()
+
         def _run_one(entry: dict[str, Any]) -> None:
             item = entry["item"]
             owner = entry["owner"]
@@ -983,22 +986,25 @@ def _run_characterization(
                         owner=owner,
                         state="failed",
                     )
-                summary.failed += 1
-                summary.gpu_seconds += actual
+                with summary_lock:
+                    summary.failed += 1
+                    summary.gpu_seconds += actual
                 outcome = "failed"
             else:
                 actual = max(0.0, time.monotonic() - started)
                 if lease_claimed:
                     settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
-                summary.completed += 1
-                if adopted:
-                    summary.adopted += 1
-                summary.gpu_seconds += actual
+                with summary_lock:
+                    summary.completed += 1
+                    if adopted:
+                        summary.adopted += 1
+                    summary.gpu_seconds += actual
                 outcome = "success"
             finally:
                 tracker.record("claim-finish")
-                summary.update_resource_peaks(tracker)
-                worker_tracker.update_from(tracker)
+                with summary_lock:
+                    summary.update_resource_peaks(tracker)
+                    worker_tracker.update_from(tracker)
                 worker._append_telemetry_sample(
                     item=item,
                     metadata=metadata

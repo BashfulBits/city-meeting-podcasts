@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import citypods.compute.external_worker as ew
-from citypods.compute.budget import Budget
+from citypods.compute.budget import Budget, month_key
 from citypods.compute.external_worker import (
     ExternalTranscribeWorker,
     ExternalWorkerConfig,
@@ -182,6 +182,39 @@ def test_effective_max_claims_paces_against_remaining_budget(tmp_path, monkeypat
     cap = worker._effective_max_claims([_queued("a"), _queued("b"), _queued("c")])
 
     assert cap == 1
+
+
+def test_effective_max_claims_rolls_budget_month_before_pacing(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a", "b", "c"], max_claims=5)
+    worker.config = ExternalWorkerConfig(
+        backend="modal",
+        owner="modal:test",
+        max_claims=5,
+        min_claims_per_run=1,
+        min_budget_units=60.0,
+        preferred_days="all",
+    )
+    worker.site_config = {
+        "defaults": {
+            "compute_backends": {
+                "modal": {
+                    "budget": {"monthly_units": 300, "reserve_units": 0},
+                    "dispatch": {"max_claims_per_run": 5, "min_claims_per_run": 1},
+                }
+            }
+        }
+    }
+    worker.storage = SimpleNamespace(cas_capable=True, get_bytes=lambda key: None)
+    budget = Budget(month="2026-06")
+    budget.reserve("modal:old", "modal", 180.0)
+    monkeypatch.setattr(ew, "load_budget_cas", lambda storage: (budget, None))
+    monkeypatch.setattr(ew, "load_worker_telemetry", lambda storage: {"samples": []})
+    monkeypatch.setattr(worker, "_remaining_run_slots", lambda now=None: 2)
+
+    cap = worker._effective_max_claims([_queued("a"), _queued("b"), _queued("c")])
+
+    assert cap == 2
+    assert budget.month == month_key()
 
 
 def test_effective_max_claims_accounts_for_fixed_run_overhead(tmp_path, monkeypatch):
@@ -649,3 +682,55 @@ def test_characterization_filters_to_requested_uids(tmp_path, monkeypatch):
     assert summary["requested_episode_uids"] == ["b", "c"]
     assert summary["persist_results"] is False
     assert sorted(claimed) == [("b", False, False), ("c", False, False)]
+
+
+def test_characterization_no_persist_skips_claims_even_without_targeting(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a", "b"], max_claims=2)
+    worker.config = ExternalWorkerConfig(
+        backend="modal",
+        owner="modal:test",
+        max_claims=2,
+    )
+    claimed: list[str] = []
+    monkeypatch.setattr(
+        ew.work_leases,
+        "claim",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("benchmark path must not claim")),
+    )
+    monkeypatch.setattr(
+        ew,
+        "reserve_if_available",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("benchmark path must not reserve")),
+    )
+    monkeypatch.setattr(
+        ew,
+        "settle_reservation",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("benchmark path must not settle")),
+    )
+    monkeypatch.setattr(worker, "_telemetry_metadata", lambda item: {})
+    monkeypatch.setattr(worker, "_append_telemetry_sample", lambda **k: None)
+    monkeypatch.setattr(worker, "_city_for", lambda item: SimpleNamespace())
+    monkeypatch.setattr(
+        worker,
+        "_model_with_workers",
+        lambda city, tracker=None, *, num_workers=1: object(),
+    )
+
+    def _fake_run(item, tracker, *, model_num_workers=1, persist_results=True, allow_adopt=True):
+        claimed.append(item.episode_uid)
+        return False
+
+    monkeypatch.setattr(worker, "_run_transcribe_item", _fake_run)
+
+    summary = ew._run_characterization(
+        worker,
+        mode="sequential",
+        claim_count=2,
+        concurrency=1,
+        source_keys=(),
+        episode_uids=(),
+        persist_results=False,
+    )
+
+    assert summary["claimed"] == 2
+    assert sorted(claimed) == ["a", "b"]

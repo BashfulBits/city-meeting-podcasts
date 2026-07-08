@@ -32,9 +32,9 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   credits to absorb CPU/RAM billing, plus much higher sequential `max_claims_per_run` ceilings so the
   preferred-day planner can actually spend the monthly budget. The current production cap remains one
   active transcription at a time per container; the backlog lever here is sequential multi-claim
-  throughput, not in-container GPU concurrency. Also adds `scripts/compute/beam_canary.py`, a one-off
-  characterization wrapper used to collect live Beam telemetry without touching the production
-  schedule path.
+  throughput, not in-container GPU concurrency. Also adds `scripts/compute/beam_canary.py` and
+  `scripts/compute/modal_canary.py`, one-off characterization wrappers used to collect live Beam and
+  Modal telemetry without touching the production schedule path.
 - **Incomplete-source (short-media) quarantine lifecycle: publish with a disclaimer instead of
   churning findings or excluding real content
   ([GH#851](https://github.com/BashfulBits/city-meeting-podcasts/issues/851)).** Some cities publish

@@ -80,3 +80,22 @@ def test_backend_policy_prefers_nested_h14d_shape():
     assert policy.task.min_budget_units == 90
     assert policy.task.fixed_budget_units_per_run == 8
     assert policy.task.fixed_budget_units_per_claim == 12
+
+
+def test_backend_policy_rejects_invalid_preferred_days():
+    policy = backend_policy(
+        {
+            "defaults": {
+                "compute_backends": {
+                    "beam": {
+                        "dispatch": {
+                            "preferred_days": "weekday",
+                        }
+                    }
+                }
+            }
+        },
+        "beam",
+    )
+
+    assert policy.dispatch.preferred_days == "all"

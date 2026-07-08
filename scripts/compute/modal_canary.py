@@ -11,21 +11,13 @@ import os
 
 import modal
 
+from scripts.compute.modal_app import GPU
+from scripts.compute.modal_app import _runtime_env as _base_runtime_env
+
 APP_NAME = os.environ.get("CITYPODS_MODAL_CANARY_APP", "citypods-modal-worker-canary")
 SECRET_NAME = os.environ.get("CITYPODS_MODAL_SECRET", "citypods-modal-worker")
-GPU = os.environ.get("CITYPODS_MODAL_GPU", "L4")
-RUNTIME_ENV = {
-    "CITYPODS_WORKER_LEASE_TTL_SECONDS": os.environ.get(
-        "CITYPODS_WORKER_LEASE_TTL_SECONDS", "72000"
-    ),
-    "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND": os.environ.get(
-        "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND", "0.25"
-    ),
-    "CITYPODS_WORKER_MIN_GPU_SECONDS": os.environ.get("CITYPODS_WORKER_MIN_GPU_SECONDS", "60"),
-    "CITYPODS_WORKER_ASR_DEVICE": os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
-    "CITYPODS_WORKER_CPU_THREADS": os.environ.get("CITYPODS_WORKER_CPU_THREADS", "4"),
-    "CITYPODS_WORKER_GPU_TYPE": GPU,
-}
+
+RUNTIME_ENV = _base_runtime_env()
 _MODEL_DIR = "/opt/models/faster-whisper-large-v3-turbo"
 
 app = modal.App(APP_NAME)
