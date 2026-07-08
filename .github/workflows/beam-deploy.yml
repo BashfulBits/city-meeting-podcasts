@@ -24,7 +24,7 @@ jobs:
     env:
       BEAM_TOKEN: ${{ secrets.BEAM_TOKEN }}
       CITYPODS_BEAM_APP: citypods-beam-worker
-      CITYPODS_BEAM_GPU: A10G
+      CITYPODS_BEAM_GPU: RTX4090
       CITYPODS_BEAM_SCHEDULE: "@daily"
       CITYPODS_WORKER_LEASE_TTL_SECONDS: "72000"
     steps:
