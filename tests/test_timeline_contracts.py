@@ -1439,13 +1439,15 @@ class TestReconcileCrossSourceAudio:
             },
         }
         entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcA", "uid1"): "ok"}
 
         findings, touched = reconcile_cross_source_audio(
-            records_by_source, entity_of_source, {}, mutate=True
+            records_by_source, entity_of_source, status, mutate=True
         )
 
         assert any(f.check == "cross-source-audio-divergence" for f in findings)
-        assert touched  # not silently skipped as "already converged"
+        assert touched == {"srcB"}  # not silently skipped as "already converged"
+        assert records_by_source["srcB"]["uid1"]["chapters"] == [{"title": "Item 1", "start": 0.0}]
 
     def test_planning_fields_copied_from_canonical_to_followers(self):
         records_by_source = {
