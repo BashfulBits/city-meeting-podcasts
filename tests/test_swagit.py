@@ -41,13 +41,48 @@ def test_generic_body_filter():
     assert [e.guid for e in filter_by_body(eps, "Board of Adjustments")] == ["101"]
 
 
-def test_validate_requires_list_url_and_body():
+def test_validate_requires_list_url_or_list_urls():
     p = SwagitProvider()
     with pytest.raises(ValueError):
-        p.validate({"list_url": "x"})
-    with pytest.raises(ValueError):
         p.validate({"body": "x"})
+    p.validate({"list_url": "x"})  # body is optional (combined feeds omit it)
     p.validate({"list_url": "x", "body": "y"})
+    p.validate({"list_urls": ["x", "y"]})
+
+
+def test_fetch_episodes_merges_and_dedups_multiple_list_urls(monkeypatch):
+    import citypods.providers.swagit as sw
+
+    page_a = SAMPLE  # guids 100, 101, 102
+    page_b = b"""
+    <table>
+    <tr><td><a href="/videos/102">City Council Agenda Meetings</a></td>
+        <td nowrap> Apr 22, 2026 </td><td>03h</td></tr>
+    <tr><td><a href="/videos/200">City Council Work Session</a></td>
+        <td nowrap> May 28, 2026 </td><td>01h</td></tr>
+    </table>
+    """
+
+    class FakeResp:
+        def __init__(self, content):
+            self.status_code = 200
+            self.content = content
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, timeout=None):
+            return FakeResp(page_a if url == f"{ORIGIN}/a" else page_b)
+
+    monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
+    eps = SwagitProvider().fetch_episodes(
+        {"list_urls": [f"{ORIGIN}/a", f"{ORIGIN}/b"]}
+    )
+    assert [e.guid for e in eps] == ["100", "101", "102", "200"]  # 102 deduped
 
 
 class _Resp:
