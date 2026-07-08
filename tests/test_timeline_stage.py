@@ -359,6 +359,44 @@ class TestConfirmedDeadCadence:
         assert planner.calls == 0  # no re-download; flat gate wins over the flag
         assert stats.defer_reasons == {"dead-cooldown": 1}
 
+    def test_confirmed_partial_within_window_defers_without_planning(self, tmp_path):
+        # GH#851: a confirmed-partial (genuinely short) source is published, not withheld, but
+        # there's still nothing to gain from re-downloading/re-decoding it every run once its
+        # short length has reproduced — the same flat-cadence reasoning as confirmed-dead media.
+        from citypods.availability import CONFIRMED_PARTIAL
+
+        ep = self._dead_ep(CONFIRMED_PARTIAL, age_days=1)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 0
+        assert ep.timeline is None
+        assert stats.defer_reasons == {"partial-cooldown": 1}
+        assert stats.defer_samples == ["uid-g1:partial-cooldown"]
+
+    def test_confirmed_partial_past_window_replans(self, tmp_path):
+        from citypods.availability import CONFIRMED_PARTIAL
+
+        ep = self._dead_ep(CONFIRMED_PARTIAL, age_days=31)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1
+        assert stats.ran == 1
+
+    def test_suspected_partial_not_subject_to_flat_gate(self, tmp_path):
+        from citypods.availability import SUSPECTED_PARTIAL
+
+        ep = self._dead_ep(SUSPECTED_PARTIAL, age_days=0)
+        planner = _CountingPlanner()
+        stats = TimelineStage(planners=[planner]).process(
+            FakeProvider(), _city(), [ep], _ctx(tmp_path)
+        )
+        assert planner.calls == 1
+        assert stats.ran == 1
+
     def test_repair_flag_bypasses_exponential_backoff(self, tmp_path):
         from citypods.integrity import set_timeline_audio_integrity
 

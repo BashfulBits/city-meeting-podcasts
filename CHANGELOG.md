@@ -16,6 +16,26 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Incomplete-source (short-media) quarantine lifecycle: publish with a disclaimer instead of
+  churning findings or excluding real content
+  ([GH#851](https://github.com/BashfulBits/city-meeting-podcasts/issues/851)).** Some cities publish
+  a recording genuinely shorter than the meeting; this extends the GH#795 withheld/dead lifecycle
+  with a sibling `suspected_partial`/`confirmed_partial` verdict for media that is real and playable
+  but short, rather than empty/dead. The trigger is deliberately pre-trim and probe-only — the
+  decoded audio-stream end vs. `min(container_duration, ep.duration)` in `SilencePlanner.plan()` —
+  never the EDL or `audio_duration_served` (both were the buggy/fossilizing side of GH#702/#849) and
+  never the post-silence-trim served duration (which would conflate legitimate trimming, like
+  Arlington's real 13550s→6681s cut, with a truncated fetch). Confirmation reuses the existing
+  two-independent-fetch discriminator (`CONFIRM_THRESHOLD`) via its own `partial_confirmations`
+  counter; an unconfirmed observation withholds a "done" timeline exactly like a degenerate/
+  near-silent decode does today, so the retry loop itself proves reproducibility with no new bypass
+  logic anywhere. Once confirmed, planning proceeds normally (the EDL is already decoded-length-
+  bounded) and a stale `chapters_basis` is reset so `RemapStage` drops any provider-agenda chapters
+  beyond the real content on its next pass. `check_timeline_integrity` treats `confirmed_partial` as
+  terminal for repair (`media-partial`, mirroring `media-withheld`) and `TimelineStage` gates it on
+  the same flat 30-day recheck as confirmed-dead media. The feed keeps publishing the episode
+  (deliberately never added to `WITHHELD_STATES`) with a factual disclaimer prepended to its show
+  notes, linked to the source watch page when known.
 - **Unified storage-reclaim policy with a data-loss recovery backstop
   ([GH#496](https://github.com/BashfulBits/city-meeting-podcasts/issues/496)).** The weekly `audio-gc`
   workflow is now **"Storage reclaim"** and runs three backstops on its existing cron. (1) **Bucket

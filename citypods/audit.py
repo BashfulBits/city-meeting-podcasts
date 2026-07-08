@@ -691,6 +691,15 @@ def _classify_timeline_audio_duration(
     # the episode's lifecycle from here; the audit only records the observation.
     if ep.media_availability is not None and ep.media_availability.is_withheld():
         return "media-withheld", WARN, []
+
+    # Confirmed-partial (genuinely short/incomplete source, GH#851) is also terminal for repair:
+    # the episode is real and published (unlike withheld), its EDL is built from the same decoded
+    # length used to confirm it, and re-selecting timeline-replan/audio-rematerialize against a
+    # source we already know is short would just churn the same repair loop forever. The
+    # availability lane's flat recheck (stages.py) owns picking it back up if the city later
+    # posts a complete file.
+    if ep.media_availability is not None and ep.media_availability.is_confirmed_partial():
+        return "media-partial", WARN, []
     timeline_duration = _timeline_duration(ep)
     if timeline_duration is None:
         return "duration-probe-inconclusive", WARN, []
@@ -825,6 +834,7 @@ def _emit_timeline_audio_finding(
         "container-duration-drift",
         "duration-probe-inconclusive",
         "media-withheld",
+        "media-partial",
     }:
         return False
     if status == "rendered-duration-mismatch":
@@ -940,7 +950,13 @@ def check_timeline_integrity(
         # (no finding, no repair), the expensive full-download reconciliation is skipped (the stale
         # object will be ignored either way), and the §3 stored-field checks below are suppressed so
         # they cannot re-file the same EDL-vs-hosted-file mismatch under a different key.
+        # Confirmed-partial media (GH#851) gets the same reconciliation/§3 suppression — it is
+        # published, not stale, but re-selecting repair against a source already known to be short
+        # would just churn the same loop forever; see _classify_timeline_audio_duration.
         withheld = bool(ep.media_availability and ep.media_availability.is_withheld())
+        confirmed_partial = bool(
+            ep.media_availability and ep.media_availability.is_confirmed_partial()
+        )
         probe = probe_audio(ep) if probe_audio is not None else None
         status = severity = repair = None
         probe_divergence: float | None = None
@@ -951,7 +967,12 @@ def check_timeline_integrity(
             # re-measure it with a full download and let that (ground-truth) reading decide the
             # actual finding/repair — and separately alert if the two methods disagree, since
             # that means the header-only fast path's core assumption broke for this file.
-            if status != "ok" and not withheld and probe_audio_full is not None:
+            if (
+                status != "ok"
+                and not withheld
+                and not confirmed_partial
+                and probe_audio_full is not None
+            ):
                 full_probe = probe_audio_full(ep)
                 if full_probe is not None:
                     if probe is not None:
@@ -1007,7 +1028,12 @@ def check_timeline_integrity(
         # runs so a real mismatch is not silently dropped.
         served_dur = ep.audio_duration_served
         stored_integrity_stamped = False
-        if served_dur is not None and not probe_has_stream and not withheld:
+        if (
+            served_dur is not None
+            and not probe_has_stream
+            and not withheld
+            and not confirmed_partial
+        ):
             seg_total = sum(s.served_end - s.served_start for s in segs)
             delta = abs(seg_total - served_dur)
             end_delta = abs(segs[-1].served_end - served_dur)
