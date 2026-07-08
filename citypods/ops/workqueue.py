@@ -700,3 +700,31 @@ def overlay_leases(
         wi.lease_owner, wi.lease_expires = entry
         wi.state = "running"
     return list(items)
+
+
+def overlay_persisted_operational_state(
+    items: Sequence[WorkItem],
+    persisted: Sequence[WorkItem],
+) -> list[WorkItem]:
+    """Overlay non-derivable operational state from persisted ``work.json`` onto a freshly
+    derived manifest."""
+    persisted_by_key = {(it.source_key, it.episode_uid, it.work_class): it for it in persisted}
+    out: list[WorkItem] = []
+    for item in items:
+        if item.state == "done":
+            out.append(item)
+            continue
+        prev = persisted_by_key.get((item.source_key, item.episode_uid, item.work_class))
+        if prev is None:
+            out.append(item)
+            continue
+        if prev.lease_owner or prev.state in {"running", "backoff", "dead"}:
+            item.state = prev.state
+            item.lease_owner = prev.lease_owner
+            item.lease_expires = prev.lease_expires
+            item.last_error = prev.last_error
+            item.next_retry = prev.next_retry
+            item.observed_seconds = prev.observed_seconds
+            item.est_seconds = prev.est_seconds
+        out.append(item)
+    return out

@@ -12,14 +12,17 @@ from pathlib import Path
 from citypods.compute.budget import load_budget, load_budget_cas, storage_supports_cas
 from citypods.compute.policy import backend_policy
 from citypods.compute.worker_telemetry import load_worker_telemetry, telemetry_report
-from citypods.config import load_site_config
+from citypods.config import load_city_configs, load_site_config
 from citypods.ops.work_leases import read_lease
 from citypods.ops.workqueue import (
     BUCKET_FEED_VISIBLE,
     MANIFEST_NAME,
+    build_manifest,
     load_manifest,
     manifest_counts,
+    overlay_persisted_operational_state,
 )
+from citypods.records import load_records, source_key
 from citypods.report import _load_run_history
 from citypods.resources import format_bytes
 from citypods.state import resolve_state_dir
@@ -140,7 +143,16 @@ def build_report(
     with tempfile.TemporaryDirectory() as td:
         state_dir = Path(td)
         pull_state(storage, state_dir)
-        manifest = load_manifest(state_dir)
+        city_by_source = {}
+        for city in load_city_configs("config", site_config.get("defaults", {})):
+            city_by_source.setdefault(source_key(city), city)
+        manifest_sources = [
+            (key, city, load_records(state_dir, key)) for key, city in city_by_source.items()
+        ]
+        manifest = overlay_persisted_operational_state(
+            build_manifest(manifest_sources),
+            load_manifest(state_dir),
+        )
         counts = manifest_counts(manifest)
         pending = [
             wi for wi in manifest if wi.work_class == "transcript-asr" and wi.state != "done"

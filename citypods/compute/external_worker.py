@@ -30,7 +30,13 @@ from citypods.compute.worker_telemetry import (
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City, Episode
 from citypods.ops import work_leases
-from citypods.ops.workqueue import BUCKET_FEED_VISIBLE, WorkItem, load_manifest
+from citypods.ops.workqueue import (
+    BUCKET_FEED_VISIBLE,
+    WorkItem,
+    build_manifest,
+    load_manifest,
+    overlay_persisted_operational_state,
+)
 from citypods.records import (
     episode_to_record,
     load_records,
@@ -249,7 +255,7 @@ class ExternalTranscribeWorker:
             if self.config.work_class not in SUPPORTED_WORK_CLASSES:
                 raise ValueError(f"unsupported external worker class: {self.config.work_class!r}")
 
-            manifest = load_manifest(self.state_dir)
+            manifest = self._manifest()
             base_candidates = [
                 wi
                 for wi in manifest
@@ -448,6 +454,23 @@ class ExternalTranscribeWorker:
         applied (see ``work_leases.run_claim_loop``'s docstring for what else, beyond ordering,
         still differs between this worker and that reference loop)."""
         return work_leases.ordered_candidates(items, self.config.owner)
+
+    def _manifest(self) -> list[WorkItem]:
+        from citypods.ops.workqueue import BacklogPolicy
+
+        defaults = self.site_config.get("defaults") or {}
+        persisted = load_manifest(self.state_dir)
+        if not self._city_by_source:
+            return persisted
+        backlog_policy = None
+        if self.site_config.get("backlog_priority") or defaults.get("backlog_priority"):
+            backlog_policy = BacklogPolicy.from_site_config(self.site_config)
+        manifest_sources = [
+            (src, city, load_records(self.state_dir, src))
+            for src, city in self._city_by_source.items()
+        ]
+        derived = build_manifest(manifest_sources, policy=backlog_policy)
+        return overlay_persisted_operational_state(derived, persisted)
 
     def _city_for(self, item: WorkItem) -> City:
         if item.city_slug and item.city_slug in self._city_by_slug:

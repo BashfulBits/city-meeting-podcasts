@@ -20,6 +20,7 @@ from citypods.ops.workqueue import (
     manifest_counts,
     order,
     order_cities_by_policy,
+    overlay_persisted_operational_state,
     release,
     save_manifest,
     workitem_from_episode,
@@ -751,6 +752,40 @@ def test_manifest_save_load_round_trip(tmp_path):
     assert loaded[0].duration_hours == pytest.approx(3.25)
     assert loaded[1].published is None and loaded[1].state == "alignment-disabled"
     assert loaded[1].duration_hours == 0.0
+
+
+def test_overlay_persisted_operational_state_preserves_live_sidecar_only():
+    derived = [
+        WorkItem("s", "u1", "transcript-asr", state="queued", duration_hours=5.0),
+        WorkItem("s", "u2", "transcript-asr", state="done", duration_hours=1.0),
+    ]
+    persisted = [
+        WorkItem(
+            "s",
+            "u1",
+            "transcript-asr",
+            state="running",
+            duration_hours=0.0,
+            lease_owner="modal:abc",
+            est_seconds=123.0,
+        ),
+        WorkItem(
+            "s",
+            "u2",
+            "transcript-asr",
+            state="running",
+            duration_hours=0.0,
+            lease_owner="modal:def",
+        ),
+    ]
+
+    overlaid = overlay_persisted_operational_state(derived, persisted)
+
+    assert overlaid[0].state == "running"
+    assert overlaid[0].lease_owner == "modal:abc"
+    assert overlaid[0].duration_hours == pytest.approx(5.0)
+    assert overlaid[1].state == "done"
+    assert overlaid[1].lease_owner == ""
 
 
 def test_load_manifest_absent_returns_empty(tmp_path):
