@@ -185,6 +185,34 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   ambiguous cases unresolved (with a `cross-source-audio-divergence` finding) rather than
   guessing. A whole-catalog scan found Fort Worth was the only city with this specific
   majority-consensus-with-one-outlier config pattern; no other city needed the config fix.
+- **Cross-source-shard reconciliation didn't cover the field that actually caused #850's audio
+  divergence ([GH#854](https://github.com/BashfulBits/city-meeting-podcasts/issues/854)).**
+  `reconcile_cross_source_audio`'s equality check only hashed audio+integrity fields, so a uid
+  whose audio had already converged but whose `chapters`/`chapters_basis`/`timeline` still
+  disagreed across two feed shards was silently treated as "already converged" — masking the root
+  cause: `TimelineStage`/`ChaptersStage` plan once per source-key store and never recompute
+  ("chapters don't change once set"), so two stores sharing one physical uid can independently
+  derive different chapters/timeline for it, which is what produces a different `audio_spec_hash`
+  (and thus a different independently-encoded `audio_key`) on each side in the first place. Added
+  `chapters`/`chapters_basis`/`timeline` to both the divergence-detection signature and the
+  canonical-copy write-back, using the same canonical-selection rule already established for the
+  audio fields (live-probe `ok` wins, else newest `audio_encode_time`). Runs inside the same
+  existing audit pass, so it heals already-divergent uids on the next `--persist-timeline-integrity`
+  run with no separate backfill, and durably prevents future re-divergence (e.g. after a planner
+  version bump lands on only one shard) instead of the #850 fix having to keep correcting the same
+  symptom forever.
+- **Work-manifest persistence dropped `duration_hours`, making 100% of the feed-visible
+  transcript-asr backlog read as unknown-duration.** `_workitem_to_dict` / `_workitem_from_dict`
+  serialized every `WorkItem` field *except* `duration_hours` — a computed ordering input (from
+  `audio.duration_served`), not one of the inert reserved fields. `build_manifest` set it correctly
+  in memory, but `save_manifest`→`load_manifest` silently reset it to `0.0` on every round trip, so
+  every consumer that reads the persisted `state/work.json` (the `long_first` comparator, the
+  `asr-worker-report` duration band) saw *unknown duration* for the entire backlog even though the
+  records carried a real served duration (confirmed by the pending-unknown diagnostic: 2292/2391
+  sampled records had `audio.duration_served` populated while the manifest reported them all as 0h).
+  This is what made `long_first` float nothing and kept the duration band pinned at 2393/2393
+  unknown across every rebuild. `duration_hours` now round-trips; the manifest self-heals on the
+  next `build_manifest`+`save_manifest` (no backfill needed — it is rederived from records each run).
 - **Owned-block merge: a better remote plan no longer silently drops an owning lane's just-written
   artifact.** `_preserve_remote_planning_if_better` (part of `merge_preserving_foreign`) overwrote
   *all* artifact blocks — including `transcript` — from remote whenever remote's timeline/source
