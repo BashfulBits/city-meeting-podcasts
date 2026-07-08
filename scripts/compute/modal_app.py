@@ -71,13 +71,16 @@ image = (
         "cd /opt/citypods && pip install '.[storage,asr-transcribe]' -c constraints/asr.txt"
     )
     # Bake the pinned Whisper model into the image (fast cold start; same repo+revision
-    # as the runner, sourced from the canonical citypods.asr constants).
+    # as the runner, sourced from the canonical citypods.asr constants). The worker secret
+    # bundle carries HF_TOKEN, so this step authenticates instead of hitting HF Hub
+    # anonymously and risking its unauthenticated rate limit on rebuilds (GH#811).
     .run_commands(
         'python -c "'
         "from citypods.asr import HF_PREFERRED, HF_PREFERRED_REVISION; "
         "from huggingface_hub import snapshot_download; "
         f"snapshot_download(HF_PREFERRED, revision=HF_PREFERRED_REVISION, local_dir='{_MODEL_DIR}')"
-        '"'
+        '"',
+        secrets=[modal.Secret.from_name(SECRET_NAME)],
     )
     .env({**RUNTIME_ENV, "ASR_MODEL_PATH": _MODEL_DIR})
     # Fresh application code at runtime (sys.path prepends this over the baked copy).

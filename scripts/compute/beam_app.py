@@ -179,6 +179,10 @@ image = (
     # stages citypods' source for the runtime `from citypods.compute.external_worker import
     # run_worker` import; nothing else needs it.
     .add_local_path("citypods/")
+    # Build-time secret binding for the model-bake step below -- add_commands() has no
+    # access to the runtime `secrets=RUNTIME_SECRETS` binding on @schedule, so without this
+    # the snapshot_download() in _BAKE_MODEL_CMD hits HF Hub unauthenticated (GH#811).
+    .with_secrets(["HF_TOKEN"])
     .add_commands(
         [
             "apt-get update -y && apt-get install -y --no-install-recommends ffmpeg",
