@@ -834,6 +834,7 @@ def _emit_timeline_audio_finding(
         "container-duration-drift",
         "duration-probe-inconclusive",
         "media-withheld",
+        "media-partial",
     }:
         return False
     if status == "rendered-duration-mismatch":
