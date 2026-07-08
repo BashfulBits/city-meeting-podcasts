@@ -1092,7 +1092,7 @@ class TestTranscriptStageASR:
         ep.duration = 7200
         ep.audio_duration_served = 7200
 
-        with patch("citypods.stages._probe_duration_secs", return_value=1800.0):
+        with patch("citypods.stages._probe_served_duration_secs", return_value=1800.0):
             _run_asr(tmp_path, ep)
 
         out = capsys.readouterr().out
@@ -1120,7 +1120,7 @@ class TestTranscriptStageASR:
         )
         ep.audio_duration_served = 7200.0
 
-        with patch("citypods.stages._probe_duration_secs", return_value=1800.0):
+        with patch("citypods.stages._probe_served_duration_secs", return_value=1800.0):
             _run_asr(tmp_path, ep)
 
         out = capsys.readouterr().out
@@ -1310,7 +1310,7 @@ class TestTranscriptStageASR:
         with (
             patch("citypods.stages.asr_mod", fake_asr),
             patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
-            patch("citypods.stages._probe_duration_secs", return_value=None),
+            patch("citypods.stages._probe_served_duration_secs", return_value=None),
         ):
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
 
@@ -1331,7 +1331,7 @@ class TestTranscriptStageASR:
         with (
             patch("citypods.stages.asr_mod", fake_asr),
             patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
-            patch("citypods.stages._probe_duration_secs", return_value=5 * 3600),
+            patch("citypods.stages._probe_served_duration_secs", return_value=5 * 3600),
         ):
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], ctx)
 

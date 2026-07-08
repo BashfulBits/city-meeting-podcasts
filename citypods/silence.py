@@ -36,6 +36,18 @@ DEFER_CACHE_STOP = "deferred_cache_stop"
 DEFER_DECODE_UNAVAILABLE = "deferred_decode_unavailable"
 DEFER_DEGENERATE_TIMELINE = "deferred_degenerate_timeline"
 DEFER_NATIVE_GATE = "deferred_native_gate"
+DEFER_PARTIAL_SOURCE = "deferred_partial_source"
+
+# GH#851: how far the decoded audio-stream end may fall short of the source's own advertised
+# duration before it counts as evidence of a genuinely incomplete/truncated fetch — never the
+# EDL or audio_duration_served (both fossilize / were the buggy side of GH#702; see #847/#849),
+# and never the *served* (post-silence-trim) duration compared against provider RSS metadata
+# (conflates legitimate silence-trimming with truncation). Both sides of this ratio come from
+# the *same* local ffprobe/ffmpeg read of the *same* downloaded bytes, before any trimming
+# decision is made, so a healthy/complete fetch should track close to 1.0; this is deliberately
+# not the encode-time `_TRUNCATION_MIN_RATIO` in media.py (0.5), which guards a different,
+# already-proven threshold against served-vs-feed-declared duration and is untouched by this.
+_SOURCE_TRUNCATION_MIN_RATIO = 0.9
 
 
 def _defer_timeline_plan(ep, reason: str, *, failure_code: str | None = None) -> None:
@@ -347,11 +359,14 @@ def _availability_profile(ctx) -> str:
     )
 
 
-def _stamp_availability(ep, obs_kind: str, profile: str, *, reason: str = "") -> None:
+def _stamp_availability(ep, obs_kind: str, profile: str, *, reason: str = ""):
     """Fold one media observation into the episode's durable availability verdict (H16 PR3).
 
     ``classify`` returns ``None`` only for a transport failure with no prior verdict; in that case
     the episode is left unclassified so the normal backoff/circuit machinery keeps owning retries.
+    Returns the resulting verdict (or ``None``) so a caller that needs to act on the *new* state
+    immediately (GH#851: whether a short-source observation just reached confirmed_partial) does
+    not have to re-read ``ep.media_availability`` and reason about whether it changed.
     """
     from citypods import availability
 
@@ -362,6 +377,7 @@ def _stamp_availability(ep, obs_kind: str, profile: str, *, reason: str = "") ->
     verdict = availability.classify(ep.media_availability, obs)
     if verdict is not None:
         ep.media_availability = verdict
+    return verdict
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +572,7 @@ class SilencePlanner:
                 _defer_timeline_plan(ep, DEFER_NATIVE_GATE)
                 return None  # deferred: budget/queue pressure, not a real failure
         try:
-            silences, _container_duration, decoded_duration = detect_silences(
+            silences, container_duration, decoded_duration = detect_silences(
                 detect_url,
                 ffmpeg_binary=ffmpeg_binary,
                 noise_db=ctx.silence_noise_db,
@@ -592,7 +608,49 @@ class SilencePlanner:
                 ep, "silent", profile, reason="successful decode is near-totally silent"
             )
         else:
-            _stamp_availability(ep, "playable", profile)
+            # GH#851: does the decode fall far short of what the source itself advertises? Both
+            # sides here come from the *same* local read of the *same* downloaded bytes, before
+            # any silence-trim decision — never the served/EDL clock (that's the planner's own
+            # output, and the GH#702/#849 fossil class) and never *only* provider RSS metadata
+            # (which can be imprecise/stale on its own). ``container_duration`` can itself
+            # overstate the real stream for reasons unrelated to truncation (GH#702: HLS manifest
+            # overstatement, a direct MP4 whose video track outlasts its audio) — taking the
+            # smaller of container/provider-declared duration when both are known means either
+            # one individually overstating cannot manufacture a false positive.
+            candidates = [d for d in (container_duration, ep.duration) if d and d > 0]
+            expected_duration = min(candidates) if candidates else None
+            is_partial = (
+                expected_duration is not None
+                and probed_duration < _SOURCE_TRUNCATION_MIN_RATIO * expected_duration
+            )
+            if is_partial:
+                verdict = _stamp_availability(
+                    ep,
+                    "partial",
+                    profile,
+                    reason=(
+                        f"decoded {probed_duration:.1f}s is only "
+                        f"{probed_duration / expected_duration:.0%} of the source-advertised "
+                        f"{expected_duration:.1f}s"
+                    ),
+                )
+                if verdict is None or not verdict.is_confirmed_partial():
+                    # Not yet confirmed: withhold a "done" timeline (mirrors the degenerate/
+                    # near-silent case below) so the episode stays on the normal retry/backoff
+                    # cadence — the next independent fetch either recovers (transient) or
+                    # reproduces (confirms), exactly the discriminator GH#851 calls for.
+                    _defer_timeline_plan(
+                        ep, DEFER_PARTIAL_SOURCE, failure_code="timeline-partial-source"
+                    )
+                    return None
+                # Newly (or already) confirmed: force one chapter re-remap pass so any
+                # provider-agenda chapters beyond the real decoded length get dropped by
+                # RemapStage against the now-current (decoded-length) EDL, rather than staying
+                # stuck as already-"served" from an earlier, longer-seeming plan.
+                if ep.chapters_basis.startswith("served"):
+                    ep.chapters_basis = "source:s0"
+            else:
+                _stamp_availability(ep, "playable", profile)
 
         # The EDL source clock must be the decoded audio-stream end. Container/provider duration is
         # useful diagnostic metadata, but GH#702 proved it is unsafe as planning authority: a later
@@ -636,7 +694,7 @@ class SilencePlanner:
             current_version = current.version if current is not None else "none"
             existing_basis = existing_src.duration_basis if existing_src is not None else "none"
             container_label = (
-                f"{_container_duration:.3f}s" if _container_duration is not None else "None"
+                f"{container_duration:.3f}s" if container_duration is not None else "None"
             )
             decoded_label = f"{decoded_duration:.3f}s" if decoded_duration is not None else "None"
             repair_selected = needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)

@@ -7,11 +7,13 @@ from datetime import UTC, datetime
 from citypods.availability import (
     AVAILABLE,
     CONFIRMED_EMPTY,
+    CONFIRMED_PARTIAL,
     DETECTOR_VERSION,
     INVALID,
     MISSING,
     RECOVERED,
     SUSPECTED_EMPTY,
+    SUSPECTED_PARTIAL,
     MediaAvailability,
     Observation,
     classify,
@@ -38,6 +40,10 @@ def _silent(fp="fp", profile="p1"):
 
 def _playable(fp="fp", profile="p1"):
     return Observation(kind="playable", fingerprint=fp, profile=profile)
+
+
+def _partial(fp="fp", profile="p1"):
+    return Observation(kind="partial", fingerprint=fp, profile=profile)
 
 
 # --- fingerprint ---------------------------------------------------------------------------------
@@ -225,6 +231,38 @@ def test_confirm_then_recover_lifecycle_through_records_and_feed():
     assert enclosure_url(ep, "video") == ep.video_url
 
 
+def test_confirm_partial_lifecycle_through_records_and_feed():
+    """GH#851's analogous loop: two short-source fetches confirm-partial + publish with a
+    disclaimer (record round-tripping in between, enclosure kept unlike withheld), then a
+    full-length fetch recovers and clears the disclaimer."""
+    from citypods.feeds import enclosure_url, episode_notes_html
+    from citypods.records import episode_to_record, record_to_episode
+
+    ep = _ep(media_kind="direct")
+    fp = source_fingerprint(ep, "p1")
+
+    # Run 1: short → suspected (NOT withheld), persists across a record round-trip.
+    ep.media_availability = classify(None, _partial(fp=fp))
+    ep = record_to_episode(episode_to_record(ep))
+    assert ep.media_availability.state == SUSPECTED_PARTIAL
+    assert ep.media_availability.partial_confirmations == 1
+    assert enclosure_url(ep, "video") == ep.video_url  # still published
+    assert "incomplete" not in episode_notes_html(ep)  # not yet confirmed — no disclaimer
+
+    # Run 2: short again on an independent fetch → confirmed, still published, now badged.
+    ep.media_availability = classify(ep.media_availability, _partial(fp=fp))
+    ep = record_to_episode(episode_to_record(ep))
+    assert ep.media_availability.state == CONFIRMED_PARTIAL
+    assert ep.media_availability.partial_confirmations == 2
+    assert enclosure_url(ep, "video") == ep.video_url
+    assert "incomplete" in episode_notes_html(ep)
+
+    # Run 3: the city posts the complete recording → recovers, disclaimer clears.
+    ep.media_availability = classify(ep.media_availability, _playable(fp=fp))
+    assert ep.media_availability.state == AVAILABLE
+    assert "incomplete" not in episode_notes_html(ep)
+
+
 def test_is_confirmed_dead_covers_durable_states_not_suspected():
     from citypods.availability import INVALID
 
@@ -239,3 +277,97 @@ def test_is_confirmed_dead_covers_durable_states_not_suspected():
     # An operator override drives this gate like every other one.
     overridden = MediaAvailability(state=CONFIRMED_EMPTY, operator_override=AVAILABLE)
     assert not overridden.is_confirmed_dead()
+
+
+# --- GH#851: partial/short-source lifecycle -------------------------------------------------------
+
+
+def test_first_partial_fetch_is_only_suspected_and_not_withheld():
+    out = classify(None, _partial())
+    assert out is not None
+    assert out.state == SUSPECTED_PARTIAL
+    assert out.partial_confirmations == 1
+    assert out.silent_confirmations == 0
+    assert out.is_suspected_partial()
+    assert not out.is_confirmed_partial()
+    # Real, playable content — must never be excluded from the feed like empty/dead media.
+    assert not out.is_withheld()
+
+
+def test_second_independent_partial_fetch_confirms():
+    first = classify(None, _partial())
+    second = classify(first, _partial())
+    assert second.state == CONFIRMED_PARTIAL
+    assert second.partial_confirmations == 2
+    assert second.is_confirmed_partial()
+    assert not second.is_withheld()
+
+
+def test_partial_and_silent_confirmations_do_not_conflate():
+    # A silent observation must not advance (or be advanced by) partial confirmations, and
+    # vice versa — they are evidence for different verdicts and share no counter.
+    silent_then_partial = classify(classify(None, _silent()), _partial())
+    assert silent_then_partial.state == SUSPECTED_PARTIAL
+    assert silent_then_partial.partial_confirmations == 1
+    assert silent_then_partial.silent_confirmations == 0
+
+    partial_then_silent = classify(classify(None, _partial()), _silent())
+    assert partial_then_silent.state == SUSPECTED_EMPTY
+    assert partial_then_silent.silent_confirmations == 1
+    assert partial_then_silent.partial_confirmations == 0
+
+
+def test_playable_after_suspected_partial_recovers_without_confirming():
+    # A transient short fetch that then comes back full-length must not accumulate toward
+    # confirmation — this is the "transient recovers" acceptance criterion (GH#851).
+    suspected = classify(None, _partial())
+    recovered = classify(suspected, _playable())
+    assert recovered.state == AVAILABLE  # not RECOVERED: suspected_partial was never withheld
+    assert recovered.partial_confirmations == 0
+
+
+def test_transport_failure_never_advances_partial_confirmation():
+    suspected = classify(None, _partial())
+    after = classify(suspected, Observation(kind="transport_failed"))
+    assert after.state == SUSPECTED_PARTIAL  # unchanged
+    assert after.partial_confirmations == 1  # not advanced
+
+
+def test_new_source_bytes_retire_prior_partial_confirmations():
+    ep_fp_a = classify(None, _partial(fp="a"))
+    retired = classify(ep_fp_a, _partial(fp="b"))
+    assert retired.state == SUSPECTED_PARTIAL  # restarted, not confirmed
+    assert retired.partial_confirmations == 1
+
+
+def test_is_confirmed_partial_respects_operator_override():
+    confirmed = MediaAvailability(state=CONFIRMED_PARTIAL)
+    assert confirmed.is_confirmed_partial()
+    overridden = MediaAvailability(state=CONFIRMED_PARTIAL, operator_override=AVAILABLE)
+    assert not overridden.is_confirmed_partial()
+
+
+def test_partial_states_are_valid_operator_overrides():
+    from citypods.availability import OVERRIDE_STATES
+
+    assert SUSPECTED_PARTIAL in OVERRIDE_STATES
+    assert CONFIRMED_PARTIAL in OVERRIDE_STATES
+
+
+def test_partial_states_excluded_from_withheld_and_confirmed_dead():
+    from citypods.availability import CONFIRMED_DEAD_STATES, WITHHELD_STATES
+
+    assert SUSPECTED_PARTIAL not in WITHHELD_STATES
+    assert CONFIRMED_PARTIAL not in WITHHELD_STATES
+    assert CONFIRMED_PARTIAL not in CONFIRMED_DEAD_STATES
+
+
+def test_confirmed_partial_enclosure_stays_published():
+    """Unlike withheld media, a confirmed-partial episode keeps its enclosure (GH#851: publish
+    with a disclaimer, don't exclude)."""
+    from citypods.feeds import enclosure_url
+
+    ep = _ep(media_kind="direct")
+    ep.hosted_audio_url = "https://cdn.example.com/hosted.m4a"
+    ep.media_availability = MediaAvailability(state=CONFIRMED_PARTIAL)
+    assert enclosure_url(ep, "audio") == ep.hosted_audio_url

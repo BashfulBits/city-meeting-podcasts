@@ -45,9 +45,16 @@ CONFIRMED_EMPTY = "confirmed_empty"
 MISSING = "missing"
 INVALID = "invalid"
 RECOVERED = "recovered"
+# GH#851: a real, playable recording whose decoded length falls well short of what the source
+# itself advertises (container/manifest header, pre-silence-trim) — a genuinely incomplete/
+# truncated upload, not a silence-trimmed one. Deliberately NOT in WITHHELD_STATES: unlike
+# empty/dead media this is real content worth publishing, just annotated rather than excluded.
+SUSPECTED_PARTIAL = "suspected_partial"
+CONFIRMED_PARTIAL = "confirmed_partial"
 
 # States whose media must be kept out of feeds and media-affecting stages. ``available`` and
 # ``recovered`` are playable; the rest are withheld until a fresh successful fetch recovers them.
+# suspected_partial/confirmed_partial are deliberately excluded (GH#851) — see above.
 WITHHELD_STATES: frozenset[str] = frozenset({SUSPECTED_EMPTY, CONFIRMED_EMPTY, MISSING, INVALID})
 
 # The durable "confirmed dead" subset of the withheld states: media positively established as empty
@@ -57,15 +64,22 @@ WITHHELD_STATES: frozenset[str] = frozenset({SUSPECTED_EMPTY, CONFIRMED_EMPTY, M
 CONFIRMED_DEAD_STATES: frozenset[str] = frozenset({CONFIRMED_EMPTY, MISSING, INVALID})
 
 # All states an operator override may legitimately force. ``available`` lets an operator clear a
-# false positive; the withheld states let one force-withhold a known-bad recording.
-OVERRIDE_STATES: frozenset[str] = WITHHELD_STATES | frozenset({AVAILABLE, RECOVERED})
+# false positive; the withheld states let one force-withhold a known-bad recording; the partial
+# states let one force-annotate/clear a short-source verdict.
+OVERRIDE_STATES: frozenset[str] = WITHHELD_STATES | frozenset(
+    {AVAILABLE, RECOVERED, SUSPECTED_PARTIAL, CONFIRMED_PARTIAL}
+)
 
-# Two independent successful silent fetches harden suspicion into a confirmed verdict.
+# Two independent successful silent fetches harden suspicion into a confirmed verdict. Reused
+# as-is (GH#851) for the partial-source confirmation gate: a transient truncated fetch rarely
+# reproduces identically on an independent retry, a genuinely incomplete source does — the same
+# discriminator, so the same threshold.
 CONFIRM_THRESHOLD = 2
 
 # Observation kinds the classifier accepts.
 SILENT = "silent"  # successful fetch+decode, judged (near-)totally silent / degenerate
 PLAYABLE = "playable"  # successful fetch+decode with real audio
+PARTIAL = "partial"  # successful fetch+decode, real audio, but far shorter than source-advertised
 TRANSPORT_FAILED = "transport_failed"  # 403/429/timeout/truncation — says nothing about content
 DEAD = "dead"  # provider reports no usable media exists (MediaUnavailable, dead container)
 ABSENT = "missing"  # the source URL resolved to nothing / an empty page
@@ -93,6 +107,10 @@ class MediaAvailability:
     profile: str = ""
     last_check: str | None = None
     silent_confirmations: int = 0
+    # GH#851: independent-fetch confirmation count for the partial/short-source verdict, tracked
+    # separately from silent_confirmations since the two are evidence for different verdicts and
+    # must not be conflated by a single shared counter.
+    partial_confirmations: int = 0
     # Pointer to the bounded diagnostic evidence bundle (PR3b). None until evidence is emitted.
     evidence_ref: str | None = None
     # An operator-forced state that supersedes ``state`` for gating, plus when/why it was set.
@@ -110,6 +128,20 @@ class MediaAvailability:
         """True for the durable withheld states (confirmed-empty / missing / invalid) that get a
         flat long recheck cadence. ``suspected_empty`` is withheld but not yet confirmed dead."""
         return self.effective_state() in CONFIRMED_DEAD_STATES
+
+    def is_confirmed_partial(self) -> bool:
+        """True once a short/incomplete source has reproduced on two independent fetches
+        (GH#851). Not withheld — the episode still publishes, with a disclaimer — but terminal
+        for timeline-audio repair and eligible for the same flat recheck cadence as confirmed-dead
+        media (:func:`citypods.records.confirmed_dead_recheck_due` is state-agnostic; callers gate
+        on this accessor first, exactly as they do for ``is_confirmed_dead``)."""
+        return self.effective_state() == CONFIRMED_PARTIAL
+
+    def is_suspected_partial(self) -> bool:
+        """True for a single, not-yet-confirmed short-source observation — still on the normal
+        exponential backoff/retry cadence, not yet eligible for the flat recheck or publish-with-
+        disclaimer treatment."""
+        return self.effective_state() == SUSPECTED_PARTIAL
 
 
 @dataclass(frozen=True)
@@ -226,7 +258,12 @@ def classify(prior: MediaAvailability | None, obs: Observation) -> MediaAvailabi
     evidence = base.evidence_ref if base else None
 
     def build(
-        state: str, *, confirmations: int, reason: str, recovered_at: str | None
+        state: str,
+        *,
+        silent_confirmations: int,
+        partial_confirmations: int,
+        reason: str,
+        recovered_at: str | None,
     ) -> MediaAvailability:
         return MediaAvailability(
             state=state,
@@ -235,7 +272,8 @@ def classify(prior: MediaAvailability | None, obs: Observation) -> MediaAvailabi
             source_fingerprint=fingerprint,
             profile=profile,
             last_check=now,
-            silent_confirmations=confirmations,
+            silent_confirmations=silent_confirmations,
+            partial_confirmations=partial_confirmations,
             evidence_ref=evidence,
             operator_override=override,
             operator_reason=override_reason,
@@ -245,7 +283,8 @@ def classify(prior: MediaAvailability | None, obs: Observation) -> MediaAvailabi
     if obs.kind == DEAD:
         return build(
             INVALID,
-            confirmations=0,
+            silent_confirmations=0,
+            partial_confirmations=0,
             reason=obs.reason or "provider reports no usable media",
             recovered_at=base.recovered_at if base else None,
         )
@@ -253,7 +292,8 @@ def classify(prior: MediaAvailability | None, obs: Observation) -> MediaAvailabi
     if obs.kind == ABSENT:
         return build(
             MISSING,
-            confirmations=0,
+            silent_confirmations=0,
+            partial_confirmations=0,
             reason=obs.reason or "source resolved to no media",
             recovered_at=base.recovered_at if base else None,
         )
@@ -268,7 +308,25 @@ def classify(prior: MediaAvailability | None, obs: Observation) -> MediaAvailabi
         )
         return build(
             state,
-            confirmations=confirmations,
+            silent_confirmations=confirmations,
+            partial_confirmations=0,  # silence is not partial-source evidence
+            reason=reason,
+            recovered_at=base.recovered_at if base else None,
+        )
+
+    if obs.kind == PARTIAL:
+        confirmations = (base.partial_confirmations if base else 0) + 1
+        state = CONFIRMED_PARTIAL if confirmations >= CONFIRM_THRESHOLD else SUSPECTED_PARTIAL
+        reason = obs.reason or (
+            f"short source confirmed on {confirmations} independent fetches"
+            if state == CONFIRMED_PARTIAL
+            else "decoded audio far shorter than source-advertised on a successful fetch "
+            "(awaiting confirmation)"
+        )
+        return build(
+            state,
+            silent_confirmations=0,  # not silence evidence
+            partial_confirmations=confirmations,
             reason=reason,
             recovered_at=base.recovered_at if base else None,
         )
@@ -278,13 +336,15 @@ def classify(prior: MediaAvailability | None, obs: Observation) -> MediaAvailabi
         if prior_withheld:
             return build(
                 RECOVERED,
-                confirmations=0,
+                silent_confirmations=0,
+                partial_confirmations=0,
                 reason=obs.reason or "playable audio fetched after a prior withheld verdict",
                 recovered_at=now,
             )
         return build(
             AVAILABLE,
-            confirmations=0,
+            silent_confirmations=0,
+            partial_confirmations=0,
             reason=obs.reason or "playable audio",
             recovered_at=base.recovered_at if base else None,
         )

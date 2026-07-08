@@ -17,6 +17,7 @@ from citypods.media import (
     _ENCODE_RSS_COPY_BYTES,
     _ENCODE_RSS_MAX_BYTES,
     _ENCODE_RSS_UNKNOWN_BYTES,
+    AudioDurationProbe,
     SourceCache,
     _concat_local_sources,
     _concat_render_timeline,
@@ -25,6 +26,7 @@ from citypods.media import (
     _probe_audio_duration_details,
     _probe_audio_duration_header,
     _probe_duration_secs,
+    _probe_served_duration_secs,
     encode_args,
     estimate_encode_rss_bytes,
     materialize_audio,
@@ -535,7 +537,7 @@ def test_credit_path_does_not_download_hosted_audio_for_duration(tmp_path, monke
     def _unexpected_probe(*_args, **_kwargs):
         raise AssertionError("credit/reuse path should not probe hosted audio")
 
-    monkeypatch.setattr("citypods.media._probe_duration_secs", _unexpected_probe)
+    monkeypatch.setattr("citypods.media._probe_served_duration_secs", _unexpected_probe)
 
     stats = _materialize(city, [ep], store, FakeFfmpeg())
 
@@ -1286,6 +1288,37 @@ def test_probe_audio_duration_details_reports_ffprobe_error(tmp_path):
     assert probe.probe_error == "ffprobe-error"
 
 
+def test_probe_served_duration_prefers_stream_clock_over_container(monkeypatch, tmp_path):
+    """issue #849: audio_duration_served must be sourced from the exact stream-sample clock, not
+    the container's advisory format.duration — the two legitimately disagree by up to ~1s of pure
+    AAC/mvhd rounding, and that gap was leaking into the served field."""
+    import citypods.media as media
+
+    monkeypatch.setattr(
+        media,
+        "_probe_audio_duration_details",
+        lambda *_a, **_k: AudioDurationProbe(
+            container_duration=3300.8,
+            stream_sample_duration=3300.0,
+            stream_duration_source="stream-duration-ts",
+        ),
+    )
+
+    assert _probe_served_duration_secs(tmp_path / "audio.m4a") == pytest.approx(3300.0)
+
+
+def test_probe_served_duration_falls_back_to_container_without_stream_timing(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setattr(
+        media,
+        "_probe_audio_duration_details",
+        lambda *_a, **_k: AudioDurationProbe(container_duration=1800.0),
+    )
+
+    assert _probe_served_duration_secs(tmp_path / "audio.m4a") == pytest.approx(1800.0)
+
+
 # ---------------------------------------------------------------------------
 # Header-only (range-read) duration probe
 # ---------------------------------------------------------------------------
@@ -1605,12 +1638,12 @@ def test_audio_duration_served_set_from_probe(tmp_path):
         probed_values.append(v)
         return v
 
-    original = media._probe_duration_secs
-    media._probe_duration_secs = _fake_probe
+    original = media._probe_served_duration_secs
+    media._probe_served_duration_secs = _fake_probe
     try:
         _materialize(city, eps, _store(tmp_path), ff)
     finally:
-        media._probe_duration_secs = original
+        media._probe_served_duration_secs = original
 
     assert probed_values == [7200.5]
     assert eps[0].audio_duration_served == pytest.approx(7200.5)
@@ -1625,7 +1658,7 @@ def test_audio_duration_served_is_probed_hosted_duration(monkeypatch, tmp_path):
 
     ep = _ep("g1")
     ep.timeline = _edited_timeline()  # EDL total 3300.0
-    monkeypatch.setattr(media, "_probe_duration_secs", lambda *args, **kwargs: 3300.8)
+    monkeypatch.setattr(media, "_probe_served_duration_secs", lambda *args, **kwargs: 3300.8)
 
     stats = _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg())
 
@@ -1724,12 +1757,12 @@ def test_audio_duration_served_fallback_when_probe_fails(tmp_path):
     def _failing_probe(path, ffmpeg_binary="ffmpeg"):
         return None
 
-    original = media._probe_duration_secs
-    media._probe_duration_secs = _failing_probe
+    original = media._probe_served_duration_secs
+    media._probe_served_duration_secs = _failing_probe
     try:
         _materialize(_city(), [ep], _store(tmp_path), FakeFfmpeg())
     finally:
-        media._probe_duration_secs = original
+        media._probe_served_duration_secs = original
 
     assert ep.audio_duration_served == pytest.approx(3600.0)
 
@@ -2535,7 +2568,7 @@ def test_materialize_backs_off_a_truncated_encode_instead_of_hosting_it(tmp_path
     ep = _ep("g1")
     ep.duration = 7200  # feed says 2 hours
     monkeypatch.setattr(
-        "citypods.media._probe_duration_secs", lambda *a, **k: 5.0
+        "citypods.media._probe_served_duration_secs", lambda *a, **k: 5.0
     )  # but ~5s landed
     store = _store(tmp_path)
     stats = _materialize(_city(), [ep], store, FakeFfmpeg())

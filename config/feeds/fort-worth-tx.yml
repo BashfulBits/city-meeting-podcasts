@@ -3,9 +3,14 @@ city: fort-worth-tx
 provider: granicus
 source:
   # Fort Worth spreads bodies across views; ingest the populated ones for full coverage.
+  # Must list the same view_ids, in the same order, as every per-board Fort Worth feed
+  # (e.g. fort-worth-tx-city-council.yml) — source_key() hashes feed_urls verbatim (GH#850),
+  # so a mismatched list here silently splits this feed onto its own record store instead of
+  # sharing one with the per-board feeds, and cross-source audio-field drift follows.
   feed_urls:
     - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
     - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
     - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
     - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
 podcast_title: "Fort Worth — All Meetings"

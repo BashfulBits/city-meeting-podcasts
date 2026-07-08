@@ -12,8 +12,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from citypods.audit import check_timeline_integrity
-from citypods.availability import CONFIRMED_EMPTY, MISSING, MediaAvailability
+from citypods.audit import (
+    ERROR,
+    check_timeline_integrity,
+    reconcile_cross_source_audio,
+    sync_timeline_integrity_mutations,
+)
+from citypods.availability import CONFIRMED_EMPTY, CONFIRMED_PARTIAL, MISSING, MediaAvailability
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
     REPAIR_TIMELINE_REPLAN,
@@ -396,6 +401,76 @@ class TestDurationMismatch:
         )
 
         assert fs == []
+
+    def test_confirmed_partial_is_terminal_no_finding(self):
+        # GH#851: same stale hosted/EDL mismatch as the control above, but the episode is a
+        # confirmed-short/incomplete source. Classification is forced to `media-partial`: no
+        # finding, no repair — but unlike withheld, the episode is NOT excluded (real content).
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_PARTIAL))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=50.8,
+                stream_sample_duration=50.8,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+            mutate_integrity=True,
+        )
+
+        assert fs == []
+        assert diagnostics[0]["check"] == "media-partial"
+        assert diagnostics[0]["repair"] == []
+        assert diagnostics[0]["repair_selected"] is False
+        assert diagnostics[0]["media_withheld"] is False  # confirmed_partial is not withheld
+        assert ep.integrity == {}  # no repair stamped for a source already known to be short
+
+    def test_confirmed_partial_suppresses_cheap_stored_field_check(self):
+        # Same suppression as withheld (GH#851): a confirmed-partial episode must not re-file
+        # timeline-duration-mismatch from the cheap §3 stored-field fallback either.
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_PARTIAL))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.audio_duration_served = 999.0  # diverges from the 3300s EDL — would trip §3 normally
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(probe_error="missing-audio-key"),
+        )
+
+        assert fs == []
+
+    def test_confirmed_partial_skips_expensive_full_download_reconciliation(self):
+        # Mirrors withheld: no point re-measuring a source we already know is short (GH#851).
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_PARTIAL))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        full_probe_calls = []
+
+        def _full_probe(_ep):
+            full_probe_calls.append(1)
+            return AudioDurationProbe(container_duration=3300.0, stream_sample_duration=3300.0)
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=50.8,
+                stream_sample_duration=50.8,
+                stream_duration_source="stream-duration-ts",
+            ),
+            probe_audio_full=_full_probe,
+        )
+
+        assert full_probe_calls == []
 
     def test_subthreshold_stream_mismatch_is_telemetry_only(self):
         ep = _ep()
@@ -983,3 +1058,353 @@ class TestProbeAudioFullReconciliation:
 
         assert any(f.check == "rendered-duration-mismatch" for f in fs)
         assert "probe_reconciled" not in diagnostics[0]
+
+
+class TestServedDurationSelfHeal:
+    """issue #849: a live probe is ground truth for what's served, so a run that actually probes
+    the hosted object should correct a stale ``audio_duration_served`` fossil, not just report
+    the disagreement. Reuses the same ``mutate_integrity`` gate the repair blocks use."""
+
+    def test_stale_served_duration_is_corrected_when_mutate_integrity(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 519.6  # pre-repair fossil; EDL/stream both agree at 3300.0
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(3300.0)
+        assert not any(f.check == "timeline-duration-mismatch" for f in fs)
+
+    def test_stale_served_duration_left_alone_without_mutate_integrity(self):
+        # Read-only default: a probing run must still be able to report/diagnose without writing
+        # anything back, exactly like the existing repair-block gating.
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 519.6
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+        )
+
+        assert ep.audio_duration_served == pytest.approx(519.6)
+
+    def test_served_duration_within_tolerance_is_not_rewritten(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 3300.05  # within _FRAME_TOLERANCE of the probed 3300.0
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(3300.05)
+
+    def test_withheld_media_served_duration_is_not_self_healed(self):
+        # GH#795: a withheld/quarantined object's served duration is moot — the audit stays
+        # observation-only for it, so self-heal must not touch the field either.
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_EMPTY))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = 50.8
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(50.8)
+
+    def test_self_heal_fills_missing_served_duration(self):
+        ep = _ep()
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        ep.audio_duration_served = None
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=3300.0,
+                stream_sample_duration=3300.0,
+                stream_duration_source="stream-duration-ts",
+            ),
+            mutate_integrity=True,
+        )
+
+        assert ep.audio_duration_served == pytest.approx(3300.0)
+
+
+class TestSyncTimelineIntegrityMutations:
+    """issue #849/#850: check_timeline_integrity mutates ep.integrity and (self-heal)
+    ep.audio_duration_served in place on the transient Episode object; audit_city must copy
+    both back into the raw ``records`` dict or the correction is silently lost when the
+    caller saves records. sync_timeline_integrity_mutations is the extracted, directly
+    testable write-back step."""
+
+    def test_copies_back_self_healed_served_duration(self):
+        ep = _ep()
+        ep.audio_duration_served = 3300.0  # already corrected by check_timeline_integrity
+        records = {ep.uid: {"audio": {"duration_served": 519.6, "key": "k"}}}
+
+        sync_timeline_integrity_mutations([ep], records)
+
+        assert records[ep.uid]["audio"]["duration_served"] == pytest.approx(3300.0)
+        assert records[ep.uid]["audio"]["key"] == "k"  # untouched fields survive
+
+    def test_leaves_unchanged_served_duration_alone(self):
+        ep = _ep()
+        ep.audio_duration_served = 3300.0
+        records = {ep.uid: {"audio": {"duration_served": 3300.0}}}
+        original_audio_dict = records[ep.uid]["audio"]
+
+        sync_timeline_integrity_mutations([ep], records)
+
+        assert records[ep.uid]["audio"] is original_audio_dict  # no-op: no new dict written
+
+    def test_copies_back_integrity_block(self):
+        ep = _ep()
+        ep.integrity = {"timeline_audio": {"status": "ok"}}
+        records = {ep.uid: {"audio": {}}}
+
+        sync_timeline_integrity_mutations([ep], records)
+
+        assert records[ep.uid]["integrity"] == {"timeline_audio": {"status": "ok"}}
+
+    def test_skips_uid_not_present_in_records(self):
+        ep = _ep(uid="unknown-uid")
+        ep.audio_duration_served = 3300.0
+        records: dict = {}
+
+        sync_timeline_integrity_mutations([ep], records)  # must not raise
+
+        assert records == {}
+
+
+class TestReconcileCrossSourceAudio:
+    """issue #850: a combined feed and a per-board feed can end up as two separate
+    source-key stores that both hold the same uid (e.g. via GH#421's audio_artifact_cache
+    crediting), and nothing durably reconciles their audio-owned fields on later runs."""
+
+    def _audio(self, **over):
+        base = {
+            "key": "granicus/src/uid-spec.m4a",
+            "url": "https://example.com/uid-spec.m4a",
+            "spec_hash": "spec",
+            "bytes": 1000,
+            "encode_time": "2026-06-30T15:00:00+00:00",
+            "duration_served": 100.0,
+        }
+        base.update(over)
+        return base
+
+    def test_no_findings_when_already_converged(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()
+
+    def test_handles_non_none_differing_integrity_blocks(self):
+        # Regression: comparing per-source signatures must not hash a dict (integrity blocks
+        # are dicts, not just None-vs-None) — this must not raise TypeError: unhashable type.
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": {"timeline_audio": {"status": "rendered-duration-mismatch"}},
+                }
+            },
+            "srcB": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": {"timeline_audio": {"status": "ok"}},
+                }
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcB", "uid1"): "ok"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, status, mutate=True
+        )
+
+        assert touched == {"srcA"}
+        assert records_by_source["srcA"]["uid1"]["integrity"] == {
+            "timeline_audio": {"status": "ok"}
+        }
+
+    def test_prefers_the_source_with_live_probe_ok(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(spec_hash="stale"), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="fresh"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcA", "uid1"): "rendered-duration-mismatch", ("srcB", "uid1"): "ok"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, status, mutate=True
+        )
+
+        assert any(f.check == "cross-source-audio-divergence" for f in findings)
+        assert touched == {"srcA"}
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "fresh"
+        assert (
+            records_by_source["srcB"]["uid1"]["audio"]["spec_hash"] == "fresh"
+        )  # winner unchanged
+
+    def test_falls_back_to_newest_encode_time_when_no_single_ok(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": self._audio(
+                        spec_hash="older", encode_time="2026-06-01T00:00:00+00:00"
+                    ),
+                    "integrity": None,
+                }
+            },
+            "srcB": {
+                "uid1": {
+                    "audio": self._audio(
+                        spec_hash="newer", encode_time="2026-07-01T00:00:00+00:00"
+                    ),
+                    "integrity": None,
+                }
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert touched == {"srcA"}
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "newer"
+
+    def test_leaves_unresolved_when_no_tiebreak_available(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {"audio": self._audio(spec_hash="a", encode_time=None), "integrity": None}
+            },
+            "srcB": {
+                "uid1": {"audio": self._audio(spec_hash="b", encode_time=None), "integrity": None}
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert touched == set()
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "a"
+        assert records_by_source["srcB"]["uid1"]["audio"]["spec_hash"] == "b"
+        assert any(f.check == "cross-source-audio-divergence" for f in findings)
+
+    def test_dry_run_reports_but_never_mutates(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(spec_hash="stale"), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="fresh"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcA", "uid1"): "container-duration-drift", ("srcB", "uid1"): "ok"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, status, mutate=False
+        )
+
+        assert touched == set()
+        assert records_by_source["srcA"]["uid1"]["audio"]["spec_hash"] == "stale"
+        assert any(
+            f.check == "cross-source-audio-divergence" and f.severity == ERROR for f in findings
+        )
+
+    def test_single_source_entity_is_a_noop(self):
+        records_by_source = {"srcA": {"uid1": {"audio": self._audio(), "integrity": None}}}
+        entity_of_source = {"srcA": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()
+
+    def test_entityless_sources_are_never_grouped(self):
+        records_by_source = {
+            "srcA": {"uid1": {"audio": self._audio(spec_hash="a"), "integrity": None}},
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="b"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": None, "srcB": None}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()
+
+    def test_resets_follower_materialize_backoff_state_on_credit(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": {
+                        **self._audio(spec_hash="stale"),
+                        "attempts": 3,
+                        "error": "truncated",
+                    },
+                    "integrity": None,
+                }
+            },
+            "srcB": {"uid1": {"audio": self._audio(spec_hash="fresh"), "integrity": None}},
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcB", "uid1"): "ok"}
+
+        reconcile_cross_source_audio(records_by_source, entity_of_source, status, mutate=True)
+
+        healed = records_by_source["srcA"]["uid1"]["audio"]
+        assert healed["attempts"] == 0
+        assert healed["error"] is None

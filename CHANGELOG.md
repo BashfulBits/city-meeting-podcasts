@@ -35,7 +35,26 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   throughput, not in-container GPU concurrency. Also adds `scripts/compute/beam_canary.py`, a one-off
   characterization wrapper used to collect live Beam telemetry without touching the production
   schedule path.
-
+- **Incomplete-source (short-media) quarantine lifecycle: publish with a disclaimer instead of
+  churning findings or excluding real content
+  ([GH#851](https://github.com/BashfulBits/city-meeting-podcasts/issues/851)).** Some cities publish
+  a recording genuinely shorter than the meeting; this extends the GH#795 withheld/dead lifecycle
+  with a sibling `suspected_partial`/`confirmed_partial` verdict for media that is real and playable
+  but short, rather than empty/dead. The trigger is deliberately pre-trim and probe-only — the
+  decoded audio-stream end vs. `min(container_duration, ep.duration)` in `SilencePlanner.plan()` —
+  never the EDL or `audio_duration_served` (both were the buggy/fossilizing side of GH#702/#849) and
+  never the post-silence-trim served duration (which would conflate legitimate trimming, like
+  Arlington's real 13550s→6681s cut, with a truncated fetch). Confirmation reuses the existing
+  two-independent-fetch discriminator (`CONFIRM_THRESHOLD`) via its own `partial_confirmations`
+  counter; an unconfirmed observation withholds a "done" timeline exactly like a degenerate/
+  near-silent decode does today, so the retry loop itself proves reproducibility with no new bypass
+  logic anywhere. Once confirmed, planning proceeds normally (the EDL is already decoded-length-
+  bounded) and a stale `chapters_basis` is reset so `RemapStage` drops any provider-agenda chapters
+  beyond the real content on its next pass. `check_timeline_integrity` treats `confirmed_partial` as
+  terminal for repair (`media-partial`, mirroring `media-withheld`) and `TimelineStage` gates it on
+  the same flat 30-day recheck as confirmed-dead media. The feed keeps publishing the episode
+  (deliberately never added to `WITHHELD_STATES`) with a factual disclaimer prepended to its show
+  notes, linked to the source watch page when known.
 - **Unified storage-reclaim policy with a data-loss recovery backstop
   ([GH#496](https://github.com/BashfulBits/city-meeting-podcasts/issues/496)).** The weekly `audio-gc`
   workflow is now **"Storage reclaim"** and runs three backstops on its existing cron. (1) **Bucket
@@ -126,6 +145,46 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   duration-aware queue order. The first post-fix worker report immediately recovered the intended
   view: `2108 total, 91 over 4.0h, 77 unknown duration, max known 10.92h`, with both Beam and
   Modal reporting `backlog long 91`.
+- **`audio_duration_served` could fossilize at a pre-repair value and re-file a resolved
+  `timeline-duration-mismatch` forever ([GH#847](https://github.com/BashfulBits/city-meeting-podcasts/issues/847),
+  [GH#849](https://github.com/BashfulBits/city-meeting-podcasts/issues/849)).** The field is only
+  written by the encode path (on a fresh upload) and by ASR; when a post-repair episode's audio
+  object was reused rather than re-encoded and ASR hadn't (re)run, neither writer fired, so the
+  stored value never advanced past whatever it was before the repair — and the daily no-probe
+  audit trusted it indefinitely. Separately, both writers probed the MP4 container's advisory
+  `format.duration` rather than the exact audio-stream sample clock; that field legitimately
+  disagrees with the played audio by up to ~1s (AAC/`mvhd` rounding), which is what let a benign
+  sub-1s band form in the first place. Both writers (`AudioStage` finalize, ASR's served-duration
+  refresh) now probe the stream-sample clock (`duration_ts * time_base`, falling back to the
+  container only when stream timing is absent) via a new `_probe_served_duration_secs`, so the
+  stored field can't drift from the timeline-audio audit's own measurement. `check_timeline_integrity`
+  also now self-heals a stale `audio_duration_served` in place whenever a run actually probes the
+  hosted object and `--persist-timeline-integrity` is set — the same bounded, audit-owned write
+  path used for repair blocks — so an already-repaired episode's fossil clears on the next
+  diagnostics-enabled audit instead of waiting on an unrelated re-encode/ASR pass.
+- **The GH#849 self-heal never actually persisted** — `check_timeline_integrity` corrected
+  `ep.audio_duration_served` on the transient `Episode` object, but `audit_city` only ever copied
+  the `integrity` block back into the saved record, not the served-duration field, so the
+  correction was silently discarded the moment the audit returned. Extracted the write-back into
+  `sync_timeline_integrity_mutations`, which now copies back both fields, and added direct tests
+  for it so this can't regress unnoticed again.
+- **Same uid, different `audio_key`/`audio_spec_hash`/`audio_duration_served`/integrity across two
+  feed shards ([GH#850](https://github.com/BashfulBits/city-meeting-podcasts/issues/850)).** A
+  combined feed and its per-board siblings are meant to share one `sources/<source_key>/episodes.json`
+  store (`source_key()` deliberately ignores `body`), but `config/feeds/fort-worth-tx.yml`'s
+  `feed_urls` list had been missing one `view_id` since the file was created — silently hashing
+  the combined feed to a different `source_key` than its 17 per-board siblings (fixed; all 18
+  Fort Worth feeds now agree). Once split, `AudioArtifactCache.canonical_source` (GH#421) only
+  synchronizes a shared uid's audio fields across the two stores at the moment both need a fresh
+  encode/credit in the very same run — a later run touching only one of them leaves the other
+  stale indefinitely with nothing to reconcile it. Added `reconcile_cross_source_audio`: after
+  every city is audited, it groups sources by `city_entity`, finds any uid present in more than
+  one store whose audio-owned fields disagree, and (when `--persist-timeline-integrity` is set)
+  corrects the stale copies to match a canonical one — preferring whichever copy this run's live
+  probe classified `ok`, falling back to the newest `audio_encode_time`, and leaving genuinely
+  ambiguous cases unresolved (with a `cross-source-audio-divergence` finding) rather than
+  guessing. A whole-catalog scan found Fort Worth was the only city with this specific
+  majority-consensus-with-one-outlier config pattern; no other city needed the config fix.
 - **Owned-block merge: a better remote plan no longer silently drops an owning lane's just-written
   artifact.** `_preserve_remote_planning_if_better` (part of `merge_preserving_foreign`) overwrote
   *all* artifact blocks — including `transcript` — from remote whenever remote's timeline/source

@@ -1047,6 +1047,134 @@ class TestSilencePlannerAvailability:
         assert ep.media_availability.is_withheld()
         assert needs_timeline_audio_repair(ep, REPAIR_TIMELINE_REPLAN)
 
+    # --- GH#851: genuinely short/incomplete source -------------------------------------------
+
+    def test_decoded_far_short_of_source_advertised_is_suspected_partial(self):
+        from citypods.availability import SUSPECTED_PARTIAL
+
+        ep = _make_episode(duration=3600)  # ep.duration (source-advertised) matches container
+        # container 3600s advertised, but decode only reached 1000s: ratio 0.278 < 0.9.
+        result = self._plan(([], 3600.0, 1000.0), ep=ep)
+        assert result.state == SUSPECTED_PARTIAL
+        assert result.partial_confirmations == 1
+        assert not result.is_withheld()  # real content — never excluded like empty/dead
+
+    def test_suspected_partial_defers_without_committing_a_timeline(self):
+        """Mirrors the degenerate/near-silent case: an unconfirmed short-source observation must
+        not settle into a "done" timeline, so the episode stays on the normal retry cadence and
+        a later independent fetch can confirm or recover it (GH#851)."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0, 1000.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is None
+        assert ep.timeline_defer_reason == "deferred_partial_source"
+        assert ep.materialize_error == "timeline-partial-source"
+
+    def test_second_independent_short_fetch_confirms_and_proceeds_to_plan(self):
+        from citypods.availability import CONFIRMED_PARTIAL
+
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        ep.chapters_basis = "source:s0"
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0, 1000.0)
+            first = planner.plan(provider, _make_city(), ep, ctx, None)
+            assert first is None  # still only suspected
+
+            second = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert ep.media_availability.state == CONFIRMED_PARTIAL
+        assert ep.media_availability.partial_confirmations == 2
+        # Now confirmed: proceeds to build a normal (decoded-length) timeline instead of
+        # deferring — this is what "publish the partial audio" requires.
+        assert second is not None
+        assert ep.sources[0].duration == 1000.0
+
+    def test_confirmed_partial_forces_a_chapters_remap_reset(self):
+        """A confirmed transition must force RemapStage to re-run against the (short) confirmed
+        EDL, so any provider-agenda chapters beyond the real decoded length get dropped rather
+        than staying stuck as already-"served" from an earlier, longer-seeming plan."""
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        ep.chapters_basis = "served:silence:3"  # already remapped against an earlier, longer EDL
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0, 1000.0)
+            planner.plan(provider, _make_city(), ep, ctx, None)  # 1st: suspected
+            planner.plan(provider, _make_city(), ep, ctx, None)  # 2nd: confirmed
+        assert ep.chapters_basis == "source:s0"
+
+    def test_transient_short_fetch_recovers_without_confirming(self):
+        """The transient-vs-permanent discriminator (GH#851): a source that reads short once and
+        then full-length on the next fetch must recover to available, not confirm as partial."""
+        from citypods.availability import AVAILABLE
+
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        ep = _make_episode(duration=3600)
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([], 3600.0, 1000.0)
+            planner.plan(provider, _make_city(), ep, ctx, None)  # suspected
+            mock_detect.return_value = ([], 3600.0, 3600.0)  # recovers full-length
+            result = planner.plan(provider, _make_city(), ep, ctx, None)
+        assert result is not None
+        assert ep.media_availability.state == AVAILABLE
+        assert ep.media_availability.partial_confirmations == 0
+
+    def test_container_overstatement_does_not_cause_a_false_partial(self):
+        """GH#702: container duration can itself overstate the real stream for reasons unrelated
+        to truncation (HLS manifest overstatement, a direct MP4 whose video track outlasts its
+        audio). Using min(container, ep.duration) means an accurate ep.duration close to the
+        decoded length prevents a container-overstatement false positive."""
+        from citypods.availability import AVAILABLE
+
+        ep = _make_episode(duration=1000)  # provider's own declared duration is accurate
+        # container overstates at 4000s; decode reaches 950s — 950/4000 alone would be "partial",
+        # but 950/min(4000, 1000)=950/1000=0.95 is not.
+        result = self._plan(([], 4000.0, 950.0), ep=ep)
+        assert result.state == AVAILABLE
+
+    def test_missing_ep_duration_falls_back_to_container_alone(self):
+        """Providers without a declared duration (e.g. Swagit) still get the check, using
+        container_duration alone."""
+        from citypods.availability import SUSPECTED_PARTIAL
+
+        ep = _make_episode(duration=None)
+        result = self._plan(([], 3600.0, 500.0), ep=ep)
+        assert result.state == SUSPECTED_PARTIAL
+
+    def test_no_advertised_duration_available_skips_partial_check(self):
+        """Neither container nor provider duration known: nothing to compare against, so this
+        must fall through to the normal playable classification rather than crash or misfire."""
+        from citypods.availability import AVAILABLE
+
+        ep = _make_episode(duration=None)
+        result = self._plan(([], None, 500.0), ep=ep)
+        assert result.state == AVAILABLE
+
 
 # ---------------------------------------------------------------------------
 # is_degenerate_served_duration

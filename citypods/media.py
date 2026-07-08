@@ -2124,6 +2124,24 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
     )
 
 
+def _probe_served_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | None:
+    """Served-duration probe for ``audio_duration_served``, on the exact audio-stream sample
+    clock rather than the container's advisory ``format.duration`` (issue #849).
+
+    ``format.duration`` (what ``_probe_duration_secs`` reads) is the MP4 ``mvhd`` duration at the
+    coarse movie timescale plus edit-list presentation rounding; for AAC-in-MP4 it legitimately
+    disagrees with the played audio by up to ~1s. ``audio_duration_served`` is meant to be the
+    real played length, and the timeline-audio audit already treats ``duration_ts * time_base``
+    (``stream_sample_duration``) as that ground truth — using a different, coarser clock for the
+    stored field is what let it drift from the audit's own measurement. Falls back to the
+    container duration only when the file has no usable stream timing.
+    """
+    probe = _probe_audio_duration_details(path, ffmpeg_binary=ffmpeg_binary)
+    if probe.stream_sample_duration is not None:
+        return probe.stream_sample_duration
+    return probe.container_duration
+
+
 # ---------------------------------------------------------------------------
 # Header-only duration probe (range reads, no full download)
 # ---------------------------------------------------------------------------
@@ -2888,7 +2906,7 @@ def materialize_audio(
                 )
                 probed: float | None = None
                 try:
-                    probed = _probe_duration_secs(dest, ffmpeg_binary)
+                    probed = _probe_served_duration_secs(dest, ffmpeg_binary)
                 except Exception:  # noqa: BLE001
                     pass
                 try:
