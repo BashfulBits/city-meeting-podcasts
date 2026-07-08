@@ -90,19 +90,38 @@ def podcast_transcript(ep: Episode) -> tuple[str, str] | None:
     return None
 
 
+def _partial_source_disclaimer_html(ep: Episode) -> str:
+    """Listener-facing disclaimer for a confirmed-partial episode (GH#851): the recording is
+    real and published, just reproducibly shorter than the source claims. Factual, no
+    unverifiable "request it" process claim, linked to the source watch page when known."""
+    video_url = (ep.links or {}).get("canonical_video")
+    note = "This recording appears incomplete — the audio is shorter than the meeting agenda."
+    if video_url:
+        note += (
+            " A complete recording may be available from the city's "
+            f'<a href="{escape(video_url)}">video page</a>.'
+        )
+    else:
+        note += " A complete recording may be available from the city's video page."
+    return f"<p><strong>Note:</strong> {note}</p>"
+
+
 def episode_notes_html(ep: Episode) -> str:
     """Rich show-notes HTML (summary/description + a resource-link list) for
     ``content:encoded``. Returns "" when there's nothing richer than the plain ``<description>``
-    (no summary and no links), so those feeds stay clean.
+    (no summary, no links, and not a confirmed-partial disclaimer), so those feeds stay clean.
 
     Body text: our own ``summary`` is plain text and is HTML-escaped; a provider ``description``
     is often already HTML (e.g. Granicus emits ``<p>...<a>``), so it's emitted raw. Everything
     lives inside a CDATA section in the template, so the only sequence we must neutralize is the
     CDATA terminator ``]]>``."""
     pairs = episode_resource_links(ep)
-    if not ep.summary and not pairs:
+    is_partial = bool(ep.media_availability and ep.media_availability.is_confirmed_partial())
+    if not ep.summary and not pairs and not is_partial:
         return ""
     parts: list[str] = []
+    if is_partial:
+        parts.append(_partial_source_disclaimer_html(ep))
     if ep.summary:
         parts.append(f"<p>{escape(ep.summary)}</p>")
     elif ep.description:

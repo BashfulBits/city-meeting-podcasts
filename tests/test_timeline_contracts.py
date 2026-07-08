@@ -18,7 +18,7 @@ from citypods.audit import (
     reconcile_cross_source_audio,
     sync_timeline_integrity_mutations,
 )
-from citypods.availability import CONFIRMED_EMPTY, MISSING, MediaAvailability
+from citypods.availability import CONFIRMED_EMPTY, CONFIRMED_PARTIAL, MISSING, MediaAvailability
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
     REPAIR_TIMELINE_REPLAN,
@@ -401,6 +401,76 @@ class TestDurationMismatch:
         )
 
         assert fs == []
+
+    def test_confirmed_partial_is_terminal_no_finding(self):
+        # GH#851: same stale hosted/EDL mismatch as the control above, but the episode is a
+        # confirmed-short/incomplete source. Classification is forced to `media-partial`: no
+        # finding, no repair — but unlike withheld, the episode is NOT excluded (real content).
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_PARTIAL))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        diagnostics = []
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=50.8,
+                stream_sample_duration=50.8,
+                stream_duration_source="stream-duration-ts",
+            ),
+            diagnostics=diagnostics,
+            mutate_integrity=True,
+        )
+
+        assert fs == []
+        assert diagnostics[0]["check"] == "media-partial"
+        assert diagnostics[0]["repair"] == []
+        assert diagnostics[0]["repair_selected"] is False
+        assert diagnostics[0]["media_withheld"] is False  # confirmed_partial is not withheld
+        assert ep.integrity == {}  # no repair stamped for a source already known to be short
+
+    def test_confirmed_partial_suppresses_cheap_stored_field_check(self):
+        # Same suppression as withheld (GH#851): a confirmed-partial episode must not re-file
+        # timeline-duration-mismatch from the cheap §3 stored-field fallback either.
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_PARTIAL))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.audio_duration_served = 999.0  # diverges from the 3300s EDL — would trip §3 normally
+
+        fs = check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(probe_error="missing-audio-key"),
+        )
+
+        assert fs == []
+
+    def test_confirmed_partial_skips_expensive_full_download_reconciliation(self):
+        # Mirrors withheld: no point re-measuring a source we already know is short (GH#851).
+        ep = _ep(media_availability=MediaAvailability(state=CONFIRMED_PARTIAL))
+        ep.timeline = _good_timeline()
+        ep.audio_key = "audio/u1.m4a"
+        ep.sources = [_src("s0", 3600.0)]
+        full_probe_calls = []
+
+        def _full_probe(_ep):
+            full_probe_calls.append(1)
+            return AudioDurationProbe(container_duration=3300.0, stream_sample_duration=3300.0)
+
+        check_timeline_integrity(
+            "test-tx",
+            [ep],
+            probe_audio=lambda _ep: AudioDurationProbe(
+                container_duration=50.8,
+                stream_sample_duration=50.8,
+                stream_duration_source="stream-duration-ts",
+            ),
+            probe_audio_full=_full_probe,
+        )
+
+        assert full_probe_calls == []
 
     def test_subthreshold_stream_mismatch_is_telemetry_only(self):
         ep = _ep()

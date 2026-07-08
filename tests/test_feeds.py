@@ -10,6 +10,7 @@ import pytest
 from citypods.availability import (
     AVAILABLE,
     CONFIRMED_EMPTY,
+    CONFIRMED_PARTIAL,
     MediaAvailability,
     with_operator_override,
 )
@@ -191,6 +192,66 @@ def test_episode_notes_html_empty_when_no_enrichment():
         description="plain",
     )
     assert episode_notes_html(ep) == ""
+
+
+def test_episode_notes_html_confirmed_partial_prepends_disclaimer():
+    """GH#851: a confirmed-partial episode publishes with a factual disclaimer, linked to the
+    source watch page when known, rather than being excluded or silently truncated."""
+    from citypods.feeds import episode_notes_html
+
+    ep = Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="v",
+        summary="A short recap.",
+        links={"canonical_video": "https://watch.example.com/123"},
+        media_availability=MediaAvailability(state=CONFIRMED_PARTIAL),
+    )
+    html = episode_notes_html(ep)
+    assert "This recording appears incomplete" in html
+    assert '<a href="https://watch.example.com/123">video page</a>' in html
+    # Disclaimer comes first, ahead of the normal summary.
+    assert html.index("incomplete") < html.index("A short recap.")
+
+
+def test_episode_notes_html_confirmed_partial_without_link_omits_anchor():
+    from citypods.feeds import episode_notes_html
+
+    ep = Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="v",
+        media_availability=MediaAvailability(state=CONFIRMED_PARTIAL),
+    )
+    html = episode_notes_html(ep)
+    assert "This recording appears incomplete" in html
+    assert "<a href=" not in html
+
+
+def test_episode_notes_html_suspected_partial_no_disclaimer_yet():
+    """Only a *confirmed* (reproduced) short source gets the disclaimer — a single, unconfirmed
+    observation must not badge an episode that may just be a transient truncated fetch."""
+    from citypods.availability import SUSPECTED_PARTIAL
+    from citypods.feeds import episode_notes_html
+
+    ep = Episode(
+        guid="g",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="v",
+        media_availability=MediaAvailability(state=SUSPECTED_PARTIAL),
+    )
+    assert episode_notes_html(ep) == ""
+
+
+def test_confirmed_partial_enclosure_is_not_excluded_unlike_withheld(sample_episodes):
+    """GH#851: confirmed_partial must keep its enclosure — distinct from withheld media, which
+    is excluded (test_withheld_availability_omits_enclosure_from_both_kinds above)."""
+    ep = sample_episodes[0]
+    ep.media_availability = MediaAvailability(state=CONFIRMED_PARTIAL)
+    assert enclosure_url(ep, "video") == ep.video_url
 
 
 def test_chapters_json_and_podcast_chapters_tag(tmp_path):

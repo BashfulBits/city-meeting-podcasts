@@ -194,6 +194,72 @@ unreachable/empty media:
   post-repair audit once it confirms `served ≈ EDL` (`clear_resolved_timeline_audio_integrity`) — the
   audit owns the integrity block, so that clear persists.
 
+## Follow-up: incomplete-source (short-media) quarantine lifecycle (GH#851)
+
+While investigating #847/#849's fossilized `audio_duration_served`, a further question surfaced:
+some cities publish a recording that is genuinely **shorter than the meeting** (a partial/truncated
+source upload) — today that either churns duration-mismatch findings or gets silently served as a
+short file with no listener-facing signal. This extends the GH#795 withheld/dead lifecycle with a
+sibling verdict, rather than adding a parallel system, for media that is real and playable but
+short: publish it with a disclaimer instead of excluding it.
+
+**Hard constraint (learned from #847/#849): the trigger must be probe-only, and pre-trim.** The
+obvious trigger ("EDL/served says the file is short") is wrong and dangerous — the EDL is our own
+planner output and was the buggy side throughout GH#702, and `audio_duration_served` fossilizes
+(#849). Comparing the *final served* (post-silence-trim) duration against anything is also wrong,
+for a different reason: it conflates legitimate silence-trimming (Arlington decodes 13550s of
+source but serves a 6681s cut and is `check: ok` — a large, expected trim) with a genuinely
+truncated fetch. The only safe comparison is **pre-trim**: the decoded audio-stream end
+(`decoded_duration`, the same clock `SilencePlanner` already measures for GH#702) against what the
+*source itself* advertises, before any trim decision is made.
+
+- **Trigger:** in `SilencePlanner.plan()` (`citypods/silence.py`), after a successful decode that
+  is not near-total silence, compare `decoded_duration` against `expected = min(container_duration,
+  ep.duration)` (whichever of the two is known) — the smaller of the container header's own
+  advertised duration and the provider's declared duration, so either one alone overstating (GH#702:
+  HLS manifest overstatement, a direct MP4 whose video track outlasts its audio; or simply an
+  imprecise provider RSS `itunes:duration`) cannot manufacture a false positive. Below
+  `_SOURCE_TRUNCATION_MIN_RATIO` (0.9) of that floor counts as short-source evidence. This is a new,
+  additive comparison — `container_duration` was previously measured and discarded entirely — and is
+  deliberately independent of `media.py`'s existing `_TRUNCATION_MIN_RATIO` (0.5), which guards a
+  different, already-proven comparison (served vs. feed-declared) and is untouched.
+- **`suspected_partial` / `confirmed_partial`:** a new `MediaAvailability` state pair, mirroring
+  `suspected_empty`/`confirmed_empty` exactly — `PARTIAL` is a sibling `Observation` kind to
+  `SILENT`, confirmed by the same `CONFIRM_THRESHOLD` (2 independent fetches) via its own
+  `partial_confirmations` counter (kept separate from `silent_confirmations` — they are evidence for
+  different verdicts). Deliberately **not** added to `WITHHELD_STATES`: unlike empty/dead media this
+  is real, playable content, so it is never excluded from feeds or media-affecting stages.
+- **Suspected → confirmed via the existing retry/backoff loop, not a new bypass.** While only
+  suspected (unconfirmed), `SilencePlanner.plan()` withholds a "done" `Timeline` and defers
+  (`timeline-partial-source`, added to `_TIMELINE_BACKOFF_ERRORS`) — exactly mirroring how a
+  degenerate/near-silent decode withholds a timeline today. This means the *next independent fetch*
+  either recovers (a transient truncated download, the common case, typically fails at a variable
+  offset and rarely reproduces identically) or reproduces (confirms) — no new "force re-verify"
+  logic was needed in `AudioStage`'s reuse/credit shortcut, because an unconfirmed episode is never
+  hosted, so the shortcut never applies to it.
+- **Confirmed episodes are automatically re-clamped, at no extra cost.** Once confirmed,
+  `SilencePlanner.plan()` proceeds to build the timeline exactly as it already does for every other
+  episode — using `decoded_duration` as the served-clock authority (the GH#702 fix, unchanged) — so
+  the resulting EDL is correctly bounded by the real decoded content. The one added step: if
+  `ep.chapters_basis` already starts with `"served"` (chapters were remapped against an earlier,
+  longer-seeming plan), it is reset to force one fresh `RemapStage` pass, whose existing
+  `remap()`/`source_to_served()` logic already drops any provider-agenda chapter whose source-time
+  position falls beyond all EDL segments — no new chapter-clamping logic needed either.
+- **Terminal for timeline-audio repair, and a flat recheck.** `_classify_timeline_audio_duration`
+  returns `("media-partial", WARN, [])` for `is_confirmed_partial()`, before mismatch
+  classification — mirroring `media-withheld` exactly, including skipping the expensive
+  full-download reconciliation and the §3 cheap stored-field check (so a confirmed-short source
+  cannot re-file the same mismatch it was confirmed for). `TimelineStage._plan_one` gates confirmed
+  partial media on the same flat `confirmed_dead_recheck_due` cadence used for confirmed-dead media
+  (state-agnostic; a new call site, not a new function) — no point re-downloading/re-decoding a
+  confirmed-short source every run.
+- **Publish policy: stays in the feed, badged.** `episode_notes_html` (`citypods/feeds.py`)
+  prepends a factual disclaimer — *"This recording appears incomplete — the audio is shorter than
+  the meeting agenda. A complete recording may be available from the city's video page."* — linked
+  to `ep.links["canonical_video"]` when known. No unverifiable "you may request it" process claim.
+  This is the one deliberate asymmetry from GH#795: `confirmed_partial` is never added to
+  `WITHHELD_STATES`, so `enclosure_url` keeps publishing it untouched.
+
 ## Problem
 
 Feed-health timeline findings currently compare the persisted EDL duration against

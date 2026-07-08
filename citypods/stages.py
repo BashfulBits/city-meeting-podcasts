@@ -184,6 +184,7 @@ _TIMELINE_BACKOFF_ERRORS = frozenset(
         "timeline-cache",
         "timeline-decode",
         "timeline-degenerate",
+        "timeline-partial-source",
         "rate_limited",
     }
 )
@@ -902,6 +903,20 @@ class TimelineStage:
             ):
                 with lock:
                     stats.defer("dead-cooldown", sample=f"{ep.uid or ep.guid}:dead-cooldown")
+                return
+
+            # A confirmed-partial (genuinely short/incomplete) source publishes with a disclaimer
+            # (GH#851) rather than being withheld, but there is still nothing to gain from
+            # re-downloading + re-decoding it every run once its short length has reproduced —
+            # the same flat-cadence reasoning as confirmed-dead media above, reusing the same
+            # state-agnostic recheck gate.
+            if (
+                availability is not None
+                and availability.is_confirmed_partial()
+                and not confirmed_dead_recheck_due(ep, now)
+            ):
+                with lock:
+                    stats.defer("partial-cooldown", sample=f"{ep.uid or ep.guid}:partial-cooldown")
                 return
 
             # A repair flag is a one-shot "recheck now" for transient failures / broken (non-dead)
