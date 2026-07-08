@@ -39,6 +39,7 @@ from citypods.compute.dispatch import (
 )
 from citypods.compute.local import LocalBackend
 from citypods.compute.local_process import ProcessLocalBackend
+from citypods.compute.policy import backend_policy
 
 # Registry of external dispatch backends, keyed by the name used in ``compute_backends`` config.
 # Empty in H14a (overflow-to-local only); H14b/H14c register ``modal`` / ``beam`` factories here.
@@ -70,11 +71,12 @@ def _make_auto(
         factory = _DISPATCH_REGISTRY.get(name)
         if factory is None:
             continue  # named in config but no adapter registered yet (H14a) — skip, overflow later
+        policy = backend_policy(site_config, name)
         targets.append(
             DispatchTarget(
                 backend=factory(name, dict(caps or {})),
-                monthly_gpu_seconds=float((caps or {}).get("monthly_gpu_seconds", 0.0)),
-                max_inflight=int((caps or {}).get("max_inflight", 0)),
+                monthly_gpu_seconds=policy.budget.spendable_units,
+                max_inflight=policy.dispatch.max_inflight,
             )
         )
     budget = load_budget(state_dir)

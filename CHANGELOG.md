@@ -16,6 +16,25 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **H14d policy substrate for external-worker pacing and characterization.** `citypods/compute/policy.py`
+  now parses a richer per-backend YAML policy shape from `config/site_config.yml`: generic budget
+  units + soft reserve, per-backend preferred run days (`all` / `even` / `odd`), long-meeting
+  preference, freshness windows, and fixed-per-run / fixed-per-claim planning knobs.
+  `citypods/compute/budget.py` remains backward-compatible with the old `used_gpu_seconds` ledger field
+  but now stores generic `used_units`, so future Beam/Modal/diarize cost models are not forced to
+  pretend billing is pure elapsed GPU-seconds. `external_worker.py` consumes the parsed policy to pace
+  **sequential** claims per invocation against remaining monthly budget and remaining preferred run
+  slots. Off-days now stay deliberately conservative while backlog still exists: they admit only fresh
+  work and cap that freshness maintenance to one claim, then reopen full pacing once the long-meeting
+  backlog is actually cleared. `config/site_config.yml` now carries the first empirical production
+  defaults from the H14d benchmark loop: Modal tuned for `L4`, Beam tuned for `RTX4090`, both using
+  `effective-runtime-second` budget units with monthly caps conservatively scaled down from raw GPU
+  credits to absorb CPU/RAM billing, plus much higher sequential `max_claims_per_run` ceilings so the
+  preferred-day planner can actually spend the monthly budget. The current production cap remains one
+  active transcription at a time per container; the backlog lever here is sequential multi-claim
+  throughput, not in-container GPU concurrency. Also adds `scripts/compute/beam_canary.py` and
+  `scripts/compute/modal_canary.py`, one-off characterization wrappers used to collect live Beam and
+  Modal telemetry without touching the production schedule path.
 - **Incomplete-source (short-media) quarantine lifecycle: publish with a disclaimer instead of
   churning findings or excluding real content
   ([GH#851](https://github.com/BashfulBits/city-meeting-podcasts/issues/851)).** Some cities publish
@@ -113,6 +132,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   workflow and list the `timeline_repair=true` / `timeline_repair_cohort` inputs to run. Existing
   sub-second rows should clear on the next audit after this ships; truly stale rows remain visible
   and repairable.
+- **External workers and `asr-worker-report` could trust a stale persisted `work.json`, hiding the
+  real long-meeting backlog even when the canonical records had durations.** The worker/report path
+  had been rotate-reading the persisted manifest directly, so whichever in-Actions lane last rebuilt
+  `state/work.json` effectively froze the external queue view until the next rebuild. In live H14d
+  validation that made the duration band read `2393 total, 0 over 4.0h, 2393 unknown duration`
+  despite most records already carrying `audio.duration_served`. The fix does **not** treat
+  `work.json` as canonical for derivable fields anymore: external workers and `report_workers.py`
+  now rebuild a fresh manifest from `episodes.json` records, then overlay only persisted
+  operational sidecar state (running/backoff/dead state, leases, retry/error/estimate fields). That
+  preserves the durable coordination hints without letting stale manifest content suppress the true
+  duration-aware queue order. The first post-fix worker report immediately recovered the intended
+  view: `2108 total, 91 over 4.0h, 77 unknown duration, max known 10.92h`, with both Beam and
+  Modal reporting `backlog long 91`.
 - **`audio_duration_served` could fossilize at a pre-repair value and re-file a resolved
   `timeline-duration-mismatch` forever ([GH#847](https://github.com/BashfulBits/city-meeting-podcasts/issues/847),
   [GH#849](https://github.com/BashfulBits/city-meeting-podcasts/issues/849)).** The field is only
