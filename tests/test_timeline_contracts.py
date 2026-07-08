@@ -1408,3 +1408,109 @@ class TestReconcileCrossSourceAudio:
         healed = records_by_source["srcA"]["uid1"]["audio"]
         assert healed["attempts"] == 0
         assert healed["error"] is None
+
+    # issue #854: chapters/timeline are derived independently per source-key store
+    # (TimelineStage/ChaptersStage plan once, never recompute), which is also what produces the
+    # #850-style audio_spec_hash divergence above in the first place. These fields must converge
+    # to the same canonical copy alongside the audio-lane fields.
+
+    def test_planning_only_divergence_is_detected_even_when_audio_already_matches(self):
+        # Regression: before #854, the signature comparison only hashed audio+integrity, so a
+        # uid whose audio already converged but whose chapters/timeline still disagreed would be
+        # silently treated as "already converged."
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": None,
+                    "chapters": [{"title": "Item 1", "start": 0.0}],
+                    "chapters_basis": "source:s0",
+                    "timeline": {"version": "v1"},
+                }
+            },
+            "srcB": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": None,
+                    "chapters": [{"title": "Item 1 (board copy)", "start": 0.0}],
+                    "chapters_basis": "source:s0",
+                    "timeline": {"version": "v1"},
+                }
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert any(f.check == "cross-source-audio-divergence" for f in findings)
+        assert touched  # not silently skipped as "already converged"
+
+    def test_planning_fields_copied_from_canonical_to_followers(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": self._audio(spec_hash="stale"),
+                    "integrity": None,
+                    "chapters": [{"title": "Stale chapter", "start": 0.0}],
+                    "chapters_basis": "source:s0",
+                    "timeline": {"version": "old"},
+                }
+            },
+            "srcB": {
+                "uid1": {
+                    "audio": self._audio(spec_hash="fresh"),
+                    "integrity": None,
+                    "chapters": [{"title": "Fresh chapter", "start": 0.0}],
+                    "chapters_basis": "served:v2",
+                    "timeline": {"version": "new"},
+                }
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+        status = {("srcB", "uid1"): "ok"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, status, mutate=True
+        )
+
+        assert touched == {"srcA"}
+        healed = records_by_source["srcA"]["uid1"]
+        assert healed["chapters"] == [{"title": "Fresh chapter", "start": 0.0}]
+        assert healed["chapters_basis"] == "served:v2"
+        assert healed["timeline"] == {"version": "new"}
+        # winner's own copy is untouched
+        assert records_by_source["srcB"]["uid1"]["chapters"] == [
+            {"title": "Fresh chapter", "start": 0.0}
+        ]
+
+    def test_no_findings_when_planning_fields_also_match(self):
+        records_by_source = {
+            "srcA": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": None,
+                    "chapters": [{"title": "Item 1", "start": 0.0}],
+                    "chapters_basis": "source:s0",
+                    "timeline": {"version": "v1"},
+                }
+            },
+            "srcB": {
+                "uid1": {
+                    "audio": self._audio(),
+                    "integrity": None,
+                    "chapters": [{"title": "Item 1", "start": 0.0}],
+                    "chapters_basis": "source:s0",
+                    "timeline": {"version": "v1"},
+                }
+            },
+        }
+        entity_of_source = {"srcA": "city1", "srcB": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()

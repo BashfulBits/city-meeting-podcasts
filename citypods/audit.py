@@ -1418,6 +1418,14 @@ def _net_head() -> Callable[[str], int]:
 # state, not a property of the shared artifact) and ``rebuild`` (a per-source repair nonce).
 _CROSS_SOURCE_AUDIO_FIELDS = ("key", "url", "spec_hash", "bytes", "encode_time", "duration_served")
 
+# Planning-lane fields (records.PLANNING_FIELDS, minus ``sources``) that should converge to one
+# canonical copy alongside the audio fields above (issue #854). TimelineStage/ChaptersStage plan
+# once per source-key store and never recompute ("chapters don't change once set"), so two stores
+# sharing one physical uid can derive genuinely different chapters/timeline independently, with
+# nothing to notice — this is also what produces #850-style audio_spec_hash divergence in the
+# first place, since the spec hash is derived from these same fields.
+_CROSS_SOURCE_PLANNING_FIELDS = ("chapters", "chapters_basis", "timeline")
+
 
 def reconcile_cross_source_audio(
     records_by_source: dict[str, dict],
@@ -1426,8 +1434,9 @@ def reconcile_cross_source_audio(
     *,
     mutate: bool,
 ) -> tuple[list[Finding], set[str]]:
-    """Detect (and, when ``mutate``, correct) a uid whose audio-lane-owned fields disagree
-    across two or more source-key stores that share one ``city_entity`` (issue #850).
+    """Detect (and, when ``mutate``, correct) a uid whose audio-lane-owned or planning-lane-owned
+    fields disagree across two or more source-key stores that share one ``city_entity``
+    (issues #850 and #854).
 
     A combined feed and its per-board siblings are meant to share one record store
     (``source_key()`` deliberately ignores ``body``), but a combined feed's ``feed_urls`` can
@@ -1436,7 +1445,12 @@ def reconcile_cross_source_audio(
     (GH#421) only synchronizes the audio-key *namespace* at the moment both sources need a
     fresh encode/credit in the very same run; it does not durably reconcile the two stores on
     every later run, so once each store looks internally consistent on its own, they can drift
-    apart forever with nothing to notice.
+    apart forever with nothing to notice. The same gap applies one layer upstream to
+    ``chapters``/``chapters_basis``/``timeline`` (issue #854): each store's ``TimelineStage``/
+    ``ChaptersStage`` plans once and never recomputes, so two stores can independently derive
+    different chapters/timeline for what is the same physical meeting, which is what actually
+    produces a different ``audio_spec_hash`` (and thus a different independently-encoded
+    ``audio_key``) on each side in the first place.
 
     Canonical selection, per a uid's present-in sources: prefer whichever source this run's
     live probe classified ``"ok"`` (ground truth for what's actually served); if none or more
@@ -1477,10 +1491,12 @@ def reconcile_cross_source_audio(
                 (
                     tuple(audio_copies[sk].get(f) for f in _CROSS_SOURCE_AUDIO_FIELDS),
                     integrity_copies[sk],
+                    tuple(records_by_source[sk][uid].get(f) for f in _CROSS_SOURCE_PLANNING_FIELDS),
                 )
                 for sk in present_in
             ]
-            # Plain equality, not a set: integrity_copies values are dicts (unhashable).
+            # Plain equality, not a set: integrity_copies/chapters/timeline values are dicts/lists
+            # (unhashable).
             if all(sig == signatures[0] for sig in signatures):
                 continue  # already converged
 
@@ -1506,9 +1522,9 @@ def reconcile_cross_source_audio(
                         entity,
                         "cross-source-audio-divergence",
                         WARN,
-                        f"{uid}: audio fields disagree across sources sharing city_entity "
-                        f"{entity!r} ({slugs}) and no live-probe/encode-time tiebreak resolved "
-                        "a canonical copy; left unresolved.",
+                        f"{uid}: audio and/or planning fields disagree across sources sharing "
+                        f"city_entity {entity!r} ({slugs}) and no live-probe/encode-time tiebreak "
+                        "resolved a canonical copy; left unresolved.",
                     )
                 )
                 continue
@@ -1518,8 +1534,8 @@ def reconcile_cross_source_audio(
                     entity,
                     "cross-source-audio-divergence",
                     WARN if mutate else ERROR,
-                    f"{uid}: audio fields disagree across sources sharing city_entity "
-                    f"{entity!r} ({slugs}); canonical source is {canonical!r}"
+                    f"{uid}: audio and/or planning fields disagree across sources sharing "
+                    f"city_entity {entity!r} ({slugs}); canonical source is {canonical!r}"
                     + ("" if mutate else " (dry run: rerun with repair persistence to fix)"),
                 )
             )
@@ -1528,6 +1544,7 @@ def reconcile_cross_source_audio(
 
             canonical_audio = audio_copies[canonical]
             canonical_integrity = integrity_copies[canonical]
+            canonical_rec = records_by_source[canonical][uid]
             for sk in present_in:
                 if sk == canonical:
                     continue
@@ -1546,6 +1563,7 @@ def reconcile_cross_source_audio(
                     **rec,
                     "audio": new_audio,
                     "integrity": canonical_integrity,
+                    **{f: canonical_rec.get(f) for f in _CROSS_SOURCE_PLANNING_FIELDS},
                 }
                 touched.add(sk)
 
