@@ -33,7 +33,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[storage]"
+        run: pip install -e ".[storage]" -c constraints/prod.txt
 
       - name: Audit raw work-lease ledger
         run: python scripts/compute/audit_work_leases.py | tee "$GITHUB_STEP_SUMMARY"
