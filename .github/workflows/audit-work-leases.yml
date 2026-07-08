@@ -37,3 +37,6 @@ jobs:
 
       - name: Audit raw work-lease ledger
         run: python scripts/compute/audit_work_leases.py | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: Preview compute reconcile (dry run, writes nothing)
+        run: citypods compute reconcile --dry-run | tee -a "$GITHUB_STEP_SUMMARY"
