@@ -2232,6 +2232,12 @@ manifest from canonical records and overlays only persisted operational sidecar 
 the intended queue composition immediately: `2108 total, 91 over 4.0h, 77 unknown duration`, with
 both backends seeing `backlog long 91` and `fresh short 3`.
 
+Those `77 unknown duration` items are **not blocked from transcription**. They remain claimable; they
+just cannot participate in duration-based preference (`prefer_min_duration_hours`) until some later pass
+materializes or observes a duration. In practice that means backlog drain is enough: as those episodes
+reach hosted-audio probing or ASR itself, their durations can be recorded then and future ordering sees
+them normally.
+
 **Documented characterization corpus and rerun procedure (2026-07-08).** H14d's first GPU-type
 comparison was run against one fixed Denton pair so every backend/GPU comparison stayed apples-to-apples:
 
@@ -2282,10 +2288,16 @@ pricing page before comparing new GPU classes.
 - Beam default GPU target: `RTX4090`
 - Beam fallback only if capacity becomes a real operational issue: `A10G`
 - Modal default GPU target: `L4`
-- Production budget defaults should stay in **effective runtime seconds**, not dollars, so actual
-  reservation settlement can continue to reconcile directly from observed claim runtime. The monthly
-  caps are therefore set conservatively below the raw GPU-only free-credit runtime to absorb CPU/RAM
-  billing: Modal `108000`, Beam `125000`.
+- Production budget defaults currently stay in **generic budget units reconciled from observed worker
+  runtime**, not provider-account dollars, so reservation settlement can stay task-local and
+  provider-agnostic while H14 remains transcribe-only. The monthly caps are therefore set conservatively
+  below the raw GPU-only free-credit runtime to absorb CPU/RAM billing: Modal `108000`, Beam `125000`.
+  The chosen follow-up direction is to replace this with a **provider-cycle dollar ledger**: reserve with
+  YAML-configured per-task/backend coefficients, persist a runtime estimate per task/backend, update that
+  estimate after every completed run from estimated vs actual GPU runtime, and settle the ledger against a
+  closer-to-actual provider signal. For **Beam**, keep dollars-per-second YAML-driven and multiply by the
+  task API duration (`GET /v2/task/{TASK_ID}`); for **Modal**, settle directly from exported actual
+  dollar cost rather than re-converting through a local rate table.
 - Production estimation knobs from this characterization pass: Modal `budget_units_per_audio_second:
   0.023`, `min_budget_units: 240`, `max_claims_per_run: 24`, `preferred_days: even`; Beam
   `budget_units_per_audio_second: 0.0175`, `min_budget_units: 180`, `max_claims_per_run: 32`,
@@ -2335,6 +2347,23 @@ modal run scripts/compute/modal_canary.py \
 6. Only add a multi-GPU target list when the provider exposes a clean preference/fallback mechanism and
    two candidates are close enough in `cost_audio_hour` that capacity flexibility is worth the extra
    routing complexity.
+
+**Follow-ons H14d surfaced but did not fold into this PR.**
+
+- **Host-RSS trimming / download-path review.** The first live runs were much tighter on host RSS than
+  on GPU VRAM, so any future concurrency increase should first profile download/decode buffering and
+  whole-result materialization on the CPU side.
+- **Provider-cycle budget refactor.** The future ledger should be keyed to each backend's real billing
+  rollover date rather than a repo-local UTC month. Beam's dollars-per-second inputs should stay YAML-
+  parameterized enough to reuse for future tasks like diarize or combined ASR+diarize; Modal should use
+  actual exported dollar cost for settlement while sharing the same persisted runtime-estimate update loop.
+- **Guardband revisit.** Because CPU/RAM looked like a small minority of total provider cost in these
+  first runs, the current host-memory guardband can likely tighten once billing and buffering are better
+  characterized; a move from roughly `80%` toward `90%` is plausible, but not before the host-RSS path
+  is measured deliberately.
+- **Phase-R diarize coefficients must be independent.** Do not inherit ASR's `budget_units_per_audio_second`
+  or admission thresholds for diarization. Diarize needs its own characterization pass, especially on
+  host RSS and combined ASR+diarize preparation reuse.
 
 **Testing & rollout.** Unit-test admission estimates, unknown-combination conservatism, chunk timestamp
 rebasing/stitch validation, and recipe/version behavior. Production rollout is canary-first: leave
