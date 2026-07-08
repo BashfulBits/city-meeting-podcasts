@@ -257,6 +257,20 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   asserts `push_records_merged` is invoked (with `owned_uids` scoping) on both the fresh-transcription
   and adopted branches. Affected episodes are recoverable via `reclaim-transcript --write` — the
   artifacts were never lost.
+- **Modal and Beam model-bake image-build steps hit HF Hub unauthenticated, risking a rate-limited
+  build on rebuild ([GH#811](https://github.com/BashfulBits/city-meeting-podcasts/issues/811)).**
+  Neither `modal.Image.run_commands()` nor Beam's `Image.add_commands()` inherits the provider
+  runtime-secret bundle — that binding only exists at function-runtime (Modal's
+  `@app.function(secrets=...)`, Beam's `@schedule(secrets=...)`), not during image build — so the
+  `snapshot_download()` call that bakes the pinned Whisper model logged HF Hub's anonymous-request
+  warning on both providers' first live deploy. Both builds still succeeded (the model repo is
+  public), but a busy-period anonymous rate limit could fail a future rebuild triggered by a
+  dependency bump or model-revision change. Fixed by threading `HF_TOKEN` into the build step
+  itself: Modal's model-bake `run_commands()` now passes
+  `secrets=[modal.Secret.from_name(SECRET_NAME)]` (the same `citypods-modal-worker` bundle used at
+  runtime), and Beam's image chain adds `.with_secrets(["HF_TOKEN"])` before `add_commands()`.
+  `huggingface_hub` picks up `HF_TOKEN` from the environment automatically, so no other code
+  changed. Non-blocking, additive fix — no behavior or pipeline changes otherwise.
 
 ### Added
 
