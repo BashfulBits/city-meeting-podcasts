@@ -119,6 +119,24 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **The Stage-2 work-lease reaper never actually ran in production, despite `config/site_config.yml`
+  saying `work_lease_reaper_enabled: true` since H14b/H14c went live
+  ([GH#706](https://github.com/BashfulBits/city-meeting-podcasts/issues/706) §6(b)).** `citypods
+  compute reconcile`'s CLI wiring read `site_config.get("work_lease_reaper_enabled", False)` at the
+  document root, but the key lives nested under `defaults:` (sibling to `compute_backend`/
+  `compute_backends`) — the lookup silently fell back to `False` every run, so the `if cas and
+  sweep_work_leases:` gate in `reconcile_compute()` never engaged and `reap_work_leases()` was never
+  called. Found while closing out §6(b): a manual raw-ledger audit
+  ([#858](https://github.com/BashfulBits/city-meeting-podcasts/pull/858)) turned up 108 leased
+  work-lease objects, 90 already past their ~20h TTL, that every scheduled reconcile run since
+  2026-07-06 had reported `0 requeued/settled/in-flight` against — `asr-worker-report`'s live lease
+  counts looked correct throughout because that path reads the ledger directly for display, with no
+  `sweep_work_leases` gate. Fixed to read the flag from `site_config["defaults"]`; added a CLI-level
+  regression test (`test_cli_reconcile_reads_work_lease_reaper_enabled_from_defaults_block`) that
+  exercises `cli.main(["compute", "reconcile", ...])` against a real YAML file with the flag nested
+  under `defaults:`, since every prior test called `reconcile_compute()` directly with
+  `sweep_work_leases` passed as a Python argument and so never exercised the config-parsing path
+  where the bug actually lived.
 - **Cheap timeline-duration fallback no longer files sub-second padding noise, and large fallback
   mismatches can now self-heal through targeted repair.** GH#798/GH#799 were paired
   `timeline-duration-mismatch` / `timeline-short-coverage` issues from the record-only fallback

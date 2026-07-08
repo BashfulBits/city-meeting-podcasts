@@ -651,7 +651,12 @@ def _compute_reconcile(args) -> int:
     storage = make_storage(site_config, base_url, output_dir)
     # The Stage-2 work-lease reaper stays dormant until external pull workers (H14b/H14c) claim
     # against the ledger; until then sweeping it is pointless backlog-scaled GETs (review/18 §4.2).
-    sweep_work_leases = bool(site_config.get("work_lease_reaper_enabled", False))
+    # Lives under `defaults:` in site_config.yml (sibling to `compute_backend`), not the document
+    # root — GH#706 §6(b) found this read at the root silently defaulted to False in production
+    # for the life of the flag, so the sweep never actually ran despite the config saying `true`.
+    sweep_work_leases = bool(
+        (site_config.get("defaults") or {}).get("work_lease_reaper_enabled", False)
+    )
 
     if args.dry_run:
         # Predict what a real run would reap WITHOUT touching durable or real local state. A real

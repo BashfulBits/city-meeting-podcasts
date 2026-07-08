@@ -449,6 +449,45 @@ class TestReconcile:
         reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
         assert reclaimed.state == "queued" and reclaimed.owner == ""
 
+    def test_cli_reconcile_reads_work_lease_reaper_enabled_from_defaults_block(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression: `work_lease_reaper_enabled` lives under `defaults:` in
+        config/site_config.yml (sibling to `compute_backend`/`compute_backends`), not at the
+        document root. `citypods compute reconcile` (the CLI, not the `reconcile_compute()` unit
+        above) must read it from `site_config["defaults"]`, or the Stage-2 sweep silently never
+        engages in production regardless of the YAML saying `true` — exactly what happened until
+        this test was added (GH#706 §6(b))."""
+        from citypods import cli
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        monkeypatch.setattr("citypods.storage.make_storage", lambda *a, **kw: bucket)
+
+        state_dir = tmp_path / "state"
+        save_manifest(state_dir, [_item("u1")])
+        wl.claim(bucket, "s1", "u1", owner="dead", ttl_seconds=1, now=NOW - timedelta(hours=1))
+
+        site_config_path = tmp_path / "site_config.yml"
+        site_config_path.write_text(
+            f"state_dir: {state_dir}\ndefaults:\n  work_lease_reaper_enabled: true\n"
+        )
+
+        rc = cli.main(
+            [
+                "compute",
+                "reconcile",
+                "--site-config",
+                str(site_config_path),
+                "--output-dir",
+                str(tmp_path / "docs"),
+            ]
+        )
+
+        assert rc == 0
+        reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
+        assert reclaimed.state == "queued" and reclaimed.owner == ""  # swept, not left stuck
+
     def test_empty_manifest_is_noop(self, tmp_path):
         assert reconcile_compute(tmp_path, storage=None, now=NOW) == {
             "reaped": 0,
