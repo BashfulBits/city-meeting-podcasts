@@ -16,6 +16,18 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **Swagit provider gains `list_urls` (multi-view merge), and Austin's three City Council feeds
+  are combined into one.** Swagit's `list_url` was always a single view page; Austin splits City
+  Council business across three dedicated views (regular meetings, work sessions,
+  special-called/budget work sessions), so there was no way to publish one feed covering all
+  three. `citypods/providers/swagit.py` now accepts `source.list_urls` (a list), fetched and
+  deduped by video id — mirrors the existing Granicus `feed_url`/`feed_urls` pattern. `body` is
+  no longer a hard-required key (only `list_url`/`list_urls` is), so a combined feed can omit it
+  and take every row across its merged views. `config/feeds/austin-tx-city-council.yml` now lists
+  all three views with no `body` filter and carries `aliases` for the two retired feed slugs
+  (`austin-tx-city-council-work-session`, `austin-tx-special-called-meetings-budget-work-sessions`)
+  so old subscribers get a redirect stub instead of a dead feed.
+
 - **H14d policy substrate for external-worker pacing and characterization.** `citypods/compute/policy.py`
   now parses a richer per-backend YAML policy shape from `config/site_config.yml`: generic budget
   units + soft reserve, per-backend preferred run days (`all` / `even` / `odd`), long-meeting

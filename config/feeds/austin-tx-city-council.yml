@@ -2,10 +2,18 @@ slug: austin-tx-city-council
 city: austin-tx
 provider: swagit
 source:
-  list_url: https://austintx.new.swagit.com/views/117/city-council-meetings
-  body: "City Council Meetings"
-podcast_title: "Austin City Council Meetings"
+  # Combines the three Swagit views that are all Austin City Council business: regular
+  # meetings, work sessions, and special-called/budget work sessions (formerly three separate
+  # feeds — see aliases below). No body filter: every row across these views belongs to the
+  # Council.
+  list_urls:
+    - https://austintx.new.swagit.com/views/117/city-council-meetings
+    - https://austintx.new.swagit.com/views/117/city-council-work-session
+    - https://austintx.new.swagit.com/views/117/special-called-meetings-budget-work-sessions
+podcast_title: "Austin City Council"
 podcast_author: "City of Austin, TX"
 podcast_email: ""
-podcast_description: "Audio of Austin City Council meetings (re-hosted from the city's Swagit archive)."
-max_episodes: 25
+podcast_description: "Audio of Austin City Council meetings — regular meetings, work sessions, and special-called/budget work sessions (re-hosted from the city's Swagit archive)."
+aliases:
+  - austin-tx-city-council-work-session
+  - austin-tx-special-called-meetings-budget-work-sessions

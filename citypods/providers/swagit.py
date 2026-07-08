@@ -5,6 +5,12 @@ table of rows, each ``<a href="/videos/{id}">{body name}</a>`` + a date. One vie
 every body's meetings, so a city YAML selects one body via ``body:`` (substring match) —
 e.g. "City Council Agenda Meetings". Use ``scripts/discover_swagit.py`` to list the bodies.
 
+A city YAML may set ``list_url`` (one view) or ``list_urls`` (several views, merged and
+deduped by video id) — mirrors Granicus ``feed_url``/``feed_urls``. Useful when a city
+splits one body across several dedicated view pages (e.g. regular meetings, work sessions,
+special-called meetings) and a combined feed should carry all of them; omit ``body`` on
+that combined feed to skip the per-body filter.
+
 Media is a progressive MP4 behind an expiring (~1h) presigned S3 URL via
 ``/videos/{id}/download``, so episodes are ``media_kind="hls"`` (resolved lazily and
 re-hosted as audio by the materialization pipeline, like CivicPlus).
@@ -73,6 +79,14 @@ def parse_chapters(content: bytes) -> list[dict]:
         end = int(end_raw) if end_raw and end_raw.isdigit() else None
         by_start.setdefault(start, {"start": start, "end": end, "title": title})
     return [by_start[s] for s in sorted(by_start)]
+
+
+def _list_urls(source: dict) -> list[str]:
+    """A Swagit source may set ``list_url`` (one view) or ``list_urls`` (several views,
+    merged) — useful when one meeting body is split across several dedicated view pages."""
+    if source.get("list_urls"):
+        return list(source["list_urls"])
+    return [source["list_url"]] if source.get("list_url") else []
 
 
 def _origin(url: str) -> str:
@@ -179,24 +193,28 @@ class SwagitProvider:
         return f"{origin}/play/{video_id}/{int(t_seconds)}"
 
     def validate(self, source: dict) -> None:
-        if not source.get("list_url"):
-            raise ValueError("swagit source requires 'list_url'")
-        if not source.get("body"):
-            raise ValueError("swagit source requires 'body' (meeting-body filter)")
+        if not _list_urls(source):
+            raise ValueError("swagit source requires 'list_url' or 'list_urls'")
 
     def detect_change(self, source: dict) -> ChangeToken | None:
         return None  # list page is one fetch; no cheap change probe
 
     def fetch_episodes(self, source: dict) -> list[Episode]:
-        url = source["list_url"]
+        episodes: list[Episode] = []
+        seen: set[str] = set()
         with make_session() as session:
-            try:
-                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {url} failed: {exc}") from exc
-        if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
-        return parse_list(resp.content, _origin(url))
+            for url in _list_urls(source):
+                try:
+                    resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                except requests.RequestException as exc:
+                    raise ProviderError(f"GET {url} failed: {exc}") from exc
+                if resp.status_code >= 400:
+                    raise ProviderError(f"GET {url} returned {resp.status_code}")
+                for ep in parse_list(resp.content, _origin(url)):
+                    if ep.guid not in seen:  # dedup across views
+                        seen.add(ep.guid)
+                        episodes.append(ep)
+        return episodes
 
     def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:
         """Fetch a video page and extract (chapter markers, transcript URL).
@@ -205,8 +223,7 @@ class SwagitProvider:
         ``([], None)`` on a page with no agenda items. The transcript URL is only returned when
         the page actually links it (so we never emit a transcript link a meeting doesn't have).
         """
-        origin = _origin(source["list_url"])
-        url = f"{origin}/videos/{episode.guid}"
+        url = episode.links["canonical_video"]
         with make_session() as session:
             try:
                 resp = session.get(url, timeout=DEFAULT_TIMEOUT)
@@ -216,7 +233,7 @@ class SwagitProvider:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         chapters = parse_chapters(resp.content)
         transcript_path = f"/videos/{episode.guid}/transcript"
-        transcript = f"{origin}{transcript_path}" if transcript_path in resp.text else None
+        transcript = f"{_origin(url)}{transcript_path}" if transcript_path in resp.text else None
         return chapters, transcript
 
     def fetch_segment_objects(self, episode: Episode, source: dict) -> list[tuple[str, str]] | None:
@@ -311,8 +328,7 @@ class SwagitProvider:
         self, episode: Episode, source: dict, session
     ) -> list[tuple[str, str]]:
         """Fetch the ``/videos/{id}`` page and return its inline ``(dfile, title)`` pairs."""
-        origin = _origin(source["list_url"])
-        url = f"{origin}/videos/{episode.guid}"
+        url = episode.links["canonical_video"]
         try:
             resp = session.get(url, timeout=DEFAULT_TIMEOUT)
         except requests.RequestException as exc:
