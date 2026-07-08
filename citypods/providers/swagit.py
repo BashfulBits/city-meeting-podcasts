@@ -223,8 +223,7 @@ class SwagitProvider:
         ``([], None)`` on a page with no agenda items. The transcript URL is only returned when
         the page actually links it (so we never emit a transcript link a meeting doesn't have).
         """
-        origin = _origin(_list_urls(source)[0])
-        url = f"{origin}/videos/{episode.guid}"
+        url = episode.links["canonical_video"]
         with make_session() as session:
             try:
                 resp = session.get(url, timeout=DEFAULT_TIMEOUT)
@@ -234,7 +233,7 @@ class SwagitProvider:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         chapters = parse_chapters(resp.content)
         transcript_path = f"/videos/{episode.guid}/transcript"
-        transcript = f"{origin}{transcript_path}" if transcript_path in resp.text else None
+        transcript = f"{_origin(url)}{transcript_path}" if transcript_path in resp.text else None
         return chapters, transcript
 
     def fetch_segment_objects(self, episode: Episode, source: dict) -> list[tuple[str, str]] | None:
@@ -329,8 +328,7 @@ class SwagitProvider:
         self, episode: Episode, source: dict, session
     ) -> list[tuple[str, str]]:
         """Fetch the ``/videos/{id}`` page and return its inline ``(dfile, title)`` pairs."""
-        origin = _origin(_list_urls(source)[0])
-        url = f"{origin}/videos/{episode.guid}"
+        url = episode.links["canonical_video"]
         try:
             resp = session.get(url, timeout=DEFAULT_TIMEOUT)
         except requests.RequestException as exc:
