@@ -2222,6 +2222,16 @@ still only one active transcription at a time inside the container). Chunking re
 default** until telemetry shows sequential whole-recording work leaves throughput on the table or a
 memory-shaped fallback is required.
 
+**Manifest-freshness follow-up (2026-07-08).** Live validation uncovered a separate control-plane bug
+outside the GPU-cost tuning itself: external workers and `asr-worker-report` were reading persisted
+`state/work.json` as though it were canonical for derivable ordering fields such as
+`duration_hours`. That made the report show `2393 total, 0 over 4.0h, 2393 unknown duration` even
+though the backing records mostly already had `audio.duration_served`. H14d now rebuilds a fresh
+manifest from canonical records and overlays only persisted operational sidecar state
+(`running`/`backoff`/`dead`, leases, retry/error/estimate fields). The first post-fix report recovered
+the intended queue composition immediately: `2108 total, 91 over 4.0h, 77 unknown duration`, with
+both backends seeing `backlog long 91` and `fresh short 3`.
+
 **Documented characterization corpus and rerun procedure (2026-07-08).** H14d's first GPU-type
 comparison was run against one fixed Denton pair so every backend/GPU comparison stayed apples-to-apples:
 

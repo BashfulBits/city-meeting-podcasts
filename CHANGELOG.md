@@ -113,18 +113,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   workflow and list the `timeline_repair=true` / `timeline_repair_cohort` inputs to run. Existing
   sub-second rows should clear on the next audit after this ships; truly stale rows remain visible
   and repairable.
-- **Work-manifest persistence dropped `duration_hours`, making 100% of the feed-visible
-  transcript-asr backlog read as unknown-duration.** `_workitem_to_dict` / `_workitem_from_dict`
-  serialized every `WorkItem` field *except* `duration_hours` — a computed ordering input (from
-  `audio.duration_served`), not one of the inert reserved fields. `build_manifest` set it correctly
-  in memory, but `save_manifest`→`load_manifest` silently reset it to `0.0` on every round trip, so
-  every consumer that reads the persisted `state/work.json` (the `long_first` comparator, the
-  `asr-worker-report` duration band) saw *unknown duration* for the entire backlog even though the
-  records carried a real served duration (confirmed by the pending-unknown diagnostic: 2292/2391
-  sampled records had `audio.duration_served` populated while the manifest reported them all as 0h).
-  This is what made `long_first` float nothing and kept the duration band pinned at 2393/2393
-  unknown across every rebuild. `duration_hours` now round-trips; the manifest self-heals on the
-  next `build_manifest`+`save_manifest` (no backfill needed — it is rederived from records each run).
+- **External workers and `asr-worker-report` could trust a stale persisted `work.json`, hiding the
+  real long-meeting backlog even when the canonical records had durations.** The worker/report path
+  had been rotate-reading the persisted manifest directly, so whichever in-Actions lane last rebuilt
+  `state/work.json` effectively froze the external queue view until the next rebuild. In live H14d
+  validation that made the duration band read `2393 total, 0 over 4.0h, 2393 unknown duration`
+  despite most records already carrying `audio.duration_served`. The fix does **not** treat
+  `work.json` as canonical for derivable fields anymore: external workers and `report_workers.py`
+  now rebuild a fresh manifest from `episodes.json` records, then overlay only persisted
+  operational sidecar state (running/backoff/dead state, leases, retry/error/estimate fields). That
+  preserves the durable coordination hints without letting stale manifest content suppress the true
+  duration-aware queue order. The first post-fix worker report immediately recovered the intended
+  view: `2108 total, 91 over 4.0h, 77 unknown duration, max known 10.92h`, with both Beam and
+  Modal reporting `backlog long 91`.
 - **Owned-block merge: a better remote plan no longer silently drops an owning lane's just-written
   artifact.** `_preserve_remote_planning_if_better` (part of `merge_preserving_foreign`) overwrote
   *all* artifact blocks — including `transcript` — from remote whenever remote's timeline/source
