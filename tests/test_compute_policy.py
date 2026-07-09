@@ -122,3 +122,22 @@ def test_backend_policy_loads_hardware_gpu_type_from_legacy_backend_shape():
     )
 
     assert policy.hardware.gpu_type == "L4"
+
+
+def test_backend_policy_invalid_estimated_dollars_rate_falls_back_conservatively():
+    policy = backend_policy(
+        {
+            "defaults": {
+                "compute_backends": {
+                    "modal": {
+                        "budget": {
+                            "estimated_dollars_per_runtime_second": "not-a-number",
+                        }
+                    }
+                }
+            }
+        },
+        "modal",
+    )
+
+    assert policy.budget.estimated_dollars_per_runtime_second == 1.0

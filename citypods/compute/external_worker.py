@@ -404,9 +404,9 @@ class ExternalTranscribeWorker:
         function_call_id = self.config.provider_run_id
         if function_call_id:
             try:
-                from modal.workspace import Workspace
+                from modal.billing import workspace_billing_report
 
-                report = Workspace.from_context().billing.report(
+                report = workspace_billing_report(
                     start=started_at - timedelta(minutes=5),
                     end=finished_at + timedelta(minutes=5),
                     resolution="h",
@@ -556,7 +556,7 @@ class ExternalTranscribeWorker:
                 outcome = "failed"
                 actual = 0.0
                 try:
-                    adopted = self._run_with_retry(item, tracker)
+                    adopted = self._run_with_retry(item, tracker, owner=claim_owner)
                 except Exception:
                     actual = max(0.0, time.monotonic() - started)
                     work_leases.release(
@@ -651,13 +651,13 @@ class ExternalTranscribeWorker:
             worker_tracker.record("worker-finish")
             summary.update_resource_peaks(worker_tracker)
 
-    def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker) -> bool:
+    def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker, *, owner: str) -> bool:
         """Returns True if the item was *adopted* (artifacts already present) rather than
         freshly transcribed."""
         last: Exception | None = None
         for _attempt in range(2):
             try:
-                return self._run_with_renewal(item, tracker)
+                return self._run_with_renewal(item, tracker, owner=owner)
             except Exception as exc:  # noqa: BLE001
                 last = exc
         assert last is not None
@@ -669,7 +669,7 @@ class ExternalTranscribeWorker:
         Its own method so tests can shrink it below the 60s floor without a real long inference."""
         return max(60.0, min(300.0, self.config.lease_ttl_seconds / 3))
 
-    def _run_with_renewal(self, item: WorkItem, tracker: ResourceTracker) -> bool:
+    def _run_with_renewal(self, item: WorkItem, tracker: ResourceTracker, *, owner: str) -> bool:
         stop = threading.Event()
         interval = self._renew_interval()
         ref = f"{item.source_key}/{item.episode_uid}"
@@ -684,7 +684,7 @@ class ExternalTranscribeWorker:
                         self.storage,
                         item.source_key,
                         item.episode_uid,
-                        owner=self.config.owner,
+                        owner=owner,
                         ttl_seconds=self.config.lease_ttl_seconds,
                     )
                 except Exception as exc:  # noqa: BLE001
@@ -817,7 +817,7 @@ class ExternalTranscribeWorker:
         cycle = self._budget_cycle_key(policy)
         if ledger is None:
             used_units = 0.0
-        elif ledger.cycle_key and len(ledger.cycle_key) == 10 and ledger.cycle_key != cycle:
+        elif ledger.cycle_key and not budget._cycle_matches(ledger.cycle_key, cycle):
             used_units = 0.0
         else:
             used_units = ledger.used_units

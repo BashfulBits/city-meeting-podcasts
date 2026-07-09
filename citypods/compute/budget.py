@@ -134,25 +134,32 @@ class Budget:
     backends: dict[str, BackendLedger] = field(default_factory=dict)
     runtime_estimates: dict[str, RuntimeEstimate] = field(default_factory=dict)
 
+    def _cycle_matches(self, existing: str, target: str) -> bool:
+        if existing == target:
+            return True
+        # Legacy ledgers stored only YYYY-MM. Treat the migrated day-1 provider-cycle key as the
+        # same cycle so the first read under the new schema does not zero live state.
+        return len(existing) == 7 and target == f"{existing}-01"
+
     def _ledger(self, backend: str, *, cycle: str | None = None) -> BackendLedger:
         led = self.backends.setdefault(backend, BackendLedger())
-        if cycle and led.cycle_key != cycle:
+        target_cycle = cycle or self.month
+        if led.cycle_key and not self._cycle_matches(led.cycle_key, target_cycle):
             led.used_units = 0.0
             led.inflight = {}
-            led.cycle_key = cycle
-        elif not led.cycle_key:
-            led.cycle_key = cycle or self.month
+        led.cycle_key = target_cycle
         return led
 
     def roll_month(self, now: datetime | None = None) -> bool:
-        """Reset every backend's spend + in-flight set when the allotment month has rolled over.
-        Returns True if a reset happened. A new month grants a fresh free allotment; reservations
-        that straddle the boundary are dropped (a later ``settle``/``release`` for them no-ops)."""
+        """Advance the schema's month marker when the UTC month rolls over.
+
+        Per-backend spend is no longer reset here; provider-cycle resets are keyed from each
+        backend's explicit cycle anchor in :meth:`_ledger`.
+        """
         mk = month_key(now)
         if mk == self.month:
             return False
         self.month = mk
-        self.backends = {}
         return True
 
     def available(

@@ -142,6 +142,23 @@ def test_append_worker_telemetry_retries_cas_conflict():
     assert load_worker_telemetry(bucket)["by_backend"]["beam"]["failed"] == 1
 
 
+def test_telemetry_report_tolerates_samples_with_only_dollar_estimates():
+    report = telemetry_report(
+        {
+            "samples": [
+                {
+                    "backend": "modal",
+                    "outcome": "success",
+                    "finished_at": "2026-07-09T00:00:00+00:00",
+                    "budget_dollars_estimate": 1.25,
+                }
+            ]
+        }
+    )
+
+    assert report["by_backend"]["modal"]["max_budget_dollars_estimate"] == 1.25
+
+
 def test_telemetry_report_marks_missing_samples():
     report = telemetry_report({})
 

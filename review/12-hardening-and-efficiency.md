@@ -2211,12 +2211,18 @@ multi-claim** throughput within one invocation, and continue to prefer **long me
 while GitHub runners absorb the short tail.
 
 **Implemented H14d posture in this branch.** Backend policy is now YAML-driven through
-`compute_backends.<backend>.{budget,dispatch,tasks}` with generic budget units, soft reserves,
-per-backend preferred days (`all` / `even` / `odd`), freshness windows, long-meeting preference, and
-both **fixed-per-run** and **fixed-per-claim** planning knobs. The worker paces `max_claims_per_run`
-against remaining monthly budget and remaining preferred run slots in the month. Off-days now have one
-extra backlog guardrail: while any non-fresh backlog still exists, they admit only fresh work and cap
-that freshness maintenance to one claim; once the backlog is cleared, off-days reopen normal pacing for
+`compute_backends.<backend>.{hardware,budget,dispatch,tasks}` with provider-cycle **dollar**
+budgets (`monthly_dollars`, `reserve_dollars`, `rollover_day_of_month`), backend GPU target
+(`hardware.gpu_type`), per-backend preferred days (`all` / `even` / `odd`), freshness windows,
+long-meeting preference, and both **fixed-per-run** and **fixed-per-claim** planning knobs. The
+worker paces `max_claims_per_run` against remaining monthly budget and remaining preferred run
+slots in the month. Reservations are made from a persisted runtime estimate keyed by
+backend/task/GPU/model/compute profile, and every completed run feeds actual runtime back into that
+coefficient so planning stays calibrated as workloads drift. Beam settlement uses YAML-configured
+dollars-per-runtime-second; Modal attempts to settle from exported billing data for the current
+function call before falling back to runtime-rate pricing. Off-days now have one extra backlog
+guardrail: while any non-fresh backlog still exists, they admit only fresh work and cap that
+freshness maintenance to one claim; once the backlog is cleared, off-days reopen normal pacing for
 fresh work. The default production cap remains **sequential** (multiple new claims per invocation,
 still only one active transcription at a time inside the container). Chunking remains **off by
 default** until telemetry shows sequential whole-recording work leaves throughput on the table or a
@@ -2353,10 +2359,11 @@ modal run scripts/compute/modal_canary.py \
 - **Host-RSS trimming / download-path review.** The first live runs were much tighter on host RSS than
   on GPU VRAM, so any future concurrency increase should first profile download/decode buffering and
   whole-result materialization on the CPU side.
-- **Provider-cycle budget refactor.** The future ledger should be keyed to each backend's real billing
-  rollover date rather than a repo-local UTC month. Beam's dollars-per-second inputs should stay YAML-
-  parameterized enough to reuse for future tasks like diarize or combined ASR+diarize; Modal should use
-  actual exported dollar cost for settlement while sharing the same persisted runtime-estimate update loop.
+- **Provider-cycle input maintenance.** The ledger is now keyed to backend-specific cycle anchors, but
+  the configured `rollover_day_of_month`, `hardware.gpu_type`, and Beam price coefficients remain
+  operator-maintained YAML inputs that should be refreshed whenever provider billing cycles or GPU
+  targets change. Reuse the same shape for future tasks like diarize or combined ASR+diarize rather
+  than inheriting ASR's coefficients blindly.
 - **Guardband revisit.** Because CPU/RAM looked like a small minority of total provider cost in these
   first runs, the current host-memory guardband can likely tighten once billing and buffering are better
   characterized; a move from roughly `80%` toward `90%` is plausible, but not before the host-RSS path

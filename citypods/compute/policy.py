@@ -140,7 +140,7 @@ def backend_policy(
     estimated_rate_raw = budget_raw.get("estimated_dollars_per_runtime_second")
     estimated_dollars_per_runtime_second = max(
         0.0,
-        _as_float(estimated_rate_raw, 1.0 if estimated_rate_raw in (None, "") else 0.0),
+        _as_float(estimated_rate_raw, 1.0),
     )
     unit_label = str(budget_raw.get("unit_label") or "dollar")
     gpu_type = str(hardware_raw.get("gpu_type") or raw.get("gpu_type") or "")

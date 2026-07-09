@@ -62,7 +62,9 @@ def _patch_loop(monkeypatch, worker, *, adopted_uids):
     monkeypatch.setattr(worker, "_telemetry_metadata", lambda item: {})
     monkeypatch.setattr(worker, "_append_telemetry_sample", lambda **k: None)
     monkeypatch.setattr(
-        worker, "_run_with_retry", lambda item, tracker: item.episode_uid in adopted_uids
+        worker,
+        "_run_with_retry",
+        lambda item, tracker, *, owner: item.episode_uid in adopted_uids,
     )
 
 
@@ -438,13 +440,13 @@ def test_renewal_thread_renews_lease_during_inference(tmp_path, monkeypatch):
 
     monkeypatch.setattr(worker, "_run_transcribe_item", _fake_transcribe)
 
-    adopted = worker._run_with_renewal(_queued("a"), ew.ResourceTracker())
+    adopted = worker._run_with_renewal(_queued("a"), ew.ResourceTracker(), owner="modal:test:0")
 
     assert adopted is False
     assert renew_calls, "renewal thread never renewed the lease"
     assert renew_calls[0] == {
         "uid": "a",
-        "owner": "modal:test",
+        "owner": "modal:test:0",
         "ttl_seconds": worker.config.lease_ttl_seconds,
     }
 
@@ -473,7 +475,7 @@ def test_renewal_thread_stops_after_lease_lost(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(worker, "_run_transcribe_item", _fake_transcribe)
 
-    worker._run_with_renewal(_queued("a"), ew.ResourceTracker())
+    worker._run_with_renewal(_queued("a"), ew.ResourceTracker(), owner="modal:test:0")
 
     assert "lease renew skipped src/a (no longer held)" in capsys.readouterr().out
     assert len(renew_calls) == 1  # returned after the first lost-lease observation, no re-spam

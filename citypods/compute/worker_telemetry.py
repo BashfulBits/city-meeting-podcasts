@@ -213,10 +213,11 @@ def _backend_summary(samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
         )
         duration_buckets = Counter(str(r.get("duration_bucket") or "unknown") for r in rows)
         budget_estimates = [
-            float(r.get("budget_dollars_estimate", r["budget_units_estimate"]))
+            float(estimate)
             for r in rows
+            for estimate in [r.get("budget_dollars_estimate", r.get("budget_units_estimate"))]
             if isinstance(
-                r.get("budget_dollars_estimate", r.get("budget_units_estimate")),
+                estimate,
                 (int, float),
             )
         ]
