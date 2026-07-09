@@ -2491,8 +2491,7 @@ class TranscriptStage:
             if probe_source == "hosted":
                 served_duration = episode_served_duration_seconds(ep)
                 print(
-                    f"[enrich] transcript audio-probe {ep_ref} "
-                    f"duration_s={served_duration:.1f}",
+                    f"[enrich] transcript audio-probe {ep_ref} duration_s={served_duration:.1f}",
                     flush=True,
                 )
 
