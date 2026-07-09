@@ -259,8 +259,10 @@ def main(argv: list[str] | None = None) -> int:
         pulled = pull_state(storage, state_dir)
         print(f"state: pulled {pulled} file(s) from durable storage")
 
-    sources = [args.source] if args.source else sorted(
-        p.parent.name for p in Path(state_dir).glob("sources/*/episodes.json")
+    sources = (
+        [args.source]
+        if args.source
+        else sorted(p.parent.name for p in Path(state_dir).glob("sources/*/episodes.json"))
     )
     if not sources:
         print("no sources found in state")
