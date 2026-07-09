@@ -41,7 +41,7 @@ def _rec(uid, state, *, fingerprint="fp", title="Council", duration=3600, overri
         "uid": uid,
         "title": title,
         "video_url": f"https://city.swagit.com/play/{uid}/m.mp4?X-Amz-Signature=SECRET",
-        "duration": duration,
+        "source_duration_seconds": float(duration),
         "links": {"canonical_video": f"https://city.gov/watch/{uid}"},
         "media_availability": av,
     }
@@ -81,6 +81,7 @@ def test_iter_candidates_picks_only_empties(tmp_path):
     cands = iter_candidates(tmp_path)
     states = {c.uid: c.state for c in cands}
     assert states == {"u1": "confirmed_empty", "u3": "suspected_empty"}
+    assert {c.uid: c.duration for c in cands} == {"u1": 3600.0, "u3": 3600.0}
 
 
 def test_iter_candidates_respects_operator_override(tmp_path):

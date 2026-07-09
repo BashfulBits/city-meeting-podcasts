@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from html import escape
 
+from citypods.durations import episode_served_duration_seconds, episode_source_duration_seconds
 from citypods.models import City, Episode
 from citypods.render import get_env
 from citypods.stages import TRANSCRIPT_MIME  # single source for transcript MIME types
@@ -195,9 +196,12 @@ def enclosure_duration(ep: Episode, kind: str) -> int | None:
     its real played length, not the longer source duration. Falls back to ``ep.duration`` (the
     source clock) when no served duration is recorded (e.g. identity/direct audio that was never
     re-hosted). The **video** feed always uses the source duration. ``None`` when unknown."""
-    if kind == "audio" and ep.audio_duration_served and ep.audio_duration_served > 0:
-        return int(round(ep.audio_duration_served))
-    return int(ep.duration) if ep.duration else None
+    if kind == "audio":
+        served = episode_served_duration_seconds(ep)
+        if served is not None:
+            return int(round(served))
+    source = episode_source_duration_seconds(ep)
+    return int(round(source)) if source is not None else None
 
 
 def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> str:

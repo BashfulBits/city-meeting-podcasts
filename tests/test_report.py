@@ -226,10 +226,12 @@ def _rec(
     spec_hash=None,
     error=None,
     duration=3600,
+    source_duration_seconds=None,
+    served_duration_seconds=None,
     bytes_val=None,
     published="2026-05-01T00:00:00+00:00",
 ):
-    return {
+    rec = {
         "uid": uid,
         "title": f"Meeting {uid}",
         "published": published,
@@ -246,11 +248,17 @@ def _rec(
             "url": hosted_url,
             "spec_hash": spec_hash,
             "bytes": bytes_val,
+            "duration_served": None,
             "attempts": 1 if error else 0,
             "last_attempt": "2026-05-01T00:00:00+00:00" if error else None,
             "error": error,
         },
     }
+    if source_duration_seconds is not None:
+        rec["source_duration_seconds"] = source_duration_seconds
+    if served_duration_seconds is not None:
+        rec["served_duration_seconds"] = served_duration_seconds
+    return rec
 
 
 def test_build_status_empty():
@@ -1469,6 +1477,26 @@ def test_feed_row_hours_hosted_bytes_fallback(tmp_path):
     save_records(tmp_path, source_key(city), records)
     status = build_status([city], site_config=SITE, state_dir=tmp_path)
     assert status["kpis"]["hours_hosted"] == pytest.approx(1.0, abs=0.01)
+
+
+def test_feed_row_hours_hosted_uses_canonical_served_duration(tmp_path):
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("canon-city")
+    records = {
+        "ep1": _rec(
+            "ep1",
+            hosted_url="http://cdn/ep1.m4a",
+            spec_hash="canon",
+            duration=None,
+            source_duration_seconds=7200.0,
+            served_duration_seconds=5400.0,
+        )
+    }
+
+    save_records(tmp_path, source_key(city), records)
+    status = build_status([city], site_config=SITE, state_dir=tmp_path)
+    assert status["kpis"]["hours_hosted"] == pytest.approx(1.5, abs=0.01)
 
 
 def test_run_history_telemetry_roundtrip(tmp_path):

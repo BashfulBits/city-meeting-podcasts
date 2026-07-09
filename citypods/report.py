@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from citypods.durations import record_served_duration_seconds, record_source_duration_seconds
 from citypods.projection import (
     ModelInputs,
     archived_per_feed,
@@ -42,6 +43,15 @@ def _json_for_html_script(value, *, indent: int | None = None) -> str:
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
     )
+
+
+def _record_duration_seconds(rec: dict, *, kind: str) -> float:
+    if kind == "audio":
+        served = record_served_duration_seconds(rec)
+        if served is not None:
+            return served
+    source = record_source_duration_seconds(rec)
+    return source or 0.0
 
 
 def _hosted_fraction(cities: list) -> float:
@@ -407,12 +417,6 @@ def _feed_row(
             except ValueError:
                 pass
 
-        audio = rec.get("audio") or {}
-        duration_s = rec.get("duration") or audio.get("duration_served") or 0
-        # Bytes-based estimate for providers (e.g. Swagit) that never supply a duration and
-        # whose reuse path skips the ffprobe that would set duration_served.
-        if not duration_s and audio.get("bytes"):
-            duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
         state = _classify_record(
             rec,
             max_kbps,
@@ -420,6 +424,15 @@ def _feed_row(
             processing_profile=processing_profile,
             host_direct=bool(city.extract_audio),
         )
+        audio = rec.get("audio") or {}
+        duration_s = _record_duration_seconds(
+            rec,
+            kind="audio" if state in ("served", "stale") else "source",
+        )
+        # Bytes-based estimate for providers (e.g. Swagit) that never supply a duration and
+        # whose reuse path skips the ffprobe that would set duration_served.
+        if not duration_s and audio.get("bytes"):
+            duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
 
         if state in ("served", "stale"):
             hosted += 1
@@ -525,10 +538,6 @@ def _source_actuals(
         host_direct = host_direct_by_source.get(key, False)
         for rec in recs.values():
             totals["meetings_archived"] += 1
-            audio = rec.get("audio") or {}
-            duration_s = rec.get("duration") or audio.get("duration_served") or 0
-            if not duration_s and audio.get("bytes"):
-                duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
             state = _classify_record(
                 rec,
                 max_kbps,
@@ -536,6 +545,13 @@ def _source_actuals(
                 processing_profile=processing_profile,
                 host_direct=host_direct,
             )
+            audio = rec.get("audio") or {}
+            duration_s = _record_duration_seconds(
+                rec,
+                kind="audio" if state in ("served", "stale") else "source",
+            )
+            if not duration_s and audio.get("bytes"):
+                duration_s = audio["bytes"] * 8 / (max_kbps * 1000)
 
             if state in ("served", "stale"):
                 totals["hosted_audio"] += 1

@@ -35,6 +35,7 @@ from typing import Literal
 from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body
 from citypods.durations import (
+    episode_duration_hours,
     episode_served_duration_seconds,
     episode_source_duration_seconds,
     set_served_duration_seconds,
@@ -429,10 +430,10 @@ def estimate_audio_shard_work(
         duration: float | None = None
         if ep.timeline is not None and ep.timeline.segments:
             duration = float(ep.timeline.segments[-1].served_end)
-        elif ep.audio_duration_served and ep.audio_duration_served > 0:
-            duration = float(ep.audio_duration_served)
-        elif ep.duration and ep.duration > 0:
-            duration = float(ep.duration)
+        else:
+            duration_hours, source = episode_duration_hours(ep)
+            if source != "unknown":
+                duration = duration_hours * 3600.0
         if duration is None or duration <= 0:
             unknown_items += 1
         else:
@@ -634,8 +635,8 @@ def _iter_transcribe_routes(
         if timeout_backoff_until is not None and now < timeout_backoff_until:
             yield uid, "blocked", None
             continue
-        raw_duration = ep.audio_duration_served or ep.duration
-        duration_seconds = float(raw_duration) if raw_duration and raw_duration > 0 else None
+        duration_hours, _duration_source = episode_duration_hours(ep)
+        duration_seconds = duration_hours * 3600.0 if duration_hours > 0 else None
         if route_classifier is not None:
             route = route_classifier(ep, duration_seconds)
         elif (

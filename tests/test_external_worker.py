@@ -7,6 +7,8 @@ import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+
 import citypods.compute.external_worker as ew
 from citypods.compute.budget import Budget, month_key
 from citypods.compute.external_worker import (
@@ -397,6 +399,24 @@ def test_external_worker_prefers_long_meetings_for_claim_scan(tmp_path):
     summary = worker.run()
 
     assert summary.scanned == 1
+
+
+def test_telemetry_metadata_uses_canonical_duration_fields(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a"], max_claims=0)
+    city = SimpleNamespace(asr_model="large-v3-turbo", asr_compute_type="int8")
+    ep = SimpleNamespace(
+        duration=None,
+        audio_duration_served=None,
+        source_duration_seconds=7200.0,
+        served_duration_seconds=5400.0,
+    )
+    monkeypatch.setattr(worker, "_episode_for", lambda item: (city, ep, {}))
+
+    metadata = worker._telemetry_metadata(_queued("a"))
+
+    assert metadata["duration_hours"] == pytest.approx(1.5)
+    assert metadata["model"] == "large-v3-turbo"
+    assert metadata["compute_type"] == "int8"
 
 
 def test_config_from_env_uses_site_config_max_claims_by_default(monkeypatch):

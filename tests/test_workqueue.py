@@ -391,14 +391,14 @@ def test_workitem_from_episode_carries_fields():
 
 def test_workitem_from_episode_duration_prefers_served_over_source():
     ep = _ep("g1", 1)
-    ep.duration = 7200
-    ep.audio_duration_served = 5400.0
+    ep.source_duration_seconds = 7200.0
+    ep.served_duration_seconds = 5400.0
     assert workitem_from_episode(ep).duration_hours == pytest.approx(1.5)
 
 
 def test_workitem_from_episode_duration_falls_back_to_source():
     ep = _ep("g1", 1)
-    ep.duration = 7200
+    ep.source_duration_seconds = 7200.0
     assert workitem_from_episode(ep).duration_hours == pytest.approx(2.0)
 
 
@@ -513,6 +513,8 @@ def _rec(
     media_kind="hls",
     duration=None,
     duration_served=None,
+    source_duration_seconds=None,
+    served_duration_seconds=None,
 ):
     audio = {}
     if hosted:
@@ -528,6 +530,10 @@ def _rec(
     }
     if duration is not None:
         rec["duration"] = duration
+    if source_duration_seconds is not None:
+        rec["source_duration_seconds"] = source_duration_seconds
+    if served_duration_seconds is not None:
+        rec["served_duration_seconds"] = served_duration_seconds
     if transcript_key:
         rec["transcript"] = {"key": transcript_key, "basis": "source:s0"}
     return rec
@@ -568,8 +574,13 @@ def _tx_items(items):
 
 def test_build_manifest_carries_duration_hours_preferring_served():
     recs = {
-        "served": _rec(1, hosted=True, duration=7200, duration_served=5400.0),
-        "source_only": _rec(1, hosted=True, duration=3600),
+        "served": _rec(
+            1,
+            hosted=True,
+            source_duration_seconds=7200.0,
+            served_duration_seconds=5400.0,
+        ),
+        "source_only": _rec(1, hosted=True, source_duration_seconds=3600.0),
         "unknown": _rec(1, hosted=True),
     }
     items = {it.episode_uid: it for it in build_manifest([("s", _city("d"), recs)])}
