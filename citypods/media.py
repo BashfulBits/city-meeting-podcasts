@@ -2247,6 +2247,28 @@ def _probe_audio_duration_header(
         return _probe_audio_duration_details(dest, ffmpeg_binary=ffmpeg_binary)
 
 
+def probe_hosted_audio_duration_seconds(
+    storage,
+    key: str,
+    *,
+    ffmpeg_binary: str = "ffmpeg",
+) -> tuple[float | None, str | None]:
+    """Probe a hosted audio object's duration via bounded range reads only."""
+    if not key or storage is None or not hasattr(storage, "get_range"):
+        return None, "no-range-probe"
+    probe = _probe_audio_duration_header(
+        lambda start, end: storage.get_range(key, start, end),
+        ffmpeg_binary=ffmpeg_binary,
+    )
+    if probe is None:
+        return None, "header-unavailable"
+    if probe.stream_sample_duration is not None and probe.stream_sample_duration > 0:
+        return probe.stream_sample_duration, probe.stream_duration_source or "stream-sample"
+    if probe.container_duration is not None and probe.container_duration > 0:
+        return probe.container_duration, "container-duration"
+    return None, probe.probe_error or "no-duration-metadata"
+
+
 # ---------------------------------------------------------------------------
 # Materialization stats + pipeline
 # ---------------------------------------------------------------------------

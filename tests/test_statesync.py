@@ -195,6 +195,81 @@ def test_push_records_merged_preserves_concurrent_audio(tmp_path):
     assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
 
 
+def test_push_records_merged_transcribe_lane_preserves_remote_served_duration(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(
+        bucket,
+        sk,
+        {
+            "u1": {
+                "uid": "u1",
+                "served_duration_seconds": 1200.0,
+                "audio": {"url": "REMOTE", "key": "k1", "duration_served": 1200.0},
+            }
+        },
+    )
+    save_records(
+        state_dir,
+        sk,
+        {
+            "u1": {
+                "uid": "u1",
+                "served_duration_seconds": 900.0,
+                "audio": {"url": "LOCAL", "key": "k1", "duration_served": 900.0},
+                "transcript": {"key": "t1", "synced": True},
+            }
+        },
+    )
+
+    pushed = push_records_merged(
+        bucket, state_dir, [sk], protected_blocks=protected_blocks_for_lane("transcribe")
+    )
+
+    assert pushed == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)["u1"]
+    assert final["served_duration_seconds"] == 1200.0
+    assert final["audio"]["duration_served"] == 1200.0
+    assert final["transcript"]["key"] == "t1"
+
+
+def test_push_records_merged_transcribe_lane_can_add_missing_served_duration(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(
+        bucket,
+        sk,
+        {"u1": {"uid": "u1", "audio": {"url": "REMOTE", "key": "k1"}, "transcript": None}},
+    )
+    save_records(
+        state_dir,
+        sk,
+        {
+            "u1": {
+                "uid": "u1",
+                "served_duration_seconds": 900.0,
+                "audio": {"url": "REMOTE", "key": "k1", "duration_served": 900.0},
+                "transcript": {"key": "t1", "synced": True},
+            }
+        },
+    )
+
+    pushed = push_records_merged(
+        bucket, state_dir, [sk], protected_blocks=protected_blocks_for_lane("transcribe")
+    )
+
+    assert pushed == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)["u1"]
+    assert final["served_duration_seconds"] == 900.0
+    assert final["transcript"]["key"] == "t1"
+
+
 def test_push_records_merged_preserves_remote_decoded_plan_from_stale_audio_lane(tmp_path):
     """An audio shard that started from stale state must not overwrite a repaired decoded plan."""
     bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")

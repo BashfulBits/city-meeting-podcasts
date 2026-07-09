@@ -38,6 +38,7 @@ from citypods.durations import (
     episode_duration_hours,
     episode_served_duration_seconds,
     episode_source_duration_seconds,
+    record_served_duration_seconds,
     set_served_duration_seconds,
     set_source_duration_seconds,
 )
@@ -1084,6 +1085,21 @@ def _preserve_remote_planning_if_better(
             rec.pop(key, None)
 
 
+def _preserve_remote_served_duration_if_protected(
+    rec: dict, remote_rec: dict, protected: frozenset[str]
+) -> None:
+    """Keep a fresher remote served duration when this lane does not own audio."""
+    if "audio" not in protected:
+        return
+    remote_served = record_served_duration_seconds(remote_rec)
+    if remote_served is None:
+        return
+    set_served_duration_seconds(rec, remote_served)
+    audio = rec.get("audio")
+    if isinstance(audio, dict):
+        audio["duration_served"] = remote_served
+
+
 def merge_preserving_foreign(
     remote: dict,
     local: dict,
@@ -1131,6 +1147,7 @@ def merge_preserving_foreign(
             for block in protected:
                 if remote_rec.get(block):
                     rec[block] = remote_rec[block]
+            _preserve_remote_served_duration_if_protected(rec, remote_rec, protected)
             _preserve_remote_planning_if_better(rec, remote_rec, protected)
         merged[uid] = rec
     return merged
