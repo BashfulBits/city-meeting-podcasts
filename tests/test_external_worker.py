@@ -62,7 +62,9 @@ def _patch_loop(monkeypatch, worker, *, adopted_uids):
     monkeypatch.setattr(worker, "_telemetry_metadata", lambda item: {})
     monkeypatch.setattr(worker, "_append_telemetry_sample", lambda **k: None)
     monkeypatch.setattr(
-        worker, "_run_with_retry", lambda item, tracker: item.episode_uid in adopted_uids
+        worker,
+        "_run_with_retry",
+        lambda item, tracker, *, owner: item.episode_uid in adopted_uids,
     )
 
 
@@ -159,7 +161,7 @@ def test_effective_max_claims_paces_against_remaining_budget(tmp_path, monkeypat
         owner="modal:test",
         max_claims=5,
         min_claims_per_run=1,
-        min_budget_units=60.0,
+        min_runtime_seconds=60.0,
         preferred_days="all",
     )
     worker.site_config = {
@@ -191,7 +193,7 @@ def test_effective_max_claims_rolls_budget_month_before_pacing(tmp_path, monkeyp
         owner="modal:test",
         max_claims=5,
         min_claims_per_run=1,
-        min_budget_units=60.0,
+        min_runtime_seconds=60.0,
         preferred_days="all",
     )
     worker.site_config = {
@@ -224,8 +226,8 @@ def test_effective_max_claims_accounts_for_fixed_run_overhead(tmp_path, monkeypa
         owner="beam:test",
         max_claims=5,
         min_claims_per_run=1,
-        min_budget_units=60.0,
-        fixed_budget_units_per_run=95.0,
+        min_runtime_seconds=60.0,
+        fixed_runtime_seconds_per_run=95.0,
         preferred_days="all",
     )
     worker.site_config = {
@@ -234,7 +236,7 @@ def test_effective_max_claims_accounts_for_fixed_run_overhead(tmp_path, monkeypa
                 "beam": {
                     "budget": {"monthly_units": 400, "reserve_units": 0},
                     "dispatch": {"max_claims_per_run": 5, "min_claims_per_run": 1},
-                    "tasks": {"transcript-asr": {"fixed_budget_units_per_run": 95.0}},
+                    "tasks": {"transcript-asr": {"fixed_runtime_seconds_per_run": 95.0}},
                 }
             }
         }
@@ -256,7 +258,7 @@ def test_effective_max_claims_caps_off_day_fresh_work_while_backlog_remains(tmp_
         owner="beam:test",
         max_claims=5,
         min_claims_per_run=1,
-        min_budget_units=60.0,
+        min_runtime_seconds=60.0,
         preferred_days="odd",
     )
     worker.site_config = {
@@ -292,7 +294,7 @@ def test_effective_max_claims_allows_full_off_day_pacing_once_backlog_is_cleared
         owner="beam:test",
         max_claims=5,
         min_claims_per_run=1,
-        min_budget_units=60.0,
+        min_runtime_seconds=60.0,
         preferred_days="odd",
     )
     worker.site_config = {
@@ -438,13 +440,13 @@ def test_renewal_thread_renews_lease_during_inference(tmp_path, monkeypatch):
 
     monkeypatch.setattr(worker, "_run_transcribe_item", _fake_transcribe)
 
-    adopted = worker._run_with_renewal(_queued("a"), ew.ResourceTracker())
+    adopted = worker._run_with_renewal(_queued("a"), ew.ResourceTracker(), owner="modal:test:0")
 
     assert adopted is False
     assert renew_calls, "renewal thread never renewed the lease"
     assert renew_calls[0] == {
         "uid": "a",
-        "owner": "modal:test",
+        "owner": "modal:test:0",
         "ttl_seconds": worker.config.lease_ttl_seconds,
     }
 
@@ -473,7 +475,7 @@ def test_renewal_thread_stops_after_lease_lost(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(worker, "_run_transcribe_item", _fake_transcribe)
 
-    worker._run_with_renewal(_queued("a"), ew.ResourceTracker())
+    worker._run_with_renewal(_queued("a"), ew.ResourceTracker(), owner="modal:test:0")
 
     assert "lease renew skipped src/a (no longer held)" in capsys.readouterr().out
     assert len(renew_calls) == 1  # returned after the first lost-lease observation, no re-spam
@@ -502,7 +504,7 @@ def test_budget_decline_abandons_claim_back_to_queued(tmp_path, monkeypatch):
     assert summary.claimed == 1
     assert summary.completed == 0
     assert summary.failed == 0
-    assert abandon_calls == [{"uid": "a", "owner": "modal:test"}]
+    assert abandon_calls == [{"uid": "a", "owner": "modal:test:0"}]
 
 
 def _patch_transcribe_item(monkeypatch, worker, *, exists):

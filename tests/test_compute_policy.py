@@ -20,8 +20,8 @@ def test_backend_policy_loads_legacy_flat_shape():
         "modal",
     )
 
-    assert policy.budget.monthly_units == 108000
-    assert policy.budget.spendable_units == 108000
+    assert policy.budget.monthly_dollars == 108000
+    assert policy.budget.spendable_dollars == 108000
     assert policy.dispatch.max_inflight == 8
     assert policy.dispatch.min_claims_per_run == 1
     assert policy.dispatch.max_claims_per_run == 2
@@ -38,10 +38,13 @@ def test_backend_policy_prefers_nested_h14d_shape():
                     "beam": {
                         "monthly_gpu_seconds": 1,
                         "max_inflight": 1,
+                        "hardware": {"gpu_type": "RTX4090"},
                         "budget": {
-                            "monthly_units": 400,
-                            "reserve_units": 25,
-                            "unit_label": "credit-unit",
+                            "monthly_dollars": 400,
+                            "reserve_dollars": 25,
+                            "rollover_day_of_month": 19,
+                            "estimated_dollars_per_runtime_second": 0.123,
+                            "unit_label": "dollar",
                         },
                         "dispatch": {
                             "max_inflight": 4,
@@ -53,10 +56,10 @@ def test_backend_policy_prefers_nested_h14d_shape():
                             "transcript-asr": {
                                 "prefer_min_duration_hours": 4,
                                 "fresh_within_days": 3,
-                                "budget_units_per_audio_second": 0.5,
-                                "min_budget_units": 90,
-                                "fixed_budget_units_per_run": 8,
-                                "fixed_budget_units_per_claim": 12,
+                                "estimated_runtime_seconds_per_audio_second": 0.5,
+                                "min_runtime_seconds": 90,
+                                "fixed_runtime_seconds_per_run": 8,
+                                "fixed_runtime_seconds_per_claim": 12,
                             }
                         },
                     }
@@ -66,20 +69,23 @@ def test_backend_policy_prefers_nested_h14d_shape():
         "beam",
     )
 
-    assert policy.budget.monthly_units == 400
-    assert policy.budget.reserve_units == 25
-    assert policy.budget.spendable_units == 375
-    assert policy.budget.unit_label == "credit-unit"
+    assert policy.budget.monthly_dollars == 400
+    assert policy.budget.reserve_dollars == 25
+    assert policy.budget.spendable_dollars == 375
+    assert policy.budget.rollover_day_of_month == 19
+    assert policy.budget.estimated_dollars_per_runtime_second == 0.123
+    assert policy.budget.unit_label == "dollar"
+    assert policy.hardware.gpu_type == "RTX4090"
     assert policy.dispatch.max_inflight == 4
     assert policy.dispatch.min_claims_per_run == 2
     assert policy.dispatch.max_claims_per_run == 3
     assert policy.dispatch.preferred_days == "odd"
     assert policy.task.prefer_min_duration_hours == 4
     assert policy.task.fresh_within_days == 3
-    assert policy.task.budget_units_per_audio_second == 0.5
-    assert policy.task.min_budget_units == 90
-    assert policy.task.fixed_budget_units_per_run == 8
-    assert policy.task.fixed_budget_units_per_claim == 12
+    assert policy.task.estimated_runtime_seconds_per_audio_second == 0.5
+    assert policy.task.min_runtime_seconds == 90
+    assert policy.task.fixed_runtime_seconds_per_run == 8
+    assert policy.task.fixed_runtime_seconds_per_claim == 12
 
 
 def test_backend_policy_rejects_invalid_preferred_days():
@@ -99,3 +105,39 @@ def test_backend_policy_rejects_invalid_preferred_days():
     )
 
     assert policy.dispatch.preferred_days == "all"
+
+
+def test_backend_policy_loads_hardware_gpu_type_from_legacy_backend_shape():
+    policy = backend_policy(
+        {
+            "defaults": {
+                "compute_backends": {
+                    "modal": {
+                        "gpu_type": "L4",
+                    }
+                }
+            }
+        },
+        "modal",
+    )
+
+    assert policy.hardware.gpu_type == "L4"
+
+
+def test_backend_policy_invalid_estimated_dollars_rate_falls_back_conservatively():
+    policy = backend_policy(
+        {
+            "defaults": {
+                "compute_backends": {
+                    "modal": {
+                        "budget": {
+                            "estimated_dollars_per_runtime_second": "not-a-number",
+                        }
+                    }
+                }
+            }
+        },
+        "modal",
+    )
+
+    assert policy.budget.estimated_dollars_per_runtime_second == 1.0

@@ -22,8 +22,13 @@ from pathlib import Path
 
 from beam import Image, schedule
 
+from citypods.compute.policy import backend_policy
+from citypods.config import load_site_config
+
 APP_NAME = os.environ.get("CITYPODS_BEAM_APP", "citypods-beam-worker")
-GPU = os.environ.get("CITYPODS_BEAM_GPU", "RTX4090")
+_SITE_CONFIG = load_site_config("config/site_config.yml")
+_BEAM_POLICY = backend_policy(_SITE_CONFIG, "beam")
+GPU = os.environ.get("CITYPODS_BEAM_GPU") or _BEAM_POLICY.hardware.gpu_type or "RTX4090"
 WHEN = os.environ.get("CITYPODS_BEAM_SCHEDULE", "@daily")
 
 # Baked model location (pinned revision, same bytes as the runner). ASR_MODEL_PATH
@@ -130,11 +135,15 @@ def _runtime_env() -> dict[str, str]:
         "ASR_MODEL_PATH": _MODEL_DIR,
     }
     for key in (
+        "CITYPODS_WORKER_ESTIMATED_RUNTIME_SECONDS_PER_AUDIO_SECOND",
         "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
         "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+        "CITYPODS_WORKER_MIN_RUNTIME_SECONDS",
         "CITYPODS_WORKER_MIN_BUDGET_UNITS",
         "CITYPODS_WORKER_MIN_GPU_SECONDS",
+        "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_RUN",
         "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+        "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_CLAIM",
         "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
         "CITYPODS_WORKER_MAX_CLAIMS",
         "CITYPODS_WORKER_PREFERRED_DAYS",
@@ -204,11 +213,15 @@ image = (
     env=RUNTIME_ENV,  # beam-client==0.2.198's Schedule kwarg is `env`, not `env_vars` (GH#814)
     timeout=24 * 3600,
 )
-def run_scheduled():
+def run_scheduled(context=None):
     import json
+    import os
 
     from citypods.compute.external_worker import run_worker
 
+    if context is not None and getattr(context, "task_id", None):
+        os.environ["CITYPODS_PROVIDER_RUN_ID"] = context.task_id
+        os.environ["CITYPODS_BEAM_TASK_ID"] = context.task_id
     summary = run_worker(backend="beam")
     print(json.dumps(summary, sort_keys=True), flush=True)
     return summary

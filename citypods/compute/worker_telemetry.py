@@ -213,9 +213,13 @@ def _backend_summary(samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
         )
         duration_buckets = Counter(str(r.get("duration_bucket") or "unknown") for r in rows)
         budget_estimates = [
-            float(r["budget_units_estimate"])
+            float(estimate)
             for r in rows
-            if isinstance(r.get("budget_units_estimate"), (int, float))
+            for estimate in [r.get("budget_dollars_estimate", r.get("budget_units_estimate"))]
+            if isinstance(
+                estimate,
+                (int, float),
+            )
         ]
         out[backend] = {
             "samples": len(rows),
@@ -224,8 +228,8 @@ def _backend_summary(samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
             "outcomes": dict(outcomes),
             "duration_buckets": dict(sorted(duration_buckets.items())),
             "latest_finished_at": rows[-1].get("finished_at"),
-            "max_budget_units_estimate": max(budget_estimates) if budget_estimates else None,
-            "avg_budget_units_estimate": (
+            "max_budget_dollars_estimate": max(budget_estimates) if budget_estimates else None,
+            "avg_budget_dollars_estimate": (
                 sum(budget_estimates) / len(budget_estimates) if budget_estimates else None
             ),
             "peak_rss_bytes": peak_rss,

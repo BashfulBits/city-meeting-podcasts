@@ -235,8 +235,30 @@ class TestBudget:
         b.reserve("modal:1", "modal", 90)
         assert b.roll_month(NOW) is True
         assert b.month == month_key(NOW)
-        assert b.backends == {}
+        assert b.backends["modal"].used_gpu_seconds == 90
         assert b.roll_month(NOW) is False  # same month → no-op
+
+    def test_cycle_key_resets_backend_only_when_provider_cycle_changes(self):
+        b = Budget(month="2026-07")
+        b.reserve("modal:1", "modal", 90, cycle="2026-07-15")
+        b.roll_month(datetime(2026, 8, 1, tzinfo=UTC))
+        assert b.month == "2026-08"
+        assert b.backends["modal"].used_gpu_seconds == 90
+
+        b.available("modal", cap=1000, max_inflight=8, est=0, cycle="2026-08-15")
+
+        assert b.backends["modal"].used_gpu_seconds == 0
+        assert b.backends["modal"].inflight == {}
+
+    def test_cycle_key_migrates_legacy_month_key_without_reset(self):
+        b = Budget(month="2026-07")
+        b.reserve("modal:1", "modal", 90)
+        assert b.backends["modal"].cycle_key == "2026-07"
+
+        b.available("modal", cap=1000, max_inflight=8, est=0, cycle="2026-07-01")
+
+        assert b.backends["modal"].used_gpu_seconds == 90
+        assert b.backends["modal"].cycle_key == "2026-07-01"
 
     def test_persistence_round_trips(self, tmp_path):
         b = Budget(month="2026-06")

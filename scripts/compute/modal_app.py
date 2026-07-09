@@ -11,9 +11,14 @@ import os
 
 import modal
 
+from citypods.compute.policy import backend_policy
+from citypods.config import load_site_config
+
 APP_NAME = os.environ.get("CITYPODS_MODAL_APP", "citypods-modal-worker")
 SECRET_NAME = os.environ.get("CITYPODS_MODAL_SECRET", "citypods-modal-worker")
-GPU = os.environ.get("CITYPODS_MODAL_GPU", "L4")
+_SITE_CONFIG = load_site_config("config/site_config.yml")
+_MODAL_POLICY = backend_policy(_SITE_CONFIG, "modal")
+GPU = os.environ.get("CITYPODS_MODAL_GPU") or _MODAL_POLICY.hardware.gpu_type or "L4"
 CRON = os.environ.get("CITYPODS_MODAL_CRON", "17 7 * * *")
 
 
@@ -27,11 +32,15 @@ def _runtime_env() -> dict[str, str]:
         "CITYPODS_WORKER_GPU_TYPE": GPU,
     }
     for key in (
+        "CITYPODS_WORKER_ESTIMATED_RUNTIME_SECONDS_PER_AUDIO_SECOND",
         "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
         "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+        "CITYPODS_WORKER_MIN_RUNTIME_SECONDS",
         "CITYPODS_WORKER_MIN_BUDGET_UNITS",
         "CITYPODS_WORKER_MIN_GPU_SECONDS",
+        "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_RUN",
         "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+        "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_CLAIM",
         "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
         "CITYPODS_WORKER_MAX_CLAIMS",
         "CITYPODS_WORKER_PREFERRED_DAYS",
@@ -107,6 +116,9 @@ def run_scheduled(max_claims: int | None = None) -> dict:
     # CLI (main) never reach the deployed worker.
     if max_claims is not None:
         os.environ["CITYPODS_WORKER_MAX_CLAIMS"] = str(max_claims)
+    os.environ["CITYPODS_PROVIDER_RUN_ID"] = modal.current_function_call_id() or ""
+    os.environ["CITYPODS_MODAL_FUNCTION_CALL_ID"] = os.environ["CITYPODS_PROVIDER_RUN_ID"]
+    os.environ["CITYPODS_MODAL_INPUT_ID"] = modal.current_input_id() or ""
     sys.path.insert(0, "/root/citypods")
     from citypods.compute.external_worker import run_worker
 

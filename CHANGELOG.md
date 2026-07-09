@@ -27,7 +27,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   all three views with no `body` filter and carries `aliases` for the two retired feed slugs
   (`austin-tx-city-council-work-session`, `austin-tx-special-called-meetings-budget-work-sessions`)
   so old subscribers get a redirect stub instead of a dead feed.
-
+- **H14d provider-cycle dollar ledger + learned runtime estimator for external ASR workers.**
+  `citypods/compute/budget.py` now stores per-backend cycle keys and a persisted runtime-estimate
+  model keyed by backend/task/GPU/model/compute profile, while `citypods/compute/policy.py` parses
+  provider-cycle dollar caps (`monthly_dollars`, `reserve_dollars`, `rollover_day_of_month`) plus
+  backend hardware (`hardware.gpu_type`) and task-level runtime-estimate knobs from
+  `config/site_config.yml`. `external_worker.py` now reserves budget in provider dollars, settles
+  completed claims with per-run provider spend allocated back to claim owners, and feeds actual
+  runtime back into the learned coefficient after each completion so estimates drift with real
+  workload behavior instead of fossilizing. Beam wrappers now pass through the provider task id for
+  runtime-based settlement and default their GPU target from YAML, while Modal wrappers capture the
+  function call/input ids so the worker can attempt billing-report settlement before falling back to
+  runtime-rate pricing and also default GPU choice from YAML. Worker telemetry/reporting now surface
+  dollar estimates rather than only generic units.
 - **H14d policy substrate for external-worker pacing and characterization.** `citypods/compute/policy.py`
   now parses a richer per-backend YAML policy shape from `config/site_config.yml`: generic budget
   units + soft reserve, per-backend preferred run days (`all` / `even` / `odd`), long-meeting
