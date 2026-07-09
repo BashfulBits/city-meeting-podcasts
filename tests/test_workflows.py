@@ -579,3 +579,33 @@ def test_reset_backoff_workflow_exposes_targeted_hosted_filters():
     assert 'ARGS+=(--error "$ERROR_CODE")' in run
     assert "ARGS+=(--include-hosted)" in run
     assert "ARGS+=(--apply)" in run
+
+
+def test_duration_normalize_workflow_is_manual_bounded_and_archived():
+    wf, job = _job("duration-normalize.yml")
+    assert set(_on(wf)) == {"workflow_dispatch"}
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+
+    assert inputs["source"]["default"] == ""
+    assert inputs["uid"]["default"] == ""
+    assert inputs["max_items"]["default"] == "200"
+    assert inputs["probe_existing"]["type"] == "boolean"
+    assert inputs["probe_existing"]["default"] is True
+    assert inputs["apply"]["type"] == "boolean"
+    assert inputs["apply"]["default"] is False
+    assert wf["permissions"] == {"contents": "read"}
+    assert wf["concurrency"]["group"] == "audio"
+    assert wf["concurrency"]["cancel-in-progress"] is False
+
+    run = next(s for s in job["steps"] if s.get("name") == "Normalize durations")["run"]
+    assert 'ARGS=(--max-items "$MAX_ITEMS")' in run
+    assert 'ARGS+=(--source "$SOURCE")' in run
+    assert 'ARGS+=(--uid "$UID")' in run
+    assert "ARGS+=(--no-probe-existing)" in run
+    assert "ARGS+=(--apply)" in run
+    assert "python scripts/normalize_durations.py" in run
+
+    upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
+    assert upload["if"] == "always()"
+    assert "duration-normalize/normalize.jsonl" in upload["with"]["path"]
+    assert "duration-normalize/summary.json" in upload["with"]["path"]
