@@ -34,6 +34,12 @@ from typing import Literal
 
 from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body
+from citypods.durations import (
+    episode_served_duration_seconds,
+    episode_source_duration_seconds,
+    set_served_duration_seconds,
+    set_source_duration_seconds,
+)
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
     REPAIR_TRANSCRIPT_REGENERATE,
@@ -744,7 +750,7 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
 
 
 def episode_to_record(ep: Episode) -> dict:
-    return {
+    record = {
         "uid": ep.uid,
         "provider_guid": ep.guid,
         "title": ep.title,
@@ -752,7 +758,6 @@ def episode_to_record(ep: Episode) -> dict:
         "body": ep.body,
         "media_kind": ep.media_kind,
         "video_url": ep.video_url,
-        "duration": ep.duration,
         "links": ep.links,
         "chapters": ep.chapters,
         "chapters_basis": ep.chapters_basis,
@@ -814,6 +819,9 @@ def episode_to_record(ep: Episode) -> dict:
         # scoped lane pushes so repair intent survives ordinary audio/transcript work.
         "integrity": ep.integrity or None,
     }
+    set_source_duration_seconds(record, episode_source_duration_seconds(ep))
+    set_served_duration_seconds(record, episode_served_duration_seconds(ep))
+    return record
 
 
 def _coerce_non_negative_int(value: object) -> int:
@@ -916,7 +924,8 @@ def record_to_episode(rec: dict) -> Episode:
         title=rec.get("title") or "",
         published=when,
         video_url=rec.get("video_url") or "",
-        duration=rec.get("duration"),
+        duration=rec.get("source_duration_seconds", rec.get("duration")),
+        source_duration_seconds=rec.get("source_duration_seconds", rec.get("duration")),
         media_kind=rec.get("media_kind") or "direct",
         body=rec.get("body"),
         uid=rec.get("uid"),
@@ -945,7 +954,8 @@ def record_to_episode(rec: dict) -> Episode:
         chapters_basis=rec.get("chapters_basis", "source:s0"),
         audio_rebuild=audio.get("rebuild") or "",
         audio_encode_time=audio.get("encode_time"),
-        audio_duration_served=audio.get("duration_served"),
+        audio_duration_served=rec.get("served_duration_seconds", audio.get("duration_served")),
+        served_duration_seconds=rec.get("served_duration_seconds", audio.get("duration_served")),
         integrity=rec.get("integrity") if isinstance(rec.get("integrity"), dict) else {},
         media_availability=_availability_from_rec(rec),
     )
