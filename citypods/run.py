@@ -475,9 +475,7 @@ def _normalize_episode_durations_for_dispatch(
         if not normalized:
             timeline = ep.timeline
             fallback = (
-                edl_duration(timeline)
-                if timeline is not None and timeline.segments
-                else None
+                edl_duration(timeline) if timeline is not None and timeline.segments else None
             )
             if fallback is not None and fallback > 0:
                 ep.audio_duration_served = fallback
