@@ -985,6 +985,7 @@ def _run_enrich_global_queue(
                 "notes": notes,
             }
     if transcript_stages:
+
         def _normalize_prepared(item: tuple[str, dict]) -> None:
             key, st = item
             _normalize_episode_durations_for_dispatch(
