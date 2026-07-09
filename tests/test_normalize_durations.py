@@ -79,6 +79,6 @@ def test_normalize_records_apply_writes_only_changed_rows():
     assert summary.timeline_fallback == 1
     assert summary.unchanged == 1
     assert records["u1"]["served_duration_seconds"] == 600.0
-    assert records["u1"]["audio"]["duration_served"] == 600.0
+    assert "duration_served" not in records["u1"]["audio"]
     assert records["u2"]["served_duration_seconds"] == 1200.0
     assert rows[1]["outcome"] == "unchanged"

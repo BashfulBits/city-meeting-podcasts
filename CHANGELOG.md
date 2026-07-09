@@ -16,6 +16,19 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **H21 duration canonicalization and repair surfaces.** Persisted episode records now treat
+  `source_duration_seconds` and `served_duration_seconds` as the canonical scalar duration fields.
+  Hot consumers (workqueue ordering, external-worker telemetry, feeds, reports, and dispatch
+  planning) now read duration through shared helpers instead of raw legacy fields. The enrich path
+  gained a bounded pre-dispatch normalization pass that probes hosted audio via object-key range
+  reads when `served_duration_seconds` is missing, falls back to timeline EDL duration only when
+  still missing, and emits explicit warning telemetry for probe, fallback, failure, and
+  still-missing cases. Added a manual `Normalize durations` workflow plus
+  `scripts/normalize_durations.py` for one-off catalog repair with dry-run by default, bounded
+  `max_items`, JSONL/summary artifacts, and scoped safe writes. New records stop re-emitting legacy
+  `duration` and `audio.duration_served` fields, while compatibility reads remain for historical
+  state.
+
 - **Swagit provider gains `list_urls` (multi-view merge), and Austin's three City Council feeds
   are combined into one.** Swagit's `list_url` was always a single view page; Austin splits City
   Council business across three dedicated views (regular meetings, work sessions,

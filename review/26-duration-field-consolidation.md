@@ -1,6 +1,6 @@
 # H21 duration field consolidation + normalization
 
-**Status:** L3 design, not implemented. GitHub issue: TBD.
+**Status:** L3 design. GitHub issue: [GH#868](https://github.com/BashfulBits/city-meeting-podcasts/issues/868).
 
 ## Problem
 

@@ -148,8 +148,6 @@ def normalize_records(
         if probed is not None and probed > 0:
             if apply:
                 set_served_duration_seconds(rec, probed)
-                audio["duration_served"] = probed
-                rec["audio"] = audio
             rows.append(
                 _jsonl_row(
                     source_key=source_key,
@@ -171,8 +169,6 @@ def normalize_records(
         if fallback is not None:
             if apply:
                 set_served_duration_seconds(rec, fallback)
-                audio["duration_served"] = fallback
-                rec["audio"] = audio
             rows.append(
                 _jsonl_row(
                     source_key=source_key,

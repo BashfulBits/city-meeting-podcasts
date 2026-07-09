@@ -418,8 +418,8 @@ class TestRoundTrip:
 
         assert rec["source_duration_seconds"] == 3600.4
         assert rec["served_duration_seconds"] == 3150.5
-        assert rec["duration"] == 3600
-        assert rec["audio"]["duration_served"] == 3150.5
+        assert "duration" not in rec
+        assert "duration_served" not in rec["audio"]
 
         restored = record_to_episode(rec)
         assert restored.source_duration_seconds == 3600.4
