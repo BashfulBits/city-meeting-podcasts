@@ -914,7 +914,8 @@ def record_to_episode(rec: dict) -> Episode:
     published = rec.get("published")
     when = datetime.fromisoformat(published) if published else datetime.now(UTC)
     audio = rec.get("audio") or {}
-    source_duration = rec.get("source_duration_seconds", rec.get("duration"))
+    source_duration = record_source_duration_seconds(rec)
+    served_duration = record_served_duration_seconds(rec)
 
     sources_data = rec.get("sources") or []
     sources = [_source_media_from_dict(s) for s in sources_data]
@@ -957,8 +958,8 @@ def record_to_episode(rec: dict) -> Episode:
         chapters_basis=rec.get("chapters_basis", "source:s0"),
         audio_rebuild=audio.get("rebuild") or "",
         audio_encode_time=audio.get("encode_time"),
-        audio_duration_served=rec.get("served_duration_seconds", audio.get("duration_served")),
-        served_duration_seconds=rec.get("served_duration_seconds", audio.get("duration_served")),
+        audio_duration_served=served_duration,
+        served_duration_seconds=served_duration,
         integrity=rec.get("integrity") if isinstance(rec.get("integrity"), dict) else {},
         media_availability=_availability_from_rec(rec),
     )
@@ -1233,9 +1234,9 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
-        ep.source_duration_seconds = record_source_duration_seconds(rec)
-        if rec.get("duration") and not ep.duration:
-            ep.duration = rec["duration"]
+        persisted_source = record_source_duration_seconds(rec)
+        if persisted_source is not None and episode_source_duration_seconds(ep) is None:
+            set_source_duration_seconds(ep, persisted_source)
         # v2: restore sources and timeline from record (lazy upgrade: absent → defaults)
         sources_data = rec.get("sources") or []
         if sources_data and not ep.sources:

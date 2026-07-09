@@ -11,6 +11,7 @@ HOT_CONSUMERS = [
     "citypods/ops/workqueue.py",
     "citypods/report.py",
     "citypods/run.py",
+    "citypods/stages.py",
 ]
 
 LEGACY_ATTRS = {"duration", "audio_duration_served"}

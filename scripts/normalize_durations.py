@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from citypods.config import load_site_config
@@ -40,11 +40,7 @@ class NormalizeSummary:
     failed: int = 0
     changed: int = 0
     examined: int = 0
-    touched_sources: set[str] | None = None
-
-    def __post_init__(self) -> None:
-        if self.touched_sources is None:
-            self.touched_sources = set()
+    touched_sources: set[str] = field(default_factory=set)
 
     def as_dict(self) -> dict:
         return {
@@ -146,6 +142,7 @@ def normalize_records(
                 ffmpeg_binary=ffmpeg_binary,
             )
         if probed is not None and probed > 0:
+            had_canonical = rec.get("served_duration_seconds") is not None
             if apply:
                 set_served_duration_seconds(rec, probed)
             rows.append(
@@ -159,7 +156,7 @@ def normalize_records(
                 )
             )
             summary.probed += 1
-            if before != probed or not rec.get("served_duration_seconds"):
+            if before != probed or not had_canonical:
                 summary.changed += 1
                 changed = True
                 summary.touched_sources.add(source_key)
@@ -167,6 +164,7 @@ def normalize_records(
 
         fallback = _record_timeline_fallback_seconds(rec)
         if fallback is not None:
+            had_canonical = rec.get("served_duration_seconds") is not None
             if apply:
                 set_served_duration_seconds(rec, fallback)
             rows.append(
@@ -180,7 +178,7 @@ def normalize_records(
                 )
             )
             summary.timeline_fallback += 1
-            if before != fallback or not rec.get("served_duration_seconds"):
+            if before != fallback or not had_canonical:
                 summary.changed += 1
                 changed = True
                 summary.touched_sources.add(source_key)
