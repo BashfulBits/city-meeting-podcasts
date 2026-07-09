@@ -30,6 +30,7 @@ from citypods.media import (
     encode_args,
     estimate_encode_rss_bytes,
     materialize_audio,
+    probe_hosted_audio_duration_seconds,
 )
 from citypods.models import City, Episode
 from citypods.records import audio_object_key, audio_spec_hash, source_key
@@ -1523,6 +1524,17 @@ def test_probe_audio_duration_header_matches_full_probe_when_moov_spans_two_rang
     assert header is not None
     assert header.container_duration == full.container_duration
     assert header.stream_sample_duration == full.stream_sample_duration
+
+
+def test_probe_hosted_audio_duration_seconds_handles_range_errors():
+    class _Storage:
+        def get_range(self, key, start, end):
+            raise OSError("boom")
+
+    assert probe_hosted_audio_duration_seconds(_Storage(), "audio/x.m4a") == (
+        None,
+        "header-range-failed",
+    )
 
 
 def _build_gapped_ts(tmp_path: Path, gap_seconds: float = 2.0) -> Path:

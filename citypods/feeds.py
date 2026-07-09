@@ -192,10 +192,11 @@ def enclosure_duration(ep: Episode, kind: str) -> int | None:
     """Whole-second duration to advertise as ``<itunes:duration>`` for *kind*'s enclosure.
 
     For the **audio** feed this is the duration of the actual hosted object —
-    ``audio_duration_served`` (the served/hosted clock, review/20) — so a trimmed episode advertises
-    its real played length, not the longer source duration. Falls back to ``ep.duration`` (the
-    source clock) when no served duration is recorded (e.g. identity/direct audio that was never
-    re-hosted). The **video** feed always uses the source duration. ``None`` when unknown."""
+    ``served_duration_seconds`` (the canonical served/hosted clock, falling back to
+    ``audio_duration_served``) — so a trimmed episode advertises its real played length, not the
+    longer source duration. Falls back to ``source_duration_seconds`` (then ``ep.duration``) when
+    no served duration is recorded (e.g. identity/direct audio that was never re-hosted). The
+    **video** feed always uses the source duration. ``None`` when unknown."""
     if kind == "audio":
         served = episode_served_duration_seconds(ep)
         if served is not None:
