@@ -348,6 +348,7 @@ class SourcePipeline:
                     storage=self.ctx.storage,
                     ffmpeg_binary=getattr(self.ctx.ffmpeg, "binary", "ffmpeg"),
                     allow_probe=not self.ctx.dry_run,
+                    stop=self.ctx.stop,
                 )
             stats = run_stages(provider, city, episodes, self.stages, self.ctx)
             notes = [s.note() for s in stats if s.note()]
@@ -439,10 +440,11 @@ def _normalize_episode_durations_for_dispatch(
     storage,
     ffmpeg_binary: str,
     allow_probe: bool,
+    stop: Callable[[], bool] | None = None,
     log: Callable[[str], None] | None = None,
 ) -> DurationNormalizationStats:
     """Heal missing served durations before transcript dispatch/work planning."""
-    from citypods.durations import episode_served_duration_seconds
+    from citypods.durations import episode_served_duration_seconds, set_served_duration_seconds
 
     emit = log or (lambda msg: print(msg, flush=True))
     stats = DurationNormalizationStats()
@@ -452,14 +454,15 @@ def _normalize_episode_durations_for_dispatch(
         uid = ep.uid or ep.guid
         normalized = False
         if allow_probe and ep.hosted_audio_url and ep.audio_key:
+            if stop is not None and stop():
+                break
             probed, basis = probe_hosted_audio_duration_seconds(
                 storage,
                 ep.audio_key,
                 ffmpeg_binary=ffmpeg_binary,
             )
             if probed is not None and probed > 0:
-                ep.audio_duration_served = probed
-                ep.served_duration_seconds = probed
+                set_served_duration_seconds(ep, probed)
                 stats.normalized_from_probe += 1
                 emit(
                     f"duration_normalized_from_probe source={source_key} uid={uid} "
@@ -478,8 +481,7 @@ def _normalize_episode_durations_for_dispatch(
                 edl_duration(timeline) if timeline is not None and timeline.segments else None
             )
             if fallback is not None and fallback > 0:
-                ep.audio_duration_served = fallback
-                ep.served_duration_seconds = fallback
+                set_served_duration_seconds(ep, fallback)
                 stats.fallback_from_timeline += 1
                 emit(
                     f"duration_fallback_from_timeline source={source_key} uid={uid} "
@@ -984,6 +986,7 @@ def _run_enrich_global_queue(
                 storage=ctx.storage,
                 ffmpeg_binary=getattr(ctx.ffmpeg, "binary", "ffmpeg"),
                 allow_probe=not ctx.dry_run,
+                stop=ctx.stop,
             )
 
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
