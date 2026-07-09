@@ -424,7 +424,7 @@ class TestRoundTrip:
         restored = record_to_episode(rec)
         assert restored.source_duration_seconds == 3600.4
         assert restored.served_duration_seconds == 3150.5
-        assert restored.duration == 3600.4
+        assert restored.duration == 3600
         assert restored.audio_duration_served == 3150.5
 
     def test_legacy_duration_fields_backfill_canonical_episode_fields(self):
@@ -442,6 +442,8 @@ class TestRoundTrip:
 
         assert restored.source_duration_seconds == 3600
         assert restored.served_duration_seconds == 3150.0
+        assert restored.duration == 3600
+        assert restored.audio_duration_served == 3150.0
 
 
 # ---------------------------------------------------------------------------

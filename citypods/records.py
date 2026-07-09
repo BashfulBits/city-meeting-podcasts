@@ -912,6 +912,7 @@ def record_to_episode(rec: dict) -> Episode:
     published = rec.get("published")
     when = datetime.fromisoformat(published) if published else datetime.now(UTC)
     audio = rec.get("audio") or {}
+    source_duration = rec.get("source_duration_seconds", rec.get("duration"))
 
     sources_data = rec.get("sources") or []
     sources = [_source_media_from_dict(s) for s in sources_data]
@@ -924,8 +925,8 @@ def record_to_episode(rec: dict) -> Episode:
         title=rec.get("title") or "",
         published=when,
         video_url=rec.get("video_url") or "",
-        duration=rec.get("source_duration_seconds", rec.get("duration")),
-        source_duration_seconds=rec.get("source_duration_seconds", rec.get("duration")),
+        duration=int(round(source_duration)) if source_duration is not None else None,
+        source_duration_seconds=source_duration,
         media_kind=rec.get("media_kind") or "direct",
         body=rec.get("body"),
         uid=rec.get("uid"),
