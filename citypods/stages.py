@@ -87,7 +87,12 @@ from citypods.asr import asr_initial_prompt
 from citypods.bodies import body_key, canonical_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
-from citypods.durations import episode_duration_hours, episode_served_duration_seconds
+from citypods.durations import (
+    episode_duration_hours,
+    episode_served_duration_seconds,
+    episode_source_duration_seconds,
+    set_served_duration_seconds,
+)
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
     REPAIR_TIMELINE_REPLAN,
@@ -1389,9 +1394,10 @@ def _parse_timed_transcript(content: bytes, fmt: str) -> list[dict]:
 def _served_duration_hint(ep: Episode) -> float | None:
     if ep.timeline is not None and ep.timeline.segments:
         return ep.timeline.segments[-1].served_end
-    if ep.audio_duration_served:
-        return float(ep.audio_duration_served)
-    return float(ep.duration) if ep.duration else None
+    served = episode_served_duration_seconds(ep)
+    if served is not None:
+        return served
+    return episode_source_duration_seconds(ep)
 
 
 def _edited_timeline_served_duration(ep: Episode) -> float | None:
@@ -1675,8 +1681,7 @@ def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_bi
     if probed is not None and probed > 0:
         prior = episode_served_duration_seconds(ep)
         if prior is None or abs(prior - probed) > 1.0:
-            ep.audio_duration_served = probed
-            ep.served_duration_seconds = probed
+            set_served_duration_seconds(ep, probed)
             return "hosted"
         return "served"
 
@@ -1684,8 +1689,7 @@ def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_bi
     # already-measured hosted duration back to the cue clock after a transient ffprobe failure.
     edited = _edited_timeline_served_duration(ep)
     if edited is not None and episode_served_duration_seconds(ep) is None:
-        ep.audio_duration_served = edited
-        ep.served_duration_seconds = edited
+        set_served_duration_seconds(ep, edited)
         return "timeline"
     return "served" if episode_served_duration_seconds(ep) else "unknown"
 

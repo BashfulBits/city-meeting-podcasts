@@ -170,6 +170,30 @@ def test_normalize_episode_durations_warns_when_still_missing(monkeypatch):
     assert any("duration_missing_after_normalization" in msg for msg in warnings)
 
 
+def test_normalize_episode_durations_stops_before_probe(monkeypatch):
+    ep = _ep("g-stop", hosted="https://cdn/g-stop.m4a")
+    ep.audio_key = "audio/src/g-stop.m4a"
+
+    def _probe(*args, **kwargs):
+        raise AssertionError("probe should not run after stop")
+
+    monkeypatch.setattr(run, "probe_hosted_audio_duration_seconds", _probe)
+
+    stats = run._normalize_episode_durations_for_dispatch(
+        "src",
+        [ep],
+        storage=object(),
+        ffmpeg_binary="ffmpeg",
+        allow_probe=True,
+        stop=lambda: True,
+        log=lambda msg: None,
+    )
+
+    assert stats == run.DurationNormalizationStats()
+    assert ep.served_duration_seconds is None
+    assert ep.audio_duration_served is None
+
+
 # --- end-to-end incremental build via a fake provider ----------------------------------
 
 
