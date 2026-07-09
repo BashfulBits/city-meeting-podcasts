@@ -214,9 +214,16 @@ def build_report(
             },
             "backend_policies": {
                 "modal": {
+                    "hardware": {
+                        "gpu_type": modal_policy.hardware.gpu_type,
+                    },
                     "budget": {
-                        "monthly_units": modal_policy.budget.monthly_units,
-                        "reserve_units": modal_policy.budget.reserve_units,
+                        "monthly_dollars": modal_policy.budget.monthly_dollars,
+                        "reserve_dollars": modal_policy.budget.reserve_dollars,
+                        "rollover_day_of_month": modal_policy.budget.rollover_day_of_month,
+                        "estimated_dollars_per_runtime_second": (
+                            modal_policy.budget.estimated_dollars_per_runtime_second
+                        ),
                         "unit_label": modal_policy.budget.unit_label,
                     },
                     "dispatch": {
@@ -231,9 +238,16 @@ def build_report(
                     },
                 },
                 "beam": {
+                    "hardware": {
+                        "gpu_type": beam_policy.hardware.gpu_type,
+                    },
                     "budget": {
-                        "monthly_units": beam_policy.budget.monthly_units,
-                        "reserve_units": beam_policy.budget.reserve_units,
+                        "monthly_dollars": beam_policy.budget.monthly_dollars,
+                        "reserve_dollars": beam_policy.budget.reserve_dollars,
+                        "rollover_day_of_month": beam_policy.budget.rollover_day_of_month,
+                        "estimated_dollars_per_runtime_second": (
+                            beam_policy.budget.estimated_dollars_per_runtime_second
+                        ),
                         "unit_label": beam_policy.budget.unit_label,
                     },
                     "dispatch": {
@@ -292,16 +306,18 @@ def _markdown(report: dict) -> str:
                 f"{format_bytes(row.get('gpu_vram_total_bytes'))}`, duration buckets "
                 f"`{row.get('duration_buckets', {})}`"
             )
-    lines.append(f"- compute budget month: `{budget.get('month', '')}`")
+    lines.append(f"- compute budget schema month-key: `{budget.get('month', '')}`")
     policies = report.get("backend_policies") or {}
     for name, led in sorted((budget.get("backends") or {}).items()):
         used = float((led or {}).get("used_units", (led or {}).get("used_gpu_seconds", 0.0)))
         inflight = len((led or {}).get("inflight") or {})
         policy = policies.get(name) or {}
         unit_label = ((policy.get("budget") or {}).get("unit_label")) or "unit"
-        monthly = (policy.get("budget") or {}).get("monthly_units")
-        reserve = (policy.get("budget") or {}).get("reserve_units")
+        monthly = (policy.get("budget") or {}).get("monthly_dollars")
+        reserve = (policy.get("budget") or {}).get("reserve_dollars")
+        cycle = (led or {}).get("cycle_key")
         dispatch = policy.get("dispatch") or {}
+        hardware = policy.get("hardware") or {}
         task = policy.get("task") or {}
         lines.append(
             f"- {name}: `{used:.1f}` {unit_label}(s) used"
@@ -311,8 +327,10 @@ def _markdown(report: dict) -> str:
                 if isinstance(reserve, (int, float)) and reserve > 0
                 else ""
             )
+            + (f", cycle `{cycle}`" if cycle else "")
             + f", `{inflight}` in flight, max_claims/run "
             f"`{dispatch.get('min_claims_per_run')}`-`{dispatch.get('max_claims_per_run')}`, "
+            f"gpu `{hardware.get('gpu_type')}`, "
             f"preferred_days `{dispatch.get('preferred_days')}`, max_inflight "
             f"`{dispatch.get('max_inflight')}`, prefer duration >= "
             f"`{task.get('prefer_min_duration_hours')}`h"

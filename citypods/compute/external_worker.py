@@ -20,7 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from citypods.asr import transcribe
-from citypods.compute.budget import load_budget_cas, reserve_if_available, settle_reservation
+from citypods.compute.budget import (
+    cycle_key,
+    load_budget_cas,
+    reserve_if_available,
+    settle_reservation,
+)
 from citypods.compute.policy import backend_policy
 from citypods.compute.worker_telemetry import (
     ResourceTracker,
@@ -83,14 +88,16 @@ class ExternalWorkerConfig:
     work_class: str = "transcript-asr"
     min_claims_per_run: int = 1
     preferred_days: str = "all"
-    budget_units_per_audio_second: float = 0.25
-    min_budget_units: float = 60.0
-    fixed_budget_units_per_run: float = 0.0
-    fixed_budget_units_per_claim: float = 0.0
+    estimated_runtime_seconds_per_audio_second: float = 0.25
+    min_runtime_seconds: float = 60.0
+    fixed_runtime_seconds_per_run: float = 0.0
+    fixed_runtime_seconds_per_claim: float = 0.0
     prefer_min_duration_hours: float = 0.0
     fresh_within_days: float = 7.0
     device: str = "cuda"
     cpu_threads: int = 4
+    provider_run_id: str | None = None
+    provider_input_id: str | None = None
 
 
 @dataclass
@@ -109,6 +116,11 @@ class ExternalWorkerSummary:
     peak_rss_bytes: int | None = None
     peak_gpu_vram_used_bytes: int | None = None
     gpu_vram_total_bytes: int | None = None
+    actual_spend_dollars: float | None = None
+    actual_runtime_seconds: float | None = None
+    budget_cycle_key: str | None = None
+    budget_unit_label: str | None = None
+    spend_source: str | None = None
 
     def update_resource_peaks(self, tracker: ResourceTracker) -> None:
         if tracker.peak_rss_bytes is not None:
@@ -146,7 +158,30 @@ class ExternalWorkerSummary:
             "peak_rss_bytes": self.peak_rss_bytes,
             "peak_gpu_vram_used_bytes": self.peak_gpu_vram_used_bytes,
             "gpu_vram_total_bytes": self.gpu_vram_total_bytes,
+            "actual_spend_dollars": (
+                round(self.actual_spend_dollars, 6)
+                if isinstance(self.actual_spend_dollars, (int, float))
+                else None
+            ),
+            "actual_runtime_seconds": (
+                round(self.actual_runtime_seconds, 3)
+                if isinstance(self.actual_runtime_seconds, (int, float))
+                else None
+            ),
+            "budget_cycle_key": self.budget_cycle_key,
+            "budget_unit_label": self.budget_unit_label,
+            "spend_source": self.spend_source,
         }
+
+
+@dataclass
+class CompletedClaim:
+    owner: str
+    item: WorkItem
+    metadata: dict[str, Any]
+    outcome: str
+    actual_runtime_seconds: float
+    estimated_runtime_seconds: float
 
 
 def _int_env(name: str, default: int) -> int:
@@ -189,24 +224,36 @@ def config_from_env(backend: str, *, site_config: dict | None = None) -> Externa
             "CITYPODS_WORKER_PREFERRED_DAYS",
             policy.dispatch.preferred_days,
         ),
-        budget_units_per_audio_second=_float_env(
-            "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
+        estimated_runtime_seconds_per_audio_second=_float_env(
+            "CITYPODS_WORKER_ESTIMATED_RUNTIME_SECONDS_PER_AUDIO_SECOND",
             _float_env(
-                "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
-                policy.task.budget_units_per_audio_second,
+                "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
+                _float_env(
+                    "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+                    policy.task.estimated_runtime_seconds_per_audio_second,
+                ),
             ),
         ),
-        min_budget_units=_float_env(
-            "CITYPODS_WORKER_MIN_BUDGET_UNITS",
-            _float_env("CITYPODS_WORKER_MIN_GPU_SECONDS", policy.task.min_budget_units),
+        min_runtime_seconds=_float_env(
+            "CITYPODS_WORKER_MIN_RUNTIME_SECONDS",
+            _float_env(
+                "CITYPODS_WORKER_MIN_BUDGET_UNITS",
+                _float_env("CITYPODS_WORKER_MIN_GPU_SECONDS", policy.task.min_runtime_seconds),
+            ),
         ),
-        fixed_budget_units_per_run=_float_env(
-            "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
-            policy.task.fixed_budget_units_per_run,
+        fixed_runtime_seconds_per_run=_float_env(
+            "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_RUN",
+            _float_env(
+                "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+                policy.task.fixed_runtime_seconds_per_run,
+            ),
         ),
-        fixed_budget_units_per_claim=_float_env(
-            "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
-            policy.task.fixed_budget_units_per_claim,
+        fixed_runtime_seconds_per_claim=_float_env(
+            "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_CLAIM",
+            _float_env(
+                "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
+                policy.task.fixed_runtime_seconds_per_claim,
+            ),
         ),
         prefer_min_duration_hours=_float_env(
             "CITYPODS_WORKER_PREFER_MIN_DURATION_HOURS",
@@ -218,6 +265,12 @@ def config_from_env(backend: str, *, site_config: dict | None = None) -> Externa
         ),
         device=os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cuda"),
         cpu_threads=_int_env("CITYPODS_WORKER_CPU_THREADS", 4),
+        provider_run_id=(
+            os.environ.get("CITYPODS_PROVIDER_RUN_ID")
+            or os.environ.get("CITYPODS_BEAM_TASK_ID")
+            or os.environ.get("CITYPODS_MODAL_FUNCTION_CALL_ID")
+        ),
+        provider_input_id=os.environ.get("CITYPODS_MODAL_INPUT_ID"),
     )
 
 
@@ -244,10 +297,170 @@ class ExternalTranscribeWorker:
         for city in cities:
             self._city_by_source.setdefault(source_key(city), city)
 
+    def _budget_policy(self, work_class: str | None = None):
+        return backend_policy(
+            self.site_config,
+            self.config.backend,
+            work_class=work_class or self.config.work_class,
+        )
+
+    def _budget_cycle_key(self, policy=None, *, now: datetime | None = None) -> str:
+        policy = policy or self._budget_policy()
+        return cycle_key(
+            now,
+            rollover_day_of_month=policy.budget.rollover_day_of_month,
+        )
+
+    def _estimated_dollars_per_runtime_second(self, policy=None) -> float:
+        policy = policy or self._budget_policy()
+        return max(0.0, policy.budget.estimated_dollars_per_runtime_second)
+
+    def _audio_seconds(self, item: WorkItem, metadata: dict[str, Any] | None = None) -> float:
+        hours = metadata.get("duration_hours") if isinstance(metadata, dict) else None
+        if not isinstance(hours, (int, float)) or hours <= 0:
+            hours = item.duration_hours
+        if not isinstance(hours, (int, float)) or hours <= 0:
+            try:
+                _city, ep, _records = self._episode_for(item)
+            except KeyError:
+                return 0.0
+            hours, _source = _episode_duration_hours(ep)
+        return max(0.0, float(hours) * 3600.0)
+
+    def _runtime_estimate_key(self, item: WorkItem, metadata: dict[str, Any] | None = None) -> str:
+        metadata = metadata or self._telemetry_metadata(item)
+        gpu_type = os.environ.get("CITYPODS_WORKER_GPU_TYPE") or "unknown"
+        model = str(metadata.get("model") or "unknown")
+        compute_type = str(metadata.get("compute_type") or "unknown")
+        return (
+            f"{self.config.backend}:{self.config.work_class}:{gpu_type}:"
+            f"{model}:{compute_type}:{self.config.device}"
+        )
+
+    def _runtime_seconds_per_audio_second(
+        self,
+        item: WorkItem,
+        metadata: dict[str, Any] | None = None,
+    ) -> float:
+        metadata = metadata or self._telemetry_metadata(item)
+        default = max(0.0, self.config.estimated_runtime_seconds_per_audio_second)
+        if not getattr(self.storage, "cas_capable", False):
+            return default
+        budget, _etag = load_budget_cas(self.storage)
+        return budget.runtime_seconds_per_audio_second(
+            self._runtime_estimate_key(item, metadata), default
+        )
+
+    def _estimate_runtime_seconds(
+        self,
+        item: WorkItem,
+        *,
+        planned_claim_count: int = 1,
+        metadata: dict[str, Any] | None = None,
+    ) -> float:
+        metadata = metadata or self._telemetry_metadata(item)
+        audio_seconds = self._audio_seconds(item, metadata)
+        estimated = (
+            audio_seconds * self._runtime_seconds_per_audio_second(item, metadata)
+            + self.config.fixed_runtime_seconds_per_claim
+        )
+        if planned_claim_count > 0 and self.config.fixed_runtime_seconds_per_run > 0:
+            estimated += self.config.fixed_runtime_seconds_per_run / planned_claim_count
+        return max(self.config.min_runtime_seconds, estimated)
+
+    def _estimate_reservation_dollars(
+        self,
+        item: WorkItem,
+        *,
+        planned_claim_count: int = 1,
+        metadata: dict[str, Any] | None = None,
+        policy=None,
+    ) -> tuple[float, float]:
+        policy = policy or self._budget_policy(work_class=item.work_class)
+        estimated_runtime_seconds = self._estimate_runtime_seconds(
+            item,
+            planned_claim_count=planned_claim_count,
+            metadata=metadata,
+        )
+        return (
+            estimated_runtime_seconds * self._estimated_dollars_per_runtime_second(policy),
+            estimated_runtime_seconds,
+        )
+
+    def _beam_actual_spend(self, *, run_elapsed_seconds: float, policy) -> tuple[float | None, str]:
+        rate = self._estimated_dollars_per_runtime_second(policy)
+        if rate <= 0:
+            return None, "beam-missing-rate"
+        return max(0.0, run_elapsed_seconds) * rate, "beam-runtime-rate"
+
+    def _modal_actual_spend(
+        self,
+        *,
+        started_at: datetime,
+        finished_at: datetime,
+        fallback_run_elapsed_seconds: float,
+        policy,
+    ) -> tuple[float | None, str]:
+        function_call_id = self.config.provider_run_id
+        if function_call_id:
+            try:
+                from modal.workspace import Workspace
+
+                report = Workspace.from_context().billing.report(
+                    start=started_at - timedelta(minutes=5),
+                    end=finished_at + timedelta(minutes=5),
+                    resolution="h",
+                )
+                total = 0.0
+                matched = False
+                for row in report:
+                    if getattr(row, "object_id", None) != function_call_id:
+                        continue
+                    matched = True
+                    total += float(row.cost)
+                if matched:
+                    return total, "modal-billing-report"
+            except Exception as exc:  # noqa: BLE001
+                print(f"[external-worker] modal billing lookup warning: {exc}", flush=True)
+        rate = self._estimated_dollars_per_runtime_second(policy)
+        if rate <= 0:
+            return None, "modal-missing-rate"
+        return max(0.0, fallback_run_elapsed_seconds) * rate, "modal-runtime-fallback"
+
+    def _provider_actual_spend(
+        self,
+        *,
+        run_started_at: datetime,
+        run_finished_at: datetime,
+        run_elapsed_seconds: float,
+    ) -> tuple[float | None, float | None, str]:
+        policy = self._budget_policy()
+        if self.config.backend == "modal":
+            dollars, source = self._modal_actual_spend(
+                started_at=run_started_at,
+                finished_at=run_finished_at,
+                fallback_run_elapsed_seconds=run_elapsed_seconds,
+                policy=policy,
+            )
+            return dollars, run_elapsed_seconds, source
+        if self.config.backend == "beam":
+            dollars, source = self._beam_actual_spend(
+                run_elapsed_seconds=run_elapsed_seconds,
+                policy=policy,
+            )
+            return dollars, run_elapsed_seconds, source
+        rate = self._estimated_dollars_per_runtime_second(policy)
+        if rate <= 0:
+            return None, run_elapsed_seconds, "runtime-unpriced"
+        return max(0.0, run_elapsed_seconds) * rate, run_elapsed_seconds, "runtime-rate"
+
     def run(self) -> ExternalWorkerSummary:
         summary = ExternalWorkerSummary(backend=self.config.backend, owner=self.config.owner)
         worker_tracker = self._resource_tracker()
         worker_tracker.record("worker-start")
+        run_started_at = datetime.now(UTC)
+        run_started = time.monotonic()
+        settled_claims: list[CompletedClaim] = []
         try:
             if self.config.work_class in RESERVED_WORK_CLASSES:
                 summary.unsupported = 1
@@ -274,6 +487,10 @@ class ExternalTranscribeWorker:
                 candidates,
                 backlog_present=backlog_present,
             )
+            policy = self._budget_policy()
+            budget_cycle = self._budget_cycle_key(policy)
+            summary.budget_cycle_key = budget_cycle
+            summary.budget_unit_label = policy.budget.unit_label
             summary.scanned = len(candidates)
             ordered = self._ordered(candidates)
             # ``worked`` counts NEW transcriptions attempted (succeeded or failed) — the thing
@@ -291,11 +508,12 @@ class ExternalTranscribeWorker:
                     break
                 if summary.claimed >= scan_cap:
                     break
+                claim_owner = f"{self.config.owner}:{summary.claimed}"
                 held = work_leases.claim(
                     self.storage,
                     item.source_key,
                     item.episode_uid,
-                    owner=self.config.owner,
+                    owner=claim_owner,
                     ttl_seconds=self.config.lease_ttl_seconds,
                     pipeline_version=ASR_PIPELINE_VERSION,
                 )
@@ -303,28 +521,30 @@ class ExternalTranscribeWorker:
                     summary.skipped += 1
                     continue
                 summary.claimed += 1
-                estimate = self._estimate_gpu_seconds(item)
-                policy = backend_policy(
-                    self.site_config,
-                    self.config.backend,
-                    work_class=item.work_class,
+                metadata = self._telemetry_metadata(item)
+                estimate, estimated_runtime_seconds = self._estimate_reservation_dollars(
+                    item,
+                    planned_claim_count=max(1, effective_claims),
+                    metadata=metadata,
+                    policy=policy,
                 )
-                cap = policy.budget.spendable_units
+                cap = policy.budget.spendable_dollars
                 max_inflight = policy.dispatch.max_inflight
                 if (
                     cap <= 0
                     or max_inflight <= 0
                     or not reserve_if_available(
                         self.storage,
-                        self.config.owner,
+                        claim_owner,
                         self.config.backend,
                         est=estimate,
                         cap=cap,
                         max_inflight=max_inflight,
+                        cycle=budget_cycle,
                     )
                 ):
                     work_leases.abandon(
-                        self.storage, item.source_key, item.episode_uid, owner=self.config.owner
+                        self.storage, item.source_key, item.episode_uid, owner=claim_owner
                     )
                     summary.budget_declined += 1
                     break
@@ -333,22 +553,17 @@ class ExternalTranscribeWorker:
                 started = time.monotonic()
                 tracker = self._resource_tracker()
                 tracker.record("claim-start")
-                metadata: dict[str, Any] = {}
                 outcome = "failed"
                 actual = 0.0
                 try:
-                    metadata = self._telemetry_metadata(item)
                     adopted = self._run_with_retry(item, tracker)
                 except Exception:
                     actual = max(0.0, time.monotonic() - started)
-                    settle_reservation(
-                        self.storage, self.config.owner, self.config.backend, actual=actual
-                    )
                     work_leases.release(
                         self.storage,
                         item.source_key,
                         item.episode_uid,
-                        owner=self.config.owner,
+                        owner=claim_owner,
                         state="failed",
                     )
                     summary.failed += 1
@@ -357,9 +572,6 @@ class ExternalTranscribeWorker:
                     outcome = "failed"
                 else:
                     actual = max(0.0, time.monotonic() - started)
-                    settle_reservation(
-                        self.storage, self.config.owner, self.config.backend, actual=actual
-                    )
                     summary.completed += 1
                     summary.gpu_seconds += actual
                     if adopted:
@@ -368,6 +580,16 @@ class ExternalTranscribeWorker:
                         worked += 1
                     outcome = "success"
                 finally:
+                    settled_claims.append(
+                        CompletedClaim(
+                            owner=claim_owner,
+                            item=item,
+                            metadata=metadata,
+                            outcome=outcome,
+                            actual_runtime_seconds=actual,
+                            estimated_runtime_seconds=estimated_runtime_seconds,
+                        )
+                    )
                     tracker.record("claim-finish")
                     summary.update_resource_peaks(tracker)
                     worker_tracker.update_from(tracker)
@@ -378,9 +600,54 @@ class ExternalTranscribeWorker:
                         outcome=outcome,
                         started_at=started_at,
                         elapsed_seconds=actual,
+                        owner=claim_owner,
                     )
             return summary
         finally:
+            if settled_claims:
+                run_finished_at = datetime.now(UTC)
+                run_elapsed_seconds = max(0.0, time.monotonic() - run_started)
+                actual_spend_dollars, actual_runtime_seconds, spend_source = (
+                    self._provider_actual_spend(
+                        run_started_at=run_started_at,
+                        run_finished_at=run_finished_at,
+                        run_elapsed_seconds=run_elapsed_seconds,
+                    )
+                )
+                total_claim_runtime = sum(
+                    claim.actual_runtime_seconds
+                    for claim in settled_claims
+                    if claim.actual_runtime_seconds > 0
+                )
+                for claim in settled_claims:
+                    actual_dollars = None
+                    if (
+                        isinstance(actual_spend_dollars, (int, float))
+                        and actual_spend_dollars >= 0
+                        and total_claim_runtime > 0
+                    ):
+                        actual_dollars = actual_spend_dollars * (
+                            claim.actual_runtime_seconds / total_claim_runtime
+                        )
+                    else:
+                        actual_dollars = (
+                            claim.actual_runtime_seconds
+                            * self._estimated_dollars_per_runtime_second()
+                        )
+                    settle_reservation(
+                        self.storage,
+                        claim.owner,
+                        self.config.backend,
+                        actual=actual_dollars,
+                        cycle=summary.budget_cycle_key,
+                        estimate_key=self._runtime_estimate_key(claim.item, claim.metadata),
+                        audio_seconds=self._audio_seconds(claim.item, claim.metadata),
+                        actual_runtime_seconds=claim.actual_runtime_seconds,
+                        estimated_runtime_seconds=claim.estimated_runtime_seconds,
+                    )
+                summary.actual_spend_dollars = actual_spend_dollars
+                summary.actual_runtime_seconds = actual_runtime_seconds
+                summary.spend_source = spend_source
             worker_tracker.record("worker-finish")
             summary.update_resource_peaks(worker_tracker)
 
@@ -489,11 +756,8 @@ class ExternalTranscribeWorker:
         return city, record_to_episode(rec), records
 
     def _estimate_gpu_seconds(self, item: WorkItem) -> float:
-        _city, ep, _records = self._episode_for(item)
-        hours, _source = _episode_duration_hours(ep)
-        estimated = hours * 3600 * self.config.budget_units_per_audio_second
-        estimated += self.config.fixed_budget_units_per_claim
-        return max(self.config.min_budget_units, estimated)
+        estimated_dollars, _estimated_runtime_seconds = self._estimate_reservation_dollars(item)
+        return estimated_dollars
 
     def _preferred_duration(self, item: WorkItem) -> bool:
         min_hours = max(0.0, self.config.prefer_min_duration_hours)
@@ -550,16 +814,29 @@ class ExternalTranscribeWorker:
         budget, _etag = load_budget_cas(self.storage)
         budget.roll_month()
         ledger = budget.backends.get(self.config.backend)
-        used_units = ledger.used_units if ledger is not None else 0.0
-        remaining_units = max(0.0, policy.budget.spendable_units - used_units)
-        if remaining_units <= 0:
+        cycle = self._budget_cycle_key(policy)
+        if ledger is None:
+            used_units = 0.0
+        elif ledger.cycle_key and len(ledger.cycle_key) == 10 and ledger.cycle_key != cycle:
+            used_units = 0.0
+        else:
+            used_units = ledger.used_units
+        remaining_dollars = max(0.0, policy.budget.spendable_dollars - used_units)
+        if remaining_dollars <= 0:
             return 0
-        claim_units = self._planned_units_per_claim()
-        if claim_units <= 0:
+        claim_dollars = self._planned_units_per_claim()
+        if claim_dollars <= 0:
             return hard_cap
-        target_units = remaining_units / self._remaining_run_slots()
-        target_units = max(0.0, target_units - self.config.fixed_budget_units_per_run)
-        paced_cap = int(target_units // claim_units)
+        target_dollars = remaining_dollars / self._remaining_run_slots()
+        target_dollars = max(
+            0.0,
+            target_dollars
+            - (
+                self.config.fixed_runtime_seconds_per_run
+                * self._estimated_dollars_per_runtime_second(policy)
+            ),
+        )
+        paced_cap = int(target_dollars // claim_dollars)
         if self._is_preferred_day():
             paced_cap = max(self.config.min_claims_per_run, paced_cap)
         elif backlog_present:
@@ -572,18 +849,28 @@ class ExternalTranscribeWorker:
         telemetry = load_worker_telemetry(self.storage)
         rows = telemetry.get("samples") if isinstance(telemetry, dict) else []
         estimates = [
-            float(row["budget_units_estimate"])
+            float(row["budget_dollars_estimate"])
             for row in rows or []
             if isinstance(row, dict)
             and row.get("backend") == self.config.backend
-            and isinstance(row.get("budget_units_estimate"), (int, float))
+            and isinstance(row.get("budget_dollars_estimate"), (int, float))
         ]
         if estimates:
-            return max(self.config.min_budget_units, sum(estimates[-10:]) / min(10, len(estimates)))
-        return self.config.min_budget_units
+            return max(0.0, sum(estimates[-10:]) / min(10, len(estimates)))
+        return max(
+            0.0,
+            self.config.min_runtime_seconds * self._estimated_dollars_per_runtime_second(),
+        )
 
     def _telemetry_metadata(self, item: WorkItem) -> dict[str, Any]:
-        city, ep, _records = self._episode_for(item)
+        try:
+            city, ep, _records = self._episode_for(item)
+        except KeyError:
+            return {
+                "duration_hours": float(item.duration_hours or 0.0),
+                "model": None,
+                "compute_type": None,
+            }
         hours, _source = _episode_duration_hours(ep)
         return {
             "duration_hours": hours,
@@ -742,7 +1029,11 @@ class ExternalTranscribeWorker:
             "canary_mode": metadata.get("canary_mode"),
             "characterization_concurrency": metadata.get("characterization_concurrency"),
             "model_num_workers": metadata.get("model_num_workers"),
-            "budget_units_estimate": round(self._estimate_gpu_seconds(item), 3),
+            "budget_dollars_estimate": round(self._estimate_gpu_seconds(item), 6),
+            "budget_units_estimate": round(self._estimate_gpu_seconds(item), 6),
+            "runtime_seconds_estimate": round(
+                self._estimate_runtime_seconds(item, metadata=metadata), 3
+            ),
             "peak_rss_bytes": tracker.peak_rss_bytes,
             "peak_gpu_vram_used_bytes": tracker.peak_gpu_vram_used_bytes,
             "gpu_vram_total_bytes": tracker.gpu_vram_total_bytes,
@@ -857,15 +1148,17 @@ def _run_characterization(
     episode_uids: tuple[str, ...],
     persist_results: bool,
 ) -> dict[str, Any]:
-    policy = backend_policy(
-        worker.site_config,
-        worker.config.backend,
-        work_class=worker.config.work_class,
-    )
+    policy = worker._budget_policy()
+    budget_cycle = worker._budget_cycle_key(policy)
     summary = ExternalWorkerSummary(backend=worker.config.backend, owner=worker.config.owner)
+    summary.budget_cycle_key = budget_cycle
+    summary.budget_unit_label = policy.budget.unit_label
     worker_tracker = worker._resource_tracker()
     worker_tracker.record("characterize-start")
+    run_started_at = datetime.now(UTC)
+    run_started = time.monotonic()
     selected: list[dict[str, Any]] = []
+    settled_claims: list[CompletedClaim] = []
     try:
         manifest = worker._manifest()
         targeted = bool(source_keys or episode_uids)
@@ -891,6 +1184,7 @@ def _run_characterization(
             if len(selected) >= claim_count:
                 break
             owner = f"{worker.config.owner}:{len(selected)}"
+            metadata = worker._telemetry_metadata(item)
             lease_claimed = False
             if not benchmark_only:
                 held = work_leases.claim(
@@ -905,17 +1199,23 @@ def _run_characterization(
                     summary.skipped += 1
                     continue
                 lease_claimed = True
-                estimate = worker._estimate_gpu_seconds(item)
+                estimate, estimated_runtime_seconds = worker._estimate_reservation_dollars(
+                    item,
+                    planned_claim_count=max(1, claim_count),
+                    metadata=metadata,
+                    policy=policy,
+                )
                 if (
-                    policy.budget.spendable_units <= 0
+                    policy.budget.spendable_dollars <= 0
                     or policy.dispatch.max_inflight <= 0
                     or not reserve_if_available(
                         worker.storage,
                         owner,
                         worker.config.backend,
                         est=estimate,
-                        cap=policy.budget.spendable_units,
+                        cap=policy.budget.spendable_dollars,
                         max_inflight=policy.dispatch.max_inflight,
+                        cycle=budget_cycle,
                     )
                 ):
                     work_leases.abandon(
@@ -931,7 +1231,10 @@ def _run_characterization(
                     "item": item,
                     "owner": owner,
                     "lease_claimed": lease_claimed,
-                    "metadata": worker._telemetry_metadata(item),
+                    "metadata": metadata,
+                    "estimated_runtime_seconds": estimated_runtime_seconds
+                    if lease_claimed
+                    else 0.0,
                 }
             )
         summary.claimed = len(selected)
@@ -978,7 +1281,6 @@ def _run_characterization(
             except Exception:
                 actual = max(0.0, time.monotonic() - started)
                 if lease_claimed:
-                    settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
                     work_leases.release(
                         worker.storage,
                         item.source_key,
@@ -992,8 +1294,6 @@ def _run_characterization(
                 outcome = "failed"
             else:
                 actual = max(0.0, time.monotonic() - started)
-                if lease_claimed:
-                    settle_reservation(worker.storage, owner, worker.config.backend, actual=actual)
                 with summary_lock:
                     summary.completed += 1
                     if adopted:
@@ -1001,6 +1301,20 @@ def _run_characterization(
                     summary.gpu_seconds += actual
                 outcome = "success"
             finally:
+                if lease_claimed:
+                    with summary_lock:
+                        settled_claims.append(
+                            CompletedClaim(
+                                owner=owner,
+                                item=item,
+                                metadata=metadata,
+                                outcome=outcome,
+                                actual_runtime_seconds=actual,
+                                estimated_runtime_seconds=float(
+                                    entry.get("estimated_runtime_seconds") or 0.0
+                                ),
+                            )
+                        )
                 tracker.record("claim-finish")
                 with summary_lock:
                     summary.update_resource_peaks(tracker)
@@ -1032,6 +1346,53 @@ def _run_characterization(
                 for future in as_completed(futures):
                     future.result()
         out = summary.to_dict()
+        if settled_claims:
+            run_finished_at = datetime.now(UTC)
+            run_elapsed_seconds = max(0.0, time.monotonic() - run_started)
+            actual_spend_dollars, actual_runtime_seconds, spend_source = (
+                worker._provider_actual_spend(
+                    run_started_at=run_started_at,
+                    run_finished_at=run_finished_at,
+                    run_elapsed_seconds=run_elapsed_seconds,
+                )
+            )
+            total_claim_runtime = sum(
+                claim.actual_runtime_seconds
+                for claim in settled_claims
+                if claim.actual_runtime_seconds > 0
+            )
+            for claim in settled_claims:
+                if (
+                    isinstance(actual_spend_dollars, (int, float))
+                    and actual_spend_dollars >= 0
+                    and total_claim_runtime > 0
+                ):
+                    actual_dollars = actual_spend_dollars * (
+                        claim.actual_runtime_seconds / total_claim_runtime
+                    )
+                else:
+                    actual_dollars = (
+                        claim.actual_runtime_seconds
+                        * worker._estimated_dollars_per_runtime_second(policy)
+                    )
+                settle_reservation(
+                    worker.storage,
+                    claim.owner,
+                    worker.config.backend,
+                    actual=actual_dollars,
+                    cycle=budget_cycle,
+                    estimate_key=worker._runtime_estimate_key(claim.item, claim.metadata),
+                    audio_seconds=worker._audio_seconds(claim.item, claim.metadata),
+                    actual_runtime_seconds=claim.actual_runtime_seconds,
+                    estimated_runtime_seconds=claim.estimated_runtime_seconds,
+                )
+            out["actual_spend_dollars"] = (
+                round(actual_spend_dollars, 6) if actual_spend_dollars is not None else None
+            )
+            out["actual_runtime_seconds"] = (
+                round(actual_runtime_seconds, 3) if actual_runtime_seconds is not None else None
+            )
+            out["spend_source"] = spend_source
         out.update(
             {
                 "canary_mode": mode,
