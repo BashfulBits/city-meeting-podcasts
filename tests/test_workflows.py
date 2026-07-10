@@ -596,6 +596,10 @@ def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     assert wf["permissions"] == {"contents": "read"}
     assert wf["concurrency"]["group"] == "audio"
     assert wf["concurrency"]["cancel-in-progress"] is False
+    assert job["env"]["FFMPEG_URL"].startswith(
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-"
+    )
+    assert len(job["env"]["FFMPEG_SHA256"]) == 64
 
     run = next(s for s in job["steps"] if s.get("name") == "Normalize durations")["run"]
     assert 'ARGS=(--max-items "$MAX_ITEMS")' in run
@@ -603,7 +607,13 @@ def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     assert 'ARGS+=(--uid "$UID")' in run
     assert "ARGS+=(--no-probe-existing)" in run
     assert "ARGS+=(--apply)" in run
+    assert 'ARGS+=(--ffmpeg-binary "${FFMPEG_DIR}/bin/ffmpeg")' in run
     assert "python scripts/normalize_durations.py" in run
+
+    install = next(s for s in job["steps"] if s.get("name") == "Install pinned ffmpeg")
+    assert "python scripts/install_static_ffmpeg.py" in install["run"]
+    assert '--sha256 "${FFMPEG_SHA256}"' in install["run"]
+    assert '"${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null' in install["run"]
 
     upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
     assert upload["if"] == "always()"
