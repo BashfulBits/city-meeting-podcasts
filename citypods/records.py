@@ -345,8 +345,8 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             sorted((e.links or {}).items()),
             e.chapters,
             e.chapters_basis,
-            e.duration,
-            e.audio_duration_served,
+            episode_source_duration_seconds(e),
+            episode_served_duration_seconds(e),
             e.hosted_audio_url,
             e.video_url,
             e.media_kind,
@@ -807,7 +807,6 @@ def episode_to_record(ep: Episode) -> dict:
             "spec_hash": ep.audio_spec_hash,
             "bytes": ep.audio_bytes,
             "encode_time": ep.audio_encode_time,
-            "duration_served": ep.audio_duration_served,
             "rebuild": ep.audio_rebuild or None,  # omit when empty to keep records clean
             # Materialization backoff state (#120): persisted so failures back off across runs.
             "attempts": ep.materialize_attempts,
@@ -1097,9 +1096,6 @@ def _preserve_remote_served_duration_if_protected(
     if remote_served is None:
         return
     set_served_duration_seconds(rec, remote_served)
-    audio = rec.get("audio")
-    if isinstance(audio, dict):
-        audio["duration_served"] = remote_served
 
 
 def merge_preserving_foreign(
@@ -1202,7 +1198,6 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.materialize_error_spec_hash = audio.get("error_spec_hash")
         ep.audio_bytes = audio.get("bytes")
         ep.audio_encode_time = audio.get("encode_time")
-        ep.audio_duration_served = audio.get("duration_served")
         ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
         transcript_fields = _transcript_fields_from_rec(rec)

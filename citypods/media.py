@@ -39,6 +39,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Protocol
 
+from citypods.durations import episode_source_duration_seconds, set_served_duration_seconds
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
 from citypods.http import (
     HOST_LIMITER,
@@ -361,7 +362,7 @@ def _guard_against_truncated_audio(
             f"encoded audio is {size_bytes}B (empty/near-empty) — source fetch likely "
             f"throttled/truncated; backing off"
         )
-    expected = ep.duration
+    expected = episode_source_duration_seconds(ep)
     if not expected or expected <= 0 or probed is None:
         return
     if probed < _TRUNCATION_MIN_RATIO * expected:
@@ -2540,20 +2541,15 @@ def estimate_encode_rss_bytes(
 
 
 def _backfill_served_duration(ep: Episode) -> str:
-    """Populate ``audio_duration_served`` only when no measured value is available.
+    """Report whether a measured served duration is already present.
 
-    review/20: the authoritative served duration is the *probed* duration of the actual hosted
-    object (set by the encode caller from the post-encode ffprobe, or adopted from a reused
-    artifact's recorded duration). This function no longer overwrites a present value with the EDL
-    sum — that conflated the served/hosted clock with the EDL/cue clock and masked renders that
-    disagreed with the EDL. It now only *fills* a missing value, falling back to the EDL/source
-    estimate so the enclosure still carries a duration when the caller could not measure one."""
+    The strict duration contract treats served duration as authoritative only when it comes from a
+    direct probe of the hosted artifact (or a reused artifact carrying that same probed value).
+    Missing served duration stays missing rather than being inferred from timeline or source
+    metadata.
+    """
     if ep.audio_duration_served is not None and ep.audio_duration_served > 0:
         return "existing"
-    fallback = _served_duration(ep)
-    if fallback is not None and fallback > 0:
-        ep.audio_duration_served = fallback
-        return "metadata"
     return "unknown"
 
 
@@ -2688,7 +2684,7 @@ def materialize_audio(
         # served_duration / current_artifact_changed (GH#421 follow-up). Backfill from the episode's
         # own timeline/source as a final fallback.
         if artifact.duration and artifact.duration > 0:
-            ep.audio_duration_served = artifact.duration
+            set_served_duration_seconds(ep, artifact.duration)
         ep.materialize_attempts = 0
         ep.materialize_last_attempt = None
         ep.materialize_error = None
@@ -2955,7 +2951,7 @@ def materialize_audio(
             ep.hosted_audio_url = url
             ep.audio_encode_time = now.isoformat()
             if probed is not None:
-                ep.audio_duration_served = probed
+                set_served_duration_seconds(ep, probed)
             _backfill_served_duration(ep)
             ep.materialize_attempts = 0  # success clears the backoff state (#120)
             ep.materialize_last_attempt = None

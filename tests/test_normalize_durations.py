@@ -33,11 +33,12 @@ def test_normalize_records_dry_run_does_not_mutate():
         apply=False,
     )
 
-    assert changed is True
-    assert summary.timeline_fallback == 1
+    assert changed is False
+    assert summary.timeline_fallback == 0
+    assert summary.failed == 1
     assert records["u1"].get("served_duration_seconds") is None
     assert records["u1"]["audio"].get("duration_served") is None
-    assert rows[0]["outcome"] == "timeline-fallback"
+    assert rows[0]["outcome"] == "failed"
 
 
 def test_normalize_records_apply_writes_only_changed_rows():
@@ -75,16 +76,17 @@ def test_normalize_records_apply_writes_only_changed_rows():
         apply=True,
     )
 
-    assert changed is True
-    assert summary.timeline_fallback == 1
+    assert changed is False
+    assert summary.timeline_fallback == 0
     assert summary.unchanged == 1
-    assert records["u1"]["served_duration_seconds"] == 600.0
-    assert records["u1"]["audio"]["duration_served"] == 600.0
+    assert records["u1"].get("served_duration_seconds") is None
+    assert records["u1"]["audio"].get("duration_served") is None
     assert records["u2"]["served_duration_seconds"] == 1200.0
+    assert rows[0]["outcome"] == "failed"
     assert rows[1]["outcome"] == "unchanged"
 
 
-def test_normalize_records_apply_marks_legacy_match_as_changed():
+def test_normalize_records_apply_leaves_legacy_match_unwritten_without_probe():
     records = {
         "u1": {
             "uid": "u1",
@@ -114,12 +116,13 @@ def test_normalize_records_apply_marks_legacy_match_as_changed():
         apply=True,
     )
 
-    assert changed is True
-    assert summary.changed == 1
-    assert summary.timeline_fallback == 1
-    assert records["u1"]["served_duration_seconds"] == 600.0
+    assert changed is False
+    assert summary.changed == 0
+    assert summary.timeline_fallback == 0
+    assert summary.skipped == 1
+    assert records["u1"].get("served_duration_seconds") is None
     assert records["u1"]["audio"]["duration_served"] == 600.0
-    assert rows[0]["outcome"] == "timeline-fallback"
+    assert rows[0]["outcome"] == "skipped"
 
 
 def test_normalize_records_probe_tolerance_avoids_spurious_changes(monkeypatch):
@@ -188,8 +191,8 @@ def test_normalize_records_probe_exception_reports_failure_and_continues(monkeyp
         apply=True,
     )
 
-    assert changed is True
-    assert summary.timeline_fallback == 1
-    assert summary.failed == 0
-    assert records["u1"]["served_duration_seconds"] == 600.0
-    assert rows[0]["outcome"] == "timeline-fallback"
+    assert changed is False
+    assert summary.timeline_fallback == 0
+    assert summary.failed == 1
+    assert records["u1"].get("served_duration_seconds") is None
+    assert rows[0]["outcome"] == "failed"

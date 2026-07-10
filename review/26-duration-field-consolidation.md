@@ -1,6 +1,6 @@
 # H21 duration field consolidation + normalization
 
-**Status:** L3 design, not implemented. GitHub issue: TBD.
+**Status:** L3 design. GitHub issue: [GH#868](https://github.com/BashfulBits/city-meeting-podcasts/issues/868).
 
 ## Problem
 
@@ -25,7 +25,7 @@ The desired durable model is two persisted episode-level scalar fields:
 | Field | Meaning | Authoritative owner |
 |---|---|---|
 | `source_duration_seconds` | Best-known pre-edit/source program duration, usually provider-declared or source-probed. | provider/timeline/audio normalization path |
-| `served_duration_seconds` | Duration of the actual served enclosure. Prefer a hosted-audio probe; use planned EDL duration only as a missing-value fallback. | audio-owned materialization and pre-dispatch normalization |
+| `served_duration_seconds` | Duration of the actual served enclosure. Write it only from a canonical read of the hosted artifact (probe or reused artifact carrying that measured value); otherwise leave it missing. | audio-owned materialization and pre-dispatch normalization |
 
 `edl_duration(timeline)` remains derived from `timeline`, not persisted as a third scalar. That preserves
 H18's ability to detect `served_duration_seconds` vs EDL/render mismatches instead of reconciling them
@@ -102,10 +102,10 @@ The durable healing path is an audio-owned/pre-dispatch normalization step:
    duration probe when the run mode allows probing.
 3. If probing succeeds, write `served_duration_seconds` through the audio-owned/normalization path and
    preserve unrelated lane-owned blocks.
-4. If probing is not allowed or fails, fill only from `edl_duration(timeline)` when no served value exists,
-   and mark the basis as fallback.
-5. Emit a warning line/metric for every fallback or probe because the expected steady state is that audio
-   materialization already populated the field.
+4. If probing is not allowed or fails, leave `served_duration_seconds` missing rather than inferring it
+   from `timeline` or source metadata.
+5. Emit a warning line/metric for every probe, probe failure, or still-missing episode because the
+   expected steady state is that audio materialization already populated the field.
 
 Add a manual GitHub Action for the one-time catalog cleanup:
 
@@ -113,7 +113,7 @@ Add a manual GitHub Action for the one-time catalog cleanup:
 - Inputs: `source` optional, `uid` optional, `dry_run` default true, `max_items` default bounded,
   `probe_existing` default true.
 - It restores canonical B2 records, probes hosted audio for missing or legacy-only served durations, writes
-  normalized records on apply, and uploads a JSONL/summary artifact listing changed, fallback, failed, and
+  normalized records on apply, and uploads a JSONL/summary artifact listing changed, probed, failed, and
   skipped rows.
 - It must not touch R2 coordination prefixes except the existing restore/push machinery already required
   by state sync.
@@ -192,8 +192,8 @@ Changes:
 - Add the pre-dispatch normalization step before ASR/external work manifest generation.
 - Let it probe hosted audio only when `served_duration_seconds` is missing and probing is enabled for that
   run context.
-- Emit structured warnings/metrics: `duration_normalized_from_probe`, `duration_fallback_from_timeline`,
-  `duration_probe_failed`, and `duration_missing_after_normalization`.
+- Emit structured warnings/metrics: `duration_normalized_from_probe`, `duration_probe_failed`, and
+  `duration_missing_after_normalization`.
 - Persist normalization under an audio-owned or explicitly normalization-owned path so transcribe lanes do
   not try to write protected audio fields.
 - Keep the steady-state path record-local and manifest-local.
@@ -201,7 +201,7 @@ Changes:
 Acceptance:
 
 - A record with hosted audio and missing served duration is healed before dispatch and warns.
-- A record with timeline but no hosted/probed value gets a fallback only when missing, and warns.
+- A record with timeline but no hosted/probed value stays missing and warns.
 - A transcribe-lane push cannot regress a normalized served duration.
 - Tests prove no R2 list/read path is added for duration lookup.
 
@@ -224,7 +224,7 @@ Acceptance:
 
 - Dry-run performs no writes.
 - Apply mode writes only changed records.
-- Summary distinguishes probed, timeline fallback, unchanged, skipped, and failed.
+- Summary distinguishes probed, unchanged, skipped, and failed.
 - Workflow has minimal necessary permissions and no broad R2 listing behavior.
 
 ### PR5: Remove legacy write paths and enforce the contract
@@ -252,7 +252,7 @@ Acceptance:
 ## Risks
 
 - **Semantic drift:** `served_duration_seconds` must mean actual hosted duration when known, not planned
-  EDL duration. The EDL fallback is only a missing-value bridge and must carry warning telemetry.
+  EDL duration. Unknown is preferable to an inferred but incorrect scalar.
 - **Lane ownership:** transcribe/external worker paths must not become hidden writers of audio-owned
   fields. Normalization must run before dispatch or under explicit ownership.
 - **Cost drift:** probing missing durations can accidentally become a hot-path download pattern. The
@@ -268,5 +268,5 @@ Acceptance:
 - External-worker telemetry, worker reports, work ordering, ASR admission, feeds, and site rendering all
   read duration through canonical helpers.
 - Missing served duration is healed before dispatch when possible and always warned when normalization
-  must probe or fall back.
+  must probe or leave a value missing.
 - No duration lookup path introduces broad R2 reads or lists.
