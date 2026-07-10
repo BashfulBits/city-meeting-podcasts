@@ -49,7 +49,10 @@ class Episode:
     video_url: str
     description: str = ""
     audio_url: str | None = None  # falls back to video_url (audio/mp4) when None
+    # Legacy source-duration scalar; canonical = source_duration_seconds.
     duration: int | None = None  # seconds
+    source_duration_seconds: float | None = None
+    served_duration_seconds: float | None = None
     media_kind: str = "direct"  # "direct" | "hls"
     hosted_audio_url: str | None = None  # set by the materialization pipeline
     body: str | None = None  # committee/meeting body, e.g. "City Council" (for per-body feeds)
@@ -160,6 +163,7 @@ class Episode:
     # the EDL/cue clock (``timeline.edl_duration``): a render that disagrees with the EDL must stay
     # visible to the audit rather than being reconciled into this field. None for pre-v2 records;
     # set from the post-encode ffprobe (or a reused artifact's recorded duration) on each success.
+    # Legacy served-duration mirror; canonical = served_duration_seconds.
     audio_duration_served: float | None = None
 
     # Audit-owned repair/diagnostic metadata.  ``integrity.timeline_audio`` is consumed by

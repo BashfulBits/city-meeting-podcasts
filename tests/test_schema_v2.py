@@ -410,6 +410,41 @@ class TestRoundTrip:
         ep.audio_duration_served = 3150.0
         assert record_to_episode(episode_to_record(ep)).audio_duration_served == 3150.0
 
+    def test_canonical_duration_fields_round_trip(self):
+        ep = _ep()
+        ep.source_duration_seconds = 3600.4
+        ep.served_duration_seconds = 3150.5
+        rec = episode_to_record(ep)
+
+        assert rec["source_duration_seconds"] == 3600.4
+        assert rec["served_duration_seconds"] == 3150.5
+        assert rec["duration"] == 3600
+        assert rec["audio"]["duration_served"] == 3150.5
+
+        restored = record_to_episode(rec)
+        assert restored.source_duration_seconds == 3600.4
+        assert restored.served_duration_seconds == 3150.5
+        assert restored.duration == 3600
+        assert restored.audio_duration_served == 3150.5
+
+    def test_legacy_duration_fields_backfill_canonical_episode_fields(self):
+        restored = record_to_episode(
+            {
+                "uid": "abc",
+                "provider_guid": "g1",
+                "title": "Meeting",
+                "published": "2026-05-19T16:00:00+00:00",
+                "video_url": "https://x/g1.mp4",
+                "duration": 3600,
+                "audio": {"duration_served": 3150.0},
+            }
+        )
+
+        assert restored.source_duration_seconds == 3600
+        assert restored.served_duration_seconds == 3150.0
+        assert restored.duration == 3600
+        assert restored.audio_duration_served == 3150.0
+
 
 # ---------------------------------------------------------------------------
 # Lazy v1→v2 upgrade
