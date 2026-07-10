@@ -24,25 +24,9 @@ concurrency:
 jobs:
   digest:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      # Durable state lives in the object bucket (state-as-truth); the script pulls it to read the
-      # persisted media-availability verdicts. Set the secrets for whichever backend
-      # site_config.defaults.audio_storage_backend selects.
-      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
-      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
-      B2_BUCKET: ${{ secrets.B2_BUCKET }}
-      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
-      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-      # The proxy re-fetch hits native Granicus media, so it gets the same authenticated Worker
-      # fallback the audio lane uses to recover an HTTP 403.
-      GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
-      GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+    # A stuck proxy re-fetch/encode must not hold the `availability-digest` concurrency slot
+    # indefinitely (CR2-GH-05).
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -63,9 +47,20 @@ jobs:
       # audio.yml cycle is the primary cause of HTTP 403 throttling (GH#300). Poll for up to an hour,
       # then proceed anyway so a stuck audio run never permanently blocks the weekly digest.
       - name: Wait for active audio runs to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           for i in $(seq 1 30); do
-            ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
+            # A gh API/auth/network error must not be masked as "no active runs" (CR2-GH-08) --
+            # that would let the loop fall through to the proxy re-fetch while audio.yml might
+            # still be running, risking the exact 403-storm this wait exists to prevent. Retry
+            # instead, same pattern contracts.yml's equivalent wait loop already uses.
+            if ! ACTIVE=$(gh run list --workflow audio.yml --status in_progress \
+                --json databaseId --limit 5 2>/tmp/gh-run-list.err); then
+              echo "[$i/30] gh run list failed, will retry: $(cat /tmp/gh-run-list.err)"
+              sleep 120
+              continue
+            fi
             if [ "$ACTIVE" = "[]" ]; then
               echo "No active audio runs. Proceeding."
               exit 0
@@ -77,6 +72,26 @@ jobs:
 
       - name: Build availability digest
         id: digest
+        env:
+          # Durable state lives in the object bucket (state-as-truth); the script pulls it to
+          # read the persisted media-availability verdicts. Set the secrets for whichever
+          # backend site_config.defaults.audio_storage_backend selects. Scoped to this step, not
+          # job-level (CR2-GH-16/MR-GH-02) -- checkout/setup-python/install/ffmpeg/the wait loop
+          # never touch storage or the Granicus proxy.
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          # The proxy re-fetch hits native Granicus media, so it gets the same authenticated
+          # Worker fallback the audio lane uses to recover an HTTP 403.
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
         run: |
           python scripts/availability_digest.py \
             --pull \
@@ -97,6 +112,8 @@ jobs:
       # only carries the redacted source identity + the public canonical watch page).
       - name: Open or update digest issue
         if: steps.digest.outputs.has_candidates == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="H16 empty-recording review digest"
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -116,4 +133,15 @@ jobs:
       # evidence as digested with nothing published for reviewers to see.
       - name: Push digest state
         if: steps.digest.outputs.has_candidates == 'true'
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: python scripts/availability_digest.py --push-only --out availability-digest

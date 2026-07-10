@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
 
+# MR-GH-05: this runs on every pull_request push (the highest-frequency trigger) with no
+# concurrency group, so rapid pushes ran overlapping CI to completion instead of canceling the
+# superseded run — mirrors preview.yml's equivalent group.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

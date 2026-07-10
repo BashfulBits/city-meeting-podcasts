@@ -137,6 +137,26 @@ def test_asr_workflow_runs_every_five_hours():
     assert {item.get("cron") for item in schedules} == {"0 */5 * * *"}
 
 
+def test_asr_reconcile_scopes_storage_secrets_to_the_step_that_needs_them():
+    # CR2-GH-16/MR-GH-02: checkout/setup-python/install need no credentials; plan-shards reads
+    # only the local state the reconcile step already restored.
+    _wf, reconcile = _job("asr.yml", job_name="reconcile")
+    assert "env" not in reconcile or not any(
+        k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (reconcile.get("env") or {})
+    )
+    reconcile_step = next(
+        s
+        for s in reconcile["steps"]
+        if s.get("name") == "Reconcile dispatch leases + free-tier budget"
+    )
+    for var in ("B2_ENDPOINT", "R2_ACCESS_KEY_ID"):
+        assert var in reconcile_step.get("env", {})
+    for step in reconcile["steps"]:
+        if step is reconcile_step:
+            continue
+        assert not any(k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (step.get("env") or {}))
+
+
 def test_asr_uses_one_canonical_snapshot_and_shard_plan():
     _wf, reconcile = _job("asr.yml", job_name="reconcile")
     _wf, asr = _job("asr.yml", job_name="asr")
@@ -392,6 +412,22 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     assert upload["with"]["path"] == "granicus-*-results.json"
 
 
+def test_spike_r2_cas_has_a_concurrency_group():
+    # CR2-GH-13: no concurrency block meant overlapping manual dispatches could consume
+    # duplicate runner time.
+    wf, _job_dict = _job("spike-r2-cas.yml")
+    assert wf.get("concurrency", {}).get("cancel-in-progress") is True
+    assert wf["concurrency"]["group"]
+
+
+def test_ci_has_a_concurrency_group():
+    # MR-GH-05: ci.yml runs on every pull_request push with no concurrency group, so rapid
+    # pushes ran overlapping CI to completion instead of canceling the superseded run.
+    wf, _job_dict = _job("ci.yml")
+    assert wf.get("concurrency", {}).get("cancel-in-progress") is True
+    assert "${{ github.ref }}" in wf["concurrency"]["group"]
+
+
 def test_ci_runs_granicus_worker_unit_tests():
     _wf, job = _job("ci.yml", job_name="test")
     step = next(
@@ -444,6 +480,42 @@ def test_deploy_is_render_only():
     assert render < deploy, "deploy.yml must render before deploying"
     # The Pages plumbing stays on deploy, not enrich.
     assert "actions/upload-pages-artifact" in uses and "actions/deploy-pages" in uses
+
+
+def test_deploy_scopes_storage_secrets_to_render_step_only():
+    """CR2-GH-16/MR-GH-02: B2/R2 secrets must not sit in job-level env where checkout/
+    setup-python/cache/configure-pages/upload-pages-artifact/deploy-pages steps (none of which
+    touch storage) can see them — only the render step (which pulls durable state) needs them."""
+    wf, job = _job("deploy.yml")
+    assert "env" not in job or not any(
+        k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (job.get("env") or {})
+    )
+    render = next(s for s in job["steps"] if s.get("run") == "citypods build --phase render")
+    env = render.get("env", {})
+    for var in ("B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_PUBLIC_BASE_URL"):
+        assert var in env, f"deploy.yml's render step is missing {var}"
+    for var in ("CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
+        assert var in env, f"deploy.yml's render step is missing {var}"
+    non_render_steps = [s for s in job["steps"] if s is not render]
+    assert not any(
+        k.startswith(("B2_", "R2_", "CLOUDFLARE_"))
+        for s in non_render_steps
+        for k in (s.get("env") or {})
+    )
+
+
+def test_deploy_job_has_a_timeout():
+    # CR2-GH-16: a stalled render/deploy must not hold the `pages` concurrency slot for hours.
+    _wf, job = _job("deploy.yml")
+    assert job.get("timeout-minutes")
+
+
+def test_deploy_resource_report_does_not_block_deploy_on_failure():
+    # CR2-GH-15: a bug in the cosmetic resource-report generator must not block feed validation
+    # or the deploy itself.
+    _wf, job = _job("deploy.yml")
+    report_step = next(s for s in job["steps"] if s.get("name") == "Resource report")
+    assert report_step.get("continue-on-error") is True
 
 
 def test_deploy_skips_docs_only_pushes_but_not_deploy_inputs():
@@ -711,3 +783,76 @@ def test_no_workflow_inlines_a_free_form_dispatch_input_in_run_text():
     assert not offenders, "free-form string input inlined in run: shell text:\n" + "\n".join(
         offenders
     )
+
+
+def test_contracts_wait_loop_polls_both_audio_and_granicus_probe():
+    # CR2-GH-19: granicus-probe.yml shares audio.yml's `group: audio` concurrency slot, so a wait
+    # loop that only checks audio.yml can proceed to probe Granicus while granicus-probe.yml is
+    # actively running — the exact 403-storm scenario this gate exists to prevent.
+    _wf, job = _job("contracts.yml")
+    wait_step = next(
+        s for s in job["steps"] if s.get("name") == "Wait for active audio runs to finish"
+    )
+    run = wait_step["run"]
+    assert "audio.yml granicus-probe.yml" in run or (
+        "audio.yml" in run and "granicus-probe.yml" in run
+    )
+
+
+def test_contracts_wait_loop_does_not_merge_stderr_into_the_json_comparison():
+    # CR2-GH-18: `2>&1` would merge stderr into the captured value, so a successful call that
+    # also emits an incidental stderr warning could corrupt the "[]" comparison.
+    _wf, job = _job("contracts.yml")
+    wait_step = next(
+        s for s in job["steps"] if s.get("name") == "Wait for active audio runs to finish"
+    )
+    run = wait_step["run"]
+    assert "2>&1" not in run
+
+
+def test_availability_digest_wait_loop_does_not_merge_stderr_into_the_json_comparison():
+    _wf, job = _job("availability-digest.yml", job_name="digest")
+    wait_step = next(
+        s for s in job["steps"] if s.get("name") == "Wait for active audio runs to finish"
+    )
+    assert "2>&1" not in wait_step["run"]
+
+
+def test_availability_digest_job_has_a_timeout():
+    # CR2-GH-05: a stuck proxy re-fetch/encode must not hold the concurrency slot indefinitely.
+    _wf, job = _job("availability-digest.yml", job_name="digest")
+    assert job.get("timeout-minutes")
+
+
+def test_availability_digest_wait_loop_retries_instead_of_masking_gh_failures():
+    # CR2-GH-08: a gh API/auth/network error must not be masked as "no active runs" — that would
+    # fail-open the exact 403-storm throttle gate GH#300 exists to prevent.
+    _wf, job = _job("availability-digest.yml", job_name="digest")
+    wait_step = next(
+        s for s in job["steps"] if s.get("name") == "Wait for active audio runs to finish"
+    )
+    run = wait_step["run"]
+    assert "2>/dev/null || echo" not in run
+    assert "will retry" in run
+
+
+def test_availability_digest_scopes_secrets_to_steps_that_need_them():
+    # CR2-GH-16/MR-GH-02: storage/Granicus-proxy secrets must not sit in job-level env where
+    # checkout/setup-python/install/ffmpeg/the wait loop (none of which touch them) can see them.
+    _wf, job = _job("availability-digest.yml", job_name="digest")
+    assert "env" not in job or not any(
+        k.startswith(("B2_", "R2_", "CLOUDFLARE_", "GRANICUS_")) for k in (job.get("env") or {})
+    )
+    digest_step = next(s for s in job["steps"] if s.get("name") == "Build availability digest")
+    for var in ("B2_ENDPOINT", "R2_ACCESS_KEY_ID", "GRANICUS_PROXY_TOKEN"):
+        assert var in digest_step.get("env", {})
+    push_step = next(s for s in job["steps"] if s.get("name") == "Push digest state")
+    assert "B2_ENDPOINT" in push_step.get("env", {})
+    storage_steps = {id(digest_step), id(push_step)}
+    for step in job["steps"]:
+        if id(step) in storage_steps:
+            continue
+        assert not any(
+            k.startswith(("B2_", "R2_", "CLOUDFLARE_", "GRANICUS_"))
+            for k in (step.get("env") or {})
+        )
