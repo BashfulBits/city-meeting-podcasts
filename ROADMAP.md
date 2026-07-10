@@ -35,13 +35,14 @@ revisions pinned (#498), Renovate two-lane update flow + CI guards — plus the 
 Stabilize and maximize the throughput of what just shipped *before* layering on new user-facing
 features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 
-> **Remaining tail (updated 2026-06-27).** With
+> **Remaining tail (updated 2026-07-10).** With
 > H1–H8/H10–H13/**#39** shipped, the remaining items are:
 > **H16** Granicus proxy production validation → **H17** R2/CAS + durable pull-work substrate
 > (`review/17`/`review/18`) → **H18** timeline/audio integrity repair
 > ([`review/20`](review/20-timeline-audio-integrity-repair.md)) → **H14** the first real external workers
-> (**Modal + Beam**, free-tier-bounded) → **H9**
-> combined-throughput eval. The maintainer pulled the external-worker *build* into Phase H so "compute
+> (**Modal + Beam**, free-tier-bounded). **H9 combined-throughput evaluation was deferred to backlog on
+> 2026-07-10** after H14d's live telemetry and current capacity arithmetic already showed the 80-feed
+> one-month free-tier backlog gate is met with margin. The maintainer pulled the external-worker *build* into Phase H so "compute
 > is pluggable" ships proven by two live GPU adapters before 1.0. (**#39** per-provider rate limiting
 > shipped in [#274](https://github.com/BashfulBits/city-meeting-podcasts/issues/274) — it fixed the
 > Granicus 403 / truncated-fetch storm the first sharded Audio run hit.)
@@ -94,7 +95,6 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H6b** | ✓ Shipped — **Split audio + ASR into dedicated sharded workflows** (`audio.yml` + `asr.yml`, own `audio`/`asr` concurrency groups, `matrix.shard`=4) replacing the combined `enrich.yml`; `enrich --shard K/N`/`--source`/`--lane {audio,transcribe,align}`; cities filtered by source-atomic weighted `shard_assignment(source_key)` + scoped `push_state`/`reconcile_state` so shards don't clobber; `asr.yml` runs transcribe-only with the `asr-transcribe` dependency extra (forced-alignment `align` lane implemented but unscheduled and assigned `asr-align`); Granicus media fetches now also use cross-shard storage-backed leases so the 4 audio shards share one provider cap ([#273](https://github.com/BashfulBits/city-meeting-podcasts/issues/273)) |
 | **H7** | ✓ Shipped — contributor/agent handoff docs (AGENTS/CLAUDE/ARCHITECTURE/CONTRIBUTING + PR/issue templates) |
 | **H8** | ✓ Shipped — throughput maximization on the free 4-core runner (PR #235): pinned ffmpeg `-threads`, memory/CPU admission guard, and a killable persistent local-ASR subprocess with per-episode timeout backoff (replacing abandoned native threads) |
-| **H9** | **Combined-throughput and routing evaluation** — measure local-sharded (H6b) + Modal + Beam (H14), including duration/memory success, cold start and I/O, long-audio chunk/stitch overhead, separate-vs-combined ASR+diarization cost, free-tier consumption, queue/routing outcomes, transcript boundary quality, and diarization speaker consistency; use results to set local limits, GPU preference, chunk-persistence policy, and the first paid/self-hosted step. Final GPU-type profiling waits for H14d memory/admission tuning. |
 | **H10** | ✓ Shipped — ASR alignment fix (PR #232): caption-bearing feeds use a stable-ts align model and fall back to fresh transcription on align errors |
 | **H11a** | ✓ Shipped — **Deploy resilience**: native work gate + one-slot audio lane + concurrency tuning + Retry-After fix (PRs #239/241/242/243/244/246/247) |
 | **H11b** | ✓ Shipped — Render-only `deploy.yml` (no ffmpeg/ASR; `actions: read` dropped) + heavy phase → new `enrich.yml` (own `enrich` concurrency group) **+ render stops persisting records** — `build()` gates `save_records`/`push_state`/`reconcile_state` off `--phase render` so the enrich workflow is the sole record writer (closes the lost-update race); `statesync` `only_prefixes=`/`full_run=` scope hooks ready for H6b ([#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272)) |
@@ -106,6 +106,8 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H16** | **Granicus proxy validation + simplification** — three production Audio runs, direct-first vs sticky-Worker decision, then remove or justify redundant circuit machinery ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353)). Duplicate combined/per-board audio work is fixed (implemented, unreleased — [GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)): entity-family shard affinity + run-local stable-uid/recipe coalescing, with no source-key migration or backfill. |
 | **H17** | **Distributed work/control-plane substrate** — `RoutingStorage` + native R2 CAS, per-episode ownership-safe merge/planning, and the pull-ledger claim contract H14 workers consume ([GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390); `review/17` + `review/18`) |
 | **H18** | **Timeline/audio integrity repair** — implemented through targeted repair consumers, with PR6 auto-enable pending diagnostic evidence. Feed-health uploads timeline/audio duration diagnostics, records can carry `integrity.timeline_audio`, `/admin/status` reports repair queues, source-aware identity hashing fixes GH#495 tail-only trims, and repair actions re-plan/re-materialize/re-transcribe affected records without a full-catalog invalidation ([`review/20`](review/20-timeline-audio-integrity-repair.md)) |
+
+Deferred from the active Phase-H queue on 2026-07-10: **H9** combined-throughput/routing evaluation. The current local 4-shard baseline plus H14d's chosen GPUs, budgets, and measured worker coefficients already indicate the 80-feed initial backlog clears within one month on free-tier capacity, so the dedicated benchmark/policy project moved back to backlog unless pricing, backlog shape, or diarization requirements change materially.
 
 **Phase H exit criteria ("green").** Phase H is done — and Phase R may start — when, measured off
 `run_history.jsonl` + the status page (instruments built in H2/H4):

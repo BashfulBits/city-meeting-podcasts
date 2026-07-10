@@ -852,6 +852,11 @@ v2 timeline/phase recipe change triggers the gradual content-addressed remaster 
 
 ## H9 — Combined-throughput evaluation across execution homes
 
+> **Deferred 2026-07-10.** Kept as a reference design, not active Phase-H work. After H14d's live
+> worker telemetry, chosen default GPUs, and current capacity arithmetic showed the 80-feed initial
+> transcription backlog clears within one month on free-tier capacity, the maintainer moved H9 back
+> to backlog unless provider pricing, backlog shape, or the diarization rollout changes materially.
+
 > **Rescoped 2026-06-12.** H9 was "decision matrix, no commitment." Now that **H14 builds the Modal +
 > Beam adapters**, H9 is the **measurement** of the three execution homes that actually exist behind the
 > H13 interface — it answers "how far do the free tiers get us, and when is paid/self-hosted worth it?"
@@ -1958,6 +1963,11 @@ sticky-Worker routing choice remains open.
 ---
 
 ## H9 — Combined-throughput evaluation (Diarization $/speaker-hour)
+
+> **Deferred 2026-07-10.** Kept as a reference design, not active Phase-H work. The current launch
+> gate is already satisfied by inspection from H14d/local throughput numbers, so this benchmark only
+> returns to the active queue if future pricing, backlog mix, or diarization needs make it worth
+> formal measurement.
 
 **Maturity: L3** (finalized benchmark scope below). Measures the three built execution homes
 (local-sharded H6b + Modal H14b + Beam H14c) for combined free-tier transcript ceiling and diarization
