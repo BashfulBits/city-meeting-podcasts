@@ -52,14 +52,16 @@ def test_compute_run_internal_worker_routes_to_dedicated_entrypoint(monkeypatch)
     monkeypatch.setattr(
         cli,
         "_compute_run_internal_worker",
-        lambda args: captured.update(
-            {
-                "owner": args.owner,
-                "max_claims": args.max_claims,
-                "max_scan": args.max_scan,
-            }
-        )
-        or 0,
+        lambda args: (
+            captured.update(
+                {
+                    "owner": args.owner,
+                    "max_claims": args.max_claims,
+                    "max_scan": args.max_scan,
+                }
+            )
+            or 0
+        ),
     )
 
     rc = cli.main(
