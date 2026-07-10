@@ -29,6 +29,7 @@ from citypods.storage import make_storage
 from citypods.timeline import edl_duration
 
 DEFAULT_MAX_ITEMS = 200
+_DURATION_CHANGE_TOLERANCE_SECONDS = 0.5
 
 
 @dataclass
@@ -81,6 +82,17 @@ def _jsonl_row(
         "before_served_duration_seconds": before,
         "after_served_duration_seconds": after,
     }
+
+
+def _duration_changed(
+    before: float | None,
+    after: float | None,
+    *,
+    had_canonical: bool,
+) -> bool:
+    if not had_canonical or before is None or after is None:
+        return not had_canonical or before != after
+    return abs(before - after) > _DURATION_CHANGE_TOLERANCE_SECONDS
 
 
 def normalize_records(
@@ -136,11 +148,14 @@ def normalize_records(
         probed = None
         probe_reason = "probe-disabled"
         if probe_existing and audio.get("key"):
-            probed, probe_reason = probe_hosted_audio_duration_seconds(
-                storage,
-                audio["key"],
-                ffmpeg_binary=ffmpeg_binary,
-            )
+            try:
+                probed, probe_reason = probe_hosted_audio_duration_seconds(
+                    storage,
+                    audio["key"],
+                    ffmpeg_binary=ffmpeg_binary,
+                )
+            except Exception:
+                probed, probe_reason = None, "probe-exception"
         if probed is not None and probed > 0:
             had_canonical = rec.get("served_duration_seconds") is not None
             if apply:
@@ -156,7 +171,7 @@ def normalize_records(
                 )
             )
             summary.probed += 1
-            if before != probed or not had_canonical:
+            if _duration_changed(before, probed, had_canonical=had_canonical):
                 summary.changed += 1
                 changed = True
                 summary.touched_sources.add(source_key)
@@ -178,7 +193,7 @@ def normalize_records(
                 )
             )
             summary.timeline_fallback += 1
-            if before != fallback or not had_canonical:
+            if _duration_changed(before, fallback, had_canonical=had_canonical):
                 summary.changed += 1
                 changed = True
                 summary.touched_sources.add(source_key)

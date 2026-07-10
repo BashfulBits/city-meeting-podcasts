@@ -170,12 +170,69 @@ def test_normalize_episode_durations_warns_when_still_missing(monkeypatch):
     assert any("duration_missing_after_normalization" in msg for msg in warnings)
 
 
-def test_normalize_episode_durations_stops_before_probe(monkeypatch):
-    ep = _ep("g-stop", hosted="https://cdn/g-stop.m4a")
-    ep.audio_key = "audio/src/g-stop.m4a"
+def test_normalize_episode_durations_stop_skips_probe_but_keeps_fallback(monkeypatch):
+    first = _ep("g-stop", hosted="https://cdn/g-stop.m4a")
+    first.audio_key = "audio/src/g-stop.m4a"
+    second = _ep("g-fallback-after-stop")
+    second.timeline = Timeline(
+        version="silence:2",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=600.0,
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=600.0,
+            ),
+        ),
+    )
 
     def _probe(*args, **kwargs):
         raise AssertionError("probe should not run after stop")
+
+    monkeypatch.setattr(run, "probe_hosted_audio_duration_seconds", _probe)
+
+    stats = run._normalize_episode_durations_for_dispatch(
+        "src",
+        [first, second],
+        storage=object(),
+        ffmpeg_binary="ffmpeg",
+        allow_probe=True,
+        stop=lambda: True,
+        log=lambda msg: None,
+    )
+
+    assert stats == run.DurationNormalizationStats(
+        fallback_from_timeline=1,
+        missing_after_normalization=1,
+    )
+    assert first.served_duration_seconds is None
+    assert first.audio_duration_served is None
+    assert second.served_duration_seconds == pytest.approx(600.0)
+    assert second.audio_duration_served == pytest.approx(600.0)
+
+
+def test_normalize_episode_durations_probe_exception_falls_back_to_timeline(monkeypatch):
+    ep = _ep("g-probe-error", hosted="https://cdn/g-probe-error.m4a")
+    ep.audio_key = "audio/src/g-probe-error.m4a"
+    ep.timeline = Timeline(
+        version="silence:2",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=600.0,
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=600.0,
+            ),
+        ),
+    )
+    warnings = []
+
+    def _probe(*args, **kwargs):
+        raise OSError("boom")
 
     monkeypatch.setattr(run, "probe_hosted_audio_duration_seconds", _probe)
 
@@ -185,13 +242,14 @@ def test_normalize_episode_durations_stops_before_probe(monkeypatch):
         storage=object(),
         ffmpeg_binary="ffmpeg",
         allow_probe=True,
-        stop=lambda: True,
-        log=lambda msg: None,
+        log=warnings.append,
     )
 
-    assert stats == run.DurationNormalizationStats()
-    assert ep.served_duration_seconds is None
-    assert ep.audio_duration_served is None
+    assert stats == run.DurationNormalizationStats(probe_failed=1, fallback_from_timeline=1)
+    assert ep.served_duration_seconds == pytest.approx(600.0)
+    assert ep.audio_duration_served == pytest.approx(600.0)
+    assert any("duration_probe_failed" in msg for msg in warnings)
+    assert any("duration_fallback_from_timeline" in msg for msg in warnings)
 
 
 # --- end-to-end incremental build via a fake provider ----------------------------------

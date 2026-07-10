@@ -81,7 +81,7 @@ def test_helpers_ignore_zero_negative_and_bad_values() -> None:
     assert episode_duration_hours(ep) == (0.0, "unknown")
 
 
-def test_setters_update_episode_legacy_fields_but_record_canonical_only() -> None:
+def test_setters_update_canonical_and_legacy_fields() -> None:
     ep = _episode()
     rec = {}
 
@@ -95,9 +95,9 @@ def test_setters_update_episode_legacy_fields_but_record_canonical_only() -> Non
     assert ep.served_duration_seconds == 1800.5
     assert ep.audio_duration_served == 1800.5
     assert rec["source_duration_seconds"] == 3600.4
+    assert rec["duration"] == 3600
     assert rec["served_duration_seconds"] == 1800.5
-    assert "duration" not in rec
-    assert "audio" not in rec
+    assert rec["audio"]["duration_served"] == 1800.5
 
 
 def test_record_reads_do_not_mutate_input() -> None:

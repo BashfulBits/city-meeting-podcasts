@@ -54,7 +54,7 @@ class Candidate:
     last_check: str | None
     video_url: str
     canonical_url: str | None
-    duration: int | None
+    duration: float | None
 
     def key(self) -> str:
         """Stable de-dupe key. Includes the fingerprint, detector version, and state, so a

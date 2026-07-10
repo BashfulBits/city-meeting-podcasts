@@ -453,14 +453,20 @@ def _normalize_episode_durations_for_dispatch(
             continue
         uid = ep.uid or ep.guid
         normalized = False
+        probe_attempted = False
         if allow_probe and ep.hosted_audio_url and ep.audio_key:
             if stop is not None and stop():
-                break
-            probed, basis = probe_hosted_audio_duration_seconds(
-                storage,
-                ep.audio_key,
-                ffmpeg_binary=ffmpeg_binary,
-            )
+                probed, basis = None, "stop-requested"
+            else:
+                probe_attempted = True
+                try:
+                    probed, basis = probe_hosted_audio_duration_seconds(
+                        storage,
+                        ep.audio_key,
+                        ffmpeg_binary=ffmpeg_binary,
+                    )
+                except Exception:
+                    probed, basis = None, "probe-exception"
             if probed is not None and probed > 0:
                 set_served_duration_seconds(ep, probed)
                 stats.normalized_from_probe += 1
@@ -469,7 +475,7 @@ def _normalize_episode_durations_for_dispatch(
                     f"seconds={probed:.3f} basis={basis or 'probe'}"
                 )
                 normalized = True
-            else:
+            elif probe_attempted:
                 stats.probe_failed += 1
                 emit(
                     f"duration_probe_failed source={source_key} uid={uid} "
@@ -979,7 +985,9 @@ def _run_enrich_global_queue(
                 "notes": notes,
             }
     if transcript_stages:
-        for key, st in prepared.items():
+
+        def _normalize_prepared(item: tuple[str, dict]) -> None:
+            key, st = item
             _normalize_episode_durations_for_dispatch(
                 key,
                 st["episodes"],
@@ -988,6 +996,9 @@ def _run_enrich_global_queue(
                 allow_probe=not ctx.dry_run,
                 stop=ctx.stop,
             )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            list(pool.map(_normalize_prepared, prepared.items()))
 
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
     candidates = _order_global_candidates(prepared, policy)

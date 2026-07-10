@@ -79,7 +79,7 @@ def test_normalize_records_apply_writes_only_changed_rows():
     assert summary.timeline_fallback == 1
     assert summary.unchanged == 1
     assert records["u1"]["served_duration_seconds"] == 600.0
-    assert "duration_served" not in records["u1"]["audio"]
+    assert records["u1"]["audio"]["duration_served"] == 600.0
     assert records["u2"]["served_duration_seconds"] == 1200.0
     assert rows[1]["outcome"] == "unchanged"
 
@@ -117,5 +117,79 @@ def test_normalize_records_apply_marks_legacy_match_as_changed():
     assert changed is True
     assert summary.changed == 1
     assert summary.timeline_fallback == 1
+    assert records["u1"]["served_duration_seconds"] == 600.0
+    assert records["u1"]["audio"]["duration_served"] == 600.0
+    assert rows[0]["outcome"] == "timeline-fallback"
+
+
+def test_normalize_records_probe_tolerance_avoids_spurious_changes(monkeypatch):
+    records = {
+        "u1": {
+            "uid": "u1",
+            "served_duration_seconds": 0,
+            "audio": {"key": "audio/k1", "duration_served": 600.0},
+        }
+    }
+
+    monkeypatch.setattr(
+        nd,
+        "probe_hosted_audio_duration_seconds",
+        lambda storage, key, *, ffmpeg_binary="ffmpeg": (600.2, "stream-sample"),
+    )
+
+    rows, summary, changed = nd.normalize_records(
+        records,
+        source_key="src1",
+        storage=object(),
+        ffmpeg_binary="ffmpeg",
+        probe_existing=True,
+        apply=True,
+    )
+
+    assert changed is False
+    assert summary.probed == 1
+    assert summary.changed == 0
+    assert records["u1"]["served_duration_seconds"] == 600.2
+    assert rows[0]["outcome"] == "probed"
+
+
+def test_normalize_records_probe_exception_reports_failure_and_continues(monkeypatch):
+    records = {
+        "u1": {
+            "uid": "u1",
+            "audio": {"key": "audio/k1"},
+            "timeline": {
+                "version": "silence:2",
+                "segments": [
+                    {
+                        "served_start": 0.0,
+                        "served_end": 600.0,
+                        "kind": "source",
+                        "source_id": "s0",
+                        "source_start": 0.0,
+                        "source_end": 600.0,
+                    }
+                ],
+            },
+        }
+    }
+
+    def _probe(*args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr(nd, "probe_hosted_audio_duration_seconds", _probe)
+
+    rows, summary, changed = nd.normalize_records(
+        records,
+        source_key="src1",
+        storage=object(),
+        ffmpeg_binary="ffmpeg",
+        probe_existing=True,
+        apply=True,
+    )
+
+    assert changed is True
+    assert summary.timeline_fallback == 1
+    assert summary.failed == 0
     assert records["u1"]["served_duration_seconds"] == 600.0
     assert rows[0]["outcome"] == "timeline-fallback"

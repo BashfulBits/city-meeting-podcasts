@@ -2256,10 +2256,13 @@ def probe_hosted_audio_duration_seconds(
     """Probe a hosted audio object's duration via bounded range reads only."""
     if not key or storage is None or not hasattr(storage, "get_range"):
         return None, "no-range-probe"
-    probe = _probe_audio_duration_header(
-        lambda start, end: storage.get_range(key, start, end),
-        ffmpeg_binary=ffmpeg_binary,
-    )
+    try:
+        probe = _probe_audio_duration_header(
+            lambda start, end: storage.get_range(key, start, end),
+            ffmpeg_binary=ffmpeg_binary,
+        )
+    except Exception:
+        return None, "header-range-failed"
     if probe is None:
         return None, "header-unavailable"
     if probe.stream_sample_duration is not None and probe.stream_sample_duration > 0:

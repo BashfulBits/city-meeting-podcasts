@@ -73,6 +73,7 @@ def set_source_duration_seconds(
         ep_or_rec.duration = None if seconds is None else int(round(seconds))
         return
     ep_or_rec["source_duration_seconds"] = seconds
+    ep_or_rec["duration"] = None if seconds is None else int(round(seconds))
     _unused = (basis, evidence)
 
 
@@ -89,4 +90,9 @@ def set_served_duration_seconds(
         ep_or_rec.audio_duration_served = seconds
         return
     ep_or_rec["served_duration_seconds"] = seconds
+    audio = ep_or_rec.get("audio")
+    if not isinstance(audio, MutableMapping):
+        audio = {}
+        ep_or_rec["audio"] = audio
+    audio["duration_served"] = seconds
     _unused = (basis, evidence)
