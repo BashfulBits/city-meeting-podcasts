@@ -1663,6 +1663,11 @@ def _download_audio(url: str):
         yield dest
 
 
+# Public alias for cross-module callers (bench.py's asr-bench command, CR2-CP-39) — the
+# underscore name stays the internal one this module's own callers use.
+download_hosted_audio = _download_audio
+
+
 def _download_audio_file(url: str, dest: Path) -> None:
     import requests as _req
 

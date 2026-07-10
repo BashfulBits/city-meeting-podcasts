@@ -20,7 +20,7 @@ Output example::
     Model                    WER      Time     Words   Notes
     base.en                  9.3 %    6 m 12 s  11 921
     small.en                 5.1 %   18 m 44 s  12 503
-    large-v3-turbo           2.8 %   34 m 02 s  12 791  ← best
+    large-v3-turbo           2.8 %   34 m 02 s  12 791  ← best so far
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def run_bench(
     from citypods import asr as asr_mod
     from citypods.config import load_city_configs, load_site_config
     from citypods.records import load_records, record_to_episode, source_key
-    from citypods.stages import _download_audio
+    from citypods.stages import download_hosted_audio
     from citypods.state import resolve_state_dir
 
     try:
@@ -110,7 +110,7 @@ def run_bench(
     best_wer = float("inf")
     results = []
 
-    with _download_audio(ep.hosted_audio_url) as audio_path:
+    with download_hosted_audio(ep.hosted_audio_url) as audio_path:
         for model in models:
             prompt = ". ".join(p for p in (city.podcast_title, ep.body, ep.title) if p)
             t0 = time.perf_counter()
@@ -146,12 +146,13 @@ def run_bench(
                 else 1.0
             )
 
-            note = " ← best" if wer < best_wer else ""
-            if wer < best_wer:
-                best_wer = wer
-                # retroactively clear previous best markers
-                for r in results:
-                    r["note"] = ""
+            # CR2-CP-44: this can only ever be a running "so far" indicator, live-printed before
+            # later models are known — a subsequent better result cannot un-print an already-shown
+            # marker on a prior row (the old "retroactive clear" only mutated `results`, which is
+            # never re-printed, so it had no visible effect). The authoritative winner is the
+            # "Recommended:" line below, computed after every model has run.
+            note = " ← best so far" if wer < best_wer else ""
+            best_wer = min(best_wer, wer)
 
             mins = int(elapsed // 60)
             secs = int(elapsed % 60)
@@ -181,21 +182,29 @@ def _get_ref_text(ep) -> str | None:
     if not ep.transcript_hosted_url or not ep.transcript_format:
         return None
 
+    import requests
+
     from citypods import asr as asr_mod
     from citypods.http import make_session
 
+    # CR2-CP-42: only the network fetch can meaningfully fail here (decode uses errors="replace"
+    # and an unsupported transcript_format already returns None below) — narrow the catch so a
+    # real bug elsewhere in this function surfaces instead of silently returning None like the
+    # legitimate "no transcript" case, which the caller can't otherwise distinguish.
     try:
         with make_session() as sess:
             r = sess.get(ep.transcript_hosted_url, timeout=30)
-        if r.status_code != 200:
-            return None
-        content = r.content.decode("utf-8", errors="replace")
-        if ep.transcript_format == "txt":
-            return content.strip()
-        if ep.transcript_format == "vtt":
-            return asr_mod.vtt_to_text(content)
-        if ep.transcript_format == "srt":
-            return asr_mod.srt_to_text(content)
-    except Exception:  # noqa: BLE001
+    except requests.RequestException as exc:
+        print(f"  (reference transcript fetch failed: {exc})")
         return None
+    if r.status_code != 200:
+        print(f"  (reference transcript fetch returned HTTP {r.status_code})")
+        return None
+    content = r.content.decode("utf-8", errors="replace")
+    if ep.transcript_format == "txt":
+        return content.strip()
+    if ep.transcript_format == "vtt":
+        return asr_mod.vtt_to_text(content)
+    if ep.transcript_format == "srt":
+        return asr_mod.srt_to_text(content)
     return None

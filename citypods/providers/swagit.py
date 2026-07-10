@@ -102,6 +102,27 @@ def _s3_object_key(url: str) -> str:
     return urlsplit(url).path.rsplit("/", 1)[-1]
 
 
+_REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+
+
+def _get_download_redirect(
+    session: requests.Session, episode: Episode
+) -> tuple[requests.Response, str | None, bool]:
+    """GET ``episode.video_url`` (``/videos/{id}/download``) without following redirects.
+
+    Shared by :meth:`SwagitProvider.fetch_segment_objects`/``resolve_media_url`` (CR2-CP-21):
+    both need the same redirect classification — a modern keyed-presigned redirect, a keyless
+    redirect (issue #120), or an already-direct file — before branching on it differently.
+    """
+    try:
+        resp = session.get(episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+    except requests.RequestException as exc:
+        raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
+    loc = resp.headers.get("Location")
+    is_redirect = resp.status_code in _REDIRECT_STATUSES and bool(loc)
+    return resp, loc, is_redirect
+
+
 def parse_segment_objects(content: bytes) -> list[tuple[str, str]]:
     """Parse a Swagit video page's inline ``dfile`` segments, returning ``(url, title)`` pairs
     ordered by ``seq``.
@@ -250,14 +271,7 @@ class SwagitProvider:
         Raises :class:`~citypods.providers.base.ProviderError` on unrecoverable network failure.
         """
         with make_session() as session:
-            try:
-                resp = session.get(
-                    episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False
-                )
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
-            loc = resp.headers.get("Location")
-            is_redirect = resp.status_code in (301, 302, 303, 307, 308) and bool(loc)
+            resp, loc, is_redirect = _get_download_redirect(session, episode)
             if is_redirect and _s3_object_key(loc):
                 return None  # modern: keyed presigned URL
             if not is_redirect and resp.status_code < 400:
@@ -290,14 +304,7 @@ class SwagitProvider:
             return episode.sources[0].ref
 
         with make_session() as session:
-            try:
-                resp = session.get(
-                    episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False
-                )
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
-            loc = resp.headers.get("Location")
-            is_redirect = resp.status_code in (301, 302, 303, 307, 308) and bool(loc)
+            resp, loc, is_redirect = _get_download_redirect(session, episode)
             if is_redirect and _s3_object_key(loc):
                 # Keyed presigned MP4 from a redirect Location header: validate explicitly
                 # before handing it to ffmpeg, the same gate Granicus's resolve_media_url has
