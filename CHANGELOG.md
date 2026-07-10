@@ -16,6 +16,21 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **H19 internal ASR pull workers now use the same lease ledger as external workers.**
+  `asr.yml` no longer consumes a static transcribe shard plan; its reconcile job rebuilds the work
+  manifest from canonical records and reaps expired leases, then the matrix runs identical
+  `citypods compute run-internal-worker` jobs against the shared Stage-2 pull/claim contract.
+  The internal worker now layers local-only supervision on top of the shared claim loop: it uses a
+  persistent killable inference subprocess, carries forward timeout/backstop behavior as reusable
+  worker-side supervision instead of stage-local threading, prefers shorter known-duration items,
+  enforces the hard 4-hour local-duration cap, and admits a claim only when its estimated runtime
+  still fits before the 350-minute job backstop. The same runtime-estimate substrate external
+  workers use (`state/compute_budget.json` runtime coefficients) now learns a separate
+  `github-actions` ASR coefficient from completed local claims, so the start-admission limit can
+  shrink automatically as wall-clock time runs down. A locally timed-out or superseded claim now
+  terminates the child process, records ASR timeout backoff on that episode, and abandons the lease
+  back to the queue rather than failing it terminally.
+
 - **H21 duration canonicalization and repair surfaces.** Persisted episode records now treat
   `source_duration_seconds` and `served_duration_seconds` as the canonical scalar duration fields.
   Hot consumers (workqueue ordering, external-worker telemetry, feeds, reports, and dispatch

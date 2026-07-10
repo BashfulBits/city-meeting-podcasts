@@ -246,6 +246,13 @@ defaults:
   # that the GitHub runner can handle, while still respecting the manifest's queue order for the
   # long-meeting backlog they do claim.
   compute_backends:
+    github-actions:
+      tasks:
+        transcript-asr:
+          estimated_runtime_seconds_per_audio_second: 1.8
+          min_runtime_seconds: 180
+          fixed_runtime_seconds_per_run: 0
+          fixed_runtime_seconds_per_claim: 0
     modal:
       hardware:
         gpu_type: L4
