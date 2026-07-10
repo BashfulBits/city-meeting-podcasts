@@ -231,7 +231,8 @@ def _make_routing_storage():
     from citypods.storage.s3 import b2_from_env, r2_from_env
 
     primary = b2_from_env()
-    coordination = r2_from_env()
+    # This validator uses R2 only for private coordination objects, never public artifact URLs.
+    coordination = r2_from_env(require_public_base_url=False)
     if primary is None:
         raise SystemExit("missing B2_* env (the primary backend); cannot validate")
     if coordination is None:

@@ -175,6 +175,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   under `defaults:`, since every prior test called `reconcile_compute()` directly with
   `sweep_work_leases` passed as a Python argument and so never exercised the config-parsing path
   where the bug actually lived.
+- **The weekly `Validate R2/CAS control plane` health check no longer requires a public R2 URL for
+  coordination-only validation.** `scripts/validate_control_plane.py` now constructs the R2 backend
+  with `require_public_base_url=False`, matching the validator's real role: it exercises only private
+  CAS coordination objects on R2, not publicly served artifact URLs. This fixes the scheduled
+  workflow regression where a blank `R2_PUBLIC_BASE_URL` made the validator exit before running any
+  checks, even though the repo's weekly control-plane health check intentionally uses the
+  coordination-only path.
 - **Cheap timeline-duration fallback no longer files sub-second padding noise, and large fallback
   mismatches can now self-heal through targeted repair.** GH#798/GH#799 were paired
   `timeline-duration-mismatch` / `timeline-short-coverage` issues from the record-only fallback

@@ -129,3 +129,24 @@ def test_cleanup_failure_never_fails_the_run(monkeypatch):
     report = vcp.validate(bucket, run_id="t3", now=NOW)
     assert report["overall_pass"] is True, [c for c in report["checks"] if not c["pass"]]
     assert report["scratch_cleaned"] == 0  # nothing cleaned, yet the run still passes
+
+
+def test_make_routing_storage_allows_coordination_only_r2(monkeypatch):
+    from citypods.storage import s3 as s3_mod
+
+    primary = object()
+    coordination = object()
+    calls: list[bool] = []
+
+    monkeypatch.setattr(s3_mod, "b2_from_env", lambda: primary)
+
+    def _fake_r2_from_env(*, require_public_base_url=True):
+        calls.append(require_public_base_url)
+        return coordination
+
+    monkeypatch.setattr(s3_mod, "r2_from_env", _fake_r2_from_env)
+
+    store = vcp._make_routing_storage()
+    assert calls == [False]
+    assert store.primary is primary
+    assert store.coordination is coordination
