@@ -15,6 +15,7 @@ from citypods.providers.base import ProviderError
 from citypods.records import feed_content_hash
 from citypods.stages import StageContext, StageStats
 from citypods.state import build_fingerprint
+from citypods.timeline import Segment, Timeline
 
 
 def _ep(guid="g1", title="City Council", hosted=None):
@@ -71,6 +72,126 @@ def test_build_closes_compute_backend_when_impl_raises(monkeypatch):
     with pytest.raises(RuntimeError, match="boom"):
         run.build()
     assert backend.closed is True
+
+
+def test_normalize_episode_durations_prefers_probe_without_listing(monkeypatch):
+    ep = _ep("g-probe", hosted="https://cdn/g-probe.m4a")
+    ep.audio_key = "audio/src/g-probe.m4a"
+    warnings = []
+
+    class _Storage:
+        def get_range(self, key, start, end):
+            raise AssertionError("range probe should be monkeypatched before use")
+
+        def list_objects(self, prefix):
+            raise AssertionError("normalization must not list storage for duration lookup")
+
+    monkeypatch.setattr(
+        run,
+        "probe_hosted_audio_duration_seconds",
+        lambda storage, key, *, ffmpeg_binary="ffmpeg": (1800.0, "stream-sample"),
+    )
+
+    stats = run._normalize_episode_durations_for_dispatch(
+        "src",
+        [ep],
+        storage=_Storage(),
+        ffmpeg_binary="ffmpeg",
+        allow_probe=True,
+        log=warnings.append,
+    )
+
+    assert ep.served_duration_seconds == pytest.approx(1800.0)
+    assert ep.audio_duration_served == pytest.approx(1800.0)
+    assert stats == run.DurationNormalizationStats(normalized_from_probe=1)
+    assert any("duration_normalized_from_probe" in msg for msg in warnings)
+
+
+def test_normalize_episode_durations_falls_back_to_timeline(monkeypatch):
+    ep = _ep("g-fallback")
+    ep.timeline = Timeline(
+        version="silence:2",
+        segments=(
+            Segment(
+                served_start=0.0,
+                served_end=600.0,
+                kind="source",
+                source_id="s0",
+                source_start=0.0,
+                source_end=600.0,
+            ),
+        ),
+    )
+    warnings = []
+    monkeypatch.setattr(
+        run,
+        "probe_hosted_audio_duration_seconds",
+        lambda storage, key, *, ffmpeg_binary="ffmpeg": (None, "header-unavailable"),
+    )
+
+    stats = run._normalize_episode_durations_for_dispatch(
+        "src",
+        [ep],
+        storage=None,
+        ffmpeg_binary="ffmpeg",
+        allow_probe=False,
+        log=warnings.append,
+    )
+
+    assert ep.served_duration_seconds == pytest.approx(600.0)
+    assert ep.audio_duration_served == pytest.approx(600.0)
+    assert stats == run.DurationNormalizationStats(fallback_from_timeline=1)
+    assert any("duration_fallback_from_timeline" in msg for msg in warnings)
+
+
+def test_normalize_episode_durations_warns_when_still_missing(monkeypatch):
+    ep = _ep("g-missing", hosted="https://cdn/g-missing.m4a")
+    ep.audio_key = "audio/src/g-missing.m4a"
+    warnings = []
+    monkeypatch.setattr(
+        run,
+        "probe_hosted_audio_duration_seconds",
+        lambda storage, key, *, ffmpeg_binary="ffmpeg": (None, "no-duration-metadata"),
+    )
+
+    stats = run._normalize_episode_durations_for_dispatch(
+        "src",
+        [ep],
+        storage=object(),
+        ffmpeg_binary="ffmpeg",
+        allow_probe=True,
+        log=warnings.append,
+    )
+
+    assert ep.served_duration_seconds is None
+    assert ep.audio_duration_served is None
+    assert stats == run.DurationNormalizationStats(probe_failed=1, missing_after_normalization=1)
+    assert any("duration_probe_failed" in msg for msg in warnings)
+    assert any("duration_missing_after_normalization" in msg for msg in warnings)
+
+
+def test_normalize_episode_durations_stops_before_probe(monkeypatch):
+    ep = _ep("g-stop", hosted="https://cdn/g-stop.m4a")
+    ep.audio_key = "audio/src/g-stop.m4a"
+
+    def _probe(*args, **kwargs):
+        raise AssertionError("probe should not run after stop")
+
+    monkeypatch.setattr(run, "probe_hosted_audio_duration_seconds", _probe)
+
+    stats = run._normalize_episode_durations_for_dispatch(
+        "src",
+        [ep],
+        storage=object(),
+        ffmpeg_binary="ffmpeg",
+        allow_probe=True,
+        stop=lambda: True,
+        log=lambda msg: None,
+    )
+
+    assert stats == run.DurationNormalizationStats()
+    assert ep.served_duration_seconds is None
+    assert ep.audio_duration_served is None
 
 
 # --- end-to-end incremental build via a fake provider ----------------------------------

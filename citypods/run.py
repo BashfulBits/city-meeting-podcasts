@@ -45,6 +45,7 @@ from citypods.media import (
     HostedKeysCache,
     ProviderTransportTelemetry,
     SourceCache,
+    probe_hosted_audio_duration_seconds,
 )
 from citypods.models import City, Episode
 from citypods.ops.workqueue import (
@@ -112,6 +113,7 @@ from citypods.statesync import (
     reconcile_state,
 )
 from citypods.storage import make_storage
+from citypods.timeline import edl_duration
 
 # Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
 # nothing is pruned in normal operation, but the lever exists so retention can be ratcheted down
@@ -339,6 +341,15 @@ class SourcePipeline:
                 flush=True,
             )
             provider, episodes, persisted, seeded = self.fetch_merge(city, key)
+            if self.ctx.lane != "audio":
+                _normalize_episode_durations_for_dispatch(
+                    key,
+                    episodes,
+                    storage=self.ctx.storage,
+                    ffmpeg_binary=getattr(self.ctx.ffmpeg, "binary", "ffmpeg"),
+                    allow_probe=not self.ctx.dry_run,
+                    stop=self.ctx.stop,
+                )
             stats = run_stages(provider, city, episodes, self.stages, self.ctx)
             notes = [s.note() for s in stats if s.note()]
             self.accumulate_stats(stats)
@@ -412,6 +423,79 @@ class CityResult:
     detail: str = ""
     has_audio: bool = True
     has_video: bool = False
+
+
+@dataclass
+class DurationNormalizationStats:
+    normalized_from_probe: int = 0
+    fallback_from_timeline: int = 0
+    probe_failed: int = 0
+    missing_after_normalization: int = 0
+
+
+def _normalize_episode_durations_for_dispatch(
+    source_key: str,
+    episodes: list[Episode],
+    *,
+    storage,
+    ffmpeg_binary: str,
+    allow_probe: bool,
+    stop: Callable[[], bool] | None = None,
+    log: Callable[[str], None] | None = None,
+) -> DurationNormalizationStats:
+    """Heal missing served durations before transcript dispatch/work planning."""
+    from citypods.durations import episode_served_duration_seconds, set_served_duration_seconds
+
+    emit = log or (lambda msg: print(msg, flush=True))
+    stats = DurationNormalizationStats()
+    for ep in episodes:
+        if episode_served_duration_seconds(ep) is not None:
+            continue
+        uid = ep.uid or ep.guid
+        normalized = False
+        if allow_probe and ep.hosted_audio_url and ep.audio_key:
+            if stop is not None and stop():
+                break
+            probed, basis = probe_hosted_audio_duration_seconds(
+                storage,
+                ep.audio_key,
+                ffmpeg_binary=ffmpeg_binary,
+            )
+            if probed is not None and probed > 0:
+                set_served_duration_seconds(ep, probed)
+                stats.normalized_from_probe += 1
+                emit(
+                    f"duration_normalized_from_probe source={source_key} uid={uid} "
+                    f"seconds={probed:.3f} basis={basis or 'probe'}"
+                )
+                normalized = True
+            else:
+                stats.probe_failed += 1
+                emit(
+                    f"duration_probe_failed source={source_key} uid={uid} "
+                    f"basis={basis or 'probe-failed'}"
+                )
+        if not normalized:
+            timeline = ep.timeline
+            fallback = (
+                edl_duration(timeline) if timeline is not None and timeline.segments else None
+            )
+            if fallback is not None and fallback > 0:
+                set_served_duration_seconds(ep, fallback)
+                stats.fallback_from_timeline += 1
+                emit(
+                    f"duration_fallback_from_timeline source={source_key} uid={uid} "
+                    f"seconds={fallback:.3f}"
+                )
+                normalized = True
+        if not normalized and episode_served_duration_seconds(ep) is None:
+            stats.missing_after_normalization += 1
+            emit(
+                f"duration_missing_after_normalization source={source_key} uid={uid} "
+                f"hosted={bool(ep.hosted_audio_url)} "
+                f"timeline={bool(ep.timeline and ep.timeline.segments)}"
+            )
+    return stats
 
 
 def _city_outputs_exist(output_dir: Path, slug: str) -> bool:
@@ -894,6 +978,16 @@ def _run_enrich_global_queue(
                 "persisted": persisted,
                 "notes": notes,
             }
+    if transcript_stages:
+        for key, st in prepared.items():
+            _normalize_episode_durations_for_dispatch(
+                key,
+                st["episodes"],
+                storage=ctx.storage,
+                ffmpeg_binary=getattr(ctx.ffmpeg, "binary", "ffmpeg"),
+                allow_probe=not ctx.dry_run,
+                stop=ctx.stop,
+            )
 
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
     candidates = _order_global_candidates(prepared, policy)
