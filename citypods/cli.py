@@ -254,6 +254,17 @@ def main(argv: list[str] | None = None) -> int:
     crt.add_argument("--config-dir", default="config")
     crt.add_argument("--output-dir", default="docs")
     crt.add_argument("--base-url", help="base URL (for resolving cloud storage)")
+    ciw = cp_sub.add_parser(
+        "run-internal-worker",
+        help="run one pull/claim transcribe worker inside GitHub Actions until the stop budget",
+    )
+    ciw.add_argument("--site-config", default="config/site_config.yml")
+    ciw.add_argument("--config-dir", default="config")
+    ciw.add_argument("--output-dir", default="docs")
+    ciw.add_argument("--base-url", help="base URL (for resolving cloud storage)")
+    ciw.add_argument("--owner", help="override the worker owner identity")
+    ciw.add_argument("--max-claims", type=int, metavar="N")
+    ciw.add_argument("--max-scan", type=int, metavar="N")
 
     args = parser.parse_args(argv)
 
@@ -291,6 +302,8 @@ def main(argv: list[str] | None = None) -> int:
             return _compute_plan_shards(args)
         if args.compute_command == "reclaim-transcript":
             return _compute_reclaim_transcript(args)
+        if args.compute_command == "run-internal-worker":
+            return _compute_run_internal_worker(args)
 
     return 0
 
@@ -639,7 +652,12 @@ def _compute_reconcile(args) -> int:
 
     from citypods.compute import reconcile_compute
     from citypods.compute.budget import load_budget, load_budget_cas, storage_supports_cas
-    from citypods.ops.workqueue import is_leased, load_manifest
+    from citypods.ops.workqueue import (
+        is_leased,
+        load_manifest,
+        rebuild_manifest_from_state,
+        save_manifest,
+    )
     from citypods.state import resolve_state_dir
     from citypods.statesync import pull_state, push_state
     from citypods.storage import make_storage
@@ -709,6 +727,11 @@ def _compute_reconcile(args) -> int:
     # written directly by reconcile via CAS and push_state skips it (CAS-managed); on a non-CAS
     # backend (plain B2 / local) it rides this bulk push as before. No-op for a sync-less backend.
     pull_state(storage, state_dir)
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+    save_manifest(
+        state_dir,
+        rebuild_manifest_from_state(cities, site_config=site_config, state_dir=state_dir),
+    )
     summary = reconcile_compute(state_dir, storage, sweep_work_leases=sweep_work_leases)
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
     leases = summary.get("leases", {})
@@ -722,6 +745,28 @@ def _compute_reconcile(args) -> int:
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
         f"{summary['in_flight']} in-flight{lease_note}"
     )
+    return 0
+
+
+def _compute_run_internal_worker(args) -> int:
+    from citypods.compute.external_worker import run_internal_worker
+
+    install_signal_handlers()
+    summary = run_internal_worker(
+        owner=args.owner,
+        max_claims=args.max_claims,
+        max_scan=args.max_scan,
+        site_config_path=args.site_config,
+        config_dir=args.config_dir,
+        output_dir=args.output_dir,
+        base_url=args.base_url,
+    )
+    print(json.dumps(summary, indent=2))
+    if summary.get("failed"):
+        return 1
+    if interrupt_requested():
+        print("interrupted by signal — partial run persisted; exiting 143")
+        return 143
     return 0
 
 

@@ -21,10 +21,13 @@ from citypods.ops.workqueue import (
     order,
     order_cities_by_policy,
     overlay_persisted_operational_state,
+    rebuild_manifest_from_state,
     release,
     save_manifest,
     workitem_from_episode,
 )
+from citypods.records import save_records
+from citypods.records import source_key as record_source_key
 
 NOW = datetime(2026, 6, 11, tzinfo=UTC)
 
@@ -721,6 +724,42 @@ def test_build_manifest_deep_archive_beyond_cap():
     assert audio["u1"].priority_bucket == BUCKET_FEED_VISIBLE
     assert audio["u2"].priority_bucket == BUCKET_DEEP_ARCHIVE
     assert audio["u4"].priority_bucket == BUCKET_DEEP_ARCHIVE
+
+
+def test_rebuild_manifest_from_state_dedupes_cities_sharing_a_source(tmp_path):
+    """Regression: build_manifest() requires the caller to dedupe cities sharing a source_key
+    (its own docstring: "board feeds sharing a source must be deduplicated by the caller, else
+    episodes double-count") — rebuild_manifest_from_state fed it one entry per City unconditionally,
+    so two per-board configs of one entity (same feed, different body filter) would double-count
+    every episode into the discovery index."""
+    council = City(
+        slug="city-council-board",
+        provider="granicus",
+        source={"feed_url": "F", "body": "City Council"},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+    )
+    planning = City(
+        slug="city-planning-board",
+        provider="granicus",
+        source={"feed_url": "F", "body": "Planning Commission"},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+    )
+    assert record_source_key(council) == record_source_key(planning), (
+        "test setup must share one source_key to exercise the dedup path"
+    )
+    src = record_source_key(council)
+    save_records(tmp_path, src, {"u1": _rec(1, hosted=True)})
+
+    manifest = rebuild_manifest_from_state([council, planning], site_config={}, state_dir=tmp_path)
+
+    audio_items = [wi for wi in manifest if wi.work_class == "audio" and wi.episode_uid == "u1"]
+    assert len(audio_items) == 1
 
 
 def test_manifest_counts():

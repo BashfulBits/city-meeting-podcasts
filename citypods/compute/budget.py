@@ -536,3 +536,35 @@ def settle_reservation(
         now=now,
         **retry,
     )
+
+
+def observe_runtime_estimate(
+    storage,
+    key: str,
+    *,
+    audio_seconds: float,
+    actual_runtime_seconds: float,
+    estimated_runtime_seconds: float | None = None,
+    default_seconds_per_audio_second: float | None = None,
+    now: datetime | None = None,
+    **retry,
+) -> Budget:
+    """Persist a runtime observation without creating a reservation.
+
+    Internal pull workers use the same learned runtime-estimate substrate as external workers, but
+    they do not reserve provider budget. This hook updates only ``runtime_estimates`` in the CAS
+    ledger, leaving the per-backend spend/inflight ledgers untouched.
+    """
+    return mutate_budget(
+        storage,
+        lambda b: b.observe_runtime(
+            key,
+            audio_seconds=audio_seconds,
+            actual_runtime_seconds=actual_runtime_seconds,
+            estimated_runtime_seconds=estimated_runtime_seconds,
+            default_seconds_per_audio_second=default_seconds_per_audio_second,
+            now=now,
+        ),
+        now=now,
+        **retry,
+    )

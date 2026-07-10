@@ -1,7 +1,7 @@
 # review/18 — Work distribution & sharding for distributed ASR workers
 
-**Maturity: L2→L3 active Phase-H breakout (H17; H6b sharding × H14 external workers ×
-[`review/17`](17-state-store-backend-evaluation.md) R2/CAS) · last updated 2026-07-08**
+**Maturity: L3 implemented Phase-H breakout (H17/H19; H6b sharding × H14 external workers ×
+[`review/17`](17-state-store-backend-evaluation.md) R2/CAS) · last updated 2026-07-10**
 
 > How transcription work is partitioned across workers. Today: a single deterministic source-atomic
 > **plan** computed in GitHub Actions and fanned out to a fixed matrix of identical shards. Tomorrow:
@@ -18,7 +18,7 @@
 | Sub-item | Maturity | Disposition |
 |---|---|---|
 | **Stage 1** — per-`(source,uid)` transcribe planning + per-episode owned-block merge | **Implemented** | **Shipped** ([GH#390](https://github.com/BashfulBits/city-meeting-podcasts/issues/390) PR2): `merge_preserving_foreign(owned_uids=)`, `pending_transcribe_items`, `ShardPlan.unit`/v2, `episodes_for_shard`. The one load-bearing change (the merge); the rest composed around it. |
-| **Stage 2** — pull-based work ledger (CAS leases on R2); workers claim episodes | **Implemented (substrate; claim/lease contract frozen, `run_claim_loop` is reference orchestration, not frozen)** | **GH#390 PR4.** `citypods/ops/work_leases.py`: per-item CAS lease objects + `claim`/`renew`/`release`/`reap` (the frozen §4.2 contract) + `run_claim_loop` (a reference loop over them — see §4.3 for what it doesn't yet do and where to extend it, not reuse-as-is); reaped by `compute reconcile`; `work-leases/` routed to R2; cost-disciplined (§4.6). **In-Actions matrix shards still run the Stage-1 static plan** (§6); the H14b Modal worker already builds its own loop directly on the primitives (budget-gating + renewal + retry `run_claim_loop` lacks) rather than calling it. The `reconcile` sweep's `work_lease_reaper_enabled` gate was set to `true` in `config/site_config.yml` believing that flipped it on, but it's nested under `defaults:` and the CLI's `citypods compute reconcile` read it at the config document root — a silent `False` fallback every run, so `reap_work_leases()` was **never actually invoked in production** despite the YAML saying otherwise. Found closing out [GH#706](https://github.com/BashfulBits/city-meeting-podcasts/issues/706) §6(b): a raw-ledger audit turned up 108 leased objects (90 past their ~20h TTL) that every scheduled reconcile since 2026-07-06 had silently never swept. Fixed to read from `site_config["defaults"]`, with a CLI-level regression test exercising `cli.main(["compute", "reconcile", ...])` end-to-end (every prior test called `reconcile_compute()` directly with `sweep_work_leases` passed in Python, bypassing the config-parsing path where the bug lived). **Live-confirmed 2026-07-06** via manual H14b/H14c canaries during the [pre-live checklist](https://github.com/BashfulBits/city-meeting-podcasts/issues/706): claim → artifact write → budget settle observed end-to-end on both backends; a Modal run also exercised, at real scale, the same completion-inference principle §4.6 lever 3 relies on (artifact presence ⇒ done) — applied inline by the worker itself as its *adopt* path, not by `reap()`: 51 already-completed items reconciled with zero GPU spend in one run, via [GH#824](https://github.com/BashfulBits/city-meeting-podcasts/pull/824)'s `max_claims`-excludes-adopted fix — the accounting layer immediately above this ledger. The TTL-based crash/preemption-recovery sweep itself (as opposed to the worker's own adopt-path inference) is only now live-exercised, post-fix. **§4.3's gap is now observed live, not just theoretical:** because in-Actions still owns the only manifest rebuild, an ordering-policy change (`long_first`, review/12 §H5) took effect only once some Stage-1 enrich lane (`audio.yml`/`asr.yml`) next completed — cross-referencing GitHub Actions run *start* times to infer this was tried and got the wrong answer once (a job starting after a config merge can still finish well after an external canary in between already read the stale pre-merge manifest); `asr-worker-report`'s `manifest_last_modified`/`transcript_asr_duration_band` diagnostics ([GH#829](https://github.com/BashfulBits/city-meeting-podcasts/pull/829)) now answer this from storage directly instead. The same canaries also confirmed a second operational lesson for H19: **unknown duration is not a correctness blocker** and should not be treated as unclaimable in the future GitHub pull-workers either — it only suppresses duration-priority routing until a later audio/ASR pass measures the recording. This is exactly the seam §4.3/§6 step 4 already names for when in-Actions migrates onto the claim loop — until then, manifest freshness stays coupled to Stage-1 enrich cadence, not to anything an external pull worker controls. |
+| **Stage 2** — pull-based work ledger (CAS leases on R2); workers claim episodes | **Implemented (contract + both worker classes live)** | **GH#390 PR4 + H19 follow-through.** `citypods/ops/work_leases.py`: per-item CAS lease objects + `claim`/`renew`/`release`/`reap` (the frozen §4.2 contract), reaped by `compute reconcile`; `work-leases/` routed to R2; cost-disciplined (§4.6). External Modal/Beam workers first proved the contract live. H19 then moved the in-Actions transcribe path onto the same ledger: `asr.yml` now runs identical internal pull workers, and `compute reconcile` rebuilds the manifest from canonical records before sweeping leases, breaking the old coupling where queue ordering changed only when a Stage-1 enrich shard happened to refresh `state/work.json`. The `run_claim_loop` orchestration is now shared enough for both worker classes, but worker-specific admission/supervision still lives one layer up: external workers keep provider-budget pacing and long-meeting preference; internal workers keep local timeout/backstop supervision, hard local-duration admission, and dynamic "fits before backstop" gating. The earlier `work_lease_reaper_enabled` root-vs-`defaults` bug remains part of this stage's shipped history: it had silently disabled `reap_work_leases()` in production until fixed while closing out [GH#706](https://github.com/BashfulBits/city-meeting-podcasts/issues/706). |
 | Audio lane → per-`(source,uid)` | — | **Rejected** — stays source-atomic (per-source provider leases / rate limits make the source the right unit; §2.3). |
 | Static plan retained for transcribe long-term | — | **Superseded by Stage 2** once external workers land; kept as the in-Actions interim. |
 
@@ -292,25 +292,23 @@ the pool) — `compute reconcile` already does exactly this for dispatch leases.
 
 ### 4.3 GitHub Actions shards become just another worker
 
-With a ledger, the asr.yml matrix is `N` **identical** jobs each running the claim loop until its
-wall-clock budget — no `--shard K/N`, no plan artifact, no fan-in. They self-balance (a fast job claims
-more) and are homogeneous with external workers. The `reconcile` job shrinks to: rebuild the discovery
-index + reap expired leases. This **deletes** the Stage-1 plan-emit/download/validate machinery for
-transcribe (it remains for the source-atomic audio lane).
+With a ledger, the `asr.yml` matrix becomes `N` **identical** jobs each running the claim loop until
+its wall-clock budget — no `--shard K/N`, no plan artifact, no fan-in. They self-balance (a fast job
+claims more) and are homogeneous with external workers. The `reconcile` job shrinks to: rebuild the
+discovery index + reap expired leases. This **deletes** the Stage-1 plan-emit/download/validate
+machinery for transcribe (it remains for the source-atomic audio lane).
 
-> **When this migration actually happens, do not reach for `citypods.ops.work_leases.run_claim_loop`
-> as-is and assume it's done.** Only `claim`/`renew`/`release`/`reap` and the R2 key layout are the
-> frozen §4.2 contract; `run_claim_loop` is a *reference orchestration* over them, written with only a
-> same-process, no-budget GPU adapter in mind. It has no lease renewal for an inference that outlives
-> `ttl_seconds`, no retry on a transient failure, and (correctly, since a GH Actions runner has no
-> monthly dollar cap to protect) no external-budget gating. The H14b Modal worker
-> (`citypods.compute.external_worker`) needed renewal + retry and built its own loop directly on the
-> *frozen* primitives rather than extend this reference wrapper. In-Actions ASR jobs can run for hours on the
-> same long meetings `long_first` (review/12 §H5) now deliberately prioritizes, so they will hit the
-> same renewal gap. **This is the point to fold renewal + retry into `run_claim_loop` as optional
-> hooks** (a `should_renew`/renewal-interval parameter; budget-gating stays external-worker-only) so
-> the in-Actions claim loop and the external one finally share one real implementation instead of
-> drifting into a third. See that function's docstring for the full list of what it's missing.
+That migration is now implemented. The shared orchestration lives in
+`citypods.compute.external_worker`, but the clean boundary is **not** "one giant worker path full of
+conditionals." The shared layer owns claim/adopt/write/settle mechanics; the worker subclass owns
+admission and supervision:
+
+- External workers keep provider-budget pacing, preferred-day freshness policy, and the
+  `prefer_min_duration_hours` hook that can still float long meetings to Modal/Beam first.
+- Internal workers keep the hard `asr_local_max_duration_hours` guard, shorter-known-item ordering,
+  fit-before-backstop admission using the same learned runtime-estimate substrate, and a killable
+  local daemon so a timeout, SIGTERM, or queued replacement run can stop the in-flight local claim
+  gracefully and hand it back to the queue.
 
 ### 4.4 Scheduled-run coalescing is optional, not the ownership model
 
@@ -403,11 +401,11 @@ writes) so nothing else leaks Class A.
    H14c (Beam). The worker is a *puller* (read index → CAS-claim → infer → CAS-complete), **not** a
    passive executor a coordinator pushes to. Building H14b/c against a push-dispatch coordinator and then
    moving to a ledger would invert the worker's contract — precisely the rework to avoid.
-4. **Promote the ledger** (§4) when the second worker class (first external GPU worker) goes live: stand
-   up the lease ledger, convert asr.yml shards to the claim loop, retire the transcribe static plan.
-   Audio stays source-atomic throughout. **Before converting asr.yml's loop, read §4.3's note** —
-   `run_claim_loop` as it exists today lacks the renewal/retry the external worker already needed; this
-   step is where those get folded in once, as shared hooks, not reinvented a third time.
+4. **Promote the ledger** (§4) when the second worker class (first external GPU worker) goes live:
+   complete. `asr.yml` now runs identical internal claim-loop workers and the transcribe static plan is
+   retired. Audio stays source-atomic throughout. The final shape follows §4.3's split: shared
+   claim/adopt/write orchestration, with worker-specific admission and supervision kept in distinct
+   layers rather than collapsed into one mixed path.
 
 > **Decision rule.** External transcription workers (H14b/H14c) MUST be built against the §4.2
 > claim-from-ledger contract, even while in-Actions shards still use the Stage-1 static plan. The
