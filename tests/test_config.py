@@ -76,6 +76,39 @@ def test_provider_validates_source(tmp_path):
         load_city_configs(tmp_path, DEFAULTS)
 
 
+@pytest.mark.parametrize(
+    "bad_slug",
+    ["../etc/passwd", "foo/bar", "foo.tx", "Foo-TX", "foo_tx", "/etc/passwd", ""],
+)
+def test_slug_with_path_traversal_or_bad_format_raises(tmp_path, bad_slug):
+    # CR2-CP-49: slug feeds directly into output_dir / city.slug (run.py) — a slug containing
+    # "..", "/", or other non-slug characters from a mistyped/compromised config file must be
+    # rejected at load time, not accepted and later used for path construction.
+    _write(tmp_path, "foo-tx.yml", VALID.replace("slug: foo-tx", f"slug: {bad_slug!r}"))
+    with pytest.raises(ValueError, match="slug"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_alias_with_path_traversal_raises(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "aliases: ['../escape']\n")
+    with pytest.raises(ValueError, match="alias"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_valid_slug_and_alias_format_accepted(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "aliases: ['old-foo-tx', 'foo-tx-2']\n")
+    cities = load_city_configs(tmp_path, DEFAULTS)
+    assert cities[0].aliases == ["old-foo-tx", "foo-tx-2"]
+
+
+def test_asr_workers_zero_rejected(tmp_path):
+    # M1/CR2-CP-43: stages.py divides cpu_count() / city.asr_workers; asr_workers: 0 must fail
+    # at config load, not as a ZeroDivisionError at runtime mid-shard.
+    _write(tmp_path, "foo-tx.yml", VALID + "asr_workers: 0\n")
+    with pytest.raises(ValueError, match="asr_workers"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
 def test_duplicate_slug_raises(tmp_path):
     _write(tmp_path, "a.yml", VALID)
     _write(tmp_path, "b.yml", VALID)

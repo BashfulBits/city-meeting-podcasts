@@ -26,16 +26,20 @@ def main() -> None:
 
     with make_session() as session:
         for city in cities:
-            if city.provider == "swagit":
-                content, ext = _swagit_fixture(session, city)
-            else:
-                req = _fixture_request(city)
-                if req is None:
-                    continue
-                url, params, ext = req
-                resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
-                resp.raise_for_status()
-                content = resp.content
+            try:
+                if city.provider == "swagit":
+                    content, ext = _swagit_fixture(session, city)
+                else:
+                    req = _fixture_request(city)
+                    if req is None:
+                        continue
+                    url, params, ext = req
+                    resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+                    resp.raise_for_status()
+                    content = resp.content
+            except Exception as exc:  # noqa: BLE001 - one city's failure must not abort the run
+                print(f"  FAILED {city.slug}: {exc}")
+                continue
             out = FIXTURE_DIR / city.provider / f"{city.slug}.{ext}"
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(content)

@@ -33,6 +33,7 @@ import requests
 from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import ChangeToken, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, MediaUnavailable, ProviderError
+from citypods.security import validate_source_url
 
 # <a ... href="/videos/123">Body Name</a> </td> <td nowrap> May 26, 2026 </td>
 ROW_RE = re.compile(
@@ -99,6 +100,27 @@ def _s3_object_key(url: str) -> str:
     string when the URL signs only the bucket *prefix* (``.../dallastx/?X-Amz-...``), which is the
     keyless-redirect signature for older Swagit meetings whose ``/download`` is broken (#120)."""
     return urlsplit(url).path.rsplit("/", 1)[-1]
+
+
+_REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+
+
+def _get_download_redirect(
+    session: requests.Session, episode: Episode
+) -> tuple[requests.Response, str | None, bool]:
+    """GET ``episode.video_url`` (``/videos/{id}/download``) without following redirects.
+
+    Shared by :meth:`SwagitProvider.fetch_segment_objects`/``resolve_media_url`` (CR2-CP-21):
+    both need the same redirect classification — a modern keyed-presigned redirect, a keyless
+    redirect (issue #120), or an already-direct file — before branching on it differently.
+    """
+    try:
+        resp = session.get(episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+    except requests.RequestException as exc:
+        raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
+    loc = resp.headers.get("Location")
+    is_redirect = resp.status_code in _REDIRECT_STATUSES and bool(loc)
+    return resp, loc, is_redirect
 
 
 def parse_segment_objects(content: bytes) -> list[tuple[str, str]]:
@@ -249,14 +271,7 @@ class SwagitProvider:
         Raises :class:`~citypods.providers.base.ProviderError` on unrecoverable network failure.
         """
         with make_session() as session:
-            try:
-                resp = session.get(
-                    episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False
-                )
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
-            loc = resp.headers.get("Location")
-            is_redirect = resp.status_code in (301, 302, 303, 307, 308) and bool(loc)
+            resp, loc, is_redirect = _get_download_redirect(session, episode)
             if is_redirect and _s3_object_key(loc):
                 return None  # modern: keyed presigned URL
             if not is_redirect and resp.status_code < 400:
@@ -289,16 +304,14 @@ class SwagitProvider:
             return episode.sources[0].ref
 
         with make_session() as session:
-            try:
-                resp = session.get(
-                    episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False
-                )
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
-            loc = resp.headers.get("Location")
-            is_redirect = resp.status_code in (301, 302, 303, 307, 308) and bool(loc)
+            resp, loc, is_redirect = _get_download_redirect(session, episode)
             if is_redirect and _s3_object_key(loc):
-                return loc  # modern meeting: keyed presigned MP4, usable as-is
+                # Keyed presigned MP4 from a redirect Location header: validate explicitly
+                # before handing it to ffmpeg, the same gate Granicus's resolve_media_url has
+                # (CR-CP-35) — a redirect target is not implicitly trusted just because the
+                # request that produced it went through the SSRF-gated session.
+                validate_source_url(loc, resolve=True)
+                return loc
             if not is_redirect and resp.status_code < 400:
                 return episode.video_url  # already the file
             if not is_redirect:
@@ -335,4 +348,9 @@ class SwagitProvider:
             raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
-        return parse_segment_objects(resp.content)
+        segments = parse_segment_objects(resp.content)
+        # dfile URLs are scraped from page HTML, not implicitly trusted; validate each before
+        # any caller (resolve_media_url, SwagitConcatPlanner) can hand it to ffmpeg.
+        for dfile_url, _title in segments:
+            validate_source_url(dfile_url, resolve=True)
+        return segments

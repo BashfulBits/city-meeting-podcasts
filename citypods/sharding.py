@@ -122,16 +122,15 @@ def create_shard_plan(
             if not records_path(state_dir, key).exists():
                 continue
             records = load_records(state_dir, key)
-            for uid, weight in pending_transcribe_items(
-                state_dir,
-                key,
-                asr_enabled=city.asr_enabled,
-                asr_pipeline_version=asr_pipeline_version,
-                local_max_duration_hours=local_max_hours,
-                transcript_stale=lambda ep, city=city: (
-                    bool(ep.transcript_spec_hash)
-                    and ep.transcript_spec_hash
-                    != asr_spec_hash(
+            # CR2-CP-22: memoize per uid within this (key, city) iteration — the recipe is a
+            # pure function of (ep, city) so the staleness predicate and the grouping key below
+            # would otherwise each hash the same episode independently.
+            recipe_cache: dict[str, str] = {}
+
+            def _recipe_hash(ep, *, city=city, recipe_cache=recipe_cache) -> str:
+                cached = recipe_cache.get(ep.uid)
+                if cached is None:
+                    cached = asr_spec_hash(
                         transcript_media_hash(ep),
                         city.asr_model,
                         None,
@@ -145,23 +144,21 @@ def create_shard_plan(
                             ep.title,
                         ),
                     )
+                    recipe_cache[ep.uid] = cached
+                return cached
+
+            for uid, weight in pending_transcribe_items(
+                state_dir,
+                key,
+                asr_enabled=city.asr_enabled,
+                asr_pipeline_version=asr_pipeline_version,
+                local_max_duration_hours=local_max_hours,
+                transcript_stale=lambda ep: (
+                    bool(ep.transcript_spec_hash) and ep.transcript_spec_hash != _recipe_hash(ep)
                 ),
             ):
                 ep = record_to_episode(records[uid])
-                recipe = asr_spec_hash(
-                    transcript_media_hash(ep),
-                    city.asr_model,
-                    None,
-                    asr_pipeline_version,
-                    language=city.asr_language or None,
-                    compute_type=city.asr_compute_type,
-                    beam_size=city.asr_beam_size,
-                    initial_prompt=asr_initial_prompt(
-                        city.podcast_author,
-                        ep.body,
-                        ep.title,
-                    ),
-                )
+                recipe = _recipe_hash(ep)
                 grouped.setdefault(f"{uid}/{recipe}", []).append((_episode_key(key, uid), weight))
 
         group_weights = {

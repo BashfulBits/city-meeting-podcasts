@@ -52,9 +52,16 @@ jobs:
           SOURCE_KEY: ${{ github.event.inputs.source_key }}
           EPISODE_UID: ${{ github.event.inputs.episode_uid }}
           WRITE: ${{ github.event.inputs.write }}
+          GIT_REF: ${{ github.ref }}
         run: |
           args=(--source-key "$SOURCE_KEY" --episode-uid "$EPISODE_UID")
           if [ "$WRITE" = "true" ]; then
+            # A mutating dispatch may only persist state from main (MR-GH-01): a feature-branch
+            # dispatch could otherwise push a reclaimed production record with no review.
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
+              echo "::error::write can only push state from main"
+              exit 1
+            fi
             args+=(--write)
           fi
           python -m citypods.cli compute reclaim-transcript "${args[@]}"

@@ -29,7 +29,11 @@ from citypods.media import (
     CommandFfmpeg,
     SourceCache,
 )
-from citypods.security import MediaSourceTooLargeError, validate_source_url
+from citypods.security import (
+    MediaSourceTooLargeError,
+    redact_subprocess_text,
+    validate_source_url,
+)
 
 
 def _redact_proxy_endpoint(result, archive_url: str):
@@ -101,7 +105,20 @@ def _run_production_encode(
                     "outcome": "media_too_large",
                     "elapsed_seconds": round(time.monotonic() - started, 3),
                     "media_size_guard_bytes": max_media_bytes,
-                    "error": str(exc),
+                    "error": redact_subprocess_text(str(exc)),
+                }
+            except Exception as exc:  # noqa: BLE001 - this probe step must not abort the whole run
+                # MR-SC-01: RateLimitedMediaFetchError (or any other fetch failure) used to
+                # propagate uncaught here, aborting the whole probe run and discarding every
+                # already-collected result — the same "one failure kills the batch" shape the
+                # encode/probe try block below already guards against.
+                return {
+                    "clip": clip,
+                    "ok": False,
+                    "outcome": "fetch_failed",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "media_size_guard_bytes": max_media_bytes,
+                    "error": redact_subprocess_text(str(exc)),
                 }
             if source is None:
                 return {

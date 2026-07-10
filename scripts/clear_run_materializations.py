@@ -210,10 +210,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"state: pushed {pushed} file(s) back (scoped to {len(prefixes)} source(s))")
 
     verb = "cleared" if args.apply else "would clear (dry-run)"
-    del_verb = "deleted" if (args.apply and args.delete_objects) else "would delete (dry-run)"
+    applying_deletes = args.apply and args.delete_objects
+    del_verb = "deleted" if applying_deletes else "would delete (dry-run)"
+    # CR2-SC-14: object_keys lists every candidate key, but a per-source push failure skips that
+    # source's actual storage.delete() calls (see the "skipping its object delete(s)" warning
+    # above) — summary["deleted"] is the count that was actually removed, and must be reported
+    # once applying, not the candidate list's length (which overstates real deletions).
+    reported_count = summary["deleted"] if applying_deletes else len(summary["object_keys"])
     print(
         f"\n{summary['cleared']} record(s) {verb}; "
-        f"{len(summary['object_keys'])} object(s) {del_verb}"
+        f"{reported_count} object(s) {del_verb}"
         + ("" if args.apply else "  — re-run with --apply to make changes")
     )
     return 0

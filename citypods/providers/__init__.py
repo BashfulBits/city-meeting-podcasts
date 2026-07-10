@@ -16,6 +16,10 @@ _REGISTRY: dict[str, MeetingProvider] = {}
 
 
 def register(provider: MeetingProvider) -> None:
+    # CR2-CP-29: a copy-paste/typo registering the same name twice used to silently overwrite
+    # the earlier entry instead of surfacing the collision.
+    if provider.name in _REGISTRY and _REGISTRY[provider.name] is not provider:
+        raise ProviderError(f"provider {provider.name!r} is already registered")
     _REGISTRY[provider.name] = provider
 
 

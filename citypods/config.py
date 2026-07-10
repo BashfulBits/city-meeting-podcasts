@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -23,6 +24,30 @@ REQUIRED_CITY_KEYS = (
 # podcast_email is required by the RSS spec but many cities publish no public
 # address; the key must exist but a blank value is allowed through (see PLAN.md).
 PRESENT_BUT_MAY_BE_BLANK = ("podcast_email",)
+
+# slug/aliases feed directly into output_dir / city.slug (run.py) — the same lowercase
+# alphanumeric-plus-hyphen shape scripts/generate_board_cities.py's slugify() always produces.
+# Rejecting anything else up front (CR2-CP-49) closes a path-traversal footgun for a trusted-but-
+# fallible config author (a "../.."-laden or absolute-path slug is not a realistic operator
+# input, but the guarantee should not depend on every author getting it right by hand).
+_SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+def _validate_slug_format(slug: str, *, source_file: Path, kind: str) -> None:
+    if not _SLUG_RE.match(slug):
+        raise ValueError(
+            f"{source_file.name}: {kind} {slug!r} must be lowercase alphanumeric segments "
+            "joined by single hyphens (matches ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        )
+
+
+def _validate_asr_workers(asr_workers: int, *, source_file: Path) -> int:
+    """``stages.py`` divides ``cpu_count() / city.asr_workers`` to size per-inference thread
+    pools; an operator-set ``asr_workers: 0`` reached that division at runtime mid-shard as a
+    ZeroDivisionError instead of failing at config load (M1/CR2-CP-43)."""
+    if asr_workers < 1:
+        raise ValueError(f"{source_file.name}: asr_workers must be >= 1, got {asr_workers}")
+    return asr_workers
 
 
 def load_site_config(path: str | Path) -> dict:
@@ -64,6 +89,10 @@ def _build_city(
     missing += [k for k in PRESENT_BUT_MAY_BE_BLANK if k not in raw]
     if missing:
         raise ValueError(f"{source_file.name}: missing required keys: {', '.join(missing)}")
+
+    _validate_slug_format(raw["slug"], source_file=source_file, kind="slug")
+    for alias in raw.get("aliases") or []:
+        _validate_slug_format(str(alias), source_file=source_file, kind="alias")
 
     # Merge entity fields (city_website, meetings_url, state, colors) as base layer; explicit
     # feed-level values override them.
@@ -139,7 +168,9 @@ def _build_city(
         asr_model=str(_get("asr_model", defaults.get("asr_model", "large-v3-turbo"))),
         asr_compute_type=str(_get("asr_compute_type", defaults.get("asr_compute_type", "int8"))),
         asr_language=str(_get("asr_language", defaults.get("asr_language", "en"))),
-        asr_workers=int(_get("asr_workers", defaults.get("asr_workers", 1))),
+        asr_workers=_validate_asr_workers(
+            int(_get("asr_workers", defaults.get("asr_workers", 1))), source_file=source_file
+        ),
         asr_beam_size=int(_get("asr_beam_size", defaults.get("asr_beam_size", 5))),
         asr_alignment_enabled=bool(
             _get("asr_alignment_enabled", defaults.get("asr_alignment_enabled", False))

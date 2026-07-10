@@ -39,8 +39,19 @@ def link_label(key: str) -> str:
 
 def ordered_links(links: dict | None) -> list[tuple[str, str]]:
     """``(label, url)`` pairs for a links dict, in display order (known kinds first, then
-    alphabetical), with empties dropped. Shared by the feed notes and the city HTML page."""
-    links = {k: v for k, v in (links or {}).items() if v}
+    alphabetical), with empties dropped. Shared by the feed notes and the city HTML page.
+
+    Rejects a non-http(s) scheme (M5/MR-TM-01): these values ultimately reach an ``href``
+    attribute with only HTML-entity escaping, no scheme check — the app's SSRF gate only guards
+    URLs it fetches itself, not display-only links. A provider RSS ``<link>`` is scraped, not
+    maintainer-authored, so a compromised/malformed upstream feed could otherwise render a
+    clickable ``javascript:`` href in show notes and on the city page.
+    """
+    links = {
+        k: v
+        for k, v in (links or {}).items()
+        if v and str(v).lower().startswith(("http://", "https://"))
+    }
     order = list(LINK_LABELS)
     keys = sorted(links, key=lambda k: (order.index(k) if k in order else len(order), k))
     return [(link_label(k), links[k]) for k in keys]

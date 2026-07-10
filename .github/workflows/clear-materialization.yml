@@ -66,8 +66,26 @@ jobs:
         run: pip install -e ".[storage]" -c constraints/prod.txt
 
       - name: Clear run materializations
+        # Pass workflow context through env (never inline ${{ }} inside `run:` shell text): a
+        # branch-controllable/free-form input interpolated pre-shell could otherwise splice
+        # arbitrary script text into this step (CR2-GH-07/C1) rather than being treated as data.
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          GIT_REF: ${{ github.ref }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          DELETE_OBJECTS_INPUT: ${{ inputs.delete_objects }}
         run: |
-          PYTHONPATH=. python scripts/clear_run_materializations.py \
-            "${{ inputs.run_id }}" \
-            ${{ inputs.apply && '--apply' || '' }} \
-            ${{ inputs.delete_objects && '--delete-objects' || '' }}
+          ARGS=("$RUN_ID")
+          if [ "$APPLY_INPUT" = "true" ]; then
+            # A mutating dispatch may only persist state from main (MR-GH-01): a feature-branch
+            # dispatch could otherwise clear/delete production materializations with no review.
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
+              echo "::error::apply can only mutate state from main"
+              exit 1
+            fi
+            ARGS+=(--apply)
+          fi
+          if [ "$DELETE_OBJECTS_INPUT" = "true" ]; then
+            ARGS+=(--delete-objects)
+          fi
+          PYTHONPATH=. python scripts/clear_run_materializations.py "${ARGS[@]}"

@@ -162,4 +162,9 @@ class CivicPlusProvider:
         m = M3U8_RE.search(resp.text)
         if not m:
             raise ProviderError(f"no HLS (.m3u8) URL found in embed {embed_url}")
-        return m.group(0).replace("&amp;", "&")
+        hls_url = m.group(0).replace("&amp;", "&")
+        # M3U8_RE (unlike the sibling EMBED_RE) has no host constraint; validate explicitly
+        # before handing it to ffmpeg rather than relying on preflight_media_size's size-cap
+        # side effect (CR2-CP-17/MR-CP-02).
+        validate_source_url(hls_url, resolve=True)
+        return hls_url

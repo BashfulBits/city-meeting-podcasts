@@ -57,34 +57,40 @@ jobs:
           fi
 
       # Wait for any active (or queued -- a queued run will start opening connections shortly,
-      # so it must be waited on too) audio.yml runs to finish before probing Granicus media
-      # endpoints. audio.yml's four shards each open Granicus CDN connections; adding an
-      # uncoordinated ffmpeg fetch on top of them is the primary cause of HTTP 403 throttling
-      # (GH#300). Polls every 2 minutes for up to 2 hours; always proceeds after the timeout so a
-      # stuck audio run does not permanently block the weekly contracts check.
+      # so it must be waited on too) audio.yml OR granicus-probe.yml run to finish before probing
+      # Granicus media endpoints. audio.yml's four shards each open Granicus CDN connections, and
+      # granicus-probe.yml shares its `group: audio` concurrency slot for the same reason (CR2-GH-19)
+      # -- adding an uncoordinated ffmpeg fetch on top of either is the primary cause of HTTP 403
+      # throttling (GH#300). Polls every 2 minutes for up to 2 hours; always proceeds after the
+      # timeout so a stuck run does not permanently block the weekly contracts check.
       - name: Wait for active audio runs to finish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           for i in $(seq 1 60); do
-            # A gh API/auth/network error must not be masked as "no active runs" -- that would let
-            # the loop fall through to the endpoint probes while audio.yml might still be running.
-            # Retry (same backoff as the normal wait) instead of treating a failed check as empty.
-            if ! ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5 2>&1); then
-              echo "[$i/60] gh run list (in_progress) failed, will retry: $ACTIVE"
-              sleep 120
-              continue
-            fi
-            if ! QUEUED=$(gh run list --workflow audio.yml --status queued --json databaseId --limit 5 2>&1); then
-              echo "[$i/60] gh run list (queued) failed, will retry: $QUEUED"
-              sleep 120
-              continue
-            fi
-            if [ "$ACTIVE" = "[]" ] && [ "$QUEUED" = "[]" ]; then
-              echo "No active or queued audio runs. Proceeding with endpoint checks."
+            busy=false
+            failed=false
+            for workflow in audio.yml granicus-probe.yml; do
+              for status in in_progress queued; do
+                # A gh API/auth/network error must not be masked as "no active runs" -- that
+                # would let the loop fall through to the endpoint probes while a run might still
+                # be active. Retry (same backoff as the normal wait) instead of treating a failed
+                # check as empty. Capture stderr separately so a successful call's incidental
+                # stderr warning can't corrupt the "[]" comparison below (CR2-GH-18).
+                if ! RESULT=$(gh run list --workflow "$workflow" --status "$status" \
+                    --json databaseId --limit 5 2>/tmp/gh-run-list.err); then
+                  echo "[$i/60] gh run list ($workflow $status) failed, will retry: $(cat /tmp/gh-run-list.err)"
+                  failed=true
+                elif [ "$RESULT" != "[]" ]; then
+                  busy=true
+                fi
+              done
+            done
+            if [ "$failed" = "false" ] && [ "$busy" = "false" ]; then
+              echo "No active or queued audio/granicus-probe runs. Proceeding with endpoint checks."
               exit 0
             fi
-            echo "[$i/60] audio.yml is running or queued. Waiting 2 minutes..."
+            echo "[$i/60] waiting on audio.yml/granicus-probe.yml (busy=$busy failed=$failed). Waiting 2 minutes..."
             sleep 120
           done
           echo "Timed out after 2 hours. Proceeding anyway."

@@ -9,6 +9,7 @@ from citypods.records import referenced_audio_keys, save_records
 from citypods.run import _write_aliases
 from citypods.site import render_redirect_feed, render_redirect_page
 from citypods.storage.local import LocalStorage
+from tests.conftest import write_local_backend_site_config
 
 
 def _city(slug="denton-tx-city-council", aliases=None):
@@ -95,9 +96,7 @@ def test_gc_keeps_durable_state_objects(tmp_path):
     state = tmp_path / "state"
     save_records(state, "src", {"u1": {"audio": {"key": "p/kept.m4a", "url": "x"}}})
     (out / "audio" / "p" / "kept.m4a").write_bytes(b"k")
-    (tmp_path / "site.yml").write_text(
-        f"state_dir: {state}\ndefaults:\n  audio_storage_backend: local\n"
-    )
+    write_local_backend_site_config(tmp_path, state)
     argv = ["--site-config", str(tmp_path / "site.yml"), "--output-dir", str(out)]
     argv += ["--min-age-days", "0", "--apply"]
     assert gc_audio.main(argv) == 0
@@ -155,9 +154,7 @@ def test_gc_script_dry_run_then_apply(tmp_path):
 
     state = tmp_path / "state"
     save_records(state, "src", {"u1": {"audio": {"key": "p/kept.m4a", "url": "x"}}})
-    (tmp_path / "site.yml").write_text(
-        f"state_dir: {state}\ndefaults:\n  audio_storage_backend: local\n"
-    )
+    write_local_backend_site_config(tmp_path, state)
     argv = ["--site-config", str(tmp_path / "site.yml"), "--output-dir", str(out)]
     argv += ["--min-age-days", "0"]
 

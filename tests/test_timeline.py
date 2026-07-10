@@ -110,6 +110,74 @@ def _intro_timeline() -> Timeline:
 
 
 # ---------------------------------------------------------------------------
+# Segment.__post_init__ — kind/field consistency (CR2-CP-13)
+# ---------------------------------------------------------------------------
+
+
+class TestSegmentValidation:
+    def test_source_kind_requires_source_fields(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="requires source_id"):
+            Segment(served_start=0, served_end=10, kind="source")
+
+    def test_source_kind_rejects_insert_fields(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="must not set insert"):
+            Segment(
+                served_start=0,
+                served_end=10,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=10,
+                insert="intro",
+            )
+
+    def test_insert_kind_requires_insert_field(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="requires insert"):
+            Segment(served_start=0, served_end=10, kind="insert")
+
+    def test_insert_kind_rejects_source_fields(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="must not set source_id"):
+            Segment(served_start=0, served_end=10, kind="insert", insert="intro", source_id="s0")
+
+    def test_unknown_kind_rejected(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="must be 'source' or 'insert'"):
+            Segment(served_start=0, served_end=10, kind="bogus")
+
+    def test_valid_source_and_insert_segments_construct_fine(self):
+        Segment(
+            served_start=0,
+            served_end=10,
+            kind="source",
+            source_id="s0",
+            source_start=0,
+            source_end=10,
+        )
+        Segment(served_start=0, served_end=10, kind="insert", insert="intro", asset_id="a1")
+
+    def test_source_kind_allows_open_ended_source_end(self):
+        # A non-final "open-ended" span (source_end=None) is a documented, real case in
+        # media.py's generic filter-complex path (GH#702) -- must not be rejected.
+        Segment(
+            served_start=0,
+            served_end=100,
+            kind="source",
+            source_id="s0",
+            source_start=0,
+            source_end=None,
+        )
+
+
+# ---------------------------------------------------------------------------
 # edl_duration — the single EDL/cue-clock primitive (review/20)
 # ---------------------------------------------------------------------------
 
@@ -358,7 +426,8 @@ class TestConcatTimeline:
 
     def test_s1_maps_correctly(self):
         tl = _concat_timeline()
-        # served 1800 → s0 (boundary belongs to first segment)
+        # served 1800.0 is the boundary and belongs to span[1] (s1), not span[0] (s0) — see
+        # TestConcatSeamConvention.test_served_boundary_belongs_to_the_later_segment.
         # served 1800.1 → s1 @ 0.1
         sid, t = served_to_source(tl, 1800.1)
         assert sid == "s1"

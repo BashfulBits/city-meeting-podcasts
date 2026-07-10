@@ -117,6 +117,22 @@ def test_distributed_provider_lease_ignores_unconfigured_domains():
     assert store.keys("test-provider-leases/") == []
 
 
+def test_acquire_falls_back_to_noop_lease_when_rules_cleared_mid_wait():
+    # CR2-CP-36: a concurrent configure() disabling leases clears `_storage` and `_rules`
+    # together. `_acquire` used to look up `_rules[domain]` unconditionally, so a domain that
+    # existed when the caller entered `slots()` but is gone by the time `_acquire` runs would
+    # KeyError instead of returning the same no-op lease the storage-disabled path returns.
+    store = MemCAS()
+    pool = _pool(store)
+    pool._storage = None
+    pool._rules = {}
+
+    lease = pool._acquire("granicus.com")
+
+    assert lease.key == ""
+    assert lease.rule is None
+
+
 def test_pool_disabled_when_backend_lacks_cas():
     """Without CAS (b2-only / local dev) the distributed layer is a no-op; only the in-process
     HostRateLimiter applies, so ``slots()`` neither blocks nor writes anything."""

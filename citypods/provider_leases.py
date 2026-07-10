@@ -92,7 +92,9 @@ class ProviderLease:
     domain: str
     key: str
     etag: str | None
-    rule: ProviderLeaseRule
+    # None only for the no-op lease (key == "") returned when leases are disabled/unconfigured
+    # for this domain; a held lease (non-empty key) always carries the rule it was acquired under.
+    rule: ProviderLeaseRule | None
     wait_seconds: float
     _stop: threading.Event = field(default_factory=threading.Event)
     _thread: threading.Thread | None = None
@@ -230,9 +232,13 @@ class DistributedProviderLeasePool:
                     raise StopRequested(f"provider lease wait for domain={domain!r} stopped")
                 with self._guard:
                     storage = self._storage
-                    rule = self._rules[domain]
                     log = self._log
-                if storage is None:
+                    # CR2-CP-36: look up the rule only once storage is confirmed enabled — a
+                    # concurrent configure() disabling leases clears `_storage` and `_rules`
+                    # together, so a plain `_rules[domain]` read here could race a reconfigure
+                    # and KeyError instead of falling back to the no-op lease below.
+                    rule = self._rules.get(domain) if storage is not None else None
+                if storage is None or rule is None:
                     return ProviderLease(self, domain, "", None, rule, 0.0)
                 if not counted:
                     with self._guard:

@@ -82,7 +82,7 @@ class TestHostRateLimiter:
                 with lock:
                     active[0] -= 1
 
-        ts = [threading.Thread(target=work) for _ in range(threads)]
+        ts = [threading.Thread(target=work, daemon=True) for _ in range(threads)]
         for t in ts:
             t.start()
         for t in ts:
@@ -135,7 +135,7 @@ class TestHostRateLimiter:
             with lim.slots(["https://a.granicus.com/1.mp4", "https://b.granicus.com/2.mp4"]):
                 done.append(True)
 
-        t = threading.Thread(target=work)
+        t = threading.Thread(target=work, daemon=True)
         t.start()
         t.join(timeout=2.0)
         assert done == [True]  # completed without self-deadlock
@@ -169,7 +169,7 @@ class TestHostRateLimiterStopAware:
             with lim.slots(["https://archive-video.granicus.com/x.mp4"]):
                 holder_released.wait(timeout=2.0)
 
-        t = threading.Thread(target=hold)
+        t = threading.Thread(target=hold, daemon=True)
         t.start()
         try:
             with pytest.raises(StopRequested):
@@ -202,7 +202,7 @@ class TestHostRateLimiterStopAware:
             with lim.slots(["https://v.swagit.com/a.mp4"]):
                 holder_released.wait(timeout=2.0)
 
-        t = threading.Thread(target=hold_swagit)
+        t = threading.Thread(target=hold_swagit, daemon=True)
         t.start()
         try:
             with pytest.raises(StopRequested):
@@ -265,7 +265,7 @@ class TestGuardedAdapterHoldsHostSlot:
             adapter.send(SimpleNamespace(url="https://archive-video.granicus.com/x.mp4"))
 
         try:
-            ts = [threading.Thread(target=work) for _ in range(8)]
+            ts = [threading.Thread(target=work, daemon=True) for _ in range(8)]
             for t in ts:
                 t.start()
             for t in ts:
@@ -273,6 +273,87 @@ class TestGuardedAdapterHoldsHostSlot:
             assert peak[0] == 2
         finally:
             http_mod.HOST_LIMITER.configure({})  # reset the process-global singleton
+
+    def test_slot_held_across_the_buffered_content_read_not_just_send(self, monkeypatch):
+        """CR2-CP-10/H4: the host slot used to be released right after ``super().send()``, before
+        the non-streaming path's buffered ``response.content`` read — the actual body transfer.
+        Concurrent buffered downloads to the same host must still serialize to the cap."""
+        from citypods import http as http_mod
+
+        monkeypatch.setattr(http_mod, "validate_source_url", lambda *a, **k: None)
+        http_mod.HOST_LIMITER.configure({"granicus.com": 2})
+
+        active = [0]
+        peak = [0]
+        lock = threading.Lock()
+
+        def fake_stream(amt=2**16, **kwargs):
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            time.sleep(0.02)
+            with lock:
+                active[0] -= 1
+            yield b"x" * 10
+
+        def fake_send(self, request, **kwargs):
+            resp = requests.Response()
+            resp.status_code = 200
+            resp.raw = SimpleNamespace(close=lambda: None, stream=lambda *a, **k: fake_stream())
+            return resp
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+        adapter = GuardedHTTPAdapter()
+
+        def work():
+            adapter.send(
+                SimpleNamespace(url="https://archive-video.granicus.com/x.mp4", method="GET")
+            )
+
+        try:
+            ts = [threading.Thread(target=work, daemon=True) for _ in range(8)]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join()
+            assert peak[0] == 2
+        finally:
+            http_mod.HOST_LIMITER.configure({})  # reset the process-global singleton
+
+
+class TestGuardedAdapterTimeoutBackstop:
+    """CR2-CP-09/M2: DEFAULT_TIMEOUT was defined but never applied — a caller that forgot
+    timeout= would hang forever with no adapter-level backstop."""
+
+    def test_applies_default_timeout_when_caller_omits_it(self, monkeypatch):
+        from citypods import http as http_mod
+
+        monkeypatch.setattr(http_mod, "validate_source_url", lambda *a, **k: None)
+        captured = {}
+
+        def fake_send(self, request, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(headers={})
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+        adapter = GuardedHTTPAdapter()
+        adapter.send(SimpleNamespace(url="https://archive-video.granicus.com/x.mp4"))
+        assert captured["timeout"] == http_mod.DEFAULT_TIMEOUT
+
+    def test_preserves_explicit_timeout(self, monkeypatch):
+        from citypods import http as http_mod
+
+        monkeypatch.setattr(http_mod, "validate_source_url", lambda *a, **k: None)
+        captured = {}
+
+        def fake_send(self, request, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(headers={})
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+        adapter = GuardedHTTPAdapter()
+        adapter.send(SimpleNamespace(url="https://archive-video.granicus.com/x.mp4"), timeout=5)
+        assert captured["timeout"] == 5
 
 
 class TestGuardedAdapterHeadExemption:

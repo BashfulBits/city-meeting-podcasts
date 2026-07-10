@@ -893,12 +893,32 @@ def _source_media_from_dict(d: dict) -> SourceMedia:
     return SourceMedia(**{k: v for k, v in d.items() if k in known})
 
 
-def _timeline_from_dict(d: dict) -> Timeline:
-    return Timeline(
-        version=d["version"],
-        segments=tuple(Segment(**s) for s in d.get("segments", [])),
-        basis=d.get("basis", "served"),
-    )
+def _timeline_from_dict(d: dict) -> Timeline | None:
+    """Rebuild a persisted timeline. A legacy/newer record's segment dict may carry keys this
+    version's ``Segment`` doesn't declare (or lack a ``version``) — filter/default like the
+    sibling ``_source_media_from_dict``/``_availability_from_rec`` rebuilders, rather than
+    raising and failing episode load entirely (CR2-CP-27). A missing ``version`` falls back to
+    ``""``, which can't match any real planner-set signature, so the episode simply re-plans on
+    the next run instead of crashing.
+
+    A segment dict that is internally inconsistent for its own ``kind`` (Segment's own
+    ``__post_init__`` guard, CR2-CP-13) is treated the same way: this episode's timeline is
+    unrecoverable from this record, so it returns ``None`` (identity) and re-plans, rather than
+    raising out of here and aborting the whole episode-list load for every other episode.
+    """
+    known = {f.name for f in dataclasses.fields(Segment)}
+    try:
+        return Timeline(
+            version=d.get("version", ""),
+            segments=tuple(
+                Segment(**{k: v for k, v in s.items() if k in known})
+                for s in d.get("segments", [])
+                if isinstance(s, dict)
+            ),
+            basis=d.get("basis", "served"),
+        )
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def record_to_episode(rec: dict) -> Episode:

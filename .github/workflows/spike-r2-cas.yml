@@ -26,6 +26,12 @@ on:
 permissions:
   contents: read
 
+# CR2-GH-13: guard against overlapping manual dispatches consuming duplicate runner time,
+# mirroring validate-control-plane.yml's equivalent manual-dispatch spike workflow.
+concurrency:
+  group: spike-r2-cas
+  cancel-in-progress: true
+
 jobs:
   spike:
     runs-on: ubuntu-latest

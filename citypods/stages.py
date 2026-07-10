@@ -192,6 +192,7 @@ _TIMELINE_BACKOFF_ERRORS = frozenset(
         "timeline-degenerate",
         "timeline-partial-source",
         "rate_limited",
+        "timeline-plan-error",
     }
 )
 
@@ -971,6 +972,15 @@ class TimelineStage:
                         stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
                     record_materialize_failure(ep, getattr(exc, "code", None) or "rate_limited")
                     return
+                except Exception as exc:  # noqa: BLE001
+                    # CR2-CP-41: any other planner exception used to propagate out of _plan_one;
+                    # pool.map re-raises on the first worker exception, aborting timeline-plan
+                    # processing for the rest of this source's episode batch. Record and continue,
+                    # same as the RateLimitedMediaFetchError case above.
+                    with lock:
+                        stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+                    record_materialize_failure(ep, "timeline-plan-error")
+                    return
 
                 if changed and current is not None:
                     # Stamp the planner-set signature so a future run can detect staleness.
@@ -1651,6 +1661,11 @@ def _download_audio(url: str):
         dest = Path(t) / "audio.m4a"
         _download_audio_file(url, dest)
         yield dest
+
+
+# Public alias for cross-module callers (bench.py's asr-bench command, CR2-CP-39) — the
+# underscore name stays the internal one this module's own callers use.
+download_hosted_audio = _download_audio
 
 
 def _download_audio_file(url: str, dest: Path) -> None:
@@ -2638,7 +2653,10 @@ class TranscriptStage:
                         _native_gate.release(kind="asr")
                     _audio_tmp.cleanup()
 
-            _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{ep.uid[:8]}")
+            # CR2-CP-40: ep.uid can be falsy for a not-yet-assigned-uid episode; use the same
+            # ep.uid or ep.guid fallback already established elsewhere in this function instead
+            # of slicing ep.uid directly (None[:8] raises TypeError).
+            _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{label[:8]}")
             _asr_started_at = time.monotonic()
             _t.start()
 

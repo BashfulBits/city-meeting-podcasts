@@ -12,6 +12,7 @@ from __future__ import annotations
 import colorsys
 import hashlib
 import re
+from functools import cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -35,7 +36,10 @@ def seal_path(city: City) -> Path | None:
     return p if p.exists() else None
 
 
+@cache
 def _font(bold: bool, size: int) -> ImageFont.FreeTypeFont:
+    # CR2-CP-16: _draw_band's text-fitting loop re-requests the same (bold, size) combination
+    # across renders; cache the loaded TTF instead of re-reading it from disk every call.
     name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
     return ImageFont.truetype(str(FONT_DIR / name), size)
 
@@ -108,6 +112,11 @@ def _draw_band(draw, primary, accent, city, wordmark, band_h):
         draw.text((MARGIN, SIZE - 64), wordmark, font=_font(True, 38), fill=fg)
 
 
+def _save(img: Image.Image, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    img.save(dest, "JPEG", quality=88)
+
+
 def _render_with_seal(city, dest, wordmark, seal_file):
     primary, accent = _resolve_colors(city)
     img = Image.new("RGB", (SIZE, SIZE), (255, 255, 255))
@@ -120,8 +129,7 @@ def _render_with_seal(city, dest, wordmark, seal_file):
     seal.thumbnail((box, box))
     img.paste(seal, ((SIZE - seal.width) // 2, (region - seal.height) // 2))
     _draw_band(ImageDraw.Draw(img), primary, accent, city, wordmark, band_h)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    img.save(dest, "JPEG", quality=88)
+    _save(img, dest)
 
 
 def _render_typographic(city, dest, wordmark):
@@ -146,8 +154,7 @@ def _render_typographic(city, dest, wordmark):
     if wordmark:
         wm_y = SIZE - band_h + (band_h - 46) // 2 - 6
         draw.text((MARGIN, wm_y), wordmark, font=_font(True, 46), fill=_contrast(accent))
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    img.save(dest, "JPEG", quality=88)
+    _save(img, dest)
 
 
 def render_cover(city: City, dest: Path, wordmark: str = "") -> None:

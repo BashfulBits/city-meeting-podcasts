@@ -189,16 +189,33 @@ def content_seconds(silences: list[tuple[float, float]], source_duration: float)
     """Non-silent (spoken-content) seconds = duration minus the detected silence spans.
 
     Spans are clamped to ``[0, source_duration]`` so a detector span that runs past the probed
-    duration cannot drive the result negative.
+    duration cannot drive the result negative. Overlapping/touching spans are merged before
+    summing (CR2-CP-04) so an overlap can't double-count the same silent seconds twice —
+    ``silence.py``'s single forward pass over ffmpeg's monotonic ``silencedetect`` output can't
+    itself produce overlapping pairs today, but this function has no documented non-overlap
+    precondition and is worth making correct regardless of the caller.
     """
     if source_duration <= 0:
         return 0.0
-    silent = 0.0
+    clamped = []
     for start, end in silences:
         lo = max(0.0, min(start, source_duration))
         hi = max(0.0, min(end, source_duration))
         if hi > lo:
-            silent += hi - lo
+            clamped.append((lo, hi))
+    clamped.sort()
+    silent = 0.0
+    span_start = span_end = None
+    for lo, hi in clamped:
+        if span_end is None:
+            span_start, span_end = lo, hi
+        elif lo <= span_end:
+            span_end = max(span_end, hi)
+        else:
+            silent += span_end - span_start
+            span_start, span_end = lo, hi
+    if span_end is not None:
+        silent += span_end - span_start
     return max(0.0, source_duration - silent)
 
 
@@ -255,8 +272,11 @@ def classify(prior: MediaAvailability | None, obs: Observation) -> MediaAvailabi
 
     fingerprint = obs.fingerprint or (prior.source_fingerprint if prior else None)
     profile = obs.profile or (prior.profile if prior else "")
-    override = prior.operator_override if prior else None
-    override_reason = prior.operator_reason if prior else ""
+    # Read from base, not prior (CR2-CP-03): base is reset to None on a source-fingerprint
+    # change, so a stale operator override must not silently carry forward onto swapped media
+    # bytes the way it would if read from prior unconditionally.
+    override = base.operator_override if base else None
+    override_reason = base.operator_reason if base else ""
     evidence = base.evidence_ref if base else None
 
     def build(
@@ -369,6 +389,10 @@ def with_operator_override(
     """
     if state is not None and state not in OVERRIDE_STATES:
         raise ValueError(f"invalid operator override state: {state!r}")
+    if prior is None and state is None:
+        # CR2-CP-02: clearing an override with no prior verdict is a no-op request, not a
+        # request to manufacture a fabricated AVAILABLE verdict out of nothing.
+        raise ValueError("cannot clear an operator override without a prior verdict")
     if prior is None:
         prior = MediaAvailability(state=AVAILABLE, reason="created by operator override")
     return replace(

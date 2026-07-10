@@ -192,8 +192,13 @@ class RoutingStorage:
 
     def get_bytes(self, key: str) -> tuple[bytes, str] | None:
         backend = self._route(key)
-        if not hasattr(backend, "get_bytes"):
-            raise NotImplementedError(f"backend {getattr(backend, 'name', '?')!r} lacks get_bytes")
+        # Check the routed backend's own cas_capable flag, not hasattr: S3CompatibleStorage
+        # defines get_bytes/put_cas unconditionally, so hasattr is always True even for a
+        # cas_capable=False (B2) backend — including when coordination is absent and a
+        # coordination-prefixed key silently falls through to the primary (CR2-CP-53/H2).
+        if not getattr(backend, "cas_capable", False):
+            name = getattr(backend, "name", "?")
+            raise NotImplementedError(f"backend {name!r} is not cas_capable; get_bytes unavailable")
         if self._is_coordination(key):
             self._class_b += 1
         return backend.get_bytes(key)
@@ -208,8 +213,9 @@ class RoutingStorage:
         if_match: str | None = None,
     ) -> tuple[str, str]:
         backend = self._route(key)
-        if not hasattr(backend, "put_cas"):
-            raise NotImplementedError(f"backend {getattr(backend, 'name', '?')!r} lacks put_cas")
+        if not getattr(backend, "cas_capable", False):
+            name = getattr(backend, "name", "?")
+            raise NotImplementedError(f"backend {name!r} is not cas_capable; put_cas unavailable")
         if self._is_coordination(key):
             self._class_a += 1
         return backend.put_cas(

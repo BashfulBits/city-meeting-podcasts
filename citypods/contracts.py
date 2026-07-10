@@ -55,6 +55,19 @@ def _tail(text: str, *, limit: int = 700) -> str:
     return "..." + text[-limit:]
 
 
+def _safe_url(url: str) -> str:
+    """Strip a presigned/credentialed query string before a URL can reach a public GitHub
+    issue or CheckResult.detail (CR2-CP-28/MR-CP-04) — every "detail becomes a public issue"
+    call site in this module routes through this, not a raw ``resolved_url[:N]`` truncation."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    safe = f"{parts.scheme}://{parts.netloc}{parts.path}"
+    if parts.query:
+        safe += "?<redacted>"
+    return safe
+
+
 def _media_fetch_detail(
     *,
     resolved_url: str,
@@ -67,13 +80,7 @@ def _media_fetch_detail(
     if ok:
         return base
 
-    from urllib.parse import urlsplit
-
-    parts = urlsplit(resolved_url)
-    safe_url = f"{parts.scheme}://{parts.netloc}{parts.path}"
-    if parts.query:
-        safe_url += "?<redacted>"
-    details = [base, f"url={safe_url}"]
+    details = [base, f"url={_safe_url(resolved_url)}"]
     if logs:
         details.append(f"ffmpeg={_tail(logs[-1])}")
     else:
@@ -84,8 +91,15 @@ def _media_fetch_detail(
 def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]:
     """Run the contract checks applicable to one city's provider. Each check is isolated so one
     broken endpoint doesn't mask the others."""
-    provider = get_provider(provider_name)
     out: list[CheckResult] = []
+
+    # get_provider raises ProviderError for an unregistered name; keep it inside the same
+    # isolation this function's docstring promises (CR2-SC-03) — an unregistered provider must
+    # produce a "list" failure result for this one city, not abort the caller's whole scan.
+    try:
+        provider = get_provider(provider_name)
+    except Exception as exc:  # noqa: BLE001 — the failure IS the finding
+        return [_r(provider_name, slug, "list", False, repr(exc))]
 
     # 1. Listing endpoint — must yield episodes with a usable media reference.
     try:
@@ -104,7 +118,7 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
     try:
         resolved_url = provider.resolve_media_url(newest, source)
         ok = bool(resolved_url) and resolved_url.startswith("http")
-        out.append(_r(provider_name, slug, "media", ok, resolved_url[:80]))
+        out.append(_r(provider_name, slug, "media", ok, _safe_url(resolved_url)[:80]))
     except Exception as exc:  # noqa: BLE001
         out.append(_r(provider_name, slug, "media", False, repr(exc)))
 

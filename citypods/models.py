@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from citypods.timeline import SourceMedia, Timeline
 
@@ -53,7 +53,7 @@ class Episode:
     duration: int | None = None  # seconds
     source_duration_seconds: float | None = None
     served_duration_seconds: float | None = None
-    media_kind: str = "direct"  # "direct" | "hls"
+    media_kind: Literal["direct", "hls"] = "direct"
     hosted_audio_url: str | None = None  # set by the materialization pipeline
     body: str | None = None  # committee/meeting body, e.g. "City Council" (for per-body feeds)
 

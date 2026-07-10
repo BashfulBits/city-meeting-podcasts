@@ -7,6 +7,8 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock
 
+import pytest
+
 from citypods.asr import (
     TranscriptArtifacts,
     _fmt_ts,
@@ -49,6 +51,12 @@ class TestFmtTs:
 
     def test_over_hour(self):
         assert _fmt_ts(3661.0) == "01:01:01.000"
+
+    def test_rounds_before_split_instead_of_overflowing_seconds_field(self):
+        # CR2-CP-19: naive floor-division + "%06.3f" formatting rounded 119.9996 to a literal
+        # "60.000" seconds field (invalid WebVTT); rounding whole milliseconds first carries
+        # into the minutes field instead.
+        assert _fmt_ts(119.9996) == "00:02:00.000"
 
 
 # ── _to_vtt ──────────────────────────────────────────────────────────────────
@@ -301,9 +309,35 @@ class TestTranscribeMocked:
 
 
 class TestAlignMocked:
-    def _setup_sw(self, vtt_str: str):
+    def _seg(self, words, start=0.0, end=1.0, text="hello world"):
+        s = MagicMock()
+        s.start = start
+        s.end = end
+        s.text = text
+        s.words = words
+        return s
+
+    def _word(self, word="hello", start=0.0, end=0.5):
+        w = MagicMock()
+        w.word = word
+        w.start = start
+        w.end = end
+        return w
+
+    def _fully_timed_segments(self, n=2):
+        # All words get a real `start` timestamp -> 100% coverage, well above the gate.
+        return [self._seg([self._word(), self._word()]) for _ in range(n)]
+
+    def _setup_sw(self, vtt_str: str, segments=None):
+        import citypods.asr as asr
+
+        # _load_alignment_model caches by (model, compute_type, cpu_threads); every test here
+        # uses the same "base.en"/None/4 key, so a stale cached model from an earlier test
+        # would silently shadow this test's fake_result otherwise.
+        asr._model_cache.clear()
         fake_result = MagicMock()
         fake_result.to_vtt.return_value = vtt_str
+        fake_result.segments = segments if segments is not None else self._fully_timed_segments()
         fake_model = MagicMock()
         fake_model.align.return_value = fake_result
         _inject_sw(fake_model)
@@ -333,6 +367,19 @@ class TestAlignMocked:
 
         assert result.vtt.startswith(b"WEBVTT")
 
+    def test_zero_words_raises_quality_error_instead_of_passing_silently(self, tmp_path):
+        # CR2-CP-18: a degenerate alignment result with no words at all (result.segments is
+        # empty, or every segment lacks a `words` attribute) must not skip the coverage gate —
+        # it is 0% coverage, not a vacuous pass.
+        from citypods.asr import AlignmentQualityError, align
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        self._setup_sw("WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world\n", segments=[])
+        with pytest.raises(AlignmentQualityError, match="0%"):
+            align(audio, "Hello world", "base.en", "en", 4)
+
     def test_loaded_faster_model_uses_stable_ts_model_for_alignment(self, tmp_path):
         import citypods.asr as asr
 
@@ -347,6 +394,7 @@ class TestAlignMocked:
 
         fake_result = MagicMock()
         fake_result.to_vtt.return_value = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n"
+        fake_result.segments = self._fully_timed_segments()
         stable_model = MagicMock()
         stable_model.align.return_value = fake_result
         _inject_sw(stable_model)

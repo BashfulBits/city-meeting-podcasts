@@ -344,6 +344,19 @@ def test_build_status_episode_taxonomy(tmp_path):
     assert issues["transient_errors"] == 1
 
 
+def test_build_status_retained_per_feed_preserves_measured_zero(tmp_path):
+    # CodeRabbit (PR #877): `archive_items or max_episodes_default` treated a genuinely-measured
+    # 0 (e.g. a fresh deployment with no persisted records yet) the same as "unmeasured," silently
+    # reporting the 50-episode default instead of the real 0.
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("empty-city")
+    save_records(tmp_path, source_key(city), {})
+
+    status = build_status([city], site_config=SITE, state_dir=tmp_path)
+    assert status["storage"]["retained_per_feed"] == 0
+
+
 def test_build_status_direct_extract_audio_counts_as_pending_not_linked(tmp_path):
     """Direct providers become audio backlog when extract_audio is enabled."""
     from citypods.records import save_records, source_key
@@ -713,6 +726,11 @@ def test_to_status_html_substitution():
     assert "__STATUS_JSON__" not in html
     assert "AUDIO RUN" in html and "TRANSCRIBE RUN" in html and "DIARIZE RUN" in html
     assert "runSeverity(run, totals)" in html
+    # CR2-CP-26: CITY_COLS' Health column key ('health') has no matching row field (only the
+    # health_ok/health_warn/health_error histogram counts), so sortRows's plain `a[sort.key]`
+    # lookup was always undefined for both sides — a composite fallback makes the sort meaningful.
+    assert "function sortValue(r, key)" in html
+    assert "health_error||0)*1e6" in html
     assert "action_alert_level" in html
     assert "⚠ warnings" in html
     assert "✗ errors" in html

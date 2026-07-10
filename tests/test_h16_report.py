@@ -266,6 +266,37 @@ def test_report_uses_latest_event_per_shard_on_workflow_rerun(tmp_path):
     assert report["tenants"]["arlingtontx"]["direct_successes"] == 1
 
 
+def test_report_sorts_shards_numerically_past_nine(tmp_path):
+    # M7/CR2-CP-20: a plain string sort puts "10/12" and "11/12" before "2/12" through "9/12".
+    config = tmp_path / "site.yml"
+    _write_config(config)
+    expected_shards = 12
+    for index in range(expected_shards):
+        shard = f"{index}/{expected_shards}"
+        event = {
+            "ts": f"2026-06-21T00:00:{index:02d}+00:00",
+            "phase": "enrich",
+            "lane": "audio",
+            "shard": shard,
+            "scoped": True,
+            "github_run_id": "123",
+            "provider_rate_limit_telemetry": {},
+            "provider_errors": {},
+            "stages": {"audio": {"errors": 0}},
+        }
+        (tmp_path / f"event-{index}.json").write_text(json.dumps(event))
+
+    report = build_h16_report(
+        tmp_path,
+        run_id="123",
+        site_config_path=config,
+        expected_shards=expected_shards,
+    )
+
+    assert report["shards"] == [f"{index}/{expected_shards}" for index in range(expected_shards)]
+    assert report["complete"] is True
+
+
 def test_report_surfaces_availability_census_without_affecting_verdict(tmp_path):
     # H16 PR3: availability is informational observability — it is summed across shards and shown,
     # but never flips the transport/identity/secret verdict.

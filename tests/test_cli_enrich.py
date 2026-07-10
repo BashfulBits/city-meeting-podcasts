@@ -38,7 +38,8 @@ def test_enrich_threads_shard_source_lane_into_build(monkeypatch):
 def test_enrich_defaults_are_unsharded_full_lane(monkeypatch):
     captured = {}
     monkeypatch.setattr(cli, "build", lambda **kw: captured.update(kw) or [])
-    cli.main(["enrich"])
+    rc = cli.main(["enrich"])
+    assert rc == 0
     assert captured["shard"] is None
     assert captured["source"] is None
     assert captured["lane"] is None

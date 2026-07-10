@@ -13,6 +13,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +39,31 @@ from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _fake_subprocess_run(stdout: str):
+    """A ``subprocess.run`` replacement recording every call as ``(cmd, kwargs)``, returning a
+    fixed ``stdout`` string (CR2-TS-11: shared instead of 7 near-identical inline ``_fake_run``/
+    ``class _R`` stubs — one edit point if the ffprobe stdout-format contract changes)."""
+    calls: list[tuple[list, dict]] = []
+
+    def _fake_run(cmd, **kw):
+        calls.append((cmd, kw))
+        return SimpleNamespace(stdout=stdout)
+
+    return _fake_run, calls
+
+
+def _fake_subprocess_run_cmd_only(stdout: str = ""):
+    """Same as :func:`_fake_subprocess_run`, for the filter-path tests that only ever inspect the
+    command list itself (never the kwargs)."""
+    calls: list[list] = []
+
+    def _fake_run(cmd, **kw):
+        calls.append(cmd)
+        return SimpleNamespace(stdout=stdout)
+
+    return _fake_run, calls
 
 
 def _seg_src(served_start, served_end, source_start, source_end, sid="s0") -> Segment:
@@ -401,18 +427,9 @@ class TestCommandFfmpegIdentityPath:
     ):
         import citypods.media as media
 
-        calls: list[tuple[list, dict]] = []
-
-        def _fake_run(cmd, **kw):
-            calls.append((cmd, kw))
-
-            class _R:
-                stdout = (
-                    f'{{"streams":[{{"codec_name":"{codec_name}","bit_rate":"{bitrate_str}"}}]}}'
-                )
-
-            return _R()
-
+        _fake_run, calls = _fake_subprocess_run(
+            f'{{"streams":[{{"codec_name":"{codec_name}","bit_rate":"{bitrate_str}"}}]}}'
+        )
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         media.CommandFfmpeg(max_kbps=96).extract_audio(
             timeline=None,
@@ -460,16 +477,7 @@ class TestCommandFfmpegIdentityPath:
     def test_reencode_pins_ffmpeg_threads(self, monkeypatch, tmp_path):
         import citypods.media as media
 
-        calls: list[tuple[list, dict]] = []
-
-        def _fake_run(cmd, **kw):
-            calls.append((cmd, kw))
-
-            class _R:
-                stdout = "192000"
-
-            return _R()
-
+        _fake_run, calls = _fake_subprocess_run("192000")
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         media.CommandFfmpeg(max_kbps=96, threads=2).extract_audio(
             timeline=None,
@@ -507,16 +515,9 @@ class TestCommandFfmpegIdentityPath:
         """An explicit identity Timeline must NOT trigger the filter path."""
         import citypods.media as media
 
-        calls: list = []
-
-        def _fake_run(cmd, **kw):
-            calls.append(cmd)
-
-            class _R:
-                stdout = '{"streams":[{"codec_name":"aac","bit_rate":"64000"}]}'
-
-            return _R()
-
+        _fake_run, calls = _fake_subprocess_run(
+            '{"streams":[{"codec_name":"aac","bit_rate":"64000"}]}'
+        )
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         src = _src()
         tl = identity_timeline(src, 3600.0)
@@ -525,7 +526,7 @@ class TestCommandFfmpegIdentityPath:
             sources_by_id={"s0": "https://src/vid.mp4"},
             dest=tmp_path / "out.m4a",
         )
-        enc_cmd = calls[1]  # second call is ffmpeg encode
+        enc_cmd = calls[1][0]  # second call is ffmpeg encode
         assert "-filter_complex" not in enc_cmd
 
 
@@ -547,16 +548,7 @@ class TestCommandFfmpegFilterPath:
     ):
         import citypods.media as media
 
-        calls: list = []
-
-        def _fake_run(cmd, **kw):
-            calls.append(cmd)
-
-            class _R:
-                stdout = ""
-
-            return _R()
-
+        _fake_run, calls = _fake_subprocess_run_cmd_only()
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         media.CommandFfmpeg(max_kbps=96).extract_audio(
             timeline=timeline,
@@ -603,16 +595,7 @@ class TestCommandFfmpegFilterPath:
         tl = self._trim_timeline()
         import citypods.media as media
 
-        calls: list = []
-
-        def _fake_run(cmd, **kw):
-            calls.append(cmd)
-
-            class _R:
-                stdout = ""
-
-            return _R()
-
+        _fake_run, calls = _fake_subprocess_run_cmd_only()
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         media.CommandFfmpeg(max_kbps=96).extract_audio(
             timeline=tl,
@@ -709,16 +692,7 @@ class TestCommandFfmpegFilterPath:
     def test_filter_path_pins_ffmpeg_threads(self, monkeypatch, tmp_path):
         import citypods.media as media
 
-        calls: list = []
-
-        def _fake_run(cmd, **kw):
-            calls.append(cmd)
-
-            class _R:
-                stdout = ""
-
-            return _R()
-
+        _fake_run, calls = _fake_subprocess_run_cmd_only()
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         media.CommandFfmpeg(max_kbps=96, threads=2).extract_audio(
             timeline=self._trim_timeline(),
@@ -735,16 +709,7 @@ class TestCommandFfmpegFilterPath:
     def test_filter_path_pins_filter_threads(self, monkeypatch, tmp_path):
         import citypods.media as media
 
-        calls: list = []
-
-        def _fake_run(cmd, **kw):
-            calls.append(cmd)
-
-            class _R:
-                stdout = ""
-
-            return _R()
-
+        _fake_run, calls = _fake_subprocess_run_cmd_only()
         monkeypatch.setattr(media.subprocess, "run", _fake_run)
         media.CommandFfmpeg(max_kbps=96, threads=1).extract_audio(
             timeline=self._trim_timeline(),

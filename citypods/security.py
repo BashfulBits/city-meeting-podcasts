@@ -138,6 +138,12 @@ def _host_allowed(host: str, patterns: Iterable[str]) -> bool:
     return any(fnmatch(host, pat.lower()) for pat in patterns)
 
 
+# RFC 6598 shared address space (CGNAT, and some cloud providers' internal routing). Verified
+# live that ipaddress flags every other check here False for e.g. 100.64.0.1 — is_private,
+# is_reserved, etc. all miss this range, so it must be blocked explicitly (CR2-CP-47/H1).
+_SHARED_ADDRESS_SPACE = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """True for any address that must never be fetched from a build runner."""
     # IPv4-mapped IPv6 (``::ffff:169.254.169.254``) — judge by the embedded v4 address.
@@ -151,6 +157,7 @@ def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
         or ip.is_reserved
         or ip.is_multicast
         or ip.is_unspecified
+        or (isinstance(ip, ipaddress.IPv4Address) and ip in _SHARED_ADDRESS_SPACE)
     )
 
 
@@ -213,7 +220,14 @@ def _city_domain_patterns(city_website: str | None) -> tuple[str, ...]:
     """Allowlist globs for a CivicPlus city's self-hosted CivicMedia: the ``city_website``
     host itself plus any subdomain of its registrable domain (``www.x.tx.us`` also allows
     ``media.x.tx.us``)."""
-    host = _hostname(city_website or "")
+    website = city_website or ""
+    # _hostname() needs a scheme to populate netloc; a schemeless city_website (e.g.
+    # "example.gov" with no "https://") would otherwise collapse this to an empty allowlist,
+    # silently dropping the city's own domain (CR2-CP-48). All committed configs already use
+    # "https://" prefixes, so this only guards a future config author's typo.
+    if website and not _SCHEME_RE.match(website):
+        website = f"https://{website}"
+    host = _hostname(website)
     if not host:
         return ()
     apex = host[4:] if host.startswith("www.") else host
@@ -240,6 +254,11 @@ def iter_source_urls(source: dict) -> Iterator[str]:
                 yield value
         elif isinstance(value, (list, tuple)):
             for item in value:
+                yield from _candidates(item)
+        elif isinstance(value, dict):
+            # A URL nested one level under a sub-dict key (no committed config/feeds/*.yml does
+            # this today, but a security-relevant helper shouldn't silently skip it — CR2-CP-46).
+            for item in value.values():
                 yield from _candidates(item)
 
     for value in source.values():

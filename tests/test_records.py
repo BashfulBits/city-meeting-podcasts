@@ -905,6 +905,85 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         assert getattr(back, attr) == getattr(ep, attr), attr
 
 
+def test_record_to_episode_timeline_tolerates_unknown_segment_keys():
+    # CR2-CP-27: a legacy/newer record's segment dict may carry keys this version's Segment
+    # doesn't declare — filter like the sibling _source_media_from_dict/_availability_from_rec
+    # rebuilders, rather than raising and failing episode load entirely.
+    rec = {
+        "provider_guid": "g1",
+        "timeline": {
+            "version": "v1",
+            "segments": [
+                {
+                    "served_start": 0,
+                    "served_end": 10,
+                    "kind": "source",
+                    "source_id": "s0",
+                    "source_start": 0,
+                    "source_end": 10,
+                    "from_a_future_schema_version": "ignore me",
+                }
+            ],
+        },
+    }
+    ep = record_to_episode(rec)
+    assert ep.timeline is not None
+    assert ep.timeline.version == "v1"
+    assert ep.timeline.segments[0].source_id == "s0"
+
+
+def test_record_to_episode_timeline_tolerates_missing_version_key():
+    rec = {
+        "provider_guid": "g1",
+        "timeline": {"segments": []},
+    }
+    ep = record_to_episode(rec)
+    assert ep.timeline is not None
+    assert ep.timeline.version == ""
+
+
+def test_record_to_episode_timeline_tolerates_non_dict_segment_entry():
+    # CodeRabbit (PR #877): a non-dict item in the stored segments list (e.g. corrupted JSON)
+    # raised AttributeError at s.items(), escaping the (TypeError, ValueError) catch and aborting
+    # the whole episode load instead of falling back to None like other malformed-timeline cases.
+    rec = {
+        "provider_guid": "g1",
+        "timeline": {
+            "version": "v1",
+            "segments": [
+                {
+                    "served_start": 0,
+                    "served_end": 10,
+                    "kind": "source",
+                    "source_id": "s0",
+                    "source_start": 0,
+                    "source_end": 10,
+                },
+                "not-a-dict",
+            ],
+        },
+    }
+    ep = record_to_episode(rec)
+    assert ep.timeline is not None
+    assert len(ep.timeline.segments) == 1  # the malformed entry is dropped, not fatal
+    assert ep.timeline.segments[0].source_id == "s0"
+
+
+def test_record_to_episode_timeline_falls_back_to_none_on_inconsistent_segment():
+    # A segment that's internally inconsistent for its own kind (Segment.__post_init__,
+    # CR2-CP-13) makes this episode's timeline unrecoverable from the record -- fall back to
+    # None (identity/re-plan) rather than raising and aborting the whole episode-list load.
+    rec = {
+        "provider_guid": "g1",
+        "timeline": {
+            "version": "v1",
+            "segments": [{"served_start": 0, "served_end": 10, "kind": "source"}],
+        },
+    }
+    ep = record_to_episode(rec)
+    assert ep.timeline is None
+
+
 def test_provider_transcript_registry_persists_and_merges():
     ep = _ep("g-provider-transcript")
     ep.uid = "u-provider-transcript"

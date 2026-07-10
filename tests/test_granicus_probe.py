@@ -262,3 +262,116 @@ def test_worker_proxy_base_url_normalizes_bare_hostnames(configured, expected):
 def test_worker_proxy_base_url_rejects_unsafe_origins(configured):
     with pytest.raises(ValueError, match="HTTPS origin"):
         worker._normalize_proxy_base_url(configured)
+
+
+# --- _run_production_encode: fetch-failure resilience (MR-SC-01) --------------------------
+
+
+class _RaisingSourceCache:
+    """Fake SourceCache whose get_or_fetch raises a given exception, to verify
+    _run_production_encode returns a structured failure instead of propagating."""
+
+    def __init__(self, exc, **_kw):
+        self._exc = exc
+
+    def get_or_fetch(self, clip, archive_url):
+        raise self._exc
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_run_production_encode_reports_rate_limited_fetch_instead_of_raising(monkeypatch):
+    from citypods.media import RateLimitedMediaFetchError
+
+    monkeypatch.setattr(
+        worker,
+        "SourceCache",
+        lambda **kw: _RaisingSourceCache(RateLimitedMediaFetchError("throttled"), **kw),
+    )
+    result = worker._run_production_encode(
+        clip="arlington-audio40",
+        archive_url="https://archive-video.granicus.com/x.mp4",
+        ffmpeg="ffmpeg",
+        ffprobe="ffprobe",
+        timeout=30,
+    )
+    assert result["ok"] is False
+    assert result["outcome"] == "fetch_failed"
+    assert "throttled" in result["error"]
+
+
+# --- probe_granicus_sustained main(): output persisted even on a mid-run exception (CR2-SC-13) --
+
+
+def test_sustained_main_writes_output_despite_a_mid_run_exception(monkeypatch, tmp_path):
+    calls = {"n": 0}
+
+    def fake_run_probe(*, sequence, phase, clip, url, ffmpeg, seconds, timeout):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("simulated crash mid-run")
+        return probe.ProbeResult(
+            sequence=sequence,
+            phase=phase,
+            clip=clip,
+            host="archive-video.granicus.com",
+            path="/x.mp4",
+            requested_seconds=seconds,
+            started_at="2026-01-01T00:00:00+00:00",
+            elapsed_seconds=1.0,
+            output_bytes=100,
+            ok=True,
+            outcome="success",
+            returncode=0,
+            stderr_tail="",
+        )
+
+    monkeypatch.setattr(probe, "run_probe", fake_run_probe)
+    out_path = tmp_path / "results.json"
+    argv = [
+        "probe_granicus_sustained.py",
+        "--ffmpeg",
+        "ffmpeg",
+        "--clip",
+        "a=https://archive-video.granicus.com/a.mp4",
+        "--repeat-count",
+        "3",
+        "--cooldown-seconds",
+        "0",
+        "--concurrency",
+        "1",
+        "--output",
+        str(out_path),
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(RuntimeError, match="simulated crash mid-run"):
+        probe.main()
+
+    # The one result collected before the crash was still persisted, not lost.
+    written = json.loads(out_path.read_text())
+    assert written["summary"]["cases"] == 1
+    assert written["results"][0]["ok"] is True
+
+
+def test_run_production_encode_still_reports_media_too_large(monkeypatch):
+    from citypods.security import MediaSourceTooLargeError
+
+    monkeypatch.setattr(
+        worker,
+        "SourceCache",
+        lambda **kw: _RaisingSourceCache(MediaSourceTooLargeError("too big"), **kw),
+    )
+    result = worker._run_production_encode(
+        clip="arlington-audio40",
+        archive_url="https://archive-video.granicus.com/x.mp4",
+        ffmpeg="ffmpeg",
+        ffprobe="ffprobe",
+        timeout=30,
+    )
+    assert result["ok"] is False
+    assert result["outcome"] == "media_too_large"

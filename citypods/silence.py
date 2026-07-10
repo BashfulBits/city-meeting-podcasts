@@ -500,7 +500,7 @@ class SilencePlanner:
     version = "3"
 
     def plan(self, provider, city, ep, ctx, current: Timeline | None) -> Timeline | None:
-        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable, ProviderError
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
 
         # Gate: feature disabled globally or opted out per feed.
         if not city.extra.get("trim_silence", ctx.trim_silence):
@@ -535,7 +535,7 @@ class SilencePlanner:
                     ep, "missing", profile, reason="provider reports no usable media"
                 )
             return None
-        except (ProviderError, Exception):  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — ProviderError is already covered (MR-CP-05)
             return None
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 
@@ -658,6 +658,10 @@ class SilencePlanner:
         source_duration = decoded_duration
         source_duration_basis = "decoded"
 
+        # CR2-CP-30: snapshot so a rejected (degenerate) plan below can roll back the
+        # `ep.sources` mutation instead of leaving the episode holding a fresh SourceMedia the
+        # planner never actually accepted.
+        original_sources = ep.sources
         existing_src = ep.sources[0] if ep.sources else None
         source_id = existing_src.id if existing_src else "s0"
         src = SourceMedia(
@@ -711,6 +715,7 @@ class SilencePlanner:
                 f"kept_segments={len(tl.segments)}",
                 flush=True,
             )
+            ep.sources = original_sources
             if current is not None:
                 if repair_selected:
                     # The canary repair path has already proven the prior EDL is bad. Do not keep

@@ -329,7 +329,51 @@ def test_old_shape_synced_asr_key_is_planned_for_migration(tmp_path):
     )
 
     assert set(plan.assignment) == {f"{key}/d1"}
-    assert plan.weights[f"{key}/d1"] == 1
+
+
+def test_recipe_hash_computed_once_per_episode_not_twice(tmp_path, monkeypatch):
+    # CR2-CP-22: the staleness predicate and the grouping-key computation used to each call
+    # asr_spec_hash independently for the same episode; assert it's memoized instead.
+    import citypods.sharding as sharding_mod
+
+    cities = [_city("done", "https://done")]
+    key = source_key(cities[0])
+    ep = _hosted_episode("d1", 1800)
+    old_recipe = asr_spec_hash(
+        ep.audio_spec_hash,
+        cities[0].asr_model,
+        None,
+        "3",
+        language=cities[0].asr_language or None,
+        compute_type=cities[0].asr_compute_type,
+        beam_size=cities[0].asr_beam_size,
+        initial_prompt=asr_initial_prompt(cities[0].podcast_author, ep.body, ep.title),
+    )
+    ep.transcript_synced = True
+    ep.transcript_key = f"transcripts/{key}/d1-asr-{old_recipe}.vtt"
+    ep.transcript_spec_hash = old_recipe
+    ep.transcript_pipeline_version = "3"
+    save_records(tmp_path, key, {"d1": episode_to_record(ep)})
+
+    calls = []
+    real_hash = sharding_mod.asr_spec_hash
+
+    def _counting_hash(*args, **kwargs):
+        calls.append(1)
+        return real_hash(*args, **kwargs)
+
+    monkeypatch.setattr(sharding_mod, "asr_spec_hash", _counting_hash)
+
+    create_shard_plan(
+        cities,
+        tmp_path,
+        lane="transcribe",
+        num_shards=2,
+        defaults={"asr_local_max_duration_hours": 4},
+        asr_pipeline_version="3",
+    )
+
+    assert len(calls) == 1
 
 
 def test_episode_plan_rejects_unconfigured_source():

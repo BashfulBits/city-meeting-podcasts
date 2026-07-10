@@ -200,9 +200,12 @@ class TestAlignByteIdentical:
         vtt_str = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world\n"
 
         def _fresh_sw():
+            asr._model_cache.clear()
+            word = MagicMock(word="Hello", start=0.0, end=0.5)
+            seg = MagicMock(start=0.0, end=5.0, text="Hello world", words=[word])
             fake_result = MagicMock()
             fake_result.to_vtt.return_value = vtt_str
-            fake_result.segments = []
+            fake_result.segments = [seg]
             fake_model = MagicMock()
             fake_model.align.return_value = fake_result
             _inject_sw(fake_model)

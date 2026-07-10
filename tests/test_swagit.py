@@ -7,6 +7,7 @@ import pytest
 from citypods.bodies import filter_by_body
 from citypods.providers.base import ProviderError
 from citypods.providers.swagit import SwagitProvider, parse_list
+from citypods.security import SecurityError
 from tests.conftest import fixture_bytes
 
 ORIGIN = "https://dallastx.new.swagit.com"
@@ -108,8 +109,31 @@ def test_resolve_follows_download_redirect(monkeypatch):
     monkeypatch.setattr(
         "citypods.providers.swagit.make_session", lambda: _Session(_Resp(302, presigned))
     )
+    validated = []
+    monkeypatch.setattr(
+        "citypods.providers.swagit.validate_source_url",
+        lambda *a, **kw: validated.append((a, kw)),
+    )
     eps = parse_list(SAMPLE, ORIGIN)
     assert SwagitProvider().resolve_media_url(eps[0], {}) == presigned
+    # A redirect Location header is validated before being handed back, the same gate
+    # Granicus's resolve_media_url has (CR-CP-35).
+    assert validated == [((presigned,), {"resolve": True})]
+
+
+def test_resolve_rejects_blocked_redirect_url(monkeypatch):
+    presigned = "https://granicus-aasmp-swagit-video.s3.amazonaws.com/dallastx/abc.mp4?X-Amz=1"
+    monkeypatch.setattr(
+        "citypods.providers.swagit.make_session", lambda: _Session(_Resp(302, presigned))
+    )
+
+    def _reject(*_a, **_kw):
+        raise SecurityError("blocked")
+
+    monkeypatch.setattr("citypods.providers.swagit.validate_source_url", _reject)
+    eps = parse_list(SAMPLE, ORIGIN)
+    with pytest.raises(SecurityError):
+        SwagitProvider().resolve_media_url(eps[0], {})
 
 
 def test_resolve_errors_on_failure(monkeypatch):
@@ -186,9 +210,23 @@ def test_parse_segment_objects_returns_urls_and_titles():
 def test_resolve_keyless_falls_back_to_single_segment(monkeypatch):
     page = b"<body>" + _segment(2, "616").encode() + b"</body>"
     monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    monkeypatch.setattr("citypods.providers.swagit.validate_source_url", lambda *a, **kw: None)
     eps = parse_list(SAMPLE, ORIGIN)
     url = SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
     assert url == "https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4"
+
+
+def test_resolve_keyless_rejects_blocked_segment_url(monkeypatch):
+    page = b"<body>" + _segment(2, "616").encode() + b"</body>"
+    monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+
+    def _reject(*_a, **_kw):
+        raise SecurityError("blocked")
+
+    monkeypatch.setattr("citypods.providers.swagit.validate_source_url", _reject)
+    eps = parse_list(SAMPLE, ORIGIN)
+    with pytest.raises(SecurityError):
+        SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
 
 
 def test_resolve_keyless_multi_segment_defers(monkeypatch):
@@ -196,6 +234,7 @@ def test_resolve_keyless_multi_segment_defers(monkeypatch):
 
     page = b"<body>" + _segment(2, "616").encode() + _segment(3, "617").encode() + b"</body>"
     monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    monkeypatch.setattr("citypods.providers.swagit.validate_source_url", lambda *a, **kw: None)
     eps = parse_list(SAMPLE, ORIGIN)
     with pytest.raises(MediaUnavailable, match="multi-segment") as exc:
         SwagitProvider().resolve_media_url(eps[0], {"list_url": f"{ORIGIN}/x"})
@@ -317,18 +356,45 @@ def test_fetch_segment_objects_multi_segment_returns_pairs(monkeypatch):
         + b"</body>"
     )
     monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    validated = []
+    monkeypatch.setattr(
+        "citypods.providers.swagit.validate_source_url",
+        lambda url, **kw: validated.append((url, kw)),
+    )
     eps = parse_list(SAMPLE, ORIGIN)
     result = SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
     assert result == [
         ("https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4", "Call to Order"),
         ("https://swagit-video.granicus.com/archive/2014/01/21/617.h264.mp4", "Item 1"),
     ]
+    # Every scraped dfile URL is validated before any caller (SwagitConcatPlanner) can hand it
+    # to ffmpeg — dfile URLs come from page HTML, not implicitly trusted.
+    assert validated == [(url, {"resolve": True}) for url, _title in result]
+
+
+def test_fetch_segment_objects_rejects_blocked_dfile_url(monkeypatch):
+    page = (
+        b"<body>"
+        + _segment(2, "616", title="Call to Order").encode()
+        + _segment(3, "617", title="Item 1").encode()
+        + b"</body>"
+    )
+    monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+
+    def _reject(*_a, **_kw):
+        raise SecurityError("blocked")
+
+    monkeypatch.setattr("citypods.providers.swagit.validate_source_url", _reject)
+    eps = parse_list(SAMPLE, ORIGIN)
+    with pytest.raises(SecurityError):
+        SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
 
 
 def test_fetch_segment_objects_single_segment(monkeypatch):
     """Single-segment keyless → list with one entry (caller checks length)."""
     page = b"<body>" + _segment(1, "616", title="Full Meeting").encode() + b"</body>"
     monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RouteSession(page))
+    monkeypatch.setattr("citypods.providers.swagit.validate_source_url", lambda *a, **kw: None)
     eps = parse_list(SAMPLE, ORIGIN)
     result = SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
     assert len(result) == 1

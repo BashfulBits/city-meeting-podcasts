@@ -125,15 +125,16 @@ gh workflow run granicus-probe.yml \
 The workflow shares Audio's concurrency group and verifies no Audio run is active or queued. Download
 the `granicus-probe-results` artifact and inspect `granicus-worker-results.json`.
 
-The result is sufficient to activate or retain the production fallback only when:
+The result is sufficient to **retain** an already-active production fallback only when:
 
 - direct requests from the same runner receive 403;
 - Worker access returns media successfully (HTTP 206 when the object honors Range, or an authenticated
   HTTP 200 classified as `range_unsupported` when the upstream sends the whole object);
 - Worker ffmpeg audio reads succeed;
 - one bounded full download passes local ffprobe and local ffmpeg processing.
-- before a new production activation, one Arlington or Pflugerville object completes the optional
-  full production-recipe encode.
+
+A **new** activation additionally requires one Arlington or Pflugerville object to complete a full
+production-recipe encode (not just the bounded probe download above).
 
 If the Worker also receives 403, do not deploy a production fallback; use a different egress design.
 

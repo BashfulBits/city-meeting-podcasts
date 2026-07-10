@@ -466,8 +466,13 @@ def test_push_asr_runtime_log_merged_skips_unreadable_remote(tmp_path):
     assert {s["id"] for s in samples} == {"remote"}
 
 
-def _tmpfile(tmp_path, text: str):
-    p = tmp_path / "_payload.json"
+def _tmpfile(tmp_path, text: str, name: str = "_payload.json"):
+    # CR2-TS-04: name defaults to the historical single-file behavior (safe for every existing
+    # caller that only ever writes one payload per test), but a test writing more than one
+    # payload before either gets uploaded (LocalStorage.put_file copies immediately, but a test
+    # may stage multiple sources first) must pass distinct names — reusing the default here
+    # would silently clobber an earlier payload before it's ever read.
+    p = tmp_path / name
     p.write_text(text)
     return p
 
@@ -588,8 +593,8 @@ def test_reconcile_state_skips_cas_managed_budget(tmp_path):
     state_dir = tmp_path / "state"
     state_dir.mkdir()
 
-    budget = _tmpfile(tmp_path, '{"month": "2026-06", "backends": {}}')
-    stale = _tmpfile(tmp_path, '{"episodes": {}}')
+    budget = _tmpfile(tmp_path, '{"month": "2026-06", "backends": {}}', name="_budget.json")
+    stale = _tmpfile(tmp_path, '{"episodes": {}}', name="_stale.json")
     bucket.put_file(f"{STATE_PREFIX}/compute_budget.json", budget, "application/json")
     bucket.put_file(f"{STATE_PREFIX}/sources/stale/episodes.json", stale, "application/json")
     _age(bucket, f"{STATE_PREFIX}/compute_budget.json", days=30)

@@ -8,6 +8,7 @@ runs the same `validate()` against live B2 + R2.
 from __future__ import annotations
 
 import importlib.util
+import json
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -107,6 +108,21 @@ def test_validate_fails_when_backend_not_cas_capable():
     assert cap["pass"] is False
 
 
+def test_validate_fails_when_backend_lacks_routing_introspection():
+    # CR2-SC-01: a backend without is_cas_managed_key() must count as a failed
+    # "routing_namespaced" check, not simply be absent from `results` — otherwise overall_pass
+    # could be True without ever proving live routing actually works.
+    class _NoRoutingIntrospection(_MemCAS):
+        is_cas_managed_key = None
+
+    bucket = _NoRoutingIntrospection()
+    report = vcp.validate(bucket, run_id="t-no-routing", now=NOW)
+    names = {c["check"]: c for c in report["checks"]}
+    assert "routing_namespaced" in names
+    assert names["routing_namespaced"]["pass"] is False
+    assert report["overall_pass"] is False
+
+
 def test_validate_uses_isolated_scratch_namespace_per_run():
     bucket = _MemCAS()
     # A claim under the real-looking namespace would be `work-leases/<12hex>/<uid>.json`; the
@@ -129,6 +145,20 @@ def test_cleanup_failure_never_fails_the_run(monkeypatch):
     report = vcp.validate(bucket, run_id="t3", now=NOW)
     assert report["overall_pass"] is True, [c for c in report["checks"] if not c["pass"]]
     assert report["scratch_cleaned"] == 0  # nothing cleaned, yet the run still passes
+
+
+def test_main_creates_nested_output_directory(tmp_path, monkeypatch):
+    # MR-SC-06: --output previously opened the file directly with no parent mkdir, unlike sibling
+    # scripts' mkdir-before-write pattern — a nested path would crash after the validation run
+    # completed, losing the report.
+    monkeypatch.setattr(vcp, "_make_routing_storage", lambda: _MemCAS())
+    nested = tmp_path / "reports" / "nested" / "control-plane.json"
+
+    rc = vcp.main(["--output", str(nested), "--run-id", "t-nested"])
+
+    assert rc == 0
+    assert nested.exists()
+    assert json.loads(nested.read_text())["overall_pass"] is True
 
 
 def test_make_routing_storage_allows_coordination_only_r2(monkeypatch):

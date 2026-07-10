@@ -54,7 +54,7 @@ from citypods.integrity import (
 from citypods.media import AudioDurationProbe
 from citypods.models import City, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, ProviderError
-from citypods.security import MediaSourceTooLargeError
+from citypods.security import MediaSourceTooLargeError, redact_subprocess_text
 from citypods.timeline import edl_duration, timeline_digest
 
 ERROR = "error"
@@ -560,7 +560,10 @@ def check_enclosures(
                         if checked >= sample:
                             break
                         continue
-                    detail = f"re-resolved to {new_url!r}: HTTP {new_status}"
+                    # redact_subprocess_text strips any presigned query string from new_url
+                    # before this can reach a public GitHub issue (MR-CP-03).
+                    raw_detail = f"re-resolved to {new_url!r}: HTTP {new_status}"
+                    detail = redact_subprocess_text(raw_detail)
                 except Exception as re_exc:  # noqa: BLE001
                     detail = f"re-resolve failed: {re_exc}"
             else:
@@ -1268,7 +1271,8 @@ def audit_city(
     body = city.source.get("body")
     diff = compute_archive_diff(episodes, records, body=body) if records is not None else None
 
-    # Oldest date in the archive (across all episodes, pre-filter) for staleness correction.
+    # Newest publication date in the archive (across all episodes, pre-filter) for staleness
+    # correction (CR2-CP-24: comment previously said "Oldest" but the code below is `max(dates)`).
     archive_newest: datetime | None = None
     if records:
         from citypods.bodies import matches

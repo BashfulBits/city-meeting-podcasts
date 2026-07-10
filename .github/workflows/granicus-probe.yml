@@ -114,11 +114,16 @@ jobs:
             --output granicus-worker-results.json
       - name: Run sustained Granicus matrix
         if: ${{ inputs.probe_kind == 'sustained' }}
+        env:
+          # durations is a free-form string input; pass through env rather than inlining it in
+          # `run:` shell text (the other inputs on this step are GitHub-validated `number`s, so
+          # they can't carry shell metacharacters the way a `string` input could).
+          DURATIONS: ${{ inputs.durations }}
         run: |
           PYTHONPATH=. python scripts/probe_granicus_sustained.py \
             --ffmpeg "${RUNNER_TEMP}/ffmpeg-static/bin/ffmpeg" \
             --repeat-count "${{ inputs.repeat_count }}" \
-            --durations "${{ inputs.durations }}" \
+            --durations "$DURATIONS" \
             --cooldown-seconds "${{ inputs.cooldown_seconds }}" \
             --output granicus-sustained-results.json
       - name: Upload probe results

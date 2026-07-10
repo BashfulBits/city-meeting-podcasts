@@ -100,8 +100,15 @@ class S3CompatibleStorage:
         try:
             self._client.head_object(Bucket=self.bucket, Key=key)
             return True
-        except ClientError:
-            return False
+        except ClientError as exc:
+            # CR2-CP-52: distinguish genuine absence from a throttling/permission/transient
+            # error, mirroring the sibling get_bytes()'s check — a blanket catch here would
+            # read a real error as "object missing," risking a double-upload or a false orphan.
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("NoSuchKey", "404") or status == 404:
+                return False
+            raise
 
     def put_file(self, key: str, local_path: Path, content_type: str) -> str:
         self._client.upload_file(

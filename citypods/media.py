@@ -2028,6 +2028,11 @@ def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | N
         return None
 
 
+# Public alias for cross-module callers (scripts/availability_digest.py, CR2-SC-08) — the
+# underscore name stays the internal one this module's own callers use.
+probe_duration_secs = _probe_duration_secs
+
+
 @dataclass(frozen=True)
 class AudioDurationProbe:
     """Cheap duration views from ffprobe.
@@ -2626,6 +2631,12 @@ def materialize_audio(
     # Collect episodes that need the expensive encode into to_encode.
     to_encode: list[tuple[Episode, str, str]] = []  # (ep, spec, key)
     encode_cache_keys: dict[int, tuple[str, str, str]] = {}
+    # CR2-CP-45: a cache_key whose leader (earlier episode in *this same* `episodes` list) fell
+    # through to to_encode — its claim() won't resolve (complete()/abort()) until the encode pass
+    # below runs, possibly on another thread. A second episode sharing that key must not call
+    # claim() again on this same (still cheap-pass) thread: it would wait() on a condition only
+    # the not-yet-started encode step can signal, deadlocking this thread against itself.
+    pending_encode_keys: set[tuple[str, str, str]] = set()
     ffmpeg_binary = getattr(ffmpeg, "binary", "ffmpeg")
     src_key = source_key(city)
     stats_lock = threading.Lock()
@@ -2713,8 +2724,11 @@ def materialize_audio(
         )
         uid = ep.uid or ep.guid
         cache_key = (city.provider, uid, spec)
-        if audio_artifact_cache is not None:
-            leader, cached = audio_artifact_cache.claim(cache_key)
+        # See pending_encode_keys above: a same-call duplicate skips the shared cache entirely
+        # (materializes independently) rather than risking a self-deadlock on claim().
+        cache = None if cache_key in pending_encode_keys else audio_artifact_cache
+        if cache is not None:
+            leader, cached = cache.claim(cache_key)
             if not leader:
                 assert cached is not None
                 _apply_artifact(ep, cached)
@@ -2743,8 +2757,8 @@ def materialize_audio(
         errored = bool(ep.materialize_error)
         if spec_ok and present and not errored:
             _backfill_served_duration(ep)
-            if audio_artifact_cache is not None:
-                audio_artifact_cache.complete(cache_key, _artifact(ep))
+            if cache is not None:
+                cache.complete(cache_key, _artifact(ep))
             stats.reused += 1
             continue
         if ep.hosted_audio_url and not present:
@@ -2761,8 +2775,8 @@ def materialize_audio(
             and ep.materialize_error_spec_hash != spec
         )
         if _in_backoff(ep, now) and not repair_spec_changed:
-            if audio_artifact_cache is not None:
-                audio_artifact_cache.abort(cache_key)
+            if cache is not None:
+                cache.abort(cache_key)
             _log_audio_defer(
                 ep,
                 f"{ep.materialize_error or 'error'}-backoff",
@@ -2780,9 +2794,7 @@ def materialize_audio(
             )
 
         canonical_source = (
-            audio_artifact_cache.canonical_source(city.provider, src_key, uid)
-            if audio_artifact_cache is not None
-            else src_key
+            cache.canonical_source(city.provider, src_key, uid) if cache is not None else src_key
         )
         key = f"{city.provider}/{canonical_source}/{uid}-{spec}.m4a"
         # Credit path: the object is already in storage (e.g. a prior run uploaded it but the
@@ -2798,14 +2810,19 @@ def materialize_audio(
             ep.materialize_attempts = 0
             ep.materialize_last_attempt = None
             ep.materialize_error = None
-            if audio_artifact_cache is not None:
-                audio_artifact_cache.complete(cache_key, _artifact(ep))
+            if cache is not None:
+                cache.complete(cache_key, _artifact(ep))
             stats.hosted += 1
             stats.credited += 1
             continue
 
         to_encode.append((ep, spec, key))
-        encode_cache_keys[id(ep)] = cache_key
+        if cache is not None:
+            # Only the genuine leader's key gets tracked for the encode pass below to resolve
+            # (complete()/abort()) — a same-call duplicate (cache is None here) never claimed
+            # the shared key, so it must not touch it from _encode_one either.
+            encode_cache_keys[id(ep)] = cache_key
+            pending_encode_keys.add(cache_key)
 
     if not to_encode:
         return stats

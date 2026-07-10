@@ -494,9 +494,20 @@ const CITY_COLS = [
   {key:'health',     label:'Health',     fmt:r=>`<span class="hist"><span class="ok">✓${r.health_ok}</span><span class="warn"> ⚠${r.health_warn}</span><span class="err"> ✗${r.health_error}</span></span>`},
 ];
 
+function sortValue(r, key){
+  // CR2-CP-26: CITY_COLS' Health column has no `.health` field (only the histogram counts
+  // health_ok/health_warn/health_error) — `r[key]` was always undefined, making the column's
+  // sort a no-op. Rank composite: errors outweigh warns outweigh ok, so "worst health" sorts
+  // to one end. FEED_COLS rows still have a plain `.health` string and are unaffected.
+  if(key==='health' && r.health===undefined){
+    return (r.health_error||0)*1e6 + (r.health_warn||0)*1e3 + (r.health_ok||0);
+  }
+  return r[key];
+}
+
 function sortRows(rows, sort){
   return [...rows].sort((a,b)=>{
-    const va=a[sort.key]??'', vb=b[sort.key]??'';
+    const va=sortValue(a,sort.key)??'', vb=sortValue(b,sort.key)??'';
     if(typeof va==='number'||typeof vb==='number') return sort.dir*(Number(va)-Number(vb));
     return sort.dir*String(va).localeCompare(String(vb));
   });

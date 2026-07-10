@@ -99,6 +99,12 @@ def _hf_download_direct(repo: str, dest: Path, revision: str, token: str | None 
     headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     for filename in _CT2_FILES_REQUIRED + _CT2_FILES_OPTIONAL:
+        if (dest / filename).exists():
+            # CR2-SC-15: writes are atomic (tmp_path.replace() below), so a present file can be
+            # trusted as complete — a retry after a partial failure elsewhere in this loop must
+            # not re-fetch an already-downloaded file like model.bin.
+            print(f"    {filename}: already present, skipping")
+            continue
         url = _resolve_url(repo, revision, filename)
         required = filename in _CT2_FILES_REQUIRED
         try:

@@ -909,6 +909,46 @@ class TestProbeStreamSampleDuration:
         assert ep.materialize_attempts == 1
         assert ep.materialize_error == "timeline-degenerate"
 
+    def test_degenerate_timeline_rolls_back_sources_mutation(self):
+        # CR2-CP-30: the planner replaces `ep.sources` with a fresh SourceMedia *before* the
+        # degenerate check runs; a rejected plan must not leave that fresh (unaccepted) source
+        # in place — roll back to whatever was there before this plan() call.
+        planner = SilencePlanner()
+        ctx = _make_ctx()
+        provider = MagicMock()
+        provider.resolve_media_url.return_value = "http://x.com/video.mp4"
+        prior = Timeline(
+            version="silence:1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=3597.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=3.0,
+                    source_end=3600.0,
+                ),
+            ),
+        )
+        existing_src = SourceMedia(
+            id="s0",
+            provider="swagit",
+            ref="https://stable.example/watch/123",
+            media_kind="hls",
+            duration=3600.0,
+            watch_url="https://watch.example/123",
+            duration_basis="probe",
+        )
+        ep = _make_episode(duration=3600, sources=[existing_src])
+        with (
+            patch("citypods.silence.shutil.which", return_value="ffmpeg"),
+            patch("citypods.silence.detect_silences") as mock_detect,
+        ):
+            mock_detect.return_value = ([(0.0, 3599.99)], 3600.0, 3600.0)
+            result = planner.plan(provider, _make_city(), ep, ctx, prior)
+        assert result is None
+        assert ep.sources == [existing_src]
+
     def test_degenerate_repair_timeline_clears_known_bad_prior(self):
         """A repair-selected prior EDL is not a healthy fallback. If decoded re-planning produces a
         degenerate result, clear the stale EDL so availability/deferred state owns the episode."""

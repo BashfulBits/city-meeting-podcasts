@@ -64,11 +64,18 @@ def _configured_model_or_path(model: str) -> str:
 
 
 def _fmt_ts(seconds: float) -> str:
-    """Format seconds as HH:MM:SS.mmm for WebVTT cue timestamps."""
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = seconds % 60
-    return f"{h:02d}:{m:02d}:{s:06.3f}"
+    """Format seconds as HH:MM:SS.mmm for WebVTT cue timestamps.
+
+    Rounds to whole milliseconds *before* splitting into h/m/s (CR2-CP-19): deriving h/m from
+    unrounded ``seconds`` and only rounding the formatted fractional-second field can carry a
+    value like 119.9996 into a displayed "SS=60.000" when the rounding crosses a minute
+    boundary post-split. Working in integer milliseconds throughout makes the carry exact.
+    """
+    total_ms = round(seconds * 1000)
+    h, rem_ms = divmod(total_ms, 3_600_000)
+    m, rem_ms = divmod(rem_ms, 60_000)
+    s, ms = divmod(rem_ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
 
 
 # Schema version of the word-level JSON sidecar (independent of ASR_PIPELINE_VERSION, which
@@ -319,13 +326,16 @@ def align(
         for w in seg.words
         if getattr(w, "start", None) is not None
     )
-    if total_words > 0:
-        coverage = timed_words / total_words
-        if coverage < _MIN_ALIGN_COVERAGE:
-            raise AlignmentQualityError(
-                f"alignment coverage {coverage:.0%} < {_MIN_ALIGN_COVERAGE:.0%} "
-                f"({timed_words}/{total_words} words timed) — falling back to transcription"
-            )
+    # CR2-CP-18: *text* is only ever non-empty when this path is chosen (stages.py picks
+    # the "align" lane only when align_text is truthy), so total_words == 0 means the aligner
+    # produced no words at all — a total failure, not a vacuously-passing edge case. Treat it
+    # as 0% coverage rather than skipping the gate.
+    coverage = timed_words / total_words if total_words > 0 else 0.0
+    if coverage < _MIN_ALIGN_COVERAGE:
+        raise AlignmentQualityError(
+            f"alignment coverage {coverage:.0%} < {_MIN_ALIGN_COVERAGE:.0%} "
+            f"({timed_words}/{total_words} words timed) — falling back to transcription"
+        )
 
     # Segment-level VTT (clean cue-per-utterance) for the podcast tag; word JSON sidecar
     # from the same aligned result for server-side features.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 from citypods.feeds import enclosure_url, episode_resource_links
 from citypods.models import City, Episode
 from citypods.render import get_env
@@ -15,12 +17,16 @@ def render_redirect_feed(title: str, new_feed_url: str, new_page_url: str) -> st
 
 def render_redirect_page(new_page_url: str) -> str:
     """A minimal HTML page that redirects a moved feed's human page to its new home."""
+    # CR2-CP-11: escape before interpolating into href/meta/anchor text. new_page_url traces to
+    # base_url (site config) + city.slug (operator YAML), not adversarial web input, so
+    # exploitability requires a malicious/typo'd config -- but the gap is real and cheap to close.
+    safe_url = html.escape(new_page_url, quote=True)
     return (
         "<!doctype html><meta charset=utf-8>"
-        f'<link rel=canonical href="{new_page_url}">'
-        f'<meta http-equiv=refresh content="0; url={new_page_url}">'
-        f'<title>Moved</title><p>This page has moved to <a href="{new_page_url}">'
-        f"{new_page_url}</a>.</p>"
+        f'<link rel=canonical href="{safe_url}">'
+        f'<meta http-equiv=refresh content="0; url={safe_url}">'
+        f'<title>Moved</title><p>This page has moved to <a href="{safe_url}">'
+        f"{safe_url}</a>.</p>"
     )
 
 
@@ -83,6 +89,9 @@ def render_city_page(
     site = base_url.rstrip("/")
     city_url = f"{site}/{city.slug}/"
     audio_url = f"{city_url}audio_feed.xml"
+    # CR2-CP-12: keep an episode when it has a usable enclosure of *either* kind the city
+    # actually offers — filtering on audio only meant a video-only city (has_audio=False,
+    # has_video=True) rendered a page with zero episodes despite a populated video feed.
     episode_view = [
         {
             "title": e.title,
@@ -91,7 +100,7 @@ def render_city_page(
             "links": episode_resource_links(e),
         }
         for e in episodes
-        if enclosure_url(e, "audio")
+        if (has_audio and enclosure_url(e, "audio")) or (has_video and enclosure_url(e, "video"))
     ]
     template = get_env().get_template("city.html.j2")
     return template.render(
