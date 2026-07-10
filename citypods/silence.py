@@ -658,6 +658,10 @@ class SilencePlanner:
         source_duration = decoded_duration
         source_duration_basis = "decoded"
 
+        # CR2-CP-30: snapshot so a rejected (degenerate) plan below can roll back the
+        # `ep.sources` mutation instead of leaving the episode holding a fresh SourceMedia the
+        # planner never actually accepted.
+        original_sources = ep.sources
         existing_src = ep.sources[0] if ep.sources else None
         source_id = existing_src.id if existing_src else "s0"
         src = SourceMedia(
@@ -711,6 +715,7 @@ class SilencePlanner:
                 f"kept_segments={len(tl.segments)}",
                 flush=True,
             )
+            ep.sources = original_sources
             if current is not None:
                 if repair_selected:
                     # The canary repair path has already proven the prior EDL is bad. Do not keep

@@ -280,45 +280,50 @@ class GuardedHTTPAdapter(HTTPAdapter):
             kwargs["timeout"] = DEFAULT_TIMEOUT
         stream_requested = kwargs.get("stream", False)
         kwargs["stream"] = True
-        # Per-host concurrency cap (#39): hold the provider's slot only for the network round-trip.
+        # Per-host concurrency cap (#39): hold the provider's slot for the whole network
+        # round-trip *and* the buffered body read below (CR2-CP-10/H4) — that read is the actual
+        # data transfer for the non-streaming (default) path, so releasing the slot before it
+        # would let concurrent buffered downloads to the same host bypass the cap entirely.
         with HOST_LIMITER.slot(request.url):
             response = super().send(request, **kwargs)
-        length = response.headers.get("Content-Length")
-        # Only fast-fail on the declared size when a body might actually get auto-buffered into
-        # ``.content`` below — the case this cap exists to protect (see class docstring). Two
-        # exemptions:
-        #  * HEAD never has a body, regardless of the ``stream`` kwarg — the header only
-        #    describes what a GET *would* return, so there's nothing here to buffer.
-        #  * A caller that explicitly asked to stream (e.g. a Range preflight that reads no body
-        #    at all — ``citypods.http.preflight_media_size``) takes responsibility for its own
-        #    bytes; the incremental ``_CappedRaw`` wrapper below still bounds it if it *does* read.
-        # Before this, a plain HEAD on a legitimately large media URL (which has no body to buffer)
-        # tripped this the same as an oversized buffered GET.
-        if (
-            getattr(request, "method", None) != "HEAD"
-            and not stream_requested
-            and length is not None
-            and length.isdigit()
-            and int(length) > MAX_RESPONSE_BYTES
-        ):
-            response.close()
-            raise SecurityError(
-                f"response from {_redact_url(request.url)} is {length} bytes, "
-                f"exceeds cap {MAX_RESPONSE_BYTES}"
-            )
-        raw = getattr(response, "raw", None)
-        if raw is None:
-            return response
-        response.raw = _CappedRaw(raw, request.url)
-        if not stream_requested:
-            # Caller asked for a buffered response (the default): force the (now capped) read
-            # through the public `.content` property so an oversized or missing/incorrect
-            # Content-Length response can't be fully buffered into memory unchecked, and so
-            # the cap is enforced at the same point a RequestException would otherwise surface.
-            try:
-                _ = response.content
-            finally:
+            length = response.headers.get("Content-Length")
+            # Only fast-fail on the declared size when a body might actually get auto-buffered
+            # into ``.content`` below — the case this cap exists to protect (see class
+            # docstring). Two exemptions:
+            #  * HEAD never has a body, regardless of the ``stream`` kwarg — the header only
+            #    describes what a GET *would* return, so there's nothing here to buffer.
+            #  * A caller that explicitly asked to stream (e.g. a Range preflight that reads no
+            #    body at all — ``citypods.http.preflight_media_size``) takes responsibility for
+            #    its own bytes; the incremental ``_CappedRaw`` wrapper below still bounds it if
+            #    it *does* read.
+            # Before this, a plain HEAD on a legitimately large media URL (which has no body to
+            # buffer) tripped this the same as an oversized buffered GET.
+            if (
+                getattr(request, "method", None) != "HEAD"
+                and not stream_requested
+                and length is not None
+                and length.isdigit()
+                and int(length) > MAX_RESPONSE_BYTES
+            ):
                 response.close()
+                raise SecurityError(
+                    f"response from {_redact_url(request.url)} is {length} bytes, "
+                    f"exceeds cap {MAX_RESPONSE_BYTES}"
+                )
+            raw = getattr(response, "raw", None)
+            if raw is None:
+                return response
+            response.raw = _CappedRaw(raw, request.url)
+            if not stream_requested:
+                # Caller asked for a buffered response (the default): force the (now capped) read
+                # through the public `.content` property so an oversized or missing/incorrect
+                # Content-Length response can't be fully buffered into memory unchecked, and so
+                # the cap is enforced at the same point a RequestException would otherwise
+                # surface.
+                try:
+                    _ = response.content
+                finally:
+                    response.close()
         return response
 
 

@@ -274,6 +274,52 @@ class TestGuardedAdapterHoldsHostSlot:
         finally:
             http_mod.HOST_LIMITER.configure({})  # reset the process-global singleton
 
+    def test_slot_held_across_the_buffered_content_read_not_just_send(self, monkeypatch):
+        """CR2-CP-10/H4: the host slot used to be released right after ``super().send()``, before
+        the non-streaming path's buffered ``response.content`` read — the actual body transfer.
+        Concurrent buffered downloads to the same host must still serialize to the cap."""
+        from citypods import http as http_mod
+
+        monkeypatch.setattr(http_mod, "validate_source_url", lambda *a, **k: None)
+        http_mod.HOST_LIMITER.configure({"granicus.com": 2})
+
+        active = [0]
+        peak = [0]
+        lock = threading.Lock()
+
+        def fake_stream(amt=2**16, **kwargs):
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            time.sleep(0.02)
+            with lock:
+                active[0] -= 1
+            yield b"x" * 10
+
+        def fake_send(self, request, **kwargs):
+            resp = requests.Response()
+            resp.status_code = 200
+            resp.raw = SimpleNamespace(close=lambda: None, stream=lambda *a, **k: fake_stream())
+            return resp
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+        adapter = GuardedHTTPAdapter()
+
+        def work():
+            adapter.send(
+                SimpleNamespace(url="https://archive-video.granicus.com/x.mp4", method="GET")
+            )
+
+        try:
+            ts = [threading.Thread(target=work) for _ in range(8)]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join()
+            assert peak[0] == 2
+        finally:
+            http_mod.HOST_LIMITER.configure({})  # reset the process-global singleton
+
 
 class TestGuardedAdapterTimeoutBackstop:
     """CR2-CP-09/M2: DEFAULT_TIMEOUT was defined but never applied — a caller that forgot
