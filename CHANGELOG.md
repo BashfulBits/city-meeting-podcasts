@@ -157,6 +157,85 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Audit-backlog paydown: review/24's Critical/High/Medium findings, plus the bulk of review/23
+  (100 rows) and review/21 (17 rows), fixed across a themed 11-batch sweep on
+  `fix/repository-code-review-2`.** review/24's own S1 observation was that the audit trail had
+  accumulated a "growing tail of small, individually-minor, already-catalogued correctness/security
+  gaps" with no forcing function to pay it down; this sweep is that paydown, following review/24's
+  Critical → High → Medium → Low remediation order and then closing out the remaining review/23/
+  review/21 rows by theme. Full per-row disposition lives in each doc (review/24's new "Disposition
+  (2026-07-10)" section; review/23's Status column; review/21's inline notes) — summary by theme:
+  - **CI/CD script-injection + secrets scoping (C1/C2/H6, MR-GH-01/02, CR2-GH-*):**
+    `clear-materialization.yml`/`reset-backoff.yml` no longer splice `workflow_dispatch` inputs
+    directly into shell text (script injection) or pipe a uid filter through an env var literally
+    named `UID` (silently shadowed by bash's own readonly builtin, so `--uid` filtering never
+    worked); both gained a default-branch guard before any destructive `apply`/`delete_objects`.
+    Job-level secrets moved to step-level `env:` in `deploy.yml`, `availability-digest.yml`, and
+    `asr.yml`'s reconcile job. `contracts.yml`'s wait loop now polls both `audio.yml` and
+    `granicus-probe.yml` and retries a `gh` failure instead of masking it as `"[]"`; `ci.yml`/
+    `spike-r2-cas.yml` gained `concurrency` groups. The mixed-SHA-pinning half of H6 is deferred to
+    review/22, the separate dependency-pinning effort.
+  - **SSRF gate completion (C3, H1, H3, MR-CP-01/02):** `concat.py`'s legacy multi-segment Swagit
+    duration probe, CivicPlus's HLS-manifest resolver, and Swagit's redirect/scraped media URLs all
+    now call `validate_source_url` explicitly instead of relying on an incidental size-cap side
+    effect; `security._is_blocked_ip` now blocks the RFC 6598 shared address space
+    (`100.64.0.0/10`, used by CGNAT and some cloud-internal routing) that every other private/
+    reserved-range check missed.
+  - **Presigned-URL redaction sweep (H5, MR-CP-03/04, CR2-CP-07/28):** every "detail becomes a
+    public GitHub issue" call site (`audit.py`'s self-heal note, `contracts.py`'s media check,
+    `availability_digest.py`'s issue table) now routes through the existing
+    `redact_subprocess_text`/`_media_fetch_detail`-style redaction instead of raw truncation or
+    partial pipe-only escaping.
+  - **CAS-capability + timeout backstop (H2/M2, CR2-CP-53/09):** `RoutingStorage.put_cas`/
+    `get_bytes` now gate on the backend's own `cas_capable` flag instead of `hasattr`, so a
+    B2-without-R2 backend raises instead of silently degrading a coordination write to
+    non-atomic; `GuardedHTTPAdapter` now applies `DEFAULT_TIMEOUT` when a caller omits `timeout=`.
+  - **Batch-loop resilience (M6, MR-SC-01/02/05, CR2-CP-41):** `gc_audio.py`, `probe_granicus_worker.py`,
+    `stages.py`'s per-source planning, `refresh_fixtures.py`, `check_endpoints.py`, and
+    `clear_run_materializations.py`/`probe_granicus_sustained.py` now record-and-continue (or
+    persist output in a `finally`) instead of letting one item's failure abort the whole run.
+  - **Availability & rendering correctness (M3/M4/M5, MR-TM-01, CR2-CP-02/03/11/12/25):**
+    `with_operator_override(None, None, …)` is now a true no-op instead of fabricating an
+    `AVAILABLE` verdict; an operator override no longer survives a source-fingerprint reset;
+    `render_city_page` now includes video-only episodes; provider-supplied RSS `<link>` values are
+    scheme-validated before reaching an `href`; `admin.html` gained the same `esc()` escaping
+    `status.html` already had.
+  - **Pipeline/report/run correctness (M1/M7/M8/M9 + misc, CR2-CP-18/19/20/22/23/26/29/35/37/39/
+    40/43/45):** `asr_workers: 0` now rejected at config load instead of a runtime
+    `ZeroDivisionError`; VTT timestamps round to whole milliseconds before splitting h/m/s (no
+    more invalid `SS=60.000`); the alignment quality gate no longer skips on a zero-word result;
+    `h16_report` sorts shards numerically past 9; `report.py` routes through the shared UTC-aware
+    ISO parser; `run.py` closes its owned `ffmpeg` process in a `finally`; `http.py`'s per-host
+    concurrency slot now holds across the buffered body read, not just the initial round trip;
+    `materialize_audio` no longer risks a self-deadlock when two episodes in the same call share a
+    cache key; `providers.register` rejects a duplicate name instead of silently overwriting; a
+    stale ASR transcript key can no longer mask a newly-arrived provider transcript as "done" in
+    the workqueue planner.
+  - **scripts/ cleanup (CR2-SC-01/05/06/07/08/09/10/12/15/17, MR-SC-06/07):**
+    `validate_control_plane.py` now fails (instead of silently skipping) the routing check when a
+    backend lacks the introspection method, and mkdir's its `--output` parent;
+    `generate_board_cities.py` normalizes stored body names the same way discovery does and flags
+    same-run slug collisions instead of misreporting them as pre-existing files;
+    `availability_digest.py`'s provider resolve call is now bounded by `--timeout`;
+    `compare_timeline_diagnostics.py`'s fixed/worsened counters are now mutually exclusive;
+    `prepare_whisper.py` skips already-downloaded files on retry; `spike_r2_cas.py` scopes its CAS
+    mechanism-detection to an actual 412, not any client error.
+  - **tests/ + workers/ hygiene (CR2-TS-*, CR2-WK-*):** helper threads across `test_resources.py`/
+    `test_http.py` are `daemon=True`; several tests now assert what their name/docstring claimed
+    (`check_rehost_backlog` actually gets called, `_tick()` is directly callable instead of racing
+    a background thread's timing); a shared `write_local_backend_site_config()` helper replaces 4
+    copies of the same fixture text; the Cloudflare Worker's test suite gained a
+    `WWW-Authenticate` assertion on the missing-bearer case and a plain-GET-without-Range
+    happy-path test.
+  - Deferred, with rationale recorded in the review docs: the mixed-SHA-pinning half of H6/MR-GH-03
+    (→ review/22), `templates/base.html.j2`'s inlined stylesheet (CR2-TM-06, needs a build-pipeline
+    change + snapshot regen), the ffmpeg `file`-protocol whitelist (CR2-CP-06, needs per-call-site
+    local-vs-remote differentiation), `concat.py`'s stop-budget gating on the legacy-segment fetch
+    (CR2-CP-38, reframed by the review itself as a non-urgent efficiency gap), two
+    `audio-runner-image.yml`/Dockerfile rows out of this pass's scope (CR2-GH-10/12), the S3
+    linearizability test harness (standalone testing-infra project), and the `fork()`
+    `DeprecationWarning` in `test_compute_local_process.py` (S5, minor test-only hygiene).
+
 - **The Stage-2 work-lease reaper never actually ran in production, despite `config/site_config.yml`
   saying `work_lease_reaper_enabled: true` since H14b/H14c went live
   ([GH#706](https://github.com/BashfulBits/city-meeting-podcasts/issues/706) §6(b)).** `citypods

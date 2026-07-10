@@ -224,3 +224,48 @@ paydown and hardening, not redesign.
   [`review/17`](17-state-store-backend-evaluation.md), and the companion feature/architecture proposal
   [`review/25`](25-future-features-and-architecture.md).
 - Security posture: [SECURITY.md](../SECURITY.md), [`review/04`](04-audit-bugs-security.md), `security.py`.
+
+## Disposition (2026-07-10)
+
+Paydown pass on `fix/repository-code-review-2` (12 themed batches, P1-P11), working this review's own
+"Recommended remediation order" first, then sweeping the remaining review/23 (100 confirmed-valid rows)
+and review/21 (17 "Fix"-recommended rows) findings by theme. Full per-row detail and rationale live in
+review/23/review/21 themselves (Status column / inline notes, both updated alongside this section);
+this is the C/H/M/Low-level summary S1 asked for.
+
+**Critical — all three fixed (P1, P2):** C1, C2, C3.
+
+**High — five of six fixed; H6 fixed in half:**
+- H1 (P2), H2 (P4), H3 (P2), H4 (P9), H5 (P3) — fixed.
+- H6 — the secrets-scoping half is fixed (P6: `deploy.yml`, `clear-materialization.yml`,
+  `availability-digest.yml`, `reset-backoff.yml`, `asr.yml`'s reconcile job all moved to step-level
+  `env:`). The mixed-SHA-pinning half (MR-GH-03, and review/23's `CR2-GH-01/03/09/11/14/17`) is
+  **deferred to review/22**, the separate, already-in-progress dependency-pinning effort — touching
+  the same `uses:` lines here would collide with that work.
+
+**Medium — all nine fixed (P8, P9):** M1-M9.
+
+**Low/cleanup — all items fixed except one already-correct no-op:**
+- Thread-name crash, VTT `60.000`/zero-word align gate, typed-literal drift (`media_kind`,
+  `MediaUnavailable.code`, `Segment.__post_init__`), redundant `except` clauses,
+  `providers.register` duplicate-name guard, `bench.py`'s private-import — all fixed (P7, P9, P10).
+- `Segment` field-combo's fourth cited ID, `CR2-CP-50`, was already "Confirmed no action" in
+  review/23 (not a real gap) — left as-is, nothing to fix.
+
+**Structural (S1-S5) — process observation, two opportunistic items, two out-of-scope:**
+- S1 (audit backlog as a process gap) — this is the response: the "one audit-sweep PR per theme"
+  approach S1 itself suggested, run end-to-end across review/24 → review/23 → review/21.
+- S2 (module size) — not extracted (large opportunistic refactor, explicitly "not urgent" in the
+  source finding); the one concrete symptom cited (`bench` reaching into `stages._download_audio`)
+  is fixed via a public `download_hosted_audio` alias (P9), same treatment given to
+  `availability_digest.py`'s equivalent reach into `citypods.media._probe_duration_secs` (P10).
+- S3 (linearizability test harness) — deferred; a standalone testing-infrastructure project, not a
+  fix for a specific finding, out of scope for this paydown pass.
+- S4 — architectural commentary, no action item.
+- S5 (fork() `DeprecationWarning` in `test_compute_local_process.py`) — deferred; minor test-only
+  hygiene, not part of the batch plan for this pass, worth a follow-up warning-filter fix.
+
+**Net:** every Critical/High/Medium/Low item in this review is fixed except the SHA-pinning half of
+H6 (deferred to review/22 by design) and the two structural items (S3, S5) noted above as out of
+scope for this pass. See `CHANGELOG.md` for the per-batch entries and review/23/review/21 for the
+underlying `CR2-*`/`MR-*` row-level Status.
