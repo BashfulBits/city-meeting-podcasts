@@ -374,8 +374,10 @@ def normalize_records(
                 legacy_after=legacy_after,
                 probe=probed,
             )
-            if apply and not _matches_probe(canonical_before, probed) and _matches_probe(
-                canonical_after, probed
+            if (
+                apply
+                and not _matches_probe(canonical_before, probed)
+                and _matches_probe(canonical_after, probed)
             ):
                 summary.canonical_written_from_probe += 1
             if _matches_probe(canonical_before, probed) and _matches_probe(canonical_after, probed):
