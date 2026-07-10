@@ -54,19 +54,37 @@ _MODEL_DIR = "/opt/models/faster-whisper-large-v3-turbo"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _site_config_gpu_type(backend: str, path: str | Path = "config/site_config.yml") -> str:
+    """Read ``defaults.compute_backends.<backend>.hardware.gpu_type`` without repo imports."""
+
+    section_stack: list[tuple[int, str]] = []
+    for raw_line in Path(path).read_text().splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        stripped = line.strip()
+        while section_stack and indent <= section_stack[-1][0]:
+            section_stack.pop()
+        if stripped.endswith(":"):
+            section_stack.append((indent, stripped[:-1].strip()))
+            continue
+        if stripped.startswith("gpu_type:") and [name for _indent, name in section_stack] == [
+            "defaults",
+            "compute_backends",
+            backend,
+            "hardware",
+        ]:
+            return stripped.split(":", 1)[1].strip().strip("\"'")
+    return ""
+
+
 def _resolve_gpu() -> str:
     configured_gpu = os.environ.get("CITYPODS_BEAM_GPU")
     if configured_gpu:
         return configured_gpu
 
-    # `beam deploy` imports this module on the caller machine before the remote image build.
-    # Avoid requiring repo runtime deps there unless we truly need the policy fallback.
-    from citypods.compute.policy import backend_policy
-    from citypods.config import load_site_config
-
-    site_config = load_site_config("config/site_config.yml")
-    beam_policy = backend_policy(site_config, "beam")
-    return beam_policy.hardware.gpu_type or "RTX4090"
+    return _site_config_gpu_type("beam") or "RTX4090"
 
 
 GPU = _resolve_gpu()
