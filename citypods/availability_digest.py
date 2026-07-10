@@ -193,6 +193,15 @@ def build_evidence(
     }
 
 
+def _escape_issue_cell(text: str) -> str:
+    """Neutralize provider-scraped text before it lands in a public GitHub-issue markdown table
+    cell (CR2-CP-07): a raw newline would split the row, backticks/pipes would break the table's
+    own syntax, and an ``@mention``-shaped title would trigger a GitHub notification."""
+    text = " ".join(text.split())  # collapse newlines/CR/tabs so the row can't split
+    text = text.replace("|", "\\|").replace("`", "\\`")
+    return text.replace("@", "@​")  # zero-width space defuses @mention parsing
+
+
 def render_issue_body(evidence: list[dict], *, run_url: str | None = None) -> str:
     """Render the digest issue body from the per-candidate evidence records."""
     lines = [
@@ -217,8 +226,8 @@ def render_issue_body(evidence: list[dict], *, run_url: str | None = None) -> st
         declared = ev.get("declared_duration_seconds")
         probed_s = f"{probed:.0f}s" if isinstance(probed, (int, float)) else "—"
         declared_s = f"{declared}s" if isinstance(declared, (int, float)) else "—"
-        watch = ev.get("canonical_source_url") or "—"
-        title = (ev.get("title") or ev.get("uid") or "").replace("|", "\\|")
+        watch = _escape_issue_cell(redact_subprocess_text(ev.get("canonical_source_url") or "—"))
+        title = _escape_issue_cell(ev.get("title") or ev.get("uid") or "")
         lines.append(f"| {title} | {ev['state']} | {probed_s} / {declared_s} | {watch} |")
     return "\n".join(lines) + "\n"
 

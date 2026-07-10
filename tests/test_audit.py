@@ -302,6 +302,22 @@ def test_check_enclosures_files_when_resolve_also_dead():
     assert "re-resolved" in findings[0].message
 
 
+def test_check_enclosures_redacts_presigned_query_in_re_resolved_url():
+    # MR-CP-03: a presigned re-resolved URL must not reach the Finding.message verbatim — this
+    # gets posted into a public GitHub issue by scripts/audit_feeds.py.
+    def head(url):
+        return 403
+
+    def resolve(ep):
+        return "https://x/also-dead.mp4?AWSAccessKeyId=AKIA&Signature=topsecret&Expires=1"
+
+    eps = [_ep(1, "g1", url="https://x/dead.mp4")]
+    findings = check_enclosures("s", eps, head, resolve=resolve)
+    assert len(findings) == 1
+    assert "topsecret" not in findings[0].message
+    assert "re-resolved to 'https://x/also-dead.mp4': HTTP 403" in findings[0].message
+
+
 def test_check_enclosures_files_when_resolve_raises():
     # resolve() itself throws (network error on re-resolve) → still file, with failure note.
     def head(url):

@@ -191,6 +191,41 @@ def test_render_issue_body_has_marker_and_rows():
     assert "https://run" in body
 
 
+def test_render_issue_body_neutralizes_untrusted_scraped_text():
+    """CR2-CP-07: title/watch-page URL are provider-scraped, not maintainer-authored — a raw
+    newline would split the markdown table row, backticks/pipes would break its syntax, an
+    @mention-shaped title would notify a real GitHub user, and a query string on the watch URL
+    could carry a presigned token."""
+    malicious = Candidate(
+        source_key="src",
+        uid="u2",
+        title="Row|break\ntwo `code` @octocat",
+        state="confirmed_empty",
+        reason="silence",
+        detector_version="1",
+        source_fingerprint="fp",
+        profile="noise=-40dB",
+        last_check=None,
+        video_url="https://x/u2.mp4?X-Amz-Signature=SECRET",
+        canonical_url="https://city.gov/watch/u2?token=SECRET",
+        duration=3600,
+    )
+    ev = [
+        build_evidence(malicious, silences=[], source_duration=12.0, untrimmed=None, trimmed=None)
+    ]
+    body = render_issue_body(ev, run_url="https://run")
+    rows = [line for line in body.splitlines() if line.startswith("| Row")]
+    assert len(rows) == 1  # the newline didn't split it into a second row
+    row = rows[0]
+    assert "\n" not in row
+    assert "Row\\|break" in row  # pipe escaped, doesn't break the table
+    assert "\\`code\\`" in row  # backtick escaped
+    assert "@octocat" not in row  # zero-width space defuses the mention
+    assert "@​octo" in row
+    assert "SECRET" not in body
+    assert "token" not in body
+
+
 # --- ffmpeg command builder ----------------------------------------------------------------------
 
 
