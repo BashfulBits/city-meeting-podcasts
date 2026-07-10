@@ -41,10 +41,12 @@ The canonical worker env vars parsed here are:
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -52,12 +54,15 @@ from pathlib import Path
 from typing import Any
 
 from citypods.asr import transcribe
+from citypods.compute.base import InferenceJob
 from citypods.compute.budget import (
     cycle_key,
     load_budget_cas,
+    observe_runtime_estimate,
     reserve_if_available,
     settle_reservation,
 )
+from citypods.compute.local_process import InferenceProcessTerminated, ProcessLocalBackend
 from citypods.compute.policy import backend_policy
 from citypods.compute.worker_telemetry import (
     ResourceTracker,
@@ -71,9 +76,7 @@ from citypods.ops import work_leases
 from citypods.ops.workqueue import (
     BUCKET_FEED_VISIBLE,
     WorkItem,
-    build_manifest,
-    load_manifest,
-    overlay_persisted_operational_state,
+    rebuild_manifest_from_state,
 )
 from citypods.records import (
     episode_to_record,
@@ -82,6 +85,7 @@ from citypods.records import (
     record_to_episode,
     save_records,
     source_key,
+    transcript_timeout_backoff_until,
 )
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
@@ -91,6 +95,8 @@ from citypods.stages import (
     _asr_recipe_hash,
     _asr_words_object_key,
     _download_audio_file,
+    _record_asr_timeout,
+    _reset_asr_timeout_backoff,
 )
 from citypods.state import resolve_state_dir
 from citypods.statesync import pull_state, push_records_merged
@@ -132,6 +138,44 @@ class ExternalWorkerConfig:
     provider_input_id: str | None = None
 
 
+@dataclass(frozen=True)
+class InternalJobTiming:
+    start_deadline: float | None
+    backstop_deadline: float | None
+    timeout_base_seconds: float
+    timeout_per_audio_hour_seconds: float
+    timeout_safety_margin: float
+    timeout_budget_reserve_seconds: float
+
+    def remaining_backstop_seconds(self) -> float | None:
+        if self.backstop_deadline is None:
+            return None
+        return self.backstop_deadline - time.monotonic() - self.timeout_budget_reserve_seconds
+
+    def estimated_fits_backstop(
+        self, estimated_runtime_seconds: float
+    ) -> tuple[bool, float | None]:
+        remaining = self.remaining_backstop_seconds()
+        if remaining is None:
+            return True, None
+        return remaining > 0 and estimated_runtime_seconds <= remaining, remaining
+
+    def per_item_timeout_seconds(self, duration_hours: float) -> float | None:
+        configured = self.timeout_base_seconds + max(0.0, duration_hours) * (
+            self.timeout_per_audio_hour_seconds
+        )
+        if configured <= 0:
+            configured = None
+        else:
+            configured *= max(1.0, self.timeout_safety_margin)
+        remaining = self.remaining_backstop_seconds()
+        if remaining is None:
+            return configured
+        if remaining <= 0:
+            return 0.0
+        return min(configured, remaining) if configured is not None else remaining
+
+
 @dataclass
 class ExternalWorkerSummary:
     backend: str
@@ -141,6 +185,7 @@ class ExternalWorkerSummary:
     completed: int = 0
     adopted: int = 0
     failed: int = 0
+    deferred: int = 0
     budget_declined: int = 0
     unsupported: int = 0
     skipped: int = 0
@@ -183,6 +228,7 @@ class ExternalWorkerSummary:
             "completed": self.completed,
             "adopted": self.adopted,
             "failed": self.failed,
+            "deferred": self.deferred,
             "budget_declined": self.budget_declined,
             "unsupported": self.unsupported,
             "skipped": self.skipped,
@@ -207,13 +253,33 @@ class ExternalWorkerSummary:
 
 
 @dataclass
+class ClaimLoopSummary:
+    scanned: int = 0
+    claimed: int = 0
+    completed: int = 0
+    adopted: int = 0
+    failed: int = 0
+    deferred: int = 0
+    budget_declined: int = 0
+    skipped: int = 0
+
+
+@dataclass
 class CompletedClaim:
     owner: str
     item: WorkItem
     metadata: dict[str, Any]
     outcome: str
+    adopted: bool
     actual_runtime_seconds: float
     estimated_runtime_seconds: float
+    peak_rss_bytes: int | None = None
+    peak_gpu_vram_used_bytes: int | None = None
+    gpu_vram_total_bytes: int | None = None
+
+
+class ClaimDeferred(RuntimeError):
+    """A claimed item should return to the queue/backoff path, not settle terminally failed."""
 
 
 def _int_env(name: str, default: int) -> int:
@@ -500,15 +566,7 @@ class ExternalTranscribeWorker:
             if self.config.work_class not in SUPPORTED_WORK_CLASSES:
                 raise ValueError(f"unsupported external worker class: {self.config.work_class!r}")
 
-            manifest = self._manifest()
-            base_candidates = [
-                wi
-                for wi in manifest
-                if wi.work_class == self.config.work_class
-                and wi.state == "queued"
-                and wi.priority_bucket == BUCKET_FEED_VISIBLE
-                and self._preferred_duration(wi)
-            ]
+            base_candidates = self._base_candidates()
             backlog_present = False
             if self._is_preferred_day():
                 candidates = base_candidates
@@ -523,117 +581,31 @@ class ExternalTranscribeWorker:
             budget_cycle = self._budget_cycle_key(policy)
             summary.budget_cycle_key = budget_cycle
             summary.budget_unit_label = policy.budget.unit_label
-            summary.scanned = len(candidates)
-            ordered = self._ordered(candidates)
-            # ``worked`` counts NEW transcriptions attempted (succeeded or failed) — the thing
-            # ``max_claims`` caps. Items whose artifacts already exist are adopted (cheap, no GPU)
-            # and skipped past without consuming a slot. ``scan_cap`` bounds total leases so a stale
-            # manifest full of already-done items can't make us walk the whole queue.
-            worked = 0
-            scan_cap = (
-                self.config.max_scan
-                if self.config.max_scan is not None
-                else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
+            claim_summary, claims = self._run_claim_loop(
+                candidates,
+                max_worked=effective_claims,
+                should_stop=None,
+                budget_policy=policy,
+                budget_cycle=budget_cycle,
             )
-            for item in ordered:
-                if worked >= effective_claims:
-                    break
-                if summary.claimed >= scan_cap:
-                    break
-                claim_owner = f"{self.config.owner}:{summary.claimed}"
-                held = work_leases.claim(
-                    self.storage,
-                    item.source_key,
-                    item.episode_uid,
-                    owner=claim_owner,
-                    ttl_seconds=self.config.lease_ttl_seconds,
-                    pipeline_version=ASR_PIPELINE_VERSION,
+            summary.scanned = claim_summary.scanned
+            summary.claimed = claim_summary.claimed
+            summary.completed = claim_summary.completed
+            summary.adopted = claim_summary.adopted
+            summary.failed = claim_summary.failed
+            summary.deferred = claim_summary.deferred
+            summary.budget_declined = claim_summary.budget_declined
+            summary.skipped = claim_summary.skipped
+            summary.gpu_seconds = sum(claim.actual_runtime_seconds for claim in claims)
+            for claim in claims:
+                summary.update_resource_peaks(
+                    ResourceTracker(
+                        peak_rss_bytes=claim.peak_rss_bytes,
+                        peak_gpu_vram_used_bytes=claim.peak_gpu_vram_used_bytes,
+                        gpu_vram_total_bytes=claim.gpu_vram_total_bytes,
+                    )
                 )
-                if held is None:
-                    summary.skipped += 1
-                    continue
-                summary.claimed += 1
-                metadata = self._telemetry_metadata(item)
-                estimate, estimated_runtime_seconds = self._estimate_reservation_dollars(
-                    item,
-                    planned_claim_count=max(1, effective_claims),
-                    metadata=metadata,
-                    policy=policy,
-                )
-                cap = policy.budget.spendable_dollars
-                max_inflight = policy.dispatch.max_inflight
-                if (
-                    cap <= 0
-                    or max_inflight <= 0
-                    or not reserve_if_available(
-                        self.storage,
-                        claim_owner,
-                        self.config.backend,
-                        est=estimate,
-                        cap=cap,
-                        max_inflight=max_inflight,
-                        cycle=budget_cycle,
-                    )
-                ):
-                    work_leases.abandon(
-                        self.storage, item.source_key, item.episode_uid, owner=claim_owner
-                    )
-                    summary.budget_declined += 1
-                    break
-
-                started_at = datetime.now(UTC).isoformat()
-                started = time.monotonic()
-                tracker = self._resource_tracker()
-                tracker.record("claim-start")
-                outcome = "failed"
-                actual = 0.0
-                try:
-                    adopted = self._run_with_retry(item, tracker, owner=claim_owner)
-                except Exception:
-                    actual = max(0.0, time.monotonic() - started)
-                    work_leases.release(
-                        self.storage,
-                        item.source_key,
-                        item.episode_uid,
-                        owner=claim_owner,
-                        state="failed",
-                    )
-                    summary.failed += 1
-                    summary.gpu_seconds += actual
-                    worked += 1  # a real (failed) transcription attempt still consumes a slot
-                    outcome = "failed"
-                else:
-                    actual = max(0.0, time.monotonic() - started)
-                    summary.completed += 1
-                    summary.gpu_seconds += actual
-                    if adopted:
-                        summary.adopted += 1  # artifacts already existed; no slot consumed
-                    else:
-                        worked += 1
-                    outcome = "success"
-                finally:
-                    settled_claims.append(
-                        CompletedClaim(
-                            owner=claim_owner,
-                            item=item,
-                            metadata=metadata,
-                            outcome=outcome,
-                            actual_runtime_seconds=actual,
-                            estimated_runtime_seconds=estimated_runtime_seconds,
-                        )
-                    )
-                    tracker.record("claim-finish")
-                    summary.update_resource_peaks(tracker)
-                    worker_tracker.update_from(tracker)
-                    self._append_telemetry_sample(
-                        item=item,
-                        metadata=metadata,
-                        tracker=tracker,
-                        outcome=outcome,
-                        started_at=started_at,
-                        elapsed_seconds=actual,
-                        owner=claim_owner,
-                    )
+            settled_claims.extend(claims)
             return summary
         finally:
             if settled_claims:
@@ -690,10 +662,198 @@ class ExternalTranscribeWorker:
         for _attempt in range(2):
             try:
                 return self._run_with_renewal(item, tracker, owner=owner)
+            except ClaimDeferred:
+                raise
             except Exception as exc:  # noqa: BLE001
                 last = exc
         assert last is not None
         raise last
+
+    def _admit_claim(
+        self,
+        item: WorkItem,
+        *,
+        metadata: dict[str, Any],
+        estimated_runtime_seconds: float,
+    ) -> tuple[bool, str | None]:
+        # A recording that has already timed out locally is exponentially backing off
+        # (``transcript_timeout_backoff_until``, records.py) — without this check that state was
+        # written but never read back, so ``abandon()``'s instant no-TTL requeue (below) let any
+        # worker re-claim and re-time-out the same poisoned item every run. Base-class check (not
+        # ``InternalTranscribeWorker``-only) so Modal/Beam also respect a known-bad item's cooldown
+        # instead of spending provider budget re-attempting it while it backs off. Reads the
+        # deadline off ``metadata`` (``_telemetry_metadata`` already looked the episode up for this
+        # same item) rather than re-fetching it.
+        backoff_until = metadata.get("timeout_backoff_until")
+        if backoff_until is not None and datetime.now(UTC) < backoff_until:
+            return False, f"timeout-backoff until={backoff_until.isoformat()}"
+        return True, None
+
+    def _after_claim(self, claim: CompletedClaim) -> None:
+        return None
+
+    def _run_claim_loop(
+        self,
+        candidates: list[WorkItem],
+        *,
+        max_worked: int | None,
+        should_stop,
+        budget_policy=None,
+        budget_cycle: str | None = None,
+    ) -> tuple[ClaimLoopSummary, list[CompletedClaim]]:
+        summary = ClaimLoopSummary(scanned=len(candidates))
+        settled_claims: list[CompletedClaim] = []
+        ordered = self._ordered(candidates)
+        worked = 0
+        if max_worked is not None and max_worked <= 0:
+            return summary, settled_claims
+        scan_cap = (
+            self.config.max_scan
+            if self.config.max_scan is not None
+            else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
+        )
+        for item in ordered:
+            if should_stop is not None and should_stop():
+                break
+            if max_worked is not None and worked >= max_worked:
+                break
+            if summary.claimed >= scan_cap:
+                break
+            claim_owner = f"{self.config.owner}:{summary.claimed}"
+            held = work_leases.claim(
+                self.storage,
+                item.source_key,
+                item.episode_uid,
+                owner=claim_owner,
+                ttl_seconds=self.config.lease_ttl_seconds,
+                pipeline_version=ASR_PIPELINE_VERSION,
+            )
+            if held is None:
+                summary.skipped += 1
+                continue
+            summary.claimed += 1
+            metadata = self._telemetry_metadata(item)
+            estimated_runtime_seconds = self._estimate_runtime_seconds(
+                item,
+                planned_claim_count=max(1, max_worked or 1),
+                metadata=metadata,
+            )
+            admitted, admit_reason = self._admit_claim(
+                item,
+                metadata=metadata,
+                estimated_runtime_seconds=estimated_runtime_seconds,
+            )
+            if not admitted:
+                work_leases.abandon(
+                    self.storage,
+                    item.source_key,
+                    item.episode_uid,
+                    owner=claim_owner,
+                )
+                summary.skipped += 1
+                if admit_reason:
+                    print(
+                        f"[{self.config.backend}-worker] skipped "
+                        f"{item.source_key}/{item.episode_uid} "
+                        f"reason={admit_reason}",
+                        flush=True,
+                    )
+                continue
+            if budget_policy is not None:
+                estimate = estimated_runtime_seconds * self._estimated_dollars_per_runtime_second(
+                    budget_policy
+                )
+                cap = budget_policy.budget.spendable_dollars
+                max_inflight = budget_policy.dispatch.max_inflight
+                if (
+                    cap <= 0
+                    or max_inflight <= 0
+                    or not reserve_if_available(
+                        self.storage,
+                        claim_owner,
+                        self.config.backend,
+                        est=estimate,
+                        cap=cap,
+                        max_inflight=max_inflight,
+                        cycle=budget_cycle,
+                    )
+                ):
+                    work_leases.abandon(
+                        self.storage, item.source_key, item.episode_uid, owner=claim_owner
+                    )
+                    summary.budget_declined += 1
+                    break
+
+            started_at = datetime.now(UTC).isoformat()
+            started = time.monotonic()
+            tracker = self._resource_tracker()
+            tracker.record("claim-start")
+            outcome = "failed"
+            actual = 0.0
+            adopted = False
+            try:
+                adopted = self._run_with_retry(item, tracker, owner=claim_owner)
+            except ClaimDeferred:
+                actual = max(0.0, time.monotonic() - started)
+                work_leases.abandon(
+                    self.storage,
+                    item.source_key,
+                    item.episode_uid,
+                    owner=claim_owner,
+                )
+                summary.deferred += 1
+                # Not a real (successful or failed) transcription attempt — a timeout, a stop
+                # request, or a backstop miss all hand the item straight back to the queue/backoff
+                # path, so it must not consume a ``max_claims`` slot the way a genuine attempt does
+                # (a run full of timeouts would otherwise report itself "done" with zero output).
+                outcome = "deferred"
+            except Exception:
+                actual = max(0.0, time.monotonic() - started)
+                work_leases.release(
+                    self.storage,
+                    item.source_key,
+                    item.episode_uid,
+                    owner=claim_owner,
+                    state="failed",
+                )
+                summary.failed += 1
+                worked += 1
+                outcome = "failed"
+            else:
+                actual = max(0.0, time.monotonic() - started)
+                summary.completed += 1
+                if adopted:
+                    summary.adopted += 1
+                else:
+                    worked += 1
+                outcome = "success"
+            finally:
+                settled_claims.append(
+                    CompletedClaim(
+                        owner=claim_owner,
+                        item=item,
+                        metadata=metadata,
+                        outcome=outcome,
+                        adopted=adopted,
+                        actual_runtime_seconds=actual,
+                        estimated_runtime_seconds=estimated_runtime_seconds,
+                        peak_rss_bytes=tracker.peak_rss_bytes,
+                        peak_gpu_vram_used_bytes=tracker.peak_gpu_vram_used_bytes,
+                        gpu_vram_total_bytes=tracker.gpu_vram_total_bytes,
+                    )
+                )
+                self._after_claim(settled_claims[-1])
+                tracker.record("claim-finish")
+                self._append_telemetry_sample(
+                    item=item,
+                    metadata=metadata,
+                    tracker=tracker,
+                    outcome=outcome,
+                    started_at=started_at,
+                    elapsed_seconds=actual,
+                    owner=claim_owner,
+                )
+        return summary, settled_claims
 
     def _renew_interval(self) -> float:
         """Seconds between lease renewals during one inference. Capped at 300s so a renewal always
@@ -755,21 +915,21 @@ class ExternalTranscribeWorker:
         return work_leases.ordered_candidates(items, self.config.owner)
 
     def _manifest(self) -> list[WorkItem]:
-        from citypods.ops.workqueue import BacklogPolicy
+        return rebuild_manifest_from_state(
+            self.cities,
+            site_config=self.site_config,
+            state_dir=self.state_dir,
+        )
 
-        defaults = self.site_config.get("defaults") or {}
-        persisted = load_manifest(self.state_dir)
-        if not self._city_by_source:
-            return persisted
-        backlog_policy = None
-        if self.site_config.get("backlog_priority") or defaults.get("backlog_priority"):
-            backlog_policy = BacklogPolicy.from_site_config(self.site_config)
-        manifest_sources = [
-            (src, city, load_records(self.state_dir, src))
-            for src, city in self._city_by_source.items()
+    def _base_candidates(self) -> list[WorkItem]:
+        return [
+            wi
+            for wi in self._manifest()
+            if wi.work_class == self.config.work_class
+            and wi.state == "queued"
+            and wi.priority_bucket == BUCKET_FEED_VISIBLE
+            and self._preferred_duration(wi)
         ]
-        derived = build_manifest(manifest_sources, policy=backlog_policy)
-        return overlay_persisted_operational_state(derived, persisted)
 
     def _city_for(self, item: WorkItem) -> City:
         if item.city_slug and item.city_slug in self._city_by_slug:
@@ -902,12 +1062,17 @@ class ExternalTranscribeWorker:
                 "duration_hours": float(item.duration_hours or 0.0),
                 "model": None,
                 "compute_type": None,
+                "timeout_backoff_until": None,
             }
         hours, _source = episode_duration_hours(ep)
         return {
             "duration_hours": hours,
             "model": city.asr_model,
             "compute_type": city.asr_compute_type,
+            # Carried alongside the other per-episode lookups this method already does, so
+            # ``_admit_claim`` can gate on it without a second ``_episode_for``/``load_records``
+            # round trip for the same item.
+            "timeout_backoff_until": transcript_timeout_backoff_until(ep),
         }
 
     def _model(self, city: City, tracker: ResourceTracker | None = None):
@@ -942,6 +1107,52 @@ class ExternalTranscribeWorker:
                         tracker.record("after-model-load")
         return self._models[key]
 
+    def _transcribe_fresh(
+        self,
+        item: WorkItem,
+        city: City,
+        ep: Episode,
+        audio_path: Path,
+        tracker: ResourceTracker,
+        *,
+        model_num_workers: int = 1,
+    ):
+        model = self._model_with_workers(city, tracker, num_workers=model_num_workers)
+        tracker.record("before-asr")
+        artifacts = transcribe(
+            audio_path,
+            model,
+            city.asr_language or None,
+            city.asr_compute_type,
+            city.asr_beam_size,
+            None,
+            self.config.cpu_threads,
+        )
+        tracker.record("after-asr")
+        return artifacts
+
+    def _push_owned_transcript_record(
+        self,
+        item: WorkItem,
+        ep: Episode,
+        records: dict,
+        *,
+        ref_uid: str,
+    ) -> None:
+        records[item.episode_uid] = episode_to_record(ep)
+        save_records(self.state_dir, item.source_key, records)
+        pushed = push_records_merged(
+            self.storage,
+            self.state_dir,
+            [item.source_key],
+            protected_blocks=protected_blocks_for_lane("transcribe"),
+            owned_uids={item.source_key: frozenset({item.episode_uid})},
+        )
+        if pushed != 1:
+            raise RuntimeError(
+                f"failed to push owned transcript record for {item.source_key}/{ref_uid}"
+            )
+
     def _run_transcribe_item(
         self,
         item: WorkItem,
@@ -969,23 +1180,20 @@ class ExternalTranscribeWorker:
                 flush=True,
             )
             _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
+            _reset_asr_timeout_backoff(ep)
         else:
             with tempfile.TemporaryDirectory() as td:
                 audio_path = Path(td) / "audio.m4a"
                 _download_audio_file(ep.hosted_audio_url, audio_path)
                 tracker.record("after-audio-download")
-                model = self._model_with_workers(city, tracker, num_workers=model_num_workers)
-                tracker.record("before-asr")
-                artifacts = transcribe(
+                artifacts = self._transcribe_fresh(
+                    item,
+                    city,
+                    ep,
                     audio_path,
-                    model,
-                    city.asr_language or None,
-                    city.asr_compute_type,
-                    city.asr_beam_size,
-                    None,
-                    self.config.cpu_threads,
+                    tracker,
+                    model_num_workers=model_num_workers,
                 )
-                tracker.record("after-asr")
                 if not persist_results:
                     return False
                 vtt_path = Path(td) / "transcript.vtt"
@@ -1005,30 +1213,19 @@ class ExternalTranscribeWorker:
                 ep.transcript_format = "vtt"
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True
+                _reset_asr_timeout_backoff(ep)
                 _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
                 tracker.record("after-artifact-upload")
 
         if not persist_results:
             return adopted
 
-        records[item.episode_uid] = episode_to_record(ep)
-        save_records(self.state_dir, item.source_key, records)
         # Durably persist the owned transcript block back to canonical storage. This MUST run for
         # both fresh transcriptions and adoptions: the local ``save_records`` above only touches
         # the ephemeral worker filesystem, which is discarded when the Modal/Beam function exits.
         # Without this push the artifact lands in object storage but the record silently loses its
         # ``transcript`` block (GH#833 symptom), so the item looks un-transcribed to later runs.
-        pushed = push_records_merged(
-            self.storage,
-            self.state_dir,
-            [item.source_key],
-            protected_blocks=protected_blocks_for_lane("transcribe"),
-            owned_uids={item.source_key: frozenset({item.episode_uid})},
-        )
-        if pushed != 1:
-            raise RuntimeError(
-                f"failed to push owned transcript record for {item.source_key}/{uid}"
-            )
+        self._push_owned_transcript_record(item, ep, records, ref_uid=uid)
         return adopted
 
     def _append_telemetry_sample(
@@ -1081,6 +1278,180 @@ class ExternalTranscribeWorker:
             print(f"[external-worker] telemetry warning: {exc}", flush=True)
 
 
+class InternalTranscribeWorker(ExternalTranscribeWorker):
+    """GitHub Actions pull worker with local-only admission and a killable per-item backstop."""
+
+    def __init__(
+        self,
+        *,
+        timing: InternalJobTiming,
+        local_backend: ProcessLocalBackend,
+        stop_requested: Callable[[], bool] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.timing = timing
+        self.local_backend = local_backend
+        self.stop_requested = stop_requested
+        self.max_duration_hours = max(
+            0.0,
+            float((self.site_config.get("defaults") or {}).get("asr_local_max_duration_hours", 4)),
+        )
+
+    def close(self) -> None:
+        self.local_backend.close()
+
+    def _base_candidates(self) -> list[WorkItem]:
+        candidates = super()._base_candidates()
+        eligible = [
+            wi
+            for wi in candidates
+            if wi.duration_hours > 0
+            and (self.max_duration_hours <= 0 or wi.duration_hours <= self.max_duration_hours)
+        ]
+        eligible.sort(
+            key=lambda wi: (
+                wi.duration_hours,
+                -(wi.published.timestamp()) if wi.published else 0,
+            )
+        )
+        return eligible
+
+    def _admit_claim(
+        self,
+        item: WorkItem,
+        *,
+        metadata: dict[str, Any],
+        estimated_runtime_seconds: float,
+    ) -> tuple[bool, str | None]:
+        admitted, reason = super()._admit_claim(
+            item, metadata=metadata, estimated_runtime_seconds=estimated_runtime_seconds
+        )
+        if not admitted:
+            return admitted, reason
+        duration_hours = float(metadata.get("duration_hours") or 0.0)
+        if duration_hours <= 0:
+            return False, "unknown-duration"
+        if self.max_duration_hours > 0 and duration_hours > self.max_duration_hours:
+            return False, "local-duration-cap"
+        fits, remaining = self.timing.estimated_fits_backstop(estimated_runtime_seconds)
+        if not fits:
+            remaining_label = (
+                f"{remaining:.0f}s" if isinstance(remaining, (int, float)) else "unknown"
+            )
+            return (
+                False,
+                f"insufficient-backstop estimate={estimated_runtime_seconds:.0f}s "
+                f"remaining={remaining_label}",
+            )
+        return True, None
+
+    def _after_claim(self, claim: CompletedClaim) -> None:
+        if claim.outcome != "success" or claim.adopted:
+            return
+        audio_seconds = self._audio_seconds(claim.item, claim.metadata)
+        if audio_seconds <= 0 or claim.actual_runtime_seconds <= 0:
+            return
+        observe_runtime_estimate(
+            self.storage,
+            self._runtime_estimate_key(claim.item, claim.metadata),
+            audio_seconds=audio_seconds,
+            actual_runtime_seconds=claim.actual_runtime_seconds,
+            estimated_runtime_seconds=claim.estimated_runtime_seconds,
+            default_seconds_per_audio_second=max(
+                0.0, self.config.estimated_runtime_seconds_per_audio_second
+            ),
+        )
+
+    def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker, *, owner: str) -> bool:
+        return self._run_with_renewal(item, tracker, owner=owner)
+
+    def _transcribe_fresh(
+        self,
+        item: WorkItem,
+        city: City,
+        ep: Episode,
+        audio_path: Path,
+        tracker: ResourceTracker,
+        *,
+        model_num_workers: int = 1,
+    ):
+        del model_num_workers
+        duration_hours, _source = episode_duration_hours(ep)
+        timeout_s = self.timing.per_item_timeout_seconds(duration_hours)
+        if timeout_s is not None and timeout_s <= 0:
+            raise ClaimDeferred("backstop-spent")
+        result: list[Any] = []
+        errors: list[BaseException] = []
+
+        def _infer() -> None:
+            try:
+                tracker.record("before-asr")
+                result.append(
+                    self.local_backend.run_inference(
+                        InferenceJob(
+                            task="transcribe",
+                            inputs={
+                                "audio_path": audio_path,
+                                "model": city.asr_model,
+                                "language": city.asr_language or None,
+                                "compute_type": city.asr_compute_type,
+                                "beam_size": city.asr_beam_size,
+                                "initial_prompt": None,
+                                "cpu_threads": self.config.cpu_threads,
+                            },
+                            recipe_hash=_asr_recipe_hash(city, ep, None),
+                        )
+                    ).output
+                )
+                tracker.record("after-asr")
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        thread = threading.Thread(
+            target=_infer,
+            name=f"citypods-internal-asr-{item.episode_uid[:8]}",
+            daemon=True,
+        )
+        thread.start()
+        timeout_at = time.monotonic() + timeout_s if timeout_s is not None else None
+        while thread.is_alive():
+            if timeout_at is not None and time.monotonic() >= timeout_at:
+                self.local_backend.terminate_active()
+                thread.join(timeout=10)
+                self._record_timeout_backoff(item)
+                raise ClaimDeferred("timeout")
+            if self.stop_requested is not None and self.stop_requested():
+                self.local_backend.terminate_active()
+                thread.join(timeout=10)
+                raise ClaimDeferred("stop-requested")
+            time.sleep(0.1)
+        if errors:
+            exc = errors[0]
+            if isinstance(exc, InferenceProcessTerminated):
+                raise ClaimDeferred("local-worker-terminated") from exc
+            raise exc
+        return result[0]
+
+    def _record_timeout_backoff(self, item: WorkItem) -> None:
+        city, ep, records = self._episode_for(item)
+        del city
+        _record_asr_timeout(ep)
+        try:
+            self._push_owned_transcript_record(item, ep, records, ref_uid=ep.uid or ep.guid)
+        except Exception as exc:  # noqa: BLE001 - best-effort bookkeeping, not the retry decision
+            # A push failure here (e.g. a transient remote-read hiccup) must not turn into an
+            # uncaught exception that escapes past the caller's `raise ClaimDeferred("timeout")`
+            # below — that would land in _run_claim_loop's generic except-Exception branch, which
+            # settles the lease terminally `failed` instead of the retryable requeue this is
+            # supposed to be. The backoff counter simply stays unrecorded for this attempt.
+            print(
+                f"[github-actions-worker] warning: failed to push timeout backoff for "
+                f"{item.source_key}/{item.episode_uid}: {exc}",
+                flush=True,
+            )
+
+
 def run_worker(
     *,
     backend: str,
@@ -1112,6 +1483,109 @@ def run_worker(
     )
     summary = worker.run().to_dict()
     summary["finished_at"] = datetime.now(UTC).isoformat()
+    return summary
+
+
+def run_internal_worker(
+    *,
+    owner: str | None = None,
+    max_claims: int | None = None,
+    max_scan: int | None = None,
+    site_config_path: str = "config/site_config.yml",
+    config_dir: str = "config",
+    output_dir: str = "docs",
+    base_url: str | None = None,
+) -> dict[str, Any]:
+    from citypods.run import StopSignal, _newer_run_queued, interrupt_requested
+
+    site_config = load_site_config(site_config_path)
+    defaults = site_config.get("defaults") or {}
+    base_url = base_url or site_config.get("base_url", "")
+    output = Path(output_dir)
+    storage = make_storage(site_config, base_url, output)
+    if storage is None:
+        raise RuntimeError("internal worker requires configured routing storage")
+    if not getattr(storage, "cas_capable", False):
+        raise RuntimeError("internal worker requires CAS-capable routing storage for work leases")
+
+    cities = load_city_configs(config_dir, defaults)
+    state_dir = resolve_state_dir(site_config, output)
+    pull_state(storage, state_dir)
+    run_id = os.environ.get("GITHUB_RUN_ID") or "local"
+    slot = os.environ.get("CITYPODS_INTERNAL_WORKER_SLOT") or "0"
+    policy = backend_policy(site_config, "github-actions")
+    cfg = ExternalWorkerConfig(
+        backend="github-actions",
+        owner=owner or f"github-actions:{run_id}:{slot}",
+        max_claims=max_claims if max_claims is not None else sys.maxsize,
+        max_scan=max_scan,
+        lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
+        work_class="transcript-asr",
+        estimated_runtime_seconds_per_audio_second=(
+            policy.task.estimated_runtime_seconds_per_audio_second
+        ),
+        min_runtime_seconds=policy.task.min_runtime_seconds,
+        fixed_runtime_seconds_per_run=policy.task.fixed_runtime_seconds_per_run,
+        fixed_runtime_seconds_per_claim=policy.task.fixed_runtime_seconds_per_claim,
+        device=os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cpu"),
+        cpu_threads=_int_env("CITYPODS_WORKER_CPU_THREADS", 4),
+    )
+    start_cutoff_min = float(defaults.get("asr_start_cutoff_minutes", 285))
+    backstop_min = float(defaults.get("asr_backstop_minutes", 350))
+    now = time.monotonic()
+    start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+    backstop_deadline = now + backstop_min * 60 if backstop_min > 0 else None
+    start_stop = StopSignal(deadline=start_deadline, superseded=_newer_run_queued)
+    claim_stop = StopSignal(deadline=None, superseded=_newer_run_queued)
+    worker = InternalTranscribeWorker(
+        config=cfg,
+        site_config=site_config,
+        cities=cities,
+        state_dir=state_dir,
+        storage=storage,
+        timing=InternalJobTiming(
+            start_deadline=start_deadline,
+            backstop_deadline=backstop_deadline,
+            timeout_base_seconds=60 * float(defaults.get("asr_timeout_base_minutes", 15)),
+            timeout_per_audio_hour_seconds=60
+            * float(defaults.get("asr_timeout_per_audio_hour_minutes", 30)),
+            timeout_safety_margin=float(defaults.get("asr_timeout_safety_margin", 1.2)),
+            timeout_budget_reserve_seconds=60
+            * float(defaults.get("asr_timeout_budget_reserve_minutes", 1)),
+        ),
+        local_backend=ProcessLocalBackend(),
+        stop_requested=lambda: interrupt_requested() or claim_stop(),
+    )
+    print(
+        f"budget: transcribe start cutoff {start_cutoff_min:.0f}m, "
+        f"claim backstop {backstop_min:.0f}m, hard local duration cap "
+        f"{float(defaults.get('asr_local_max_duration_hours', 4)):.1f}h",
+        flush=True,
+    )
+    try:
+        claim_summary, _claims = worker._run_claim_loop(
+            worker._base_candidates(),
+            max_worked=None if max_claims is None else max_claims,
+            should_stop=start_stop,
+            budget_policy=None,
+            budget_cycle=None,
+        )
+    finally:
+        worker.close()
+    summary = {
+        "backend": "github-actions",
+        "owner": cfg.owner,
+        "scanned": claim_summary.scanned,
+        "claimed": claim_summary.claimed,
+        "completed": claim_summary.completed,
+        "adopted": claim_summary.adopted,
+        "failed": claim_summary.failed,
+        "deferred": claim_summary.deferred,
+        "skipped": claim_summary.skipped,
+        "finished_at": datetime.now(UTC).isoformat(),
+        "stopped": bool(start_stop and start_stop.fired_reason),
+        "stop_reason": start_stop.fired_reason if start_stop else None,
+    }
     return summary
 
 

@@ -1,9 +1,9 @@
 name: ASR
 
-# Transcription lane (H6b): faster-whisper ASR over episodes that already have hosted audio,
-# sharded by source_key (scoped push_state, no cross-shard clobber). Runs `--lane transcribe`, so
-# only the fresh-transcription model loads — stable-ts alignment is a separate, currently-unscheduled
-# `--lane align` job, kept apart so the two ASR models never co-load on one runner (review/12 §H6).
+# Transcription lane: identical pull workers claim transcript work from the shared Stage-2 lease
+# ledger until their stop budget, so GitHub Actions is "just another worker" instead of the static
+# shard-plan owner. stable-ts alignment remains a separate, currently-unscheduled lane so the two
+# ASR models never co-load on one runner (review/18 §4.3 / H19).
 
 on:
   schedule:
@@ -27,13 +27,13 @@ permissions:
 jobs:
   asr:
     runs-on: ubuntu-latest
-    # Reap dead workers + roll the free-tier budget once (globally) before any shard dispatches (H14a).
+    # Rebuild the discovery index + reap dead workers once before any internal pull worker claims.
     needs: reconcile
     strategy:
       fail-fast: false
       matrix:
-        # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
-        shard: [0, 1, 2, 3]
+        # 4 identical internal pull workers. The slot only seeds a distinct claim-scan offset.
+        slot: [0, 1, 2, 3]
     env:
       # ASR keeps Whisper weights in the existing Actions-cache/B2 cascade, but uses the same
       # checksum-pinned ffmpeg runtime as Audio instead of depending on Ubuntu package mirrors.
@@ -49,20 +49,6 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-
-      # The reconcile job restored B2 once, reconciled leases, and planned source ownership from
-      # that exact snapshot. Every matrix job downloads the same immutable artifact instead of
-      # independently listing/downloading the complete B2 state prefix and recomputing ownership.
-      - name: Download canonical ASR snapshot + shard plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        # download-artifact v8 currently emits Node's upstream Buffer() deprecation from its
-        # bundled dependency. Suppress deprecations for this action process only; application and
-        # Python warnings remain fully visible.
-        env:
-          NODE_OPTIONS: --no-deprecation
-        with:
-          name: asr-planner-${{ github.run_id }}
-          path: .
 
       - name: Install
         # The scheduled lane never aligns, so do not install stable-ts/torch or benchmark-only jiwer.
@@ -105,19 +91,16 @@ jobs:
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
         run: python scripts/prepare_whisper.py
 
-      # Transcribe this shard's sources only. On a newer queued run (or the 285m start cutoff) the
-      # shard stops starting new ASR, lets any in-flight transcript finish (or hit the 350m
-      # backstop), pushes state, and exits 0 — the graceful yield is exit 0, not 143. The 143
-      # branch below is a fallback: a genuine SIGTERM (Actions 6h hard cap / manual cancel) arriving
-      # after the stop signal, which we treat as a benign yield since the next run resumes from
-      # persisted state.
-      - name: ASR (shard ${{ matrix.shard }}/4)
+      # Each worker claims from the shared transcript queue until the start cutoff or a newer run
+      # is queued behind it. Completion persists per-item; the next run resumes from storage.
+      - name: ASR worker ${{ matrix.slot }}/4
         id: asr
         env:
           # Lets the shard poll the Actions API and yield gracefully when a newer run is queued
           # behind it. Not auto-exported by Actions, so pass it explicitly. (Guarded by
           # test_workflows.)
           GITHUB_TOKEN: ${{ github.token }}
+          CITYPODS_INTERNAL_WORKER_SLOT: ${{ matrix.slot }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
@@ -131,24 +114,19 @@ jobs:
         run: |
           set +e
           log="${RUNNER_TEMP:-/tmp}/citypods-asr.log"
-          citypods enrich \
-            --lane transcribe \
-            --shard ${{ matrix.shard }}/4 \
-            --shard-plan .citypods-asr-shard-plan.json \
-            --state-snapshot-restored \
+          citypods compute run-internal-worker \
             2>&1 | tee "$log"
           code=${PIPESTATUS[0]}
           set -e
           if [ "$code" -eq 143 ] && grep -q "stop: newer build queued behind this run" "$log"; then
-            echo "::warning title=ASR yielded to newer run::Shard ${{ matrix.shard }} hit exit 143 (SIGTERM) after the stop signal — the designed yield is exit 0, so this is the Actions hard cap landing mid-yield. The queued run resumes from persisted state."
+            echo "::warning title=ASR yielded to newer run::Worker ${{ matrix.slot }} hit exit 143 (SIGTERM) after the stop signal — the designed yield is exit 0, so this is the Actions hard cap landing mid-yield. The queued run resumes from persisted state."
             exit 0
           fi
           exit "$code"
 
-  # Run-start reconcile (H14a): reap a crashed external worker's expired lease (→ re-queue the item),
-  # settle completed dispatch jobs, and roll the monthly free-tier budget — once, against the GLOBAL
-  # work.json + compute_budget.json, before the sharded `asr` job (which `needs` it) dispatches more.
-  # No Whisper model / ffmpeg: it only lists objects and reads/writes JSON state.
+  # Run-start control plane: restore state, rebuild the transcript discovery index, reap dead
+  # external claims, and roll the free-tier budget once before the identical pull workers claim.
+  # No Whisper model / ffmpeg: it only reads/writes JSON state.
   reconcile:
     runs-on: ubuntu-latest
     steps:
@@ -164,10 +142,9 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
 
-      # Only this step touches storage (restores the canonical B2 snapshot); scope the secrets
-      # here instead of job-level (CR2-GH-16/MR-GH-02) — plan-shards below reads only the local
-      # state this step already restored, and checkout/setup-python/install need no credentials.
-      - name: Reconcile dispatch leases + free-tier budget
+      # Only this step touches storage; scope the secrets here instead of job-level
+      # (CR2-GH-16/MR-GH-02) so checkout/setup-python/install remain credential-free.
+      - name: Rebuild work index + reconcile dispatch leases + free-tier budget
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -180,21 +157,3 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: citypods compute reconcile
-
-      - name: Plan canonical ASR shard ownership
-        run: |
-          citypods compute plan-shards \
-            --lane transcribe \
-            --shards 4 \
-            --output .citypods-asr-shard-plan.json
-
-      - name: Upload canonical ASR snapshot + shard plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: asr-planner-${{ github.run_id }}
-          path: |
-            .citypods-state
-            .citypods-asr-shard-plan.json
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1

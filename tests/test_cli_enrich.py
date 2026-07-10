@@ -44,3 +44,42 @@ def test_enrich_defaults_are_unsharded_full_lane(monkeypatch):
     assert captured["source"] is None
     assert captured["lane"] is None
     assert captured["dry_run"] is False
+
+
+def test_compute_run_internal_worker_routes_to_dedicated_entrypoint(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(
+        cli,
+        "_compute_run_internal_worker",
+        lambda args: (
+            captured.update(
+                {
+                    "owner": args.owner,
+                    "max_claims": args.max_claims,
+                    "max_scan": args.max_scan,
+                }
+            )
+            or 0
+        ),
+    )
+
+    rc = cli.main(
+        [
+            "compute",
+            "run-internal-worker",
+            "--owner",
+            "github-actions:test:1",
+            "--max-claims",
+            "3",
+            "--max-scan",
+            "9",
+        ]
+    )
+
+    assert rc == 0
+    assert captured == {
+        "owner": "github-actions:test:1",
+        "max_claims": 3,
+        "max_scan": 9,
+    }

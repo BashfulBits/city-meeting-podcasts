@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   report:
@@ -39,7 +40,54 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]"
 
+      # ASR-timeout-backoff watchdog (H19 hardening follow-up): a recording that keeps timing out
+      # locally now backs off (records.py's transcript_timeout_backoff_until) instead of being
+      # re-claimed every run, but that backoff was silent — nothing paged an operator when a
+      # recording was durably stuck rather than just having a rough run. `--out` also writes the
+      # watchdog payload/flag/issue-body files consumed by the steps below (mirrors
+      # check_reclaim_resurrection.py's report shape).
       - name: Build ASR worker report
+        id: report
         env:
           RECENT: ${{ github.event.inputs.recent || '0' }}
-        run: python scripts/compute/report_workers.py --markdown --recent "$RECENT" | tee "$GITHUB_STEP_SUMMARY"
+        run: |
+          python scripts/compute/report_workers.py --markdown --recent "$RECENT" --out asr-backoff-watchdog \
+            | tee "$GITHUB_STEP_SUMMARY"
+          echo "has_asr_timeout_backoff=$(cat asr-backoff-watchdog/has_asr_timeout_backoff 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
+
+      # N-in-a-row stuck recordings → open/refresh ONE issue. Stable title (counts/detail live in
+      # the body) so it dedups across daily runs instead of spawning a new issue every day.
+      - name: Open or update ASR timeout-backoff issue
+        if: steps.report.outputs.has_asr_timeout_backoff == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="ASR timeout backoff: stuck recordings"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          printf '\n\n> Report run: %s\n' "$RUN_URL" >> asr-backoff-watchdog/issue-body.md
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
+            | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --body-file asr-backoff-watchdog/issue-body.md
+            echo "Updated ASR timeout-backoff issue #$EXISTING"
+          else
+            URL=$(gh issue create --title "$TITLE" --body-file asr-backoff-watchdog/issue-body.md)
+            echo "Opened ASR timeout-backoff issue: $URL"
+            gh issue edit "$URL" --add-label "area:ops" --add-label "type:operations" \
+              || echo "::warning title=ASR backoff issue label::could not add labels (issue still created)"
+          fi
+
+      # Clean sweep → close any open backoff issue (the stuck recording(s) recovered or were fixed).
+      - name: Close ASR timeout-backoff issue when clear
+        if: steps.report.outputs.has_asr_timeout_backoff == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="ASR timeout backoff: stuck recordings"
+          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
+            | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "No recording currently stuck in ASR timeout backoff — closing."
+            gh issue close "$EXISTING"
+            echo "Closed ASR timeout-backoff issue #$EXISTING"
+          fi

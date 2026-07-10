@@ -72,7 +72,12 @@ def test_heavy_workflow_wires_graceful_yield(workflow, lane, job_name):
     assert wf.get("permissions", {}).get("actions") == "read", (
         f"{workflow} must grant `actions: read`, or graceful yield silently no-ops"
     )
-    step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    step = next(
+        s
+        for s in job["steps"]
+        if "citypods enrich" in str(s.get("run", ""))
+        or "citypods compute run-internal-worker" in str(s.get("run", ""))
+    )
     token_sources = {**(job.get("env") or {}), **(step.get("env") or {})}
     assert "GITHUB_TOKEN" in token_sources, (
         f"{workflow} must pass GITHUB_TOKEN to the heavy phase; Actions does not auto-export it"
@@ -84,15 +89,29 @@ def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane, job_name):
     """Each heavy workflow runs a source-sharded matrix pinned to one lane, so concurrent shards own
     disjoint record files (scoped push_state) and the two ASR models never co-load."""
     wf, job = _job(workflow, job_name)
-    shards = job.get("strategy", {}).get("matrix", {}).get("shard")
-    assert shards == [0, 1, 2, 3], f"{workflow} must shard by source_key (matrix.shard)"
-    step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
-    run = str(step["run"])
-    n = len(shards)
-    assert f"--lane {lane}" in run, f"{workflow} must pin --lane {lane}"
-    assert f"--shard ${{{{ matrix.shard }}}}/{n}" in run, (
-        f"{workflow} must pass --shard <matrix.shard>/{n} matching the matrix size"
+    matrix = job.get("strategy", {}).get("matrix", {})
+    if workflow == "audio.yml":
+        shards = matrix.get("shard")
+        assert shards == [0, 1, 2, 3], f"{workflow} must shard by source_key (matrix.shard)"
+    else:
+        shards = matrix.get("slot")
+        assert shards == [0, 1, 2, 3], f"{workflow} must run four identical pull workers"
+    step = next(
+        s
+        for s in job["steps"]
+        if "citypods enrich" in str(s.get("run", ""))
+        or "citypods compute run-internal-worker" in str(s.get("run", ""))
     )
+    run = str(step["run"])
+    if workflow == "audio.yml":
+        n = len(shards)
+        assert f"--lane {lane}" in run, f"{workflow} must pin --lane {lane}"
+        assert f"--shard ${{{{ matrix.shard }}}}/{n}" in run, (
+            f"{workflow} must pass --shard <matrix.shard>/{n} matching the matrix size"
+        )
+    else:
+        assert "citypods compute run-internal-worker" in run
+        assert "CITYPODS_INTERNAL_WORKER_SLOT" in str(step.get("env", {}))
 
 
 @pytest.mark.parametrize("workflow,group", [("audio.yml", "audio"), ("asr.yml", "asr")])
@@ -118,7 +137,12 @@ def test_heavy_workflow_treats_graceful_yield_as_success(workflow, _lane, job_na
     Actions hard cap landing mid-yield — still an expected yield, not a failure — and it never
     touched the Pages deploy, which is a separate workflow."""
     _wf, job = _job(workflow, job_name)
-    step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
+    step = next(
+        s
+        for s in job["steps"]
+        if "citypods enrich" in str(s.get("run", ""))
+        or "citypods compute run-internal-worker" in str(s.get("run", ""))
+    )
     run = str(step.get("run", ""))
     assert 'if [ "$code" -eq 143 ] &&' in run
     assert 'grep -q "stop: newer build queued behind this run"' in run
@@ -138,8 +162,7 @@ def test_asr_workflow_runs_every_five_hours():
 
 
 def test_asr_reconcile_scopes_storage_secrets_to_the_step_that_needs_them():
-    # CR2-GH-16/MR-GH-02: checkout/setup-python/install need no credentials; plan-shards reads
-    # only the local state the reconcile step already restored.
+    # CR2-GH-16/MR-GH-02: checkout/setup-python/install need no credentials.
     _wf, reconcile = _job("asr.yml", job_name="reconcile")
     assert "env" not in reconcile or not any(
         k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (reconcile.get("env") or {})
@@ -147,7 +170,7 @@ def test_asr_reconcile_scopes_storage_secrets_to_the_step_that_needs_them():
     reconcile_step = next(
         s
         for s in reconcile["steps"]
-        if s.get("name") == "Reconcile dispatch leases + free-tier budget"
+        if s.get("name") == "Rebuild work index + reconcile dispatch leases + free-tier budget"
     )
     for var in ("B2_ENDPOINT", "R2_ACCESS_KEY_ID"):
         assert var in reconcile_step.get("env", {})
@@ -157,39 +180,21 @@ def test_asr_reconcile_scopes_storage_secrets_to_the_step_that_needs_them():
         assert not any(k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (step.get("env") or {}))
 
 
-def test_asr_uses_one_canonical_snapshot_and_shard_plan():
+def test_asr_uses_identical_pull_workers():
     _wf, reconcile = _job("asr.yml", job_name="reconcile")
     _wf, asr = _job("asr.yml", job_name="asr")
 
     reconcile_runs = "\n".join(str(step.get("run", "")) for step in reconcile["steps"])
     assert "citypods compute reconcile" in reconcile_runs
-    assert "citypods compute plan-shards" in reconcile_runs
-    assert "--lane transcribe" in reconcile_runs
-    assert "--shards 4" in reconcile_runs
-    upload = next(
-        step for step in reconcile["steps"] if "actions/upload-artifact" in step.get("uses", "")
-    )
-    assert upload["with"]["name"] == "asr-planner-${{ github.run_id }}"
-    assert ".citypods-state" in upload["with"]["path"]
-    assert ".citypods-asr-shard-plan.json" in upload["with"]["path"]
-    assert upload["with"]["include-hidden-files"] is True
-    assert upload["uses"].endswith("043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
-
-    download = next(
-        step for step in asr["steps"] if "actions/download-artifact" in step.get("uses", "")
-    )
-    assert download["with"]["name"] == "asr-planner-${{ github.run_id }}"
-    assert download["uses"].endswith("3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
-    assert download["env"]["NODE_OPTIONS"] == "--no-deprecation"
-    assert not any(step.get("name") == "Restore build state" for step in asr["steps"])
-    assert not any(
-        ".citypods-state" in str(step.get("with", {}).get("path", ""))
-        and "actions/cache" in step.get("uses", "")
+    assert "plan-shards" not in reconcile_runs
+    assert not any("upload-artifact" in step.get("uses", "") for step in reconcile["steps"])
+    assert not any("download-artifact" in step.get("uses", "") for step in asr["steps"])
+    run_step = next(
+        step
         for step in asr["steps"]
+        if "citypods compute run-internal-worker" in str(step.get("run", ""))
     )
-    enrich = next(step for step in asr["steps"] if "citypods enrich" in str(step.get("run", "")))
-    assert "--shard-plan .citypods-asr-shard-plan.json" in enrich["run"]
-    assert "--state-snapshot-restored" in enrich["run"]
+    assert "CITYPODS_INTERNAL_WORKER_SLOT" in run_step.get("env", {})
 
 
 def test_audio_lane_needs_no_whisper():

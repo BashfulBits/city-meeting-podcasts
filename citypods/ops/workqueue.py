@@ -32,6 +32,8 @@ from pathlib import Path
 from citypods.bodies import body_key, canonical_body
 from citypods.durations import episode_duration_hours, record_duration_hours
 from citypods.models import City, Episode
+from citypods.records import load_records
+from citypods.records import source_key as record_source_key
 
 MANIFEST_NAME = "work.json"
 MANIFEST_VERSION = 1
@@ -720,3 +722,37 @@ def overlay_persisted_operational_state(
             item.est_seconds = prev.est_seconds
         out.append(item)
     return out
+
+
+def rebuild_manifest_from_state(
+    cities: Sequence[City],
+    *,
+    site_config: dict,
+    state_dir: str | Path,
+) -> list[WorkItem]:
+    """Rebuild the discovery index from the restored record snapshot, then re-apply the live
+    operational sidecar from persisted ``work.json``.
+
+    This is the Stage-2 split in review/18 §4.1: the candidate set/order is derived from current
+    records and backlog policy, while mutable lease/backoff state rides the persisted overlay.
+    """
+    state_dir = Path(state_dir)
+    persisted = load_manifest(state_dir)
+    if not cities:
+        return persisted
+    defaults = site_config.get("defaults") or {}
+    backlog_policy = None
+    if site_config.get("backlog_priority") or defaults.get("backlog_priority"):
+        backlog_policy = BacklogPolicy.from_site_config(site_config)
+    # build_manifest() requires one entry per unique source_key (its docstring: "board feeds
+    # sharing a source must be deduplicated by the caller, else episodes double-count") — cities
+    # sharing a source_key (multi-board feeds of one entity) must collapse to one representative
+    # city here, same as external_worker.py's _manifest() did before it moved onto this function.
+    city_by_source: dict[str, City] = {}
+    for city in cities:
+        city_by_source.setdefault(record_source_key(city), city)
+    manifest_sources = [
+        (key, city, load_records(state_dir, key)) for key, city in city_by_source.items()
+    ]
+    derived = build_manifest(manifest_sources, policy=backlog_policy)
+    return overlay_persisted_operational_state(derived, persisted)
