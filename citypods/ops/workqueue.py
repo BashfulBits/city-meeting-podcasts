@@ -431,12 +431,20 @@ def _episode_work_items(
     if audio_done and city.asr_enabled:
         work_class = _transcript_class(rec)
         transcript = rec.get("transcript") or {}
-        if transcript.get("key") and not (
-            work_class == "provider-transcript-align"
-            and "-provider-align-" in str(transcript.get("key"))
-            and transcript.get("spec_hash")
-            != _provider_transcript_entry(rec.get("provider_transcript")).get("align_spec_hash")
-        ):
+        provider = _provider_transcript_entry(rec.get("provider_transcript"))
+        if work_class == "provider-transcript-align":
+            # CR2-CP-23: an old ASR-produced transcript.key (no "-provider-align-" marker) is
+            # not proof this class is done — it must be the provider-align artifact itself, at
+            # the provider's current align_spec_hash, or this episode still needs that work.
+            transcript_done = (
+                bool(transcript.get("key"))
+                and "-provider-align-" in str(transcript.get("key"))
+                and provider is not None
+                and transcript.get("spec_hash") == provider.get("align_spec_hash")
+            )
+        else:
+            transcript_done = bool(transcript.get("key"))
+        if transcript_done:
             items.append(WorkItem(work_class=work_class, state="done", **base))
         elif work_class == "transcript-align" and not city.asr_alignment_enabled:
             items.append(
@@ -444,7 +452,6 @@ def _episode_work_items(
             )
         else:
             items.append(WorkItem(work_class=work_class, state="queued", **base))
-        provider = _provider_transcript_entry(rec.get("provider_transcript"))
         speakers = rec.get("speakers") or {}
         active_provider_align = (
             provider is not None

@@ -713,6 +713,11 @@ def test_to_status_html_substitution():
     assert "__STATUS_JSON__" not in html
     assert "AUDIO RUN" in html and "TRANSCRIBE RUN" in html and "DIARIZE RUN" in html
     assert "runSeverity(run, totals)" in html
+    # CR2-CP-26: CITY_COLS' Health column key ('health') has no matching row field (only the
+    # health_ok/health_warn/health_error histogram counts), so sortRows's plain `a[sort.key]`
+    # lookup was always undefined for both sides — a composite fallback makes the sort meaningful.
+    assert "function sortValue(r, key)" in html
+    assert "health_error||0)*1e6" in html
     assert "action_alert_level" in html
     assert "⚠ warnings" in html
     assert "✗ errors" in html

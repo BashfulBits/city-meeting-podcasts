@@ -651,6 +651,21 @@ def test_build_manifest_provider_transcript_align_done_when_active_spec_matches(
     assert tx[0].state == "done"
 
 
+def test_build_manifest_provider_transcript_align_not_marked_done_by_stale_asr_key():
+    # CR2-CP-23: an old ASR-produced transcript.key (no "-provider-align-" marker) is not proof
+    # the provider-transcript-align work is done just because a provider transcript is now
+    # available — the episode still needs the provider-align artifact itself.
+    recs = {"u": _provider_rec(1)}
+    recs["u"]["transcript"] = {
+        "key": "transcripts/s/u-asr-oldhash.vtt",
+        "spec_hash": "oldhash",
+        "basis": "source:s0",
+    }
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+    assert tx[0].work_class == "provider-transcript-align"
+    assert tx[0].state == "queued"
+
+
 def test_build_manifest_provider_transcript_diarize_queued_after_align_selected():
     recs = {"u": _provider_rec(1, align_spec="align-new", transcript_spec="align-new")}
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
