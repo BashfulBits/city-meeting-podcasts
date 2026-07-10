@@ -29,6 +29,7 @@ import json
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from citypods.http import StopRequested
 from citypods.ops import work_leases as wl
@@ -63,6 +64,16 @@ def validate(storage, *, run_id: str, now: datetime | None = None) -> dict:
             "routing_namespaced",
             routed,
             "work-leases→R2, audio→B2" if routed else "routing misconfigured",
+        )
+    else:
+        # CR2-SC-01: a backend without this introspection method must count as a failed check,
+        # not simply be absent from `results` — otherwise `overall_pass` can be true without ever
+        # proving live routing actually works.
+        _check(
+            results,
+            "routing_namespaced",
+            False,
+            "storage backend has no is_cas_managed_key() to verify routing",
         )
 
     # 2) Native CAS primitives on R2: create-if-absent, conditional update, stale rejection.
@@ -253,8 +264,12 @@ def main(argv: list[str] | None = None) -> int:
     text = json.dumps(report, indent=2, sort_keys=True)
     print(text)
     if args.output:
-        with open(args.output, "w") as fh:
-            fh.write(text + "\n")
+        # MR-SC-06: mkdir the parent first, matching the mkdir-before-write pattern sibling
+        # scripts already use — a nested --output path would otherwise crash after the
+        # validation run completes, losing the report.
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(text + "\n", encoding="utf-8")
     return 0 if report["overall_pass"] else 1
 
 

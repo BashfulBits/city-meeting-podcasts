@@ -500,7 +500,7 @@ class SilencePlanner:
     version = "3"
 
     def plan(self, provider, city, ep, ctx, current: Timeline | None) -> Timeline | None:
-        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable, ProviderError
+        from citypods.providers.base import MEDIA_DEAD, MediaUnavailable
 
         # Gate: feature disabled globally or opted out per feed.
         if not city.extra.get("trim_silence", ctx.trim_silence):
@@ -535,7 +535,7 @@ class SilencePlanner:
                     ep, "missing", profile, reason="provider reports no usable media"
                 )
             return None
-        except (ProviderError, Exception):  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — ProviderError is already covered (MR-CP-05)
             return None
         timeout = getattr(ctx.ffmpeg, "timeout_seconds", None)
 

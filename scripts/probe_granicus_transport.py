@@ -25,7 +25,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from citypods.http import USER_AGENT
-from citypods.security import validate_source_url
+from citypods.security import redact_subprocess_text, validate_source_url
 
 ALLOWED_HOSTS = ("*.granicus.com",)
 DEFAULT_RANGE_BYTES = 16 * 1024 * 1024
@@ -111,23 +111,12 @@ def _tenant(url: str) -> str:
     return host
 
 
-_BEARER_RE = re.compile(r"(?i)bearer\s+\S+")
-_URL_RE = re.compile(r"https?://\S+")
-
-
-def _redact_stderr(text: str) -> str:
-    """Strip bearer tokens and URL query strings/tokens before this text is persisted."""
-    text = _BEARER_RE.sub("Bearer <redacted>", text)
-
-    def _redact_url(match: re.Match) -> str:
-        host, path = _redacted_parts(match.group(0))
-        return f"https://{host}{path}" if host else "<redacted-url>"
-
-    return _URL_RE.sub(_redact_url, text)
-
-
 def _stderr_tail(stderr: str) -> str:
-    return " ".join(_redact_stderr(stderr).strip().split())[-500:]
+    # CR2-SC-12: share the redaction implementation with probe_granicus_sustained.py (and the
+    # rest of the codebase's subprocess-diagnostics redaction) instead of maintaining a second,
+    # narrower bearer/URL-only regex pair that risks drifting from the shared one.
+    redacted = redact_subprocess_text(stderr)
+    return " ".join(str(redacted or "").strip().split())[-500:]
 
 
 def _http_status(stderr: str) -> int | None:

@@ -190,10 +190,15 @@ def detect_mechanism(client, bucket: str, run_id: str) -> str:
     except botocore.exceptions.ParamValidationError:
         # botocore rejected the param — native not in this boto3 version's service model.
         return "inject"
-    except botocore.exceptions.ClientError:
-        # A real S3/R2 HTTP error (e.g. 412 if key existed) — native params wired through.
-        _safe_delete(client, bucket, probe)
-        return "native"
+    except botocore.exceptions.ClientError as exc:
+        # CR2-SC-17: only a 412 (the key unexpectedly existed, but IfNoneMatch was enforced)
+        # actually proves native params are wired through — scope this the same way _is_412 is
+        # used correctly elsewhere in this file. Any other ClientError (auth/config/throttling)
+        # is a real failure, not evidence either way.
+        if _is_412(exc):
+            _safe_delete(client, bucket, probe)
+            return "native"
+        raise
 
 
 # ── CAS test suite ────────────────────────────────────────────────────────────

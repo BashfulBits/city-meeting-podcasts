@@ -75,8 +75,15 @@ def main(argv: list[str] | None = None) -> int:
             spellings[k][disp] += 1
 
     # Skip bodies an existing feed already covers (same source + body key), so curated /
-    # single-body feeds are preserved and generation is idempotent.
-    covered = {(source_key(c), body_key(c.source["body"])) for c in cities if c.source.get("body")}
+    # single-body feeds are preserved and generation is idempotent. CR2-SC-06: must run the
+    # stored body through the same canonical() normalization the discovery side applies above —
+    # body_key() alone doesn't strip the "on <datetime>..." suffix/subtype/qualifier words, so an
+    # unnormalized stored body can produce a different key than discovery and miss a real match.
+    covered = {
+        (source_key(c), body_key(canonical(c.source["body"])))
+        for c in cities
+        if c.source.get("body")
+    }
     selected_keys = sorted(
         k
         for k, n in counts.items()
@@ -92,14 +99,23 @@ def main(argv: list[str] | None = None) -> int:
     feeds_dir = Path(args.config_dir) / "feeds"
     if args.write:
         feeds_dir.mkdir(parents=True, exist_ok=True)
+    # CR2-SC-07: track slugs written earlier in *this* invocation separately from pre-existing
+    # disk state — two distinct bodies that slugify() collapses to the same slug would otherwise
+    # have the second one logged as "skip (exists)" as if it were a stale pre-existing file,
+    # silently discarding a distinct board feed instead of flagging the real collision.
+    written_this_run: set[str] = set()
     for body in selected:
         slug = f"{args.base_slug}-{slugify(body)}"
         path = feeds_dir / f"{slug}.yml"
+        if slug in written_this_run:
+            print(f"  SKIP (slug collision this run): {path.name}  (body={body!r})")
+            continue
         if path.exists():
             print(f"  skip (exists): {path.name}  (body={body!r})")
             continue
         action = "WRITE" if args.write else "plan"
         print(f"  {action}: {path.name}  (body={body!r}, {counts[body_key(body)]} mtgs)")
+        written_this_run.add(slug)
         if args.write:
             path.write_text(_render(tmpl, slug, body, args.title_prefix))
     return 0

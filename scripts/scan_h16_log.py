@@ -20,7 +20,7 @@ def main() -> int:
     output_path = Path(args.output)
     result = scan_h16_logs(log_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    output_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return 0
 
 

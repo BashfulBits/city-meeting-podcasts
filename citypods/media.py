@@ -2028,6 +2028,11 @@ def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | N
         return None
 
 
+# Public alias for cross-module callers (scripts/availability_digest.py, CR2-SC-08) — the
+# underscore name stays the internal one this module's own callers use.
+probe_duration_secs = _probe_duration_secs
+
+
 @dataclass(frozen=True)
 class AudioDurationProbe:
     """Cheap duration views from ffprobe.

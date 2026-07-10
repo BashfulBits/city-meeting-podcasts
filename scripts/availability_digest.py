@@ -49,10 +49,14 @@ def _cities_by_source(config_dir: str, site_config: dict) -> dict:
     return out
 
 
-def _resolve_source_url(candidate: Candidate, cities_by_source: dict) -> str | None:
+def _resolve_source_url(
+    candidate: Candidate, cities_by_source: dict, *, timeout: float
+) -> str | None:
     """Best-effort resolution of the candidate's playable source URL via its provider."""
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FutureTimeoutError
+
     from citypods.providers import get_provider
-    from citypods.providers.base import ProviderError
 
     city = cities_by_source.get(candidate.source_key)
     if city is None:
@@ -65,10 +69,17 @@ def _resolve_source_url(candidate: Candidate, cities_by_source: dict) -> str | N
     ep = record_to_episode(
         {"provider_guid": candidate.uid, "video_url": candidate.video_url, "uid": candidate.uid}
     )
-    try:
-        url = provider.resolve_media_url(ep, city.source)
-    except (ProviderError, Exception):  # noqa: BLE001 - best effort; record a note instead
-        return None
+    # CR2-SC-10: bound by args.timeout like the detect_silences/_encode_proxy calls below —
+    # only some providers' internal HTTP session has its own (non-configurable) timeout, which
+    # isn't a guarantee every provider makes.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(provider.resolve_media_url, ep, city.source)
+        try:
+            url = future.result(timeout=timeout)
+        except FutureTimeoutError:
+            return None
+        except Exception:  # noqa: BLE001 - best effort; record a note instead (MR-SC-07)
+            return None
     if not url:
         return None
     # ffmpeg fetches this URL itself, bypassing the Python SSRF guard, so gate it here before it
@@ -94,13 +105,13 @@ def _encode_proxy(
     if not dest.exists() or dest.stat().st_size == 0:
         dest.unlink(missing_ok=True)
         return None
-    from citypods.media import _probe_duration_secs
+    from citypods.media import probe_duration_secs
 
     return ProxyResult(
         path=dest.name,
         size_bytes=dest.stat().st_size,
         sha256=sha256_file(dest),
-        duration_seconds=_probe_duration_secs(dest, ffmpeg_binary),
+        duration_seconds=probe_duration_secs(dest, ffmpeg_binary),
     )
 
 
@@ -114,7 +125,7 @@ def _evidence_for(
     timeout: float,
     encode: bool,
 ) -> dict:
-    src_url = _resolve_source_url(candidate, cities_by_source) if encode else None
+    src_url = _resolve_source_url(candidate, cities_by_source, timeout=timeout) if encode else None
     silences: list[tuple[float, float]] = []
     duration: float | None = None
     untrimmed = trimmed = None

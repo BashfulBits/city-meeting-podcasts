@@ -93,8 +93,11 @@ def compare(
         else:
             outcome = "still-mismatch"
             still_mismatch += 1
+        # CR2-SC-09: mutually exclusive with "fixed" — a row satisfying check == "ok" while its
+        # delta magnitude still regressed must not increment both counters for the same row.
         if (
-            before_delta is not None
+            outcome != "fixed"
+            and before_delta is not None
             and after_delta is not None
             and after_delta > before_delta + success_delta
         ):
