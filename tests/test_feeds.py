@@ -14,12 +14,31 @@ from citypods.availability import (
     MediaAvailability,
     with_operator_override,
 )
-from citypods.feeds import build_rss, enclosure_duration, enclosure_url
+from citypods.feeds import build_rss, enclosure_duration, enclosure_url, ordered_links
 from citypods.models import Episode
 
 
 def _items(xml: str):
     return ET.fromstring(xml).find("channel").findall("item")
+
+
+def test_ordered_links_drops_non_http_schemes():
+    # M5/MR-TM-01: a provider RSS <link> is scraped, not maintainer-authored -- a compromised/
+    # malformed upstream link must not reach an href attribute with only entity-escaping.
+    links = {
+        "agenda": "https://city.example/agenda.pdf",
+        "canonical_video": "javascript:alert(1)",
+        "minutes": "data:text/html,<script>alert(1)</script>",
+        "transcript": "http://city.example/t.vtt",
+    }
+    result = ordered_links(links)
+    urls = {url for _label, url in result}
+    assert urls == {"https://city.example/agenda.pdf", "http://city.example/t.vtt"}
+
+
+def test_ordered_links_drops_empty_and_none_values():
+    result = ordered_links({"agenda": "", "minutes": None, "documents": "https://x/d.pdf"})
+    assert result == [("Meeting documents", "https://x/d.pdf")]
 
 
 def test_audio_uses_audio_mime(sample_city, sample_episodes):

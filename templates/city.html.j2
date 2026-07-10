@@ -20,7 +20,7 @@
     <a class="btn" href="overcast://x-callback-url/add?url={{ audio_url | urlencode }}">Overcast</a>
     <a class="btn" href="pktc://subscribe/{{ audio_noscheme }}">Pocket Casts</a>
     <a class="btn" href="castro://subscribe/{{ audio_noscheme }}">Castro</a>
-    <button class="btn" id="copy" data-url="{{ audio_url }}">Copy RSS</button>
+    <button type="button" class="btn" id="copy" data-url="{{ audio_url }}">Copy RSS</button>
     {% endif %}
     {% if has_video %}<a class="btn" href="{{ video_url }}">Video RSS</a>{% endif %}
   </div>
@@ -32,8 +32,10 @@
   <ul style="list-style:none;margin:0;padding:0;">
     {% for e in episodes %}
     <li style="display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px solid var(--border);">
+      {% if e.audio %}
       <button type="button" class="btn play" data-src="{{ e.audio }}" data-title="{{ e.title }}"
               aria-label="Play {{ e.title }}" style="margin:0;padding:.25rem .6rem;">▶</button>
+      {% endif %}
       <span style="flex:1;">{{ e.title }}</span>
       {% if e.duration %}<span class="muted" style="font-size:.85rem;">{{ e.duration }}</span>{% endif %}
       {% if e.links %}

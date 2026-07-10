@@ -6,6 +6,8 @@ import json
 
 from citypods.availability_digest import (
     DIGEST_ISSUE_MARKER,
+    DIGEST_STATE_SCHEMA_VERSION,
+    EVIDENCE_SCHEMA_VERSION,
     Candidate,
     ProxyResult,
     build_evidence,
@@ -18,6 +20,34 @@ from citypods.availability_digest import (
     select_for_digest,
     updated_digest_state,
 )
+
+
+def test_evidence_and_digest_state_use_independent_schema_version_constants():
+    # CR2-CP-05: these stamp two unrelated schemas (per-candidate evidence vs. the digest
+    # ledger); a schema bump for one must not silently "version" the other.
+    ev = build_evidence(
+        Candidate(
+            source_key="src",
+            uid="u1",
+            title="Council",
+            state="confirmed_empty",
+            reason="silence",
+            detector_version="1",
+            source_fingerprint="fp",
+            profile="noise=-40dB",
+            last_check=None,
+            video_url="https://x/u1.mp4",
+            canonical_url="https://city.gov/watch/u1",
+            duration=3600,
+        ),
+        silences=[],
+        source_duration=12.0,
+        untrimmed=None,
+        trimmed=None,
+    )
+    assert ev["schema_version"] == EVIDENCE_SCHEMA_VERSION
+    state = updated_digest_state({}, ["u1"])
+    assert state["schema_version"] == DIGEST_STATE_SCHEMA_VERSION
 
 
 def _write_source(state_dir, key, episodes):

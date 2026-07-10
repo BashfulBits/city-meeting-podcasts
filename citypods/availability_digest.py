@@ -31,6 +31,10 @@ from citypods.durations import record_source_duration_seconds
 from citypods.security import redact_subprocess_text
 
 EVIDENCE_SCHEMA_VERSION = 1
+# Independent from EVIDENCE_SCHEMA_VERSION (CR2-CP-05): one stamps the per-candidate evidence
+# record (build_evidence), the other the unrelated digest-ledger state (load/updated_digest_state)
+# — a schema bump for one must not silently "version" the other.
+DIGEST_STATE_SCHEMA_VERSION = 1
 DIGEST_STATE_NAME = "availability_digest.json"
 DIGEST_ISSUE_MARKER = "<!-- h16-availability-digest -->"
 
@@ -241,9 +245,9 @@ def load_digest_state(state_dir: Path) -> dict:
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
-        return {"schema_version": EVIDENCE_SCHEMA_VERSION, "digested": []}
+        return {"schema_version": DIGEST_STATE_SCHEMA_VERSION, "digested": []}
     if not isinstance(data, dict):
-        return {"schema_version": EVIDENCE_SCHEMA_VERSION, "digested": []}
+        return {"schema_version": DIGEST_STATE_SCHEMA_VERSION, "digested": []}
     data.setdefault("digested", [])
     return data
 
@@ -252,7 +256,7 @@ def updated_digest_state(prior: dict, newly_digested: list[str]) -> dict:
     """Return the digest ledger with ``newly_digested`` keys folded in (deduped, sorted)."""
     keys = set(prior.get("digested") or []) | set(newly_digested)
     return {
-        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "schema_version": DIGEST_STATE_SCHEMA_VERSION,
         "digested": sorted(keys),
         "updated_at": datetime.now(UTC).isoformat(),
     }

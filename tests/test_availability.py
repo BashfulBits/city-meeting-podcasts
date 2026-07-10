@@ -17,6 +17,7 @@ from citypods.availability import (
     MediaAvailability,
     Observation,
     classify,
+    content_seconds,
     source_fingerprint,
     with_operator_override,
 )
@@ -44,6 +45,27 @@ def _playable(fp="fp", profile="p1"):
 
 def _partial(fp="fp", profile="p1"):
     return Observation(kind="partial", fingerprint=fp, profile=profile)
+
+
+# --- content_seconds -------------------------------------------------------------------------
+
+
+def test_content_seconds_subtracts_non_overlapping_silence():
+    assert content_seconds([(0, 10), (20, 30)], 100) == 80.0
+
+
+def test_content_seconds_merges_overlapping_silence_spans():
+    # CR2-CP-04: two overlapping silence spans must not each count their overlap separately.
+    # [0,20] and [10,30] overlap on [10,20]; merged, silence is [0,30] = 30s, not 20+20=40s.
+    assert content_seconds([(0, 20), (10, 30)], 100) == 70.0
+
+
+def test_content_seconds_merges_touching_silence_spans():
+    assert content_seconds([(0, 10), (10, 20)], 100) == 80.0
+
+
+def test_content_seconds_handles_unsorted_input():
+    assert content_seconds([(20, 30), (0, 10)], 100) == 80.0
 
 
 # --- fingerprint ---------------------------------------------------------------------------------
@@ -190,6 +212,29 @@ def test_invalid_override_state_rejected():
 
     with pytest.raises(ValueError):
         with_operator_override(None, "bogus", "x")
+
+
+def test_clearing_override_with_no_prior_verdict_raises_instead_of_fabricating_available():
+    # CR2-CP-02: with_operator_override(None, None, ...) used to manufacture a fabricated
+    # AVAILABLE verdict instead of treating a no-op clear-with-nothing-to-clear as invalid.
+    import pytest
+
+    with pytest.raises(ValueError, match="cannot clear"):
+        with_operator_override(None, None)
+
+
+def test_operator_override_reset_on_source_fingerprint_change():
+    # CR2-CP-03: classify() resets `base` (and so must reset operator_override/operator_reason
+    # too) when the source fingerprint changes -- a stale override on old media bytes must not
+    # silently carry forward onto a swapped recording.
+    confirmed = classify(classify(None, _silent(fp="fp1")), _silent(fp="fp1"))
+    overridden = with_operator_override(confirmed, AVAILABLE, "verified good")
+    assert overridden.operator_override == AVAILABLE
+
+    # New source bytes (different fingerprint) arrive as a fresh silent observation.
+    after_swap = classify(overridden, _silent(fp="fp2"))
+    assert after_swap.operator_override is None
+    assert after_swap.operator_reason == ""
 
 
 def test_dataclass_is_frozen():

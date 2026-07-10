@@ -62,6 +62,69 @@ def test_index_has_noscript_fallback_listing_all_feeds():
     assert "https://e.test/a-tx-council/" in noscript
 
 
+def test_city_page_keeps_video_only_episode_for_video_only_city(monkeypatch):
+    # CR2-CP-12: filtering episodes on the audio enclosure only meant a video-only city
+    # (has_audio=False, has_video=True) rendered zero episodes despite a populated video feed.
+    from datetime import UTC, datetime
+
+    import citypods.site as site_mod
+    from citypods.models import Episode
+
+    def fake_enclosure_url(ep, kind):
+        return "https://cdn/x.mp4" if kind == "video" else None
+
+    monkeypatch.setattr(site_mod, "enclosure_url", fake_enclosure_url)
+
+    ep = Episode(
+        guid="g",
+        title="City Council – May 1",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://cdn/x.mp4",
+        media_kind="direct",
+    )
+    html = site_mod.render_city_page(
+        _city("x-tx", "City of X", "X — Council"),
+        "https://e.test",
+        [ep],
+        has_audio=False,
+        has_video=True,
+    )
+    assert "City Council – May 1" in html
+
+
+def test_city_page_drops_episode_with_no_enclosure_for_either_offered_kind(monkeypatch):
+    from datetime import UTC, datetime
+
+    import citypods.site as site_mod
+    from citypods.models import Episode
+
+    monkeypatch.setattr(site_mod, "enclosure_url", lambda ep, kind: None)
+
+    ep = Episode(
+        guid="g",
+        title="Should Not Appear",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://cdn/x.mp4",
+        media_kind="direct",
+    )
+    html = site_mod.render_city_page(
+        _city("x-tx", "City of X", "X — Council"),
+        "https://e.test",
+        [ep],
+        has_audio=True,
+        has_video=True,
+    )
+    assert "Should Not Appear" not in html
+
+
+def test_render_redirect_page_escapes_the_url():
+    from citypods.site import render_redirect_page
+
+    html = render_redirect_page('https://x.test/"><script>alert(1)</script>')
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
 def test_city_page_renders_episode_resource_links():
     from datetime import UTC, datetime
 

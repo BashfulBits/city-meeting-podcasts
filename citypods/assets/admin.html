@@ -103,6 +103,7 @@ Object.keys(PRESETS).forEach(name=>{const b=document.createElement("button");b.t
     if(state.per_run_cap===null) state.per_run_cap=0;
     [...inputsEl.querySelectorAll("input")].forEach((inp,idx)=>inp.value=state[FIELDS[idx][0]]);render();};
   pe.appendChild(b);});
+function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function card(t,v,cls){return `<div class="card"><div class="muted">${t}</div><div class="big ${cls||''}">${v}</div></div>`;}
 function retentionCard(){
   // Issue #109: show the $/mo you'd save by ratcheting the retention cap (archive_items) down.
@@ -123,7 +124,7 @@ function truncationCard(){
     return `<div class="card" style="grid-column:1/3"><div class="muted">Feed cap (max_episodes)</div>`+
       `<span class="ok">✓</span> No feeds truncated — all ${t.checked} sources fit within the cap.</div>`;
   }
-  const ex = t.examples && t.examples.length ? `<div class="muted" style="margin-top:6px">e.g. ${t.examples.join(", ")}</div>` : "";
+  const ex = t.examples && t.examples.length ? `<div class="muted" style="margin-top:6px">e.g. ${t.examples.map(esc).join(", ")}</div>` : "";
   return `<div class="card" style="grid-column:1/3"><div class="muted">Feed cap (max_episodes) — live data</div>`+
     `<span class="warn">⚠</span> <strong>${t.truncated}</strong> of <strong>${t.checked}</strong> sources have more archived episodes than the feed shows (up to <strong>${t.max_gap}</strong> hidden).`+
     ex+`<div class="muted" style="margin-top:6px">Raise <code>max_episodes</code> in site_config.yml to expose more history.</div></div>`;
