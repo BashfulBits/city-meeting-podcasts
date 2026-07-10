@@ -457,6 +457,8 @@ def test_telemetry_metadata_uses_canonical_duration_fields(tmp_path, monkeypatch
         audio_duration_served=None,
         source_duration_seconds=7200.0,
         served_duration_seconds=5400.0,
+        transcript_timeout_attempts=0,
+        transcript_timeout_last_attempt=None,
     )
     monkeypatch.setattr(worker, "_episode_for", lambda item: (city, ep, {}))
 
