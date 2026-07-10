@@ -71,8 +71,13 @@ def _resolve_source_url(
     )
     # CR2-SC-10: bound by args.timeout like the detect_silences/_encode_proxy calls below —
     # only some providers' internal HTTP session has its own (non-configurable) timeout, which
-    # isn't a guarantee every provider makes.
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    # isn't a guarantee every provider makes. Not a context manager: ThreadPoolExecutor.__exit__
+    # calls shutdown(wait=True) unconditionally, which would still block on the hung call after
+    # future.result() times out, defeating the timeout entirely — shutdown(wait=False) in the
+    # finally below lets this function actually return promptly and leaves the thread to finish
+    # (or die) on its own.
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
         future = pool.submit(provider.resolve_media_url, ep, city.source)
         try:
             url = future.result(timeout=timeout)
@@ -80,6 +85,8 @@ def _resolve_source_url(
             return None
         except Exception:  # noqa: BLE001 - best effort; record a note instead (MR-SC-07)
             return None
+    finally:
+        pool.shutdown(wait=False)
     if not url:
         return None
     # ffmpeg fetches this URL itself, bypassing the Python SSRF guard, so gate it here before it

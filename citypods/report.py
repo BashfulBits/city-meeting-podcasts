@@ -1221,7 +1221,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
 
     # Storage detail
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
-    retained = archive_items or int(defaults.get("max_episodes", 50))
+    retained = archive_items if archive_items is not None else int(defaults.get("max_episodes", 50))
     g_per_ep = gb_per_episode(max_kbps, avg_duration_h)
 
     # Oldest publication year across all records — used by the age-cap what-if slider.

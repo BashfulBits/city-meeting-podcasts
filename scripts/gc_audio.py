@@ -603,6 +603,7 @@ def main(argv: list[str] | None = None) -> int:
     # run_history.jsonl on end-of-run batching).
     orphans: list[Orphan] = []
     deleted_count = 0
+    actually_deleted: set[str] = set()
     for key, last_modified, size in candidates:
         delete_now = args.apply or (key in auto_delete_keys)
         if delete_now:
@@ -639,10 +640,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"DELETE FAILED  {key}: {exc}")
             else:
                 deleted_count += 1
+                actually_deleted.add(key)
                 print(f"DELETED  {key}")
         else:
             print(f"ORPHAN   {key}")
-        if args.apply or key not in auto_delete_keys:
+        # A failed auto-delete must still count as a live orphan (report it) and must not be
+        # counted as reaped below — `key in auto_delete_keys` alone can't distinguish "selected
+        # for auto-delete" from "actually deleted."
+        if args.apply or key not in actually_deleted:
             orphans.append(
                 Orphan(
                     key=key,
@@ -662,7 +667,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     summary = summarize(orphans)
-    auto_reaped = len(auto_delete_keys) if auto_mode else 0
+    auto_reaped = len(actually_deleted) if auto_mode else 0
     if args.out:
         body = _write_report(
             Path(args.out),

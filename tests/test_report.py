@@ -344,6 +344,19 @@ def test_build_status_episode_taxonomy(tmp_path):
     assert issues["transient_errors"] == 1
 
 
+def test_build_status_retained_per_feed_preserves_measured_zero(tmp_path):
+    # CodeRabbit (PR #877): `archive_items or max_episodes_default` treated a genuinely-measured
+    # 0 (e.g. a fresh deployment with no persisted records yet) the same as "unmeasured," silently
+    # reporting the 50-episode default instead of the real 0.
+    from citypods.records import save_records, source_key
+
+    city = _hls_city("empty-city")
+    save_records(tmp_path, source_key(city), {})
+
+    status = build_status([city], site_config=SITE, state_dir=tmp_path)
+    assert status["storage"]["retained_per_feed"] == 0
+
+
 def test_build_status_direct_extract_audio_counts_as_pending_not_linked(tmp_path):
     """Direct providers become audio backlog when extract_audio is enabled."""
     from citypods.records import save_records, source_key

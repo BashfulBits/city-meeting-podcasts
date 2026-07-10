@@ -911,11 +911,13 @@ def _timeline_from_dict(d: dict) -> Timeline | None:
         return Timeline(
             version=d.get("version", ""),
             segments=tuple(
-                Segment(**{k: v for k, v in s.items() if k in known}) for s in d.get("segments", [])
+                Segment(**{k: v for k, v in s.items() if k in known})
+                for s in d.get("segments", [])
+                if isinstance(s, dict)
             ),
             basis=d.get("basis", "served"),
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, AttributeError):
         return None
 
 

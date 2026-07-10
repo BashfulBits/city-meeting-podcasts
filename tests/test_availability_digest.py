@@ -247,7 +247,6 @@ def test_render_issue_body_neutralizes_untrusted_scraped_text():
     rows = [line for line in body.splitlines() if line.startswith("| Row")]
     assert len(rows) == 1  # the newline didn't split it into a second row
     row = rows[0]
-    assert "\n" not in row
     assert "Row\\|break" in row  # pipe escaped, doesn't break the table
     assert "\\`code\\`" in row  # backtick escaped
     assert "@octocat" not in row  # zero-width space defuses the mention

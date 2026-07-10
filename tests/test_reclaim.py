@@ -463,6 +463,52 @@ def test_reclaim_log_written_before_each_delete_survives_a_failed_delete(monkeyp
     }
 
 
+def test_auto_confirm_failed_delete_stays_reported_not_counted_reaped(monkeypatch, tmp_path):
+    # CodeRabbit (PR #877): a failed storage.delete() in --auto-confirm mode used to drop the
+    # still-live object from the orphan report (since `key in auto_delete_keys` alone can't tell
+    # "selected for auto-delete" from "actually deleted") and still count it in auto_reaped.
+    old = (datetime.now(UTC) - timedelta(days=400)).replace(microsecond=0)
+    matured_first_seen = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+    objects = [
+        ("granicus/src1/fails-spec.m4a", old, 10),
+        ("granicus/src1/ok-spec.m4a", old, 20),
+    ]
+    storage = _FakeGcStorage(objects, fail_on="granicus/src1/fails-spec.m4a")
+    # Pre-seed the double-confirm ledger so both keys mature on this single run
+    # (run_count bumps 1 -> 2, first_seen already past the 21-day default quarantine).
+    ledger = {
+        "granicus/src1/fails-spec.m4a": {
+            "first_seen": matured_first_seen,
+            "run_count": 1,
+            "last_seen": matured_first_seen,
+        },
+        "granicus/src1/ok-spec.m4a": {
+            "first_seen": matured_first_seen,
+            "run_count": 1,
+            "last_seen": matured_first_seen,
+        },
+    }
+    (tmp_path / gc_audio.ORPHAN_LEDGER_NAME).write_text(json.dumps(ledger), encoding="utf-8")
+
+    out_dir = tmp_path / "out"
+    rc = _run_gc_main(
+        monkeypatch,
+        tmp_path,
+        storage,
+        ["--auto-confirm", "--min-age-days", "0", "--out", str(out_dir)],
+    )
+    assert rc == 0
+
+    assert storage.deleted == ["granicus/src1/ok-spec.m4a"]
+    # The failed delete's key must still show up as a live orphan in the report...
+    orphans_tsv = (out_dir / "orphans.tsv").read_text()
+    assert "granicus/src1/fails-spec.m4a" in orphans_tsv
+    assert "granicus/src1/ok-spec.m4a" not in orphans_tsv  # this one really is gone
+    # ...and the auto-reaped count must reflect only the real deletion, not the failed one.
+    body = (out_dir / "issue-body.md").read_text()
+    assert "1 object(s) were auto-reaped" in body
+
+
 def test_missing_last_modified_is_kept_not_treated_as_old(monkeypatch, tmp_path):
     # CR2-SC-18: a missing/non-comparable last_modified must be treated conservatively (kept),
     # not fall through the `last_modified is not None and last_modified > cutoff` guard as if it
