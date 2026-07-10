@@ -19,6 +19,7 @@ from citypods.projection import (
     project,
     savings_if_capped,
 )
+from citypods.records import _parse_iso_utc
 
 # Providers whose audio we always host (ephemeral/HLS) vs. direct providers (hosted only when a
 # city sets extract_audio). Mirrors media._should_host.
@@ -406,16 +407,12 @@ def _feed_row(
             continue
         episodes += 1
 
-        pub = rec.get("published")
-        if pub:
-            try:
-                from datetime import datetime
-
-                dt = datetime.fromisoformat(pub)
-                if last_pub is None or dt > last_pub:
-                    last_pub = dt
-            except ValueError:
-                pass
+        # CR2-CP-35/M8: go through the same UTC-normalizing parser records.py's backoff gates
+        # use, instead of raw fromisoformat() — a mix of naive/aware "published" strings across
+        # episodes would otherwise raise TypeError on the `dt > last_pub` comparison.
+        dt = _parse_iso_utc(rec.get("published"))
+        if dt is not None and (last_pub is None or dt > last_pub):
+            last_pub = dt
 
         state = _classify_record(
             rec,
@@ -647,19 +644,6 @@ def _load_run_summary(state_dir: Path) -> dict:
 
 def _run_sort_value(row: dict) -> str:
     return str(row.get("ts") or "")
-
-
-def _same_logical_run(a: dict, b: dict) -> bool:
-    """True for shard events belonging to the same workflow/lane run."""
-    if not a.get("scoped") or not b.get("scoped"):
-        return False
-    if not a.get("github_run_id") or not b.get("github_run_id"):
-        return False
-    return (
-        a.get("github_run_id") == b.get("github_run_id")
-        and a.get("phase") == b.get("phase")
-        and a.get("lane") == b.get("lane")
-    )
 
 
 def _run_candidates(run_summary: dict, history: list[dict]) -> list[dict]:
@@ -1158,11 +1142,14 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         kbps=max_kbps,
         per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
+    # CR2-CP-33: computed once and reused below (`retained`) — each call re-reads and re-parses
+    # every source's episodes.json from disk via load_records.
+    archive_items = _measured_archive_items(cities, state_dir)
     inputs = measured_inputs(
         cities,
         run_history=history,
         hosted_feeds=round(_hosted_fraction(cities) * len(cities)) if cities else None,
-        archive_items=_measured_archive_items(cities, state_dir),
+        archive_items=archive_items,
         base=base,
     )
     proj = project(inputs)
@@ -1234,7 +1221,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
 
     # Storage detail
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
-    retained = _measured_archive_items(cities, state_dir) or int(defaults.get("max_episodes", 50))
+    retained = archive_items or int(defaults.get("max_episodes", 50))
     g_per_ep = gb_per_episode(max_kbps, avg_duration_h)
 
     # Oldest publication year across all records — used by the age-cap what-if slider.

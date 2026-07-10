@@ -1271,7 +1271,8 @@ def audit_city(
     body = city.source.get("body")
     diff = compute_archive_diff(episodes, records, body=body) if records is not None else None
 
-    # Oldest date in the archive (across all episodes, pre-filter) for staleness correction.
+    # Newest publication date in the archive (across all episodes, pre-filter) for staleness
+    # correction (CR2-CP-24: comment previously said "Oldest" but the code below is `max(dates)`).
     archive_newest: datetime | None = None
     if records:
         from citypods.bodies import matches

@@ -217,6 +217,13 @@ def _tenant_results(telemetry: dict[str, dict[str, int | float]]) -> dict[str, d
     return tenants
 
 
+def _shard_sort_key(shard: str) -> tuple[int, str]:
+    """Sort ``"<index>/<total>"`` shard labels numerically by index (M7/CR2-CP-20): a plain
+    string sort puts ``"10/12"`` before ``"2/12"`` once ``expected_shards >= 10``."""
+    index = shard.split("/", 1)[0]
+    return (int(index), shard) if index.isdigit() else (-1, shard)
+
+
 def build_h16_report(
     input_dir: Path,
     *,
@@ -225,7 +232,10 @@ def build_h16_report(
     expected_shards: int = 4,
 ) -> dict:
     events = _load_events(input_dir, run_id)
-    shards = sorted(str(event.get("shard")) for event in events if event.get("shard"))
+    shards = sorted(
+        (str(event.get("shard")) for event in events if event.get("shard")),
+        key=_shard_sort_key,
+    )
     expected = [f"{index}/{expected_shards}" for index in range(expected_shards)]
     complete = shards == expected
     telemetry = _sum_telemetry(events)

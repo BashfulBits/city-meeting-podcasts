@@ -1482,81 +1482,87 @@ def _build_impl(
         and (bool(os.environ.get("GITHUB_ACTIONS")) or heartbeat_requested)
     )
     build_start = time.monotonic()
-    with _ResourceHeartbeat(
-        enabled=heartbeat_enabled,
-        label="enrich" if phase == "enrich" else phase,
-        root=output_dir,
-        interval_seconds=heartbeat_interval,
-        stall_dump_seconds=_stall_dump_seconds() if heartbeat_enabled else 0.0,
-        native_work_gate=_native_work_gate,
-        resource_admission=ctx.resource_admission,
-    ) as _hb:
-        # Pre-load only the ASR model the active lane will use, so a transcribe shard never pulls
-        # in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio lane loads
-        # nothing. ``lane=None`` (combined enrich) keeps the faster-whisper preload as before.
-        if (
-            time_bounded
-            and not dry_run
-            and storage is not None
-            and lane != "audio"
-            and not getattr(compute_backend, "isolates_inference", False)
-        ):
-            _try_preload_asr_model(defaults, lane=lane)
-
-        if phase == "enrich":
-            # H5 PR3: the heavy production phase uses the global two-pass queue for true
-            # newest-everywhere-first prioritization across all sources (the per-source pool
-            # below can only order within a source). Renderless by definition.
-            results = _run_enrich_global_queue(
-                pipeline,
-                cities,
-                source_cache=source_cache,
-                max_workers=max_workers,
-                policy=backlog_policy,
-                owned_uids=shard_owned_uids,
-            )
-        else:
-            # all/render: the per-city pool. Light cross-source ordering (H5 PR2) submits cities
-            # in policy order so high-priority cities start first (coarse — a started city drains
-            # its own within-source-ordered backlog). Identity (no records load) without a policy.
-            if backlog_policy.keys:
-                _recs_by_slug: dict[str, dict] = {}
-                _recs_by_source: dict[str, dict] = {}
-                for c in cities:
-                    sk = source_key(c)
-                    if sk not in _recs_by_source:
-                        _recs_by_source[sk] = load_records(state_dir, sk)
-                    _recs_by_slug[c.slug] = _recs_by_source[sk]
-                cities = order_cities_by_policy(cities, _recs_by_slug, backlog_policy)
-
-            with (
-                source_cache or _nullcontext(),
-                ThreadPoolExecutor(max_workers=max_workers) as pool,
+    try:
+        with _ResourceHeartbeat(
+            enabled=heartbeat_enabled,
+            label="enrich" if phase == "enrich" else phase,
+            root=output_dir,
+            interval_seconds=heartbeat_interval,
+            stall_dump_seconds=_stall_dump_seconds() if heartbeat_enabled else 0.0,
+            native_work_gate=_native_work_gate,
+            resource_admission=ctx.resource_admission,
+        ) as _hb:
+            # Pre-load only the ASR model the active lane will use, so a transcribe shard never
+            # pulls in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio
+            # lane loads nothing. ``lane=None`` (combined enrich) keeps the faster-whisper preload
+            # as before.
+            if (
+                time_bounded
+                and not dry_run
+                and storage is not None
+                and lane != "audio"
+                and not getattr(compute_backend, "isolates_inference", False)
             ):
-                futures = [
-                    pool.submit(
-                        _process_city,
-                        c,
-                        base_url,
-                        output_dir,
-                        cache,
-                        request_delay,
-                        dry_run,
-                        pipeline,
-                        site_config,
-                        fingerprint,
-                        do_render,
-                        no_refresh,
-                    )
-                    for c in cities
-                ]
-                for fut in futures:
-                    result, entry = fut.result()
-                    results.append(result)
-                    if entry is not None:
-                        cache[result.slug] = entry
-    if owns_ffmpeg and isinstance(ffmpeg, CommandFfmpeg):
-        ffmpeg.close()
+                _try_preload_asr_model(defaults, lane=lane)
+
+            if phase == "enrich":
+                # H5 PR3: the heavy production phase uses the global two-pass queue for true
+                # newest-everywhere-first prioritization across all sources (the per-source pool
+                # below can only order within a source). Renderless by definition.
+                results = _run_enrich_global_queue(
+                    pipeline,
+                    cities,
+                    source_cache=source_cache,
+                    max_workers=max_workers,
+                    policy=backlog_policy,
+                    owned_uids=shard_owned_uids,
+                )
+            else:
+                # all/render: the per-city pool. Light cross-source ordering (H5 PR2) submits
+                # cities in policy order so high-priority cities start first (coarse — a started
+                # city drains its own within-source-ordered backlog). Identity (no records load)
+                # without a policy.
+                if backlog_policy.keys:
+                    _recs_by_slug: dict[str, dict] = {}
+                    _recs_by_source: dict[str, dict] = {}
+                    for c in cities:
+                        sk = source_key(c)
+                        if sk not in _recs_by_source:
+                            _recs_by_source[sk] = load_records(state_dir, sk)
+                        _recs_by_slug[c.slug] = _recs_by_source[sk]
+                    cities = order_cities_by_policy(cities, _recs_by_slug, backlog_policy)
+
+                with (
+                    source_cache or _nullcontext(),
+                    ThreadPoolExecutor(max_workers=max_workers) as pool,
+                ):
+                    futures = [
+                        pool.submit(
+                            _process_city,
+                            c,
+                            base_url,
+                            output_dir,
+                            cache,
+                            request_delay,
+                            dry_run,
+                            pipeline,
+                            site_config,
+                            fingerprint,
+                            do_render,
+                            no_refresh,
+                        )
+                        for c in cities
+                    ]
+                    for fut in futures:
+                        result, entry = fut.result()
+                        results.append(result)
+                        if entry is not None:
+                            cache[result.slug] = entry
+    finally:
+        # M9/CR2-CP-37: close the owned ffmpeg process pool even if the block above raises, so a
+        # _process_city future's exception can't leak it.
+        if owns_ffmpeg and isinstance(ffmpeg, CommandFfmpeg):
+            ffmpeg.close()
 
     # Tally source-fetch failures by provider for run_history.jsonl.  Used by
     # check_provider_error_rates in audit.py to surface provider drift before it turns deploys red.

@@ -101,6 +101,14 @@ def test_valid_slug_and_alias_format_accepted(tmp_path):
     assert cities[0].aliases == ["old-foo-tx", "foo-tx-2"]
 
 
+def test_asr_workers_zero_rejected(tmp_path):
+    # M1/CR2-CP-43: stages.py divides cpu_count() / city.asr_workers; asr_workers: 0 must fail
+    # at config load, not as a ZeroDivisionError at runtime mid-shard.
+    _write(tmp_path, "foo-tx.yml", VALID + "asr_workers: 0\n")
+    with pytest.raises(ValueError, match="asr_workers"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
 def test_duplicate_slug_raises(tmp_path):
     _write(tmp_path, "a.yml", VALID)
     _write(tmp_path, "b.yml", VALID)

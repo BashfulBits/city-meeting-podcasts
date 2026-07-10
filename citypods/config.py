@@ -41,6 +41,15 @@ def _validate_slug_format(slug: str, *, source_file: Path, kind: str) -> None:
         )
 
 
+def _validate_asr_workers(asr_workers: int, *, source_file: Path) -> int:
+    """``stages.py`` divides ``cpu_count() / city.asr_workers`` to size per-inference thread
+    pools; an operator-set ``asr_workers: 0`` reached that division at runtime mid-shard as a
+    ZeroDivisionError instead of failing at config load (M1/CR2-CP-43)."""
+    if asr_workers < 1:
+        raise ValueError(f"{source_file.name}: asr_workers must be >= 1, got {asr_workers}")
+    return asr_workers
+
+
 def load_site_config(path: str | Path) -> dict:
     data = yaml.safe_load(Path(path).read_text()) or {}
     data.setdefault("defaults", {})
@@ -159,7 +168,9 @@ def _build_city(
         asr_model=str(_get("asr_model", defaults.get("asr_model", "large-v3-turbo"))),
         asr_compute_type=str(_get("asr_compute_type", defaults.get("asr_compute_type", "int8"))),
         asr_language=str(_get("asr_language", defaults.get("asr_language", "en"))),
-        asr_workers=int(_get("asr_workers", defaults.get("asr_workers", 1))),
+        asr_workers=_validate_asr_workers(
+            int(_get("asr_workers", defaults.get("asr_workers", 1))), source_file=source_file
+        ),
         asr_beam_size=int(_get("asr_beam_size", defaults.get("asr_beam_size", 5))),
         asr_alignment_enabled=bool(
             _get("asr_alignment_enabled", defaults.get("asr_alignment_enabled", False))

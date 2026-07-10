@@ -1038,6 +1038,38 @@ def test_ffmpeg_threads_autocalc_divides_by_native_audio_max_active(
     assert captured["threads"] == 1  # 4 CPUs // 4 active encodes = 1 thread per encode
 
 
+def test_build_closes_owned_ffmpeg_when_process_city_raises(tmp_path, fake_provider, monkeypatch):
+    # M9/CR2-CP-37: an exception from a _process_city future used to skip ffmpeg.close()
+    # entirely (it sat after the processing block, not in a finally), leaking the owned
+    # ffmpeg process pool.
+    config_dir = _setup(tmp_path)
+
+    closed = []
+    original = run.CommandFfmpeg
+
+    class _CapturingFfmpeg(original):
+        def close(self):
+            closed.append(True)
+            super().close()
+
+    monkeypatch.setattr(run, "CommandFfmpeg", _CapturingFfmpeg)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(run, "_process_city", _boom)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        run.build(
+            site_config_path=tmp_path / "site_config.yml",
+            config_dir=config_dir,
+            output_dir=tmp_path / "docs",
+            base_url="https://example.test",
+        )
+
+    assert closed == [True]
+
+
 def test_newer_run_queued_detects_newer_scheduled_runs(monkeypatch):
     _set_actions_env(monkeypatch)
     _fake_actions_api(

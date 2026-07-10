@@ -2648,7 +2648,10 @@ class TranscriptStage:
                         _native_gate.release(kind="asr")
                     _audio_tmp.cleanup()
 
-            _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{ep.uid[:8]}")
+            # CR2-CP-40: ep.uid can be falsy for a not-yet-assigned-uid episode; use the same
+            # ep.uid or ep.guid fallback already established elsewhere in this function instead
+            # of slicing ep.uid directly (None[:8] raises TypeError).
+            _t = threading.Thread(target=_infer, daemon=True, name=f"asr-{label[:8]}")
             _asr_started_at = time.monotonic()
             _t.start()
 
