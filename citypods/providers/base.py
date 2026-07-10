@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from citypods.models import ChangeToken, Episode
 
@@ -25,7 +25,7 @@ class MediaUnavailable(ProviderError):
     and the audit/report can distinguish "recoverable later" from "permanently dead". Other
     ``ProviderError``s (network/HTTP) are treated as transient (uncategorized)."""
 
-    def __init__(self, message: str, *, code: str):
+    def __init__(self, message: str, *, code: Literal["deferred", "dead"]):
         super().__init__(message)
         self.code = code
 

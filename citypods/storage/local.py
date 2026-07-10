@@ -22,7 +22,16 @@ class LocalStorage:
         self.url_prefix = url_prefix.rstrip("/")
 
     def _path(self, key: str) -> Path:
-        return self.root / key
+        # CR2-CP-54: an absolute key overrides root entirely in pathlib's `/` operator, and a
+        # `..`-laden key can walk out of root even when relative — neither is rejected by a raw
+        # join. Resolve and confirm containment before returning; this backend is documented
+        # dev/test-only and current key sources are pipeline-derived, not raw external input, but
+        # the Protocol-level guarantee should hold regardless.
+        candidate = (self.root / key).resolve()
+        root = self.root.resolve()
+        if candidate != root and root not in candidate.parents:
+            raise ValueError(f"key {key!r} escapes storage root")
+        return candidate
 
     def exists(self, key: str) -> bool:
         return self._path(key).exists()
@@ -46,6 +55,12 @@ class LocalStorage:
         return True
 
     def get_range(self, key: str, start: int, end: int) -> bytes | None:
+        # CR2-CP-51: a negative start seeks from EOF (Python file-object semantics) and
+        # end < start yields a negative read() length, which reads to EOF instead of a bounded
+        # window. S3CompatibleStorage's equivalent invalid-range case (HTTP 416) already returns
+        # None, not raises — match that contract here instead of silently reading the wrong bytes.
+        if start < 0 or end < start:
+            return None
         src = self._path(key)
         if not src.exists():
             return None

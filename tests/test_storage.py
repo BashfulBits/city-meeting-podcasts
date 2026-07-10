@@ -36,6 +36,34 @@ def test_local_get_range_reads_a_byte_window(tmp_path):
     assert store.get_range("missing.m4a", 0, 3) is None
 
 
+def test_local_get_range_rejects_invalid_bounds(tmp_path):
+    # CR2-CP-51: negative start seeks from EOF, and end < start yields a negative read() length
+    # that reads to EOF -- both must return None (matching S3CompatibleStorage's HTTP-416
+    # invalid-range contract) instead of returning the wrong bytes.
+    src = tmp_path / "src.m4a"
+    src.write_bytes(b"0123456789")
+    store = LocalStorage(root=tmp_path / "out", url_prefix="https://x/audio")
+    store.put_file("k.m4a", src, "audio/mp4")
+
+    assert store.get_range("k.m4a", -1, 5) is None
+    assert store.get_range("k.m4a", 5, 2) is None
+
+
+def test_local_path_rejects_keys_that_escape_root(tmp_path):
+    # CR2-CP-54: self.root / key can escape root via ".." or an absolute key (pathlib's `/`
+    # operator lets an absolute rhs override the lhs entirely).
+    store = LocalStorage(root=tmp_path / "out", url_prefix="https://x/audio")
+    with pytest.raises(ValueError, match="escapes storage root"):
+        store.exists("../../etc/passwd")
+    with pytest.raises(ValueError, match="escapes storage root"):
+        store.exists("/etc/passwd")
+
+
+def test_local_path_allows_normal_nested_keys(tmp_path):
+    store = LocalStorage(root=tmp_path / "out", url_prefix="https://x/audio")
+    assert store.exists("denton-tx/abc.m4a") is False  # doesn't raise
+
+
 def test_make_storage_local(tmp_path):
     cfg = {"defaults": {"audio_storage_backend": "local"}}
     store = make_storage(cfg, "https://site", tmp_path)
@@ -398,6 +426,11 @@ class _FakeS3Client:
         self.lifecycle = list(LifecycleConfiguration["Rules"])
         self.lifecycle_puts += 1
 
+    def head_object(self, *, Bucket, Key):
+        if Key not in self.store:
+            raise _client_error("404", 404)
+        return {"ETag": self.store[Key][1]}
+
 
 def _s3_with_fake_client():
     store = S3CompatibleStorage(
@@ -410,6 +443,27 @@ def _s3_with_fake_client():
     )
     store._client = _FakeS3Client()
     return store
+
+
+def test_exists_true_for_present_key_false_for_absent():
+    store = _s3_with_fake_client()
+    store.put_cas("k.json", b"v", "application/json", if_none_match="*")
+    assert store.exists("k.json") is True
+    assert store.exists("missing.json") is False
+
+
+def test_exists_reraises_non_absent_client_errors():
+    # CR2-CP-52: a throttling/permission/transient error must not be conflated with genuine
+    # absence, which risks a double-upload or a false orphan-GC signal.
+    store = _s3_with_fake_client()
+
+    class _ThrottledClient(_FakeS3Client):
+        def head_object(self, *, Bucket, Key):
+            raise _client_error("SlowDown", 503)
+
+    store._client = _ThrottledClient()
+    with pytest.raises(Exception, match="SlowDown"):
+        store.exists("k.json")
 
 
 def test_put_cas_create_if_absent_then_conflict():

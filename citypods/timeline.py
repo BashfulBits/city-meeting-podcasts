@@ -70,6 +70,41 @@ class Segment:
     asset_id: str | None = None
     asset_version: str | None = None
 
+    def __post_init__(self) -> None:
+        """Reject a kind/field combination inconsistent with itself (CR2-CP-13) — a malformed
+        mixed segment would otherwise only surface as a confusing bug several calls downstream
+        in served_to_source/source_to_served, far from where it was actually constructed."""
+        if self.kind == "source":
+            # source_end may legitimately be None — a non-final "open-ended" span whose true
+            # end isn't known yet (media.py's generic filter-complex path, GH#702) — but
+            # source_id/source_start are never optional.
+            if self.source_id is None or self.source_start is None:
+                raise ValueError(
+                    f"Segment(kind='source') requires source_id/source_start: {self!r}"
+                )
+            if (
+                self.insert is not None
+                or self.asset_id is not None
+                or self.asset_version is not None
+            ):
+                raise ValueError(
+                    f"Segment(kind='source') must not set insert/asset_id/asset_version: {self!r}"
+                )
+        elif self.kind == "insert":
+            if self.insert is None:
+                raise ValueError(f"Segment(kind='insert') requires insert: {self!r}")
+            if (
+                self.source_id is not None
+                or self.source_start is not None
+                or self.source_end is not None
+            ):
+                raise ValueError(
+                    "Segment(kind='insert') must not set "
+                    f"source_id/source_start/source_end: {self!r}"
+                )
+        else:
+            raise ValueError(f"Segment.kind must be 'source' or 'insert', got {self.kind!r}")
+
 
 @dataclass(frozen=True)
 class Timeline:

@@ -177,6 +177,15 @@ def test_civicplus_allows_city_own_domain():
         )
 
 
+def test_civicplus_allows_schemeless_city_website():
+    # CR2-CP-48: a schemeless city_website (e.g. "example.gov", no "https://" prefix — a
+    # plausible config-author typo) must not collapse the allowlist to empty, silently dropping
+    # the city's own domain from the CivicPlus allowlist.
+    hosts = allowed_hosts_for_city("civicplus", "www.gainesville.tx.us")
+    assert "www.gainesville.tx.us" in hosts
+    assert "*.gainesville.tx.us" in hosts
+
+
 # --- iter_source_urls / validate_city_sources ------------------------------------------
 
 
@@ -185,6 +194,19 @@ def test_iter_source_urls_handles_lists_and_skips_non_urls():
         "feed_urls": ["https://a.granicus.com/1", "https://b.granicus.com/2"],
         "body": "City Council",
         "category_id": 26,
+    }
+    assert sorted(iter_source_urls(source)) == [
+        "https://a.granicus.com/1",
+        "https://b.granicus.com/2",
+    ]
+
+
+def test_iter_source_urls_recurses_into_nested_dicts():
+    # CR2-CP-46: a URL nested one level under a sub-dict key must not be silently skipped.
+    source = {
+        "feed_urls": ["https://a.granicus.com/1"],
+        "nested": {"list_url": "https://b.granicus.com/2"},
+        "body": "City Council",
     }
     assert sorted(iter_source_urls(source)) == [
         "https://a.granicus.com/1",
