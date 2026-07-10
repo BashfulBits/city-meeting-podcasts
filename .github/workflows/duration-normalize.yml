@@ -40,6 +40,9 @@ jobs:
   normalize:
     runs-on: ubuntu-latest
     env:
+      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
+      FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
       B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
@@ -63,6 +66,21 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
 
+      - name: Cache pinned ffmpeg
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-static-linux64-7.1.4-v1
+
+      - name: Install pinned ffmpeg
+        run: |
+          python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          "${FFMPEG_DIR}/bin/ffmpeg" -version >/dev/null
+          "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
+
       - name: Normalize durations
         env:
           SOURCE: ${{ inputs.source }}
@@ -74,6 +92,7 @@ jobs:
           if [ -n "$UID" ]; then ARGS+=(--uid "$UID"); fi
           if [ "${{ inputs.probe_existing }}" = "false" ]; then ARGS+=(--no-probe-existing); fi
           if [ "${{ inputs.apply }}" = "true" ]; then ARGS+=(--apply); fi
+          ARGS+=(--ffmpeg-binary "${FFMPEG_DIR}/bin/ffmpeg")
           PYTHONPATH=. python scripts/normalize_durations.py "${ARGS[@]}"
 
       - name: Publish summary
