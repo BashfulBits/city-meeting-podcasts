@@ -2489,9 +2489,9 @@ class TranscriptStage:
                 getattr(ctx.ffmpeg, "binary", "ffmpeg"),
             )
             if probe_source == "hosted":
+                served_duration = episode_served_duration_seconds(ep)
                 print(
-                    f"[enrich] transcript audio-probe {ep_ref} "
-                    f"duration_s={ep.audio_duration_served:.1f}",
+                    f"[enrich] transcript audio-probe {ep_ref} duration_s={served_duration:.1f}",
                     flush=True,
                 )
 
