@@ -85,6 +85,7 @@ from citypods.records import (
     record_to_episode,
     save_records,
     source_key,
+    transcript_timeout_backoff_until,
 )
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
@@ -675,6 +676,17 @@ class ExternalTranscribeWorker:
         metadata: dict[str, Any],
         estimated_runtime_seconds: float,
     ) -> tuple[bool, str | None]:
+        # A recording that has already timed out locally is exponentially backing off
+        # (``transcript_timeout_backoff_until``, records.py) — without this check that state was
+        # written but never read back, so ``abandon()``'s instant no-TTL requeue (below) let any
+        # worker re-claim and re-time-out the same poisoned item every run. Base-class check (not
+        # ``InternalTranscribeWorker``-only) so Modal/Beam also respect a known-bad item's cooldown
+        # instead of spending provider budget re-attempting it while it backs off. Reads the
+        # deadline off ``metadata`` (``_telemetry_metadata`` already looked the episode up for this
+        # same item) rather than re-fetching it.
+        backoff_until = metadata.get("timeout_backoff_until")
+        if backoff_until is not None and datetime.now(UTC) < backoff_until:
+            return False, f"timeout-backoff until={backoff_until.isoformat()}"
         return True, None
 
     def _after_claim(self, claim: CompletedClaim) -> None:
@@ -748,9 +760,8 @@ class ExternalTranscribeWorker:
                     )
                 continue
             if budget_policy is not None:
-                estimate = (
-                    estimated_runtime_seconds
-                    * self._estimated_dollars_per_runtime_second(budget_policy)
+                estimate = estimated_runtime_seconds * self._estimated_dollars_per_runtime_second(
+                    budget_policy
                 )
                 cap = budget_policy.budget.spendable_dollars
                 max_inflight = budget_policy.dispatch.max_inflight
@@ -791,7 +802,10 @@ class ExternalTranscribeWorker:
                     owner=claim_owner,
                 )
                 summary.deferred += 1
-                worked += 1
+                # Not a real (successful or failed) transcription attempt — a timeout, a stop
+                # request, or a backstop miss all hand the item straight back to the queue/backoff
+                # path, so it must not consume a ``max_claims`` slot the way a genuine attempt does
+                # (a run full of timeouts would otherwise report itself "done" with zero output).
                 outcome = "deferred"
             except Exception:
                 actual = max(0.0, time.monotonic() - started)
@@ -1048,12 +1062,17 @@ class ExternalTranscribeWorker:
                 "duration_hours": float(item.duration_hours or 0.0),
                 "model": None,
                 "compute_type": None,
+                "timeout_backoff_until": None,
             }
         hours, _source = episode_duration_hours(ep)
         return {
             "duration_hours": hours,
             "model": city.asr_model,
             "compute_type": city.asr_compute_type,
+            # Carried alongside the other per-episode lookups this method already does, so
+            # ``_admit_claim`` can gate on it without a second ``_episode_for``/``load_records``
+            # round trip for the same item.
+            "timeout_backoff_until": transcript_timeout_backoff_until(ep),
         }
 
     def _model(self, city: City, tracker: ResourceTracker | None = None):
@@ -1305,6 +1324,11 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
         metadata: dict[str, Any],
         estimated_runtime_seconds: float,
     ) -> tuple[bool, str | None]:
+        admitted, reason = super()._admit_claim(
+            item, metadata=metadata, estimated_runtime_seconds=estimated_runtime_seconds
+        )
+        if not admitted:
+            return admitted, reason
         duration_hours = float(metadata.get("duration_hours") or 0.0)
         if duration_hours <= 0:
             return False, "unknown-duration"

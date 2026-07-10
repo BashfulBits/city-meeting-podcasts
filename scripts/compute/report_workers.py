@@ -22,7 +22,12 @@ from citypods.ops.workqueue import (
     manifest_counts,
     overlay_persisted_operational_state,
 )
-from citypods.records import load_records, source_key
+from citypods.records import (
+    load_records,
+    record_to_episode,
+    source_key,
+    transcript_timeout_backoff_until,
+)
 from citypods.report import _load_run_history
 from citypods.resources import format_bytes
 from citypods.state import resolve_state_dir
@@ -132,6 +137,92 @@ def _claimable_mix(items: list, *, long_threshold: float, fresh_within_days: flo
     return dict(mix)
 
 
+# "Failed many times in a row" (H19 hardening follow-up): the exponential backoff itself
+# (records.py, base 1 day, doubling, capped 30 days) already throttles a single poisoned recording
+# from being re-claimed every run. This threshold is a *separate*, coarser signal for an operator —
+# a one-off timeout recovers on its own well before it reaches this many attempts, so surfacing it
+# only past a run of consecutive failures avoids paging on routine noise while still catching a
+# recording that is durably stuck (corrupt/truncated audio, a genuine faster-whisper edge case, or a
+# recording that should be routed to an external worker instead of local CPU inference).
+_ASR_TIMEOUT_NOTIFY_THRESHOLD_DEFAULT = 3
+
+
+def stuck_in_asr_backoff(
+    state_dir: Path,
+    city_by_source: dict,
+    *,
+    min_attempts: int,
+    now: datetime | None = None,
+) -> list[dict]:
+    """Episodes whose local ASR timeout backoff (``transcript_timeout_attempts``,
+    ``transcript_timeout_backoff_until``) has fired at least ``min_attempts`` times in a row
+    without an intervening success resetting it. Sorted worst-first (most attempts)."""
+    now = now or datetime.now(UTC)
+    hits: list[dict] = []
+    for src in city_by_source:
+        for uid, rec in load_records(state_dir, src).items():
+            ep = record_to_episode(rec)
+            if ep.transcript_timeout_attempts < min_attempts:
+                continue
+            backoff_until = transcript_timeout_backoff_until(ep)
+            hits.append(
+                {
+                    "source_key": src,
+                    "episode_uid": uid,
+                    "attempts": ep.transcript_timeout_attempts,
+                    "last_attempt": ep.transcript_timeout_last_attempt,
+                    "backoff_until": backoff_until.isoformat() if backoff_until else None,
+                    "still_backing_off": bool(backoff_until and now < backoff_until),
+                }
+            )
+    hits.sort(key=lambda h: h["attempts"], reverse=True)
+    return hits
+
+
+def render_asr_backoff_issue_body(hits: list[dict], *, threshold: int) -> str:
+    lines = [
+        f"## ⚠️ {len(hits)} recording(s) stuck in ASR timeout backoff (>= {threshold} attempts "
+        "in a row)",
+        "",
+        "These recordings have repeatedly timed out during local (GitHub Actions) transcription "
+        "and are now cycling through exponential backoff instead of being retried every run. This "
+        "usually means the audio is corrupt/unusually slow for faster-whisper, or the recording "
+        "should be routed to an external worker (Modal/Beam) instead of local CPU inference.",
+        "",
+        "| Source | Episode | Attempts | Last attempt | Backing off until |",
+        "|---|---|---|---|---|",
+    ]
+    for h in hits:
+        lines.append(
+            f"| `{h['source_key']}` | `{h['episode_uid']}` | {h['attempts']} | "
+            f"{h.get('last_attempt') or 'unknown'} | {h.get('backoff_until') or 'unknown'} |"
+        )
+    lines += [
+        "",
+        "To recover: investigate why the recording keeps timing out (corrupt/truncated audio, "
+        "unusual silence, a faster-whisper edge case), then either fix the source and let the next "
+        "run retry once the backoff window lapses, or clear `transcript_timeout_attempts` / "
+        "`transcript_timeout_last_attempt` on the record (`citypods.records.record_to_episode`) to "
+        "force an immediate retry.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def write_asr_backoff_report(out_dir: Path, hits: list[dict], *, threshold: int) -> None:
+    """Mirrors ``check_reclaim_resurrection.py``'s report shape (payload + ``has_*`` flag +
+    optional issue body) so the workflow can drive the same open/update/close-issue steps."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"threshold": threshold, "count": len(hits), "items": hits}
+    (out_dir / "asr-timeout-backoff.json").write_text(
+        json.dumps(payload, indent=2), encoding="utf-8"
+    )
+    (out_dir / "has_asr_timeout_backoff").write_text("true" if hits else "false", encoding="utf-8")
+    if hits:
+        (out_dir / "issue-body.md").write_text(
+            render_asr_backoff_issue_body(hits, threshold=threshold), encoding="utf-8"
+        )
+
+
 def build_report(
     *, site_config_path: str, output_dir: str, base_url: str | None = None, recent: int = 0
 ) -> dict:
@@ -169,6 +260,14 @@ def build_report(
         threshold = float(
             (site_config.get("defaults") or {}).get("asr_local_max_duration_hours", 4)
         )
+        notify_threshold = int(
+            (site_config.get("defaults") or {}).get(
+                "asr_timeout_notify_threshold", _ASR_TIMEOUT_NOTIFY_THRESHOLD_DEFAULT
+            )
+        )
+        asr_timeout_backoff = stuck_in_asr_backoff(
+            state_dir, city_by_source, min_attempts=notify_threshold
+        )
         modal_policy = backend_policy(site_config, "modal")
         beam_policy = backend_policy(site_config, "beam")
         leases = Counter()
@@ -199,6 +298,10 @@ def build_report(
             "worker_telemetry": worker_telemetry,
             "recent_samples": recent_samples,
             "manifest_last_modified": _manifest_last_modified(storage),
+            "asr_timeout_backoff": {
+                "threshold": notify_threshold,
+                "items": asr_timeout_backoff,
+            },
             "transcript_asr_duration_band": _duration_band(claimable, threshold),
             "transcript_asr_claimable_mix": {
                 "modal": _claimable_mix(
@@ -273,6 +376,17 @@ def _markdown(report: dict) -> str:
         f"`{report.get('manifest_last_modified') or 'unknown'}`"
     )
     lines.append(f"- transcript-asr pending: `{report.get('transcript_asr_pending', 0)}`")
+    backoff = report.get("asr_timeout_backoff") or {}
+    backoff_items = backoff.get("items") or []
+    if backoff_items:
+        lines.append(
+            f"- ⚠️ ASR timeout backoff: `{len(backoff_items)}` recording(s) stuck (>= "
+            f"`{backoff.get('threshold')}` consecutive attempts) — see the opened issue"
+        )
+    else:
+        lines.append(
+            f"- ASR timeout backoff: none stuck (threshold `{backoff.get('threshold')}` attempts)"
+        )
     band = report.get("transcript_asr_duration_band") or {}
     if band:
         lines.append(
@@ -361,6 +475,12 @@ def main() -> int:
         help="also list the last N raw telemetry samples (source_key/episode_uid/duration/outcome) "
         "for identifying which episode a live canary claimed",
     )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="also write the ASR-timeout-backoff watchdog report (payload + has_* flag + "
+        "issue body, mirroring check_reclaim_resurrection.py) into this directory",
+    )
     args = parser.parse_args()
     report = build_report(
         site_config_path=args.site_config,
@@ -368,6 +488,11 @@ def main() -> int:
         base_url=args.base_url,
         recent=args.recent,
     )
+    if args.out:
+        backoff = report.get("asr_timeout_backoff") or {}
+        write_asr_backoff_report(
+            Path(args.out), backoff.get("items") or [], threshold=backoff.get("threshold", 0)
+        )
     if args.markdown:
         print(_markdown(report))
     else:

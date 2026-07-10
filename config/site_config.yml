@@ -249,7 +249,16 @@ defaults:
     github-actions:
       tasks:
         transcript-asr:
-          estimated_runtime_seconds_per_audio_second: 1.8
+          # Seed only — same units as the modal/beam entries below (runtime seconds per audio
+          # second), learned/overwritten per-completion by the runtime-estimate ledger
+          # (`observe_runtime_estimate`, compute/budget.py) once real claims land. Was `1.8`, which
+          # read as *slower* than real time and contradicted this file's own `asr_timeout_*`
+          # telemetry a few lines up (ratio~0.503, i.e. faster than real time on this exact
+          # runner/model) by ~3.6x — plausibly the reciprocal throughput framing ("~1.8x real-time
+          # speed") entered directly instead of inverted. Reseeded from that same assumed base
+          # ratio (0.5) with the existing `asr_timeout_safety_margin` (1.2) applied, so admission
+          # starts conservative and the auto-adjust parameter takes it from there.
+          estimated_runtime_seconds_per_audio_second: 0.6
           min_runtime_seconds: 180
           fixed_runtime_seconds_per_run: 0
           fixed_runtime_seconds_per_claim: 0
