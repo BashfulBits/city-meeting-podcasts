@@ -9,6 +9,7 @@ import pytest
 
 from citypods.concat import SwagitConcatPlanner, _probe_duration_url
 from citypods.http import StopRequested
+from citypods.security import SecurityError
 from citypods.timeline import timeline_digest
 
 SEG_URL_0 = "https://swagit-video.granicus.com/archive/2014/01/21/616.h264.mp4"
@@ -297,6 +298,13 @@ class TestChapterConstruction:
 
 
 class TestProbeDurationUrl:
+    @pytest.fixture(autouse=True)
+    def _bypass_ssrf_gate(self):
+        """These tests exercise the ffprobe-invocation/output-parsing logic in isolation; the
+        SSRF gate (validate_source_url) has its own dedicated tests below."""
+        with patch("citypods.concat.validate_source_url"):
+            yield
+
     def test_acquires_host_slot_before_distributed_lease(self):
         """Match the global media lock order so concat probes cannot deadlock source-cache work."""
         events = []
@@ -411,3 +419,26 @@ class TestProbeDurationUrl:
             holder_released.set()
             t.join()
             HOST_LIMITER.configure({})
+
+
+class TestProbeDurationUrlSsrfGate:
+    """MR-CP-01/C3: this was previously the one ffprobe call in the tree with no SSRF gate at
+    all — url is a page-scraped Swagit dfile URL, not implicitly trusted."""
+
+    def test_validates_url_before_running_ffprobe(self):
+        with (
+            patch("citypods.concat.validate_source_url") as mock_validate,
+            patch("citypods.concat.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.stdout = "3600\n"
+            assert _probe_duration_url(SEG_URL_0) == 3600.0
+        mock_validate.assert_called_once_with(SEG_URL_0, resolve=True)
+
+    def test_blocked_url_returns_none_without_running_ffprobe(self):
+        with (
+            patch("citypods.concat.validate_source_url", side_effect=SecurityError("blocked")),
+            patch("citypods.concat.subprocess.run") as mock_run,
+        ):
+            result = _probe_duration_url("https://169.254.169.254/x.mp4")
+        assert result is None
+        mock_run.assert_not_called()

@@ -7,6 +7,7 @@ import requests
 
 from citypods.providers.base import ProviderError
 from citypods.providers.civicplus import CivicPlusProvider, parse_civicmedia_feed
+from citypods.security import SecurityError
 from tests.conftest import fixture_bytes
 
 SAMPLE = b"""<?xml version="1.0"?><rss version="2.0"><channel>
@@ -164,12 +165,39 @@ def test_resolve_media_url_walks_page_then_embed(monkeypatch):
         }
     )
     monkeypatch.setattr("citypods.providers.civicplus.make_session", lambda: fake)
+    validated = []
+    monkeypatch.setattr(
+        "citypods.providers.civicplus.validate_source_url",
+        lambda *a, **kw: validated.append((a, kw)),
+    )
 
     eps = parse_civicmedia_feed(SAMPLE)
     url = provider.resolve_media_url(eps[0], {"feed_url": "x"})
     assert url.endswith("playlist.m3u8?token=abc&ip=1.2.3.4")  # &amp; decoded
     # It fetched the watch page first, then the embed.
     assert "VID=285" in fake.requested[0] and "/embed?" in fake.requested[1]
+    # The resolved HLS URL is validated before being handed back (CR2-CP-17/MR-CP-02): M3U8_RE
+    # has no host constraint, unlike the sibling EMBED_RE.
+    assert validated == [((url,), {"resolve": True})]
+
+
+def test_resolve_media_url_rejects_blocked_hls_url(monkeypatch):
+    provider = CivicPlusProvider()
+    fake = FakeSession(
+        {
+            "CivicMedia?VID=285": FakeResponse(WATCH_PAGE),
+            "/embed?": FakeResponse(EMBED_PAGE),
+        }
+    )
+    monkeypatch.setattr("citypods.providers.civicplus.make_session", lambda: fake)
+
+    def _reject(*_a, **_kw):
+        raise SecurityError("blocked")
+
+    monkeypatch.setattr("citypods.providers.civicplus.validate_source_url", _reject)
+    eps = parse_civicmedia_feed(SAMPLE)
+    with pytest.raises(SecurityError):
+        provider.resolve_media_url(eps[0], {"feed_url": "x"})
 
 
 def test_resolve_raises_when_no_embed(monkeypatch):

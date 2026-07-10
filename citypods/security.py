@@ -138,6 +138,12 @@ def _host_allowed(host: str, patterns: Iterable[str]) -> bool:
     return any(fnmatch(host, pat.lower()) for pat in patterns)
 
 
+# RFC 6598 shared address space (CGNAT, and some cloud providers' internal routing). Verified
+# live that ipaddress flags every other check here False for e.g. 100.64.0.1 — is_private,
+# is_reserved, etc. all miss this range, so it must be blocked explicitly (CR2-CP-47/H1).
+_SHARED_ADDRESS_SPACE = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """True for any address that must never be fetched from a build runner."""
     # IPv4-mapped IPv6 (``::ffff:169.254.169.254``) — judge by the embedded v4 address.
@@ -151,6 +157,7 @@ def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
         or ip.is_reserved
         or ip.is_multicast
         or ip.is_unspecified
+        or (isinstance(ip, ipaddress.IPv4Address) and ip in _SHARED_ADDRESS_SPACE)
     )
 
 

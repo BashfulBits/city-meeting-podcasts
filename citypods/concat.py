@@ -30,6 +30,7 @@ from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
 from citypods.media import record_materialize_failure
 from citypods.models import City, Episode
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
+from citypods.security import SecurityError, validate_source_url
 from citypods.timeline import Segment, SourceMedia, Timeline
 
 
@@ -46,6 +47,13 @@ def _probe_duration_url(
     wall-clock budget expires while queued on the rate-limit/lease wait — the caller distinguishes
     that from a genuine probe failure so it doesn't record a materialize-failure backoff for it.
     """
+    # This is the one ffprobe call in the tree that previously had no SSRF gate at all — url is
+    # a page-scraped Swagit ``dfile`` URL, not implicitly trusted (MR-CP-01/C3). Treat a blocked
+    # URL the same as any other probe failure (the caller records a materialize-failure and defers).
+    try:
+        validate_source_url(url, resolve=True)
+    except SecurityError:
+        return None
     # Keep the acquisition order identical to every other media subprocess path (#342). Acquiring
     # the distributed lease first can deadlock against a source-cache worker that already holds the
     # process-local slot while waiting for that lease.

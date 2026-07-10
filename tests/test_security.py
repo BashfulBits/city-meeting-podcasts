@@ -101,6 +101,9 @@ def test_allowed_host_subdomain_passes():
         "::1",  # IPv6 loopback
         "fd00::1",  # IPv6 unique-local
         "::ffff:127.0.0.1",  # IPv4-mapped loopback
+        "100.64.0.1",  # RFC 6598 shared address space (CGNAT/cloud-internal) — CR2-CP-47/H1
+        "100.100.100.1",  # still within 100.64.0.0/10
+        "::ffff:100.64.0.1",  # IPv4-mapped shared address space
     ],
 )
 def test_blocked_private_ip(ip):
@@ -117,6 +120,12 @@ def test_public_ip_allowed():
     validate_source_url(
         "https://denton.granicus.com/x", resolve=True, resolver=_resolver("8.8.8.8")
     )
+
+
+@pytest.mark.parametrize("ip", ["100.63.255.255", "100.128.0.1"])
+def test_ip_just_outside_shared_address_space_allowed(ip):
+    """100.64.0.0/10 spans 100.64.0.0-100.127.255.255; adjacent addresses must stay allowed."""
+    validate_source_url("https://denton.granicus.com/x", resolve=True, resolver=_resolver(ip))
 
 
 def test_mixed_resolution_rejected_if_any_private():
