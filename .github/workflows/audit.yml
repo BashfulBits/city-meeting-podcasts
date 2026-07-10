@@ -71,35 +71,46 @@ jobs:
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
           B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          TIMELINE_DIAGNOSTICS_INPUT: ${{ inputs.timeline_diagnostics }}
+          ENCLOSURES_INPUT: ${{ inputs.enclosures }}
+          TIMELINE_REPAIR_INPUT: ${{ inputs.timeline_repair }}
+          # Free-form string inputs: pass through env, never inline them in `run:` shell text
+          # (a branch-controllable/free-form value interpolated pre-shell could otherwise splice
+          # arbitrary script text into this step — the same shape as the fixed CR2-GH-07/C1).
+          TIMELINE_FINDING_MIN_DELTA: ${{ inputs.timeline_finding_min_delta }}
+          TIMELINE_REPAIR_MIN_DELTA: ${{ inputs.timeline_repair_min_delta }}
+          TIMELINE_REPAIR_COHORT: ${{ inputs.timeline_repair_cohort }}
         # --meetings-urls runs every time: it's one HEAD per unique meetings_url (a handful),
         # so it's cheap enough for the daily cron (unlike --enclosures, which probes per-episode).
         run: |
           args=(
             --meetings-urls
-            --timeline-finding-min-delta "${{ github.event_name == 'workflow_dispatch' && inputs.timeline_finding_min_delta || '1.0' }}"
+            --timeline-finding-min-delta "${TIMELINE_FINDING_MIN_DELTA:-1.0}"
           )
           timeline_diagnostics_requested=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.timeline_diagnostics }}" = "true" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TIMELINE_DIAGNOSTICS_INPUT" = "true" ]; then
             timeline_diagnostics_requested=true
           fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.enclosures }}" = "true" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$ENCLOSURES_INPUT" = "true" ]; then
             args+=(--enclosures)
           fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.timeline_repair }}" = "true" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TIMELINE_REPAIR_INPUT" = "true" ]; then
             timeline_diagnostics_requested=true
-            if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
               echo "::error::timeline_repair can only persist durable state from main"
               exit 1
             fi
             args+=(
               --persist-timeline-integrity
-              --timeline-repair-min-delta "${{ inputs.timeline_repair_min_delta }}"
+              --timeline-repair-min-delta "$TIMELINE_REPAIR_MIN_DELTA"
             )
-            if [ -z "${{ inputs.timeline_repair_cohort }}" ]; then
+            if [ -z "$TIMELINE_REPAIR_COHORT" ]; then
               echo "::error::timeline_repair_cohort is required when timeline_repair is true"
               exit 1
             fi
-            args+=(--timeline-repair-cohort "${{ inputs.timeline_repair_cohort }}")
+            args+=(--timeline-repair-cohort "$TIMELINE_REPAIR_COHORT")
           fi
           if [ "$timeline_diagnostics_requested" = "true" ]; then
             args+=(--timeline-diagnostics audit-timeline-integrity.jsonl)

@@ -84,14 +84,29 @@ jobs:
       - name: Normalize durations
         env:
           SOURCE: ${{ inputs.source }}
-          UID: ${{ inputs.uid }}
+          # Named RECORD_UID, not UID: bash initializes its own readonly `UID` shell parameter
+          # from the real process UID at shell startup, which silently shadows an env var of that
+          # same name — an env var literally named `UID` here would make `--uid` filtering never
+          # actually apply the workflow input (same bug class as CR2-GH-06/C2).
+          RECORD_UID: ${{ inputs.uid }}
           MAX_ITEMS: ${{ inputs.max_items }}
+          PROBE_EXISTING_INPUT: ${{ inputs.probe_existing }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          GIT_REF: ${{ github.ref }}
         run: |
           ARGS=(--max-items "$MAX_ITEMS")
           if [ -n "$SOURCE" ]; then ARGS+=(--source "$SOURCE"); fi
-          if [ -n "$UID" ]; then ARGS+=(--uid "$UID"); fi
-          if [ "${{ inputs.probe_existing }}" = "false" ]; then ARGS+=(--no-probe-existing); fi
-          if [ "${{ inputs.apply }}" = "true" ]; then ARGS+=(--apply); fi
+          if [ -n "$RECORD_UID" ]; then ARGS+=(--uid "$RECORD_UID"); fi
+          if [ "$PROBE_EXISTING_INPUT" = "false" ]; then ARGS+=(--no-probe-existing); fi
+          if [ "$APPLY_INPUT" = "true" ]; then
+            # A mutating dispatch may only persist state from main (MR-GH-01): a feature-branch
+            # dispatch could otherwise write normalized production records with no review.
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
+              echo "::error::apply can only mutate state from main"
+              exit 1
+            fi
+            ARGS+=(--apply)
+          fi
           ARGS+=(--ffmpeg-binary "${FFMPEG_DIR}/bin/ffmpeg")
           PYTHONPATH=. python scripts/normalize_durations.py "${ARGS[@]}"
 

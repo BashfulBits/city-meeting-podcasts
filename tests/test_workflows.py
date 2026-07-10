@@ -377,6 +377,16 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     assert "audio.yml --status queued" in runs
     assert "--sha256" in runs
 
+    # `durations` is a free-form string input; must be passed via env, never inlined into
+    # `run:` shell text (script-injection guard — the other inputs used inline here are
+    # GitHub-validated `number`s, so they can't carry shell metacharacters).
+    assert "${{ inputs.durations }}" not in runs
+    sustained_step = next(
+        step for step in job["steps"] if step.get("name") == "Run sustained Granicus matrix"
+    )
+    assert sustained_step["env"]["DURATIONS"] == "${{ inputs.durations }}"
+    assert '--durations "$DURATIONS"' in sustained_step["run"]
+
     upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
     assert upload["if"] == "always()"
     assert upload["with"]["path"] == "granicus-*-results.json"
@@ -545,9 +555,10 @@ def test_audit_workflow_exposes_guarded_timeline_repair_cohort_dispatch():
     assert inputs["timeline_diagnostics"]["default"] is False
     assert inputs["timeline_finding_min_delta"]["default"] == "1.0"
 
-    run = next(s for s in job["steps"] if s.get("name") == "Run audit")["run"]
+    audit_step = next(s for s in job["steps"] if s.get("name") == "Run audit")
+    run = audit_step["run"]
     assert "timeline_diagnostics_requested=false" in run
-    assert 'inputs.timeline_diagnostics }}" = "true"' in run
+    assert '"$TIMELINE_DIAGNOSTICS_INPUT" = "true"' in run
     assert "timeline_diagnostics_requested=true" in run
     assert 'if [ "$timeline_diagnostics_requested" = "true" ]; then' in run
     assert "--timeline-diagnostics audit-timeline-integrity.jsonl" in run
@@ -555,8 +566,16 @@ def test_audit_workflow_exposes_guarded_timeline_repair_cohort_dispatch():
     assert "--persist-timeline-integrity" in run
     assert "--timeline-repair-min-delta" in run
     assert "--timeline-repair-cohort" in run
-    assert 'github.ref }}" != "refs/heads/main"' in run
+    assert '"$GIT_REF" != "refs/heads/main"' in run
     assert "timeline_repair_cohort is required" in run
+    # Free-form string inputs must be passed via env, never inlined into `run:` shell text
+    # (script-injection guard, same shape as the fixed CR2-GH-07/C1).
+    assert "${{ inputs.timeline_repair_min_delta }}" not in run
+    assert "${{ inputs.timeline_repair_cohort }}" not in run
+    assert "${{ inputs.timeline_finding_min_delta }}" not in run
+    step_env = audit_step["env"]
+    assert step_env["TIMELINE_REPAIR_MIN_DELTA"] == "${{ inputs.timeline_repair_min_delta }}"
+    assert step_env["TIMELINE_REPAIR_COHORT"] == "${{ inputs.timeline_repair_cohort }}"
 
 
 def test_reset_backoff_workflow_exposes_targeted_hosted_filters():
@@ -572,13 +591,19 @@ def test_reset_backoff_workflow_exposes_targeted_hosted_filters():
     assert inputs["apply"]["type"] == "boolean"
     assert inputs["apply"]["default"] is False
 
-    run = next(s for s in job["steps"] if s.get("name") == "Reset materialization backoff")["run"]
+    reset_step = next(s for s in job["steps"] if s.get("name") == "Reset materialization backoff")
+    run = reset_step["run"]
     assert 'ARGS+=(--provider "$PROVIDER")' in run
     assert 'ARGS+=(--source "$SOURCE")' in run
-    assert 'ARGS+=(--uid "$UID")' in run
+    assert 'ARGS+=(--uid "$RECORD_UID")' in run
     assert 'ARGS+=(--error "$ERROR_CODE")' in run
     assert "ARGS+=(--include-hosted)" in run
     assert "ARGS+=(--apply)" in run
+    assert '"$GIT_REF" != "refs/heads/main"' in run
+    # bash's own readonly UID builtin would shadow an env var literally named UID (CR2-GH-06/C2).
+    step_env = reset_step["env"]
+    assert "UID" not in step_env
+    assert step_env["RECORD_UID"] == "${{ inputs.uid }}"
 
 
 def test_duration_normalize_workflow_is_manual_bounded_and_archived():
@@ -601,14 +626,20 @@ def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     )
     assert len(job["env"]["FFMPEG_SHA256"]) == 64
 
-    run = next(s for s in job["steps"] if s.get("name") == "Normalize durations")["run"]
+    normalize_step = next(s for s in job["steps"] if s.get("name") == "Normalize durations")
+    run = normalize_step["run"]
     assert 'ARGS=(--max-items "$MAX_ITEMS")' in run
     assert 'ARGS+=(--source "$SOURCE")' in run
-    assert 'ARGS+=(--uid "$UID")' in run
+    assert 'ARGS+=(--uid "$RECORD_UID")' in run
     assert "ARGS+=(--no-probe-existing)" in run
     assert "ARGS+=(--apply)" in run
     assert 'ARGS+=(--ffmpeg-binary "${FFMPEG_DIR}/bin/ffmpeg")' in run
     assert "python scripts/normalize_durations.py" in run
+    assert '"$GIT_REF" != "refs/heads/main"' in run
+    # bash's own readonly UID builtin would shadow an env var literally named UID.
+    step_env = normalize_step["env"]
+    assert "UID" not in step_env
+    assert step_env["RECORD_UID"] == "${{ inputs.uid }}"
 
     install = next(s for s in job["steps"] if s.get("name") == "Install pinned ffmpeg")
     assert "python scripts/install_static_ffmpeg.py" in install["run"]
@@ -619,3 +650,64 @@ def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     assert upload["if"] == "always()"
     assert "duration-normalize/normalize.jsonl" in upload["with"]["path"]
     assert "duration-normalize/summary.json" in upload["with"]["path"]
+
+
+def test_clear_materialization_workflow_avoids_injection_and_guards_apply():
+    """CR2-GH-07/C1: `run_id` is a free-form string dispatch input; interpolating it directly
+    into `run:` shell text is a script-injection shape. MR-GH-01: `apply`/`delete_objects` mutate
+    production state and must be refused off `main`."""
+    wf, job = _job("clear-materialization.yml")
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["run_id"]["required"] is True
+
+    step = next(s for s in job["steps"] if s.get("name") == "Clear run materializations")
+    run = step["run"]
+    assert "${{ inputs.run_id }}" not in run
+    assert step["env"]["RUN_ID"] == "${{ inputs.run_id }}"
+    assert step["env"]["GIT_REF"] == "${{ github.ref }}"
+    assert '"$GIT_REF" != "refs/heads/main"' in run
+    assert "ARGS+=(--apply)" in run
+    assert "ARGS+=(--delete-objects)" in run
+    assert 'python scripts/clear_run_materializations.py "${ARGS[@]}"' in run
+
+
+def test_reclaim_transcript_workflow_guards_write_to_main():
+    wf, job = _job("reclaim-transcript.yml")
+    step = next(s for s in job["steps"] if s.get("name") == "Reclaim transcript")
+    run = step["run"]
+    assert step["env"]["GIT_REF"] == "${{ github.ref }}"
+    assert '"$GIT_REF" != "refs/heads/main"' in run
+    assert "args+=(--write)" in run
+    assert set(_on(wf)) == {"workflow_dispatch"}
+
+
+def test_no_workflow_inlines_a_free_form_dispatch_input_in_run_text():
+    """Generalizes MR-GH-04's ask: broaden the injection guard beyond a single regex for one
+    action, to any workflow_dispatch `type: string` (or untyped, which defaults to string) input
+    interpolated directly into `run:` shell text rather than passed through `env:`. GitHub
+    template-expands `${{ }}` before the shell ever runs, so a free-form string spliced straight
+    into script text is a script-injection shape (the same one CR2-GH-07/C1 fixed); `boolean`/
+    `number`/`choice` inputs are GitHub-validated and excluded since they can't carry shell
+    metacharacters.
+    """
+    offenders = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        wf = yaml.safe_load(workflow.read_text())
+        dispatch = (_on(wf) or {}).get("workflow_dispatch") or {}
+        string_inputs = {
+            name
+            for name, spec in (dispatch.get("inputs") or {}).items()
+            if (spec or {}).get("type", "string") == "string"
+        }
+        if not string_inputs:
+            continue
+        for job_name, job in (wf.get("jobs") or {}).items():
+            for step in job.get("steps", []):
+                run_text = str(step.get("run", ""))
+                for name in string_inputs:
+                    # Matches both `inputs.<name>` and the older `github.event.inputs.<name>` form.
+                    if re.search(rf"\binputs\.{re.escape(name)}\b", run_text):
+                        offenders.append(f"{workflow.name}:{job_name}: inputs.{name}")
+    assert not offenders, "free-form string input inlined in run: shell text:\n" + "\n".join(
+        offenders
+    )

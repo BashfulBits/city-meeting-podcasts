@@ -85,14 +85,29 @@ jobs:
         env:
           PROVIDER: ${{ inputs.provider }}
           SOURCE: ${{ inputs.source }}
-          UID: ${{ inputs.uid }}
+          # Named RECORD_UID, not UID: bash initializes its own readonly `UID` shell parameter
+          # from the real process UID at shell startup, which silently shadows an env var of that
+          # same name — an env var literally named `UID` here made `--uid` filtering never
+          # actually apply the workflow input (CR2-GH-06/C2).
+          RECORD_UID: ${{ inputs.uid }}
           ERROR_CODE: ${{ inputs.error }}
+          GIT_REF: ${{ github.ref }}
+          INCLUDE_HOSTED_INPUT: ${{ inputs.include_hosted }}
+          APPLY_INPUT: ${{ inputs.apply }}
         run: |
           ARGS=()
           if [ -n "$PROVIDER" ]; then ARGS+=(--provider "$PROVIDER"); fi
           if [ -n "$SOURCE" ]; then ARGS+=(--source "$SOURCE"); fi
-          if [ -n "$UID" ]; then ARGS+=(--uid "$UID"); fi
+          if [ -n "$RECORD_UID" ]; then ARGS+=(--uid "$RECORD_UID"); fi
           if [ -n "$ERROR_CODE" ]; then ARGS+=(--error "$ERROR_CODE"); fi
-          if [ "${{ inputs.include_hosted }}" = "true" ]; then ARGS+=(--include-hosted); fi
-          if [ "${{ inputs.apply }}" = "true" ]; then ARGS+=(--apply); fi
+          if [ "$INCLUDE_HOSTED_INPUT" = "true" ]; then ARGS+=(--include-hosted); fi
+          if [ "$APPLY_INPUT" = "true" ]; then
+            # A mutating dispatch may only persist state from main (MR-GH-01): a feature-branch
+            # dispatch could otherwise reset production backoff state with no review.
+            if [ "$GIT_REF" != "refs/heads/main" ]; then
+              echo "::error::apply can only mutate state from main"
+              exit 1
+            fi
+            ARGS+=(--apply)
+          fi
           PYTHONPATH=. python scripts/reset_materialize_backoff.py "${ARGS[@]}"
