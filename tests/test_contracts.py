@@ -72,3 +72,14 @@ def test_check_city_media_check_redacts_presigned_query(monkeypatch):
     media = next(r for r in results if r.endpoint == "media")
     assert "topsecret" not in media.detail
     assert media.detail == "https://cdn.example/a.mp4?<redacted>"
+
+
+def test_check_city_unregistered_provider_returns_a_result_not_raises():
+    # CR2-SC-03: get_provider() used to run before any try block, so an unregistered provider
+    # name raised ProviderError straight out of check_city, aborting the caller's whole scan
+    # (--all in scripts/check_endpoints.py) instead of reporting this one city as a failure.
+    results = check_city("some-city", "not-a-real-provider", {})
+    assert len(results) == 1
+    assert results[0].endpoint == "list"
+    assert results[0].ok is False
+    assert "not-a-real-provider" in results[0].detail

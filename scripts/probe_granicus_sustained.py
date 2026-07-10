@@ -217,62 +217,67 @@ def main() -> int:
         _emit(result)
         return result
 
-    # Request-count pressure: round-robin prevents one tenant from consuming the whole serial phase.
-    for _ in range(args.repeat_count):
+    try:
+        # Request-count pressure: round-robin prevents one tenant from consuming the whole
+        # serial phase.
+        for _ in range(args.repeat_count):
+            for clip in clips:
+                probe("serial-repeat", clip, args.repeat_seconds)
+
+        # Byte/transfer-duration pressure. Stop escalating one clip after its first failure so
+        # the probe measures a boundary without needlessly hammering a throttled endpoint.
         for clip in clips:
-            probe("serial-repeat", clip, args.repeat_seconds)
+            for duration in args.durations:
+                if not probe("volume-ramp", clip, duration).ok:
+                    break
 
-    # Byte/transfer-duration pressure. Stop escalating one clip after its first failure so the probe
-    # measures a boundary without needlessly hammering a throttled endpoint.
-    for clip in clips:
-        for duration in args.durations:
-            if not probe("volume-ramp", clip, duration).ok:
-                break
+        if args.cooldown_seconds:
+            print(f"COOLDOWN seconds={args.cooldown_seconds:g}", flush=True)
+            time.sleep(args.cooldown_seconds)
+            for clip in clips:
+                probe("post-cooldown", clip, args.repeat_seconds)
 
-    if args.cooldown_seconds:
-        print(f"COOLDOWN seconds={args.cooldown_seconds:g}", flush=True)
-        time.sleep(args.cooldown_seconds)
-        for clip in clips:
-            probe("post-cooldown", clip, args.repeat_seconds)
-
-    # Concurrency comes last so serial request/volume evidence remains interpretable.
-    if args.concurrency > 1:
-        selected = clips[: args.concurrency]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-            futures = []
-            for clip in selected:
-                sequence += 1
-                futures.append(
-                    pool.submit(
-                        run_probe,
-                        sequence=sequence,
-                        phase=f"concurrency-{args.concurrency}",
-                        clip=clip[0],
-                        url=clip[1],
-                        ffmpeg=args.ffmpeg,
-                        seconds=args.repeat_seconds,
-                        timeout=args.timeout,
+        # Concurrency comes last so serial request/volume evidence remains interpretable.
+        if args.concurrency > 1:
+            selected = clips[: args.concurrency]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
+                futures = []
+                for clip in selected:
+                    sequence += 1
+                    futures.append(
+                        pool.submit(
+                            run_probe,
+                            sequence=sequence,
+                            phase=f"concurrency-{args.concurrency}",
+                            clip=clip[0],
+                            url=clip[1],
+                            ffmpeg=args.ffmpeg,
+                            seconds=args.repeat_seconds,
+                            timeout=args.timeout,
+                        )
                     )
-                )
-            for future in futures:
-                result = future.result()
-                results.append(result)
-                _emit(result)
-
-    summary = {
-        "results": [asdict(result) for result in results],
-        "summary": {
-            "cases": len(results),
-            "successes": sum(result.ok for result in results),
-            "outcomes": {
-                outcome: sum(result.outcome == outcome for result in results)
-                for outcome in sorted({result.outcome for result in results})
+                for future in futures:
+                    result = future.result()
+                    results.append(result)
+                    _emit(result)
+    finally:
+        # CR2-SC-13: an exception from time.sleep/run_probe/future.result() used to propagate
+        # uncaught here, losing every already-collected result (echoed to stdout via _emit, but
+        # never written to the output file). Persist whatever was accumulated so far either way.
+        summary = {
+            "results": [asdict(result) for result in results],
+            "summary": {
+                "cases": len(results),
+                "successes": sum(result.ok for result in results),
+                "outcomes": {
+                    outcome: sum(result.outcome == outcome for result in results)
+                    for outcome in sorted({result.outcome for result in results})
+                },
             },
-        },
-    }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(summary, indent=2) + "\n")
-    print(f"RESULTS path={args.output} cases={len(results)}", flush=True)
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(summary, indent=2) + "\n")
+        print(f"RESULTS path={args.output} cases={len(results)}", flush=True)
     return 0
 
 

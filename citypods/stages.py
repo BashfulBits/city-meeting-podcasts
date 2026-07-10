@@ -192,6 +192,7 @@ _TIMELINE_BACKOFF_ERRORS = frozenset(
         "timeline-degenerate",
         "timeline-partial-source",
         "rate_limited",
+        "timeline-plan-error",
     }
 )
 
@@ -970,6 +971,15 @@ class TimelineStage:
                         stats.rate_limited += 1
                         stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
                     record_materialize_failure(ep, getattr(exc, "code", None) or "rate_limited")
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    # CR2-CP-41: any other planner exception used to propagate out of _plan_one;
+                    # pool.map re-raises on the first worker exception, aborting timeline-plan
+                    # processing for the rest of this source's episode batch. Record and continue,
+                    # same as the RateLimitedMediaFetchError case above.
+                    with lock:
+                        stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+                    record_materialize_failure(ep, "timeline-plan-error")
                     return
 
                 if changed and current is not None:

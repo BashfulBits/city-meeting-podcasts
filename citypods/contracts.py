@@ -91,8 +91,15 @@ def _media_fetch_detail(
 def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]:
     """Run the contract checks applicable to one city's provider. Each check is isolated so one
     broken endpoint doesn't mask the others."""
-    provider = get_provider(provider_name)
     out: list[CheckResult] = []
+
+    # get_provider raises ProviderError for an unregistered name; keep it inside the same
+    # isolation this function's docstring promises (CR2-SC-03) — an unregistered provider must
+    # produce a "list" failure result for this one city, not abort the caller's whole scan.
+    try:
+        provider = get_provider(provider_name)
+    except Exception as exc:  # noqa: BLE001 — the failure IS the finding
+        return [_r(provider_name, slug, "list", False, repr(exc))]
 
     # 1. Listing endpoint — must yield episodes with a usable media reference.
     try:

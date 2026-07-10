@@ -88,13 +88,14 @@ def _failure_explanation(result: CheckResult) -> str:
 
 
 def _issue_body(result: CheckResult) -> str:
+    escaped_detail = result.detail.replace("```", "``​`")
     return (
         f"{MARKER}\n\n"
         f"**Provider:** `{result.provider}`\n"
         f"**Endpoint:** `{result.endpoint}`\n"
         f"**Representative city/feed:** `{result.slug}`\n\n"
         f"**What this means**\n\n{_failure_explanation(result)}\n\n"
-        f"**Observed detail**\n\n```\n{result.detail}\n```\n\n"
+        f"**Observed detail**\n\n```\n{escaped_detail}\n```\n\n"
         "_Filed by check_endpoints.py; auto-closes when it passes._"
     )
 
@@ -111,7 +112,12 @@ def _reconcile_issues(failures: list) -> None:
         "--force",
         check=False,
     )
-    wanted = {f"{TITLE_PREFIX} {r.provider}: {r.endpoint}": _issue_body(r) for r in failures}
+    # Keyed by (provider, endpoint, slug) — not just provider+endpoint (CR2-SC-04/MR-SC-03): two
+    # different cities failing the same endpoint on the same provider used to collide in this
+    # dict comprehension, silently dropping one city's finding from the filed/updated issue.
+    wanted = {
+        f"{TITLE_PREFIX} {r.provider}/{r.slug}: {r.endpoint}": _issue_body(r) for r in failures
+    }
     existing = _open_issues()
     for title, body in wanted.items():
         if title in existing:

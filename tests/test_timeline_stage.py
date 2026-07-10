@@ -451,6 +451,50 @@ class TestTimelineStagePlannerThrottle:
         assert ep.timeline is None
 
 
+class _RaisingPlanner:
+    """A planner that fails on a specific episode only, to prove a batch survives it."""
+
+    name = "raising-fake"
+    version = "1"
+
+    def __init__(self, fail_guid):
+        self.fail_guid = fail_guid
+
+    def plan(self, provider, city, ep, ctx, current):
+        if ep.guid == self.fail_guid:
+            raise ValueError("boom")
+        return Timeline(
+            version="silence-v1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=3600,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=3600,
+                ),
+            ),
+        )
+
+
+class TestTimelineStagePlannerGenericFailure:
+    """CR2-CP-41: any exception other than RateLimitedMediaFetchError used to propagate out of
+    _plan_one; pool.map re-raises on the first worker exception, aborting timeline-plan
+    processing for the rest of the source's episode batch."""
+
+    def test_one_episodes_planner_exception_does_not_abort_the_batch(self, tmp_path):
+        ok_ep, bad_ep = _ep("ok"), _ep("bad")
+        stage = TimelineStage(planners=[_RaisingPlanner(fail_guid="bad")])
+        stats = stage.process(FakeProvider(), _city(), [ok_ep, bad_ep], _ctx(tmp_path))
+        assert ok_ep.timeline is not None  # the good episode still got planned
+        assert bad_ep.timeline is None  # the failing one was left untouched, not crashed
+        assert len(stats.errors) == 1
+        assert "boom" in stats.errors[0]
+        assert bad_ep.materialize_attempts == 1
+        assert bad_ep.materialize_error == "timeline-plan-error"
+
+
 # ---------------------------------------------------------------------------
 # TimelineStage — single planner
 # ---------------------------------------------------------------------------

@@ -148,3 +148,32 @@ def test_clear_skips_records_with_no_hosted_audio(tmp_path):
     save_records(tmp_path, sk, {"u1": {"uid": "u1", "audio": {"key": None, "url": None}}})
     summary = crm.clear_materializations(tmp_path, {sk: {"u1"}}, apply=True)
     assert summary["cleared"] == 0
+
+
+def test_main_reports_actual_deleted_count_not_candidate_count(monkeypatch, tmp_path, capsys):
+    # CR2-SC-14: the final summary line must report summary["deleted"] (what was actually
+    # removed) once applying, not len(object_keys) (every candidate, including ones whose
+    # per-source push failed and so were never actually deleted).
+    sk = "3b7588310856"
+    save_records(tmp_path, sk, {"aaa111": _rec("aaa111", "audio/k", "https://cdn/k", 258)})
+    log_file = tmp_path / "run.log"
+    log_file.write_text(LOG)
+
+    class UnsupportedStorage:
+        """Lacks the storage protocol push_state() needs, so push_state() always returns 0 —
+        every candidate delete is skipped, but object_keys still lists it as a candidate."""
+
+        def delete(self, key):
+            raise AssertionError("delete must not be called when the durable push failed")
+
+    monkeypatch.setattr(crm, "make_storage", lambda *a, **k: UnsupportedStorage())
+    monkeypatch.setattr(crm, "load_site_config", lambda *a, **k: {})
+    monkeypatch.setattr(crm, "resolve_state_dir", lambda *a, **k: tmp_path)
+    monkeypatch.setattr(crm, "pull_state", lambda *a, **k: 0)
+
+    rc = crm.main(["--log-file", str(log_file), "--apply", "--delete-objects"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    # The push failed, so nothing was actually deleted — the accurate count is 0.
+    assert "0 object(s) deleted" in out
+    assert "1 object(s) deleted" not in out  # would be len(object_keys) under the old bug

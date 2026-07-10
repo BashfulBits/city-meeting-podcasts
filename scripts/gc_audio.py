@@ -526,7 +526,10 @@ def main(argv: list[str] | None = None) -> int:
         if not is_managed_artifact(key):
             kept_unmanaged += 1
             continue  # state/, models/, clips/, or any other non-artifact infra — never reap
-        if last_modified is not None and last_modified > cutoff:
+        # A missing/non-comparable last_modified (e.g. a backend that omits it on some listing
+        # path) must be treated conservatively — kept, not silently eligible for delete
+        # (CR2-SC-18): the age guard exists specifically to protect a just-written object.
+        if last_modified is None or last_modified > cutoff:
             kept_young += 1
             continue
         candidates.append((key, last_modified, int(size or 0)))
@@ -626,9 +629,17 @@ def main(argv: list[str] | None = None) -> int:
                     state_dir,
                     only_prefixes=[reclaim_log.RECLAIM_LOG_NAME],
                 )
-            storage.delete(key)
-            deleted_count += 1
-            print(f"DELETED  {key}")
+            # A single delete failure must not abort the sweep and skip _write_report for every
+            # other candidate (CR2-SC-19/MR-SC-02) — the reclaim-log entry (and its push, above)
+            # already accounts for this exact "logged but not actually deleted" case as a
+            # harmless phantom resurrection alert, so recording-and-continuing here is safe.
+            try:
+                storage.delete(key)
+            except Exception as exc:  # noqa: BLE001 - one object's failure must not sink the run
+                print(f"DELETE FAILED  {key}: {exc}")
+            else:
+                deleted_count += 1
+                print(f"DELETED  {key}")
         else:
             print(f"ORPHAN   {key}")
         if args.apply or key not in auto_delete_keys:
