@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import sys
 import time
 from datetime import UTC, datetime
@@ -756,3 +757,70 @@ def test_characterization_no_persist_skips_claims_even_without_targeting(tmp_pat
 
     assert summary["claimed"] == 2
     assert sorted(claimed) == ["a", "b"]
+
+
+# ── module docstring / override-contract documentation ──────────────────────────────
+
+
+# Mirrors the "canonical worker env vars" list in external_worker.py's module docstring. Kept as
+# an explicit, separately-maintained list (rather than parsed out of the docstring) so a drift in
+# either direction -- documented but unused, or used but undocumented -- fails loudly.
+_DOCUMENTED_CANONICAL_ENV_VARS = [
+    "CITYPODS_WORKER_OWNER",
+    "CITYPODS_WORKER_MAX_CLAIMS",
+    "CITYPODS_WORKER_MAX_SCAN",
+    "CITYPODS_WORKER_LEASE_TTL_SECONDS",
+    "CITYPODS_WORKER_WORK_CLASS",
+    "CITYPODS_WORKER_PREFERRED_DAYS",
+    "CITYPODS_WORKER_ESTIMATED_RUNTIME_SECONDS_PER_AUDIO_SECOND",
+    "CITYPODS_WORKER_MIN_RUNTIME_SECONDS",
+    "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_RUN",
+    "CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_CLAIM",
+    "CITYPODS_WORKER_PREFER_MIN_DURATION_HOURS",
+    "CITYPODS_WORKER_FRESH_WITHIN_DAYS",
+    "CITYPODS_WORKER_ASR_DEVICE",
+    "CITYPODS_WORKER_CPU_THREADS",
+    "CITYPODS_PROVIDER_RUN_ID",
+    "CITYPODS_BEAM_TASK_ID",
+    "CITYPODS_MODAL_FUNCTION_CALL_ID",
+    "CITYPODS_MODAL_INPUT_ID",
+    "CITYPODS_WORKER_GPU_TYPE",
+    "ASR_MODEL_PATH",
+]
+
+# Mirrors the "back-compat aliases" list in the same docstring section.
+_DOCUMENTED_BACK_COMPAT_ALIASES = [
+    "CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND",
+    "CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND",
+    "CITYPODS_WORKER_MIN_BUDGET_UNITS",
+    "CITYPODS_WORKER_MIN_GPU_SECONDS",
+    "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN",
+    "CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM",
+]
+
+
+def test_module_docstring_describes_the_env_var_override_contract():
+    doc = ew.__doc__ or ""
+    assert "Override contract" in doc
+    assert "config/site_config.yml" in doc
+    assert "backend_policy(...)" in doc
+
+
+@pytest.mark.parametrize("var", _DOCUMENTED_CANONICAL_ENV_VARS)
+def test_docstring_canonical_env_vars_are_actually_read_by_config_from_env(var):
+    """Every canonical env var the module docstring advertises must also appear in executable
+    code (not just the docstring itself), so the documentation can't silently drift away from
+    ``config_from_env``'s real precedence chain. A single occurrence means it only lives in the
+    docstring; ``config_from_env`` (and its helpers) reference each canonical var by name."""
+    source = inspect.getsource(ew)
+    doc = ew.__doc__ or ""
+    assert f"``{var}``" in doc, f"{var} is missing from the module docstring's env var list"
+    assert source.count(var) >= 2, f"{var} is documented but never referenced in the module body"
+
+
+@pytest.mark.parametrize("var", _DOCUMENTED_BACK_COMPAT_ALIASES)
+def test_docstring_back_compat_aliases_are_actually_read_by_config_from_env(var):
+    source = inspect.getsource(ew)
+    doc = ew.__doc__ or ""
+    assert f"``{var}``" in doc, f"{var} is missing from the module docstring's alias list"
+    assert source.count(var) >= 2, f"{var} is documented as a back-compat alias but never read"

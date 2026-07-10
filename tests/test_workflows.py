@@ -836,6 +836,40 @@ def test_availability_digest_wait_loop_retries_instead_of_masking_gh_failures():
     assert "will retry" in run
 
 
+def test_beam_deploy_workflow_no_longer_hardcodes_gpu_env():
+    """The GPU knob moved into beam_app.py's ``_resolve_gpu()`` (env override -> site policy ->
+    hardcoded default). A lingering ``CITYPODS_BEAM_GPU`` in the workflow would win every time
+    and silently defeat the ``config/site_config.yml`` policy fallback on every scheduled deploy."""
+    _wf, job = _job("beam-deploy.yml")
+    env = job.get("env", {})
+    assert "CITYPODS_BEAM_GPU" not in env
+    assert env["CITYPODS_BEAM_APP"] == "citypods-beam-worker"
+    assert env["CITYPODS_BEAM_SCHEDULE"] == "@daily"
+    assert env["CITYPODS_WORKER_LEASE_TTL_SECONDS"] == "72000"
+    assert env["BEAM_TOKEN"] == "${{ secrets.BEAM_TOKEN }}"
+
+
+def test_modal_deploy_workflow_no_longer_hardcodes_gpu_env():
+    _wf, job = _job("modal-deploy.yml")
+    env = job.get("env", {})
+    assert "CITYPODS_MODAL_GPU" not in env
+    assert env["CITYPODS_MODAL_APP"] == "citypods-modal-worker"
+    assert env["CITYPODS_MODAL_SECRET"] == "citypods-modal-worker"
+    assert env["CITYPODS_MODAL_CRON"] == "17 7 * * *"
+    assert env["CITYPODS_WORKER_LEASE_TTL_SECONDS"] == "72000"
+
+
+@pytest.mark.parametrize("workflow", ["beam-deploy.yml", "modal-deploy.yml"])
+def test_deploy_workflows_still_redeploy_on_site_config_changes(workflow):
+    """Now that GPU selection can fall back to ``config/site_config.yml`` at deploy time, both
+    workflows must still trigger on changes to that file (unchanged by this PR, but load-bearing
+    for the new fallback path)."""
+    wf, _job_dict = _job(workflow)
+    paths = _on(wf)["push"]["paths"]
+    assert "config/site_config.yml" in paths
+    assert "scripts/compute/**" in paths
+
+
 def test_availability_digest_scopes_secrets_to_steps_that_need_them():
     # CR2-GH-16/MR-GH-02: storage/Granicus-proxy secrets must not sit in job-level env where
     # checkout/setup-python/install/ffmpeg/the wait loop (none of which touch them) can see them.
