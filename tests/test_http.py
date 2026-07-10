@@ -275,6 +275,41 @@ class TestGuardedAdapterHoldsHostSlot:
             http_mod.HOST_LIMITER.configure({})  # reset the process-global singleton
 
 
+class TestGuardedAdapterTimeoutBackstop:
+    """CR2-CP-09/M2: DEFAULT_TIMEOUT was defined but never applied — a caller that forgot
+    timeout= would hang forever with no adapter-level backstop."""
+
+    def test_applies_default_timeout_when_caller_omits_it(self, monkeypatch):
+        from citypods import http as http_mod
+
+        monkeypatch.setattr(http_mod, "validate_source_url", lambda *a, **k: None)
+        captured = {}
+
+        def fake_send(self, request, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(headers={})
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+        adapter = GuardedHTTPAdapter()
+        adapter.send(SimpleNamespace(url="https://archive-video.granicus.com/x.mp4"))
+        assert captured["timeout"] == http_mod.DEFAULT_TIMEOUT
+
+    def test_preserves_explicit_timeout(self, monkeypatch):
+        from citypods import http as http_mod
+
+        monkeypatch.setattr(http_mod, "validate_source_url", lambda *a, **k: None)
+        captured = {}
+
+        def fake_send(self, request, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(headers={})
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+        adapter = GuardedHTTPAdapter()
+        adapter.send(SimpleNamespace(url="https://archive-video.granicus.com/x.mp4"), timeout=5)
+        assert captured["timeout"] == 5
+
+
 class TestGuardedAdapterHeadExemption:
     """HEAD never transfers a body, so a big declared Content-Length isn't an over-buffering
     risk the way it is for a plain buffered GET (issue #497's media preflight needs HEAD on a

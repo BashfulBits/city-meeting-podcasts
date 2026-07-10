@@ -273,6 +273,11 @@ class GuardedHTTPAdapter(HTTPAdapter):
 
     def send(self, request, **kwargs):
         validate_source_url(request.url, resolve=True)
+        # DEFAULT_TIMEOUT is a backstop, not the primary contract: every current call site is
+        # disciplined about passing timeout= explicitly, but a future caller that forgets must
+        # not hang forever with no adapter-level cap (CR2-CP-09/M2).
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = DEFAULT_TIMEOUT
         stream_requested = kwargs.get("stream", False)
         kwargs["stream"] = True
         # Per-host concurrency cap (#39): hold the provider's slot only for the network round-trip.
