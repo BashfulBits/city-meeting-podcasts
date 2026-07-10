@@ -513,7 +513,7 @@ class TestDurationSemantics:
 
         return FF()
 
-    def test_audio_duration_served_set_on_encode(self, tmp_path):
+    def test_audio_duration_served_remains_unset_without_probe(self, tmp_path):
         from citypods.media import materialize_audio
         from citypods.storage.local import LocalStorage
 
@@ -531,7 +531,7 @@ class TestDurationSemantics:
             max_kbps=96,
             resolve_media_url=lambda e: e.video_url,
         )
-        assert ep.audio_duration_served == 3600.0
+        assert ep.audio_duration_served is None
 
     def test_encode_time_set_on_encode(self, tmp_path):
         from citypods.media import materialize_audio

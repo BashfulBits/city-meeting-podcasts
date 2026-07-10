@@ -177,28 +177,6 @@ def normalize_records(
                 summary.touched_sources.add(source_key)
             continue
 
-        fallback = _record_timeline_fallback_seconds(rec)
-        if fallback is not None:
-            had_canonical = rec.get("served_duration_seconds") is not None
-            if apply:
-                set_served_duration_seconds(rec, fallback)
-            rows.append(
-                _jsonl_row(
-                    source_key=source_key,
-                    uid=uid,
-                    outcome="timeline-fallback",
-                    reason="timeline-edl",
-                    before=before,
-                    after=fallback,
-                )
-            )
-            summary.timeline_fallback += 1
-            if _duration_changed(before, fallback, had_canonical=had_canonical):
-                summary.changed += 1
-                changed = True
-                summary.touched_sources.add(source_key)
-            continue
-
         outcome = "failed" if audio.get("key") else "skipped"
         reason = probe_reason if audio.get("key") else "no-hosted-audio-or-timeline"
         rows.append(

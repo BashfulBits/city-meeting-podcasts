@@ -113,7 +113,6 @@ from citypods.statesync import (
     reconcile_state,
 )
 from citypods.storage import make_storage
-from citypods.timeline import edl_duration
 
 # Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
 # nothing is pruned in normal operation, but the lever exists so retention can be ratcheted down
@@ -481,19 +480,6 @@ def _normalize_episode_durations_for_dispatch(
                     f"duration_probe_failed source={source_key} uid={uid} "
                     f"basis={basis or 'probe-failed'}"
                 )
-        if not normalized:
-            timeline = ep.timeline
-            fallback = (
-                edl_duration(timeline) if timeline is not None and timeline.segments else None
-            )
-            if fallback is not None and fallback > 0:
-                set_served_duration_seconds(ep, fallback)
-                stats.fallback_from_timeline += 1
-                emit(
-                    f"duration_fallback_from_timeline source={source_key} uid={uid} "
-                    f"seconds={fallback:.3f}"
-                )
-                normalized = True
         if not normalized and episode_served_duration_seconds(ep) is None:
             stats.missing_after_normalization += 1
             emit(

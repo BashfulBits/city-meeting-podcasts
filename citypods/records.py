@@ -1198,8 +1198,6 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.materialize_error_spec_hash = audio.get("error_spec_hash")
         ep.audio_bytes = audio.get("bytes")
         ep.audio_encode_time = audio.get("encode_time")
-        ep.audio_duration_served = record_served_duration_seconds(rec)
-        ep.served_duration_seconds = record_served_duration_seconds(rec)
         ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
         transcript_fields = _transcript_fields_from_rec(rec)
@@ -1237,6 +1235,9 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         persisted_source = record_source_duration_seconds(rec)
         if persisted_source is not None and episode_source_duration_seconds(ep) is None:
             set_source_duration_seconds(ep, persisted_source)
+        persisted_served = record_served_duration_seconds(rec)
+        if persisted_served is not None:
+            set_served_duration_seconds(ep, persisted_served)
         # v2: restore sources and timeline from record (lazy upgrade: absent → defaults)
         sources_data = rec.get("sources") or []
         if sources_data and not ep.sources:

@@ -107,7 +107,7 @@ def test_normalize_episode_durations_prefers_probe_without_listing(monkeypatch):
     assert any("duration_normalized_from_probe" in msg for msg in warnings)
 
 
-def test_normalize_episode_durations_falls_back_to_timeline(monkeypatch):
+def test_normalize_episode_durations_leaves_timeline_only_episode_missing(monkeypatch):
     ep = _ep("g-fallback")
     ep.timeline = Timeline(
         version="silence:2",
@@ -138,10 +138,10 @@ def test_normalize_episode_durations_falls_back_to_timeline(monkeypatch):
         log=warnings.append,
     )
 
-    assert ep.served_duration_seconds == pytest.approx(600.0)
-    assert ep.audio_duration_served == pytest.approx(600.0)
-    assert stats == run.DurationNormalizationStats(fallback_from_timeline=1)
-    assert any("duration_fallback_from_timeline" in msg for msg in warnings)
+    assert ep.served_duration_seconds is None
+    assert ep.audio_duration_served is None
+    assert stats == run.DurationNormalizationStats(missing_after_normalization=1)
+    assert any("duration_missing_after_normalization" in msg for msg in warnings)
 
 
 def test_normalize_episode_durations_warns_when_still_missing(monkeypatch):
@@ -170,7 +170,7 @@ def test_normalize_episode_durations_warns_when_still_missing(monkeypatch):
     assert any("duration_missing_after_normalization" in msg for msg in warnings)
 
 
-def test_normalize_episode_durations_stop_skips_probe_but_keeps_fallback(monkeypatch):
+def test_normalize_episode_durations_stop_skips_probe_and_leaves_missing(monkeypatch):
     first = _ep("g-stop", hosted="https://cdn/g-stop.m4a")
     first.audio_key = "audio/src/g-stop.m4a"
     second = _ep("g-fallback-after-stop")
@@ -203,17 +203,14 @@ def test_normalize_episode_durations_stop_skips_probe_but_keeps_fallback(monkeyp
         log=lambda msg: None,
     )
 
-    assert stats == run.DurationNormalizationStats(
-        fallback_from_timeline=1,
-        missing_after_normalization=1,
-    )
+    assert stats == run.DurationNormalizationStats(missing_after_normalization=2)
     assert first.served_duration_seconds is None
     assert first.audio_duration_served is None
-    assert second.served_duration_seconds == pytest.approx(600.0)
-    assert second.audio_duration_served == pytest.approx(600.0)
+    assert second.served_duration_seconds is None
+    assert second.audio_duration_served is None
 
 
-def test_normalize_episode_durations_probe_exception_falls_back_to_timeline(monkeypatch):
+def test_normalize_episode_durations_probe_exception_leaves_missing(monkeypatch):
     ep = _ep("g-probe-error", hosted="https://cdn/g-probe-error.m4a")
     ep.audio_key = "audio/src/g-probe-error.m4a"
     ep.timeline = Timeline(
@@ -245,11 +242,11 @@ def test_normalize_episode_durations_probe_exception_falls_back_to_timeline(monk
         log=warnings.append,
     )
 
-    assert stats == run.DurationNormalizationStats(probe_failed=1, fallback_from_timeline=1)
-    assert ep.served_duration_seconds == pytest.approx(600.0)
-    assert ep.audio_duration_served == pytest.approx(600.0)
+    assert stats == run.DurationNormalizationStats(probe_failed=1, missing_after_normalization=1)
+    assert ep.served_duration_seconds is None
+    assert ep.audio_duration_served is None
     assert any("duration_probe_failed" in msg for msg in warnings)
-    assert any("duration_fallback_from_timeline" in msg for msg in warnings)
+    assert any("duration_missing_after_normalization" in msg for msg in warnings)
 
 
 # --- end-to-end incremental build via a fake provider ----------------------------------

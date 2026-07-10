@@ -513,7 +513,7 @@ def test_stats_split_encoded_vs_credited(tmp_path):
     assert ff.calls == ["https://src/manifest.m3u8"]  # only the un-stored one was encoded
 
 
-def test_credit_path_backfills_served_duration(tmp_path):
+def test_credit_path_leaves_served_duration_unset_without_probe(tmp_path):
     city = _city()
     store = _store(tmp_path)
     ep = _ep("g1")
@@ -524,7 +524,7 @@ def test_credit_path_backfills_served_duration(tmp_path):
     stats = _materialize(city, [ep], store, FakeFfmpeg())
 
     assert stats.credited == 1
-    assert ep.audio_duration_served == pytest.approx(3600.0)
+    assert ep.audio_duration_served is None
 
 
 def test_credit_path_does_not_download_hosted_audio_for_duration(tmp_path, monkeypatch):
@@ -543,7 +543,7 @@ def test_credit_path_does_not_download_hosted_audio_for_duration(tmp_path, monke
     stats = _materialize(city, [ep], store, FakeFfmpeg())
 
     assert stats.credited == 1
-    assert ep.audio_duration_served == pytest.approx(7200.0)
+    assert ep.audio_duration_served is None
 
 
 def test_served_duration_uses_edl_for_identity_timeline():
@@ -599,10 +599,8 @@ def test_served_duration_falls_back_to_source_when_edl_duration_is_degenerate():
     assert media._served_duration(ep) == pytest.approx(1800.0)
 
 
-def test_credit_path_backfills_from_identity_timeline_when_source_duration_unknown(tmp_path):
-    """Integration counterpart: the reuse/credit path (no fresh probe) must backfill
-    ``audio_duration_served`` from an identity timeline's EDL length even when ``ep.duration``
-    (the raw provider-reported source duration) is unknown."""
+def test_credit_path_leaves_served_duration_unset_for_identity_timeline_without_probe(tmp_path):
+    """The reuse/credit path must not infer ``audio_duration_served`` from timeline metadata."""
     from citypods.timeline import identity_timeline
 
     city = _city()
@@ -626,7 +624,7 @@ def test_credit_path_backfills_from_identity_timeline_when_source_duration_unkno
     stats = _materialize(city, [ep], store, FakeFfmpeg())
 
     assert stats.credited == 1
-    assert ep.audio_duration_served == pytest.approx(5400.0)
+    assert ep.audio_duration_served is None
 
 
 def test_credits_run_even_when_stopped(tmp_path):
@@ -752,10 +750,10 @@ def test_audio_artifact_cache_encodes_duplicate_source_views_once(tmp_path):
     assert len(list(store.list_objects(f"{city_a.provider}/"))) == 1
 
 
-def test_coalesced_follower_keeps_valid_served_duration(tmp_path):
+def test_coalesced_follower_leaves_served_duration_unset_without_probe(tmp_path):
     # GH#421 follow-up / Audio #58: a credited canonical winner can carry no probed duration. A
-    # follower adopting the shared artifact must NOT regress to 0s — it backfills from its own
-    # timeline/source (the audio is identical across the recipe).
+    # follower adopting the shared artifact must preserve that "unknown" state rather than infer
+    # a served duration from other metadata.
     from citypods.media import AudioArtifact, AudioArtifactCache, audio_spec_hash
 
     store = _store(tmp_path)
@@ -763,7 +761,7 @@ def test_coalesced_follower_keeps_valid_served_duration(tmp_path):
     cache = AudioArtifactCache()
     city = _city(slug="board")
     ep = _ep("shared")
-    ep.duration = 3600  # the source declares a duration, so _served_duration can backfill
+    ep.duration = 3600
     src = source_key(city)
     spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
     winner_key = f"{city.provider}/{src}/{ep.uid}-{spec}.m4a"
@@ -792,7 +790,7 @@ def test_coalesced_follower_keeps_valid_served_duration(tmp_path):
     )
 
     assert ep.audio_key == winner_key  # adopted the shared object
-    assert ep.audio_duration_served == pytest.approx(3600.0)  # NOT downgraded to None/0
+    assert ep.audio_duration_served is None
     assert ff.calls == []  # follower did not re-encode
 
 
@@ -850,7 +848,7 @@ def test_matching_spec_reuses_without_ffmpeg(tmp_path):
     stats = _materialize(city, [ep], store, ff)
     assert stats.reused == 1 and ff.calls == []
     assert ep.hosted_audio_url == store.public_url(key)
-    assert ep.audio_duration_served == pytest.approx(3600.0)
+    assert ep.audio_duration_served is None
 
 
 def test_errored_record_is_re_encoded_not_reused(tmp_path):
@@ -1759,8 +1757,8 @@ def test_materialize_concat_cache_uses_render_timeline_identity_context(tmp_path
     assert ff.source_registries == [()]
 
 
-def test_audio_duration_served_fallback_when_probe_fails(tmp_path):
-    """When probe returns None, _served_duration fallback is used (ep.duration)."""
+def test_audio_duration_served_stays_unset_when_probe_fails(tmp_path):
+    """When probe returns None, served duration remains unknown rather than inferred."""
     import citypods.media as media
 
     ep = _ep("g1")
@@ -1776,7 +1774,7 @@ def test_audio_duration_served_fallback_when_probe_fails(tmp_path):
     finally:
         media._probe_served_duration_secs = original
 
-    assert ep.audio_duration_served == pytest.approx(3600.0)
+    assert ep.audio_duration_served is None
 
 
 def test_command_ffmpeg_wires_timeouts(monkeypatch, tmp_path):

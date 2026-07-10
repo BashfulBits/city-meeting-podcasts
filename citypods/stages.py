@@ -1685,12 +1685,6 @@ def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_bi
             return "hosted"
         return "served"
 
-    # Probe failed: only *fill* a missing value from the EDL — never downgrade an
-    # already-measured hosted duration back to the cue clock after a transient ffprobe failure.
-    edited = _edited_timeline_served_duration(ep)
-    if edited is not None and episode_served_duration_seconds(ep) is None:
-        set_served_duration_seconds(ep, edited)
-        return "timeline"
     return "served" if episode_served_duration_seconds(ep) else "unknown"
 
 

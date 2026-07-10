@@ -40,6 +40,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.bodies import filter_by_body
+from citypods.durations import set_served_duration_seconds
 from citypods.feeds import enclosure_url
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
@@ -1016,7 +1017,7 @@ def check_timeline_integrity(
                 or abs(ep.audio_duration_served - probe.stream_sample_duration) > _FRAME_TOLERANCE
             )
         ):
-            ep.audio_duration_served = probe.stream_sample_duration
+            set_served_duration_seconds(ep, probe.stream_sample_duration)
 
         # 3. Cheap record-only duration match + end coverage, from stored fields alone.
         # audio_duration_served is now the *probed hosted-stream* duration (review/20 / GH#702), so

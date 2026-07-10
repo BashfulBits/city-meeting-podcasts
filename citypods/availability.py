@@ -33,6 +33,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
+from citypods.durations import episode_source_duration_seconds
+
 # Bumped only when the *classification logic or fingerprint inputs* change in a way that should
 # re-open every stored verdict. Deliberately independent of ``records.AUDIO_PIPELINE_VERSION`` —
 # re-classifying a meeting must never re-encode the catalog.
@@ -174,7 +176,7 @@ def source_fingerprint(ep, profile: str = "") -> str:
     basis = "\n".join(
         [
             stable_url,
-            str(ep.duration if ep.duration is not None else ""),
+            str(episode_source_duration_seconds(ep) or ""),
             ep.media_kind or "",
             profile or "",
             DETECTOR_VERSION,
