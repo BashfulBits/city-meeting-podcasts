@@ -4,6 +4,38 @@ Modal and Beam workers are *pullers*: read the policy-ordered ``work.json`` disc
 claim one ``work-leases/<source>/<uid>.json`` item with R2 CAS, run inference, write the
 content-addressed artifact, and commit only the owned UID's transcript block. Provider-specific
 files own scheduling/image/secrets; artifact semantics stay here.
+
+Override contract
+-----------------
+The shared worker configuration is intentionally overridable via environment variables. The
+precedence is:
+
+1. Values present in the worker process environment.
+2. Values loaded from ``config/site_config.yml`` via ``backend_policy(...)``.
+3. Hard-coded fallback defaults in this module.
+
+Production deploys should normally rely on YAML. One-off canaries/manual runs may override knobs
+by prefixing the deploy/run command with env vars; the provider-specific wrappers document their
+wrapper-level env vars separately.
+
+The canonical worker env vars parsed here are:
+
+- Dispatch/ownership: ``CITYPODS_WORKER_OWNER``, ``CITYPODS_WORKER_MAX_CLAIMS``,
+  ``CITYPODS_WORKER_MAX_SCAN``, ``CITYPODS_WORKER_LEASE_TTL_SECONDS``,
+  ``CITYPODS_WORKER_WORK_CLASS``, ``CITYPODS_WORKER_PREFERRED_DAYS``.
+- Runtime estimation/admission: ``CITYPODS_WORKER_ESTIMATED_RUNTIME_SECONDS_PER_AUDIO_SECOND``,
+  ``CITYPODS_WORKER_MIN_RUNTIME_SECONDS``, ``CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_RUN``,
+  ``CITYPODS_WORKER_FIXED_RUNTIME_SECONDS_PER_CLAIM``,
+  ``CITYPODS_WORKER_PREFER_MIN_DURATION_HOURS``, ``CITYPODS_WORKER_FRESH_WITHIN_DAYS``.
+- Execution details/telemetry identity: ``CITYPODS_WORKER_ASR_DEVICE``,
+  ``CITYPODS_WORKER_CPU_THREADS``, ``CITYPODS_PROVIDER_RUN_ID``, ``CITYPODS_BEAM_TASK_ID``,
+  ``CITYPODS_MODAL_FUNCTION_CALL_ID``, ``CITYPODS_MODAL_INPUT_ID``, ``CITYPODS_WORKER_GPU_TYPE``,
+  ``ASR_MODEL_PATH``.
+- Back-compat aliases still honored while H14d naming settles:
+  ``CITYPODS_WORKER_BUDGET_UNITS_PER_AUDIO_SECOND``,
+  ``CITYPODS_WORKER_GPU_SECONDS_PER_AUDIO_SECOND``, ``CITYPODS_WORKER_MIN_BUDGET_UNITS``,
+  ``CITYPODS_WORKER_MIN_GPU_SECONDS``, ``CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_RUN``,
+  ``CITYPODS_WORKER_FIXED_BUDGET_UNITS_PER_CLAIM``.
 """
 
 from __future__ import annotations

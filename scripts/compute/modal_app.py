@@ -3,6 +3,29 @@
 Runtime storage credentials live in the Modal secret named by ``CITYPODS_MODAL_SECRET`` at deploy
 time (default: ``citypods-modal-worker``). GitHub deployment only needs Modal deploy credentials;
 the worker reads B2/R2/HF secrets inside Modal.
+
+Override contract
+-----------------
+This wrapper is intentionally operator-overridable via environment variables. The precedence is:
+
+1. Values present in the command environment.
+2. Values loaded from ``config/site_config.yml`` via ``backend_policy(..., "modal")``.
+3. Hard-coded fallback defaults in this module.
+
+Production GitHub deploys should normally rely on YAML. One-off canaries/manual runs may override
+specific knobs by prefixing the command with env vars, for example:
+
+``CITYPODS_MODAL_GPU=A100 modal deploy scripts/compute/modal_app.py``
+
+Supported wrapper-level env overrides here:
+
+- ``CITYPODS_MODAL_APP``
+- ``CITYPODS_MODAL_SECRET``
+- ``CITYPODS_MODAL_CRON``
+- ``CITYPODS_MODAL_GPU``
+
+This wrapper also forwards a shared set of ``CITYPODS_WORKER_*`` env vars into the remote runtime;
+see ``citypods.compute.external_worker`` for the canonical list and semantics.
 """
 
 from __future__ import annotations
@@ -11,15 +34,27 @@ import os
 
 import modal
 
-from citypods.compute.policy import backend_policy
-from citypods.config import load_site_config
-
 APP_NAME = os.environ.get("CITYPODS_MODAL_APP", "citypods-modal-worker")
 SECRET_NAME = os.environ.get("CITYPODS_MODAL_SECRET", "citypods-modal-worker")
-_SITE_CONFIG = load_site_config("config/site_config.yml")
-_MODAL_POLICY = backend_policy(_SITE_CONFIG, "modal")
-GPU = os.environ.get("CITYPODS_MODAL_GPU") or _MODAL_POLICY.hardware.gpu_type or "L4"
 CRON = os.environ.get("CITYPODS_MODAL_CRON", "17 7 * * *")
+
+
+def _resolve_gpu() -> str:
+    configured_gpu = os.environ.get("CITYPODS_MODAL_GPU")
+    if configured_gpu:
+        return configured_gpu
+
+    # `modal deploy` imports this module on the caller machine before the image is built.
+    # Avoid requiring repo runtime deps there unless we truly need the policy fallback.
+    from citypods.compute.policy import backend_policy
+    from citypods.config import load_site_config
+
+    site_config = load_site_config("config/site_config.yml")
+    modal_policy = backend_policy(site_config, "modal")
+    return modal_policy.hardware.gpu_type or "L4"
+
+
+GPU = _resolve_gpu()
 
 
 def _runtime_env() -> dict[str, str]:

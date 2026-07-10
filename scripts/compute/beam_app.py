@@ -12,6 +12,28 @@ path that lets a RUN/add_commands() step reference an arbitrary local file (GH#8
 the build needs is resolved HERE, locally, into literal values. add_local_path() is a separate,
 runtime-only sync (available to run_scheduled() when it actually executes), not usable by the
 build's add_commands() steps.
+
+Override contract
+-----------------
+This wrapper is intentionally operator-overridable via environment variables. The precedence is:
+
+1. Values present in the command environment.
+2. Values loaded from ``config/site_config.yml`` via ``backend_policy(..., "beam")``.
+3. Hard-coded fallback defaults in this module.
+
+Production GitHub deploys should normally rely on YAML. One-off canaries/manual runs may override
+specific knobs by prefixing the command with env vars, for example:
+
+``CITYPODS_BEAM_GPU=A10G beam deploy scripts/compute/beam_app.py:run_scheduled``
+
+Supported wrapper-level env overrides here:
+
+- ``CITYPODS_BEAM_APP``
+- ``CITYPODS_BEAM_SCHEDULE``
+- ``CITYPODS_BEAM_GPU``
+
+This wrapper also forwards a shared set of ``CITYPODS_WORKER_*`` env vars into the remote runtime;
+see ``citypods.compute.external_worker`` for the canonical list and semantics.
 """
 
 from __future__ import annotations
@@ -22,13 +44,7 @@ from pathlib import Path
 
 from beam import Image, schedule
 
-from citypods.compute.policy import backend_policy
-from citypods.config import load_site_config
-
 APP_NAME = os.environ.get("CITYPODS_BEAM_APP", "citypods-beam-worker")
-_SITE_CONFIG = load_site_config("config/site_config.yml")
-_BEAM_POLICY = backend_policy(_SITE_CONFIG, "beam")
-GPU = os.environ.get("CITYPODS_BEAM_GPU") or _BEAM_POLICY.hardware.gpu_type or "RTX4090"
 WHEN = os.environ.get("CITYPODS_BEAM_SCHEDULE", "@daily")
 
 # Baked model location (pinned revision, same bytes as the runner). ASR_MODEL_PATH
@@ -36,6 +52,24 @@ WHEN = os.environ.get("CITYPODS_BEAM_SCHEDULE", "@daily")
 _MODEL_DIR = "/opt/models/faster-whisper-large-v3-turbo"
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_gpu() -> str:
+    configured_gpu = os.environ.get("CITYPODS_BEAM_GPU")
+    if configured_gpu:
+        return configured_gpu
+
+    # `beam deploy` imports this module on the caller machine before the remote image build.
+    # Avoid requiring repo runtime deps there unless we truly need the policy fallback.
+    from citypods.compute.policy import backend_policy
+    from citypods.config import load_site_config
+
+    site_config = load_site_config("config/site_config.yml")
+    beam_policy = backend_policy(site_config, "beam")
+    return beam_policy.hardware.gpu_type or "RTX4090"
+
+
+GPU = _resolve_gpu()
 
 
 def _pinned_versions(constraints_file: Path) -> dict[str, str]:
