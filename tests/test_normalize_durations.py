@@ -236,7 +236,45 @@ def test_normalize_records_probe_counts_already_matching_canonical_as_unchanged(
     assert summary.canonical_unchanged_match_probe == 1
     assert summary.canonical_matched_probe_before == 1
     assert summary.canonical_matched_probe_after == 1
-    assert rows[0]["after_served_duration_seconds"] == 600.2
+    assert rows[0]["after_served_duration_seconds"] == 600.0
+    assert records["u1"]["served_duration_seconds"] == 600.0
+
+
+def test_normalize_records_probe_match_does_not_mutate_record(monkeypatch):
+    records = {
+        "u1": {
+            "uid": "u1",
+            "served_duration_seconds": 600.0,
+            "audio": {"key": "audio/k1", "duration_served": 600.0},
+        },
+        "u2": {
+            "uid": "u2",
+            "audio": {"key": "audio/k2"},
+        },
+    }
+
+    def _probe(_storage, key, *, ffmpeg_binary="ffmpeg"):
+        if key == "audio/k1":
+            return 600.2, "stream-sample"
+        return 601.0, "stream-sample"
+
+    monkeypatch.setattr(nd, "probe_hosted_audio_duration_seconds", _probe)
+
+    rows, summary, changed = nd.normalize_records(
+        records,
+        source_key="src1",
+        storage=object(),
+        ffmpeg_binary="ffmpeg",
+        probe_existing=True,
+        apply=True,
+    )
+
+    assert changed is True
+    assert summary.changed == 1
+    assert summary.unchanged == 1
+    assert records["u1"]["served_duration_seconds"] == 600.0
+    assert records["u2"]["served_duration_seconds"] == 601.0
+    assert rows[0]["after_served_duration_seconds"] == 600.0
 
 
 def test_normalize_records_probe_exception_reports_failure_and_continues(monkeypatch):

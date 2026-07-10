@@ -347,7 +347,12 @@ def normalize_records(
         if probed is not None and probed > 0:
             summary.probe_succeeded += 1
             had_canonical = canonical_before is not None
-            if apply:
+            duration_changed = _duration_changed(
+                before,
+                probed,
+                had_canonical=had_canonical,
+            )
+            if apply and duration_changed:
                 set_served_duration_seconds(rec, probed)
             canonical_after = _canonical_served_duration_seconds(rec)
             legacy_after = _legacy_served_duration_seconds(rec)
@@ -382,7 +387,7 @@ def normalize_records(
                 summary.canonical_written_from_probe += 1
             if _matches_probe(canonical_before, probed) and _matches_probe(canonical_after, probed):
                 summary.canonical_unchanged_match_probe += 1
-            if _duration_changed(before, probed, had_canonical=had_canonical):
+            if duration_changed:
                 summary.changed += 1
                 changed = True
                 summary.touched_sources.add(source_key)
