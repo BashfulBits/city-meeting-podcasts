@@ -750,6 +750,44 @@ def test_audio_artifact_cache_encodes_duplicate_source_views_once(tmp_path):
     assert len(list(store.list_objects(f"{city_a.provider}/"))) == 1
 
 
+def test_same_call_duplicate_cache_key_does_not_deadlock(tmp_path):
+    # CR2-CP-45: two episodes in the *same* materialize_audio() call sharing a (provider, uid,
+    # spec) cache key must not deadlock the cheap-pass thread against itself. The leader's
+    # claim() only resolves via complete()/abort() in the later encode pass, which this same
+    # (still-in-the-cheap-pass) thread hasn't reached yet — a plain second claim() call would
+    # wait() forever on a condition only that not-yet-run step could signal.
+    import threading
+
+    from citypods.media import AudioArtifactCache
+
+    store = _store(tmp_path)
+    cache = AudioArtifactCache()
+    ff = FakeFfmpeg()
+    city = _city(slug="dup")
+    ep1 = _ep("dup-uid")
+    ep2 = _ep("dup-uid")  # same uid -> identical spec -> identical cache_key as ep1
+
+    result: dict = {}
+
+    def _run():
+        result["stats"] = materialize_audio(
+            city,
+            [ep1, ep2],
+            storage=store,
+            ffmpeg=ff,
+            max_kbps=MAX_KBPS,
+            resolve_media_url=lambda e: e.video_url,
+            audio_artifact_cache=cache,
+        )
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=5)
+    assert not t.is_alive(), "materialize_audio deadlocked on a same-call duplicate cache key"
+    assert ep1.audio_key and ep2.audio_key
+    assert result["stats"].encoded == 2  # materialized independently, not coalesced
+
+
 def test_coalesced_follower_leaves_served_duration_unset_without_probe(tmp_path):
     # GH#421 follow-up / Audio #58: a credited canonical winner can carry no probed duration. A
     # follower adopting the shared artifact must preserve that "unknown" state rather than infer
