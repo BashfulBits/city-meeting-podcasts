@@ -41,6 +41,7 @@ The canonical worker env vars parsed here are:
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -71,9 +72,7 @@ from citypods.ops import work_leases
 from citypods.ops.workqueue import (
     BUCKET_FEED_VISIBLE,
     WorkItem,
-    build_manifest,
-    load_manifest,
-    overlay_persisted_operational_state,
+    rebuild_manifest_from_state,
 )
 from citypods.records import (
     episode_to_record,
@@ -207,6 +206,17 @@ class ExternalWorkerSummary:
 
 
 @dataclass
+class ClaimLoopSummary:
+    scanned: int = 0
+    claimed: int = 0
+    completed: int = 0
+    adopted: int = 0
+    failed: int = 0
+    budget_declined: int = 0
+    skipped: int = 0
+
+
+@dataclass
 class CompletedClaim:
     owner: str
     item: WorkItem
@@ -214,6 +224,9 @@ class CompletedClaim:
     outcome: str
     actual_runtime_seconds: float
     estimated_runtime_seconds: float
+    peak_rss_bytes: int | None = None
+    peak_gpu_vram_used_bytes: int | None = None
+    gpu_vram_total_bytes: int | None = None
 
 
 def _int_env(name: str, default: int) -> int:
@@ -500,15 +513,7 @@ class ExternalTranscribeWorker:
             if self.config.work_class not in SUPPORTED_WORK_CLASSES:
                 raise ValueError(f"unsupported external worker class: {self.config.work_class!r}")
 
-            manifest = self._manifest()
-            base_candidates = [
-                wi
-                for wi in manifest
-                if wi.work_class == self.config.work_class
-                and wi.state == "queued"
-                and wi.priority_bucket == BUCKET_FEED_VISIBLE
-                and self._preferred_duration(wi)
-            ]
+            base_candidates = self._base_candidates()
             backlog_present = False
             if self._is_preferred_day():
                 candidates = base_candidates
@@ -523,117 +528,30 @@ class ExternalTranscribeWorker:
             budget_cycle = self._budget_cycle_key(policy)
             summary.budget_cycle_key = budget_cycle
             summary.budget_unit_label = policy.budget.unit_label
-            summary.scanned = len(candidates)
-            ordered = self._ordered(candidates)
-            # ``worked`` counts NEW transcriptions attempted (succeeded or failed) — the thing
-            # ``max_claims`` caps. Items whose artifacts already exist are adopted (cheap, no GPU)
-            # and skipped past without consuming a slot. ``scan_cap`` bounds total leases so a stale
-            # manifest full of already-done items can't make us walk the whole queue.
-            worked = 0
-            scan_cap = (
-                self.config.max_scan
-                if self.config.max_scan is not None
-                else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
+            claim_summary, claims = self._run_claim_loop(
+                candidates,
+                max_worked=effective_claims,
+                should_stop=None,
+                budget_policy=policy,
+                budget_cycle=budget_cycle,
             )
-            for item in ordered:
-                if worked >= effective_claims:
-                    break
-                if summary.claimed >= scan_cap:
-                    break
-                claim_owner = f"{self.config.owner}:{summary.claimed}"
-                held = work_leases.claim(
-                    self.storage,
-                    item.source_key,
-                    item.episode_uid,
-                    owner=claim_owner,
-                    ttl_seconds=self.config.lease_ttl_seconds,
-                    pipeline_version=ASR_PIPELINE_VERSION,
+            summary.scanned = claim_summary.scanned
+            summary.claimed = claim_summary.claimed
+            summary.completed = claim_summary.completed
+            summary.adopted = claim_summary.adopted
+            summary.failed = claim_summary.failed
+            summary.budget_declined = claim_summary.budget_declined
+            summary.skipped = claim_summary.skipped
+            summary.gpu_seconds = sum(claim.actual_runtime_seconds for claim in claims)
+            for claim in claims:
+                summary.update_resource_peaks(
+                    ResourceTracker(
+                        peak_rss_bytes=claim.peak_rss_bytes,
+                        peak_gpu_vram_used_bytes=claim.peak_gpu_vram_used_bytes,
+                        gpu_vram_total_bytes=claim.gpu_vram_total_bytes,
+                    )
                 )
-                if held is None:
-                    summary.skipped += 1
-                    continue
-                summary.claimed += 1
-                metadata = self._telemetry_metadata(item)
-                estimate, estimated_runtime_seconds = self._estimate_reservation_dollars(
-                    item,
-                    planned_claim_count=max(1, effective_claims),
-                    metadata=metadata,
-                    policy=policy,
-                )
-                cap = policy.budget.spendable_dollars
-                max_inflight = policy.dispatch.max_inflight
-                if (
-                    cap <= 0
-                    or max_inflight <= 0
-                    or not reserve_if_available(
-                        self.storage,
-                        claim_owner,
-                        self.config.backend,
-                        est=estimate,
-                        cap=cap,
-                        max_inflight=max_inflight,
-                        cycle=budget_cycle,
-                    )
-                ):
-                    work_leases.abandon(
-                        self.storage, item.source_key, item.episode_uid, owner=claim_owner
-                    )
-                    summary.budget_declined += 1
-                    break
-
-                started_at = datetime.now(UTC).isoformat()
-                started = time.monotonic()
-                tracker = self._resource_tracker()
-                tracker.record("claim-start")
-                outcome = "failed"
-                actual = 0.0
-                try:
-                    adopted = self._run_with_retry(item, tracker, owner=claim_owner)
-                except Exception:
-                    actual = max(0.0, time.monotonic() - started)
-                    work_leases.release(
-                        self.storage,
-                        item.source_key,
-                        item.episode_uid,
-                        owner=claim_owner,
-                        state="failed",
-                    )
-                    summary.failed += 1
-                    summary.gpu_seconds += actual
-                    worked += 1  # a real (failed) transcription attempt still consumes a slot
-                    outcome = "failed"
-                else:
-                    actual = max(0.0, time.monotonic() - started)
-                    summary.completed += 1
-                    summary.gpu_seconds += actual
-                    if adopted:
-                        summary.adopted += 1  # artifacts already existed; no slot consumed
-                    else:
-                        worked += 1
-                    outcome = "success"
-                finally:
-                    settled_claims.append(
-                        CompletedClaim(
-                            owner=claim_owner,
-                            item=item,
-                            metadata=metadata,
-                            outcome=outcome,
-                            actual_runtime_seconds=actual,
-                            estimated_runtime_seconds=estimated_runtime_seconds,
-                        )
-                    )
-                    tracker.record("claim-finish")
-                    summary.update_resource_peaks(tracker)
-                    worker_tracker.update_from(tracker)
-                    self._append_telemetry_sample(
-                        item=item,
-                        metadata=metadata,
-                        tracker=tracker,
-                        outcome=outcome,
-                        started_at=started_at,
-                        elapsed_seconds=actual,
-                        owner=claim_owner,
-                    )
+            settled_claims.extend(claims)
             return summary
         finally:
             if settled_claims:
@@ -695,6 +613,132 @@ class ExternalTranscribeWorker:
         assert last is not None
         raise last
 
+    def _run_claim_loop(
+        self,
+        candidates: list[WorkItem],
+        *,
+        max_worked: int | None,
+        should_stop,
+        budget_policy=None,
+        budget_cycle: str | None = None,
+    ) -> tuple[ClaimLoopSummary, list[CompletedClaim]]:
+        summary = ClaimLoopSummary(scanned=len(candidates))
+        settled_claims: list[CompletedClaim] = []
+        ordered = self._ordered(candidates)
+        worked = 0
+        if max_worked is not None and max_worked <= 0:
+            return summary, settled_claims
+        scan_cap = (
+            self.config.max_scan
+            if self.config.max_scan is not None
+            else self.config.max_claims + _DEFAULT_ADOPT_HEADROOM
+        )
+        for item in ordered:
+            if should_stop is not None and should_stop():
+                break
+            if max_worked is not None and worked >= max_worked:
+                break
+            if summary.claimed >= scan_cap:
+                break
+            claim_owner = f"{self.config.owner}:{summary.claimed}"
+            held = work_leases.claim(
+                self.storage,
+                item.source_key,
+                item.episode_uid,
+                owner=claim_owner,
+                ttl_seconds=self.config.lease_ttl_seconds,
+                pipeline_version=ASR_PIPELINE_VERSION,
+            )
+            if held is None:
+                summary.skipped += 1
+                continue
+            summary.claimed += 1
+            metadata = self._telemetry_metadata(item)
+            estimated_runtime_seconds = self._estimate_runtime_seconds(
+                item,
+                planned_claim_count=max(1, max_worked or 1),
+                metadata=metadata,
+            )
+            if budget_policy is not None:
+                estimate = (
+                    estimated_runtime_seconds
+                    * self._estimated_dollars_per_runtime_second(budget_policy)
+                )
+                cap = budget_policy.budget.spendable_dollars
+                max_inflight = budget_policy.dispatch.max_inflight
+                if (
+                    cap <= 0
+                    or max_inflight <= 0
+                    or not reserve_if_available(
+                        self.storage,
+                        claim_owner,
+                        self.config.backend,
+                        est=estimate,
+                        cap=cap,
+                        max_inflight=max_inflight,
+                        cycle=budget_cycle,
+                    )
+                ):
+                    work_leases.abandon(
+                        self.storage, item.source_key, item.episode_uid, owner=claim_owner
+                    )
+                    summary.budget_declined += 1
+                    break
+
+            started_at = datetime.now(UTC).isoformat()
+            started = time.monotonic()
+            tracker = self._resource_tracker()
+            tracker.record("claim-start")
+            outcome = "failed"
+            actual = 0.0
+            try:
+                adopted = self._run_with_retry(item, tracker, owner=claim_owner)
+            except Exception:
+                actual = max(0.0, time.monotonic() - started)
+                work_leases.release(
+                    self.storage,
+                    item.source_key,
+                    item.episode_uid,
+                    owner=claim_owner,
+                    state="failed",
+                )
+                summary.failed += 1
+                worked += 1
+                outcome = "failed"
+            else:
+                actual = max(0.0, time.monotonic() - started)
+                summary.completed += 1
+                if adopted:
+                    summary.adopted += 1
+                else:
+                    worked += 1
+                outcome = "success"
+            finally:
+                settled_claims.append(
+                    CompletedClaim(
+                        owner=claim_owner,
+                        item=item,
+                        metadata=metadata,
+                        outcome=outcome,
+                        actual_runtime_seconds=actual,
+                        estimated_runtime_seconds=estimated_runtime_seconds,
+                        peak_rss_bytes=tracker.peak_rss_bytes,
+                        peak_gpu_vram_used_bytes=tracker.peak_gpu_vram_used_bytes,
+                        gpu_vram_total_bytes=tracker.gpu_vram_total_bytes,
+                    )
+                )
+                tracker.record("claim-finish")
+                self._append_telemetry_sample(
+                    item=item,
+                    metadata=metadata,
+                    tracker=tracker,
+                    outcome=outcome,
+                    started_at=started_at,
+                    elapsed_seconds=actual,
+                    owner=claim_owner,
+                )
+        return summary, settled_claims
+
     def _renew_interval(self) -> float:
         """Seconds between lease renewals during one inference. Capped at 300s so a renewal always
         lands well inside even a short TTL; floored at 60s so a small TTL can't spin the thread.
@@ -755,21 +799,21 @@ class ExternalTranscribeWorker:
         return work_leases.ordered_candidates(items, self.config.owner)
 
     def _manifest(self) -> list[WorkItem]:
-        from citypods.ops.workqueue import BacklogPolicy
+        return rebuild_manifest_from_state(
+            self.cities,
+            site_config=self.site_config,
+            state_dir=self.state_dir,
+        )
 
-        defaults = self.site_config.get("defaults") or {}
-        persisted = load_manifest(self.state_dir)
-        if not self._city_by_source:
-            return persisted
-        backlog_policy = None
-        if self.site_config.get("backlog_priority") or defaults.get("backlog_priority"):
-            backlog_policy = BacklogPolicy.from_site_config(self.site_config)
-        manifest_sources = [
-            (src, city, load_records(self.state_dir, src))
-            for src, city in self._city_by_source.items()
+    def _base_candidates(self) -> list[WorkItem]:
+        return [
+            wi
+            for wi in self._manifest()
+            if wi.work_class == self.config.work_class
+            and wi.state == "queued"
+            and wi.priority_bucket == BUCKET_FEED_VISIBLE
+            and self._preferred_duration(wi)
         ]
-        derived = build_manifest(manifest_sources, policy=backlog_policy)
-        return overlay_persisted_operational_state(derived, persisted)
 
     def _city_for(self, item: WorkItem) -> City:
         if item.city_slug and item.city_slug in self._city_by_slug:
@@ -1112,6 +1156,85 @@ def run_worker(
     )
     summary = worker.run().to_dict()
     summary["finished_at"] = datetime.now(UTC).isoformat()
+    return summary
+
+
+def run_internal_worker(
+    *,
+    owner: str | None = None,
+    max_claims: int | None = None,
+    max_scan: int | None = None,
+    site_config_path: str = "config/site_config.yml",
+    config_dir: str = "config",
+    output_dir: str = "docs",
+    base_url: str | None = None,
+) -> dict[str, Any]:
+    from citypods.run import StopSignal, _newer_run_queued
+
+    site_config = load_site_config(site_config_path)
+    defaults = site_config.get("defaults") or {}
+    base_url = base_url or site_config.get("base_url", "")
+    output = Path(output_dir)
+    storage = make_storage(site_config, base_url, output)
+    if storage is None:
+        raise RuntimeError("internal worker requires configured routing storage")
+    if not getattr(storage, "cas_capable", False):
+        raise RuntimeError("internal worker requires CAS-capable routing storage for work leases")
+
+    cities = load_city_configs(config_dir, defaults)
+    state_dir = resolve_state_dir(site_config, output)
+    pull_state(storage, state_dir)
+    run_id = os.environ.get("GITHUB_RUN_ID") or "local"
+    slot = os.environ.get("CITYPODS_INTERNAL_WORKER_SLOT") or "0"
+    cfg = ExternalWorkerConfig(
+        backend="github-actions",
+        owner=owner or f"github-actions:{run_id}:{slot}",
+        max_claims=max_claims if max_claims is not None else sys.maxsize,
+        max_scan=max_scan,
+        lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
+        work_class="transcript-asr",
+        device=os.environ.get("CITYPODS_WORKER_ASR_DEVICE", "cpu"),
+        cpu_threads=_int_env("CITYPODS_WORKER_CPU_THREADS", 4),
+    )
+    worker = ExternalTranscribeWorker(
+        config=cfg,
+        site_config=site_config,
+        cities=cities,
+        state_dir=state_dir,
+        storage=storage,
+    )
+    start_cutoff_min = float(defaults.get("asr_start_cutoff_minutes", 285))
+    deadline = (
+        time.monotonic() + start_cutoff_min * 60
+        if start_cutoff_min > 0
+        else None
+    )
+    stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+    print(
+        f"budget: transcribe start cutoff {start_cutoff_min:.0f}m, "
+        "backstop externalized to per-claim completion (+ yield before new starts if superseded)",
+        flush=True,
+    )
+    claim_summary, _claims = worker._run_claim_loop(
+        worker._base_candidates(),
+        max_worked=None if max_claims is None else max_claims,
+        should_stop=stop,
+        budget_policy=None,
+        budget_cycle=None,
+    )
+    summary = {
+        "backend": "github-actions",
+        "owner": cfg.owner,
+        "scanned": claim_summary.scanned,
+        "claimed": claim_summary.claimed,
+        "completed": claim_summary.completed,
+        "adopted": claim_summary.adopted,
+        "failed": claim_summary.failed,
+        "skipped": claim_summary.skipped,
+        "finished_at": datetime.now(UTC).isoformat(),
+        "stopped": bool(stop and stop.fired_reason),
+        "stop_reason": stop.fired_reason if stop else None,
+    }
     return summary
 
 

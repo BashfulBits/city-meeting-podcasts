@@ -488,6 +488,10 @@ class TestReconcile:
 
         state_dir = tmp_path / "state"
         save_manifest(state_dir, [_item("u1")])
+        monkeypatch.setattr(
+            "citypods.ops.workqueue.rebuild_manifest_from_state",
+            lambda cities, *, site_config, state_dir: load_manifest(state_dir),
+        )
         wl.claim(bucket, "s1", "u1", owner="dead", ttl_seconds=1, now=NOW - timedelta(hours=1))
 
         site_config_path = tmp_path / "site_config.yml"
@@ -509,6 +513,40 @@ class TestReconcile:
         assert rc == 0
         reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
         assert reclaimed.state == "queued" and reclaimed.owner == ""  # swept, not left stuck
+
+    def test_cli_reconcile_rebuilds_manifest_before_reaping(self, tmp_path, monkeypatch):
+        from citypods import cli
+
+        bucket = _MemBucket()
+        monkeypatch.setattr("citypods.storage.make_storage", lambda *a, **kw: bucket)
+
+        state_dir = tmp_path / "state"
+        save_manifest(state_dir, [])
+        site_config_path = tmp_path / "site_config.yml"
+        site_config_path.write_text(f"state_dir: {state_dir}\n")
+
+        rebuilt = [WorkItem(source_key="s1", episode_uid="u1", work_class="transcript-asr")]
+        monkeypatch.setattr(
+            "citypods.ops.workqueue.rebuild_manifest_from_state",
+            lambda cities, *, site_config, state_dir: rebuilt,
+        )
+
+        rc = cli.main(
+            [
+                "compute",
+                "reconcile",
+                "--site-config",
+                str(site_config_path),
+                "--output-dir",
+                str(tmp_path / "docs"),
+            ]
+        )
+
+        assert rc == 0
+        manifest = load_manifest(state_dir)
+        assert [(it.source_key, it.episode_uid, it.work_class) for it in manifest] == [
+            ("s1", "u1", "transcript-asr")
+        ]
 
     def test_empty_manifest_is_noop(self, tmp_path):
         assert reconcile_compute(tmp_path, storage=None, now=NOW) == {
