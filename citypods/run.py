@@ -455,17 +455,16 @@ def _normalize_episode_durations_for_dispatch(
         probe_attempted = False
         if allow_probe and ep.hosted_audio_url and ep.audio_key:
             if stop is not None and stop():
-                probed, basis = None, "stop-requested"
-            else:
-                probe_attempted = True
-                try:
-                    probed, basis = probe_hosted_audio_duration_seconds(
-                        storage,
-                        ep.audio_key,
-                        ffmpeg_binary=ffmpeg_binary,
-                    )
-                except Exception:
-                    probed, basis = None, "probe-exception"
+                break
+            probe_attempted = True
+            try:
+                probed, basis = probe_hosted_audio_duration_seconds(
+                    storage,
+                    ep.audio_key,
+                    ffmpeg_binary=ffmpeg_binary,
+                )
+            except Exception:
+                probed, basis = None, "probe-exception"
             if probed is not None and probed > 0:
                 set_served_duration_seconds(ep, probed)
                 stats.normalized_from_probe += 1
