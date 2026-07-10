@@ -82,7 +82,7 @@ class TestHostRateLimiter:
                 with lock:
                     active[0] -= 1
 
-        ts = [threading.Thread(target=work) for _ in range(threads)]
+        ts = [threading.Thread(target=work, daemon=True) for _ in range(threads)]
         for t in ts:
             t.start()
         for t in ts:
@@ -135,7 +135,7 @@ class TestHostRateLimiter:
             with lim.slots(["https://a.granicus.com/1.mp4", "https://b.granicus.com/2.mp4"]):
                 done.append(True)
 
-        t = threading.Thread(target=work)
+        t = threading.Thread(target=work, daemon=True)
         t.start()
         t.join(timeout=2.0)
         assert done == [True]  # completed without self-deadlock
@@ -169,7 +169,7 @@ class TestHostRateLimiterStopAware:
             with lim.slots(["https://archive-video.granicus.com/x.mp4"]):
                 holder_released.wait(timeout=2.0)
 
-        t = threading.Thread(target=hold)
+        t = threading.Thread(target=hold, daemon=True)
         t.start()
         try:
             with pytest.raises(StopRequested):
@@ -202,7 +202,7 @@ class TestHostRateLimiterStopAware:
             with lim.slots(["https://v.swagit.com/a.mp4"]):
                 holder_released.wait(timeout=2.0)
 
-        t = threading.Thread(target=hold_swagit)
+        t = threading.Thread(target=hold_swagit, daemon=True)
         t.start()
         try:
             with pytest.raises(StopRequested):
@@ -265,7 +265,7 @@ class TestGuardedAdapterHoldsHostSlot:
             adapter.send(SimpleNamespace(url="https://archive-video.granicus.com/x.mp4"))
 
         try:
-            ts = [threading.Thread(target=work) for _ in range(8)]
+            ts = [threading.Thread(target=work, daemon=True) for _ in range(8)]
             for t in ts:
                 t.start()
             for t in ts:
@@ -311,7 +311,7 @@ class TestGuardedAdapterHoldsHostSlot:
             )
 
         try:
-            ts = [threading.Thread(target=work) for _ in range(8)]
+            ts = [threading.Thread(target=work, daemon=True) for _ in range(8)]
             for t in ts:
                 t.start()
             for t in ts:

@@ -28,6 +28,7 @@ test("requires bearer authentication before fetching upstream", async () => {
     },
   );
   assert.equal(response.status, 401);
+  assert.equal(response.headers.get("www-authenticate"), "Bearer");
   assert.equal(fetched, false);
 });
 
@@ -109,6 +110,28 @@ test("streams an allowed range and forwards only selected headers", async () => 
   assert.equal(response.headers.get("x-upstream-secret"), null);
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.equal(await response.text(), "media-bytes");
+});
+
+test("plain GET without a Range header returns the full body", async () => {
+  // CR2-WK-02: none of the existing tests exercise an unranged GET — a regression that broke
+  // this specific (no-Range) path would otherwise slip past the suite.
+  let captured;
+  const response = await handleRequest(request(VALID_URL), ENV, async (url, init) => {
+    captured = { url, init };
+    return new Response("full-media-bytes", {
+      status: 200,
+      headers: {
+        "content-length": "16",
+        "content-type": "video/mp4",
+      },
+    });
+  });
+
+  assert.equal(captured.init.headers.get("range"), null);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-length"), "16");
+  assert.equal(response.headers.get("content-type"), "video/mp4");
+  assert.equal(await response.text(), "full-media-bytes");
 });
 
 test("HEAD omits the body and upstream redirects are refused", async () => {

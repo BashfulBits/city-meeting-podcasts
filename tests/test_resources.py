@@ -96,7 +96,7 @@ def test_native_work_gate_asr_waits_for_active_audio():
         acquired.set()
         gate.release(kind="asr")
 
-    t = threading.Thread(target=_asr)
+    t = threading.Thread(target=_asr, daemon=True)
     t.start()
     assert any("native gate wait kind=asr" in line for line in _wait_for_logs(logs, "kind=asr"))
     assert acquired.is_set() is False
@@ -120,7 +120,7 @@ def test_native_work_gate_defaults_to_one_active_audio():
         acquired.set()
         gate.release(kind="audio")
 
-    t = threading.Thread(target=_audio)
+    t = threading.Thread(target=_audio, daemon=True)
     t.start()
     assert any("reason=audio-cap" in line for line in _wait_for_logs(logs, "reason=audio-cap"))
     assert acquired.is_set() is False
@@ -164,8 +164,8 @@ def test_native_work_gate_waiting_asr_blocks_new_audio():
         audio_acquired.set()
         gate.release(kind="audio")
 
-    asr_thread = threading.Thread(target=_asr)
-    audio_thread = threading.Thread(target=_audio)
+    asr_thread = threading.Thread(target=_asr, daemon=True)
+    audio_thread = threading.Thread(target=_audio, daemon=True)
     asr_thread.start()
     assert asr_started.wait(timeout=2)
     assert any("native gate wait kind=asr" in line for line in _wait_for_logs(logs, "kind=asr"))
@@ -202,8 +202,8 @@ def test_native_work_gate_prioritizes_audio_finalize_over_new_first_pass():
         first_pass_started.set()
         gate.release(kind="audio")
 
-    finalize_thread = threading.Thread(target=_finalize)
-    first_pass_thread = threading.Thread(target=_first_pass)
+    finalize_thread = threading.Thread(target=_finalize, daemon=True)
+    first_pass_thread = threading.Thread(target=_first_pass, daemon=True)
     finalize_thread.start()
     assert _wait_for(lambda: gate._audio_finalize_waiting == 1)
     first_pass_thread.start()
@@ -251,7 +251,7 @@ def test_native_work_gate_total_wait_seconds_accumulates():
         acquired.set()
         gate.release(kind="audio")
 
-    t = threading.Thread(target=_waiter)
+    t = threading.Thread(target=_waiter, daemon=True)
     t.start()
     assert _wait_for(lambda: not acquired.is_set() and gate._audio_active == 1)
 
@@ -292,7 +292,7 @@ def test_native_work_gate_current_counts_reflects_asr_waiting():
         gate.acquire(kind="asr", label="asr-a")
         gate.release(kind="asr")
 
-    t = threading.Thread(target=_asr)
+    t = threading.Thread(target=_asr, daemon=True)
     t.start()
     assert _wait_for(lambda: gate.current_counts()["asr_waiting"] == 1)
     asr_waiting.set()
@@ -322,7 +322,7 @@ def test_memory_reservation_blocks_until_release():
         proceeded.set()
         r.release(70)
 
-    t = threading.Thread(target=_second)
+    t = threading.Thread(target=_second, daemon=True)
     t.start()
     assert any("memory wait" in line for line in _wait_for_logs(logs, "memory wait"))
     assert proceeded.is_set() is False

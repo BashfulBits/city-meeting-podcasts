@@ -206,13 +206,23 @@ def test_check_rehost_backlog_stalled_warns():
 
 def test_check_rehost_backlog_provider_errors_stay_error():
     """dead-enclosure and unreachable checks remain ERROR — rehost_backlog never touches them."""
-    from citypods.audit import ERROR, check_enclosures
+    from citypods.audit import ERROR, WARN, check_enclosures
 
     # Confirm dead-enclosure is still ERROR (separate check, unchanged severity).
     ep = _ep(1, "g1", kind="hls")
     ep.hosted_audio_url = "https://cdn/a.m4a"
     findings = check_enclosures("s", [ep], lambda url: 404)
     assert findings and findings[0].severity == ERROR
+
+    # CR2-TS-02: actually exercise check_rehost_backlog over the same stalled-backlog shape and
+    # confirm it produces its own independent WARN finding rather than touching/overriding the
+    # ERROR above — the claim this test's name/docstring makes but previously never checked.
+    hls = [_ep(1, "g1", kind="hls"), _ep(8, "g2", kind="hls")]
+    backlog_finding = check_rehost_backlog("s", hls, run_history=_run_history(n_active=3))
+    assert backlog_finding is not None
+    assert backlog_finding.check == "rehost-backlog"
+    assert backlog_finding.severity == WARN
+    assert findings[0].severity == ERROR  # unaffected by the separate backlog check
 
 
 # ---------------------------------------------------------------------------

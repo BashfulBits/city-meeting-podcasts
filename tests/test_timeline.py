@@ -426,7 +426,8 @@ class TestConcatTimeline:
 
     def test_s1_maps_correctly(self):
         tl = _concat_timeline()
-        # served 1800 → s0 (boundary belongs to first segment)
+        # served 1800.0 is the boundary and belongs to span[1] (s1), not span[0] (s0) — see
+        # TestConcatSeamConvention.test_served_boundary_belongs_to_the_later_segment.
         # served 1800.1 → s1 @ 0.1
         sid, t = served_to_source(tl, 1800.1)
         assert sid == "s1"

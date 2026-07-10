@@ -7,6 +7,7 @@ import json
 from citypods.records import save_records
 from citypods.storage.local import LocalStorage
 from scripts import gc_audio
+from tests.conftest import write_local_backend_site_config
 
 
 def test_attribute_maps_audio_and_transcript_keys_to_city():
@@ -80,11 +81,17 @@ def test_negative_min_age_days_rejected():
 
 
 def test_local_iter_objects_returns_size(tmp_path):
+    from datetime import UTC, datetime
+
     store = LocalStorage(root=tmp_path / "bucket", url_prefix="https://cdn")
     (tmp_path / "bucket" / "p").mkdir(parents=True)
-    (tmp_path / "bucket" / "p" / "a.m4a").write_bytes(b"hello")
+    path = tmp_path / "bucket" / "p" / "a.m4a"
+    path.write_bytes(b"hello")
+    # CR2-TS-05: verify last_modified independently against the file's own stat instead of
+    # asserting the row equals itself (rows[0][1] was both the actual and "expected" value).
+    expected_mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     rows = list(store.iter_objects())
-    assert rows == [("p/a.m4a", rows[0][1], 5)]
+    assert rows == [("p/a.m4a", expected_mtime, 5)]
 
 
 def test_gc_out_report_written_on_dry_run(tmp_path):
@@ -96,9 +103,7 @@ def test_gc_out_report_written_on_dry_run(tmp_path):
 
     state = tmp_path / "state"
     save_records(state, "src", {"u1": {"audio": {"key": "p/kept.m4a", "url": "x"}}})
-    (tmp_path / "site.yml").write_text(
-        f"state_dir: {state}\ndefaults:\n  audio_storage_backend: local\n"
-    )
+    write_local_backend_site_config(tmp_path, state)
     report = tmp_path / "gc-out"
     argv = [
         "--site-config",
@@ -142,9 +147,7 @@ def test_apply_reaps_orphan_audio_but_never_infrastructure(tmp_path):
 
     state = tmp_path / "state"
     save_records(state, "src", {"u1": {"audio": {"key": "p/kept.m4a", "url": "x"}}})
-    (tmp_path / "site.yml").write_text(
-        f"state_dir: {state}\ndefaults:\n  audio_storage_backend: local\n"
-    )
+    write_local_backend_site_config(tmp_path, state)
     argv = [
         "--site-config",
         str(tmp_path / "site.yml"),

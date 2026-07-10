@@ -781,11 +781,16 @@ class _ResourceHeartbeat:
 
     def _run(self) -> None:
         while not self._stop.wait(self.interval_seconds):
-            print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
-            print(f"[{self.label}] active work: {format_snapshot(PROGRESS.snapshot())}", flush=True)
-            self._print_gate_and_lease_state()
-            self._sample()
-            self._maybe_dump_stalled_threads()
+            self._tick()
+
+    def _tick(self) -> None:
+        """One heartbeat print cycle — separately callable (CR2-TS-10) so a test can exercise it
+        deterministically instead of racing the background thread's own timing."""
+        print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
+        print(f"[{self.label}] active work: {format_snapshot(PROGRESS.snapshot())}", flush=True)
+        self._print_gate_and_lease_state()
+        self._sample()
+        self._maybe_dump_stalled_threads()
 
     def _print_gate_and_lease_state(self) -> None:
         """Surface *live* gate/lease occupancy each tick — ``total_wait_seconds`` and

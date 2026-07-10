@@ -35,6 +35,14 @@ def recorded_slugs(provider: str = "granicus") -> list[str]:
     return sorted(p.stem for p in d.glob("*.*"))
 
 
+def write_local_backend_site_config(tmp_path: Path, state_dir: Path) -> Path:
+    """Write a minimal site.yml pointing at a local-backend state_dir (CR2-TS-03: shared
+    instead of duplicating this exact fixture block across test_redirects.py/test_gc_audio.py)."""
+    path = tmp_path / "site.yml"
+    path.write_text(f"state_dir: {state_dir}\ndefaults:\n  audio_storage_backend: local\n")
+    return path
+
+
 # Deterministic CDN base used to simulate already-materialized CivicPlus audio in
 # snapshot/validation tests (the real pipeline + ffmpeg are tested separately).
 SIM_AUDIO_CDN = "https://cdn.example.gov/audio"

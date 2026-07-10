@@ -644,13 +644,14 @@ def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys,
 
 
 def test_heartbeat_tick_prints_active_work_snapshot(tmp_path, capsys):
+    # CR2-TS-10: call _tick() directly (the sibling stall-dump test's established pattern)
+    # instead of racing the background thread's own interval_seconds timing.
     progress_entry = run.PROGRESS.start(source="dallas-tx", uid="ep1", phase="audio-encode")
     try:
         hb = run._ResourceHeartbeat(
-            enabled=True, label="enrich", root=tmp_path, interval_seconds=0.02
+            enabled=True, label="enrich", root=tmp_path, interval_seconds=999
         )
-        with hb:
-            time.sleep(0.06)
+        hb._tick()
         out = capsys.readouterr().out
         assert "[enrich] active work:" in out
         assert "audio-encode" in out and "dallas-tx" in out and "ep1" in out

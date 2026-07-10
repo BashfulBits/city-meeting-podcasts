@@ -325,7 +325,12 @@ def test_meetings_link_renders_into_feed_end_to_end(tmp_path):
     from citypods.feeds import build_rss
     from citypods.models import City, Episode
     from citypods.stages import LinksStage, StageContext
-    from tests.test_stages import FakeFfmpeg
+
+    # CR2-TS-09: a self-contained stand-in instead of importing tests.test_stages.FakeFfmpeg —
+    # LinksStage never calls ffmpeg (it only builds resource links), so this test doesn't need
+    # that module's full fake and shouldn't silently break if it's renamed/removed.
+    class _UnusedFfmpeg:
+        pass
 
     city = City(
         slug="x-tx",
@@ -345,7 +350,7 @@ def test_meetings_link_renders_into_feed_end_to_end(tmp_path):
         video_url="https://v.mp4",
         media_kind="direct",
     )
-    ctx = StageContext(storage=None, ffmpeg=FakeFfmpeg(), max_kbps=96, dry_run=False, stop=None)
+    ctx = StageContext(storage=None, ffmpeg=_UnusedFfmpeg(), max_kbps=96, dry_run=False, stop=None)
     LinksStage().process(None, city, [ep], ctx)
 
     xml = build_rss(city, [ep], "audio", "https://e.test")
