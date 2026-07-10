@@ -26,7 +26,6 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       CITYPODS_MODAL_APP: citypods-modal-worker
       CITYPODS_MODAL_SECRET: citypods-modal-worker
-      CITYPODS_MODAL_GPU: L4
       CITYPODS_MODAL_CRON: "17 7 * * *"
       CITYPODS_WORKER_LEASE_TTL_SECONDS: "72000"
     steps:
