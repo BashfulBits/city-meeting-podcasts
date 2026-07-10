@@ -744,9 +744,15 @@ def rebuild_manifest_from_state(
     backlog_policy = None
     if site_config.get("backlog_priority") or defaults.get("backlog_priority"):
         backlog_policy = BacklogPolicy.from_site_config(site_config)
+    # build_manifest() requires one entry per unique source_key (its docstring: "board feeds
+    # sharing a source must be deduplicated by the caller, else episodes double-count") — cities
+    # sharing a source_key (multi-board feeds of one entity) must collapse to one representative
+    # city here, same as external_worker.py's _manifest() did before it moved onto this function.
+    city_by_source: dict[str, City] = {}
+    for city in cities:
+        city_by_source.setdefault(record_source_key(city), city)
     manifest_sources = [
-        (record_source_key(city), city, load_records(state_dir, record_source_key(city)))
-        for city in cities
+        (key, city, load_records(state_dir, key)) for key, city in city_by_source.items()
     ]
     derived = build_manifest(manifest_sources, policy=backlog_policy)
     return overlay_persisted_operational_state(derived, persisted)

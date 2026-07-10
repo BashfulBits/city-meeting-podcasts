@@ -1437,7 +1437,19 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
         city, ep, records = self._episode_for(item)
         del city
         _record_asr_timeout(ep)
-        self._push_owned_transcript_record(item, ep, records, ref_uid=ep.uid or ep.guid)
+        try:
+            self._push_owned_transcript_record(item, ep, records, ref_uid=ep.uid or ep.guid)
+        except Exception as exc:  # noqa: BLE001 - best-effort bookkeeping, not the retry decision
+            # A push failure here (e.g. a transient remote-read hiccup) must not turn into an
+            # uncaught exception that escapes past the caller's `raise ClaimDeferred("timeout")`
+            # below — that would land in _run_claim_loop's generic except-Exception branch, which
+            # settles the lease terminally `failed` instead of the retryable requeue this is
+            # supposed to be. The backoff counter simply stays unrecorded for this attempt.
+            print(
+                f"[github-actions-worker] warning: failed to push timeout backoff for "
+                f"{item.source_key}/{item.episode_uid}: {exc}",
+                flush=True,
+            )
 
 
 def run_worker(

@@ -868,16 +868,19 @@ def test_internal_worker_timeout_records_backoff_and_defers(tmp_path, monkeypatc
 
 
 @pytest.mark.skipif(
-    "fork" not in __import__("multiprocessing").get_all_start_methods(),
-    reason="requires the fork start method",
+    "spawn" not in __import__("multiprocessing").get_all_start_methods(),
+    reason="requires the spawn start method",
 )
 def test_internal_worker_transcribe_fresh_kills_a_real_subprocess_on_timeout(tmp_path, monkeypatch):
     """End-to-end companion to test_internal_worker_timeout_records_backoff_and_defers: that test
     fakes ``local_backend`` with a thread, so it never exercises the actual killable-subprocess
     mechanism (``ProcessLocalBackend``) the timeout guard depends on in production. This wires a
     real one in so the polling loop in ``_transcribe_fresh`` is proven against a genuine spawned
-    child process, not a stand-in."""
-    local_backend = ProcessLocalBackend(start_method="fork", asr=_HangingAsr())
+    child process, not a stand-in. Uses ``start_method="spawn"`` (the default `run_internal_worker`
+    actually ships, not ``"fork"``): ``_infer`` runs alongside a lease-renewal thread, and forking a
+    multi-threaded process is the classic fork-safety hazard (inherited locked resources) spawn
+    exists to avoid, so a fork-based test would validate a different, accidentally-safer config."""
+    local_backend = ProcessLocalBackend(start_method="spawn", asr=_HangingAsr())
     timeout_markers: list[str] = []
     worker = InternalTranscribeWorker(
         config=ExternalWorkerConfig(
