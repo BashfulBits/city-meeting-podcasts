@@ -31,6 +31,7 @@ see ``citypods.compute.external_worker`` for the canonical list and semantics.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import modal
 
@@ -39,19 +40,37 @@ SECRET_NAME = os.environ.get("CITYPODS_MODAL_SECRET", "citypods-modal-worker")
 CRON = os.environ.get("CITYPODS_MODAL_CRON", "17 7 * * *")
 
 
+def _site_config_gpu_type(backend: str, path: str | Path = "config/site_config.yml") -> str:
+    """Read ``defaults.compute_backends.<backend>.hardware.gpu_type`` without repo imports."""
+
+    section_stack: list[tuple[int, str]] = []
+    for raw_line in Path(path).read_text().splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        stripped = line.strip()
+        while section_stack and indent <= section_stack[-1][0]:
+            section_stack.pop()
+        if stripped.endswith(":"):
+            section_stack.append((indent, stripped[:-1].strip()))
+            continue
+        if stripped.startswith("gpu_type:") and [name for _indent, name in section_stack] == [
+            "defaults",
+            "compute_backends",
+            backend,
+            "hardware",
+        ]:
+            return stripped.split(":", 1)[1].strip().strip("\"'")
+    return ""
+
+
 def _resolve_gpu() -> str:
     configured_gpu = os.environ.get("CITYPODS_MODAL_GPU")
     if configured_gpu:
         return configured_gpu
 
-    # `modal deploy` imports this module on the caller machine before the image is built.
-    # Avoid requiring repo runtime deps there unless we truly need the policy fallback.
-    from citypods.compute.policy import backend_policy
-    from citypods.config import load_site_config
-
-    site_config = load_site_config("config/site_config.yml")
-    modal_policy = backend_policy(site_config, "modal")
-    return modal_policy.hardware.gpu_type or "L4"
+    return _site_config_gpu_type("modal") or "L4"
 
 
 GPU = _resolve_gpu()
