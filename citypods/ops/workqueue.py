@@ -30,6 +30,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.bodies import body_key, canonical_body
+from citypods.durations import episode_duration_hours, record_duration_hours
 from citypods.models import City, Episode
 
 MANIFEST_NAME = "work.json"
@@ -104,20 +105,6 @@ class WorkItem:
     lease_expires: datetime | None = None
 
 
-def _duration_hours(served: float | None, source: float | None) -> float:
-    """Hours from a served (preferred) or source duration in seconds; 0.0 when both are unknown.
-
-    Mirrors ``stages._episode_duration_hours``'s served≻source precedence. Kept self-contained
-    here (rather than imported) since that helper also returns a basis label for logging that
-    this ordering-only primitive doesn't need; the precedence logic is duplicated by exactly one
-    line, not re-derived."""
-    if served is not None and served > 0:
-        return served / 3600
-    if source is not None and source > 0:
-        return source / 3600
-    return 0.0
-
-
 def workitem_from_episode(
     ep: Episode,
     *,
@@ -136,7 +123,7 @@ def workitem_from_episode(
         city_slug=city_slug,
         body=ep.body or "",
         priority_bucket=priority_bucket,
-        duration_hours=_duration_hours(ep.audio_duration_served, ep.duration),
+        duration_hours=episode_duration_hours(ep)[0],
     )
 
 
@@ -434,9 +421,7 @@ def _episode_work_items(
         city_slug=city.slug,
         body=rec.get("body") or "",
         priority_bucket=bucket,
-        duration_hours=_duration_hours(
-            (rec.get("audio") or {}).get("duration_served"), rec.get("duration")
-        ),
+        duration_hours=record_duration_hours(rec)[0],
     )
     items: list[WorkItem] = []
     audio_done = bool((rec.get("audio") or {}).get("url"))

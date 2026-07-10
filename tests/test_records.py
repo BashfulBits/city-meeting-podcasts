@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from citypods.models import City, Episode
 from citypods.records import (
     _capped_exponential_backoff,
@@ -222,6 +224,60 @@ def test_record_store_roundtrip(tmp_path):
     # Envelope carries a schema version for future migrations.
     raw = json.loads((tmp_path / "sources" / "src" / "episodes.json").read_text())
     assert raw["schema_version"] >= 1
+
+
+def test_record_to_episode_prefers_canonical_duration_helpers():
+    rec = {
+        "uid": "u1",
+        "provider_guid": "g1",
+        "title": "Meeting",
+        "published": "2026-07-01T00:00:00+00:00",
+        "video_url": "https://x/g1.mp4",
+        "source_duration_seconds": "601.2",
+        "served_duration_seconds": "599.5",
+        "audio": {"duration_served": 400.0},
+    }
+
+    ep = record_to_episode(rec)
+
+    assert ep.source_duration_seconds == pytest.approx(601.2)
+    assert ep.duration == 601
+    assert ep.served_duration_seconds == pytest.approx(599.5)
+    assert ep.audio_duration_served == pytest.approx(599.5)
+
+
+def test_merge_persisted_keeps_fresh_provider_source_duration():
+    fresh = _ep("g-source-fresh")
+    fresh.uid = "u-source-fresh"
+    fresh.duration = 900
+    fresh.source_duration_seconds = 900.0
+
+    rec = {
+        "uid": fresh.uid,
+        "duration": 1200,
+        "source_duration_seconds": 1200.0,
+    }
+
+    merge_persisted([fresh], {fresh.uid: rec})
+
+    assert fresh.source_duration_seconds == pytest.approx(900.0)
+    assert fresh.duration == 900
+
+
+def test_merge_persisted_restores_canonical_served_duration():
+    fresh = _ep("g-served-restore")
+    fresh.uid = "u-served-restore"
+
+    rec = {
+        "uid": fresh.uid,
+        "served_duration_seconds": 1200.5,
+        "audio": {"key": "audio/u-served-restore.m4a"},
+    }
+
+    merge_persisted([fresh], {fresh.uid: rec})
+
+    assert fresh.served_duration_seconds == pytest.approx(1200.5)
+    assert fresh.audio_duration_served == pytest.approx(1200.5)
 
 
 def test_estimate_audio_shard_work_weights_pending_encodes_by_duration(tmp_path):

@@ -33,6 +33,7 @@ from citypods.compute.worker_telemetry import (
     load_worker_telemetry,
 )
 from citypods.config import load_city_configs, load_site_config
+from citypods.durations import episode_duration_hours
 from citypods.models import City, Episode
 from citypods.ops import work_leases
 from citypods.ops.workqueue import (
@@ -58,7 +59,6 @@ from citypods.stages import (
     _asr_recipe_hash,
     _asr_words_object_key,
     _download_audio_file,
-    _episode_duration_hours,
 )
 from citypods.state import resolve_state_dir
 from citypods.statesync import pull_state, push_records_merged
@@ -324,7 +324,7 @@ class ExternalTranscribeWorker:
                 _city, ep, _records = self._episode_for(item)
             except KeyError:
                 return 0.0
-            hours, _source = _episode_duration_hours(ep)
+            hours, _source = episode_duration_hours(ep)
         return max(0.0, float(hours) * 3600.0)
 
     def _runtime_estimate_key(self, item: WorkItem, metadata: dict[str, Any] | None = None) -> str:
@@ -871,7 +871,7 @@ class ExternalTranscribeWorker:
                 "model": None,
                 "compute_type": None,
             }
-        hours, _source = _episode_duration_hours(ep)
+        hours, _source = episode_duration_hours(ep)
         return {
             "duration_hours": hours,
             "model": city.asr_model,

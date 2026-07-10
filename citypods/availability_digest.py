@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.availability import CONFIRMED_EMPTY, SUSPECTED_EMPTY
+from citypods.durations import record_source_duration_seconds
 from citypods.security import redact_subprocess_text
 
 EVIDENCE_SCHEMA_VERSION = 1
@@ -53,7 +54,7 @@ class Candidate:
     last_check: str | None
     video_url: str
     canonical_url: str | None
-    duration: int | None
+    duration: float | None
 
     def key(self) -> str:
         """Stable de-dupe key. Includes the fingerprint, detector version, and state, so a
@@ -109,7 +110,7 @@ def iter_candidates(state_dir: Path) -> list[Candidate]:
                     last_check=av.get("last_check"),
                     video_url=str(rec.get("video_url") or ""),
                     canonical_url=(rec.get("links") or {}).get("canonical_video"),
-                    duration=rec.get("duration"),
+                    duration=record_source_duration_seconds(rec),
                 )
             )
     return out

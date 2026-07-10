@@ -111,6 +111,12 @@ class TestEnclosureDuration:
     def test_audio_falls_back_to_source_when_no_served(self):
         assert enclosure_duration(_ep_dur(duration=7200, served=None), "audio") == 7200
 
+    def test_audio_uses_canonical_fields_when_legacy_values_absent(self):
+        ep = _ep_dur()
+        ep.source_duration_seconds = 7200.0
+        ep.served_duration_seconds = 3545.6
+        assert enclosure_duration(ep, "audio") == 3546
+
     def test_video_uses_source_duration(self):
         assert enclosure_duration(_ep_dur(duration=7200, served=3545.6), "video") == 7200
 

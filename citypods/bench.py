@@ -28,6 +28,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from citypods.durations import episode_duration_hours
+
 
 def run_bench(
     city_slug: str,
@@ -88,7 +90,7 @@ def run_bench(
         )
         return 1
 
-    duration_h = (ep.audio_duration_served or ep.duration or 0) / 3600
+    duration_h, _duration_source = episode_duration_hours(ep)
     ref_words = len(ref_text.split())
 
     print(f"\nEpisode : {ep.title}")

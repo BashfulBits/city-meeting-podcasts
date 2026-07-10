@@ -35,8 +35,11 @@ from typing import Literal
 from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body
 from citypods.durations import (
+    episode_duration_hours,
     episode_served_duration_seconds,
     episode_source_duration_seconds,
+    record_served_duration_seconds,
+    record_source_duration_seconds,
     set_served_duration_seconds,
     set_source_duration_seconds,
 )
@@ -429,10 +432,10 @@ def estimate_audio_shard_work(
         duration: float | None = None
         if ep.timeline is not None and ep.timeline.segments:
             duration = float(ep.timeline.segments[-1].served_end)
-        elif ep.audio_duration_served and ep.audio_duration_served > 0:
-            duration = float(ep.audio_duration_served)
-        elif ep.duration and ep.duration > 0:
-            duration = float(ep.duration)
+        else:
+            duration_hours, source = episode_duration_hours(ep)
+            if source != "unknown":
+                duration = duration_hours * 3600.0
         if duration is None or duration <= 0:
             unknown_items += 1
         else:
@@ -634,8 +637,8 @@ def _iter_transcribe_routes(
         if timeout_backoff_until is not None and now < timeout_backoff_until:
             yield uid, "blocked", None
             continue
-        raw_duration = ep.audio_duration_served or ep.duration
-        duration_seconds = float(raw_duration) if raw_duration and raw_duration > 0 else None
+        duration_hours, _duration_source = episode_duration_hours(ep)
+        duration_seconds = duration_hours * 3600.0 if duration_hours > 0 else None
         if route_classifier is not None:
             route = route_classifier(ep, duration_seconds)
         elif (
@@ -912,7 +915,8 @@ def record_to_episode(rec: dict) -> Episode:
     published = rec.get("published")
     when = datetime.fromisoformat(published) if published else datetime.now(UTC)
     audio = rec.get("audio") or {}
-    source_duration = rec.get("source_duration_seconds", rec.get("duration"))
+    source_duration = record_source_duration_seconds(rec)
+    served_duration = record_served_duration_seconds(rec)
 
     sources_data = rec.get("sources") or []
     sources = [_source_media_from_dict(s) for s in sources_data]
@@ -955,8 +959,8 @@ def record_to_episode(rec: dict) -> Episode:
         chapters_basis=rec.get("chapters_basis", "source:s0"),
         audio_rebuild=audio.get("rebuild") or "",
         audio_encode_time=audio.get("encode_time"),
-        audio_duration_served=rec.get("served_duration_seconds", audio.get("duration_served")),
-        served_duration_seconds=rec.get("served_duration_seconds", audio.get("duration_served")),
+        audio_duration_served=served_duration,
+        served_duration_seconds=served_duration,
         integrity=rec.get("integrity") if isinstance(rec.get("integrity"), dict) else {},
         media_availability=_availability_from_rec(rec),
     )
@@ -1217,8 +1221,12 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.links = rec.get("links") or ep.links
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
-        if rec.get("duration") and not ep.duration:
-            ep.duration = rec["duration"]
+        persisted_source = record_source_duration_seconds(rec)
+        if persisted_source is not None and episode_source_duration_seconds(ep) is None:
+            set_source_duration_seconds(ep, persisted_source)
+        persisted_served = record_served_duration_seconds(rec)
+        if persisted_served is not None:
+            set_served_duration_seconds(ep, persisted_served)
         # v2: restore sources and timeline from record (lazy upgrade: absent → defaults)
         sources_data = rec.get("sources") or []
         if sources_data and not ep.sources:

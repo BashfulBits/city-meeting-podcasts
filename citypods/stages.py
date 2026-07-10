@@ -87,6 +87,12 @@ from citypods.asr import asr_initial_prompt
 from citypods.bodies import body_key, canonical_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
+from citypods.durations import (
+    episode_duration_hours,
+    episode_served_duration_seconds,
+    episode_source_duration_seconds,
+    set_served_duration_seconds,
+)
 from citypods.integrity import (
     REPAIR_AUDIO_REMATERIALIZE,
     REPAIR_TIMELINE_REPLAN,
@@ -641,11 +647,7 @@ def _acquire_asr_semaphore(ctx: StageContext, sem: threading.Semaphore, ep_ref: 
 
 
 def _episode_duration_hours(ep: Episode) -> tuple[float, str]:
-    if ep.audio_duration_served is not None and ep.audio_duration_served > 0:
-        return ep.audio_duration_served / 3600, "served"
-    if ep.duration is not None and ep.duration > 0:
-        return ep.duration / 3600, "source"
-    return 0.0, "unknown"
+    return episode_duration_hours(ep)
 
 
 def _asr_local_duration_eligible(ctx: StageContext, duration_hours: float) -> bool:
@@ -1392,9 +1394,10 @@ def _parse_timed_transcript(content: bytes, fmt: str) -> list[dict]:
 def _served_duration_hint(ep: Episode) -> float | None:
     if ep.timeline is not None and ep.timeline.segments:
         return ep.timeline.segments[-1].served_end
-    if ep.audio_duration_served:
-        return float(ep.audio_duration_served)
-    return float(ep.duration) if ep.duration else None
+    served = episode_served_duration_seconds(ep)
+    if served is not None:
+        return served
+    return episode_source_duration_seconds(ep)
 
 
 def _edited_timeline_served_duration(ep: Episode) -> float | None:
@@ -1676,18 +1679,19 @@ def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_bi
     ``stream_sample_duration`` reading by container-rounding noise."""
     probed = _probe_served_duration_secs(audio_path, ffmpeg_binary)
     if probed is not None and probed > 0:
-        if ep.audio_duration_served is None or abs(ep.audio_duration_served - probed) > 1.0:
-            ep.audio_duration_served = probed
+        prior = episode_served_duration_seconds(ep)
+        if prior is None or abs(prior - probed) > 1.0:
+            set_served_duration_seconds(ep, probed)
             return "hosted"
         return "served"
 
     # Probe failed: only *fill* a missing value from the EDL — never downgrade an
     # already-measured hosted duration back to the cue clock after a transient ffprobe failure.
     edited = _edited_timeline_served_duration(ep)
-    if edited is not None and (ep.audio_duration_served is None or ep.audio_duration_served <= 0):
-        ep.audio_duration_served = edited
+    if edited is not None and episode_served_duration_seconds(ep) is None:
+        set_served_duration_seconds(ep, edited)
         return "timeline"
-    return "served" if ep.audio_duration_served else "unknown"
+    return "served" if episode_served_duration_seconds(ep) else "unknown"
 
 
 class TranscriptStage:
