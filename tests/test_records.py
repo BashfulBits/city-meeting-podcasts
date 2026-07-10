@@ -264,6 +264,22 @@ def test_merge_persisted_keeps_fresh_provider_source_duration():
     assert fresh.duration == 900
 
 
+def test_merge_persisted_restores_canonical_served_duration():
+    fresh = _ep("g-served-restore")
+    fresh.uid = "u-served-restore"
+
+    rec = {
+        "uid": fresh.uid,
+        "served_duration_seconds": 1200.5,
+        "audio": {"key": "audio/u-served-restore.m4a"},
+    }
+
+    merge_persisted([fresh], {fresh.uid: rec})
+
+    assert fresh.served_duration_seconds == pytest.approx(1200.5)
+    assert fresh.audio_duration_served == pytest.approx(1200.5)
+
+
 def test_estimate_audio_shard_work_weights_pending_encodes_by_duration(tmp_path):
     done = _ep("g-done")
     done.uid = "u-done"
