@@ -1369,16 +1369,43 @@ errors.)
   fresh ASR transcript on hand (e.g. after an `align`→`transcribe` fallback), record both Layer-1 scores
   but label them `same-generator-biased`.
 
-*Layer 2 — periodic, independent adjudicator (fair served-vs-ASR).*
-- For a rotating sample of sources, run a CTC forced aligner that is **not Whisper** —
-  `torchaudio.functional.forced_align` (wav2vec2 emissions) or WhisperX's wav2vec2 alignment — against
-  **both** the served captions and a fresh Whisper transcript, and compare their acoustic-fit. Because
-  the judge is independent of both generators, this is the fair "which transcript does the audio
-  actually support?" measurement.
-- Output per sampled source: `served_fit`, `asr_fit`, and the sign/margin → a **caption-trust verdict**
-  (`high | low | unknown`).
-- Cost-bounded: rides the H13 execution-backend interface as a scoring task; runs over a rotating subset
-  (e.g. N sources/run, oldest-checked first), not every meeting.
+*Layer 2 — periodic, independent adjudicator (fair served-vs-ASR). **Implemented** (GH#883).*
+- `citypods/ctc_align.py::ctc_fit()` runs a CTC forced aligner that is **not Whisper** —
+  `torchaudio.pipelines.MMS_FA`, a wav2vec2 model trained purely for forced alignment (Meta's
+  "Scaling Speech Technology to 1,000+ Languages" bundle; resolved as `torchaudio.functional.
+  forced_align` under its `get_aligner()` wrapper) — against **both** the provider-align candidate's
+  and the ASR-challenger candidate's clipped text, scored against the same clipped audio. Because the
+  judge is independent of both generators, this is the fair "which transcript does the audio actually
+  support?" measurement Layer 1 cannot give.
+- Output per candidate: `CtcFitResult(mean_score, coverage, word_count, aligned_word_count)` —
+  `mean_score` is the length-weighted average per-word alignment confidence (the CTC path's
+  per-token log-probabilities, exponentiated to ~linear 0-1); `coverage` is the fraction of words
+  the aligner could place in the audio at all.
+- **Not wired through the H13 execution-backend interface** in v1: `_generate_provider_align_candidate`/
+  `_generate_asr_challenger_candidate` (the L1 candidate generators the periodic sampler already
+  runs) don't route through H13 either — they call `asr.align()`/`asr.transcribe()` directly — so
+  `ctc_fit()` matches that existing precedent rather than introducing a new integration the sampler's
+  own L1 candidates don't use. CPU-only forced-alignment of a ≤30 s clip is cheap enough that this
+  doesn't need external GPU dispatch.
+- **Scope (v1): English only.** MMS_FA's public torchaudio bundle ships a fixed western-Latin
+  character dictionary; scoring another language against it would silently produce meaningless
+  near-zero fit scores rather than a fair judgment, so `ctc_fit()` raises `UnsupportedLanguageError`
+  explicitly instead for a non-English `language`. Multi-language support (MMS's full G2P/uroman
+  pipeline) is a documented future increment, not v1 scope.
+- **Cost-bounded, folded into the existing sampler rather than a new workflow or `asr-bench.yml`**:
+  `QualityConfig.l2_sample_limit` (default 2) bounds L2 attempts *per `evaluate()` run*, not per
+  meeting — combined with `build_sample_manifest`'s already-sampled exclusion (skips `sample_id`s
+  already carrying rollup evidence), this gives the "rotating subset, oldest-checked-first" spread
+  across weekly runs without new cross-run state to track "when was this row last L2-scored."
+- **Blended into `auto_score`, not a hard cutover**: when `ctc_fit()` succeeds, its score dominates
+  (80% weight) with L1's coverage/word-logprob as a 20% smoothing term; on any failure (extra not
+  installed, non-English source, model-load/download failure) `_evaluate_one_sample` falls back to
+  the pure L1 formula for that candidate, the same per-sample resilience pattern used for
+  `AlignmentQualityError`. No `caption_trust: high|low|unknown` verdict as originally sketched —
+  `TranscriptQualityRoute`'s existing calibration-gate mechanism (bootstrap → agreement check →
+  continuous margin) consumes the blended `auto_score` exactly as it already did for L1 alone, per
+  the acceptance criterion that L2 "should not require redesigning the routing state machine, only
+  replacing what feeds `auto_margin_avg`."
 
 *Layer 3 — human-gold anchor (occasional, calibration only).*
 - A tiny stratified human-gold set (≈20–50 segments across vendors/audio conditions), transcribed or
@@ -1459,10 +1486,13 @@ capped-deque pattern from PR #324):
   `auto_margin_avg`, and `calibrated`, so the panel is additive reporting once built, not a data-model
   change.
 
-**Calibration-gated routing (this PR's answer to "how does route_mode get decided").** The original
-sketch above framed this as a single `caption_trust: high|low|unknown` verdict from L2's independent
-aligner. Because L2 doesn't exist yet (see "Open decisions"), this PR ships a narrower, self-correcting
-mechanism instead of leaving routing entirely unimplemented:
+**Calibration-gated routing (how `route_mode` gets decided).** The original sketch above framed this
+as a single `caption_trust: high|low|unknown` verdict from L2's independent aligner. L2 has since
+shipped (GH#883) and its score is blended into `auto_score` when available (see "Layer 2" above and
+"The correctness trap, revisited" below) — but the mechanism below predates that and was deliberately
+built to work with *either* signal (L1 alone, or L1+L2 blended) without redesign, since a
+same-generator-biased or partially-available signal still needs the same calibration-before-trust
+gate:
 - Every evaluated sample gets an automatic `auto_score` per candidate from the real L1 signal (acoustic
   coverage + word-logprob, **not** a timing/density proxy — the original auto-scorer here was replaced;
   see the correctness-trap note below) and a resulting `auto_outcome`.
@@ -1507,28 +1537,50 @@ runs are evaluation-only unless an explicit accepted-recipe policy promotes them
 heuristic plus a **hardcoded** confidence (0.75 for provider-align, 0.5 default for the challenger) —
 a fixed, unearned advantage baked into every automatic comparison, and not actually measuring whether
 either transcript matched the audio. It now uses the real per-run L1 signal (`coverage` +
-`word_logprob_mean`, both from the same `align()`/`transcribe()` call that produced the candidate) —
-still `same-generator-biased` per the original Layer 1 caveat (provider-align's own aligner scores its
-own alignment), which is precisely why the calibration gate above requires human agreement before
-trusting it, and why L2's independent judge remains the eventual fix. Cross-candidate `text_agreement`/
-`timing_delta_seconds` also moved from a naive positional zip (which desyncs on the first
-insertion/deletion — the norm, not the exception, between an aligned transcript and a freshly generated
-one) to a proper edit-distance alignment.
+`word_logprob_mean`, both from the same `align()`/`transcribe()` call that produced the candidate),
+**and — when L2 is available — L2's independent CTC fit dominates the blend (80%) with L1 as a 20%
+smoothing term** (see "Layer 2" above). When L2 is unavailable for a given sample (extra not
+installed, non-English source, budget exhausted, model-load failure) `auto_score` falls back to the
+pure L1 formula, which stays `same-generator-biased` per the original Layer 1 caveat — the calibration
+gate's human-agreement requirement remains the safety net for exactly those samples. Cross-candidate
+`text_agreement`/`timing_delta_seconds` also moved from a naive positional zip (which desyncs on the
+first insertion/deletion — the norm, not the exception, between an aligned transcript and a freshly
+generated one) to a proper edit-distance alignment.
 
 **Provenance first.** Before trusting any score, capture **where the captions come from** (human CART vs
 platform auto-ASR) from the source/provider config where known — that's the prior the fit scores then
 confirm or override.
 
-**Open decisions (why this is L1, not yet L2/L3).** **2026-07-11: L2 and L3 are explicitly scoped as
-the immediate next PR**, not an indefinite deferral — this PR's calibration-gated routing (above) is a
-documented interim mechanism, not the intended end state, precisely because trust thresholds shouldn't
-be hand-picked without the L3 anchor this next PR adds.
-- Independent aligner (L2): `torchaudio.functional.forced_align` (lean; may ride torch we already pull) vs
-  WhisperX (heavier, batteries-included).
-- L2 sampling cadence + sample size (cost vs freshness).
+**Open decisions (why this is L1+L2, not yet L3).** **2026-07-11: L2 shipped (GH#883); L3 is scoped as
+the immediate next PR** (GH#884), not an indefinite deferral — the calibration-gated routing mechanism
+(above) is a documented interim mechanism, not the intended end state, precisely because trust
+thresholds shouldn't be hand-picked without the L3 anchor that PR adds.
+- ~~Independent aligner (L2): `torchaudio.functional.forced_align` vs WhisperX.~~ **Resolved:**
+  `torchaudio.pipelines.MMS_FA` (wraps `forced_align`) — lean, rides torch/torchaudio already
+  transitively pinned via `stable-ts[fw]`'s own `openai-whisper` dependency in `constraints/asr.txt`;
+  only `torchcodec` (the `torchaudio.load()` decoder backend as of torchaudio 2.9+) is a genuinely new
+  package. WhisperX would have pulled the same underlying wav2vec2 alignment machinery through a much
+  heavier full-pipeline dependency for no additional capability H15 needs.
+- ~~L2 sampling cadence + sample size.~~ **Resolved:** `QualityConfig.l2_sample_limit` (default 2)
+  bounds L2 attempts per `evaluate()` run; the sampler's already-sampled exclusion supplies the
+  rotation across runs. No separate cadence/workflow — see next bullet.
+- ~~Whether L2 reuses `asr-bench.yml` or gets its own scheduled workflow.~~ **Resolved:** neither —
+  folded directly into `asr-quality-eval.yml`'s existing `sample`/`evaluate` steps, since L2 scores
+  the same clipped audio+candidates the L1 sampler already materializes; a separate workflow would
+  have needed to either re-download/re-align from scratch or invent cross-run artifact retrieval.
+- **New, not originally listed: L2 is English-only in v1.** MMS_FA's public torchaudio bundle needs
+  either plain Latin-script text or the full MMS G2P/uroman preprocessing pipeline for other
+  languages; v1 only implements the former, so `ctc_fit()` explicitly refuses non-English sources
+  (`UnsupportedLanguageError`) rather than silently scoring them against the wrong vocabulary.
+  Multi-language support is unscoped, not scheduled.
+- ~~`constraints/asr.txt` needs a `lock.yml` regeneration for the new `asr-align2` extra.~~
+  **Resolved:** dispatched `lock.yml` against this PR's branch (the sanctioned mechanism —
+  `scripts/compile_constraints.sh` needs Docker, unavailable in the authoring environment) and
+  merged its result. Confirmed minimal diff: `torch`/`torchaudio` stayed at their already-pinned
+  versions (both were already a transitive pin via `stable-ts[fw]`), only `torchcodec==0.14.0` was
+  newly added.
 - Trust thresholds — `agreement_threshold`/`trust_margin_threshold` are hand-picked config constants
   today; set them from data only after the L3 human-gold anchor exists.
-- Whether L2 reuses `asr-bench.yml` or gets its own scheduled workflow.
 - L3 human-gold set: ≈20–50 stratified segments, transcribed/corrected once, anchoring an absolute
   WER/CER to L2's fit-margin scores. A cheap on-ramp worth considering when L3 lands: let a reviewer who
   picks "Neither usable" optionally type a correction on the spot, opportunistically harvesting gold

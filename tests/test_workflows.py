@@ -212,6 +212,15 @@ def test_asr_quality_eval_workflow_is_separate_and_uploads_artifacts():
     )
     assert upload["with"]["retention-days"] == 14
 
+    install = next(step for step in job["steps"] if step.get("name") == "Install")
+    assert "asr-align2" in install["run"]
+    assert "-c constraints/asr.txt" in install["run"]  # single lock file, no separate one
+    cache = next(
+        step for step in job["steps"] if step.get("name") == "Cache L2 CTC aligner model (MMS_FA)"
+    )
+    assert cache["with"]["path"] == "~/.cache/torch/hub/checkpoints"
+    assert "actions/cache@" in cache["uses"]
+
 
 def test_asr_quality_review_workflow_is_weekly_issue_packaging():
     wf, job = _job("asr-quality-review.yml", job_name="review")
