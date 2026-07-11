@@ -18,13 +18,14 @@ concurrency:
   group: asr-quality-ingest
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  issues: write
+permissions: {}
 
 jobs:
   resolve:
     runs-on: ubuntu-latest
+    # Only reads issues (gh issue list) — no checkout, no writes.
+    permissions:
+      issues: read
     outputs:
       numbers: ${{ steps.resolve.outputs.numbers }}
     steps:
@@ -60,6 +61,10 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.numbers != '[]'
     runs-on: ubuntu-latest
+    # Checks out code (contents: read) and comments/closes child issues (issues: write).
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -133,6 +138,9 @@ jobs:
     needs: [resolve, ingest]
     if: always() && needs.resolve.result != 'failure'
     runs-on: ubuntu-latest
+    # Never checks out code; comments/closes parent issues.
+    permissions:
+      issues: write
     steps:
       - name: Close parent issues when their batch is clear
         env:

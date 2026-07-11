@@ -211,8 +211,16 @@ def _write_rollup_mirror(state_dir: Path, rows: list[dict], storage=None) -> dic
             storage.primary.put_file(f"state/{ROLLUPS_NAME}", local_path, "application/json")
         elif hasattr(storage, "put_file"):
             storage.put_file(f"state/{ROLLUPS_NAME}", local_path, "application/json")
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        # Best-effort mirror push: the CAS write (the authoritative copy) already succeeded by
+        # the time this runs, so raising here would turn a successfully-stored decision into a
+        # reported failure. Log so a transient B2 blip is visible instead of silently swallowed;
+        # the next rollup mutation re-mirrors every row, so this self-heals.
+        print(
+            f"state: WARNING transcript-quality rollup mirror push failed: {exc}; "
+            "decision persisted to CAS, will re-mirror on next write",
+            flush=True,
+        )
     return body
 
 
@@ -1260,7 +1268,11 @@ def _render_review_page(sample: dict, blinded: list[dict], metrics: dict[str, di
             for candidate in blinded
         ],
     }
-    payload_json = json.dumps(payload, separators=(",", ":"))
+    # payload embeds candidate transcript text (provider captions / ASR output — untrusted,
+    # third-party-derived content) inside a <script> block. json.dumps doesn't escape "</", so a
+    # literal "</script>" in caption text would terminate the block early and inject markup into
+    # the reviewer's page; escaping the slash keeps the JSON valid while breaking that sequence.
+    payload_json = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
     return f"""<!doctype html>
 <html lang="en">
 <head>

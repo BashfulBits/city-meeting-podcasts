@@ -12,6 +12,7 @@ from citypods.transcript_quality import (
     _blind_mapping,
     _normalize_rollups,
     _read_ref_bytes,
+    _render_review_page,
     accepted_recipe_allowed,
     evaluate_samples,
     ingest_review_decision,
@@ -108,6 +109,61 @@ def test_read_ref_bytes_local_file_path_is_unaffected(tmp_path):
     path = tmp_path / "local.vtt"
     path.write_text("WEBVTT")
     assert _read_ref_bytes(path.as_posix()) == b"WEBVTT"
+
+
+def test_write_rollup_mirror_logs_but_does_not_raise_on_push_failure(tmp_path, capsys):
+    """The CAS write (the authoritative copy) has already succeeded by the time the B2 mirror
+    push runs, so a transient mirror failure must be visible (not silently swallowed) without
+    turning a successfully-stored decision into a reported failure."""
+    from citypods.transcript_quality import _write_rollup_mirror
+
+    class _FailingStorage:
+        def put_file(self, key, path, content_type):
+            raise RuntimeError("network blip")
+
+    state_dir = tmp_path / "state"
+    result = _write_rollup_mirror(
+        state_dir,
+        [{"source_key": "src-1", "body_key": "city-council", "evidence": {}}],
+        storage=_FailingStorage(),
+    )
+    assert result["rows"][0]["source_key"] == "src-1"
+    out = capsys.readouterr().out
+    assert "WARNING" in out
+    assert "network blip" in out
+
+
+def test_render_review_page_escapes_script_close_tag_in_candidate_text():
+    """Candidate transcript text is untrusted (provider captions / ASR output) and gets embedded
+    in a <script> block -- a literal "</script>" in that text must not be able to terminate the
+    block early and inject markup into the reviewer's page."""
+    sample = {
+        "sample_id": "sample-xss",
+        "audio_url": "https://example.invalid/audio.m4a",
+        "clip_start": 0.0,
+        "clip_end": 3.0,
+        "episode_title": "Budget hearing",
+    }
+    blinded = [
+        {
+            "blind_label": "A",
+            "units": [{"text": "</script><script>alert(1)</script>", "start": 0.0, "end": 1.0}],
+        },
+        {"blind_label": "B", "units": [{"text": "hello", "start": 0.0, "end": 1.0}]},
+    ]
+    metrics = {
+        label: {
+            "timing_badge": "good",
+            "timing_coverage": 1.0,
+            "timing_density": 1.0,
+            "word_count": 1,
+        }
+        for label in ("A", "B")
+    }
+    html_text = _render_review_page(sample, blinded, metrics)
+    # Only the page's own real closing tag may appear; the malicious text's copies must be escaped.
+    assert html_text.count("</script>") == 1
+    assert "<\\/script>" in html_text
 
 
 def test_build_sample_manifest_skips_already_sampled_episodes(tmp_path, monkeypatch):

@@ -1389,7 +1389,9 @@ def _build_impl(
         if time_bounded and not dry_run and _memory_budget_mb > 0
         else None
     )
-    transcript_quality_routes = load_quality_routes(site_config, state_dir, storage=storage)
+    transcript_quality_routes = load_quality_routes(
+        site_config, state_dir, storage=None if dry_run else storage
+    )
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,

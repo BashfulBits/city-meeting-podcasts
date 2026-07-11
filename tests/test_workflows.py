@@ -235,7 +235,10 @@ def test_asr_quality_ingest_workflow_is_event_driven():
     wf, resolve_job = _job("asr-quality-ingest.yml", job_name="resolve")
     triggers = _on(wf)
     assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
-    assert wf.get("permissions", {}).get("issues") == "write"
+    # Deny-all at the workflow level; each job grants only what it actually needs (resolve only
+    # ever reads issues — no checkout, no writes).
+    assert wf["permissions"] == {}
+    assert resolve_job["permissions"] == {"issues": "read"}
     resolve = next(
         step for step in resolve_job["steps"] if step.get("name") == "Resolve candidate issue(s)"
     )
@@ -244,6 +247,7 @@ def test_asr_quality_ingest_workflow_is_event_driven():
 
     ingest_job = wf["jobs"]["ingest"]
     assert ingest_job["needs"] == "resolve"
+    assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
     assert ingest_job["strategy"]["matrix"]["issue_number"] == (
         "${{ fromJson(needs.resolve.outputs.numbers) }}"
     )
@@ -276,6 +280,7 @@ def test_asr_quality_ingest_schedule_fallback_scans_open_children():
 
     finalize_job = wf["jobs"]["finalize"]
     assert set(finalize_job["needs"]) == {"resolve", "ingest"}
+    assert finalize_job["permissions"] == {"issues": "write"}  # never checks out code
     close_parent = next(
         step
         for step in finalize_job["steps"]
