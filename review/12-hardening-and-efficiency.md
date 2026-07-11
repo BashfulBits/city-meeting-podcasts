@@ -1486,10 +1486,13 @@ capped-deque pattern from PR #324):
   `auto_margin_avg`, and `calibrated`, so the panel is additive reporting once built, not a data-model
   change.
 
-**Calibration-gated routing (this PR's answer to "how does route_mode get decided").** The original
-sketch above framed this as a single `caption_trust: high|low|unknown` verdict from L2's independent
-aligner. Because L2 doesn't exist yet (see "Open decisions"), this PR ships a narrower, self-correcting
-mechanism instead of leaving routing entirely unimplemented:
+**Calibration-gated routing (how `route_mode` gets decided).** The original sketch above framed this
+as a single `caption_trust: high|low|unknown` verdict from L2's independent aligner. L2 has since
+shipped (GH#883) and its score is blended into `auto_score` when available (see "Layer 2" above and
+"The correctness trap, revisited" below) — but the mechanism below predates that and was deliberately
+built to work with *either* signal (L1 alone, or L1+L2 blended) without redesign, since a
+same-generator-biased or partially-available signal still needs the same calibration-before-trust
+gate:
 - Every evaluated sample gets an automatic `auto_score` per candidate from the real L1 signal (acoustic
   coverage + word-logprob, **not** a timing/density proxy — the original auto-scorer here was replaced;
   see the correctness-trap note below) and a resulting `auto_outcome`.
@@ -1570,11 +1573,12 @@ thresholds shouldn't be hand-picked without the L3 anchor that PR adds.
   languages; v1 only implements the former, so `ctc_fit()` explicitly refuses non-English sources
   (`UnsupportedLanguageError`) rather than silently scoring them against the wrong vocabulary.
   Multi-language support is unscoped, not scheduled.
-- **New, not originally listed: `constraints/asr-align2.txt` needs a `lock.yml` regeneration.**
-  This PR cannot run `scripts/compile_constraints.sh` itself (requires Docker, unavailable in the
-  authoring environment) — `pyproject.toml`'s new `asr-align2` extra is folded into the existing
-  `asr.txt` compile scope (see `constraints/README.md`), and `lock.yml` needs to run once against
-  this branch before `constraints/asr.txt` reflects it.
+- ~~`constraints/asr.txt` needs a `lock.yml` regeneration for the new `asr-align2` extra.~~
+  **Resolved:** dispatched `lock.yml` against this PR's branch (the sanctioned mechanism —
+  `scripts/compile_constraints.sh` needs Docker, unavailable in the authoring environment) and
+  merged its result. Confirmed minimal diff: `torch`/`torchaudio` stayed at their already-pinned
+  versions (both were already a transitive pin via `stable-ts[fw]`), only `torchcodec==0.14.0` was
+  newly added.
 - Trust thresholds — `agreement_threshold`/`trust_margin_threshold` are hand-picked config constants
   today; set them from data only after the L3 human-gold anchor exists.
 - L3 human-gold set: ≈20–50 stratified segments, transcribed/corrected once, anchoring an absolute
