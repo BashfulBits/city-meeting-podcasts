@@ -10,6 +10,7 @@ from citypods.security import SecurityError
 from citypods.transcript_quality import (
     QualityConfig,
     TranscriptQualityRoute,
+    _auto_score_histogram,
     _blind_mapping,
     _candidate_metrics,
     _gold_fields,
@@ -1623,3 +1624,82 @@ def test_check_gold_corrections_scores_uncheck_corrections_only(tmp_path, monkey
     assert evidence["sample-1"]["gold_ctc_checked_at"] is not None
     assert evidence["sample-2"]["gold_ctc_fit_score"] == 0.5  # already checked, untouched
     assert "gold_ctc_fit_score" not in evidence["sample-3"]  # not a reviewer_correction
+
+
+def test_parse_issue_decision_tolerates_crlf_issue_bodies():
+    """GitHub normalizes issue bodies to CRLF after any edit through the web UI (HTML textarea
+    submission). _CORRECTION_RE's fence boundaries are literal "```\\n...\\n```" -- without
+    normalizing the body first, a CRLF-line-ended body would never match, silently disabling the
+    entire reviewer-correction gold-harvest path in production even though every test here
+    builds bodies in-memory (LF only) and would never catch it."""
+    sample = {
+        "sample_id": "sample-1",
+        "source_key": "src-1",
+        "body_key": "city-council",
+        "episode_uid": "ep-1",
+        "review_page": "https://example.invalid/review",
+        "blind_mapping": {"A": {"role": "provider-align"}, "B": {"role": "asr-challenger"}},
+        "metrics": {
+            "A": {"auto_score": 0.4, "text": "a candidate text"},
+            "B": {"auto_score": 0.8, "text": "b candidate text"},
+        },
+    }
+    body = render_issue_body(sample)
+    body = body.replace("- [ ] Neither usable", "- [x] Neither usable")
+    body = body.replace("b candidate text", "what was actually said", 1)
+    crlf_body = body.replace("\n", "\r\n")
+    result = parse_issue_decision(crlf_body)
+    assert result["manual_decision"] == "neither"
+    assert result["correction_text"] == "what was actually said"
+
+
+def test_gold_fields_clears_stale_ctc_score_when_correction_text_changes():
+    """check_gold_corrections skips any evidence with gold_ctc_checked_at already set. If a
+    reviewer edits a correction from 'foo' to 'bar' without this clearing the old score, 'foo's
+    stale CTC fit would stay attached to 'bar' forever -- never re-scored."""
+    config = QualityConfig()
+    evidence = {
+        "pair_metrics": {},
+        "blind_mapping": {},
+        "metrics": {},
+        "gold_text": "foo",
+        "gold_source": "reviewer_correction",
+        "gold_ctc_fit_score": 0.9,
+        "gold_ctc_checked_at": "2026-01-01T00:00:00+00:00",
+    }
+    changed = _gold_fields(
+        {"manual_decision": "neither", "correction_text": "bar"}, evidence, config=config
+    )
+    assert changed["gold_text"] == "bar"
+    assert changed["gold_ctc_fit_score"] is None
+    assert changed["gold_ctc_checked_at"] is None
+
+
+def test_gold_fields_preserves_ctc_score_when_correction_text_is_unchanged():
+    """A no-op resubmission of the same correction text must not discard an already-computed,
+    still-valid CTC score."""
+    config = QualityConfig()
+    evidence = {
+        "pair_metrics": {},
+        "blind_mapping": {},
+        "metrics": {},
+        "gold_text": "foo",
+        "gold_source": "reviewer_correction",
+        "gold_ctc_fit_score": 0.9,
+        "gold_ctc_checked_at": "2026-01-01T00:00:00+00:00",
+    }
+    unchanged = _gold_fields(
+        {"manual_decision": "neither", "correction_text": "foo"}, evidence, config=config
+    )
+    assert "gold_ctc_fit_score" not in unchanged
+    assert "gold_ctc_checked_at" not in unchanged
+
+
+def test_auto_score_histogram_places_boundary_values_in_the_upper_bucket():
+    """0.6 / 0.2 == 2.9999999999999996 in binary floating point -- a naive int() truncation
+    would silently misfile an exact bucket-boundary score into the bucket below it."""
+    points = [{"auto_score": 0.6}, {"auto_score": 0.4}, {"auto_score": 0.2}]
+    histogram = {b["range"]: b["count"] for b in _auto_score_histogram(points)}
+    assert histogram["0.6-0.8"] == 1
+    assert histogram["0.4-0.6"] == 1
+    assert histogram["0.2-0.4"] == 1

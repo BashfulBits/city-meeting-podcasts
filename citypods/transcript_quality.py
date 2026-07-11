@@ -2062,6 +2062,12 @@ def _normalize_correction_whitespace(text: str) -> str:
 
 
 def parse_issue_decision(body: str) -> dict:
+    # GitHub issue bodies come back CRLF-normalized after any edit through the web UI (textarea
+    # submission per the HTML spec) — _CORRECTION_RE's literal "```\n...\n```" boundaries would
+    # never match a "```\r\n...\r\n```" body otherwise, silently disabling the whole reviewer-
+    # correction gold-harvest path. Normalize once, up front, rather than making every regex in
+    # this function individually CRLF-aware.
+    body = body.replace("\r\n", "\n")
     metadata_match = _METADATA_RE.search(body)
     if not metadata_match:
         raise ValueError("missing H15 metadata marker")
@@ -2108,10 +2114,18 @@ def _gold_fields(parsed: dict, evidence: dict, *, config: QualityConfig) -> dict
     ``both_correct``: either candidate's already-stored text becomes gold, no typing required,
     but only when the two candidates actually agree closely (config.gold_agreement_floor) — a
     "both correct" verdict on texts that don't match is more likely a reviewer slip than real
-    gold. Prefers the provider-align role's text as a principled (not arbitrary) pick.
+    gold. Uses the provider-align role's text — required, not just preferred: every review pair
+    is provider-align vs asr-challenger by construction (see _episode_candidate_pair), so this
+    should always resolve; the missing-role fallback below is defensive, not an expected path.
 
     ``neither`` + an edited correction (parse_issue_decision already filters out an untouched
     pre-filled draft): the typed text becomes gold, anchoring the bottom of the quality scale.
+
+    If the resulting gold_text differs from what's already stored on the evidence (a genuine
+    change, not a re-ingest of the same decision), any existing gold_ctc_fit_score/
+    gold_ctc_checked_at from check_gold_corrections is cleared too — otherwise a reviewer editing
+    a correction from "foo" to "bar" would leave "foo"'s stale CTC score attached to "bar"
+    forever, since check_gold_corrections skips anything with gold_ctc_checked_at already set.
     """
     empty = {
         "gold_text": None,
@@ -2124,38 +2138,47 @@ def _gold_fields(parsed: dict, evidence: dict, *, config: QualityConfig) -> dict
         pair_metrics = evidence.get("pair_metrics") or {}
         agreement = pair_metrics.get("text_agreement")
         if not isinstance(agreement, int | float) or agreement < config.gold_agreement_floor:
-            return empty
-        blind_mapping = evidence.get("blind_mapping") or {}
-        label = next(
-            (
-                candidate_label
-                for candidate_label, entry in blind_mapping.items()
-                if isinstance(entry, dict) and entry.get("role") == "provider-align"
-            ),
-            None,
-        )
-        if label is None:
-            return empty
-        text = str((evidence.get("metrics", {}).get(label) or {}).get("text") or "").strip()
-        if not text:
-            return empty
-        return {
-            "gold_text": text,
-            "gold_source": "both_correct",
-            "gold_role": "provider-align",
-            "gold_collected_at": _utc_now(),
-        }
-    if decision == "neither":
+            result = empty
+        else:
+            blind_mapping = evidence.get("blind_mapping") or {}
+            label = next(
+                (
+                    candidate_label
+                    for candidate_label, entry in blind_mapping.items()
+                    if isinstance(entry, dict) and entry.get("role") == "provider-align"
+                ),
+                None,
+            )
+            metrics = evidence.get("metrics") or {}
+            text = str((metrics.get(label) or {}).get("text") or "").strip() if label else ""
+            result = (
+                {
+                    "gold_text": text,
+                    "gold_source": "both_correct",
+                    "gold_role": "provider-align",
+                    "gold_collected_at": _utc_now(),
+                }
+                if text
+                else empty
+            )
+    elif decision == "neither":
         correction_text = str(parsed.get("correction_text") or "").strip()
-        if not correction_text:
-            return empty
-        return {
-            "gold_text": correction_text,
-            "gold_source": "reviewer_correction",
-            "gold_role": None,
-            "gold_collected_at": _utc_now(),
-        }
-    return empty
+        result = (
+            {
+                "gold_text": correction_text,
+                "gold_source": "reviewer_correction",
+                "gold_role": None,
+                "gold_collected_at": _utc_now(),
+            }
+            if correction_text
+            else empty
+        )
+    else:
+        result = empty
+
+    if result["gold_text"] != evidence.get("gold_text"):
+        result = {**result, "gold_ctc_fit_score": None, "gold_ctc_checked_at": None}
+    return result
 
 
 def ingest_review_decision(
@@ -2440,7 +2463,10 @@ def _auto_score_histogram(points: list[dict], *, bucket_size: float = 0.2) -> li
         score = point.get("auto_score")
         if not isinstance(score, int | float):
             continue
-        idx = min(max(int(score / bucket_size), 0), bucket_count - 1)
+        # round() before int() to absorb float division noise (0.6 / 0.2 == 2.9999999999999996
+        # in binary floating point) -- an exact bucket-boundary score must land in the *upper*
+        # bucket, not get truncated down into the one below it.
+        idx = min(max(int(round(score / bucket_size, 9)), 0), bucket_count - 1)
         counts[buckets[idx]] += 1
     return [
         {"range": f"{b:.1f}-{min(b + bucket_size, 1.0):.1f}", "count": counts[b]} for b in buckets
