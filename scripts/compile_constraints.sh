@@ -40,7 +40,9 @@ compile() {
 }
 
 # Profiles mirror the extras in pyproject.toml; keep in sync with constraints/README.md.
-compile prod.txt --extra storage
+# `wer` (H15 L3 calibration report) folds into prod.txt rather than asr.txt: it's just jiwer,
+# deliberately kept out of the faster-whisper/stable-ts/torch stack asr.txt resolves.
+compile prod.txt --extra storage --extra wer
 # `asr-align2` (H15 L2, torchcodec) folds into the same asr.txt resolution rather than a separate
 # lock file: torch/torchaudio are already a transitive pin via stable-ts[fw]'s own torch
 # dependency, and compiling them separately risks two constraint files disagreeing on the exact

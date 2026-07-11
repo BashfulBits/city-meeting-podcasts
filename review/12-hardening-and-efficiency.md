@@ -1407,11 +1407,73 @@ errors.)
   the acceptance criterion that L2 "should not require redesigning the routing state machine, only
   replacing what feeds `auto_margin_avg`."
 
-*Layer 3 — human-gold anchor (occasional, calibration only).*
-- A tiny stratified human-gold set (≈20–50 segments across vendors/audio conditions), transcribed or
-  corrected once, used to attach an **absolute** WER/CER to the Layer-2 fit scores so the trust
-  thresholds mean something. Refreshed only when the model or a vendor changes. The only layer needing
-  human effort — and only a sample.
+*Layer 3 — human-gold anchor (occasional, calibration only). **Implemented** (GH#884).*
+- A small human-gold set — text confirmed correct by a human, used to attach an **absolute** WER/CER
+  to the Layer-2 fit scores so the trust thresholds mean something — harvested **opportunistically
+  from the existing weekly A/B review loop** rather than a separate collection exercise, plus a small
+  number of samples **deliberately pulled from the confident extremes** of `auto_score` each week (see
+  below) so coverage isn't limited to the ambiguous band the automatic scorer was already unsure about.
+  No dedicated collection campaign, no new UI.
+- **The outcome model was redesigned, not extended.** No H15 review data existed in production yet
+  (L1/L2 had only just shipped), so the old four-plus-fuzzy-tie set (`A is better` / `B is better` /
+  `Tie or no meaningful difference` / `Neither usable`) was replaced cleanly rather than migrated:
+  `A is better` / `B is better` / **`Both fully correct`** (new) / `Neither usable`. `Both fully
+  correct` replaces the old ambiguous tie option — a reviewer choosing between "clearly correct" and
+  "not something I'd ship" is more informative than a bucket that could mean either. For routing
+  purposes `both_correct` folds into the same `ties` tally the old `tie` outcome fed, and is treated as
+  equivalent to `auto_outcome == "tie"` when computing `human_agreement_rate` (the automatic scorer has
+  no notion of a human-confirmed-correct verdict, only a close margin — a normalization gap that, left
+  unhandled, would have made every `both_correct` review register as a manufactured disagreement).
+- **Two gold sources, one mechanism (`_gold_fields`, recomputed fresh on every `ingest_review_decision`
+  call, not additively set once — a re-review that flips an earlier verdict must not leave stale gold
+  behind, since `asr-quality-ingest.yml` re-triggers on issue edits even after close):**
+  - `both_correct`, when the two candidates' `pair_metrics.text_agreement` clears a dedicated
+    `gold_agreement_floor` (default 0.92 — deliberately its own config field, not a reuse of
+    `needs_review`'s same-valued gate, since the two answer different questions and shouldn't move
+    together just because they share a starting number today): either candidate's *already-stored*
+    text becomes gold, no typing required — the provider-align role's text is the principled pick.
+    Below the floor despite a "both correct" verdict is treated as a likely reviewer slip, not real
+    gold; there's no principled way to auto-tune this floor (it's a data-quality outlier filter, not a
+    similarity target), so the calibration report tracks accept/reject counts instead.
+  - `neither`, when a reviewer edits the issue's optional correction box. That box is **pre-filled with
+    a draft** (whichever candidate scored higher on `auto_score`) rather than left blank — editing down
+    from a plausible starting point beats transcribing a clip from scratch. The original draft travels
+    in the hidden metadata JSON; `parse_issue_decision` diffs the submitted text against it, so an
+    untouched draft (declining to help) is never mistaken for a real correction.
+- **Deliberately sampling the confident extremes.** `package_reviews` widens each week's batch beyond
+  `needs_review` samples with up to `gold_coverage_good_limit`/`gold_coverage_bad_limit` (default 1
+  each) already-evaluated, not-yet-reviewed samples the automatic scorer was already confident
+  about — highest `min(score_a, score_b)` and lowest `max(score_a, score_b)`. `_select_gold_coverage_
+  samples` applies two preferences on top of raw extremity: L2-scored candidates first (an L1-only
+  "extreme" pick doesn't serve L3's actual purpose), then under-represented `source_key`s (self-
+  balances across cities using gold counts already in the rollup — no new persisted rotation state),
+  but only **within** a coarse 0.1-wide extremity bucket — source-balance must never override genuine
+  extremity, or a barely-extreme sample could win purely on source count, defeating the point of
+  sampling the confidence extremes at all. Rendered issues for these samples carry a note explaining
+  why an unambiguous pair is being asked about.
+- **Sanity-checking reviewer-typed corrections.** Nothing verifies a typed correction is itself
+  accurate. `check_gold_corrections` (a new `citypods transcript-quality check-gold-corrections`
+  subcommand, run from `asr-quality-eval.yml` — not the lightweight weekly review workflow, since it
+  needs the same torch/torchaudio stack and audio download that workflow already pays for) re-scores
+  each un-checked correction's text against its clip with the same independent CTC aligner L2 uses;
+  the calibration report flags fits below the median L2 candidate score as worth a spot-check, without
+  auto-excluding them (a correction to a genuinely hard/noisy clip — the reason both original
+  candidates failed — can legitimately score modestly even when accurate).
+- **The calibration report, not an auto-tuned threshold.** `citypods transcript-quality calibrate`
+  (folded into the existing weekly `asr-quality-review.yml`, deliberately kept dependency-light — a new
+  narrow `wer` extra, not the full `asr`/`asr-bench` stack) computes real WER/CER (`citypods/text_
+  metrics.py`, extracted from `asr-bench`'s own jiwer usage so both share one normalization stack) for
+  each gold-bearing sample's candidates, an `auto_score` histogram (so a thin correlation reads as "not
+  enough coverage yet" rather than an unqualified number), a hand-rolled Pearson correlation of WER
+  against `auto_score`/`l2_mean_score`, and a persistent low-volume trend log (`transcript_quality_
+  calibration_trend.json`, capped separately from the high-volume raw event log so weekly entries
+  aren't evicted by day-to-day `l1_sample` events) showing whether calibration confidence is improving
+  run over run. With ~20-50 gold points expected, the report is explicitly a **discussion starter for a
+  human**, not an automatic threshold rewrite — the workflow opens/updates a single "H15 L3 calibration
+  report" issue (mirroring the existing parent-review-issue idiom) each week with the report and a
+  plain-language "how to read this" explanation for every section.
+- **Multi-language support stays out of scope**, same as L2 (MMS_FA's public bundle is English-only in
+  v1) — gold harvesting inherits that boundary rather than reopening it.
 
 **Data model.** A new state-backed rolling log mirroring `state/asr_runtime_log.json` (the merge-pushed,
 capped-deque pattern from PR #324):
@@ -1434,6 +1496,15 @@ capped-deque pattern from PR #324):
 - A derived per-source/body **`TranscriptQualityRoute`** (`route_mode`: `provider-align` |
   `fresh-asr` | `unknown`) the lane router reads — see "Routing payoff" below for how `route_mode`
   is actually decided.
+- **H15 Layer 3 (GH#884):** four new fields added directly to the existing per-sample evidence dict —
+  `gold_text`, `gold_source` (`both_correct` | `reviewer_correction`), `gold_role`,
+  `gold_collected_at` — plus `gold_ctc_fit_score`/`gold_ctc_checked_at` once `check_gold_corrections`
+  has scored a `reviewer_correction`. No new durability mechanism needed: the rollup evidence dict is
+  already the unpruned, merge-only ledger these fields live on. A new, small, separately-capped state
+  file, `state/transcript_quality_calibration_trend.json` (`calibration_trend_cap`, default 52 — kept
+  apart from `raw_log_cap` because that cap is shared with high-volume `l1_sample` events and would
+  evict weekly trend entries within weeks), merge-pushed via `push_calibration_trend_merged`
+  (mirrors `push_transcript_quality_log_merged`'s merge-by-key/keep-newest shape).
 - **A human decision on a `sample_id` is permanent once ingested, regardless of merge order.**
   `sample_id` is deterministic over stable inputs (source, episode, provider spec hash, challenger
   model), so a later periodic re-evaluation of the same episode reuses the same id. `_normalize_rollups`
@@ -1551,10 +1622,10 @@ generated one) to a proper edit-distance alignment.
 platform auto-ASR) from the source/provider config where known — that's the prior the fit scores then
 confirm or override.
 
-**Open decisions (why this is L1+L2, not yet L3).** **2026-07-11: L2 shipped (GH#883); L3 is scoped as
-the immediate next PR** (GH#884), not an indefinite deferral — the calibration-gated routing mechanism
-(above) is a documented interim mechanism, not the intended end state, precisely because trust
-thresholds shouldn't be hand-picked without the L3 anchor that PR adds.
+**Open decisions.** **2026-07-11: L2 shipped (GH#883). L3 (GH#884) has since shipped too** — the
+calibration-gated routing mechanism (above) remains a documented interim mechanism, not the intended
+end state, until enough gold data accumulates through the harvesting loop for a human to actually act
+on the calibration report's suggested thresholds.
 - ~~Independent aligner (L2): `torchaudio.functional.forced_align` vs WhisperX.~~ **Resolved:**
   `torchaudio.pipelines.MMS_FA` (wraps `forced_align`) — lean, rides torch/torchaudio already
   transitively pinned via `stable-ts[fw]`'s own `openai-whisper` dependency in `constraints/asr.txt`;
@@ -1579,12 +1650,20 @@ thresholds shouldn't be hand-picked without the L3 anchor that PR adds.
   merged its result. Confirmed minimal diff: `torch`/`torchaudio` stayed at their already-pinned
   versions (both were already a transitive pin via `stable-ts[fw]`), only `torchcodec==0.14.0` was
   newly added.
-- Trust thresholds — `agreement_threshold`/`trust_margin_threshold` are hand-picked config constants
-  today; set them from data only after the L3 human-gold anchor exists.
-- L3 human-gold set: ≈20–50 stratified segments, transcribed/corrected once, anchoring an absolute
-  WER/CER to L2's fit-margin scores. A cheap on-ramp worth considering when L3 lands: let a reviewer who
-  picks "Neither usable" optionally type a correction on the spot, opportunistically harvesting gold
-  segments from the review flow that's already built instead of a separate collection exercise.
+- ~~Trust thresholds — `agreement_threshold`/`trust_margin_threshold` are hand-picked config
+  constants.~~ **Mechanism resolved, values still pending:** the L3 calibration report now exists to
+  ground these in data (see "Layer 3" above), but with only ~20-50 gold points expected, actually
+  setting new values is a deliberate, human-reviewed follow-up once the weekly report shows enough
+  accumulated evidence — not something this PR does automatically.
+- ~~L3 human-gold set: ≈20–50 stratified segments, transcribed/corrected once.~~ **Resolved, with a
+  scope trade-off accepted explicitly:** harvested opportunistically from the existing review loop
+  (see "Layer 3" above) rather than a deliberately-constructed stratified set. Both gold sources are
+  subsets of samples a human actually reviews, which — even with the deliberate confident-extremes
+  pull — skews coverage toward the *ambiguous-but-reviewed* band rather than achieving true uniform
+  stratification across the full `auto_score` range. Accepted as the right starting trade-off (near-
+  zero marginal cost vs. a separate collection campaign); the calibration report's `auto_score`
+  histogram makes the resulting coverage gaps visible rather than hiding them behind a bare
+  correlation number, so this can be revisited if opportunistic supply proves too slow or too skewed.
 - `/admin/status` transcript-quality panel (trust distribution, stale-sample ages) — fast-follow,
   additive reporting once built (see "Admin surface" above).
 

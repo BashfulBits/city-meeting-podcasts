@@ -53,9 +53,10 @@ def run_bench(
     from citypods.records import load_records, record_to_episode, source_key
     from citypods.stages import download_hosted_audio
     from citypods.state import resolve_state_dir
+    from citypods.text_metrics import require_jiwer, wer_cer
 
     try:
-        import jiwer
+        require_jiwer()
     except ImportError:
         print("jiwer is required for WER computation. Install: pip install 'citypods[asr-bench]'")
         return 1
@@ -126,25 +127,7 @@ def run_bench(
             hyp_text = asr_mod.vtt_to_text(result.vtt.decode("utf-8", errors="replace"))
             hyp_words = len(hyp_text.split())
 
-            _wer_transform = jiwer.transforms.Compose(
-                [
-                    jiwer.transforms.ToLowerCase(),
-                    jiwer.transforms.RemovePunctuation(),
-                    jiwer.transforms.RemoveMultipleSpaces(),
-                    jiwer.transforms.Strip(),
-                    jiwer.transforms.ReduceToListOfListOfWords(),
-                ]
-            )
-            wer = (
-                jiwer.wer(
-                    ref_text,
-                    hyp_text,
-                    reference_transform=_wer_transform,
-                    hypothesis_transform=_wer_transform,
-                )
-                if hyp_text.strip()
-                else 1.0
-            )
+            wer = wer_cer(ref_text, hyp_text)["wer"]
 
             # CR2-CP-44: this can only ever be a running "so far" indicator, live-printed before
             # later models are known — a subsequent better result cannot un-print an already-shown

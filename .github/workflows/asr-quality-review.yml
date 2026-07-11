@@ -27,7 +27,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[storage]" -c constraints/prod.txt
+        run: pip install -e ".[storage,wer]" -c constraints/prod.txt
 
       - name: Package H15 review issues
         env:
@@ -42,6 +42,42 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: citypods transcript-quality package-review --out-dir h15-review
+
+      - name: Build H15 Layer 3 calibration report
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: citypods transcript-quality calibrate --out-dir h15-review
+
+      - name: Upload H15 calibration report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: h15-calibration-report
+          path: |
+            h15-review/calibration.json
+            h15-review/calibration.md
+          retention-days: 90
+
+      - name: Open or update H15 calibration report issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="H15 L3 calibration report"
+          existing=$(gh issue list --state open --search "in:title $title" --json number,title \
+            | jq -r --arg title "$title" '[.[] | select(.title == $title)] | .[0].number // empty')
+          if [ -z "$existing" ]; then
+            gh issue create --title "$title" --body-file h15-review/calibration.md
+          else
+            gh issue edit "$existing" --body-file h15-review/calibration.md
+          fi
 
       - name: Open or update H15 review issues
         env:

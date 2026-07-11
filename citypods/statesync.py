@@ -360,6 +360,54 @@ def push_transcript_quality_log_merged(
     return 1
 
 
+def push_calibration_trend_merged(
+    storage,
+    state_dir: Path,
+    *,
+    rel_path: str = "transcript_quality_calibration_trend.json",
+    max_entries: int = 52,
+    log=None,
+) -> int:
+    """Merge-upload the H15 Layer 3 calibration trend log.
+
+    Like the raw evaluation log, this is intentionally capped — merge by run_at, keep the
+    newest ``max_entries``, and never let a transient remote read degrade into a
+    last-writer-wins push.
+    """
+    if not _supported(storage) or not hasattr(storage, "put_file"):
+        return 0
+    state_dir = Path(state_dir)
+    local_path = state_dir / rel_path
+    if not local_path.exists():
+        return 0
+    emit = log or (lambda msg: print(msg, flush=True))
+    try:
+        remote_data = _fetch_remote_json(storage, rel_path)
+    except Exception as exc:  # noqa: BLE001
+        emit(f"state: WARNING remote calibration trend read failed: {exc}; skipping push")
+        return 0
+    if remote_data is None:
+        emit("state: WARNING remote calibration trend unreadable; skipping push")
+        return 0
+    try:
+        local_data = json.loads(local_path.read_text())
+    except (OSError, ValueError) as exc:
+        emit(f"state: WARNING local calibration trend unreadable: {exc}; skipping push")
+        return 0
+    by_run_at: dict[str, dict] = {}
+    for entry in list(remote_data.get("runs", [])) + list(local_data.get("runs", [])):
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("run_at") or "")
+        if key:
+            by_run_at[key] = entry
+    runs = [by_run_at[key] for key in sorted(by_run_at)][-max_entries:]
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(json.dumps({"version": 1, "runs": runs}, indent=2) + "\n")
+    storage.put_file(f"{STATE_PREFIX}/{rel_path}", local_path, "application/json")
+    return 1
+
+
 def push_transcript_quality_rollups_merged(
     storage,
     state_dir: Path,

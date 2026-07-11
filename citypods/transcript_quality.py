@@ -35,6 +35,7 @@ from citypods.records import load_records, record_to_episode, source_key
 from citypods.state import resolve_state_dir
 from citypods.statesync import (
     pull_state,
+    push_calibration_trend_merged,
     push_transcript_quality_log_merged,
 )
 from citypods.storage import make_storage
@@ -45,14 +46,24 @@ if TYPE_CHECKING:
 
 RAW_LOG_NAME = "transcript_quality_log.json"
 ROLLUPS_NAME = "transcript_quality_rollups.json"
+# H15 Layer 3: small, separately-capped trend log — kept apart from the raw log because that
+# cap (raw_log_cap) is shared with high-volume l1_sample events and would evict weekly
+# calibration entries within weeks.
+CALIBRATION_TREND_NAME = "transcript_quality_calibration_trend.json"
 LEDGER_STATE_KEY = "state/transcript_quality_ledger.json"
 DEFAULT_REVIEW_DIR = "transcript-eval"
 _METADATA_RE = re.compile(r"<!--\s*citypods:h15\s*(\{.*\})\s*-->", re.DOTALL)
 _TASK_RE = re.compile(r"^- \[(?P<checked>[xX ])\] (?P<label>.+?)\s*$", re.MULTILINE)
+# H15 Layer 3 (review/12 §H15): the optional "what did you actually hear" correction box for a
+# "Neither usable" verdict, pre-filled with a draft (see _correction_draft_text) rather than
+# blank — reviewers edit down from a starting point instead of transcribing cold.
+_CORRECTION_RE = re.compile(
+    r"<!--\s*citypods:h15-correction\s*-->\s*```\n(?P<text>.*?)\n```", re.DOTALL
+)
 _PRIMARY_OUTCOMES = {
     "A is better": "a_better",
     "B is better": "b_better",
-    "Tie / no meaningful difference": "tie",
+    "Both fully correct": "both_correct",
     "Neither usable": "neither",
 }
 _TIMING_FLAGS = {
@@ -92,8 +103,28 @@ class QualityConfig:
     l2_enabled: bool = True
     # Bounded per evaluate() run, not per sample — "a rotating subset, not every meeting" (the
     # sampler's own natural rotation, see build_sample_manifest's already-sampled exclusion,
-    # supplies the "oldest-checked-first" spread across runs).
-    l2_sample_limit: int = 2
+    # supplies the "oldest-checked-first" spread across runs). Equal to sample_limit by default:
+    # since sample_id exclusion means an episode is never re-sampled once evaluated, any episode
+    # that doesn't get an L2 slot within its own run never gets one — a lower limit here would
+    # permanently strand a fraction of episodes on the Layer-1-only fallback, not just delay them.
+    l2_sample_limit: int = 8
+    # H15 Layer 3 (review/12 §H15): human-gold calibration anchor. Below this text_agreement
+    # (same scale as needs_review's gate, but independently tunable — this one asks "should a
+    # human's 'both fully correct' verdict be trusted as gold" rather than "is this pair worth a
+    # human's time") a both_correct decision is treated as a likely reviewer slip and its text is
+    # not harvested as gold. No principled way to auto-tune this: it's a data-quality outlier
+    # filter, not a similarity target. See build_calibration_report's accept/reject counts.
+    gold_agreement_floor: float = 0.92
+    # Deliberately pull this many already-evaluated, not-yet-reviewed samples the automatic
+    # scorer was already confident about (highest min-score, lowest max-score) into each weekly
+    # review batch, on top of the ambiguous needs_review samples — otherwise harvested gold only
+    # ever covers the ambiguous middle of auto_score, never the confident extremes.
+    gold_coverage_good_limit: int = 1
+    gold_coverage_bad_limit: int = 1
+    # Cap for the small, separately-tracked calibration trend log (one entry per `calibrate`
+    # run) — kept apart from raw_log_cap since that cap is shared with high-volume l1_sample
+    # events and would evict weekly trend entries within weeks.
+    calibration_trend_cap: int = 52
 
 
 @dataclass(frozen=True)
@@ -182,7 +213,11 @@ def load_quality_config(site_config: dict) -> QualityConfig:
         agreement_threshold=float(raw.get("agreement_threshold", 0.7) or 0.7),
         trust_margin_threshold=float(raw.get("trust_margin_threshold", 0.15) or 0.15),
         l2_enabled=bool(raw.get("l2_enabled", True)),
-        l2_sample_limit=max(0, int(raw.get("l2_sample_limit", 2) or 0)),
+        l2_sample_limit=max(0, int(raw.get("l2_sample_limit", 8) or 0)),
+        gold_agreement_floor=float(raw.get("gold_agreement_floor", 0.92) or 0.92),
+        gold_coverage_good_limit=max(0, int(raw.get("gold_coverage_good_limit", 1) or 0)),
+        gold_coverage_bad_limit=max(0, int(raw.get("gold_coverage_bad_limit", 1) or 0)),
+        calibration_trend_cap=max(1, int(raw.get("calibration_trend_cap", 52) or 52)),
     )
 
 
@@ -200,6 +235,22 @@ def load_raw_log(state_dir: Path) -> dict:
 
 def load_rollups(state_dir: Path) -> dict:
     return _read_json(rollups_path(state_dir), {"version": 1, "rows": []})
+
+
+def calibration_trend_path(state_dir: Path) -> Path:
+    return Path(state_dir) / CALIBRATION_TREND_NAME
+
+
+def load_calibration_trend(state_dir: Path) -> dict:
+    return _read_json(calibration_trend_path(state_dir), {"version": 1, "runs": []})
+
+
+def _append_calibration_trend_entry(state_dir: Path, entry: dict, *, cap: int) -> dict:
+    data = load_calibration_trend(state_dir)
+    runs = list(data.get("runs", [])) + [entry]
+    body = {"version": 1, "runs": runs[-max(1, cap) :]}
+    _write_json(calibration_trend_path(state_dir), body)
+    return body
 
 
 def _empty_ledger() -> dict:
@@ -327,6 +378,16 @@ def _maybe_push_durable_state(
         return
 
 
+def _maybe_push_calibration_trend(
+    site_config: dict, output_dir: Path, state_dir: Path, *, cap: int
+) -> None:
+    try:
+        storage = make_storage(site_config, site_config.get("base_url", ""), output_dir)
+        push_calibration_trend_merged(storage, state_dir, max_entries=cap)
+    except Exception:
+        return
+
+
 def _normalize_events(events: list[dict], *, max_events: int) -> list[dict]:
     by_id: dict[str, dict] = {}
     for event in events:
@@ -347,7 +408,7 @@ def _normalize_events(events: list[dict], *, max_events: int) -> list[dict]:
 
 
 def _summarize_evidence(evidence: dict[str, dict]) -> dict:
-    primary_counts = {"a_better": 0, "b_better": 0, "tie": 0, "neither": 0}
+    primary_counts = {"a_better": 0, "b_better": 0, "both_correct": 0, "neither": 0}
     timing_counts = {"timing_a_bad": 0, "timing_b_bad": 0}
     reviewed = 0
     pending = 0
@@ -592,9 +653,15 @@ def _route_from_row(row: dict, *, fallback: QualityConfig) -> TranscriptQualityR
             auto_outcome = str(item.get("auto_outcome") or "").strip() or None
             if auto_outcome:
                 agreement_total += 1
-                if auto_outcome == decision:
+                # auto_outcome only ever emits a_better/b_better/tie (never both_correct — the
+                # automatic scorer has no notion of a human-confirmed-correct verdict, only a
+                # close margin) — a human's "both fully correct" is the closest automatic
+                # equivalent to "tie", so normalize before comparing or every both_correct
+                # decision would register as a manufactured disagreement.
+                comparison_decision = "tie" if decision == "both_correct" else decision
+                if auto_outcome == comparison_decision:
                     agree += 1
-            if decision == "tie":
+            if decision == "both_correct":
                 ties += 1
                 continue
             if decision == "neither":
@@ -1752,10 +1819,26 @@ def evaluate_samples(
     return {"version": 1, "evaluated": evaluated, "errors": errors}
 
 
+def _correction_draft_text(metrics: dict) -> str:
+    """Pick whichever candidate scored closer to correct as the pre-filled "Neither usable"
+    correction draft — editing down from a plausible starting point beats transcribing cold.
+    Ties (or a missing auto_score) default to A."""
+    metrics = metrics or {}
+    score_a = (metrics.get("A") or {}).get("auto_score")
+    score_b = (metrics.get("B") or {}).get("auto_score")
+    label = "A"
+    if isinstance(score_b, int | float) and (
+        not isinstance(score_a, int | float) or score_b > score_a
+    ):
+        label = "B"
+    return str((metrics.get(label) or {}).get("text") or "").strip()
+
+
 def render_issue_body(sample: dict) -> str:
     audio_window = (
         f"{_duration_hms(sample.get('clip_start'))} to {_duration_hms(sample.get('clip_end'))}"
     )
+    correction_draft = _correction_draft_text(sample.get("metrics") or {})
     meta = {
         "schema_version": 1,
         "sample_id": sample["sample_id"],
@@ -1764,8 +1847,16 @@ def render_issue_body(sample: dict) -> str:
         "episode_uid": sample["episode_uid"],
         "review_page": sample["review_page"],
         "blind_mapping": sample["blind_mapping"],
+        "correction_draft": correction_draft,
     }
     pair_metrics = sample.get("pair_metrics") or {}
+    coverage_note: list[str] = []
+    if sample.get("selection_reason") in ("gold_coverage_good", "gold_coverage_bad"):
+        coverage_note = [
+            "",
+            "_Note: this sample wasn't flagged as ambiguous — it's included to help measure "
+            "what `auto_score` means at the extremes._",
+        ]
     lines = [
         f"# H15 review sample `{sample['sample_id']}`",
         "",
@@ -1778,16 +1869,27 @@ def render_issue_body(sample: dict) -> str:
             f"timing {pair_metrics.get('drift_badge', 'n/a')}, "
             f"margin {sample.get('auto_margin', 'n/a')}"
         ),
+        *coverage_note,
         "",
         "Choose exactly one primary outcome:",
         "- [ ] A is better",
         "- [ ] B is better",
-        "- [ ] Tie / no meaningful difference",
+        "- [ ] Both fully correct",
         "- [ ] Neither usable",
         "",
         "Timing modifiers (optional):",
         "- [ ] Timing makes A hard to use",
         "- [ ] Timing makes B hard to use",
+        "",
+        (
+            "Optional — if neither is usable, help build the gold calibration set. Pre-filled "
+            "with the candidate that scored closer; edit it to match what you actually heard, "
+            "or leave it exactly as shown if you don't have time to help:"
+        ),
+        "<!-- citypods:h15-correction -->",
+        "```",
+        correction_draft,
+        "```",
         "",
         "<!-- reviewer: check exactly one primary box -->",
         f"<!-- citypods:h15 {json.dumps(meta, sort_keys=True)} -->",
@@ -1796,29 +1898,145 @@ def render_issue_body(sample: dict) -> str:
     return "\n".join(lines)
 
 
-def package_reviews(state_dir: Path, *, out_dir: Path, batch_size: int, storage=None) -> dict:
+def _evidence_to_review_sample(row: dict, evidence: dict, *, selection_reason: str) -> dict:
+    return {
+        "sample_id": evidence["sample_id"],
+        "source_key": row["source_key"],
+        "body_key": row["body_key"],
+        "body_name": row.get("body_name"),
+        "episode_uid": evidence.get("episode_uid"),
+        "episode_title": evidence.get("episode_title"),
+        "review_page": evidence.get("review_page"),
+        "clip_start": evidence.get("clip_start", 0.0),
+        "clip_end": evidence.get("clip_end", 0.0),
+        "pair_metrics": evidence.get("pair_metrics") or {},
+        "auto_margin": evidence.get("auto_margin"),
+        "blind_mapping": evidence.get("blind_mapping") or {},
+        "metrics": evidence.get("metrics") or {},
+        "selection_reason": selection_reason,
+    }
+
+
+def _select_gold_coverage_samples(
+    rows: list[dict],
+    *,
+    already_selected_ids: set[str],
+    good_limit: int,
+    bad_limit: int,
+) -> list[dict]:
+    """H15 Layer 3: deliberately pull in samples the automatic scorer was already confident
+    about (not just the ambiguous needs_review ones), so harvested gold eventually covers the
+    full auto_score range instead of only the band the scorer was unsure about. Two preferences
+    on top of raw score extremity: L2-scored candidates first (L2 is the layer that actually
+    needs calibrating — a pick that turns out to be L1-only is a wasted extreme-sample slot), and
+    under-represented source_keys first (self-balances coverage across cities using gold counts
+    already present in the rollup — no new persisted rotation state needed).
+    """
+    gold_counts_by_source: dict[str, int] = {}
+    candidates: list[dict] = []
+    for row in rows:
+        source_key_value = str(row.get("source_key") or "")
+        for evidence in (row.get("evidence") or {}).values():
+            if not isinstance(evidence, dict):
+                continue
+            if evidence.get("gold_text"):
+                gold_counts_by_source[source_key_value] = (
+                    gold_counts_by_source.get(source_key_value, 0) + 1
+                )
+            sample_id = str(evidence.get("sample_id") or "")
+            if (
+                not sample_id
+                or evidence.get("manual_decision")
+                or sample_id in already_selected_ids
+            ):
+                continue
+            metrics = evidence.get("metrics") or {}
+            score_a = (metrics.get("A") or {}).get("auto_score")
+            score_b = (metrics.get("B") or {}).get("auto_score")
+            if not isinstance(score_a, int | float) or not isinstance(score_b, int | float):
+                continue
+            candidates.append(
+                {
+                    "row": row,
+                    "evidence": evidence,
+                    "sample_id": sample_id,
+                    "source_key": source_key_value,
+                    "min_score": min(score_a, score_b),
+                    "max_score": max(score_a, score_b),
+                    "l2_scored": bool(evidence.get("l2_used")),
+                }
+            )
+
+    def _pick(pool: list[dict], limit: int, *, sort_component) -> list[dict]:
+        # Source-balance must never override genuine extremity — round the score into a coarse
+        # 0.1-wide bucket first, so only candidates that are *already comparably extreme* get
+        # to compete on source representation. Without this, a barely-extreme candidate from an
+        # under-represented source could beat a genuinely extreme one purely on source count,
+        # defeating the point of sampling the confident extremes at all.
+        picked: list[dict] = []
+        remaining = list(pool)
+        for _ in range(limit):
+            if not remaining:
+                break
+            remaining.sort(
+                key=lambda c: (
+                    0 if c["l2_scored"] else 1,
+                    round(sort_component(c), 1),
+                    gold_counts_by_source.get(c["source_key"], 0),
+                    sort_component(c),
+                    c["sample_id"],
+                )
+            )
+            chosen = remaining.pop(0)
+            picked.append(chosen)
+            gold_counts_by_source[chosen["source_key"]] = (
+                gold_counts_by_source.get(chosen["source_key"], 0) + 1
+            )
+        return picked
+
+    good = _pick(candidates, good_limit, sort_component=lambda c: -c["min_score"])
+    good_ids = {c["sample_id"] for c in good}
+    bad = _pick(
+        [c for c in candidates if c["sample_id"] not in good_ids],
+        bad_limit,
+        sort_component=lambda c: c["max_score"],
+    )
+
+    return [
+        _evidence_to_review_sample(c["row"], c["evidence"], selection_reason=reason)
+        for chosen, reason in ((good, "gold_coverage_good"), (bad, "gold_coverage_bad"))
+        for c in chosen
+    ]
+
+
+def package_reviews(
+    state_dir: Path,
+    *,
+    out_dir: Path,
+    batch_size: int,
+    storage=None,
+    config: QualityConfig | None = None,
+) -> dict:
+    config = config or QualityConfig()
     rollups = load_rollups_ledger(state_dir, storage)
+    rows = rollups.get("rows", [])
     selected: list[dict] = []
-    for row in rollups.get("rows", []):
+    for row in rows:
         for evidence in (row.get("evidence") or {}).values():
             if evidence.get("needs_review") and not evidence.get("manual_decision"):
                 selected.append(
-                    {
-                        "sample_id": evidence["sample_id"],
-                        "source_key": row["source_key"],
-                        "body_key": row["body_key"],
-                        "body_name": row.get("body_name"),
-                        "episode_uid": evidence.get("episode_uid"),
-                        "episode_title": evidence.get("episode_title"),
-                        "review_page": evidence.get("review_page"),
-                        "clip_start": evidence.get("clip_start", 0.0),
-                        "clip_end": evidence.get("clip_end", 0.0),
-                        "pair_metrics": evidence.get("pair_metrics") or {},
-                        "auto_margin": evidence.get("auto_margin"),
-                        "blind_mapping": evidence.get("blind_mapping") or {},
-                    }
+                    _evidence_to_review_sample(row, evidence, selection_reason="needs_review")
                 )
     selected = sorted(selected, key=lambda item: (item["body_key"], item["sample_id"]))[:batch_size]
+    already_selected_ids = {item["sample_id"] for item in selected}
+    selected.extend(
+        _select_gold_coverage_samples(
+            rows,
+            already_selected_ids=already_selected_ids,
+            good_limit=config.gold_coverage_good_limit,
+            bad_limit=config.gold_coverage_bad_limit,
+        )
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     child_files = []
     for sample in selected:
@@ -1837,6 +2055,10 @@ def package_reviews(state_dir: Path, *, out_dir: Path, batch_size: int, storage=
     _write_json(out_dir / "review-batch.json", manifest)
     (out_dir / "parent.md").write_text(manifest["parent_body"])
     return manifest
+
+
+def _normalize_correction_whitespace(text: str) -> str:
+    return " ".join((text or "").split())
 
 
 def parse_issue_decision(body: str) -> dict:
@@ -1858,11 +2080,82 @@ def parse_issue_decision(body: str) -> dict:
     timing_flags = [
         _TIMING_FLAGS[label] for label, active in checked if active and label in _TIMING_FLAGS
     ]
+    # The correction box is pre-filled with a draft (render_issue_body/_correction_draft_text);
+    # an untouched draft is not a real correction, so compare against what was originally shown
+    # rather than trusting any non-empty content as reviewer-authored gold.
+    correction_match = _CORRECTION_RE.search(body)
+    submitted = correction_match.group("text") if correction_match else ""
+    draft = metadata.get("correction_draft") or ""
+    correction_text = (
+        submitted.strip()
+        if _normalize_correction_whitespace(submitted) != _normalize_correction_whitespace(draft)
+        else ""
+    )
     return {
         "metadata": metadata,
         "manual_decision": primaries[0],
         "timing_flags": timing_flags,
+        "correction_text": correction_text,
     }
+
+
+def _gold_fields(parsed: dict, evidence: dict, *, config: QualityConfig) -> dict:
+    """H15 Layer 3: compute gold_text/gold_source/gold_role/gold_collected_at fresh from the
+    *current* parsed decision — called unconditionally on every ingest (not just when a
+    both_correct/neither verdict is first recorded) so a re-review that flips an earlier
+    both_correct/neither verdict can't leave a stale gold reference behind.
+
+    ``both_correct``: either candidate's already-stored text becomes gold, no typing required,
+    but only when the two candidates actually agree closely (config.gold_agreement_floor) — a
+    "both correct" verdict on texts that don't match is more likely a reviewer slip than real
+    gold. Prefers the provider-align role's text as a principled (not arbitrary) pick.
+
+    ``neither`` + an edited correction (parse_issue_decision already filters out an untouched
+    pre-filled draft): the typed text becomes gold, anchoring the bottom of the quality scale.
+    """
+    empty = {
+        "gold_text": None,
+        "gold_source": None,
+        "gold_role": None,
+        "gold_collected_at": None,
+    }
+    decision = parsed["manual_decision"]
+    if decision == "both_correct":
+        pair_metrics = evidence.get("pair_metrics") or {}
+        agreement = pair_metrics.get("text_agreement")
+        if not isinstance(agreement, int | float) or agreement < config.gold_agreement_floor:
+            return empty
+        blind_mapping = evidence.get("blind_mapping") or {}
+        label = next(
+            (
+                candidate_label
+                for candidate_label, entry in blind_mapping.items()
+                if isinstance(entry, dict) and entry.get("role") == "provider-align"
+            ),
+            None,
+        )
+        if label is None:
+            return empty
+        text = str((evidence.get("metrics", {}).get(label) or {}).get("text") or "").strip()
+        if not text:
+            return empty
+        return {
+            "gold_text": text,
+            "gold_source": "both_correct",
+            "gold_role": "provider-align",
+            "gold_collected_at": _utc_now(),
+        }
+    if decision == "neither":
+        correction_text = str(parsed.get("correction_text") or "").strip()
+        if not correction_text:
+            return empty
+        return {
+            "gold_text": correction_text,
+            "gold_source": "reviewer_correction",
+            "gold_role": None,
+            "gold_collected_at": _utc_now(),
+        }
+    return empty
 
 
 def ingest_review_decision(
@@ -1873,7 +2166,9 @@ def ingest_review_decision(
     actor: str = "",
     issue_url: str = "",
     storage=None,
+    config: QualityConfig | None = None,
 ) -> dict:
+    config = config or QualityConfig()
     parsed = parse_issue_decision(issue_body)
     metadata = parsed["metadata"]
 
@@ -1892,6 +2187,7 @@ def ingest_review_decision(
             evidence["issue_url"] = issue_url
             evidence["reviewed_at"] = _utc_now()
             evidence["reviewed_by"] = actor
+            evidence.update(_gold_fields(parsed, evidence, config=config))
             return rows
         raise ValueError("sample evidence not found for issue metadata")
 
@@ -1912,7 +2208,6 @@ def ingest_review_decision(
             "actor": actor,
         }
     )
-    config = QualityConfig()
     save_raw_log(state_dir, raw_log, max_events=config.raw_log_cap)
     return {
         "sample_id": metadata["sample_id"],
@@ -1923,6 +2218,444 @@ def ingest_review_decision(
             + (f" ({', '.join(parsed['timing_flags'])})" if parsed["timing_flags"] else "")
         ),
     }
+
+
+def check_gold_corrections(
+    state_dir: Path,
+    *,
+    cities_by_slug: dict[str, City] | None = None,
+    storage=None,
+) -> dict:
+    """H15 Layer 3: sanity-check reviewer-typed "Neither usable" corrections against the actual
+    audio, using the same independent CTC aligner L2 already uses — a surprisingly low fit score
+    on a typed correction is a signal it may itself be mis-transcribed, worth a spot-check.
+    Symmetric to the text_agreement floor already gating both_correct gold.
+
+    Deliberately separate from the lightweight `calibrate` command: this needs torch/torchaudio
+    and a re-downloaded audio clip, so it only runs where asr-quality-eval.yml already pays that
+    cost (L2 scoring), not the cheap, dependency-light weekly review workflow.
+    """
+    from citypods.ctc_align import ctc_fit
+
+    cities_by_source_key = {source_key(city): city for city in (cities_by_slug or {}).values()}
+    ledger = load_rollups_ledger(state_dir, storage=storage)
+
+    # Expensive work (audio download, CTC inference) happens once here, outside any CAS retry
+    # loop — mutate_rollups_ledger's callback can run more than once on conflict and must stay
+    # cheap (see evaluate_samples' own pending_rows pattern for the same reason).
+    results: dict[str, dict] = {}
+    errors: list[dict] = []
+    records_cache: dict[str, dict] = {}
+    for row in ledger.get("rows", []):
+        source_key_value = str(row.get("source_key") or "")
+        city = cities_by_source_key.get(source_key_value)
+        if city is None:
+            continue
+        for evidence in (row.get("evidence") or {}).values():
+            if not isinstance(evidence, dict):
+                continue
+            if evidence.get("gold_source") != "reviewer_correction":
+                continue
+            if evidence.get("gold_ctc_checked_at"):
+                continue
+            gold_text = str(evidence.get("gold_text") or "").strip()
+            sample_id = str(evidence.get("sample_id") or "")
+            if not gold_text or not sample_id:
+                continue
+            episode_uid = str(evidence.get("episode_uid") or "")
+            if source_key_value not in records_cache:
+                records_cache[source_key_value] = load_records(state_dir, source_key_value)
+            rec = records_cache[source_key_value].get(episode_uid)
+            if rec is None:
+                continue
+            ep = record_to_episode(rec)
+            if not ep.hosted_audio_url:
+                continue
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    audio_path = Path(tmp) / "audio.m4a"
+                    _download_audio_to_path(ep.hosted_audio_url, audio_path)
+                    fit = ctc_fit(
+                        audio_path,
+                        gold_text,
+                        clip_start=float(evidence.get("clip_start", 0) or 0),
+                        clip_end=float(evidence.get("clip_end", 0) or 0),
+                        language=city.asr_language,
+                    )
+                results[sample_id] = {
+                    "gold_ctc_fit_score": fit.mean_score,
+                    "gold_ctc_checked_at": _utc_now(),
+                }
+            except Exception as exc:  # noqa: BLE001 - best-effort sanity check
+                errors.append({"sample_id": sample_id, "error": f"{type(exc).__name__}: {exc}"})
+
+    if results:
+
+        def _apply(rows: list[dict]) -> list[dict]:
+            for row in rows:
+                for sample_id, update in results.items():
+                    evidence = (row.get("evidence") or {}).get(sample_id)
+                    if isinstance(evidence, dict):
+                        evidence.update(update)
+            return rows
+
+        mutate_rollups_ledger(state_dir, storage, _apply)
+
+    return {"checked": len(results), "errors": errors}
+
+
+def collect_gold_points(state_dir: Path, *, storage=None) -> list[dict]:
+    """H15 Layer 3: one point per candidate label for every gold-bearing evidence entry — WER/CER
+    of that candidate's already-stored text against the harvested ``gold_text``, alongside its
+    ``auto_score``/``l2_mean_score`` so build_calibration_report can correlate the two. The
+    same-role comparison (``is_reference``) is trivially zero WER by construction for
+    both_correct gold — still a legitimate calibration point ("what auto_score does a
+    human-verified-correct candidate get"), just not independent evidence the way the other
+    candidate's WER-against-gold is.
+    """
+    from citypods.text_metrics import wer_cer
+
+    ledger = load_rollups_ledger(state_dir, storage=storage)
+    points: list[dict] = []
+    for row in ledger.get("rows", []):
+        source_key_value = str(row.get("source_key") or "")
+        body_key_value = str(row.get("body_key") or "")
+        for evidence in (row.get("evidence") or {}).values():
+            if not isinstance(evidence, dict):
+                continue
+            gold_text = str(evidence.get("gold_text") or "").strip()
+            if not gold_text:
+                continue
+            gold_role = evidence.get("gold_role")
+            blind_mapping = evidence.get("blind_mapping") or {}
+            metrics = evidence.get("metrics") or {}
+            for label, candidate_metrics in metrics.items():
+                if not isinstance(candidate_metrics, dict):
+                    continue
+                scores = wer_cer(gold_text, str(candidate_metrics.get("text") or ""))
+                entry = blind_mapping.get(label)
+                role = entry.get("role") if isinstance(entry, dict) else None
+                points.append(
+                    {
+                        "sample_id": evidence.get("sample_id"),
+                        "source_key": source_key_value,
+                        "body_key": body_key_value,
+                        "gold_source": evidence.get("gold_source"),
+                        "candidate_label": label,
+                        "role": role,
+                        "is_reference": bool(gold_role) and role == gold_role,
+                        "wer": scores["wer"],
+                        "cer": scores["cer"],
+                        "auto_score": candidate_metrics.get("auto_score"),
+                        "l2_mean_score": candidate_metrics.get("l2_mean_score"),
+                        "l2_coverage": candidate_metrics.get("l2_coverage"),
+                    }
+                )
+    return points
+
+
+def _gold_harvest_stats(state_dir: Path, *, storage=None) -> dict:
+    """One pass over the ledger for two related diagnostics: catalog-wide L2 scoring rate (stays
+    meaningful even after l2_sample_limit's fix, since evidence from before that change may
+    still be Layer-1-only forever) and the both_correct agreement-floor accept/reject counts
+    (visibility into whether gold_agreement_floor is too strict or too lenient, since there's no
+    principled way to auto-tune it)."""
+    ledger = load_rollups_ledger(state_dir, storage=storage)
+    total = 0
+    l2_scored = 0
+    both_correct_total = 0
+    both_correct_accepted = 0
+    for row in ledger.get("rows", []):
+        for evidence in (row.get("evidence") or {}).values():
+            if not isinstance(evidence, dict):
+                continue
+            total += 1
+            if evidence.get("l2_used"):
+                l2_scored += 1
+            if evidence.get("manual_decision") == "both_correct":
+                both_correct_total += 1
+                if evidence.get("gold_text"):
+                    both_correct_accepted += 1
+    return {
+        "l2_coverage": {
+            "total_evaluated": total,
+            "l2_scored": l2_scored,
+            "l2_coverage_rate": round(l2_scored / total, 4) if total else None,
+        },
+        "agreement_floor": {
+            "both_correct_total": both_correct_total,
+            "accepted": both_correct_accepted,
+            "rejected": both_correct_total - both_correct_accepted,
+        },
+    }
+
+
+def collect_flagged_corrections(state_dir: Path, *, storage=None) -> list[dict]:
+    """Reviewer-typed corrections that have been CTC-fit-checked (check_gold_corrections) —
+    build_calibration_report flags the ones scoring below the median L2 candidate score as
+    worth a spot-check."""
+    ledger = load_rollups_ledger(state_dir, storage=storage)
+    flagged: list[dict] = []
+    for row in ledger.get("rows", []):
+        for evidence in (row.get("evidence") or {}).values():
+            if not isinstance(evidence, dict):
+                continue
+            if evidence.get("gold_source") != "reviewer_correction":
+                continue
+            fit = evidence.get("gold_ctc_fit_score")
+            if not isinstance(fit, int | float):
+                continue
+            flagged.append(
+                {
+                    "sample_id": evidence.get("sample_id"),
+                    "source_key": row.get("source_key"),
+                    "body_key": row.get("body_key"),
+                    "gold_ctc_fit_score": fit,
+                }
+            )
+    return flagged
+
+
+def _pearson_correlation(pairs: list[tuple[float, float]]) -> float | None:
+    n = len(pairs)
+    if n < 2:
+        return None
+    xs = [p[0] for p in pairs]
+    ys = [p[1] for p in pairs]
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    covariance = sum((x - mean_x) * (y - mean_y) for x, y in pairs)
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x <= 0 or var_y <= 0:
+        return None
+    return round(covariance / ((var_x**0.5) * (var_y**0.5)), 4)
+
+
+def _auto_score_histogram(points: list[dict], *, bucket_size: float = 0.2) -> list[dict]:
+    bucket_count = max(1, round(1 / bucket_size))
+    buckets = [round(i * bucket_size, 2) for i in range(bucket_count)]
+    counts = dict.fromkeys(buckets, 0)
+    for point in points:
+        score = point.get("auto_score")
+        if not isinstance(score, int | float):
+            continue
+        idx = min(max(int(score / bucket_size), 0), bucket_count - 1)
+        counts[buckets[idx]] += 1
+    return [
+        {"range": f"{b:.1f}-{min(b + bucket_size, 1.0):.1f}", "count": counts[b]} for b in buckets
+    ]
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def build_calibration_report(
+    points: list[dict],
+    *,
+    scan_stats: dict,
+    flagged_corrections: list[dict],
+    config: QualityConfig,
+) -> dict:
+    n = len(points)
+    auto_pairs = [
+        (p["auto_score"], p["wer"])
+        for p in points
+        if isinstance(p.get("auto_score"), int | float) and isinstance(p.get("wer"), int | float)
+    ]
+    l2_pairs = [
+        (p["l2_mean_score"], p["wer"])
+        for p in points
+        if isinstance(p.get("l2_mean_score"), int | float) and isinstance(p.get("wer"), int | float)
+    ]
+    median_l2 = _median(
+        [p["l2_mean_score"] for p in points if isinstance(p.get("l2_mean_score"), int | float)]
+    )
+    flagged = (
+        [f for f in flagged_corrections if f["gold_ctc_fit_score"] < median_l2]
+        if median_l2 is not None
+        else []
+    )
+    return {
+        "generated_at": _utc_now(),
+        "point_count": n,
+        "auto_score_histogram": _auto_score_histogram(points),
+        "wer_vs_auto_score_correlation": _pearson_correlation(auto_pairs),
+        "wer_vs_l2_mean_score_correlation": _pearson_correlation(l2_pairs),
+        "l2_correlation_point_count": len(l2_pairs),
+        "l2_coverage": scan_stats["l2_coverage"],
+        "agreement_floor": scan_stats["agreement_floor"],
+        "flagged_corrections": flagged,
+        "current_thresholds": {
+            "agreement_threshold": config.agreement_threshold,
+            "trust_margin_threshold": config.trust_margin_threshold,
+        },
+    }
+
+
+def _format_corr(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+def _format_pct(value: float | None) -> str:
+    return "n/a" if value is None else f"{value * 100:.1f}%"
+
+
+def render_calibration_report_markdown(report: dict) -> str:
+    n = report["point_count"]
+    lines = [
+        "# H15 Layer 3 calibration report",
+        "",
+        f"Generated: {report['generated_at']}",
+        f"Gold points collected: {n}",
+        "",
+        "## Coverage",
+        "",
+    ]
+    for bucket in report["auto_score_histogram"]:
+        lines.append(f"- `{bucket['range']}`: {bucket['count']}")
+    lines.extend(
+        [
+            "",
+            "**How to read this:** each row is how many gold-anchored data points fall in that "
+            "`auto_score` range. Gold only exists for samples a human actually reviewed — a row "
+            "with zero points means there's no gold evidence yet for how `auto_score` behaves in "
+            "that range, and the correlation numbers below should be trusted proportionally less "
+            "the more empty rows there are.",
+            "",
+            "## L2 coverage",
+            "",
+            (
+                f"L2 has scored {report['l2_coverage']['l2_scored']}/"
+                f"{report['l2_coverage']['total_evaluated']} evaluated episodes "
+                f"({_format_pct(report['l2_coverage']['l2_coverage_rate'])})."
+            ),
+            "",
+            "**How to read this:** episodes evaluated before `l2_sample_limit` was raised to "
+            "cover every run's episodes may still be Layer-1-only forever (sample_ids are "
+            "never re-sampled) — a low rate here explains a thin WER-vs-`l2_mean_score` "
+            "correlation even when the WER-vs-`auto_score` correlation looks fine.",
+            "",
+            "## WER vs. auto_score",
+            "",
+            f"Pearson correlation: {_format_corr(report['wer_vs_auto_score_correlation'])} (n={n})",
+            "Pearson correlation (L2-scored candidates only, vs. `l2_mean_score`): "
+            f"{_format_corr(report['wer_vs_l2_mean_score_correlation'])} "
+            f"(n={report['l2_correlation_point_count']})",
+            "",
+            '**How to read this:** a value near -1 means "higher `auto_score` reliably means '
+            "lower WER\" — the signal is doing its job. A value near 0 means `auto_score` isn't "
+            "predictive here, and the routing thresholds built on it deserve scrutiny.",
+        ]
+    )
+    if n < 5:
+        lines.extend(
+            [
+                "",
+                "_Fewer than 5 gold points — treat the correlation above as illustrative only, "
+                "not a basis for a config change._",
+            ]
+        )
+    floor = report["agreement_floor"]
+    lines.extend(
+        [
+            "",
+            "## Both-fully-correct agreement-floor gate",
+            "",
+            f"Accepted as gold: {floor['accepted']}  Rejected (below the floor): "
+            f"{floor['rejected']}  (of {floor['both_correct_total']} total)",
+            "",
+            "**How to read this:** a high rejection rate could mean reviewers are marking "
+            '"both fully correct" when the two transcripts actually differ (worth '
+            "spot-checking a few) — or that the floor is stricter than necessary and discarding "
+            "legitimate gold over trivial formatting differences.",
+        ]
+    )
+    if report["flagged_corrections"]:
+        lines.extend(["", "## Flagged corrections", ""])
+        for item in report["flagged_corrections"]:
+            lines.append(
+                f"- `{item['sample_id']}` (fit {item['gold_ctc_fit_score']:.3f}) — may warrant "
+                "a spot-check"
+            )
+    trend = report.get("trend") or []
+    if trend:
+        lines.extend(
+            [
+                "",
+                "## Trend",
+                "",
+                "| Run | Points | WER-vs-auto_score r | L2 coverage |",
+                "|---|---:|---:|---:|",
+            ]
+        )
+        for entry in trend:
+            lines.append(
+                f"| {entry.get('run_at', 'n/a')} | {entry.get('point_count', 'n/a')} | "
+                f"{_format_corr(entry.get('wer_vs_auto_score_correlation'))} | "
+                f"{_format_pct(entry.get('l2_coverage_rate'))} |"
+            )
+    lines.extend(["", "## Suggested next step", ""])
+    if n < 5:
+        lines.append("Not enough gold data yet to act on. No config changes recommended.")
+    else:
+        thresholds = report["current_thresholds"]
+        lines.append(
+            f"Current `agreement_threshold` = {thresholds['agreement_threshold']}, "
+            f"`trust_margin_threshold` = {thresholds['trust_margin_threshold']}. This is a "
+            "discussion starter for a human to weigh, not a directive — if the correlation "
+            "above looks strong and stable, consider whether these values still make sense "
+            "given the observed WER spread."
+        )
+    lines.extend(
+        [
+            "",
+            "If you act on this, update `agreement_threshold`/`trust_margin_threshold` in "
+            "`config/site_config.yml` (documented in review/12 §H15) and log the rationale in "
+            "CHANGELOG.md.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def write_calibration_report(report: dict, out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "calibration.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    (out_dir / "calibration.md").write_text(render_calibration_report_markdown(report))
+
+
+def run_calibration(state_dir: Path, *, config: QualityConfig, storage=None) -> dict:
+    """H15 Layer 3: orchestrates one `calibrate` run. Read-only over the rollups ledger; writes
+    only the small calibration trend log (never the ledger itself) via the returned report's
+    caller — see main()'s `calibrate` branch for the durable-state push."""
+    points = collect_gold_points(state_dir, storage=storage)
+    scan_stats = _gold_harvest_stats(state_dir, storage=storage)
+    flagged_corrections = collect_flagged_corrections(state_dir, storage=storage)
+    report = build_calibration_report(
+        points,
+        scan_stats=scan_stats,
+        flagged_corrections=flagged_corrections,
+        config=config,
+    )
+    trend_entry = {
+        "run_at": report["generated_at"],
+        "point_count": report["point_count"],
+        "wer_vs_auto_score_correlation": report["wer_vs_auto_score_correlation"],
+        "l2_coverage_rate": report["l2_coverage"]["l2_coverage_rate"],
+        "both_correct_accepted": scan_stats["agreement_floor"]["accepted"],
+        "both_correct_rejected": scan_stats["agreement_floor"]["rejected"],
+    }
+    prior_trend = load_calibration_trend(state_dir).get("runs", [])
+    report["trend"] = (prior_trend + [trend_entry])[-8:]
+    _append_calibration_trend_entry(state_dir, trend_entry, cap=config.calibration_trend_cap)
+    return report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1955,6 +2688,21 @@ def build_parser() -> argparse.ArgumentParser:
     ing.add_argument("--issue-body-file", required=True)
     ing.add_argument("--actor", default="")
     ing.add_argument("--issue-url", default="")
+
+    cal = sub.add_parser(
+        "calibrate", help="H15 Layer 3: build the gold-anchored calibration report"
+    )
+    cal.add_argument("--site-config", default="config/site_config.yml")
+    cal.add_argument("--output-dir", default="docs")
+    cal.add_argument("--out-dir", required=True)
+
+    chk = sub.add_parser(
+        "check-gold-corrections",
+        help="H15 Layer 3: CTC-sanity-check reviewer-typed corrections against their audio",
+    )
+    chk.add_argument("--site-config", default="config/site_config.yml")
+    chk.add_argument("--config-dir", default="config")
+    chk.add_argument("--output-dir", default="docs")
     return parser
 
 
@@ -2009,6 +2757,7 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=Path(args.out_dir),
             batch_size=config.review_batch_size,
             storage=storage,
+            config=config,
         )
         print(f"packaged {len(manifest['children'])} H15 review issue(s)")
         return 0
@@ -2020,6 +2769,7 @@ def main(argv: list[str] | None = None) -> int:
             actor=args.actor,
             issue_url=args.issue_url,
             storage=storage,
+            config=config,
         )
         _maybe_push_durable_state(
             site_config,
@@ -2028,5 +2778,27 @@ def main(argv: list[str] | None = None) -> int:
             raw_log_cap=config.raw_log_cap,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    if args.command == "calibrate":
+        report = run_calibration(state_dir, config=config, storage=storage)
+        write_calibration_report(report, Path(args.out_dir))
+        _maybe_push_calibration_trend(
+            site_config,
+            output_dir,
+            state_dir,
+            cap=config.calibration_trend_cap,
+        )
+        print(
+            f"H15 calibration report: {report['point_count']} gold point(s), "
+            f"wer_vs_auto_score_correlation={report['wer_vs_auto_score_correlation']}"
+        )
+        return 0
+    if args.command == "check-gold-corrections":
+        cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+        cities_by_slug = {city.slug: city for city in cities}
+        result = check_gold_corrections(state_dir, cities_by_slug=cities_by_slug, storage=storage)
+        print(
+            f"checked {result['checked']} reviewer correction(s), {len(result['errors'])} error(s)"
+        )
         return 0
     return 1
