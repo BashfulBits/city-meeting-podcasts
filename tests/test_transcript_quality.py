@@ -354,6 +354,44 @@ def test_evaluate_falls_back_to_l1_when_l2_raises(tmp_path, monkeypatch):
     assert event["metrics"]["A"]["l2_mean_score"] is None
 
 
+def test_evaluate_l2_is_all_or_nothing_across_the_pair(tmp_path, monkeypatch):
+    """If one candidate's ctc_fit succeeds and the other's raises, both candidates must fall
+    back to the L1-only formula -- scoring one with the CTC-dominated blend and the other with
+    the pure L1 formula would make the margin between them compare two different scoring
+    formulas, not a fair independent judgment of the same pair."""
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    out_dir = tmp_path / "artifacts"
+    manifest = _manifest(tmp_path)
+    _write_sample_audio(out_dir, manifest["samples"][0])
+
+    calls: list[str] = []
+
+    def partially_failing_ctc_fit(audio_path, text, *, clip_start, clip_end, language):
+        calls.append(text)
+        if len(calls) == 1:
+            return CtcFitResult(mean_score=0.95, coverage=1.0, word_count=2, aligned_word_count=2)
+        raise RuntimeError("alignment failed for this candidate")
+
+    monkeypatch.setattr("citypods.ctc_align.ctc_fit", partially_failing_ctc_fit)
+
+    result = evaluate_samples(
+        manifest,
+        out_dir=out_dir,
+        state_dir=state_dir,
+        config=tq.QualityConfig(auto_margin_threshold=0.05),
+    )
+
+    assert result["errors"] == []
+    event = result["evaluated"][0]
+    assert len(calls) == 2  # both candidates were attempted
+    assert event["l2_used"] is False
+    for label in ("A", "B"):
+        assert event["metrics"][label]["l2_mean_score"] is None
+        assert event["metrics"][label]["l2_coverage"] is None
+
+
 def test_evaluate_respects_l2_sample_limit_across_samples(tmp_path, monkeypatch):
     """l2_sample_limit bounds L2 usage per evaluate() run, not per sample -- with a budget of 1
     across two eligible samples, only the first consumes it."""

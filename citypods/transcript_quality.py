@@ -1554,15 +1554,8 @@ def _evaluate_one_sample(
     ]
     blinded = _blind_mapping(sample["sample_id"], materialized)
 
-    # L2 (independent CTC judge): best-effort, bounded per evaluate() run (l2_budget_remaining),
-    # and only possible when the episode audio is already on disk from candidate materialization
-    # above (it isn't in tests that pre-populate transcript_ref/words_ref directly, which is fine
-    # -- L2 just doesn't run for those, same as any other "extra unavailable" case).
-    audio_clip_path = sample_dir / "audio.m4a"
-    l2_available = config.l2_enabled and l2_budget_remaining > 0 and audio_clip_path.exists()
-    l2_used = False
-
-    metrics: dict[str, dict] = {}
+    # Clip every candidate's units first (needed regardless of L2) before attempting L2, so L2
+    # scoring can be all-or-nothing across the pair rather than interleaved with clipping.
     for candidate in blinded:
         units = _candidate_units(candidate, storage=storage)
         clip_end = float(
@@ -1571,29 +1564,44 @@ def _evaluate_one_sample(
         clip_units = _clip_units(units, float(sample.get("clip_start", 0) or 0), clip_end)
         candidate["units"] = clip_units or units
 
-        ctc_result: CtcFitResult | None = None
-        if l2_available:
+    # L2 (independent CTC judge): best-effort, bounded per evaluate() run (l2_budget_remaining),
+    # and only possible when the episode audio is already on disk from candidate materialization
+    # above (it isn't in tests that pre-populate transcript_ref/words_ref directly, which is fine
+    # -- L2 just doesn't run for those, same as any other "extra unavailable" case).
+    #
+    # All-or-nothing across the pair: scoring one candidate with the CTC-dominated (80%) blend
+    # and the other with the pure L1 formula would make the margin between them meaningless --
+    # it would be comparing two different scoring formulas, not a fair independent judgment of
+    # the same two candidates. If any candidate's ctc_fit fails, every candidate in this sample
+    # falls back to L1-only, and l2_used only records True when the whole pair was scored.
+    audio_clip_path = sample_dir / "audio.m4a"
+    l2_available = config.l2_enabled and l2_budget_remaining > 0 and audio_clip_path.exists()
+    ctc_results: dict[str, CtcFitResult] = {}
+    if l2_available:
+        for candidate in blinded:
             try:
-                ctc_result = _l2_fit_for_candidate(
+                ctc_results[candidate["blind_label"]] = _l2_fit_for_candidate(
                     sample, candidate, audio_clip_path=audio_clip_path, city=city
                 )
-                l2_used = True
             except Exception as exc:  # noqa: BLE001 - independent judge is best-effort
                 print(
                     f"[h15] L2 ctc_fit unavailable sample={sample['sample_id']} "
                     f"label={candidate['blind_label']}: {type(exc).__name__}: {exc}",
                     flush=True,
                 )
-                # One failure (e.g. the extra isn't installed) means every subsequent attempt
-                # this sample would fail identically -- stop trying rather than double-logging.
-                l2_available = False
+                ctc_results = {}
+                break
+    l2_used = len(ctc_results) == len(blinded)
 
-        metrics[candidate["blind_label"]] = _candidate_metrics(
+    metrics: dict[str, dict] = {
+        candidate["blind_label"]: _candidate_metrics(
             candidate["units"],
             acoustic_coverage=candidate.get("acoustic_coverage"),
             word_logprob_mean=candidate.get("word_logprob_mean"),
-            ctc_fit=ctc_result,
+            ctc_fit=ctc_results.get(candidate["blind_label"]),
         )
+        for candidate in blinded
+    }
     pair_metrics = _pair_metrics(blinded[0]["units"], blinded[1]["units"])
     score_a = metrics["A"]["auto_score"]
     score_b = metrics["B"]["auto_score"]
