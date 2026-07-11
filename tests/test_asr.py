@@ -131,7 +131,7 @@ class TestToWordsJson:
 
     def test_schema_and_basis(self):
         data = json.loads(_to_words_json([], basis="served"))
-        assert data["schema"] == "1"
+        assert data["schema"] == "2"
         assert data["basis"] == "served"
         assert data["segments"] == []
 
@@ -160,6 +160,20 @@ class TestToWordsJson:
         )
         data = json.loads(_to_words_json([seg]))
         assert [w["w"] for w in data["segments"][0]["words"]] == ["Good"]
+
+    def test_includes_probability_when_present(self):
+        word = self._word(" Good", 0.5, 1.0)
+        word.probability = 0.87123
+        seg = self._seg(0.5, 1.0, "Good", [word])
+        data = json.loads(_to_words_json([seg]))
+        assert data["segments"][0]["words"][0]["p"] == 0.8712
+
+    def test_omits_probability_when_absent_or_non_numeric(self):
+        # A MagicMock auto-vivifies `.probability` as another MagicMock, not a float — the
+        # `isinstance` guard must treat that as "no probability data", not crash on float().
+        seg = self._seg(0.5, 1.0, "Good", [self._word(" Good", 0.5, 1.0)])
+        data = json.loads(_to_words_json([seg]))
+        assert "p" not in data["segments"][0]["words"][0]
 
 
 # ── asr_spec_hash ─────────────────────────────────────────────────────────────
@@ -285,7 +299,28 @@ class TestTranscribeMocked:
         assert result.vtt.startswith(b"WEBVTT")
         assert b"Hello world" in result.vtt
         words = json.loads(result.words)
-        assert words["schema"] == "1" and words["basis"] == "served"
+        assert words["schema"] == "2" and words["basis"] == "served"
+
+    def test_records_l1_coverage_and_word_logprob(self, tmp_path):
+        from citypods.asr import transcribe
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        seg = self._seg(0.0, 1.5, "Hello world")
+        w1, w2 = MagicMock(), MagicMock()
+        w1.word, w1.start, w1.end, w1.probability = "Hello", 0.0, 0.5, 0.9
+        w2.word, w2.start, w2.end, w2.probability = "world", 0.5, 1.5, 0.7
+        seg.words = [w1, w2]
+        model = self._mock_model([seg])
+        _inject_fw(model)
+        sys.modules["faster_whisper"].WhisperModel = MagicMock(return_value=model)
+
+        result = transcribe(audio, "base.en", "en", "int8", 5, None, 4)
+
+        assert result.coverage == 1.0
+        assert result.word_logprob_mean == pytest.approx(0.8)
+        assert result.word_logprob_p10 == pytest.approx(0.7)
 
     def test_missing_dep_raises_import_error(self, tmp_path):
         from citypods.asr import transcribe
@@ -355,6 +390,25 @@ class TestAlignMocked:
         assert isinstance(result, TranscriptArtifacts)
         assert result.vtt.startswith(b"WEBVTT")
         assert b"Hello world" in result.vtt
+        assert result.coverage == 1.0
+
+    def test_records_l1_word_logprob(self, tmp_path):
+        from citypods.asr import align
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        w1, w2 = self._word("hello", 0.0, 0.5), self._word("world", 0.5, 1.0)
+        w1.probability = 0.6
+        w2.probability = 0.4
+        seg = self._seg([w1, w2])
+        self._setup_sw("WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world\n", segments=[seg])
+
+        result = align(audio, "hello world", "base.en", "en", 4)
+
+        assert result.coverage == 1.0
+        assert result.word_logprob_mean == pytest.approx(0.5)
+        assert result.word_logprob_p10 == pytest.approx(0.4)
 
     def test_prepends_webvtt_if_missing(self, tmp_path):
         from citypods.asr import align

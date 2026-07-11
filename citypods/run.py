@@ -110,9 +110,11 @@ from citypods.statesync import (
     push_asr_runtime_log_merged,
     push_records_merged,
     push_state,
+    push_transcript_quality_log_merged,
     reconcile_state,
 )
 from citypods.storage import make_storage
+from citypods.transcript_quality import load_quality_config, load_quality_routes
 
 # Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
 # nothing is pruned in normal operation, but the lever exists so retention can be ratcheted down
@@ -1387,6 +1389,7 @@ def _build_impl(
         if time_bounded and not dry_run and _memory_budget_mb > 0
         else None
     )
+    transcript_quality_routes = load_quality_routes(site_config, state_dir, storage=storage)
     ctx = StageContext(
         storage=storage,
         ffmpeg=ffmpeg,
@@ -1410,6 +1413,7 @@ def _build_impl(
         silence_min_served_fraction=float(defaults.get("silence_min_served_fraction", 0.02)),
         max_encodes_per_source=max_encodes_per_source,
         backlog_policy=backlog_policy,
+        transcript_quality_routes=transcript_quality_routes,
         source_cache=source_cache,
         # One list_objects listing per source for this build, shared by every AudioStage call for
         # that source — the global queue (H5 PR3) invokes AudioStage once per episode, so without
@@ -1442,6 +1446,8 @@ def _build_impl(
         )
         * 60,
         asr_runtime_log_path=state_dir / ASR_RUNTIME_LOG_NAME,
+        transcript_quality_state_dir=None if dry_run else state_dir,
+        transcript_quality_raw_log_cap=load_quality_config(site_config).raw_log_cap,
         asr_local_max_duration_hours=float(defaults.get("asr_local_max_duration_hours", 4)),
         asr_abort_event=threading.Event()
         if not dry_run and defaults.get("asr_enabled", True)
@@ -1723,7 +1729,11 @@ def _build_impl(
                 _manifest_sources = [
                     (sk, c, load_records(state_dir, sk)) for sk, c in _city_by_source.items()
                 ]
-                _manifest = build_manifest(_manifest_sources, policy=backlog_policy)
+                _manifest = build_manifest(
+                    _manifest_sources,
+                    policy=backlog_policy,
+                    transcript_quality_routes=transcript_quality_routes,
+                )
                 # H14a: keep in-flight dispatch leases across the rebuild (build_manifest would
                 # reset them to ``queued``), and flush the budget ledger as the run's final write.
                 if isinstance(compute_backend, DispatchCoordinator):
@@ -1766,6 +1776,12 @@ def _build_impl(
                     storage,
                     state_dir,
                     rel_path=ASR_RUNTIME_LOG_NAME,
+                    log=lambda msg: print(msg, flush=True),
+                )
+                pushed += push_transcript_quality_log_merged(
+                    storage,
+                    state_dir,
+                    max_events=load_quality_config(site_config).raw_log_cap,
                     log=lambda msg: print(msg, flush=True),
                 )
             else:

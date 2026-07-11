@@ -46,6 +46,7 @@ from citypods.stages import (
 )
 from citypods.storage.local import LocalStorage
 from citypods.timeline import Segment, SourceMedia, Timeline
+from citypods.transcript_quality import TranscriptQualityRoute
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -113,6 +114,7 @@ def _ctx(tmp_path: Path) -> StageContext:
         ffmpeg=FakeFfmpeg(),
         max_kbps=96,
         dry_run=False,
+        transcript_quality_state_dir=tmp_path / "state",
     )
 
 
@@ -1063,6 +1065,30 @@ class TestTranscriptStageASR:
         out = capsys.readouterr().out
         assert "reason=audio-error" in out
 
+    def test_asr_completion_records_l1_quality_sample(self, tmp_path):
+        """H15 Layer 1: every successful align()/transcribe() call appends a near-zero-cost
+        coverage + word-logprob sample to the capped raw log, independent of whether this
+        source/body has any H15 review data yet."""
+        from citypods.records import source_key as _src_key
+        from citypods.transcript_quality import load_raw_log
+
+        ep = _ep_with_audio()
+        ep.body = "City Council"
+        fake_asr = _FakeAsr(
+            words=b'{"schema":"2","basis":"served","segments":[]}',
+        )
+        ep, stats, fake_asr = _run_asr(tmp_path, ep, fake_asr)
+
+        assert stats.transcribed == 1
+        log = load_raw_log(tmp_path / "state")
+        l1_events = [e for e in log["events"] if e.get("kind") == "l1_sample"]
+        assert len(l1_events) == 1
+        event = l1_events[0]
+        assert event["source_key"] == _src_key(_city())
+        assert event["body_key"] == "city-council"
+        assert event["method"] == "transcribe"
+        assert event["model_id"] == _city().asr_model
+
     def test_path_b_initial_prompt_contains_title(self, tmp_path):
         """Path B: initial_prompt includes stable author/body/title context."""
         ep = _ep_with_audio()
@@ -1408,6 +1434,61 @@ class TestTranscriptStageASR:
         assert stats.skipped == 1
         assert stats.defer_reasons == {"alignment-disabled": 1}
         assert "reason=alignment-disabled" in out
+
+    def test_trusted_route_unblocks_align_lane_despite_site_wide_disable(self, tmp_path):
+        """H15 routing payoff: a provider-align route_mode overrides the site-wide
+        asr_alignment_enabled=False for just that source/body, per review/12's "align lane
+        implemented but unscheduled" unblock."""
+        from citypods.records import source_key as _src_key
+        from citypods.transcript_quality import TranscriptQualityRoute
+
+        city = _city()
+        sk = _src_key(city)
+        ep = _ep_with_audio()
+        ep.body = "City Council"
+        ep.transcript_key = f"transcripts/{sk}/uid-asr-oldspec.txt"
+        ep.transcript_format = "txt"
+        ep.transcript_synced = False
+        ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+
+        storage_root = tmp_path / "audio"
+        (storage_root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (storage_root / ep.transcript_key).write_bytes(b"These are the meeting minutes.")
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+            def get(self, url, **kw):
+                class _R:
+                    status_code = 200
+                    content = b"These are the meeting minutes."
+
+                return _R()
+
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.transcript_quality_routes = {
+            (sk, "city-council"): TranscriptQualityRoute(
+                source_key=sk,
+                body_key="city-council",
+                body_name="City Council",
+                route_mode="provider-align",
+            )
+        }
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), city, [ep], ctx)
+
+        assert city.asr_alignment_enabled is False  # site-wide default stays off
+        assert len(fake_asr.align_calls) == 1
+        assert stats.defer_reasons.get("alignment-disabled", 0) == 0
 
     def test_transcribe_lane_ignores_source_text_when_alignment_disabled(self, tmp_path, capsys):
         """The scheduled transcribe lane forces fresh ASR before applying the align-only guard."""
@@ -2265,6 +2346,44 @@ class TestTranscriptVersionAwareReuse:
         new_recipe = _fresh_recipe(ep, city)
         assert ep.transcript_key == f"transcripts/{src_key}/{ep.uid}-asr-{new_recipe}.vtt"
         assert ep.transcript_words_key.endswith(f"-asr-{new_recipe}.words.json")
+
+    def test_accepted_route_recipe_reuses_old_asr_without_retranscribe(self, tmp_path):
+        # accepted_active_recipes is a catalog-wide lever, so it keys on the catalog-wide
+        # transcript_pipeline_version — never transcript_spec_hash, which folds in a per-episode
+        # media hash and could therefore never match more than one episode.
+        ep = _ep_with_audio()
+        ep.body = "City Council"
+        city = _city()
+        src_key = source_key(city)
+        old_recipe = _fresh_recipe(ep, city, "1")
+        old_key = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.vtt"
+        old_words = f"transcripts/{src_key}/{ep.uid}-asr-{old_recipe}.words.json"
+        ep.transcript_key = old_key
+        ep.transcript_words_key = old_words
+        ep.transcript_spec_hash = old_recipe
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = "1"
+        root = tmp_path / "audio"
+        (root / old_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / old_key).write_bytes(ASR_VTT)
+        (root / old_words).write_bytes(ASR_WORDS)
+        fake_asr = _FakeAsr()
+        ctx = _ctx(tmp_path)
+        ctx.transcript_quality_routes = {
+            (src_key, "city-council"): TranscriptQualityRoute(
+                source_key=src_key,
+                body_key="city-council",
+                body_name="City Council",
+                route_mode="fresh-asr",
+                accepted_active_recipes=("1",),
+            )
+        }
+        with patch("citypods.stages.asr_mod", fake_asr):
+            stats = TranscriptStage().process(FakeProvider(), city, [ep], ctx)
+        assert fake_asr.transcribe_calls == []
+        assert stats.reused == 1
+        assert ep.transcript_key == old_key
+        assert ep.transcript_words_key == old_words
 
     def test_provider_transcript_not_invalidated_by_asr_version(self, tmp_path):
         ep = _ep_with_audio()

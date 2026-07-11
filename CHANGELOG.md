@@ -16,6 +16,62 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **H15 transcript-quality workflow (L1 wired, calibration-gated routing).** Added
+  `citypods transcript-quality` with four sub-commands: `sample`, `evaluate`, `package-review`, and
+  `ingest-review`. H15 now persists a capped raw evaluation log
+  (`state/transcript_quality_log.json`) separately from a stable, unpruned body/source evidence
+  ledger (`state/transcript_quality_rollups.json`), merge-pushing both through new durable-state
+  helpers so concurrent runners do not clobber each other; the rollup ledger mutates through an R2
+  CAS ledger when available, with a merge-push fallback so a run without R2 CAS still lands
+  remotely. The review loop renders blind randomized A/B issue bodies plus a linked static
+  synced-transcript review page, and ingests exactly-one-primary task-box decisions back into the
+  durable rollups. Added the GitHub Actions split for H15: `asr-quality-eval.yml`,
+  `asr-quality-review.yml`, and `asr-quality-ingest.yml` (the latter's missed-event cron safety net
+  scans every open child issue via a resolve → matrix-ingest → finalize job split, instead of the
+  no-op it originally shipped as).
+  - **Layer 1 is fully wired**: `citypods/asr.py`'s `align()`/`transcribe()` now return
+    `coverage`/`word_logprob_mean`/`word_logprob_p10` (the words-JSON sidecar bumps to schema v2,
+    additive-only), and every production ASR completion in `TranscriptStage` records a near-zero-cost
+    L1 sample to the same capped log, independent of whether that source/body has any H15 review
+    data yet.
+  - **Routing is unblocked in both directions**: a trusted `route_mode` now overrides the
+    site-wide `asr_alignment_enabled=false` default to schedule the align lane per source/body
+    (not just force fresh transcription), via a calibration-gated mechanism — a bootstrap floor of
+    2 net human-reviewed wins, then (once the automatic scorer's agreement with human decisions
+    clears a threshold) a continuously-updated automatic score margin drives the ongoing decision.
+    See [review/12 §H15](review/12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring)
+    for the full mechanism and its explicitly-interim status pending L2/L3.
+  - **Automatic scoring now measures acoustic fit**, not timing/density shape with a hardcoded
+    confidence bias; cross-candidate text/timing comparison moved from a naive positional zip to a
+    proper edit-distance alignment.
+  - **Accepted-recipe policy** (`accepted_active_recipes`/`minimum_quality_rank`) now keys on the
+    catalog-wide `transcript_pipeline_version` instead of the per-episode `transcript_spec_hash`,
+    which could never match more than one episode by construction.
+  - `evaluate_samples` now contains per-sample failures (e.g. `AlignmentQualityError` on a
+    genuinely bad-caption episode) as a recorded `evaluation_error` event instead of aborting the
+    whole batch and losing every other sample's work.
+  - **Human review decisions are now permanent once ingested.** An independent review caught
+    `_normalize_rollups` doing a plain per-`sample_id` dict replace when merging evidence rows —
+    because `sample_id` is deterministic, a later periodic re-evaluation of the same episode
+    (the common case, since weekly sampling has no reason not to resample recent episodes) would
+    silently overwrite a recorded `manual_decision` with a fresh, unreviewed entry. The merge now
+    refuses to let an unreviewed entry clobber one that already has a decision, and
+    `build_sample_manifest` excludes `sample_id`s that already have any rollup evidence so the
+    sampler reaches new episodes over time instead of re-grinding the same recent ones forever.
+  - **Calibration bootstrap now requires net human wins, not raw wins.** The gate that decides
+    whether a `(source_key, body_key)` row is eligible for calibration checked
+    `provider_wins >= 2 or challenger_wins >= 2` — a 2-2 split panel (no net human preference)
+    satisfied it. Now reuses `_bootstrap_route_mode`'s own net-margin check, so a split panel
+    can't be calibrated into letting the same-generator-biased automatic margin decide routing.
+  - Fixed a substring-match bug in `asr-quality-ingest.yml`'s parent-issue-closing check
+    (`contains("Parent issue: #5")` also matched "#50"/"#500") with an anchored regex, and raised
+    its issue-listing limit so a >200-open-issue backlog can't undercount a parent's true open
+    children.
+  - L2 (independent forced aligner, [#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883))
+    and L3 (human-gold WER/CER anchor, [#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884))
+    remain unimplemented, scoped as the immediate next PRs; the `/admin/status` trust panel is
+    tracked as [#885](https://github.com/BashfulBits/city-meeting-podcasts/issues/885).
+
 - **H19 internal ASR pull workers now use the same lease ledger as external workers.**
   `asr.yml` no longer consumes a static transcribe shard plan; its reconcile job rebuilds the work
   manifest from canonical records and reaps expired leases, then the matrix runs identical

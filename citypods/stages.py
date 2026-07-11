@@ -125,6 +125,12 @@ from citypods.records import (
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import validate_source_url
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
+from citypods.transcript_quality import (
+    TranscriptQualityRoute,
+    accepted_recipe_allowed,
+    quality_body_key,
+    record_l1_sample,
+)
 
 
 def _materialize_set(
@@ -293,6 +299,11 @@ class StageContext:
     # Backlog prioritization policy (H5). None (default) ⇒ behavior-preserving order. When set,
     # ``_materialize_set`` reorders the per-source set by the configured comparator keys.
     backlog_policy: BacklogPolicy | None = None
+    # H15 transcript-routing decisions keyed by ``(source_key, body_key)``. Empty keeps the
+    # legacy production behavior: align when source text exists, otherwise transcribe.
+    transcript_quality_routes: dict[tuple[str, str], TranscriptQualityRoute] = field(
+        default_factory=dict
+    )
     # Per-run download cache shared across TimelineStage (SilencePlanner) and AudioStage so each
     # source is streamed at most once per episode, even when both stages need it.
     source_cache: SourceCache | None = None
@@ -350,6 +361,11 @@ class StageContext:
     # cutoff. Stores the previous 100 successful ASR runtime/recording-duration ratios, seeded
     # with a conservative estimate until real samples replace it.
     asr_runtime_log_path: Path | None = None
+    # H15 Layer 1: state dir for the capped raw-evidence log. Every successful align()/
+    # transcribe() call appends a near-zero-cost coverage + word-logprob sample here (see
+    # record_l1_sample). None (e.g. dry-run/tests) skips L1 recording.
+    transcript_quality_state_dir: Path | None = None
+    transcript_quality_raw_log_cap: int = 200
     # Local/in-process faster-whisper memory-safety ceiling. External dispatch backends are not
     # subject to it. A non-positive value disables the guard; unknown durations remain eligible.
     asr_local_max_duration_hours: float = 0
@@ -1933,6 +1949,9 @@ class TranscriptStage:
             city_slug=city.slug,
             work_class="transcript-asr",
         ):
+            quality_body_name = canonical_body(ep.body or "") or ep.body or "(unknown)"
+            quality_body_key_value = quality_body_key(quality_body_name)
+            route = ctx.transcript_quality_routes.get((src_key, quality_body_key_value))
             label = ep.uid or ep.guid
             ep_ref = (
                 f"slug={city.slug} provider={city.provider} source={src_key} "
@@ -1955,7 +1974,36 @@ class TranscriptStage:
                 key_name = ep.transcript_key.rsplit("/", 1)[-1]
                 is_asr = key_name.startswith(f"{ep.uid or ep.guid}-asr-")
                 if is_asr:
-                    if ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
+                    # H15's accepted-recipe policy is a catalog-wide lever ("reducing
+                    # accepted_active_recipes to only the current default is the explicit
+                    # full-catalog reprocess lever"), so it must key on the catalog-wide
+                    # transcript_pipeline_version, not transcript_spec_hash — the spec hash folds
+                    # in transcript_media_hash(ep), which is unique per episode by construction,
+                    # so no two episodes' hashes would ever collide and an operator-configured
+                    # accepted list keyed on it could never protect more than one episode.
+                    accepted_existing_asr = accepted_recipe_allowed(
+                        ep.transcript_pipeline_version,
+                        accepted_active_recipes=(
+                            route.accepted_active_recipes if route is not None else ()
+                        ),
+                        minimum_quality_rank=(
+                            route.minimum_quality_rank if route is not None else None
+                        ),
+                        recipe_ranks=(route.recipe_ranks if route is not None else None),
+                    )
+                    words_present = not ep.transcript_words_key or _present(ep.transcript_words_key)
+                    if accepted_existing_asr and words_present:
+                        ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+                        if ep.transcript_words_key and _present(ep.transcript_words_key):
+                            ep.transcript_words_url = ctx.storage.public_url(
+                                ep.transcript_words_key
+                            )
+                        _reset_asr_timeout_backoff(ep)
+                        stats.reused += 1
+                        active_synced_reused = True
+                        if not provider_url:
+                            continue
+                    elif ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
                         redo_stale_asr = True  # own recipe/version changed; re-transcribe
                     elif ep.transcript_spec_hash:
                         redo_stale_asr = True
@@ -2186,6 +2234,8 @@ class TranscriptStage:
                         align_text = _preprocess_align_text(raw_text)
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
+            if route is not None and route.prefers_fresh_asr:
+                align_text = None
 
             # Lane gating (H6b): the sharded asr.yml runs a single-model lane so faster-whisper and
             # stable-ts never co-load in one runner. ``transcribe`` forces fresh transcription (drop
@@ -2204,7 +2254,12 @@ class TranscriptStage:
                 )
                 continue
 
-            if align_text and not city.asr_alignment_enabled:
+            # H15 routing payoff (review/12's "unblock"): a route_mode of "provider-align" means
+            # this specific source/body has cleared the calibration-gated trust check (see
+            # TranscriptQualityRoute / _route_from_row), so it schedules the cheap align lane
+            # even while the site-wide asr_alignment_enabled default stays off elsewhere.
+            align_lane_unblocked = route is not None and route.prefers_provider_align
+            if align_text and not (city.asr_alignment_enabled or align_lane_unblocked):
                 stats.defer("alignment-disabled")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
@@ -2786,6 +2841,27 @@ class TranscriptStage:
                 stats.ran += 1
                 if recheck_asr_key:
                     stats.asr_migration_regenerated += 1
+                if ctx.transcript_quality_state_dir is not None:
+                    try:
+                        record_l1_sample(
+                            ctx.transcript_quality_state_dir,
+                            source_key=src_key,
+                            body_key=quality_body_key_value,
+                            body_name=quality_body_name,
+                            episode_uid=label,
+                            method="align" if _aligned[0] else "transcribe",
+                            coverage=artifacts.coverage,
+                            word_logprob_mean=artifacts.word_logprob_mean,
+                            word_logprob_p10=artifacts.word_logprob_p10,
+                            model_id=city.asr_model,
+                            recipe_hash=recipe,
+                            max_events=ctx.transcript_quality_raw_log_cap,
+                        )
+                    except Exception as exc:  # noqa: BLE001 - L1 telemetry is best-effort
+                        print(
+                            f"[enrich] transcript l1-telemetry error {ep_ref}: {exc}",
+                            flush=True,
+                        )
                 print(
                     f"[enrich] transcript asr done {ep_ref} method={outcome} "
                     f"asr_seconds={asr_elapsed:.1f} "
