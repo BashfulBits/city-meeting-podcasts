@@ -131,6 +131,11 @@ class ProcessLocalBackend:
                     self._process.join(timeout=5)
             else:
                 self._process.join(timeout=0.1)
+            try:
+                self._process.close()
+            except ValueError:
+                # ``multiprocessing.Process.close()`` raises if the process is still running.
+                pass
         self._conn = None
         self._process = None
 

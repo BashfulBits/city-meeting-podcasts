@@ -14,6 +14,16 @@ Once 1.0 ships, entries move under semver tags.
 
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
 
+### Fixed
+
+- **Internal ASR worker teardown no longer flips graceful yielded runs into failures.** The
+  killable spawned inference backend now calls `multiprocessing.Process.close()` after the child
+  has been joined/terminated, releasing tracked process resources so Python's
+  `resource_tracker` warning about a leaked semaphore does not turn a successfully-yielded
+  `citypods compute run-internal-worker` job into exit code 1 at interpreter shutdown. Added a
+  focused regression assertion in `tests/test_compute_local_process.py` proving teardown closes
+  the process object as well as terminating it.
+
 ### Added
 
 - **H15 Layer 2 — independent CTC forced-alignment judge** ([#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883)).
