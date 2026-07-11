@@ -66,6 +66,7 @@ def test_process_backend_close_kills_worker_that_ignores_terminate():
             self.alive = True
             self.terminated = 0
             self.killed = 0
+            self.closed = 0
 
         def is_alive(self):
             return self.alive
@@ -80,6 +81,9 @@ def test_process_backend_close_kills_worker_that_ignores_terminate():
         def join(self, timeout=None):
             pass
 
+        def close(self):
+            self.closed += 1
+
     backend = ProcessLocalBackend()
     process = _StubbornProcess()
     backend._process = process
@@ -88,6 +92,7 @@ def test_process_backend_close_kills_worker_that_ignores_terminate():
 
     assert process.terminated == 1
     assert process.killed == 1
+    assert process.closed == 1
     assert backend._process is None
 
 
