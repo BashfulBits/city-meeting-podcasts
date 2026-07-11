@@ -266,6 +266,12 @@ def main(argv: list[str] | None = None) -> int:
     ciw.add_argument("--max-claims", type=int, metavar="N")
     ciw.add_argument("--max-scan", type=int, metavar="N")
 
+    tq = sub.add_parser(
+        "transcript-quality",
+        help="H15 transcript quality workflow: sample, evaluate, package review, ingest review",
+    )
+    tq.add_argument("transcript_quality_args", nargs=argparse.REMAINDER)
+
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
@@ -304,8 +310,16 @@ def main(argv: list[str] | None = None) -> int:
             return _compute_reclaim_transcript(args)
         if args.compute_command == "run-internal-worker":
             return _compute_run_internal_worker(args)
+    if args.command == "transcript-quality":
+        return _transcript_quality(args)
 
     return 0
+
+
+def _transcript_quality(args) -> int:
+    from citypods import transcript_quality
+
+    return transcript_quality.main(args.transcript_quality_args)
 
 
 def _parse_shard(spec: str | None) -> tuple[int, int] | None:

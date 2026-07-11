@@ -1388,33 +1388,153 @@ errors.)
 
 **Data model.** A new state-backed rolling log mirroring `state/asr_runtime_log.json` (the merge-pushed,
 capped-deque pattern from PR #324):
-- `state/transcript_quality_log.json` — append-only, capped, **per `source_key`**:
-  `{source_key, sampled_at, layer, served_coverage, served_word_logprob_mean,
-  asr_word_logprob_mean (L2), verdict, model_id, caption_provenance}`.
-- Merge-push via a new `push_transcript_quality_log_merged` (same union-by-id + keep-newest as
-  `push_asr_runtime_log_merged`) so the 4 ASR shards don't clobber each other.
-- A derived per-source **`caption_trust`** the lane router reads.
+- `state/transcript_quality_log.json` — append-only, capped, shared by two kinds of event:
+  `kind: "l1_sample"` (`{source_key, body_key, episode_uid, method: align|transcribe, coverage,
+  word_logprob_mean, word_logprob_p10, model_id, recipe_hash, caption_provenance}`, one per
+  production ASR completion, deduped by `(source_key, episode_uid, recipe_hash)`) and
+  `kind: "evaluation"/"evaluation_error"/"decision"` (the periodic H15 sampler's A/B evidence and
+  human-review ingests). `word_logprob_mean`/`word_logprob_p10` are stable-ts/faster-whisper's own
+  per-word `.probability` (already linear 0-1, despite the "logprob" name inherited from the
+  original sketch below) — mean and 10th percentile.
+- Merge-push via `push_transcript_quality_log_merged` (same union-by-id + keep-newest as
+  `push_asr_runtime_log_merged`) so concurrent ASR shards and eval runs don't clobber each other.
+- `state/transcript_quality_rollups.json` — stable, unpruned **one row per `(source_key, body_key)`**
+  ledger of evidence/decisions. Raw events may age out of the capped log; the rollup is the durable
+  trust history the router reads. Mutated through a CAS ledger
+  (`state/transcript_quality_ledger.json`, R2) when available, with a merge-push fallback
+  (`push_transcript_quality_rollups_merged`) so a run without R2 CAS still lands remotely instead
+  of staying stranded on the runner's local filesystem.
+- A derived per-source/body **`TranscriptQualityRoute`** (`route_mode`: `provider-align` |
+  `fresh-asr` | `unknown`) the lane router reads — see "Routing payoff" below for how `route_mode`
+  is actually decided.
+- **A human decision on a `sample_id` is permanent once ingested, regardless of merge order.**
+  `sample_id` is deterministic over stable inputs (source, episode, provider spec hash, challenger
+  model), so a later periodic re-evaluation of the same episode reuses the same id. `_normalize_rollups`
+  refuses to let an incoming evidence entry without `manual_decision` overwrite an existing one that
+  has it — an independent review caught this landing as a plain per-id dict replace, which would have
+  silently erased human review decisions on the next weekly `asr-quality-eval.yml` run that happened to
+  resample the same recent episode. `build_sample_manifest` also now excludes `sample_id`s that
+  already have rollup evidence at all (reviewed or not), so the sampler reaches new episodes over time
+  instead of re-grinding the same handful of most-recent ones forever — resampling an unchanged
+  combination produces no new information by construction.
+
+**Human-review contract (locked after the original sketch).**
+- Reviews are **blind and randomized** per sample: candidates are shown only as `A` and `B`, with the
+  visible order determined from `sample_id` and never exposing recipe/provider labels in the issue text.
+- GitHub issue bodies stay **mobile-friendly** and use only markdown task boxes for the final decision.
+  The synchronized timing UI lives on a linked static review page because GitHub issue markdown cannot
+  safely host arbitrary playback JavaScript.
+- H15 persists two separate truths: a **capped raw event log** for recent evidence/debugging and a
+  **stable body/source rollup** that is not pruned and remains the durable input to future routing.
+- Challenger artifacts are **evaluation-only** until an explicit accepted-recipe policy promotes them.
 
 **Wiring.**
-- `TranscriptStage` (L1): record coverage + word-logprob whenever `align()` runs — near-zero cost.
-- A periodic `asr-quality.yml` job (or a slice of `asr-bench.yml`) drives L2 over the rotating sample via
-  the H13 backend, scoring with the independent aligner.
-- **Routing payoff (the unblock):** the lane router consults `caption_trust` per source — `high` ⇒
-  schedule the cheap `align` lane; `low`/`unknown` ⇒ stay on fresh `transcribe`. This is the concrete
-  resolution of H6b's "align lane implemented but unscheduled."
-- **Admin surface:** a transcript-quality panel on `/admin/status` (per-source trust distribution,
-  sources flagged `low`, last-sampled age) — the glanceable view a one-time eval can't give.
+- `TranscriptStage` (L1, **implemented**): records coverage + word-logprob for *every* production
+  `align()` **and** `transcribe()` completion — near-zero cost, via `record_l1_sample`. `asr.py`'s
+  `TranscriptArtifacts` carries `coverage`/`word_logprob_mean`/`word_logprob_p10` back from both
+  entry points; the words-JSON sidecar schema bumped to v2 to add the optional per-word `p` field
+  additively (no ASR backfill — this is metadata on new runs, not a recipe input).
+- A periodic **compute** workflow (`asr-quality-eval.yml`) drives bounded H15 sampling/evaluation work and
+  can run more frequently than the human review cycle. `evaluate_samples` contains per-sample failures
+  (a genuinely bad-caption episode raising `AlignmentQualityError` — exactly the case H15 exists to
+  detect — is recorded as an `evaluation_error` event and skipped, not allowed to abort the batch and
+  lose every other sample's work in that run).
+- A separate weekly **packaging** workflow (`asr-quality-review.yml`) opens/updates the GitHub review
+  issues from whatever close-call samples accumulated.
+- A near-real-time **decision ingester** workflow (`asr-quality-ingest.yml`) reacts to issue edits and
+  comments, records exactly-one-primary task-box decisions, comments with the stored result, and closes
+  the child issue. The low-frequency cron safety net **scans every open `H15 sample *` issue** (via a
+  `resolve` → matrix `ingest` job split) rather than resolving to an empty issue list and skipping —
+  the original PR shipped this as a no-op that always exited green. A separate `finalize` job closes
+  cleared parent issues exactly once per run, after the matrix, so N children closing in the same run
+  can't race each other into double-closing the same parent.
+- **Routing payoff (the unblock, implemented both directions):** `TranscriptQualityRoute.route_mode`
+  gates the align lane per `(source_key, body_key)` in `TranscriptStage` — `provider-align` overrides
+  the site-wide `asr_alignment_enabled=false` default for just that source/body (the concrete
+  resolution of H6b's "align lane implemented but unscheduled"); `fresh-asr` forces the align hint off
+  even when source text exists. See "Calibration-gated routing" below for how `route_mode` is decided.
+- **Admin surface (fast-follow, not in this PR):** a transcript-quality panel on `/admin/status`
+  (per-source trust distribution, sources flagged `low`, last-sampled age) — the glanceable view a
+  one-time eval can't give. `TranscriptQualityRoute` already carries `human_agreement_rate`,
+  `auto_margin_avg`, and `calibrated`, so the panel is additive reporting once built, not a data-model
+  change.
+
+**Calibration-gated routing (this PR's answer to "how does route_mode get decided").** The original
+sketch above framed this as a single `caption_trust: high|low|unknown` verdict from L2's independent
+aligner. Because L2 doesn't exist yet (see "Open decisions"), this PR ships a narrower, self-correcting
+mechanism instead of leaving routing entirely unimplemented:
+- Every evaluated sample gets an automatic `auto_score` per candidate from the real L1 signal (acoustic
+  coverage + word-logprob, **not** a timing/density proxy — the original auto-scorer here was replaced;
+  see the correctness-trap note below) and a resulting `auto_outcome`.
+- A `(source_key, body_key)` row must first clear a **bootstrap floor**: at least 2 *net* human-reviewed
+  wins in one direction (reusing `_bootstrap_route_mode`'s own margin check, not a raw `>= 2` count on
+  either side — a split panel, e.g. 2 wins for provider-align and 2 for the challenger, has no net
+  preference and must not count as bootstrapped even if `human_agreement_rate` happens to be high on
+  both halves, since `auto_score` is same-generator-biased and could otherwise tip a genuinely-split
+  source's routing on skewed evidence). Below the floor, `route_mode` is decided purely by the net
+  human win count — the free automatic signal is not yet trusted at all.
+- Once bootstrapped, the row also needs to be **calibrated**: `human_agreement_rate` (the fraction of
+  reviewed samples where `auto_outcome` matched `manual_decision`) must clear `agreement_threshold`
+  (default 0.7). Below that, `route_mode` still falls back to the bootstrap win count.
+- Once both hold, `route_mode` is driven by `auto_margin_avg` — the average signed `auto_score` margin
+  across **every evaluated sample for the row, reviewed or not** — crossing `trust_margin_threshold`
+  (default 0.15) in either direction. This is the "free, continuously updated" signal the human loop
+  exists to calibrate, per review/12's own framing: humans validate that the automatic scorer tracks
+  their judgment; once validated, the automatic scorer (which runs on every sample, not just the ones
+  that get reviewed) drives the ongoing decision instead of waiting on the next review batch.
+  `human_agreement_rate` is recomputed live on every read, not a one-way ratchet, so a row that starts
+  drifting from human judgment again (e.g. a vendor caption-quality regression) loses calibration and
+  falls back to the conservative bootstrap count.
+- This is explicitly an interim mechanism: `trust_margin_threshold`/`agreement_threshold` are
+  hand-picked config constants, not grounded in an absolute WER/CER scale. That grounding is exactly
+  what L3 (below) is for.
+
+**Accepted-recipe policy keys on pipeline version, not per-episode spec hash.** `production_default` /
+`accepted_active_recipes` / `minimum_quality_rank` (operator-configured under
+`defaults.transcript_quality` in site config) protect already-transcribed episodes from an
+unnecessary full-catalog redo when `ASR_PIPELINE_VERSION` bumps — "reducing `accepted_active_recipes`
+to only the current default is the explicit full-catalog reprocess lever." That only works when checked
+against `ep.transcript_pipeline_version` (a catalog-wide value): `ep.transcript_spec_hash` folds in
+`transcript_media_hash(ep)`, which is unique per episode by construction, so an operator-configured
+accepted list keyed on it could never protect more than one episode. `recipe_ranks` (derived from H15
+review evidence, feeding `minimum_quality_rank`) records `ASR_PIPELINE_VERSION` for provider-align
+candidates (the currently-deployed recipe) and `"challenger:<model>"` for challenger candidates — the
+latter is honestly never going to equal a real `transcript_pipeline_version` until an operator promotes
+that model and mints a real version bump, which is the intended gate (Locked choice: "ASR challenger
+runs are evaluation-only unless an explicit accepted-recipe policy promotes them").
+
+**The correctness trap, revisited.** The per-candidate `auto_score` was originally a timing/density
+heuristic plus a **hardcoded** confidence (0.75 for provider-align, 0.5 default for the challenger) —
+a fixed, unearned advantage baked into every automatic comparison, and not actually measuring whether
+either transcript matched the audio. It now uses the real per-run L1 signal (`coverage` +
+`word_logprob_mean`, both from the same `align()`/`transcribe()` call that produced the candidate) —
+still `same-generator-biased` per the original Layer 1 caveat (provider-align's own aligner scores its
+own alignment), which is precisely why the calibration gate above requires human agreement before
+trusting it, and why L2's independent judge remains the eventual fix. Cross-candidate `text_agreement`/
+`timing_delta_seconds` also moved from a naive positional zip (which desyncs on the first
+insertion/deletion — the norm, not the exception, between an aligned transcript and a freshly generated
+one) to a proper edit-distance alignment.
 
 **Provenance first.** Before trusting any score, capture **where the captions come from** (human CART vs
 platform auto-ASR) from the source/provider config where known — that's the prior the fit scores then
 confirm or override.
 
-**Open decisions (why this is L2, not yet L3).**
-- Independent aligner: `torchaudio.functional.forced_align` (lean; may ride torch we already pull) vs
+**Open decisions (why this is L1, not yet L2/L3).** **2026-07-11: L2 and L3 are explicitly scoped as
+the immediate next PR**, not an indefinite deferral — this PR's calibration-gated routing (above) is a
+documented interim mechanism, not the intended end state, precisely because trust thresholds shouldn't
+be hand-picked without the L3 anchor this next PR adds.
+- Independent aligner (L2): `torchaudio.functional.forced_align` (lean; may ride torch we already pull) vs
   WhisperX (heavier, batteries-included).
 - L2 sampling cadence + sample size (cost vs freshness).
-- Trust thresholds — set only after the L3 human-gold anchor exists.
+- Trust thresholds — `agreement_threshold`/`trust_margin_threshold` are hand-picked config constants
+  today; set them from data only after the L3 human-gold anchor exists.
 - Whether L2 reuses `asr-bench.yml` or gets its own scheduled workflow.
+- L3 human-gold set: ≈20–50 stratified segments, transcribed/corrected once, anchoring an absolute
+  WER/CER to L2's fit-margin scores. A cheap on-ramp worth considering when L3 lands: let a reviewer who
+  picks "Neither usable" optionally type a correction on the spot, opportunistically harvesting gold
+  segments from the review flow that's already built instead of a separate collection exercise.
+- `/admin/status` transcript-quality panel (trust distribution, stale-sample ages) — fast-follow,
+  additive reporting once built (see "Admin surface" above).
 
 **Relationship to neighbors.** Distinct from **H6a** (runtime benchmark) and **H9** (throughput, $/hr
 across execution homes) — those measure *speed/cost*; H15 measures *correctness*. It reuses H9's "fixed

@@ -873,7 +873,10 @@ def _latest_stage_runs(run_summary: dict, history: list[dict]) -> dict[str, dict
 
 
 def _manifest_for_status(
-    cities: list, records_cache: dict[str, dict], state_dir: Path | None
+    cities: list,
+    records_cache: dict[str, dict],
+    state_dir: Path | None,
+    site_config: dict,
 ) -> tuple[dict, dict]:
     """Return work-list counts plus small provenance metadata for the status page.
 
@@ -886,6 +889,7 @@ def _manifest_for_status(
 
     from citypods.ops.workqueue import build_manifest, load_manifest, manifest_counts
     from citypods.records import source_key
+    from citypods.transcript_quality import load_quality_routes
 
     city_by_source: dict = {}
     for city in cities:
@@ -893,7 +897,10 @@ def _manifest_for_status(
     manifest_sources = [
         (k, city_by_source[k], recs) for k, recs in records_cache.items() if k in city_by_source
     ]
-    items = build_manifest(manifest_sources)
+    items = build_manifest(
+        manifest_sources,
+        transcript_quality_routes=load_quality_routes(site_config, state_dir),
+    )
 
     persisted = load_manifest(state_dir)
     persisted_by_key = {
@@ -1188,7 +1195,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     # (feed_visible) backlog by audio / transcript-asr / transcript-align, surfacing the
     # alignment-disabled and deep-archive counts. Derived fresh from records (hybrid model).
     wc_counts, manifest_meta = _manifest_for_status(
-        cities, records_cache, Path(state_dir) if state_dir else None
+        cities, records_cache, Path(state_dir) if state_dir else None, site_config
     )
     by_work_class = wc_counts.get("by_work_class", {})
     provider_transcripts = _provider_transcript_status(records_cache, by_work_class)

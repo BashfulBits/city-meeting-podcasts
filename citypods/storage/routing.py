@@ -31,12 +31,16 @@ from citypods.storage.base import StorageBackend
 #   - ``state/asr_worker_telemetry.json`` (H14b/H14c): bounded, non-secret worker memory samples
 #     used by ``asr-worker-report`` and H14d admission tuning. One fixed CAS object avoids listing
 #     a telemetry prefix on R2.
+#   - ``state/transcript_quality_ledger.json`` (H15): the human-review mutation ledger. The durable
+#     mirror remains on B2 (`state/transcript_quality_rollups.json`); the CAS object serializes
+#     concurrent issue-ingest writes so votes are not lost.
 #   - ``provider-leases/`` (H17 PR6): the cross-process provider concurrency slots; each
 #     ``provider-leases/<domain>/slot-<i>.json`` is an independent CAS object claimed by
 #     ``put_cas``. Slot keys are derived (``0..N-1``), never listed.
 COORDINATION_PREFIXES: tuple[str, ...] = (
     "state/compute_budget.json",
     "state/asr_worker_telemetry.json",
+    "state/transcript_quality_ledger.json",
     "work-leases/",
     "provider-leases/",
 )
@@ -57,6 +61,10 @@ _EPHEMERAL_R2_PREFIXES: dict[str, str] = {
     # Bounded, non-secret worker memory samples for admission tuning; a lost object just restarts
     # sampling. No durable/canonical data.
     "state/asr_worker_telemetry.json": "bounded worker telemetry samples; restarts if lost",
+    # H15 decision ledger: authoritative writes serialize through CAS, but every committed state is
+    # mirrored to the B2 durable-state snapshot (`state/transcript_quality_rollups.json`), so the
+    # R2 object is recoverable and not the only copy of human review history.
+    "state/transcript_quality_ledger.json": "CAS write-serialization cache mirrored durably to B2",
     # Stage-2 per-item work-lease ledger: a claim token, not a work product. If lost, the item
     # looks unclaimed and is re-derived from the B2 discovery index and re-claimed.
     "work-leases/": "per-item claim tokens; re-derived from the B2 discovery index",

@@ -16,6 +16,8 @@ from citypods.statesync import (
     push_asr_runtime_log_merged,
     push_records_merged,
     push_state,
+    push_transcript_quality_log_merged,
+    push_transcript_quality_rollups_merged,
     reconcile_state,
 )
 from citypods.storage.local import LocalStorage
@@ -162,6 +164,84 @@ def test_fetch_remote_records_reads_existing(tmp_path):
     bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
     _seed_remote(bucket, "s", {"u": {"uid": "u", "audio": {"url": "R"}}})
     assert fetch_remote_records(bucket, "s") == {"u": {"uid": "u", "audio": {"url": "R"}}}
+
+
+def test_push_transcript_quality_log_merged_caps_and_unions(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    remote = _tmpfile(
+        tmp_path,
+        json.dumps(
+            {
+                "version": 1,
+                "events": [
+                    {"id": "e1", "created_at": "2026-07-10T00:00:00+00:00"},
+                    {"id": "e2", "created_at": "2026-07-10T00:01:00+00:00"},
+                ],
+            }
+        ),
+    )
+    bucket.put_file(f"{STATE_PREFIX}/transcript_quality_log.json", remote, "application/json")
+    (state_dir / "transcript_quality_log.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "events": [
+                    {"id": "e2", "created_at": "2026-07-10T00:01:00+00:00"},
+                    {"id": "e3", "created_at": "2026-07-10T00:02:00+00:00"},
+                ],
+            }
+        )
+    )
+    assert push_transcript_quality_log_merged(bucket, state_dir, max_events=2) == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    merged = json.loads((restored / "transcript_quality_log.json").read_text())
+    assert [event["id"] for event in merged["events"]] == ["e2", "e3"]
+
+
+def test_push_transcript_quality_rollups_merged_preserves_stable_evidence(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    remote = _tmpfile(
+        tmp_path,
+        json.dumps(
+            {
+                "version": 1,
+                "rows": [
+                    {
+                        "source_key": "src-1",
+                        "body_key": "city-council",
+                        "body_name": "City Council",
+                        "evidence": {"sample-a": {"sample_id": "sample-a"}},
+                    }
+                ],
+            }
+        ),
+    )
+    bucket.put_file(f"{STATE_PREFIX}/transcript_quality_rollups.json", remote, "application/json")
+    (state_dir / "transcript_quality_rollups.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "rows": [
+                    {
+                        "source_key": "src-1",
+                        "body_key": "city-council",
+                        "body_name": "City Council",
+                        "evidence": {"sample-b": {"sample_id": "sample-b"}},
+                    }
+                ],
+            }
+        )
+    )
+    assert push_transcript_quality_rollups_merged(bucket, state_dir) == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    merged = json.loads((restored / "transcript_quality_rollups.json").read_text())
+    assert sorted(merged["rows"][0]["evidence"]) == ["sample-a", "sample-b"]
 
 
 def test_push_records_merged_preserves_concurrent_audio(tmp_path):

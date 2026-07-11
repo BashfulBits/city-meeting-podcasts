@@ -315,6 +315,92 @@ def push_asr_runtime_log_merged(
     return 1
 
 
+def push_transcript_quality_log_merged(
+    storage,
+    state_dir: Path,
+    *,
+    rel_path: str = "transcript_quality_log.json",
+    max_events: int = 200,
+    log=None,
+) -> int:
+    """Merge-upload the shared H15 raw evaluation log.
+
+    Unlike rollups, the raw log is intentionally capped. Merge by event id, keep the newest
+    ``max_events``, and never let a transient remote read degrade into a last-writer-wins push.
+    """
+    if not _supported(storage) or not hasattr(storage, "put_file"):
+        return 0
+    state_dir = Path(state_dir)
+    local_path = state_dir / rel_path
+    if not local_path.exists():
+        return 0
+    emit = log or (lambda msg: print(msg, flush=True))
+    try:
+        remote_data = _fetch_remote_json(storage, rel_path)
+    except Exception as exc:  # noqa: BLE001
+        emit(f"state: WARNING remote transcript-quality log read failed: {exc}; skipping push")
+        return 0
+    if remote_data is None:
+        emit("state: WARNING remote transcript-quality log unreadable; skipping push")
+        return 0
+    try:
+        local_data = json.loads(local_path.read_text())
+    except (OSError, ValueError) as exc:
+        emit(f"state: WARNING local transcript-quality log unreadable: {exc}; skipping push")
+        return 0
+    from citypods.transcript_quality import _normalize_events
+
+    events = _normalize_events(
+        list(remote_data.get("events", [])) + list(local_data.get("events", [])),
+        max_events=max_events,
+    )
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(json.dumps({"version": 1, "events": events}, indent=2) + "\n")
+    storage.put_file(f"{STATE_PREFIX}/{rel_path}", local_path, "application/json")
+    return 1
+
+
+def push_transcript_quality_rollups_merged(
+    storage,
+    state_dir: Path,
+    *,
+    rel_path: str = "transcript_quality_rollups.json",
+    log=None,
+) -> int:
+    """Merge-upload the stable H15 body/source rollups.
+
+    Rollups are not pruned: rows merge by ``(source_key, body_key)`` and evidence merges by
+    ``sample_id``, preserving the durable one-row-per-body/source ledger used for routing.
+    """
+    if not _supported(storage) or not hasattr(storage, "put_file"):
+        return 0
+    state_dir = Path(state_dir)
+    local_path = state_dir / rel_path
+    if not local_path.exists():
+        return 0
+    emit = log or (lambda msg: print(msg, flush=True))
+    try:
+        remote_data = _fetch_remote_json(storage, rel_path)
+    except Exception as exc:  # noqa: BLE001
+        emit(f"state: WARNING remote transcript-quality rollups read failed: {exc}; skipping push")
+        return 0
+    if remote_data is None:
+        emit("state: WARNING remote transcript-quality rollups unreadable; skipping push")
+        return 0
+    try:
+        local_data = json.loads(local_path.read_text())
+    except (OSError, ValueError) as exc:
+        emit(f"state: WARNING local transcript-quality rollups unreadable: {exc}; skipping push")
+        return 0
+    from citypods.transcript_quality import _normalize_rollups
+
+    rows = _normalize_rollups(list(remote_data.get("rows", [])) + list(local_data.get("rows", [])))
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(json.dumps({"version": 1, "rows": rows}, indent=2) + "\n")
+    storage.put_file(f"{STATE_PREFIX}/{rel_path}", local_path, "application/json")
+    return 1
+
+
 def reconcile_state(
     storage, state_dir: Path, *, min_age_days: float = RECONCILE_MIN_AGE_DAYS, full_run: bool = True
 ) -> int:

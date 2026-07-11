@@ -80,21 +80,65 @@ def _fmt_ts(seconds: float) -> str:
 
 # Schema version of the word-level JSON sidecar (independent of ASR_PIPELINE_VERSION, which
 # keys re-transcription). Bump only when the JSON *shape* changes.
-_WORDS_SCHEMA_VERSION = "1"
+# v2 (H15): adds an optional per-word "p" (probability) field, additive-only.
+_WORDS_SCHEMA_VERSION = "2"
 
 
 @dataclass(frozen=True)
 class TranscriptArtifacts:
-    """The two outputs of ASR for one episode:
+    """The two outputs of ASR for one episode, plus H15's free per-run acoustic-fit signal.
 
     * ``vtt``   — clean **segment-level** WebVTT, served to podcast apps via
       ``<podcast:transcript>`` (one readable cue per utterance; small).
     * ``words`` — a **word-level** JSON sidecar consumed server-side only (phrase search,
       clip selection, diarization). Never served as the podcast transcript.
+    * ``coverage`` — fraction of words that received a valid timestamp (H15 Layer 1).
+      For ``align()`` this is the same gate value used for :class:`AlignmentQualityError`;
+      for ``transcribe()`` it is near-1.0 in practice since faster-whisper always times
+      generated words, but is still recorded for completeness.
+    * ``word_logprob_mean`` / ``word_logprob_p10`` — mean and 10th-percentile of the
+      per-word ``.probability`` faster-whisper/stable-ts populate (a linear 0-1 confidence,
+      despite the "logprob" name inherited from review/12's field naming), or ``None`` when
+      no word carried a probability value. Answers "how confidently?" where coverage answers
+      "did the words land in the audio at all?".
     """
 
     vtt: bytes
     words: bytes
+    coverage: float | None = None
+    word_logprob_mean: float | None = None
+    word_logprob_p10: float | None = None
+
+
+def _word_fit_stats(segments) -> dict:
+    """H15 Layer 1: reference-free acoustic-fit stats from one transcript's own segments.
+
+    Must run on the raw segment/word objects (not the serialized JSON), because "coverage"
+    needs the count of words *attempted*, not just the ones that ended up with a timestamp.
+    """
+    total_words = 0
+    timed_words = 0
+    probabilities: list[float] = []
+    for seg in segments:
+        for w in getattr(seg, "words", None) or []:
+            total_words += 1
+            if getattr(w, "start", None) is not None and getattr(w, "end", None) is not None:
+                timed_words += 1
+            prob = getattr(w, "probability", None)
+            if isinstance(prob, int | float):
+                probabilities.append(float(prob))
+    coverage = timed_words / total_words if total_words > 0 else 0.0
+    mean_p = sum(probabilities) / len(probabilities) if probabilities else None
+    p10 = None
+    if probabilities:
+        ordered = sorted(probabilities)
+        idx = max(0, min(len(ordered) - 1, round(0.10 * (len(ordered) - 1))))
+        p10 = ordered[idx]
+    return {
+        "coverage": round(coverage, 4),
+        "word_logprob_mean": round(mean_p, 4) if mean_p is not None else None,
+        "word_logprob_p10": round(p10, 4) if p10 is not None else None,
+    }
 
 
 def _to_vtt(segments) -> bytes:
@@ -127,7 +171,11 @@ def _to_words_json(segments, basis: str = "served") -> bytes:
             end = getattr(w, "end", None)
             token = (getattr(w, "word", "") or "").strip()
             if token and start is not None and end is not None:
-                words.append({"w": token, "s": round(float(start), 3), "e": round(float(end), 3)})
+                entry = {"w": token, "s": round(float(start), 3), "e": round(float(end), 3)}
+                prob = getattr(w, "probability", None)
+                if isinstance(prob, int | float):
+                    entry["p"] = round(float(prob), 4)
+                words.append(entry)
         text = (seg.text or "").strip()
         if not text and not words:
             continue
@@ -266,7 +314,14 @@ def transcribe(
     )
     # Materialize the generator once: both the segment VTT and the word JSON consume it.
     segs = list(segments)
-    return TranscriptArtifacts(vtt=_to_vtt(segs), words=_to_words_json(segs))
+    fit = _word_fit_stats(segs)
+    return TranscriptArtifacts(
+        vtt=_to_vtt(segs),
+        words=_to_words_json(segs),
+        coverage=fit["coverage"],
+        word_logprob_mean=fit["word_logprob_mean"],
+        word_logprob_p10=fit["word_logprob_p10"],
+    )
 
 
 class AlignmentQualityError(RuntimeError):
@@ -342,9 +397,15 @@ def align(
     vtt_str: str = result.to_vtt(segment_level=True, word_level=False)
     if not vtt_str.startswith("WEBVTT"):
         vtt_str = "WEBVTT\n\n" + vtt_str
+    # H15 Layer 1: reuse the gate's own `coverage` (identical semantics to the pass/fail check
+    # above); only the word-probability aggregate needs the shared helper.
+    fit = _word_fit_stats(result.segments)
     return TranscriptArtifacts(
         vtt=vtt_str.encode("utf-8"),
         words=_to_words_json(result.segments),
+        coverage=round(coverage, 4),
+        word_logprob_mean=fit["word_logprob_mean"],
+        word_logprob_p10=fit["word_logprob_p10"],
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -28,6 +29,7 @@ from citypods.ops.workqueue import (
 )
 from citypods.records import save_records
 from citypods.records import source_key as record_source_key
+from citypods.transcript_quality import TranscriptQualityRoute
 
 NOW = datetime(2026, 6, 11, tzinfo=UTC)
 
@@ -640,6 +642,46 @@ def test_build_manifest_align_queued_when_enabled():
     assert tx[0].work_class == "transcript-align" and tx[0].state == "queued"
 
 
+def test_build_manifest_transcript_quality_route_unblocks_align_lane():
+    """H15's routing payoff: a trusted provider-align route schedules the align lane for that
+    source/body even while asr_alignment_enabled stays off site-wide."""
+    recs = {"u": _rec(1, hosted=True, provider_text=True)}
+    tx = _tx_items(
+        build_manifest(
+            [("s", _city("d", asr_alignment_enabled=False), recs)],
+            transcript_quality_routes={
+                ("s", "city-council"): TranscriptQualityRoute(
+                    source_key="s",
+                    body_key="city-council",
+                    body_name="City Council",
+                    route_mode="provider-align",
+                )
+            },
+        )
+    )
+    assert tx[0].work_class == "transcript-align"
+    assert tx[0].state == "queued"
+
+
+def test_build_manifest_transcript_quality_route_can_force_fresh_asr():
+    recs = {"u": _rec(1, hosted=True, provider_text=True)}
+    tx = _tx_items(
+        build_manifest(
+            [("s", _city("d", asr_alignment_enabled=True), recs)],
+            transcript_quality_routes={
+                ("s", "city-council"): TranscriptQualityRoute(
+                    source_key="s",
+                    body_key="city-council",
+                    body_name="City Council",
+                    route_mode="fresh-asr",
+                )
+            },
+        )
+    )
+    assert tx[0].work_class == "transcript-asr"
+    assert tx[0].state == "queued"
+
+
 def test_build_manifest_provider_transcript_align_queued_for_timed_registry():
     recs = {"u": _provider_rec(1)}
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
@@ -760,6 +802,55 @@ def test_rebuild_manifest_from_state_dedupes_cities_sharing_a_source(tmp_path):
 
     audio_items = [wi for wi in manifest if wi.work_class == "audio" and wi.episode_uid == "u1"]
     assert len(audio_items) == 1
+
+
+def test_rebuild_manifest_from_state_applies_quality_routes(tmp_path):
+    city = _city("d", asr_alignment_enabled=True)
+    src = record_source_key(city)
+    save_records(tmp_path, src, {"u1": _rec(1, hosted=True, provider_text=True)})
+    (tmp_path / "transcript_quality_rollups.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "rows": [
+                    {
+                        "source_key": src,
+                        "body_key": "city-council",
+                        "body_name": "City Council",
+                        "evidence": {
+                            "sample-1": {
+                                "sample_id": "sample-1",
+                                "manual_decision": "a_better",
+                                "blind_mapping": {
+                                    "A": {"role": "asr-challenger", "recipe_hash": "r-new"},
+                                    "B": {
+                                        "role": "provider-align",
+                                        "recipe_hash": "r-align",
+                                    },
+                                },
+                            },
+                            "sample-2": {
+                                "sample_id": "sample-2",
+                                "manual_decision": "b_better",
+                                "blind_mapping": {
+                                    "A": {
+                                        "role": "provider-align",
+                                        "recipe_hash": "r-align",
+                                    },
+                                    "B": {"role": "asr-challenger", "recipe_hash": "r-old"},
+                                },
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        + "\n"
+    )
+
+    manifest = rebuild_manifest_from_state([city], site_config={"defaults": {}}, state_dir=tmp_path)
+    tx = [wi for wi in manifest if wi.work_class.startswith("transcript")]
+    assert [(wi.work_class, wi.state) for wi in tx] == [("transcript-asr", "queued")]
 
 
 def test_manifest_counts():

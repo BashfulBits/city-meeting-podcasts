@@ -24,16 +24,20 @@ from __future__ import annotations
 import collections
 import json
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from citypods.bodies import body_key, canonical_body
 from citypods.durations import episode_duration_hours, record_duration_hours
 from citypods.models import City, Episode
 from citypods.records import load_records
 from citypods.records import source_key as record_source_key
+
+if TYPE_CHECKING:
+    from citypods.transcript_quality import TranscriptQualityRoute
 
 MANIFEST_NAME = "work.json"
 MANIFEST_VERSION = 1
@@ -399,12 +403,27 @@ def _provider_transcript_entry(registry: object) -> dict | None:
     return None
 
 
-def _transcript_class(rec: dict) -> str:
+def _quality_route_for(
+    source_key: str,
+    rec: dict,
+    routes: Mapping[tuple[str, str], TranscriptQualityRoute] | None,
+) -> TranscriptQualityRoute | None:
+    if not routes:
+        return None
+    from citypods.transcript_quality import quality_body_key
+
+    body = canonical_body(rec.get("body") or "") or rec.get("body") or ""
+    return routes.get((source_key, quality_body_key(body)))
+
+
+def _transcript_class(rec: dict, *, route: TranscriptQualityRoute | None = None) -> str:
     """Classify the next transcript artifact this episode can produce.
 
     A stored timed city/provider document is the provider-alignment lane. A bare provider
     text/link remains the ASR forced-alignment lane; otherwise the item needs fresh ASR.
     """
+    if route is not None and route.prefers_fresh_asr:
+        return "transcript-asr"
     if _provider_transcript_entry(rec.get("provider_transcript")) is not None:
         return "provider-transcript-align"
     has_source_text = bool((rec.get("links") or {}).get("transcript"))
@@ -412,7 +431,13 @@ def _transcript_class(rec: dict) -> str:
 
 
 def _episode_work_items(
-    source_key: str, city: City, uid: str, rec: dict, bucket: str
+    source_key: str,
+    city: City,
+    uid: str,
+    rec: dict,
+    bucket: str,
+    *,
+    transcript_quality_routes: Mapping[tuple[str, str], TranscriptQualityRoute] | None = None,
 ) -> list[WorkItem]:
     """The work items one episode contributes: an ``audio`` item when it should be hosted, and a
     transcript item (asr/align, done/queued/alignment-disabled) when hosted audio exists."""
@@ -431,7 +456,8 @@ def _episode_work_items(
         items.append(WorkItem(work_class="audio", state="done" if audio_done else "queued", **base))
 
     if audio_done and city.asr_enabled:
-        work_class = _transcript_class(rec)
+        route = _quality_route_for(source_key, rec, transcript_quality_routes)
+        work_class = _transcript_class(rec, route=route)
         transcript = rec.get("transcript") or {}
         provider = _provider_transcript_entry(rec.get("provider_transcript"))
         if work_class == "provider-transcript-align":
@@ -446,9 +472,14 @@ def _episode_work_items(
             )
         else:
             transcript_done = bool(transcript.get("key"))
+        align_lane_unblocked = route is not None and route.prefers_provider_align
         if transcript_done:
             items.append(WorkItem(work_class=work_class, state="done", **base))
-        elif work_class == "transcript-align" and not city.asr_alignment_enabled:
+        elif (
+            work_class == "transcript-align"
+            and not city.asr_alignment_enabled
+            and not align_lane_unblocked
+        ):
             items.append(
                 WorkItem(work_class="transcript-align", state="alignment-disabled", **base)
             )
@@ -477,6 +508,7 @@ def build_manifest(
     *,
     policy: BacklogPolicy | None = None,
     now: datetime | None = None,
+    transcript_quality_routes: Mapping[tuple[str, str], TranscriptQualityRoute] | None = None,
 ) -> list[WorkItem]:
     """Derive the work manifest from per-source records.
 
@@ -492,7 +524,12 @@ def build_manifest(
         for uid, rec in recs.items():
             items.extend(
                 _episode_work_items(
-                    source_key, city, uid, rec, buckets.get(uid, BUCKET_FEED_VISIBLE)
+                    source_key,
+                    city,
+                    uid,
+                    rec,
+                    buckets.get(uid, BUCKET_FEED_VISIBLE),
+                    transcript_quality_routes=transcript_quality_routes,
                 )
             )
 
@@ -754,5 +791,12 @@ def rebuild_manifest_from_state(
     manifest_sources = [
         (key, city, load_records(state_dir, key)) for key, city in city_by_source.items()
     ]
-    derived = build_manifest(manifest_sources, policy=backlog_policy)
+    from citypods.transcript_quality import load_quality_routes
+
+    quality_routes = load_quality_routes(site_config, state_dir)
+    derived = build_manifest(
+        manifest_sources,
+        policy=backlog_policy,
+        transcript_quality_routes=quality_routes,
+    )
     return overlay_persisted_operational_state(derived, persisted)

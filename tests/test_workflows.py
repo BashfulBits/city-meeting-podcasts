@@ -197,6 +197,104 @@ def test_asr_uses_identical_pull_workers():
     assert "CITYPODS_INTERNAL_WORKER_SLOT" in run_step.get("env", {})
 
 
+def test_asr_quality_eval_workflow_is_separate_and_uploads_artifacts():
+    wf, job = _job("asr-quality-eval.yml", job_name="evaluate")
+    triggers = _on(wf)
+    assert set(triggers) >= {"schedule", "workflow_dispatch"}
+    assert wf.get("concurrency", {}).get("group") == "asr-quality-eval"
+    assert wf.get("concurrency", {}).get("cancel-in-progress") is False
+    sample_step = next(
+        step for step in job["steps"] if "transcript-quality sample" in str(step.get("run", ""))
+    )
+    assert "transcript-quality evaluate" in sample_step["run"]
+    upload = next(
+        step for step in job["steps"] if "actions/upload-artifact@" in str(step.get("uses", ""))
+    )
+    assert upload["with"]["retention-days"] == 14
+
+
+def test_asr_quality_review_workflow_is_weekly_issue_packaging():
+    wf, job = _job("asr-quality-review.yml", job_name="review")
+    triggers = _on(wf)
+    assert set(triggers) >= {"schedule", "workflow_dispatch"}
+    assert wf.get("permissions", {}).get("issues") == "write"
+    package = next(
+        step
+        for step in job["steps"]
+        if "transcript-quality package-review" in str(step.get("run", ""))
+    )
+    assert "package-review" in package["run"]
+    publish = next(
+        step for step in job["steps"] if step.get("name") == "Open or update H15 review issues"
+    )
+    assert "gh issue create" in publish["run"]
+    assert "gh issue edit" in publish["run"]
+
+
+def test_asr_quality_ingest_workflow_is_event_driven():
+    wf, resolve_job = _job("asr-quality-ingest.yml", job_name="resolve")
+    triggers = _on(wf)
+    assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
+    # Deny-all at the workflow level; each job grants only what it actually needs (resolve only
+    # ever reads issues — no checkout, no writes).
+    assert wf["permissions"] == {}
+    assert resolve_job["permissions"] == {"issues": "read"}
+    resolve = next(
+        step for step in resolve_job["steps"] if step.get("name") == "Resolve candidate issue(s)"
+    )
+    assert "EVENT_COMMENT_BODY" in resolve.get("env", {})
+    assert "/h15-ingest" in resolve["run"]
+
+    ingest_job = wf["jobs"]["ingest"]
+    assert ingest_job["needs"] == "resolve"
+    assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
+    assert ingest_job["strategy"]["matrix"]["issue_number"] == (
+        "${{ fromJson(needs.resolve.outputs.numbers) }}"
+    )
+    download = next(
+        step for step in ingest_job["steps"] if step.get("name") == "Download issue body"
+    )
+    assert "gh issue view" in download["run"]
+    ingest = next(
+        step
+        for step in ingest_job["steps"]
+        if "transcript-quality ingest-review" in str(step.get("run", ""))
+    )
+    assert "--issue-body-file issue-body.md" in ingest["run"]
+    close = next(
+        step for step in ingest_job["steps"] if step.get("name") == "Comment and close child issue"
+    )
+    assert "gh issue close" in close["run"]
+
+
+def test_asr_quality_ingest_schedule_fallback_scans_open_children():
+    """The safety-net cron for missed issues.edited/issue_comment webhooks must actually scan
+    open H15 child issues, not just resolve to an empty issue list and skip everything."""
+    wf, resolve_job = _job("asr-quality-ingest.yml", job_name="resolve")
+    resolve = next(
+        step for step in resolve_job["steps"] if step.get("name") == "Resolve candidate issue(s)"
+    )
+    assert 'EVENT_NAME" = "schedule"' in resolve["run"]
+    assert "gh issue list" in resolve["run"]
+    assert "H15 sample" in resolve["run"]
+
+    finalize_job = wf["jobs"]["finalize"]
+    assert set(finalize_job["needs"]) == {"resolve", "ingest"}
+    assert finalize_job["permissions"] == {"issues": "write"}  # never checks out code
+    close_parent = next(
+        step
+        for step in finalize_job["steps"]
+        if step.get("name") == "Close parent issues when their batch is clear"
+    )
+    assert "Parent issue: #" in close_parent["run"]
+    assert 'startswith("H15 sample ")' in close_parent["run"]
+    # Regex-anchored parent match, not a bare substring: `contains("Parent issue: #5")` would
+    # also match "#50"/"#500" and undercount a parent's true open-children count.
+    assert "test(" in close_parent["run"]
+    assert "contains($parent)" not in close_parent["run"]
+    assert "--limit 1000" in close_parent["run"]
+
+
 def test_audio_lane_needs_no_whisper():
     """The audio lane never runs ASR, so it must not install the asr extra or download Whisper —
     that's wasted runner time and memory."""
