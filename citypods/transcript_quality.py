@@ -26,6 +26,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from citypods.bodies import canonical_body
 from citypods.config import load_city_configs, load_site_config
@@ -38,6 +39,9 @@ from citypods.statesync import (
 )
 from citypods.storage import make_storage
 from citypods.storage.routing import RoutingStorage
+
+if TYPE_CHECKING:
+    from citypods.ctc_align import CtcFitResult
 
 RAW_LOG_NAME = "transcript_quality_log.json"
 ROLLUPS_NAME = "transcript_quality_rollups.json"
@@ -81,6 +85,15 @@ class QualityConfig:
     # evaluated samples for the row, not just reviewed ones) needed to flip route_mode once
     # calibrated.
     trust_margin_threshold: float = 0.15
+    # H15 Layer 2 (review/12 §H15): score candidates with an independent, non-Whisper CTC forced
+    # aligner in addition to Layer 1's same-generator signal. Requires the optional `asr-align2`
+    # extra (torch/torchaudio); ctc_fit() failures (extra not installed, download failure,
+    # non-English source) fall back to the Layer-1-only auto_score gracefully per sample.
+    l2_enabled: bool = True
+    # Bounded per evaluate() run, not per sample — "a rotating subset, not every meeting" (the
+    # sampler's own natural rotation, see build_sample_manifest's already-sampled exclusion,
+    # supplies the "oldest-checked-first" spread across runs).
+    l2_sample_limit: int = 2
 
 
 @dataclass(frozen=True)
@@ -168,6 +181,8 @@ def load_quality_config(site_config: dict) -> QualityConfig:
         ),
         agreement_threshold=float(raw.get("agreement_threshold", 0.7) or 0.7),
         trust_margin_threshold=float(raw.get("trust_margin_threshold", 0.15) or 0.15),
+        l2_enabled=bool(raw.get("l2_enabled", True)),
+        l2_sample_limit=max(0, int(raw.get("l2_sample_limit", 2) or 0)),
     )
 
 
@@ -930,6 +945,7 @@ def _candidate_metrics(
     *,
     acoustic_coverage: float | None,
     word_logprob_mean: float | None,
+    ctc_fit: CtcFitResult | None = None,
 ) -> dict:
     """H15's automatic per-candidate score, per Q2: driven by the real L1 acoustic-fit signal
     (asr.align()/asr.transcribe()'s own coverage + word-logprob), not a timing/density proxy.
@@ -940,6 +956,13 @@ def _candidate_metrics(
     are still computed for the human review page's badges, but no longer drive auto_score:
     they describe cue *shape*, not acoustic correctness, and stable-ts/faster-whisper always
     time every word they emit, so they were mostly measuring VTT formatting.
+
+    ``ctc_fit`` (Layer 2, review/12 §H15 "Open decisions") is an independent, non-Whisper CTC
+    forced-alignment score from ``citypods.ctc_align`` — fair in a way L1's coverage/word-logprob
+    never can be, since that model never produced either candidate's text. When present it
+    dominates auto_score (80%); L1 stays as a 20% smoothing/tie-break term rather than being
+    dropped outright, and the whole L1-only formula remains the fallback when L2 is unavailable
+    (extra not installed, non-English source, alignment failure) — see _evaluate_one_sample.
     """
     text = _candidate_plain_text(units)
     timed = sum(1 for unit in units if unit.get("end", 0) > unit.get("start", 0))
@@ -963,7 +986,12 @@ def _candidate_metrics(
     confidence_score = (
         0.5 if word_logprob_mean is None else max(0.0, min(1.0, float(word_logprob_mean)))
     )
-    auto_score = round((coverage_score * 0.6) + (confidence_score * 0.4), 4)
+    l1_score = round((coverage_score * 0.6) + (confidence_score * 0.4), 4)
+    if ctc_fit is not None:
+        l2_score = round((ctc_fit.mean_score * 0.7) + (ctc_fit.coverage * 0.3), 4)
+        auto_score = round((l2_score * 0.8) + (l1_score * 0.2), 4)
+    else:
+        auto_score = l1_score
     return {
         "text": text,
         "word_count": word_count,
@@ -975,6 +1003,8 @@ def _candidate_metrics(
         "timing_badge": _timing_badge(coverage=coverage, density=density, gap_ratio=gap_ratio),
         "acoustic_coverage": round(coverage_score, 4),
         "word_logprob_mean": round(confidence_score, 4),
+        "l2_mean_score": ctc_fit.mean_score if ctc_fit is not None else None,
+        "l2_coverage": ctc_fit.coverage if ctc_fit is not None else None,
         "auto_score": auto_score,
     }
 
@@ -1479,6 +1509,27 @@ def _render_review_page(sample: dict, blinded: list[dict], metrics: dict[str, di
 """
 
 
+def _l2_fit_for_candidate(
+    sample: dict,
+    candidate: dict,
+    *,
+    audio_clip_path: Path,
+    city: City | None,
+) -> CtcFitResult:
+    """Score one candidate's clipped text against the clipped audio with the independent CTC
+    aligner. Raises on any failure (missing asr-align2 extra, non-English source, model/download
+    failure) — the caller catches broadly and falls back to the Layer-1-only auto_score."""
+    from citypods.ctc_align import ctc_fit
+
+    return ctc_fit(
+        audio_clip_path,
+        _candidate_plain_text(candidate["units"]),
+        clip_start=float(sample.get("clip_start", 0) or 0),
+        clip_end=float(sample.get("clip_end", 0) or 0),
+        language=city.asr_language if city is not None else None,
+    )
+
+
 def _evaluate_one_sample(
     sample: dict,
     *,
@@ -1487,8 +1538,9 @@ def _evaluate_one_sample(
     manifest_sampled_at: str | None,
     city: City | None,
     storage=None,
-) -> tuple[dict, dict]:
-    """Evaluate one two-candidate sample. Returns ``(sample_event, pending_row)``.
+    l2_budget_remaining: int = 0,
+) -> tuple[dict, dict, bool]:
+    """Evaluate one two-candidate sample. Returns ``(sample_event, pending_row, l2_used)``.
 
     Raises on any failure (audio download, AlignmentQualityError on unusable provider
     captions, missing provider text, etc.) — the caller is responsible for containing that
@@ -1501,6 +1553,15 @@ def _evaluate_one_sample(
         for candidate in sample["candidates"]
     ]
     blinded = _blind_mapping(sample["sample_id"], materialized)
+
+    # L2 (independent CTC judge): best-effort, bounded per evaluate() run (l2_budget_remaining),
+    # and only possible when the episode audio is already on disk from candidate materialization
+    # above (it isn't in tests that pre-populate transcript_ref/words_ref directly, which is fine
+    # -- L2 just doesn't run for those, same as any other "extra unavailable" case).
+    audio_clip_path = sample_dir / "audio.m4a"
+    l2_available = config.l2_enabled and l2_budget_remaining > 0 and audio_clip_path.exists()
+    l2_used = False
+
     metrics: dict[str, dict] = {}
     for candidate in blinded:
         units = _candidate_units(candidate, storage=storage)
@@ -1509,10 +1570,29 @@ def _evaluate_one_sample(
         )
         clip_units = _clip_units(units, float(sample.get("clip_start", 0) or 0), clip_end)
         candidate["units"] = clip_units or units
+
+        ctc_result: CtcFitResult | None = None
+        if l2_available:
+            try:
+                ctc_result = _l2_fit_for_candidate(
+                    sample, candidate, audio_clip_path=audio_clip_path, city=city
+                )
+                l2_used = True
+            except Exception as exc:  # noqa: BLE001 - independent judge is best-effort
+                print(
+                    f"[h15] L2 ctc_fit unavailable sample={sample['sample_id']} "
+                    f"label={candidate['blind_label']}: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                # One failure (e.g. the extra isn't installed) means every subsequent attempt
+                # this sample would fail identically -- stop trying rather than double-logging.
+                l2_available = False
+
         metrics[candidate["blind_label"]] = _candidate_metrics(
             candidate["units"],
             acoustic_coverage=candidate.get("acoustic_coverage"),
             word_logprob_mean=candidate.get("word_logprob_mean"),
+            ctc_fit=ctc_result,
         )
     pair_metrics = _pair_metrics(blinded[0]["units"], blinded[1]["units"])
     score_a = metrics["A"]["auto_score"]
@@ -1565,6 +1645,7 @@ def _evaluate_one_sample(
         "artifact_dir": sample_dir.as_posix(),
         "review_page": review_page_ref,
         "blind_mapping": blind_mapping,
+        "l2_used": l2_used,
     }
     pending_row = {
         "source_key": sample["source_key"],
@@ -1590,10 +1671,11 @@ def _evaluate_one_sample(
                 "auto_margin": margin,
                 "needs_review": needs_review,
                 "blind_mapping": blind_mapping,
+                "l2_used": l2_used,
             }
         },
     }
-    return sample_event, pending_row
+    return sample_event, pending_row, l2_used
 
 
 def evaluate_samples(
@@ -1609,17 +1691,22 @@ def evaluate_samples(
     evaluated: list[dict] = []
     errors: list[dict] = []
     pending_rows: list[dict] = []
+    # L2 budget is per evaluate() run, not per sample -- "a rotating subset, not every meeting"
+    # (review/12 §H15). build_sample_manifest's already-sampled exclusion supplies the
+    # oldest-checked-first spread across separate runs.
+    l2_budget_remaining = config.l2_sample_limit if config.l2_enabled else 0
     for sample in manifest.get("samples", []):
         city_slug = str(sample.get("city_slug") or "")
         city = None if cities_by_slug is None else cities_by_slug.get(city_slug)
         try:
-            sample_event, pending_row = _evaluate_one_sample(
+            sample_event, pending_row, l2_used = _evaluate_one_sample(
                 sample,
                 out_dir=out_dir,
                 config=config,
                 manifest_sampled_at=manifest.get("sampled_at"),
                 city=city,
                 storage=storage,
+                l2_budget_remaining=l2_budget_remaining,
             )
         except Exception as exc:  # noqa: BLE001 - one bad sample must not lose the whole batch
             error_event = {
@@ -1642,6 +1729,8 @@ def evaluate_samples(
                 flush=True,
             )
             continue
+        if l2_used:
+            l2_budget_remaining -= 1
         raw_log.setdefault("events", []).append(sample_event)
         pending_rows.append(pending_row)
         evaluated.append(sample_event)

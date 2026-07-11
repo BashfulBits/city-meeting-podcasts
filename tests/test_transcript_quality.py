@@ -5,14 +5,17 @@ from pathlib import Path
 
 import pytest
 
+from citypods.ctc_align import CtcFitResult
 from citypods.security import SecurityError
 from citypods.transcript_quality import (
     QualityConfig,
     TranscriptQualityRoute,
     _blind_mapping,
+    _candidate_metrics,
     _normalize_rollups,
     _read_ref_bytes,
     _render_review_page,
+    _slug,
     accepted_recipe_allowed,
     evaluate_samples,
     ingest_review_decision,
@@ -252,6 +255,157 @@ def test_evaluate_generates_review_page_and_rollup(tmp_path):
     assert evidence["review_page"].endswith("/index.html")
     assert "metrics" in evidence
     assert evidence["auto_outcome"] in {"a_better", "b_better", "tie"}
+    assert evidence["l2_used"] is False  # no audio.m4a on disk in this fixture
+
+
+def test_candidate_metrics_l2_fit_dominates_the_blended_score():
+    """When present, L2's independent fit dominates auto_score (80%); L1 stays a 20%
+    smoothing term rather than being dropped outright."""
+    units = [{"text": "hello", "start": 0.0, "end": 0.5}]
+
+    without_l2 = _candidate_metrics(units, acoustic_coverage=0.9, word_logprob_mean=0.9)
+    with_low_l2 = _candidate_metrics(
+        units,
+        acoustic_coverage=0.9,
+        word_logprob_mean=0.9,
+        ctc_fit=CtcFitResult(mean_score=0.1, coverage=0.1, word_count=1, aligned_word_count=1),
+    )
+
+    # Same strong L1 signal, but a weak independent L2 fit pulls the blended score down hard --
+    # proving L2 dominates rather than just nudging an L1-driven score.
+    assert without_l2["auto_score"] > 0.85
+    assert with_low_l2["auto_score"] < 0.35
+    assert with_low_l2["l2_mean_score"] == 0.1
+    assert with_low_l2["l2_coverage"] == 0.1
+
+
+def test_candidate_metrics_omits_l2_fields_when_ctc_fit_absent():
+    units = [{"text": "hello", "start": 0.0, "end": 0.5}]
+    metrics = _candidate_metrics(units, acoustic_coverage=0.9, word_logprob_mean=0.9)
+    assert metrics["l2_mean_score"] is None
+    assert metrics["l2_coverage"] is None
+
+
+def _write_sample_audio(out_dir: Path, sample: dict) -> Path:
+    sample_dir = out_dir / sample["source_key"] / _slug(sample["episode_uid"]) / sample["sample_id"]
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = sample_dir / "audio.m4a"
+    audio_path.write_bytes(b"fake audio bytes")
+    return audio_path
+
+
+def test_evaluate_uses_l2_when_audio_present_and_records_it(tmp_path, monkeypatch):
+    """With the episode audio already materialized and L2 enabled, evaluate_samples calls the
+    independent CTC judge and folds its score into auto_score, recording l2_used=True."""
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    out_dir = tmp_path / "artifacts"
+    manifest = _manifest(tmp_path)
+    _write_sample_audio(out_dir, manifest["samples"][0])
+
+    fit_calls: list[str] = []
+
+    def fake_ctc_fit(audio_path, text, *, clip_start, clip_end, language):
+        fit_calls.append(text)
+        return CtcFitResult(mean_score=0.95, coverage=1.0, word_count=2, aligned_word_count=2)
+
+    monkeypatch.setattr("citypods.ctc_align.ctc_fit", fake_ctc_fit)
+
+    result = evaluate_samples(
+        manifest,
+        out_dir=out_dir,
+        state_dir=state_dir,
+        config=tq.QualityConfig(auto_margin_threshold=0.05, l2_sample_limit=2),
+    )
+
+    event = result["evaluated"][0]
+    assert event["l2_used"] is True
+    assert len(fit_calls) == 2  # both candidates scored
+    for label in ("A", "B"):
+        assert event["metrics"][label]["l2_mean_score"] == 0.95
+
+
+def test_evaluate_falls_back_to_l1_when_l2_raises(tmp_path, monkeypatch):
+    """A failing independent judge (extra not installed, download failure, non-English source)
+    must not crash the sample -- it silently falls back to the L1-only auto_score."""
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    out_dir = tmp_path / "artifacts"
+    manifest = _manifest(tmp_path)
+    _write_sample_audio(out_dir, manifest["samples"][0])
+
+    def failing_ctc_fit(*args, **kwargs):
+        raise ImportError("asr-align2 extra not installed")
+
+    monkeypatch.setattr("citypods.ctc_align.ctc_fit", failing_ctc_fit)
+
+    result = evaluate_samples(
+        manifest,
+        out_dir=out_dir,
+        state_dir=state_dir,
+        config=tq.QualityConfig(auto_margin_threshold=0.05),
+    )
+
+    assert result["errors"] == []
+    event = result["evaluated"][0]
+    assert event["l2_used"] is False
+    assert event["metrics"]["A"]["l2_mean_score"] is None
+
+
+def test_evaluate_respects_l2_sample_limit_across_samples(tmp_path, monkeypatch):
+    """l2_sample_limit bounds L2 usage per evaluate() run, not per sample -- with a budget of 1
+    across two eligible samples, only the first consumes it."""
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    out_dir = tmp_path / "artifacts"
+    manifest = _manifest(tmp_path)
+    second = dict(manifest["samples"][0])
+    second["sample_id"] = "sample-2"
+    second["episode_uid"] = "ep-2"
+    manifest["samples"].append(second)
+    for sample in manifest["samples"]:
+        _write_sample_audio(out_dir, sample)
+
+    monkeypatch.setattr(
+        "citypods.ctc_align.ctc_fit",
+        lambda *a, **k: CtcFitResult(0.9, 1.0, 2, 2),
+    )
+
+    result = evaluate_samples(
+        manifest,
+        out_dir=out_dir,
+        state_dir=state_dir,
+        config=tq.QualityConfig(auto_margin_threshold=0.05, l2_sample_limit=1),
+    )
+
+    l2_used_by_sample = {e["sample_id"]: e["l2_used"] for e in result["evaluated"]}
+    assert sorted(l2_used_by_sample.values()) == [False, True]
+
+
+def test_evaluate_never_attempts_l2_when_disabled(tmp_path, monkeypatch):
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    out_dir = tmp_path / "artifacts"
+    manifest = _manifest(tmp_path)
+    _write_sample_audio(out_dir, manifest["samples"][0])
+
+    def unexpected_call(*args, **kwargs):
+        raise AssertionError("ctc_fit should never be called when l2_enabled=False")
+
+    monkeypatch.setattr("citypods.ctc_align.ctc_fit", unexpected_call)
+
+    result = evaluate_samples(
+        manifest,
+        out_dir=out_dir,
+        state_dir=state_dir,
+        config=tq.QualityConfig(auto_margin_threshold=0.05, l2_enabled=False),
+    )
+
+    assert result["evaluated"][0]["l2_used"] is False
 
 
 def test_evaluate_handles_candidate_with_no_timing_data(tmp_path):

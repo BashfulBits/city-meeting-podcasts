@@ -31,7 +31,19 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[asr,storage]" -c constraints/asr.txt
+        # asr-align2 (H15 L2's independent CTC judge) folds into the same asr.txt lock as `asr` --
+        # torch/torchaudio are already a transitive pin there via stable-ts[fw], so torchcodec is
+        # the only incremental download this adds.
+        run: pip install -e ".[asr,asr-align2,storage]" -c constraints/asr.txt
+
+      - name: Cache L2 CTC aligner model (MMS_FA)
+        # ~1.2 GB wav2vec2 checkpoint, downloaded once via torch.hub on first ctc_fit() call.
+        # Fixed key (not content-hashed): the checkpoint URL is stable; bump the -vN suffix only
+        # if citypods/ctc_align.py switches bundles.
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/torch/hub/checkpoints
+          key: mms-fa-checkpoint-v1
 
       - name: Sample and evaluate H15 candidates
         env:

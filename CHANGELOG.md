@@ -16,6 +16,31 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **H15 Layer 2 — independent CTC forced-alignment judge** ([#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883)).
+  Added `citypods/ctc_align.py::ctc_fit()`, wrapping `torchaudio.pipelines.MMS_FA` (a wav2vec2
+  model trained purely for forced alignment — not Whisper, so it cannot share either candidate
+  generator's bias) to score the provider-align and ASR-challenger candidates' clipped text
+  against the same clipped audio, independently of both. `evaluate_samples` blends `ctc_fit()`'s
+  score into `auto_score` (80% weight, with Layer 1's coverage/word-logprob as a 20% smoothing
+  term) whenever it succeeds, bounded to `QualityConfig.l2_sample_limit` (default 2) samples per
+  `evaluate()` run — combined with the sampler's existing already-sampled exclusion, this gives a
+  rotating, oldest-checked-first subset without new cross-run state. Any failure (the
+  `asr-align2` extra not installed, a non-English source, model-download failure) falls back to
+  the pre-existing Layer-1-only `auto_score` for that candidate, the same per-sample resilience
+  pattern used elsewhere in H15 — `TranscriptQualityRoute`'s calibration-gate mechanism
+  (bootstrap → agreement check → continuous margin) is otherwise unchanged, per the acceptance
+  criterion that L2 only replace what feeds `auto_margin_avg`, not the routing state machine
+  itself. English only in v1 (`UnsupportedLanguageError` on other languages — MMS_FA's public
+  bundle needs a G2P/uroman preprocessing step this PR doesn't implement). New optional
+  `asr-align2` extra (`torch`/`torchaudio`/`torchcodec`) folded into the existing
+  `constraints/asr.txt` lock rather than a separate file, since `torch`/`torchaudio` are already
+  a transitive pin there via `stable-ts[fw]`'s own dependency on `openai-whisper` — `torchcodec`
+  (the `torchaudio.load()` decoder backend as of torchaudio 2.9+) is the only genuinely new
+  package. `asr-quality-eval.yml` installs the extra and caches the ~1.2 GB MMS_FA checkpoint via
+  `actions/cache`. See [review/12 §H15](review/12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring)
+  for the full design and the remaining open items (L3, still tracked as
+  [#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884)).
+
 - **H15 transcript-quality workflow (L1 wired, calibration-gated routing).** Added
   `citypods transcript-quality` with four sub-commands: `sample`, `evaluate`, `package-review`, and
   `ingest-review`. H15 now persists a capped raw evaluation log

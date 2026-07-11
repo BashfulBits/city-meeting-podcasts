@@ -31,6 +31,19 @@ asr-bench = [
     "stable-ts[fw]>=2.17",
     "jiwer>=3.0",                   # WER computation for asr-bench diagnostic
 ]
+# H15 Layer 2 (review/12 §H15): independent, non-Whisper CTC forced-alignment judge, used only
+# by the periodic asr-quality-eval.yml sampler for a bounded rotating subset of samples.
+# torch/torchaudio are listed for correctness if this extra is ever installed standalone, but in
+# practice they're already a transitive pin via stable-ts[fw]'s own torch/openai-whisper
+# dependency wherever `asr` is installed too — torchcodec is the only genuinely new download.
+# Compiled into the same constraints/asr.txt resolution as `asr` (see
+# scripts/compile_constraints.sh) rather than a separate lock file, so torch/torchaudio never
+# get two conflicting pins across two constraint files.
+asr-align2 = [
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    "torchcodec>=0.1",              # torchaudio.load()'s AudioDecoder backend as of torchaudio 2.9
+]
 # Backward-compatible aggregate for local contributors that want every ASR surface.
 asr = [
     "faster-whisper>=1.0",

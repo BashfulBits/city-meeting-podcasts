@@ -41,7 +41,11 @@ compile() {
 
 # Profiles mirror the extras in pyproject.toml; keep in sync with constraints/README.md.
 compile prod.txt --extra storage
-compile asr.txt  --extra storage --extra asr
+# `asr-align2` (H15 L2, torchcodec) folds into the same asr.txt resolution rather than a separate
+# lock file: torch/torchaudio are already a transitive pin via stable-ts[fw]'s own torch
+# dependency, and compiling them separately risks two constraint files disagreeing on the exact
+# pinned version of the same package.
+compile asr.txt  --extra storage --extra asr --extra asr-align2
 compile dev.txt  --extra storage --extra dev
 
 echo "Constraints recompiled. Review the diff before committing."
