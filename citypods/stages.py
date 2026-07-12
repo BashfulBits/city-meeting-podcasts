@@ -1111,6 +1111,8 @@ def _needs_chapter_remap(ep: Episode) -> bool:
         # intentionally leave that list empty and remain write-once.
         if not ep.source_chapters:
             return False
+        if ep.timeline is None:
+            return False
         return _served_chapter_basis_version(ep) != ep.timeline.version
     if not _chapters_in_source_time(ep):
         return False  # nothing to remap

@@ -1070,6 +1070,7 @@ def _record_planning_rank(rec: dict) -> tuple[tuple[int, ...], int, int]:
     return (
         _record_timeline_version_rank(rec),
         _record_source_basis_rank(rec),
+        1 if rec.get("source_chapters") else 0,
         1 if rec.get("timeline") else 0,
     )
 
@@ -1103,6 +1104,10 @@ def _preserve_remote_planning_if_better(
     for key in PLANNING_FIELDS | ARTIFACT_BLOCKS:
         if key in remote_rec and remote_rec[key]:
             rec[key] = remote_rec[key]
+        elif key == "source_chapters" and rec.get(key):
+            # A better remote planning record that simply predates source_chapters should not erase
+            # the canonical raw chapter input we already hold locally.
+            continue
         elif key in owned_artifacts:
             # This run owns and just produced this block; a better remote plan that simply lacks it
             # must not erase it. Keep local's value.
