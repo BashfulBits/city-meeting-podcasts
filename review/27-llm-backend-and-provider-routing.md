@@ -179,6 +179,36 @@ comparison-only shadow one. See §9.2 for the exact field shape; the short versi
 field on the stored output, and shadow/comparison outputs are stored separately, never racing the
 canonical write.
 
+### §5.3 DeepSeek off-peak + batch dispatch — a real, missed-in-first-draft cost lever
+
+**Gap in the first draft of this doc, caught on review: DeepSeek's off-peak and batch discounts were
+researched but never actually designed in.** This pipeline is already schedule-driven, not real-time —
+exactly the shape these discounts are built for — so this is close to free savings, not a tradeoff.
+
+- **Off-peak window:** DeepSeek has historically discounted 50–75% (V3/R1: 50% off standard models, 75%
+  off R1-class reasoning models) during **16:30–00:30 UTC**. Confirmed 2026-07-14: **V4's off-peak
+  pricing was not yet officially confirmed** at research time — treat the window as *likely* to still
+  apply, verify against DeepSeek's live pricing docs before relying on it, and design the scheduling hook
+  so it degrades gracefully (dispatch still works correctly outside the window, just without the
+  discount) rather than assuming the discount is guaranteed.
+- **Batch dispatch:** DeepSeek supports asynchronous batch submission for non-realtime work, and the
+  batch + off-peak discounts **stack** (up to ~75% combined per the research). **Distinguish this from
+  LiteLLM's own `batch_completion`**, which is client-side parallel dispatch of synchronous calls, not
+  the same thing as a provider's server-side batch-submission-then-poll API with its own discount.
+  Confirm at implementation time whether DeepSeek exposes a distinct batch endpoint (OpenAI-Batch-API
+  style: submit a JSONL of requests, poll, collect results within a completion window) or whether
+  "batching" in DeepSeek's own materials just means "async access already gets you the off-peak rate" —
+  the research wasn't fully conclusive on which, and the two have different implementation shapes.
+- **Design hook, not a hard requirement:** DeepSeek-bound dispatch — both tournament/benchmark calls
+  (§6) and any overflow production work (§5) — should **prefer** scheduling into the 16:30–00:30 UTC
+  window when the work isn't time-sensitive (which almost all of it isn't — tournament runs are weekly,
+  overflow dispatch already tolerates "picked up next run"). This is a scheduling *preference* in the
+  dispatch coordinator, not a blocking constraint — DeepSeek dispatch outside the window should still
+  work, just at standard (still cheap) pricing. Given GitHub Actions cron schedules are already flexible
+  (`audio.yml`/`asr.yml` already run multiple times/day on independent schedules), aligning a
+  DeepSeek-dispatch-preferring run with the discount window is a scheduling decision, not new
+  infrastructure.
+
 ---
 
 ## §6. Quality tournament & cost-gated champion routing
@@ -398,6 +428,9 @@ semantics and existing operational familiarity.
   bug here could silently apply or fail to apply a champion-routing decision.
 - **Mistral's rate limit is tight enough that even judge/tournament duty needs real pacing** — confirm
   the R10 Worker is genuinely ready before R2's Mistral integration is tested, not assumed ready.
+- **DeepSeek's V4 off-peak discount window (§5.3) was unconfirmed at research time** — the 16:30–00:30
+  UTC 50–75% discount is documented for V3/R1, not yet officially confirmed for V4. Verify before the
+  scheduling preference is treated as a guaranteed saving rather than a "might still apply" bonus.
 
 ---
 
@@ -447,3 +480,6 @@ gracefully with no pipeline failure.
    (order-swap, tie policy, human-calibration check).
 7. Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost, back-catalog-cost,
    apply-and-clear).
+8. DeepSeek off-peak/batch scheduling preference (§5.3) — confirm V4's off-peak window and whether a
+   distinct batch-submission endpoint exists before implementing; wire as a scheduling preference in the
+   dispatch coordinator, not a hard requirement.
