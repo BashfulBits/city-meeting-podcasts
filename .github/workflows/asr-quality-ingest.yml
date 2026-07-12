@@ -136,7 +136,7 @@ jobs:
     # Runs once per workflow run (not once per matrix leg) so N children closing in the same
     # run can't race each other into double-commenting/closing the same parent.
     needs: [resolve, ingest]
-    if: always() && needs.resolve.result != 'failure'
+    if: always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'
     runs-on: ubuntu-latest
     # Never checks out code; comments/closes parent issues.
     permissions:
@@ -145,6 +145,7 @@ jobs:
       - name: Close parent issues when their batch is clear
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           parents=$(gh issue list --state open \
             --search 'in:title "H15 transcript quality review"' --json number,title \

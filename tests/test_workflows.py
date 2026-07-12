@@ -289,12 +289,16 @@ def test_asr_quality_ingest_schedule_fallback_scans_open_children():
 
     finalize_job = wf["jobs"]["finalize"]
     assert set(finalize_job["needs"]) == {"resolve", "ingest"}
+    assert finalize_job["if"] == (
+        "always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'"
+    )
     assert finalize_job["permissions"] == {"issues": "write"}  # never checks out code
     close_parent = next(
         step
         for step in finalize_job["steps"]
         if step.get("name") == "Close parent issues when their batch is clear"
     )
+    assert close_parent["env"]["GH_REPO"] == "${{ github.repository }}"
     assert "Parent issue: #" in close_parent["run"]
     assert 'startswith("H15 sample ")' in close_parent["run"]
     # Regex-anchored parent match, not a bare substring: `contains("Parent issue: #5")` would

@@ -16,6 +16,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **`ASR Quality Ingest` no longer fails on unrelated issue comments, and its parent-close pass
+  now works without a checkout.** The workflow still listens to `issue_comment`, but the
+  `finalize` job now skips runs where `resolve` found no H15 child issue to ingest, so routine PR
+  automation comments stop generating red Xs. When `finalize` does run, it now passes
+  `GH_REPO=${{ github.repository }}` to `gh`, avoiding the regression where the job intentionally
+  skipped checkout and then failed with "not a git repository" while listing/closing parent
+  issues.
 - **Chapters now auto-heal after a later timeline correction instead of fossilizing served-time
   offsets (GH#775).** Provider chapter markers are now persisted separately as durable
   `source_chapters`, while `chapters` remains the current served-time/feed-facing projection.
