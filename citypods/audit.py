@@ -223,6 +223,25 @@ def check_staleness(
     return None
 
 
+def _lifecycle_status(city: City) -> str:
+    """Return the feed's operator-verified lifecycle status, if any.
+
+    Unknown/malformed values collapse to ``"active"`` so the audit stays fail-open unless the
+    operator explicitly marks a feed inactive/superseded in YAML.
+    """
+    audit_cfg = city.extra.get("audit")
+    if not isinstance(audit_cfg, dict):
+        return "active"
+    lifecycle = audit_cfg.get("lifecycle")
+    if not isinstance(lifecycle, dict):
+        return "active"
+    status = lifecycle.get("status")
+    if not isinstance(status, str):
+        return "active"
+    status = status.strip().lower()
+    return status if status in {"active", "inactive", "superseded"} else "active"
+
+
 def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Finding | None:
     """A Granicus view returning exactly the 100-item cap is probably truncated, so
     low-frequency bodies may be missing — consider multi-view (``feed_urls``) or Swagit."""
@@ -1293,13 +1312,19 @@ def audit_city(
     episodes = filter_by_body(episodes, body)
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
+    lifecycle_status = _lifecycle_status(city)
+    suppress_lifecycle_checks = lifecycle_status in {"inactive", "superseded"}
 
     findings: list[Finding] = []
-    empty = check_empty(city.slug, episodes, min_meetings, diff=diff)
+    empty = None
+    if not suppress_lifecycle_checks:
+        empty = check_empty(city.slug, episodes, min_meetings, diff=diff)
     if empty:
         findings.append(empty)
     if not empty or empty.severity != ERROR:  # skip further checks on a totally empty feed
-        stale = check_staleness(city.slug, episodes, now, archive_newest=archive_newest)
+        stale = None
+        if not suppress_lifecycle_checks:
+            stale = check_staleness(city.slug, episodes, now, archive_newest=archive_newest)
         if stale:
             findings.append(stale)
         if view_counts is not None:
