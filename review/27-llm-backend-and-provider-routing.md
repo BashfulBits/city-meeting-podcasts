@@ -36,7 +36,7 @@ summarization) — those are R5/R6's own designs, consumers of this interface, n
 | Provider | Free tier shape | Relevant model | Rate limits | Context window | Role here |
 |---|---|---|---|---|---|
 | **Gemini** | **Ongoing**, not a trial | Gemini 3 Flash | 10 RPM / 250K TPM / 1,500 RPD | 1M tokens | **Primary production channel** |
-| **DeepSeek** | One-time 5M-token grant, 30-day expiry, then pay-per-token | deepseek-v4-flash / v4-pro | Concurrency-based, not RPM/RPD | 1M tokens | **Secondary — cheap paid overflow + tournament participant** |
+| **DeepSeek** | One-time 5M-token grant, 30-day expiry, then pay-per-token | **deepseek-v4-flash** (default) / **v4-pro** (cost-gated upgrade) | Concurrency-based, not RPM/RPD | 1M tokens (both) | **Secondary — cheap paid overflow + tournament participant** |
 | **Mistral** | **Ongoing** "Experiment" tier, ~1B tokens/month | Mistral Large 3 | ~2 RPM (plan for 1/min) | 256K tokens | **Tournament judge + occasional per-verb champion, not a default full-catalog channel** |
 
 **Corrections from the initial framing:** DeepSeek's "free allotment" is a one-time 30-day trial, not an
@@ -44,6 +44,30 @@ ongoing allowance — its actual advantage is being extremely cheap once paid (d
 $0.14/M input cache-miss, $0.28/M output), not free. Gemini's free tier is the one that's genuinely
 ongoing, which is why it's the primary channel below, not DeepSeek. `deepseek-chat`/`deepseek-reasoner`
 are deprecated 2026-07-24 in favor of `deepseek-v4-flash`/`deepseek-v4-pro` — use the new names.
+
+### §2.1 DeepSeek v4-flash vs. v4-pro — a within-provider tier decision, not just a model string
+
+**Added 2026-07-15 — v4-flash is a planned, distinctly-tracked option, not just "available because
+LiteLLM lets you pass any model string."** v4-flash is consistently **~3x cheaper than v4-pro** across
+every dimension ($0.14 vs $0.435/M cache-miss input, $0.28 vs $0.87/M output) while retaining the
+**same 1M-token context window** — the large-context benefit isn't traded away for the cost savings.
+Notably, per DeepSeek's own deprecation note, `deepseek-chat`/`deepseek-reasoner` (the old
+non-thinking/thinking mode names) both now map onto v4-flash, not just the "fast/simple" of the two — so
+v4-flash isn't a stripped-down model in the way "flash" tiers sometimes are elsewhere, it's more capable
+than the naming alone suggests.
+
+**Default DeepSeek to v4-flash; v4-pro is a cost-gated upgrade, evaluated per task-verb — reusing the
+exact champion-routing mechanism from §6, not a new one.** This mirrors the provider-level policy
+precisely: v4-flash is the cheap baseline (analogous to Gemini's free tier at the provider level),
+v4-pro must clear the same required win-rate margin (§6.3) to be proposed as the DeepSeek-side tier for
+a given verb — e.g. "may do fine for simpler summarization tasks" on flash, while a verb that needs more
+reasoning capability (potentially `tag`, which has to weigh nuanced taxonomy judgment) might justify the
+upgrade. **No new versioning machinery needed:** `recipe_hash` already folds in `model_id` (§7), so
+switching a verb between `deepseek/deepseek-v4-flash` and `deepseek/deepseek-v4-pro` is already a normal
+version bump through the existing mechanism — this is the existing design generalizing cleanly, not a
+gap. **Judging note:** a flash-vs-pro comparison for a given verb still needs a non-DeepSeek judge
+(Gemini or Mistral) per the same self-family-bias rule as the provider-level tournament, since both
+candidates share the DeepSeek family.
 
 **Why three providers, not two:** the round-robin tournament (§6) requires exactly this — with 3 models
 and the rule "a judge can never grade its own family," a round robin covers all 3 pairs with zero
@@ -252,7 +276,10 @@ yet for that verb, and champion decisions should lean on the human read until it
 switch** — not just win more than half the judged comparisons. (Recommend a concrete default, e.g. >60%
 win rate over a rolling sample, but this should be a tunable config value, not hardcoded.) If no
 challenger clears the threshold for a verb that week, the ticket is FYI-only — no decision is requested,
-avoiding weekly decision fatigue for a "nothing changed" week.
+avoiding weekly decision fatigue for a "nothing changed" week. **"Challenger" includes the within-DeepSeek
+flash→pro upgrade (§2.1)**, using the identical mechanism — the ticket doesn't need a separate code path
+for "switch provider" vs. "switch tier within a provider," since both are just "propose a different
+`model_id`" against the same recipe_hash-driven versioning.
 
 **Weekly "champion stats" GitHub issue, one per task-verb** (or one consolidated issue with a section per
 verb — implementation detail to settle when this is built), following the existing conventions this
@@ -270,7 +297,9 @@ containing:
    per-call-cost telemetry exists too, so "cost to re-derive verb X across N already-processed episodes"
    is a simple multiplication from measured averages, not a guess.
 4. **A checkbox decision block** (one checkbox per real option — keep current champion / switch to
-   challenger X, with and without back-catalog upgrade) — modeled on the well-established
+   challenger X, with and without back-catalog upgrade; for DeepSeek specifically, "challenger X" may be
+   "DeepSeek v4-pro" while the current champion is "DeepSeek v4-flash," same mechanism) — modeled on the
+   well-established
    "Renovate Dependency Dashboard" pattern (checkboxes in a bot-maintained issue that a scheduled Action
    parses and acts on), adapted to this project's own hidden-JSON-state-in-body convention rather than a
    new state-tracking mechanism.
@@ -411,6 +440,9 @@ semantics and existing operational familiarity.
   bias is canceled by running both orderings; tie-handling matches the configured policy.
 - Champion routing: a challenger below the required win-rate margin produces no checkbox proposal; one
   above it does; checking a box applies the config change and clears the checkbox on the next ticket.
+- Flash/pro tier: a v4-pro fixture win over v4-flash below the margin produces no proposal, one above it
+  does, using the same code path as a cross-provider champion switch (no separate tier-switch logic).
+  A flash-vs-pro judged comparison is asserted to never use a DeepSeek-family model as judge.
 - Budget: a soft-cap breach degrades (skips further dispatch for that provider/cycle) without failing the
   pipeline.
 
