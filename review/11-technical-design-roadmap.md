@@ -143,8 +143,6 @@ sync · #20 video enclosures (partial).
 | Speaker diarization | #7 | L1 | §5.1 — after H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment |
 | Durable provider-failure classification feed | new (absorbs closed GH#379) | L1 | §5.1 · append-friendly episode/source failure events with stable categories, terminal-vs-transient state, first/last seen, and references to existing provider telemetry; `/admin/status` is the first reader, with Phase-R query surfaces consuming it later |
 | Hosted-runner infrastructure failure monitoring + pinned-runtime fallback | new (Infra) | L1 | Track ASR/audio/other long-running GitHub Actions failures whose root cause is hosted-runner infrastructure (`exit 143` without the graceful-yield marker, lost runner communication, missing per-step logs, similar non-deterministic runner shutdowns). If those failures continue at a material rate after H14b/H14c/H19 stabilize the worker mix, promote a repo-owned pinned container runtime for the affected workflow(s) so the execution environment is versioned like the Python/ffmpeg/model inputs instead of relying on `ubuntu-latest`. This is reliability/reproducibility follow-up, not an automatic scope promotion over the external-worker path. |
-| H9 combined-throughput evaluation | [GH#278](https://github.com/BashfulBits/city-meeting-podcasts/issues/278) | L3 | **Deferred from Phase H on 2026-07-10.** H14d's live telemetry, chosen default GPUs (`Beam RTX4090`, `Modal L4`), provider-cycle dollar budgets, and the maintained local 4-shard throughput baseline already answer the launch-gate question this item was meant to close: by inspection, combined free-tier capacity clears the 80-feed initial transcription backlog within one month with margin, and the current defaults are sufficient without a dedicated benchmark/route-policy project. Keep the design text in [review/12 §H9](12-hardening-and-efficiency.md#h9--combined-throughput-evaluation-diarization-speakerhour) as background for a future re-open if backlog shape, provider pricing, or the diarization rollout materially changes. |
-| **H20 external work-lease stale-claim hardening** | new | L2 | **Deferred from Phase H on 2026-07-10.** H17/H14d fixed the material correctness and operability gaps that surfaced in the first live worker runs, and the remaining stale-claim ergonomics (`lease` age / renew-at visibility, one-owner or one-item doctoring, TTL retune) are useful but not currently required for launch or safe routine operation. Keep this as backlog-only control-plane polish; promote it later only if real operator pain or repeated stale-lease incidents justify the extra surface area. |
 | Runtime/dependency maintenance automation | umbrella [GH#804](https://github.com/BashfulBits/city-meeting-podcasts/issues/804) | L2→L3 | **Final Phase-R release item; completing Phase R is the 1.0 gate. Foundation shipped** ([#805](https://github.com/BashfulBits/city-meeting-podcasts/pull/805), [#806](https://github.com/BashfulBits/city-meeting-podcasts/pull/806), [#807](https://github.com/BashfulBits/city-meeting-podcasts/pull/807)) — normative contract in [`review/22`](22-dependency-and-reproducibility-policy.md): compiled **version-pinned** Python `constraints/*.txt` (single source of truth for CI, the GHCR runner image, **and** the Modal/Beam worker images) with `lock.yml` + a `ci.yml` drift gate; all third-party Actions SHA-pinned ([GH#734](https://github.com/BashfulBits/city-meeting-podcasts/issues/734), closed); HF model revisions pinned ([GH#498](https://github.com/BashfulBits/city-meeting-podcasts/issues/498), closed) and shared canonically in `citypods.asr`; `.github/renovate.json5` two-lane flow (hygiene auto-PRs; a Dashboard-approval gate + **per-source** `dep-bump-smoke` for output-affecting bumps); `scripts/check_dependency_policy.py` CI guard keeps pins from rotting. **Remaining to close Phase R:** activate Renovate on the repo, the monthly immutable-URL/checksum FFmpeg update PR, and (optional hardening) hash-verified `--require-hashes` image installs. Weekly image builds verify pinned inputs but do not silently advance them. Absorbs the remaining useful scope of closed GH#339. |
 
 > **Reprioritized 2026-07-12 (maintainer decision): records → managed SQL moves decisively out of Phase R
@@ -160,6 +158,14 @@ sync · #20 video enclosures (partial).
 > it for the Worker tier) — the same "don't migrate the data twice" logic review/17 already used to keep
 > records on B2 instead of routing them through R2 first. This does not add scope to 1.0; it removes an
 > ambiguous half-scoped item from the Phase-R table and gives the deferred work an accurate home.
+>
+> **Same pass: H9 and H20 moved from this table to the Deferred backlog (§4 "Deferred backlog" block /
+> §6), not kept in Phase R.** Both are Phase-H-numbered infrastructure items explicitly deferred *from*
+> Phase H on 2026-07-10 — their own entries already said "backlog-only" and "background for a future
+> re-open." Phase R is the research-tool-surface series that gates 1.0; listing Phase H backlog items in
+> that table risked implying they were part of the toward-1.0 series, the same inconsistency the
+> records→SQL move above corrects. No content lost — see the Deferred backlog block below for the full
+> rationale, unchanged.
 
 ### Phase E — Engagement & Distribution (post-1.0) · sketches §5.2
 
@@ -244,7 +250,17 @@ provider signal — **Beam** via YAML-driven dollars-per-second rates times the 
 estimated runtime model per task/backend and updating it after every completion from estimate vs actual
 GPU runtime, and (3) revisit the host-memory guardband once
 download/decode buffering is measured well enough to safely tighten it (likely from the current 80%
-toward 90%).
+toward 90%) · **H9 combined-throughput evaluation** ([GH#278](https://github.com/BashfulBits/city-meeting-podcasts/issues/278), deferred from Phase H 2026-07-10) — H14d's live telemetry, chosen default
+GPUs (`Beam RTX4090`, `Modal L4`), provider-cycle dollar budgets, and the maintained local 4-shard
+throughput baseline already answer the launch-gate question this item was meant to close: combined
+free-tier capacity clears the 80-feed initial transcription backlog within one month with margin.
+Design text kept in [review/12 §H9](12-hardening-and-efficiency.md#h9--combined-throughput-evaluation-diarization-speakerhour)
+as background for a future re-open if backlog shape, provider pricing, or the diarization rollout
+materially changes · **H20 external work-lease stale-claim hardening** (new, deferred from Phase H
+2026-07-10) — H17/H14d fixed the material correctness/operability gaps from the first live worker runs;
+remaining stale-claim ergonomics (lease age/renew-at visibility, one-owner/one-item doctoring, TTL
+retune) are useful but not currently required for launch or safe routine operation; promote only if
+real operator pain or repeated stale-lease incidents justify it.
 **Deleted:** #5 entities/NER.
 
 ---
