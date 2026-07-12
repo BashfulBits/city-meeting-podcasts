@@ -52,8 +52,14 @@ stable `uid`) and is linked from playable feed `<item>` entries, city/archive vi
 - **Synced transcript** — render the served-time VTT/JSON; clicking a line seeks the player; the player
   position highlights the line. **Forward-compatible with speaker attribution (reserved for R5, not
   built here)** — see § Data model deltas #3.
-- **Chapters / agenda items** — the served-time chapters; each links to its agenda-packet page where
-  available.
+- **Chapters / agenda items** — the served-time chapters; **each entry is clickable to seek the player to
+  that chapter's timestamp** (`chapters[i].start`, already on the record — no new data, this is a
+  rendering/JS requirement), the same in-page sync behavior the transcript gets, not just an outbound
+  link. The agenda-packet link (where available) is a **separate, distinct affordance** next to the
+  seek control, since it navigates away from the page while seeking stays on it — same in-page/
+  out-of-page split the "Official links" and "Source-time deep-links" bullets below already draw.
+  **Exact visual treatment (icon vs. clickable timestamp vs. clickable title) is TBD**, but the
+  seek-to-timestamp wiring itself is required in this design, not deferred — see § Tests/Acceptance.
 - **Official links** — agenda / minutes / canonical video (`ep.links`, label map
   `citypods/feeds.py:25-34`, resolved via `episode_resource_links(ep)`, `citypods/feeds.py:73-78`), plus
   the city's `meetings_url`/`city_website` (#51, shipped). The canonical city watch page remains visible
@@ -66,8 +72,15 @@ stable `uid`) and is linked from playable feed `<item>` entries, city/archive vi
   `"deeplink" in provider.capabilities`; implemented for Granicus/Swagit/CivicPlus/CivicClerk). This is
   exactly the pattern `citypods/clips.py:18-23` already documents for clip extraction — reuse it, don't
   reinvent it.
-- **Shareable deep-links** — `#t=<seconds>` fragment that deep-links a player position; a "copy quote +
-  link" affordance on transcript selections (the served timestamp + source deep-link).
+- **Shareable deep-links** — `#t=<seconds>` fragment that deep-links a player position on **our own
+  meeting page**. **Our page URL is always the primary shared link, not the provider's** — the point is
+  to drive traffic/adoption to the site, not hand it to the source portal. The "copy quote + link"
+  affordance on transcript selections copies text of the shape `"<quote>" — <city> <body>, <date> at
+  <timestamp> — <our page url>#t=<seconds> (source: <provider deep link>)`: our URL is the link, the
+  provider's source-time deep-link is included as a secondary "source:" reference in the copied text,
+  never the primary target. This is the same ordering the separate "Source-time deep-links" bullet above
+  already implies (it's presented as *its own*, secondary affordance — "watch this moment on the city's
+  archive" — not the thing being shared by default).
 - **"Report a problem"** — links to the #56 issue template, prefilled with slug + uid.
 
 ### City-level entry point (added 2026-07-13 — gap found during this design pass)
@@ -264,6 +277,11 @@ longer one the first time.
 - `render_city_archive_page` lists every retained episode for a city (not capped by `max_episodes`),
   including withheld-media entries with a visible availability badge, each linking to its meeting page.
 - An episode outside the feed window appears on the archive page but not the "Recent meetings" list.
+- Clicking a chapter entry seeks the player to `chapters[i].start`; the chapter's agenda-packet link
+  (where present) remains a separate control that navigates away rather than seeking.
+- The "copy quote + link" affordance produces our page URL (with `#t=` fragment) as the primary link and
+  the provider source-time deep-link only as a secondary "source:" reference in the copied text — assert
+  the provider URL is never the primary/first URL in the copied string.
 
 ### Risks
 
@@ -299,6 +317,10 @@ against both today's word-JSON shape and R5's future speaker-attribution shape. 
 discoverable browse path to its full archive** — the "Recent meetings" list links to meeting pages, and
 a "Browse the full archive" page lists every retained meeting, not just the current feed window — so a
 visitor interested in one city can reach any of its meetings without needing search (R2) to exist yet.
+Chapters seek the player in-page in addition to any outbound agenda-packet link. Sharing a quote or
+timestamp always produces our page URL as the primary link, with the provider's source-time deep-link
+only as a secondary reference — the site is the thing that gets shared and gains adoption, not the
+source portal.
 
 ### Proposed GitHub issues (not filed — batch review pending)
 
@@ -313,6 +335,10 @@ visitor interested in one city can reach any of its meetings without needing sea
 6. City-level entry point: link "Recent meetings" titles to meeting pages, add
    `render_city_archive_page` + `templates/city_archive.html.j2` + the "Browse the full archive" link on
    the city page.
+7. Chapter-click seek-to-timestamp wiring in the transcript/player JS component (exact visual treatment
+   TBD, behavior required).
+8. "Copy quote + link" affordance: our page URL (with `#t=`) as the primary copied link, provider
+   source-time deep-link as a secondary reference only.
 
 ---
 
