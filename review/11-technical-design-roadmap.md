@@ -137,12 +137,12 @@ sync · #20 video enclosures (partial).
 | Per-agenda-item "what changed" cards | #3/GH#155 | L1 | §5.1 |
 | Auto-summaries | #2 | L1 | §5.1 |
 | Soundbite highlights | #15/GH#156 | L1 | §5.1 |
-| Speaker diarization | #7 | L1 | §5.1 — after H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment. **Sequenced ahead of front-end design cycle** (below): if speaker attribution ships, meeting pages need a speaker taxonomy (labels, per-speaker linking) baked into the page/UI design rather than retrofitted after a design pass locks the layout |
+| **Speaker diarization** | #7 | L1 | §5.1 — **ROADMAP R5, full pull-forward, gating 1.0 (2026-07-12).** After H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment. **Sequenced ahead of front-end design cycle** (below): meeting pages need a speaker taxonomy (labels, per-speaker linking) baked into the page/UI design rather than retrofitted after a design pass locks the layout. **Depends on a minimal pull-forward of Phase F's attendee extraction (#14)** — diarization alone only clusters anonymous voices; real-name labeling needs the "who was present" name list §5.3 describes. The richer Phase-F attendee/vote item (platform-metadata tallies, entity-model linkage) stays post-1.0 |
 | Front-end design cycle | #55 (#20/#54) | L1 | §5.1 — sequenced after speaker diarization above so the design pass can account for its taxonomy up front |
 | Accessibility (WCAG) | #50 | L1 | §5.1 |
 | `<podcast:funding>` link | #16 | L1 | §5.1 |
-| Durable provider-failure classification feed | new (absorbs closed GH#379) | L1 | §5.1 · append-friendly episode/source failure events with stable categories, terminal-vs-transient state, first/last seen, and references to existing provider telemetry; `/admin/status` is the first reader, with Phase-R query surfaces consuming it later |
-| Hosted-runner infrastructure failure monitoring + pinned-runtime fallback | new (Infra) | L1 | Track ASR/audio/other long-running GitHub Actions failures whose root cause is hosted-runner infrastructure (`exit 143` without the graceful-yield marker, lost runner communication, missing per-step logs, similar non-deterministic runner shutdowns). If those failures continue at a material rate after H14b/H14c/H19 stabilize the worker mix, promote a repo-owned pinned container runtime for the affected workflow(s) so the execution environment is versioned like the Python/ffmpeg/model inputs instead of relying on `ubuntu-latest`. This is reliability/reproducibility follow-up, not an automatic scope promotion over the external-worker path. |
+| Durable provider-failure classification feed | new (absorbs closed GH#379) | L1 · **deprioritized below diarization/R4/R5/R6 (2026-07-12)** | §5.1 · append-friendly episode/source failure events with stable categories, terminal-vs-transient state, first/last seen, and references to existing provider telemetry; `/admin/status` is the first reader, with Phase-R query surfaces consuming it later. **Why lower priority:** the safety-critical part already shipped as H16 PR3 (withholding empty/broken media, redacted evidence, weekly digest); what's left here is an observability/trust *presentation* layer on data that's already being captured safely — valuable, but nothing user-facing breaks by deferring it |
+| Hosted-runner infrastructure failure monitoring + pinned-runtime fallback | new (Infra) | L1 · **deprioritized below diarization/R4/R5/R6 (2026-07-12)** | Track ASR/audio/other long-running GitHub Actions failures whose root cause is hosted-runner infrastructure (`exit 143` without the graceful-yield marker, lost runner communication, missing per-step logs, similar non-deterministic runner shutdowns). If those failures continue at a material rate after H14b/H14c/H19 stabilize the worker mix, promote a repo-owned pinned container runtime for the affected workflow(s) so the execution environment is versioned like the Python/ffmpeg/model inputs instead of relying on `ubuntu-latest`. This is reliability/reproducibility follow-up, not an automatic scope promotion over the external-worker path. **Why lower priority:** this is an evidence-gated watch item with no GitHub issue behind it — there's nothing to build until a `run_history.jsonl`/exit-143 telemetry check confirms the trigger has actually fired, which hasn't been done |
 | Runtime/dependency maintenance automation | umbrella [GH#804](https://github.com/BashfulBits/city-meeting-podcasts/issues/804) | L2→L3 | **Final Phase-R release item; completing Phase R is the 1.0 gate. Foundation shipped** ([#805](https://github.com/BashfulBits/city-meeting-podcasts/pull/805), [#806](https://github.com/BashfulBits/city-meeting-podcasts/pull/806), [#807](https://github.com/BashfulBits/city-meeting-podcasts/pull/807)) — normative contract in [`review/22`](22-dependency-and-reproducibility-policy.md): compiled **version-pinned** Python `constraints/*.txt` (single source of truth for CI, the GHCR runner image, **and** the Modal/Beam worker images) with `lock.yml` + a `ci.yml` drift gate; all third-party Actions SHA-pinned ([GH#734](https://github.com/BashfulBits/city-meeting-podcasts/issues/734), closed); HF model revisions pinned ([GH#498](https://github.com/BashfulBits/city-meeting-podcasts/issues/498), closed) and shared canonically in `citypods.asr`; `.github/renovate.json5` two-lane flow (hygiene auto-PRs; a Dashboard-approval gate + **per-source** `dep-bump-smoke` for output-affecting bumps); `scripts/check_dependency_policy.py` CI guard keeps pins from rotting. **Remaining to close Phase R:** activate Renovate on the repo, the monthly immutable-URL/checksum FFmpeg update PR, and (optional hardening) hash-verified `--require-hashes` image installs. Weekly image builds verify pinned inputs but do not silently advance them. Absorbs the remaining useful scope of closed GH#339. |
 
 > **Reprioritized 2026-07-12 (maintainer decision): records → managed SQL moves decisively out of Phase R
@@ -184,8 +184,7 @@ sync · #20 video enclosures (partial).
 | Weekly look-back digest | new (Feature A) | L1 |
 | "National highlights" curated reel | new (Feature A) | L1 |
 | Substack newsletter channel | #18 (email split) | L1 |
-| Topic/issue + region roll-up feeds | #12/#13 | L1 |
-| Custom-query feed builder | #12+#13 | L1 · **the fully-general form is blocked on the Interaction seam (§5.5), post-1.0**; a curated pre-generated-combos version does not need it — see §5.2 |
+| Topic/region roll-up feeds (pre-generated combos) | #12/#13 | L1 · static, no DB/Worker — see §5.2 for examples and the internal-plumbing rationale |
 | OPML export | #17 | L1 |
 | Privacy-respecting download analytics | GH#125 | L1 |
 
@@ -198,7 +197,7 @@ sync · #20 video enclosures (partial).
 | Backup-material (packet) analysis | new (Feature B) | L1 |
 | Legistar provider (rich agendas/votes/rosters — InSite API) | #31 | L1 |
 | Vote/roll-call extraction (metadata + minutes) | #8 | L1 |
-| Attendee extraction (from minutes) | #14 | L1 |
+| Attendee extraction (from minutes) | #14 | L1 · **a minimal name-list slice is pulled forward to ROADMAP R5, gating 1.0** (feeds speaker-diarization naming, §5.1); the richer platform-metadata/vote-linked/entity-model form described in §5.3 stays here, post-1.0 |
 
 ### Phase C — Co-Creation & AI Audio (furthest horizon) · sketches §5.4
 | Item | #/GH | Maturity |
@@ -332,13 +331,20 @@ GPU backend (Modal/Kaggle/self-hosted/AWS) without changing the diarization logi
 infra the maintainer wants **locked pre-1.0**. *Depends on:* word timing — H12 moves it into the
 word-JSON sidecar, which diarization consumes (built on PR #249's `word_timestamps`); H6b sharded ASR
 workflow (dedicated runner/lane for heavy inference); H9 offload evaluation (cost/quality baseline against
-the backend interface). **New H14d note:** do not reuse ASR's current budget coefficients or admission
-thresholds blindly here; diarize needs its own measured GPU/host-memory profile, its own budget-unit
-coefficient, and likely a stricter host-RSS guard than VRAM guard because the first external ASR runs were
-host-memory-heavier than GPU-memory-heavy. *Sequencing:* implement after H6b lands a separate ASR runner — do not add
-diarization to the current single-runner enrich path. Also implement (or at least settle its
-speaker-taxonomy data shape) **before** the front-end design cycle (above), since a speaker-attribution
-UI is a real input to that redesign, not a later bolt-on. When both products are requested externally,
+the backend interface). **Naming (2026-07-12, full pull-forward):** diarization alone produces only
+anonymous voice clusters ("Speaker 2") — turning that into a real name needs the minimal attendee-name
+list pulled forward from Phase F's attendee extraction (§5.3) for that meeting, matched to voice
+clusters **identify-then-human-confirm, never auto-named**, consistent with the project's "never
+editorialize/auto-attribute the factual record" stance. Ship diarization without names before the
+matching UI exists rather than block the transcript-level feature on it; anonymous "Speaker N" labels
+are still strictly better than no attribution. **New H14d note:** do not reuse ASR's current budget
+coefficients or admission thresholds blindly here; diarize needs its own measured GPU/host-memory
+profile, its own budget-unit coefficient, and likely a stricter host-RSS guard than VRAM guard because
+the first external ASR runs were host-memory-heavier than GPU-memory-heavy. *Sequencing:* implement
+after H6b lands a separate ASR runner — do not add diarization to the current single-runner enrich path.
+**Full pull-forward (2026-07-12):** implement **before** the front-end design cycle (above), not just
+settle its data shape, since a speaker-attribution UI is a real input to that redesign, not a later
+bolt-on. When both products are requested externally,
 prefer one episode worker flow that shares download, decode/resample, normalized temporary audio,
 VAD/chunk planning, startup, and final timestamp/artifact coordination. ASR and diarization normally
 use different neural models, so the expected gain is operational reuse rather than shared model
@@ -376,14 +382,23 @@ moderation/defamation care on anything characterizing named individuals.
 digests/highlights to **Substack** (external — avoids native email/PII/CAN-SPAM infra near-term); the
 static digest is the source content. *Tradeoff:* some lock-in vs fast reach; keep RSS as the open mirror.
 
-**Topic/region roll-up feeds + custom-query builder (#12/#13/#17).** *Problem:* "all zoning items in
-TX," "my whole city." *Approach — two tiers, not one feature:* (1) **pre-generated combos** (a curated
-set of region/state/topic feeds) as static files + **OPML** export — no DB, no Worker, ships the same
-way as the rest of Phase E; start here. (2) a **fully custom** query builder (arbitrary user-chosen
-filters at request time) needs the **Interaction seam** (§5.5) — it's one of the named triggers for the
-records→SQL move, and cannot ship before that seam exists. *Tradeoff:* (1) risks combinatorial
-explosion if the curated set grows unbounded, so keep it curated and depend on tags (#4) for
-useful combos; (2) is real new infra scope, correctly post-1.0, not a near-term item.
+**Topic/region roll-up feeds — pre-generated combos (#12/#13/#17).** *Problem:* "all zoning items in
+Texas," "everything my city council did on housing this year," "every meeting where an item was tagged
+'budget' across the whole catalog." *Approach:* a **curated set** of pre-generated static feeds/pages,
+each a fixed topic × region/city × (optionally) date-range combination — e.g. `zoning + TX`,
+`housing + Denton, TX`, `budget + statewide, current fiscal year` — plus **OPML** export so a reader can
+subscribe to a bundle at once. Pure static output, no DB, no Worker; ships the same way as the rest of
+Phase E once tags (#4/R3) exist to filter by. *Why this may be worth building even before it's exposed
+publicly:* the underlying mechanism — filter/aggregate records by topic + city/region + date — is the
+**same internal plumbing** the weekly look-back digest and "national highlights" reel (above) need to
+pull their content together. Building it as a small reusable query-and-render helper, rather than
+one-off code inside each digest generator, pays for itself even if the public-facing roll-up-feed page
+ships later. *Tradeoff:* combinatorial explosion if the curated combo set grows unbounded — keep the
+published set curated/human-picked, not every possible cross-product.
+
+The **fully-general** custom-query builder (arbitrary reader-chosen filters, not a curated combo) is a
+separate, later item that needs the Interaction seam — sketched in §5.5 alongside the other
+seam-gated/review/25 items, not here.
 
 **Privacy-respecting download analytics (GH#125).** *Approach:* OP3-style aggregate, self-owned
 analytics-prefix subdomain; no per-user tracking. Informs which feeds/cities to invest in.
@@ -416,7 +431,12 @@ InSite API adapter and the calendar scraper are independent and can coexist.
 
 **Vote/roll-call (#8) + attendee (#14) extraction.** From **platform metadata** (CivicClerk per-member
 tallies) + scraped **released minutes** — **never inferred from audio**. Shared "minutes-ingestion"
-component. ~$0 (parser).
+component. ~$0 (parser). **A minimal attendee-only slice is pulled forward to ROADMAP R5 (2026-07-12),
+gating 1.0** — just the name list of who was present at a given meeting, parsed from released minutes,
+so speaker diarization (§5.1) has ground truth to match voice clusters against. That slice does **not**
+need platform per-member vote tallies, roll-call linkage, or the entity model (§3.4 of review/25) — it's
+the smallest possible "who was in the room" list. Vote/roll-call extraction and the richer
+platform-metadata/entity-linked attendee form stay fully post-1.0 in this Phase-F item.
 
 ### §5.4 Phase C — Co-Creation & AI Audio
 
@@ -479,13 +499,24 @@ if the Worker tier is down, the same "degrade to static" discipline the storage 
 *Tradeoff:* real new infra (a Worker deployment, a subscriber-data trust boundary, D1/Vectorize/Queues
 billing) vs. designing it once, together, instead of a records-only SQL migration now followed by a
 second redesign for the Worker tier later. *Trigger:* federated cross-catalog query need, a public
-query API, a city/source search partition exceeding the client index budget, or the full custom-query
-builder (below) — see [review/17 §1.4](17-state-store-backend-evaluation.md). Not yet promoted past
-L1/sketch; break out to its own `review/NN` when it becomes next-up. **Unblocks:** Phase F's
-watchlists/topic alerts (email/push channel specifically — the RSS-only version doesn't need it), the
-fully-general custom-query feed builder (below), and two ideas review/25 flags as NEW/unadopted
+query API, a city/source search partition exceeding the client index budget, or the fully-general
+custom-query builder (next) — see [review/17 §1.4](17-state-store-backend-evaluation.md). Not yet
+promoted past L1/sketch; break out to its own `review/NN` when it becomes next-up. **Unblocks:** Phase
+F's watchlists/topic alerts (email/push channel specifically — the RSS-only version doesn't need it),
+the fully-general custom-query feed builder (next), and two ideas review/25 flags as NEW/unadopted
 (a public data API, semantic search past a static nearest-neighbor index) if they're ever taken up —
 none of these ship before this seam exists.
+
+**Fully-general custom-query feed builder (#12+#13, Interaction-seam-gated — split from the
+pre-generated-combos version, which is static and lives in Phase E §5.2).** *Problem:* the pre-generated
+roll-up combos only cover combinations someone thought to curate and publish; a reader who wants an
+arbitrary filter — "just these three tags, this one city, the last 90 days" — has no way to build one
+without a request-time query surface. *Approach:* consumes the Interaction seam above directly — a
+Worker-backed query handler over the D1/records store, the same handler [review/25 §3.3](25-future-features-and-architecture.md#33-search-that-outgrows-the-client)'s
+graduation path names for search past the static client budget. *Disposition:* genuinely separate infra
+scope from the static pre-gen version, correctly post-1.0, and one of the seam's named triggers rather
+than a feature that can pull the seam forward on its own — it waits for the seam, the seam doesn't get
+built just for it.
 
 **Production/staging gate.** A live staging URL is also user-risk-triggered rather than city-triggered.
 The current beta keeps `preview.yml`'s read-only downloadable PR artifact plus the sole production Pages

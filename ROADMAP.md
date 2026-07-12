@@ -53,10 +53,10 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > operational exit criteria below (≥95% run success, zero stalled feeds, declining backlog ETAs), which
 > need a live read of `run_history.jsonl`/the status dashboard over a trailing 14-day window before
 > Phase H is declared formally closed.
-> Runtime/dependency update automation (**R6**) is the one item still open, and it now lives in
+> Runtime/dependency update automation (**R7**) is the one item still open, and it now lives in
 > **Phase R**, not Phase H: `.github/renovate.json5` is committed but the Renovate GitHub App has not
 > yet been activated on the repo (zero Renovate-authored PRs, no dependency-dashboard issue as of
-> 2026-07-12). Completing R6 is the final gate to 1.0.
+> 2026-07-12). Completing R7 is the final gate to 1.0.
 > The local-ASR duration guard is a narrow H14 reliability prerequisite, not a promotion of later
 > scaling work: ship it now, then continue with Modal and Beam workers that explicitly support audio
 > longer than the local ceiling.
@@ -134,10 +134,23 @@ Deferred from the active Phase-H queue on 2026-07-10: **H9** combined-throughput
 Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeting-pages-and-search.md)
 (pages + search) and [`review/14`](review/14-topic-tags-strong-towns-lens.md) (tags).
 
-> **Scope (depth-first):** prove R1–R5 across the **entire current city catalog** before onboarding new
+> **Scope (depth-first):** prove R1–R6 across the **entire current city catalog** before onboarding new
 > cities (VISION "Depth-first"). The pilot set *is* today's roster — not a hand-picked subset — so search
 > index size and page volume stay bounded by the current ~85 feeds while the engine choices (e.g.
 > Pagefind) are validated.
+
+> **Reprioritized 2026-07-12 (maintainer decision): speaker diarization is fully pulled forward as R5,
+> gating 1.0** — previously an L1 catalog item with no committed slot. Old R5 (front-end design cycle)
+> and R6 (dependency automation) shift to R6/R7. Rationale: the front-end design cycle needs a real
+> speaker-attribution taxonomy (labels, per-speaker linking) to design around, not a placeholder — see
+> [`review/11`](review/11-technical-design-roadmap.md) §4/§5.1. **This also pulls forward a minimal
+> slice of Phase F's attendee extraction (#14)** — diarization alone only produces anonymous voice
+> clusters ("Speaker 2"); turning that into real names needs a "who was present" ground truth from
+> official minutes. Only that minimal name-list slice moves up; the richer Phase-F item (vote-linked,
+> full entity model) stays post-1.0. **Called out as a real scope increase, not a free reorder:**
+> diarization is GPU/ML work (speaker-embedding models, meeting-wide identity reconciliation) and the
+> attendee slice is a new minutes-parsing capability — both genuinely land before the 1.0 tag now,
+> traded for a front-end design cycle that doesn't need a later redesign.
 
 | Pri | Item |
 |----:|------|
@@ -145,12 +158,13 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R2** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
 | **R3** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
 | **R4** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites |
-| **R5** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
-| **R6** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |
+| **R5** | **#7** speaker diarization (CPU-viable execution-backend model, meeting-wide identity reconciliation) + a minimal **#14** attendee-extraction slice (names present at a meeting, parsed from official minutes/platform metadata — never inferred from audio) so diarized voice clusters get human-confirmed real-name labels instead of staying anonymous. **Full pull-forward, 2026-07-12** — sequenced before R6 so the front-end design cycle has a real taxonomy to design around |
+| **R6** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
+| **R7** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |
 
 ## 1.0 milestone (drop the beta tag)
 
-Complete Phase **H** and the Phase **R** research-tool/release-hardening series above. R6 carries the
+Complete Phase **H** and the Phase **R** research-tool/release-hardening series above. R7 carries the
 former standalone runtime-maintenance gate, so Phase-R completion is the single canonical 1.0 gate.
 
 ## Beyond 1.0 (the long-horizon phases)
@@ -177,7 +191,8 @@ Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](
   (D1/Turso) moves decisively **past 1.0**, merged with the "Interaction seam" dynamic-edge-tier proposal
   (alerts/API/personalization/scaled search) into one initiative designed together when its trigger
   fires — see [`review/11`](review/11-technical-design-roadmap.md) §5.5.
-  (Speaker diarization (#7) moved to **Phase R** — see [`review/11`](review/11-technical-design-roadmap.md).)
+  (Speaker diarization (#7) moved to **Phase R**, now **R5** — gating 1.0, see
+  [`review/11`](review/11-technical-design-roadmap.md).)
 
 ## How priorities work here
 Items are scoped, rationalized, and cost-modeled in [`review/11`](review/11-technical-design-roadmap.md)
