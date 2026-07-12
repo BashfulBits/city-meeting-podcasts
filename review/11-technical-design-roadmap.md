@@ -131,7 +131,7 @@ sync · #20 video enclosures (partial).
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|
 | Per-meeting permalink pages | #46/GH#157 | **L3** (2026-07-13, issues not yet cut — batch review pending) | [`review/13`](13-per-meeting-pages-and-search.md) Part A |
-| Static transcript search | #6 | L2→L3 | [`review/13`](13-per-meeting-pages-and-search.md) |
+| Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | L2→L3 | [`review/14`](14-topic-tags-strong-towns-lens.md) |
 | Legistar calendar provider (historical Granicus coverage) | new | L2→L3 | [`review/15`](15-legistar-catalog-provider.md) |
 | Per-agenda-item "what changed" cards | #3/GH#155 | L1 | §5.1 |

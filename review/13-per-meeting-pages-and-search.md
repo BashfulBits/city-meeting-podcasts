@@ -1,13 +1,13 @@
 # review/13 — Per-Meeting Pages & Static Transcript Search (Phase R)
 
-**Maturity: Part A **L3** (matured 2026-07-13) · Part B **L2→L3** (pending its own maturation pass) ·
-breakout of [`review/11`](11-technical-design-roadmap.md) Phase R · last updated 2026-07-13**
+**Maturity: Part A **L3** · Part B **L3** (both matured 2026-07-13) · breakout of
+[`review/11`](11-technical-design-roadmap.md) Phase R · last updated 2026-07-13**
 
 > Two tightly-coupled initiatives: per-meeting permalink pages (#46/GH#157, **ROADMAP R1**) and static
 > client-side transcript search (#6, **ROADMAP R2**). Pages are the **product hinge** from "podcast
 > feeds" to "civic research tool"; search rides on the page content. Build pages first; search second.
-> Issues are **not yet cut** for Part A — matured to L3 depth pending a maintainer review pass across the
-> whole Phase R sequence before filing.
+> Issues are **not yet cut** for either part — matured to L3 depth pending a maintainer review pass
+> across the whole Phase R sequence before filing.
 
 ## Why now (after Phase H)
 
@@ -344,81 +344,221 @@ source portal.
 
 ## Part B — Static transcript search (#6)
 
+**Maturity: L3 · matured 2026-07-13, grounded against current `main` — see exploration citations
+inline. ROADMAP R2. Issues not yet cut, per the batch-review hold.**
+
 ### Design (chosen approach)
 
 A **client-side** search over a generated JSON index — no server until proven insufficient. Index
 documents = all retained meetings, including metadata-only unavailable recordings, with fields:
-`title`, `body`, `city`, `date`, `media_availability`, `agenda/resource link text`,
-`topic tags` (#4 when available), and **transcript text** (tokenized). Results show snippets with
-**transcript timestamps** that deep-link into the meeting page (`…/<uid>/#t=<seconds>`). Filters: city,
-body, date range, topic, and recording availability. A meeting without a transcript remains
-discoverable from its civic metadata; its result does not advertise playback or transcript seeking.
+`title`, `body`, `city`, `date`, `media_availability`, `agenda/resource link text`, `tags` (schema
+reserved, always empty until R3 — see § Data model deltas), and **transcript text** (tokenized).
+Results show snippets with **transcript timestamps** that deep-link into the meeting page
+(`…/<uid>/#t=<seconds>`, R1). Filters: city, body, date range, topic (inert until R3 populates `tags`),
+and recording availability. A meeting without a transcript remains discoverable from its civic
+metadata; its result does not advertise playback or transcript seeking.
 
-### Availability review and future query surfaces
+### Engine decision — reversed from the L2 sketch, with reasoning
 
-H16 PR3 supplies the current availability projection, versioned re-evaluation inputs, redacted
-evidence pointer, and weekly GitHub digest. Phase R adds the product/operations surfaces deliberately
-left out of that pipeline PR:
+**The prior sketch's default lean ("Pagefind unless the spike says otherwise") doesn't survive contact
+with the actual codebase.** Confirmed by exploration: this project has **zero existing JS build
+pipeline** — no root `package.json`, no bundler, no Node-based build step anywhere; the entire site is
+Python + Jinja2 rendering static HTML with small inline vanilla-JS `<script>` blocks (the one
+`package.json` in the repo is an unrelated Cloudflare Worker, `workers/granicus-media-proxy/`). Pagefind
+requires a Node-based indexing step at build time to produce its fragment set — introducing it means
+introducing an entire second build toolchain (Node/npm) into a project that has deliberately stayed
+single-toolchain (Python, `pyproject.toml`, no `requirements*.txt` even) through every prior phase.
 
-- `/admin/status` counts and drill-down by availability reason/state, due-for-recheck status, and
-  recovered/overridden outcome;
-- auditable operator actions to confirm empty, mark valid, request immediate re-evaluation, or record
-  a city-side correction;
-- availability/history browsing and evidence comparison without exposing private diagnostic objects
-  on public meeting pages;
-- the storage-neutral event/history query path described in `review/11` and `review/17`.
+**MiniSearch, sharded per city/source (already the plan regardless of engine — see § Index strategy),
+already delivers Pagefind's main selling point — lazy, bounded-size loading — because the sharding
+happens at the Python/JSON-generation layer, not the search-library layer.** A per-city MiniSearch shard
+under review/16's 1 MB budget, fetched only when a visitor searches/scopes that city, is not meaningfully
+different in loading behavior from a Pagefind fragment for that city; MiniSearch supports fuzzy/prefix
+matching and result scoring natively, so the "real search library" argument for Pagefind doesn't hold
+either. **Revised lean: MiniSearch, sharded per city/source, vendored as a static JS file (no build
+step) — consistent with the project's existing zero-JS-build-pipeline architecture.** Promote to Pagefind
+only if the spike (§ below) or production shard sizes/query latency show MiniSearch genuinely can't hold
+the line — an evidence-gated trigger, not a default, matching how this catalog already treats other
+speculative infra (e.g. the hosted-runner monitoring item in `review/11`).
+
+### The `spike/static-search-size` spike — defined now, not yet run
+
+Exploration confirmed **this spike does not exist anywhere** — no branch, no script, no results; it was
+named as a plan in review/10 and referenced as "the open question" here, but never scoped concretely.
+Defining it now so it's a filable issue, not aspiration:
+- **Method:** for each of the ~85 current feeds, fetch that source's real `transcript_words_url`
+  artifacts, build the per-city MiniSearch index exactly as § Module/file plan specifies, measure
+  compressed (gzip) size per city shard.
+- **Output:** a table of city → shard size, flagging any city over review/16's 1 MB soft target or 2 MB
+  hard warning; a p50/p95 client-side query latency measurement (index load + first keystroke-to-results)
+  against the largest shard produced.
+- **Decision gate:** if every current shard is comfortably under 1 MB and query latency is acceptable
+  (review/16's search-interaction p95 < 200 ms target after required partitions load), MiniSearch ships
+  as designed. If a shard blows the budget, re-open the Pagefind option **for that city specifically**
+  (hybrid, not a wholesale engine swap) before assuming the whole approach needs to change.
+- This is implementation work (needs real transcript data), not something to execute inside this
+  docs-only design pass — it's Proposed issue #1 below, ideally the *first* thing built once R2 issues
+  are cut, since it gates the engine choice becoming final.
 
 ### Index source: built from records, not scraped from HTML
 
 > **Resolves a contradiction:** Part A keeps the full transcript *out* of the meeting-page HTML (fetched
-> client-side from the bucket for large files), but Pagefind's default mode indexes *rendered HTML* — so a
-> naive Pagefind crawl would never see transcript text. The index is therefore built **from records**
-> (`build_search_index(records)` → `docs/data/search/…`), engine-agnostic: transcript text + per-segment
-> timestamps come straight from the stored VTT / word-JSON (review/12 H12), **not** from the page DOM. If
-> Pagefind is chosen, use its **Node indexing API** to feed these custom records rather than its HTML
-> crawler; MiniSearch consumes the same records directly. This keeps the engine decision (below) orthogonal
-> to where the transcript lives.
+> client-side from the bucket for large files), but a naive static-site-search crawl of rendered HTML
+> would never see transcript text. The index is therefore built **from records**
+> (`build_search_index(records)` → `docs/data/search/…`), reading transcript text + per-segment
+> timestamps straight from the stored word-JSON (H12) — confirmed exact shape below — **not** from the
+> page DOM.
+
+**Word-JSON schema (confirmed, `citypods/asr.py:158-191`, schema version `"2"`):**
+```json
+{"schema": "2", "basis": "served", "segments": [
+  {"start": 12.345, "end": 15.0, "text": "some readable segment text",
+   "words": [{"w": "some", "s": 12.345, "e": 12.6}, {"w": "readable", "s": 12.6, "e": 12.9, "p": 0.9821}]}
+]}
+```
+The index consumes `segments[].text` for readable snippets and `segments[].start` (not per-word — a
+segment-level timestamp is precise enough for a search hit, per-word granularity is transcript-page-sync's
+job, not search's) for the deep-link `#t=`. Fetched via `Episode.transcript_words_url`/
+`transcript_words_key` (`citypods/models.py:93-94`) — a field whose own code comment already earmarks it
+for exactly this ("per-word timings for server-side search / clips / diarization").
 
 ### Index strategy & size budgeting
 
-Transcript text dominates index size, so this is a **size-management** problem (the open question in
-`spike/static-search-size`). Approach:
-- **Shard the index by city/source** (`docs/data/search/<source>.json` or a Pagefind-style fragment
-  set), loaded **on demand** when the user scopes/searches a city — not one global multi-MB blob.
-- Prefer a library that supports **lazy/partial index loading**: **Pagefind** (builds a static,
-  fragmented index designed exactly for large static sites; loads only matching fragments) is the strong
-  default; **MiniSearch/Lunr** (single in-memory index) is fine for a single city or small forks but
-  doesn't scale to the whole catalog.
-- Store **timestamps per token-span** so a hit can jump to the moment (use the served-time transcript;
-  the page handles the seek).
+Transcript text dominates index size. review/16 already specifies concrete budgets (no need to invent
+new ones): **city-scoped search partition target < 1 MB compressed, 2 MB hard warning**
+(`review/16-scaling-review-plan.md:292-302`); initial search JS+manifest < 200 KB compressed; **no
+transcript index downloaded before a search interaction**; search-interaction p95 < 200 ms after
+required partitions load; search-worker memory target < 100 MB.
+- **Shard the index by city/source**: `docs/data/search/<source_key>.json`, loaded on demand when the
+  visitor scopes/searches a city — never one global multi-MB blob.
+- Store the segment-level timestamp per hit (not per-token — see schema note above) so a result can jump
+  to the moment.
+- A lightweight always-loaded manifest (`docs/data/search/manifest.json`: source_key → shard URL, size,
+  episode count, coverage %) drives which shard(s) to fetch for a given query scope, kept well under the
+  200 KB initial-payload budget itself.
 
-### Module / file plan
+### Data model deltas (exact)
 
-- A build step that emits the index from records: `citypods/search.py` (`build_search_index(records)`),
-  invoked in `build()` after render (or a `citypods search-index` subcommand), writing under
-  `docs/data/search/`.
-- Frontend: a search UI on the index page + per-city page (extend the existing instant-search), wired to
-  Pagefind's runtime (or MiniSearch for the small-fork path); results link to meeting pages.
-- Config: `search_engine: pagefind|minisearch` (default chosen after the size spike), `search: true`.
+1. **`docs/data/search/manifest.json`** and **`docs/data/search/<source_key>.json`** — net-new output
+   directory (confirmed: no `docs/data/` prefix exists anywhere today). Follows the existing
+   `docs/admin/` precedent (`citypods/cli.py:403-412`: `mkdir(parents=True, exist_ok=True)` +
+   `write_text`) rather than inventing a new file-writing convention.
+2. **Per-shard document schema**: `{uid, title, body, city, date, media_availability_state,
+   is_withheld, page_url, links: [{label, url}], tags: [], segments: [{text, start}]}`. `tags` is
+   **always `[]` today** — schema-reserved for R3 (topic tags don't exist anywhere in the codebase yet;
+   `review/14` is itself still L2→L3 with no implemented `Tag`/`TagsStage`) — populating it later is an
+   additive field-fill, not a schema change, so R2 doesn't block on R3 and R3 doesn't need to touch R2's
+   index-building code, only the data it reads.
+3. **Availability handling is not a copy of `feeds.py`'s gating** — `feeds.py:184-185` *excludes*
+   withheld episodes from feeds entirely; the search index must do the opposite of exclusion: **always
+   include** withheld-media episodes (so they stay discoverable by civic metadata, per the Design section
+   above) but set `is_withheld: true` so the frontend result renderer suppresses any "play"/"seek"
+   affordance and shows the same no-recording framing R1's meeting page does. Reading the field is free
+   (`Episode.media_availability`, already in the persisted record dict, `citypods/records.py:821`); the
+   *behavior* at read time is the opposite of the existing precedent, so don't pattern-match it blindly.
+4. **`page_url`** — depends on R1's `meeting_page_url` helper (§ Module/file plan) existing; confirms the
+   sequencing dependency already stated (search depends on pages).
 
-### Implementation paths
+### Module / file plan (exact)
 
-1. **Pagefind** (recommended) — fragmented static index, lazy loading, scales to the full catalog; adds
-   a build dependency. 2. **MiniSearch sharded per city** — pure-JS, no build dep, but the client loads a
-   whole city's index; OK at current scale. 3. **Hybrid** — Pagefind for the global/all-cities search,
-   MiniSearch for the small single-fork case. **Lean: validate with the size spike, then (1).**
+- `citypods/search.py` — new. `build_search_index(state_dir: Path, cities: list[City], output_dir: Path)
+  -> None`: iterates `cities`, loads each city's persisted records via `load_records(state_dir,
+  source_key(city))` (`citypods/records.py:368`, the same function the `--no-refresh` render path already
+  uses) — **not** in-memory episodes from the per-city render loop, since `CityResult`
+  (`citypods/run.py:420-426`) doesn't carry them — converts each via `record_to_episode(rec)`, fetches
+  `transcript_words_url` per episode (network/storage read — batch/cache to avoid re-fetching on every
+  build), builds the per-shard JSON per § Data model deltas #2, writes `docs/data/search/<source_key>.json`
+  + updates `manifest.json`.
+- `citypods/run.py` — call `build_search_index(...)` from `_build_impl` (`:1090`) right after
+  `_prune_stale_dirs` (`~:1677`), still inside the existing `if do_render:` block (`~:1663-1684`) —
+  `state_dir` is already in scope there (assigned `:1168`, live through `:1664`), so no new plumbing to
+  reach records.
+- Frontend: new `templates/search.html.j2` (or a search block added to `index.html.j2` and
+  `city.html.j2`) + a new **vendored, non-built** MiniSearch JS bundle (no npm step — download once,
+  commit the file, matching the project's existing no-build-pipeline discipline) wired to a `#q` input.
+  **Explicitly not** "extending the existing instant-search" in any architectural sense — exploration
+  confirmed today's `index.html.j2` search (`citypods/site.py:49` `render_index`) is a trivial
+  `.includes()` substring filter over a small inlined city/feed-metadata JSON blob (`index.html.j2:26`,
+  no external file, no index, no transcript awareness at all). Only the visual pattern (a `#q` input,
+  live-filtered results) is worth reusing; there is no indexing infrastructure to build on.
+- `citypods/config.py` — `search: bool = True`; no `search_engine:` config knob needed now that the
+  engine decision above is a one-time build choice, not a runtime toggle (simplify vs. the L2 sketch,
+  which proposed a config flag for an unresolved decision that's now resolved).
+
+### Migration / backfill
+
+Same shape as R1: first run after this ships needs to index every currently-retained meeting across the
+whole catalog, not just current feed windows — bounded by the same per-shard budget regardless of when a
+meeting was recorded. No dedicated backfill workflow; a normal scheduled run pays the cost once. Depends
+on R1 having already shipped `meeting_page_url`/per-episode pages to link results into.
+
+### Coverage-gated launch
+
+Because forced alignment is paused and only post-#249/H12 transcripts carry word-level data, transcript
+coverage at R2 launch will be patchy across the catalog. Launch in two steps: **(1) titles + agenda/
+resource text** across the whole catalog immediately (always present, zero transcript dependency); **(2)
+add transcript text per city once that city's transcript coverage passes ~60%**, so early results aren't
+silently missing half a city's meetings. The index is rebuilt per city/shard, so this is a
+data-availability gate on shard content, not a code fork — `build_search_index` computes each city's
+coverage % from the records it already has in hand and decides per-shard whether to include transcript
+segments.
 
 ### Tests
 
-`tests/test_search.py`: index build is deterministic and offline (from fixture records); a known phrase
-in a fixture transcript is found with the correct meeting uid + timestamp; index shards per source; size
-stays within budget for the fixture set.
+`tests/test_search.py`:
+- Index build is deterministic and offline (from fixture records + fixture word-JSON, no network).
+- A known phrase in a fixture transcript is found with the correct meeting `uid` + segment timestamp.
+- Index shards per `source_key`; the manifest correctly maps sources to shard files.
+- A withheld-media fixture episode **appears in the index** (`is_withheld: true`) but its result renders
+  no play/seek affordance — the inverse-of-`feeds.py` behavior from § Data model deltas #3 needs its own
+  explicit test, since copy-pasting the feeds.py exclusion pattern would be the natural (wrong) instinct.
+- `tags: []` on every document today; a fixture with a populated `tags` field (simulating R3's future
+  output) round-trips without schema changes.
+- Coverage-gated launch: a city under the 60% transcript-coverage threshold gets a titles/metadata-only
+  shard; a city over threshold gets transcript segments included.
+- Size stays within the fixture set's expected budget (a coarse regression guard, not a substitute for
+  the real spike against production data).
+
+### Risks
+
+- **The `spike/static-search-size` spike must actually run against real transcript data before the
+  MiniSearch decision is treated as final** — the reasoning above is sound but unvalidated; budget it as
+  the first R2 issue, not an afterthought.
+- **Word-JSON fetch cost during index build** — `build_search_index` needs every episode's transcript
+  artifact, which means N storage reads on every build unless cached; get the caching story right (this
+  design doesn't fully specify it — flag for the implementer to check against existing storage-read
+  caching patterns, e.g. `SourceCache`, before assuming naive re-fetching is fine).
+- **No existing precedent for a vendored (non-npm) JS library in this repo** — confirm the vendoring
+  approach (commit the file vs. a documented manual-update process) before assuming it's as simple as it
+  sounds.
+
+### Sequencing / DAG
+
+R1 → R2 (search depends on pages: results link into `meeting_page_url`). Both depend on Phase H having
+landed stable transcripts + throughput. R2 benefits from R3 tags for topic filters but does not require
+them (tags ship as an empty-then-populated field, no R2 code change needed when R3 lands). R2 precedes
+R3–R7 in the outer ROADMAP sequence. Soundbites (#15, R4) and the Phase E highlights reel consume the
+same page/transcript surface later, independent of search itself.
 
 ### Acceptance
 
-A keyword present in a meeting transcript is findable from the site, returns a snippet with a timestamp,
-and the result links to the meeting page seeked to that moment; the index loads incrementally (no
-multi-MB blob on first paint); search works offline in tests.
+A keyword present in a meeting transcript is findable from the site, returns a snippet with a segment
+timestamp, and the result links to the meeting page seeked to that moment. The index loads incrementally
+— a manifest under 200 KB, per-city shards under 1 MB, no shard fetched before a search interaction
+scopes to it. Withheld-media meetings remain discoverable by civic metadata with no play/seek affordance
+in their result. Search works offline in tests. Coverage-gated launch means no city's results silently
+omit transcript hits it should have — either full transcript coverage or an honest metadata-only result.
+
+### Proposed GitHub issues (not filed — batch review pending)
+
+1. **Run the `spike/static-search-size` spike** against real transcript data (method/output defined
+   above) — gates whether the MiniSearch decision ships as final or a hybrid Pagefind fallback is needed
+   for specific oversized cities.
+2. `citypods/search.py` `build_search_index` + `docs/data/search/` manifest+shard writer, wired into
+   `_build_impl` after `_prune_stale_dirs`.
+3. Vendored MiniSearch frontend integration (`templates/search.html.j2` or equivalent, `#q` input,
+   result rendering with the withheld-media affordance suppression from § Data model deltas #3).
+4. Coverage-gated per-city shard content (titles-only vs. titles+transcript based on the ~60% threshold).
 
 ---
 
@@ -427,11 +567,6 @@ multi-MB blob on first paint); search works offline in tests.
 Pages (A) → search (B). Both depend on Phase H landing (stable transcripts + throughput). Search depends
 on pages (results link into them) and benefits from tags (#4, review/14) for topic filters but does not
 require them. Soundbites (#15) and the highlights reel (Phase E) consume the same page/transcript surface
-later. Run the `spike/static-search-size` measurement before committing the search engine choice.
-
-**Coverage-gated launch.** Because forced alignment is paused and only post-#249 / H12 transcripts carry
-word-level data, transcript coverage at R2 time will be patchy. Launch search in two steps: (1)
-**titles + agenda/resource text** across the whole catalog immediately (always present); (2) **add
-transcript text per city as that city's transcript coverage passes a threshold** (~60 %), so early
-results aren't silently missing half a city's meetings. The index is rebuilt per city, so this is a
-data-availability gate, not a code fork.
+later. Run the `spike/static-search-size` measurement (now concretely defined in Part B above) before
+treating the MiniSearch engine choice as final. **Coverage-gated launch is specified in Part B above**
+(superseding the shorter note that used to live here).
