@@ -139,6 +139,27 @@ year-specific Granicus archive views and the official page already describes sea
 1998 to present. Denton needs either those archive RSS views wired in or a Granicus archive-page
 scraper, not this calendar provider.
 
+**Re-verified live 2026-07-16 — the inventory above is confirmed still current, and the migration
+described in this Part appears designed but never actually executed.** The specific issue numbers cited
+above are now closed, but not because the underlying problem was fixed — H4's feed-health reporting
+consolidated from one issue per `(slug, check)` into one issue per check over the same period
+([`review/11`](11-technical-design-roadmap.md) §4 H4 row), so the old per-feed issues closed as a
+reporting-format change, not a resolution. Checked GitHub directly: the current consolidated view-cap
+issue ([#776](https://github.com/BashfulBits/city-meeting-podcasts/issues/776), open since 2026-07-01,
+last updated 2026-07-12 — 11 days after this Part's original design, and still 15 days before this
+re-scoping pass) reports the identical set — **the same 33 Granicus feeds, unchanged**: Arlington ×3
+(`arlington-tx`, `-council`, `-planning-and-zoning-commission`), Denton County ×1 (still present in the
+audit's findings despite this Part's own decision that Legistar isn't the right fix for it — the audit
+doesn't know that), Fort Worth ×18, Pflugerville ×11. (Predecessor issues
+[#315](https://github.com/BashfulBits/city-meeting-podcasts/issues/315) and
+[#400](https://github.com/BashfulBits/city-meeting-podcasts/issues/400), both closed, carry the full
+per-feed breakdown before the reporting format compressed further — cross-referenced here since #776's
+own body now only shows a truncated example, not the full list.) **No new cities have appeared** —
+Part A's original city-level scope (Pflugerville, Arlington, Fort Worth) is still the complete,
+currently-accurate target set. **The practical implication:** this Part's migration plan doesn't need
+new design work — it needs *execution*. It's the one piece of R11 that's ready to ship today with zero
+further design, unlike Parts B/C/D below.
+
 **Not Phase F #31.** The existing Phase F item "#31 Legistar provider (rich agendas/votes/rosters)"
 is about the **InSite REST API** — structured meeting packets, vote tallies, and roster data used for
 Phase F pre-meeting foresight and Phase R #3/#8 cards. That is a separate adapter and a separate
@@ -864,14 +885,21 @@ implementation gap to close later.
 ## §E. Consolidated sequencing, migration, and acceptance (Parts B–D)
 
 **Sequencing:** R11 precedes R3 (agenda text extraction) — R3 narrows to text extraction once this item
-supplies URLs. Within R11: **Part B (the auxiliary-attachment mechanism) lands first**, since it's the
-shared dependency every other Part needs to be usable in auxiliary mode. **Denton (Swagit-primary,
-Legistar-as-auxiliary) is the first real target once Part B lands** — it needs zero new adapter code
-(Part A's Legistar mechanism already exists), only the new auxiliary-mode wiring, making it the
-lowest-risk, highest-confidence proof that the discovery methodology (§B.2) actually works, ahead of
-both Part C and Part D. Part D (CivicClerk, also reuses existing adapter code) follows next. Part C
-(OneMeeting) is gated on live HTML verification and should follow both, not lead — it's still the
-least-certain of the three.
+supplies URLs. Within R11, in order:
+
+1. **Part A's migration execution, first — it needs zero further design.** Re-verified live 2026-07-16
+   (above): the same 33 Granicus feeds (Pflugerville, Arlington, Fort Worth) have been sitting capped
+   for a month since this Part was originally designed. This is pure execution against an already-L3
+   plan, not new work — it should not wait on Parts B/C/D at all.
+2. **Part B (the auxiliary-attachment mechanism) next**, since it's the shared dependency every other
+   new Part needs to be usable in auxiliary mode.
+3. **Denton (Swagit-primary, Legistar-as-auxiliary) is the first *new-mechanism* target once Part B
+   lands** — zero new adapter code (Part A's Legistar mechanism already exists), only the new
+   auxiliary-mode wiring, making it the lowest-risk, highest-confidence proof that the discovery
+   methodology (§B.2) actually works, ahead of both Part C and Part D.
+4. **Part D (CivicClerk, also reuses existing adapter code) follows next.**
+5. **Part C (OneMeeting) is gated on live HTML verification and should follow all of the above, not
+   lead** — it's still the least-certain of the three sibling systems.
 
 **Migration:** no backfill required — this is additive URL/link enrichment on already-existing episodes,
 governed by the same `feed_content_hash` re-render trigger every other link-affecting change already
@@ -887,15 +915,19 @@ before beginning its own text-extraction work.
 
 ## Proposed GitHub issues (not filed — batch review pending)
 
-1. Part B: `City.aux_provider`/`aux_source` config + `fetch_merge` insertion point + the new
-   `attach_auxiliary_agenda_links` reconciliation function. Ships first — everything else depends on it.
-2. **Denton verification** (§B.2): run the discovery checklist against `denton-tx`, confirm Legistar
+1. **Part A migration execution** — re-verified live 2026-07-16: the same 33 Granicus feeds
+   (Pflugerville, Arlington, Fort Worth — [#776](https://github.com/BashfulBits/city-meeting-podcasts/issues/776))
+   have been capped for a month against an already-L3 plan. Pure execution, no new design, should not
+   wait on anything else in this list.
+2. Part B: `City.aux_provider`/`aux_source` config + `fetch_merge` insertion point + the new
+   `attach_auxiliary_agenda_links` reconciliation function. Everything below depends on it.
+3. **Denton verification** (§B.2): run the discovery checklist against `denton-tx`, confirm Legistar
    coverage, wire it as Denton's `aux_provider` — zero new adapter code, the first real proof the
    auxiliary mechanism works end to end.
-3. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (also reuses existing adapter
+4. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (also reuses existing adapter
    code, no live-HTML-verification blocker).
-4. Part B: resolve the `AgendaRecord`-vs-`Episode` interface question (§D.3) that Part D's design
+5. Part B: resolve the `AgendaRecord`-vs-`Episode` interface question (§D.3) that Part D's design
    surfaced, before Part D ships.
-5. Part C: live verification of a real OneMeeting portal for a real catalog city, before any
+6. Part C: live verification of a real OneMeeting portal for a real catalog city, before any
    implementation commitment — sequenced last, least certain of the three.
-6. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 5's findings.
+7. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 6's findings.
