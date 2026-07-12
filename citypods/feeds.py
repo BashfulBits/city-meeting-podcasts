@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from html import escape
 
+from citypods.chapters import episode_served_chapters
 from citypods.durations import episode_served_duration_seconds, episode_source_duration_seconds
 from citypods.models import City, Episode
 from citypods.render import get_env
@@ -151,7 +152,7 @@ def chapters_json(ep: Episode) -> str:
     ``<podcast:chapters>`` URL points to)."""
     chapters = [
         {"startTime": int(c["start"]), "title": c.get("title", "")}
-        for c in sorted(ep.chapters or [], key=lambda c: c["start"])
+        for c in sorted(episode_served_chapters(ep), key=lambda c: c["start"])
     ]
     return json.dumps({"version": "1.2.0", "chapters": chapters}, indent=2) + "\n"
 
@@ -159,7 +160,7 @@ def chapters_json(ep: Episode) -> str:
 def chapters_url(city: City, ep: Episode, base_url: str) -> str | None:
     """Public URL of an episode's chapters JSON sidecar, or None when it has no chapters.
     Hosted alongside the feed under ``docs/<slug>/chapters/<uid>.json`` (see run.py)."""
-    if not ep.chapters or not ep.uid:
+    if not episode_served_chapters(ep) or not ep.uid:
         return None
     return f"{base_url.rstrip('/')}/{city.slug}/chapters/{ep.uid}.json"
 

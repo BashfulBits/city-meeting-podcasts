@@ -274,6 +274,7 @@ class TestChapterConstruction:
     def test_chapters_basis_marked_served(self):
         ep = self._run()
         assert ep.chapters_basis == "served"
+        assert ep.source_chapters == []
 
     def test_no_chapters_when_titles_empty(self):
         """Segments with empty titles produce no chapters."""

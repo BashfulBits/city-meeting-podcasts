@@ -316,6 +316,51 @@ def test_chapters_json_and_podcast_chapters_tag(tmp_path):
     )
 
 
+def test_chapters_json_prefers_source_chapters_when_timeline_changes():
+    from datetime import UTC, datetime
+
+    from citypods.feeds import chapters_json
+    from citypods.models import Episode
+    from citypods.timeline import Segment, Timeline
+
+    ep = Episode(
+        guid="g",
+        uid="abc123",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        media_kind="direct",
+        source_chapters=[{"start": 600, "title": "Source item"}],
+        chapters=[{"start": 9999, "title": "Stale served"}],
+        chapters_basis="served:old",
+    )
+    ep.timeline = Timeline(
+        version="silence-v1",
+        segments=(
+            Segment(
+                served_start=0,
+                served_end=300,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=300,
+            ),
+            Segment(
+                served_start=300,
+                served_end=3300,
+                kind="source",
+                source_id="s0",
+                source_start=600,
+                source_end=3600,
+            ),
+        ),
+    )
+
+    doc = chapters_json(ep)
+    assert '"startTime": 300' in doc
+    assert "Stale served" not in doc
+
+
 def test_meetings_link_renders_into_feed_end_to_end(tmp_path):
     """Issue #112: a city's meetings_url, injected by LinksStage, renders as a per-episode
     resource link in the feed notes. Guards the full path (stage -> ordered_links -> RSS) that

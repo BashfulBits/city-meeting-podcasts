@@ -155,6 +155,14 @@ class TestRemapStageIdentity:
         assert ep.chapters[0]["start"] == 200  # not re-remapped
         assert stats.reused == 1
 
+    def test_stale_served_without_source_chapters_stays_reused(self, tmp_path):
+        ep = _ep(chapters=[{"start": 200, "title": "A"}])
+        ep.timeline = _trimmed_timeline()
+        ep.chapters_basis = "served:older-version"
+        stats = RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert ep.chapters[0]["start"] == 200
+        assert stats.reused == 1
+
 
 # ---------------------------------------------------------------------------
 # RemapStage — trimmed timeline (chapters remap + cut-span drop)
@@ -247,6 +255,16 @@ class TestRemapStageTrimmed:
         RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert ep.chapters[0]["start"] == 300.0  # correctly remapped via s0
 
+    def test_stale_served_basis_reprojects_from_source_chapters(self, tmp_path):
+        ep = _ep(chapters=[{"start": 1200, "title": "stale served copy"}])
+        ep.source_chapters = [{"start": 1200, "title": "New business"}]
+        ep.timeline = _trimmed_timeline()
+        ep.chapters_basis = "served:older-version"
+        RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+        assert ep.chapters == [{"start": 900.0, "title": "New business"}]
+        assert ep.source_chapters == [{"start": 1200, "title": "New business"}]
+        assert ep.chapters_basis == "served:silence-v1"
+
 
 # ---------------------------------------------------------------------------
 # is_timed_transcript — heuristic detection
@@ -303,6 +321,14 @@ class TestChaptersBasisRoundTrip:
         ep = _ep()
         ep2 = record_to_episode(episode_to_record(ep))
         assert ep2.chapters_basis == "source:s0"
+
+    def test_source_chapters_survive_record_round_trip(self):
+        from citypods.records import episode_to_record, record_to_episode
+
+        ep = _ep(chapters=[{"start": 300, "title": "Remapped"}])
+        ep.source_chapters = [{"start": 600, "title": "Source"}]
+        ep2 = record_to_episode(episode_to_record(ep))
+        assert ep2.source_chapters == [{"start": 600, "title": "Source"}]
 
 
 # ---------------------------------------------------------------------------

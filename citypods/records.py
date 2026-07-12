@@ -34,6 +34,7 @@ from typing import Literal
 
 from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body
+from citypods.chapters import episode_served_chapters
 from citypods.durations import (
     episode_duration_hours,
     episode_served_duration_seconds,
@@ -286,7 +287,7 @@ def audio_spec_hash(
             "v": AUDIO_PIPELINE_VERSION,
             "source": ep.video_url,
             "max_kbps": max_kbps,
-            "chapters": ep.chapters,
+            "chapters": episode_served_chapters(ep),
         }
     else:
         source_refs = [s.ref for s in ep.sources] if ep.sources else [ep.video_url]
@@ -296,7 +297,7 @@ def audio_spec_hash(
             "timeline": tl_digest,
             "loudness": loudness,
             "processing": processing,
-            "chapters": ep.chapters,
+            "chapters": episode_served_chapters(ep),
             "sources": source_refs,
             "rebuild": rebuild,
         }
@@ -343,7 +344,7 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             e.transcript_synced,
             e.transcript_basis,
             sorted((e.links or {}).items()),
-            e.chapters,
+            episode_served_chapters(e),
             e.chapters_basis,
             episode_source_duration_seconds(e),
             episode_served_duration_seconds(e),
@@ -762,6 +763,7 @@ def episode_to_record(ep: Episode) -> dict:
         "media_kind": ep.media_kind,
         "video_url": ep.video_url,
         "links": ep.links,
+        "source_chapters": ep.source_chapters or None,
         "chapters": ep.chapters,
         "chapters_basis": ep.chapters_basis,
         "summary": ep.summary,
@@ -962,6 +964,7 @@ def record_to_episode(rec: dict) -> Episode:
         materialize_error_spec_hash=audio.get("error_spec_hash"),
         audio_bytes=audio.get("bytes"),
         links=rec.get("links") or {},
+        source_chapters=rec.get("source_chapters") or [],
         chapters=rec.get("chapters") or [],
         provider_transcript=(
             rec.get("provider_transcript")
@@ -1018,7 +1021,9 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 ARTIFACT_BLOCKS: frozenset[str] = frozenset(
     {"audio", "transcript", "provider_transcript", "speakers", "media_availability", "integrity"}
 )
-PLANNING_FIELDS: frozenset[str] = frozenset({"sources", "timeline", "chapters", "chapters_basis"})
+PLANNING_FIELDS: frozenset[str] = frozenset(
+    {"sources", "timeline", "source_chapters", "chapters", "chapters_basis"}
+)
 
 # Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
 # full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
@@ -1065,6 +1070,7 @@ def _record_planning_rank(rec: dict) -> tuple[tuple[int, ...], int, int]:
     return (
         _record_timeline_version_rank(rec),
         _record_source_basis_rank(rec),
+        1 if rec.get("source_chapters") else 0,
         1 if rec.get("timeline") else 0,
     )
 
@@ -1098,6 +1104,10 @@ def _preserve_remote_planning_if_better(
     for key in PLANNING_FIELDS | ARTIFACT_BLOCKS:
         if key in remote_rec and remote_rec[key]:
             rec[key] = remote_rec[key]
+        elif key == "source_chapters" and rec.get(key):
+            # A better remote planning record that simply predates source_chapters should not erase
+            # the canonical raw chapter input we already hold locally.
+            continue
         elif key in owned_artifacts:
             # This run owns and just produced this block; a better remote plan that simply lacks it
             # must not erase it. Keep local's value.
@@ -1250,6 +1260,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
             ep.speakers_pipeline_version = speakers.get("pipeline_version")
             ep.speakers_error = speakers.get("error")
         ep.links = rec.get("links") or ep.links
+        ep.source_chapters = rec.get("source_chapters") or ep.source_chapters
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
         persisted_source = record_source_duration_seconds(rec)
