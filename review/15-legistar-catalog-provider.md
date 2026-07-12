@@ -26,24 +26,35 @@ yet cut, batch review pending**
 3. **Extend meeting histories for feeds with limited history** — generalizes Part A's existing
    Legistar-for-Granicus mechanism (below) to the other sibling relationships, where viable.
 
-### §0.1 The corporate relationships that make this possible (verified 2026-07-16)
+### §0.1 The corporate relationships — candidates, not a fixed mapping (corrected 2026-07-16)
 
-| Video provider we ingest today | Owns it | Sibling agenda system | Portal/API pattern | Relationship confirmed |
+**Correction, same day as the original draft: the relationships below name the *most likely* sibling
+per video provider, not a guaranteed or exclusive pairing.** A city's agenda-system vendor is an
+*independent procurement decision* from its video-system vendor — nothing about corporate ownership
+compels a city to buy the "matching" sibling product, or to buy any of them at all. **Confirmed with a
+real city already in this catalog**: Denton, TX (`denton-tx`, all 9 feeds configured `provider:
+swagit`) is understood to expose its agendas through **Legistar/Granicus** — Granicus's own product,
+not Rock Solid's OneMeeting — despite Swagit being its video source. So the "expected" Swagit→OneMeeting
+pairing (§0.1's original framing) does not hold universally, and the design below must not assume it
+does.
+
+| Video provider we ingest today | Owns it | Most-likely candidate sibling(s) | Portal/API pattern | Confirmed |
 |---|---|---|---|---|
 | **Granicus** | Granicus (since 2011, via Daystar Systems acquisition) | **Legistar** | `{org}.legistar.com/Calendar.aspx` | Long-standing, deeply integrated — Part A already works |
-| **Swagit** | Granicus, via **Rock Solid Technologies** (acquired Oct 2022) | **OneMeeting** (formerly PrimeGov, Rock Solid's own agenda product — **not** Legistar) | `portal-{org}.primegov.com` | Real production integration, not hypothetical — see below |
+| **Swagit** | Granicus, via **Rock Solid Technologies** (acquired Oct 2022) | **OneMeeting** (formerly PrimeGov) *or* **Legistar** — both are viable, a given Swagit city could have either, neither, or (in principle) both | `portal-{org}.primegov.com` / `{org}.legistar.com/Calendar.aspx` | OneMeeting: real production example (Waco, below). Legistar: **Denton, TX, in this catalog** |
 | **CivicPlus** | CivicPlus (since 2017, via BoardSync acquisition, rebranded CivicClerk) | **CivicClerk** | `{tenant}.api.civicclerk.com` (OData JSON API — this project's existing `civicclerk.py` already speaks it) | Same parent company; product bundling, not a technical integration |
 
-**The one-sentence correction to the maintainer's original hypothesis:** Swagit's agenda-side sibling is
-**OneMeeting**, not Legistar — both are Granicus-owned, but via a different, more recent acquisition
-chain (Rock Solid Technologies, Oct 2022), and Rock Solid's own agenda product was OneMeeting
-(rebranded from PrimeGov), not a resale of Legistar.
+**Design consequence: discovery must probe every known candidate system for a city, not assume the
+"corporate sibling" and stop there.** §B.2 below revises the verification methodology accordingly —
+Part A's own Legistar mechanism is the thing to try *first* for a Swagit city too, not just OneMeeting,
+precisely because Denton already proves that pairing exists in this exact catalog.
 
-**Concrete proof this isn't hypothetical:** the City of Waco moved to "a web-based OneMeeting agenda
-portal and uses Swagit for live streaming," where OneMeeting's agenda page has "on-screen 'play' links
-that open the Swagit player" and **item-level jump points into the Swagit video** — i.e., a real,
-current, production cross-product integration between exactly the two systems a Swagit-only city in
-this catalog would need bridged.
+**Concrete proof OneMeeting↔Swagit is also real, not just a theoretical candidate:** the City of Waco
+moved to "a web-based OneMeeting agenda portal and uses Swagit for live streaming," where OneMeeting's
+agenda page has "on-screen 'play' links that open the Swagit player" and **item-level jump points into
+the Swagit video." Both this and the Denton/Legistar case are real — the point isn't that one is right
+and the other wrong, it's that **either can be true for any given Swagit city**, so the design can't
+hard-code one assumption.
 
 ### §0.2 The joining key already exists — this doesn't need new fuzzy-matching
 
@@ -673,7 +684,41 @@ episodes (that's Mechanism A's job, §0.3).
   (line 346) — a new agenda link populating means this hash naturally changes and triggers a re-render;
   no separate wiring needed, this already works.
 
-### §B.2 Tests
+### §B.2 Discovery methodology — probe every known candidate, per city, before configuring
+
+**Corrected 2026-07-16, direct consequence of the Denton finding (§0.1):** `city.aux_provider` is a
+single, explicit, human-verified config value at runtime (kept simple deliberately — no live
+auto-probing on every scheduled run, matching Part A's own "verify before committing to YAML" discipline
+rather than a runtime guessing game). But the **verification step that decides what to put in that
+config value must try every known candidate system for that city, not just the "expected" corporate
+sibling** — Denton (Swagit-primary) is confirmed to use Legistar, not OneMeeting, which is exactly the
+pairing §0.1's original draft would have skipped checking.
+
+Per-city discovery checklist (run once, before writing `aux_provider`/`aux_source` into a feed's YAML,
+mirroring Part A's existing "Step 1 — Verify body names against live Legistar" discipline, generalized):
+
+1. Try `{slug}.legistar.com/Calendar.aspx` — does it resolve, and does it list real meetings for this
+   city's bodies? (Part A's mechanism already handles this fully once found.)
+2. Try `portal-{slug}.primegov.com` — does it resolve, and does it carry agenda content for this city?
+   (Part C's mechanism, once built.)
+3. Try `{slug}.api.civicclerk.com` (or the tenant name if it differs from the city slug) — does it
+   resolve, and does it return real event data? (Part D's mechanism, once built.)
+4. If more than one candidate resolves for the same city, prefer whichever has better coverage
+   (checked the same way Part A's migration table already compares "more episodes than the capped
+   window" per candidate) — there's no a priori reason to prefer one system over another once multiple
+   are confirmed viable for the same city.
+5. If none resolve, the city stays on chapter-title-only agenda proxying (today's status quo) — not a
+   regression, just no improvement available yet.
+
+**Denton, TX is the first concrete target for this checklist** — a real Swagit-primary city in this
+catalog with a plausible Legistar pairing, using a mechanism (Part A's) that's already fully built and
+proven, unlike the OneMeeting case which still needs live HTML verification (Part C). This should be the
+first city this feature is tried against, both because it's low-implementation-risk (no new adapter
+code needed, just the new auxiliary-mode wiring from §B.1) and because it directly tests whether the
+"probe every candidate" methodology finds real coverage the original single-sibling assumption would
+have missed entirely.
+
+### §B.3 Tests
 
 - A fixture primary-provider episode list + a fixture aux-provider episode list sharing a `(body, date)`
   pair reconcile to the same uid and the primary episode gains `links["agenda"]`/`links["agenda_portal"]`.
@@ -686,7 +731,14 @@ episodes (that's Mechanism A's job, §0.3).
 
 ---
 
-## Part C — OneMeeting provider (new — Swagit's actual agenda-side sibling)
+## Part C — OneMeeting provider (new — one of two known candidate siblings for Swagit, not the only one)
+
+**Corrected 2026-07-16: this is *a* candidate for Swagit cities, not *the* one.** §0.1's Denton finding
+means a Swagit city might use OneMeeting, might use Legistar (already fully covered by Part A/B with no
+new code), might use neither. Build this because OneMeeting↔Swagit is confirmed real in at least one
+production case (Waco), not because it's assumed to be every Swagit city's answer — the discovery
+checklist (§B.2) is what actually decides which mechanism applies to which city, this Part just makes
+OneMeeting one of the checklist's viable options once built.
 
 **Confirmed facts (2026-07-16 research):** public portal pattern `portal-{org}.primegov.com` (OneMeeting
 is the current name for what was PrimeGov before Rock Solid's rebrand). Real production integration
@@ -812,10 +864,14 @@ implementation gap to close later.
 ## §E. Consolidated sequencing, migration, and acceptance (Parts B–D)
 
 **Sequencing:** R11 precedes R3 (agenda text extraction) — R3 narrows to text extraction once this item
-supplies URLs. Within R11: Part A (already done) and Part D (CivicClerk, reuses existing adapter code,
-lowest implementation risk) can land first; Part B (the auxiliary-attachment mechanism both C and D
-depend on) must land before either C or D can be wired in as auxiliary sources; Part C (OneMeeting) is
-gated on live HTML verification and should follow, not lead.
+supplies URLs. Within R11: **Part B (the auxiliary-attachment mechanism) lands first**, since it's the
+shared dependency every other Part needs to be usable in auxiliary mode. **Denton (Swagit-primary,
+Legistar-as-auxiliary) is the first real target once Part B lands** — it needs zero new adapter code
+(Part A's Legistar mechanism already exists), only the new auxiliary-mode wiring, making it the
+lowest-risk, highest-confidence proof that the discovery methodology (§B.2) actually works, ahead of
+both Part C and Part D. Part D (CivicClerk, also reuses existing adapter code) follows next. Part C
+(OneMeeting) is gated on live HTML verification and should follow both, not lead — it's still the
+least-certain of the three.
 
 **Migration:** no backfill required — this is additive URL/link enrichment on already-existing episodes,
 governed by the same `feed_content_hash` re-render trigger every other link-affecting change already
@@ -832,11 +888,14 @@ before beginning its own text-extraction work.
 ## Proposed GitHub issues (not filed — batch review pending)
 
 1. Part B: `City.aux_provider`/`aux_source` config + `fetch_merge` insertion point + the new
-   `attach_auxiliary_agenda_links` reconciliation function.
-2. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (lowest-risk, ships first —
-   reuses existing adapter code, no live-HTML-verification blocker).
-3. Part C: live verification of a real OneMeeting portal for a real catalog city, before any
-   implementation commitment.
-4. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 3's findings.
-5. Part B: resolve the `AgendaRecord`-vs-`Episode` interface question (§D.3) that Part D's design
+   `attach_auxiliary_agenda_links` reconciliation function. Ships first — everything else depends on it.
+2. **Denton verification** (§B.2): run the discovery checklist against `denton-tx`, confirm Legistar
+   coverage, wire it as Denton's `aux_provider` — zero new adapter code, the first real proof the
+   auxiliary mechanism works end to end.
+3. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (also reuses existing adapter
+   code, no live-HTML-verification blocker).
+4. Part B: resolve the `AgendaRecord`-vs-`Episode` interface question (§D.3) that Part D's design
    surfaced, before Part D ships.
+5. Part C: live verification of a real OneMeeting portal for a real catalog city, before any
+   implementation commitment — sequenced last, least certain of the three.
+6. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 5's findings.
