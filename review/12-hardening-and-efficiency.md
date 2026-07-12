@@ -1480,11 +1480,12 @@ capped-deque pattern from PR #324):
   the site-wide `asr_alignment_enabled=false` default for just that source/body (the concrete
   resolution of H6b's "align lane implemented but unscheduled"); `fresh-asr` forces the align hint off
   even when source text exists. See "Calibration-gated routing" below for how `route_mode` is decided.
-- **Admin surface (fast-follow, not in this PR):** a transcript-quality panel on `/admin/status`
-  (per-source trust distribution, sources flagged `low`, last-sampled age) — the glanceable view a
-  one-time eval can't give. `TranscriptQualityRoute` already carries `human_agreement_rate`,
-  `auto_margin_avg`, and `calibrated`, so the panel is additive reporting once built, not a data-model
-  change.
+- **Admin surface (shipped in GH#885):** `/admin/status` now includes a transcript-quality panel
+  showing the per-source/body trust table, route/calibration distribution, prioritized
+  needs-attention list, L2 coverage, L3 gold-point counts, and latest calibration snapshot. This
+  remained additive reporting only: `TranscriptQualityRoute` already carried
+  `human_agreement_rate`, `auto_margin_avg`, and `calibrated`, so the dashboard reads existing H15
+  state without changing routing or schema.
 
 **Calibration-gated routing (how `route_mode` gets decided).** The original sketch above framed this
 as a single `caption_trust: high|low|unknown` verdict from L2's independent aligner. L2 has since

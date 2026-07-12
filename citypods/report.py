@@ -8,6 +8,7 @@ runs ``projection``. ``to_markdown`` / ``to_admin_html`` render it. No network.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.durations import record_served_duration_seconds, record_source_duration_seconds
@@ -1032,6 +1033,176 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
     }
 
 
+def _transcript_quality_status(site_config: dict, state_dir: Path | None) -> dict:
+    """Static `/admin/status` projection for H15 trust routing and calibration signals.
+
+    H15 already persists the durable routing/evidence state we need; this helper only reads local
+    files and reshapes them into a dashboard-friendly summary so operators can see where
+    provider-align is trusted, where fresh ASR still wins, and where the review loop needs more
+    attention.
+    """
+    empty = {
+        "rows": [],
+        "distribution": {
+            "total": 0,
+            "route_mode": {"provider-align": 0, "fresh-asr": 0, "unknown": 0},
+            "calibrated": {"true": 0, "false": 0},
+        },
+        "needs_attention": [],
+        "gold_summary": {
+            "total": 0,
+            "both_correct": 0,
+            "reviewer_correction": 0,
+        },
+        "latest_calibration": None,
+    }
+    if not state_dir:
+        return empty
+
+    from citypods.transcript_quality import (
+        load_quality_routes,
+        load_raw_log,
+        load_rollups_ledger,
+    )
+
+    def _read_json_default(path: Path, default: dict) -> dict:
+        if not path.exists():
+            return dict(default)
+        try:
+            loaded = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return dict(default)
+        return loaded if isinstance(loaded, dict) else dict(default)
+
+    def _last_sampled_seconds(events: list[dict]) -> dict[tuple[str, str], float]:
+        latest: dict[tuple[str, str], float] = {}
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            if event.get("kind") not in {"l1_sample", "evaluation"}:
+                continue
+            source = str(event.get("source_key") or "").strip()
+            body = str(event.get("body_key") or "").strip()
+            if not source or not body:
+                continue
+            created = _parse_iso_utc(event.get("created_at"))
+            if created is None:
+                continue
+            latest[(source, body)] = max(
+                latest.get((source, body), float("-inf")),
+                (now - created).total_seconds(),
+            )
+        return {key: seconds for key, seconds in latest.items() if seconds != float("-inf")}
+
+    now = datetime.now(UTC)
+    routes = load_quality_routes(site_config, Path(state_dir), storage=None)
+    rollups = load_rollups_ledger(Path(state_dir), storage=None)
+    raw_log = load_raw_log(Path(state_dir))
+    trend = _read_json_default(
+        Path(state_dir) / "transcript_quality_calibration_trend.json",
+        {"version": 1, "runs": []},
+    )
+    last_sampled = _last_sampled_seconds(list(raw_log.get("events", [])))
+
+    row_meta: dict[tuple[str, str], dict] = {}
+    gold_summary = {"total": 0, "both_correct": 0, "reviewer_correction": 0}
+    for row in rollups.get("rows", []):
+        if not isinstance(row, dict):
+            continue
+        source = str(row.get("source_key") or "").strip()
+        body = str(row.get("body_key") or "").strip()
+        if not source or not body:
+            continue
+        evidence = row.get("evidence") or {}
+        l2_total = 0
+        l2_used = 0
+        for item in evidence.values() if isinstance(evidence, dict) else ():
+            if not isinstance(item, dict):
+                continue
+            l2_total += 1
+            if item.get("l2_used") is True:
+                l2_used += 1
+            if item.get("gold_text"):
+                gold_summary["total"] += 1
+                gold_source = str(item.get("gold_source") or "").strip()
+                if gold_source == "both_correct":
+                    gold_summary["both_correct"] += 1
+                elif gold_source == "reviewer_correction":
+                    gold_summary["reviewer_correction"] += 1
+        row_meta[(source, body)] = {"l2_total": l2_total, "l2_used": l2_used}
+
+    distribution = {
+        "total": len(routes),
+        "route_mode": {"provider-align": 0, "fresh-asr": 0, "unknown": 0},
+        "calibrated": {"true": 0, "false": 0},
+    }
+    rows: list[dict] = []
+    for key in sorted(routes, key=lambda item: (routes[item].body_name.lower(), item[0], item[1])):
+        route = routes[key]
+        meta = row_meta.get(key, {"l2_total": 0, "l2_used": 0})
+        distribution["route_mode"][route.route_mode] = (
+            distribution["route_mode"].get(route.route_mode, 0) + 1
+        )
+        distribution["calibrated"]["true" if route.calibrated else "false"] += 1
+        l2_total = int(meta["l2_total"])
+        l2_used = int(meta["l2_used"])
+        rows.append(
+            {
+                "source_key": route.source_key,
+                "body_key": route.body_key,
+                "body_name": route.body_name,
+                "route_mode": route.route_mode,
+                "calibrated": route.calibrated,
+                "human_agreement_rate": route.human_agreement_rate,
+                "auto_margin_avg": route.auto_margin_avg,
+                "reviewed": route.reviewed,
+                "provider_wins": route.provider_wins,
+                "challenger_wins": route.challenger_wins,
+                "ties": route.ties,
+                "neither": route.neither,
+                "last_sampled_age_seconds": last_sampled.get(key),
+                "l2_coverage": {
+                    "used": l2_used,
+                    "total": l2_total,
+                    "rate": round(l2_used / l2_total, 4) if l2_total else None,
+                },
+            }
+        )
+
+    def _needs_attention_key(row: dict) -> tuple[float, str, str]:
+        margin = row.get("auto_margin_avg")
+        return (
+            -(abs(float(margin)) if isinstance(margin, int | float) else -1.0),
+            row["body_name"].lower(),
+            row["source_key"],
+        )
+
+    needs_attention = [row for row in rows if row["reviewed"] == 0 or row["calibrated"] is False]
+    needs_attention.sort(key=_needs_attention_key)
+
+    latest_calibration = None
+    runs = trend.get("runs") if isinstance(trend.get("runs"), list) else []
+    if runs:
+        run = runs[-1]
+        if isinstance(run, dict):
+            latest_calibration = {
+                "run_at": run.get("run_at"),
+                "point_count": run.get("point_count"),
+                "wer_vs_auto_score_correlation": run.get("wer_vs_auto_score_correlation"),
+                "l2_coverage_rate": run.get("l2_coverage_rate"),
+                "both_correct_accepted": run.get("both_correct_accepted"),
+                "both_correct_rejected": run.get("both_correct_rejected"),
+            }
+
+    return {
+        "rows": rows,
+        "distribution": distribution,
+        "needs_attention": needs_attention[:10],
+        "gold_summary": gold_summary,
+        "latest_calibration": latest_calibration,
+    }
+
+
 def _timeline_audio_repair_status(records_cache: dict[str, dict]) -> dict:
     from citypods.integrity import timeline_audio_repair_actions
     from citypods.records import record_to_episode
@@ -1199,6 +1370,9 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     )
     by_work_class = wc_counts.get("by_work_class", {})
     provider_transcripts = _provider_transcript_status(records_cache, by_work_class)
+    transcript_quality = _transcript_quality_status(
+        site_config, Path(state_dir) if state_dir else None
+    )
     timeline_audio_repair = _timeline_audio_repair_status(records_cache)
     audio_work = by_work_class.get("audio", {})
     audio_open = sum(
@@ -1353,6 +1527,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "deep_archive_items": wc_counts.get("deep_archive_items", 0),
             "work_manifest": manifest_meta,
         },
+        "transcript_quality": transcript_quality,
         "issues": {
             "deferred": actuals["deferred"],
             "dead": actuals["dead"],

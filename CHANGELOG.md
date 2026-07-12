@@ -26,6 +26,17 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Added
 
+- **H15 `/admin/status` transcript-quality panel** ([#885](https://github.com/BashfulBits/city-meeting-podcasts/issues/885)).
+  `/admin/status` now surfaces H15's existing trust-routing state as a first-class dashboard
+  section instead of requiring operators to inspect raw JSON ledgers. The static status snapshot
+  reads local H15 routes, raw-sample timestamps, rollup evidence, and calibration trend history to
+  render: a per-source/body route table (route mode, calibrated yes/no, agreement rate, automatic
+  margin, reviewed count, L2 coverage, last-sampled age), aggregate trust/calibration
+  distribution, a capped needs-attention list for rows with review/calibration gaps, and a global
+  L3 gold/calibration summary with the latest trend snapshot. This is reporting-only — no H15
+  schema or routing changes — and fulfills the fast-follow admin surface called out in
+  [review/12 §H15](review/12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring).
+
 - **H15 Layer 2 — independent CTC forced-alignment judge** ([#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883)).
   Added `citypods/ctc_align.py::ctc_fit()`, wrapping `torchaudio.pipelines.MMS_FA` (a wav2vec2
   model trained purely for forced alignment — not Whisper, so it cannot share either candidate
