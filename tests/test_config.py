@@ -242,3 +242,19 @@ def test_filter_city_configs_accepts_feed_or_entity_slug(tmp_path):
     assert [c.slug for c in filter_city_configs(cities, "foo-council")] == ["foo-council"]
     assert [c.slug for c in filter_city_configs(cities, "foo")] == ["foo-council", "foo-planning"]
     assert filter_city_configs(cities, "missing") == []
+
+
+def test_unknown_audit_block_is_preserved_in_city_extra(tmp_path):
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID
+        + "audit:\n"
+        + "  lifecycle:\n"
+        + "    status: inactive\n"
+        + "    verified_at: 2026-07-11\n",
+    )
+
+    c = load_city_configs(tmp_path, DEFAULTS)[0]
+
+    assert c.extra["audit"]["lifecycle"]["status"] == "inactive"

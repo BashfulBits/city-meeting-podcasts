@@ -525,6 +525,30 @@ def test_audit_city_staleness_suppressed_by_archive_newest():
     assert not any(f.check == "stale" for f in findings)
 
 
+def test_audit_city_inactive_lifecycle_suppresses_empty_and_stale():
+    city = _city()
+    city.extra = {"audit": {"lifecycle": {"status": "inactive"}}}
+    eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
+
+    findings = audit_city(city, provider=_FakeProvider(eps), now=NOW, min_meetings=10)
+
+    checks = {f.check for f in findings}
+    assert "empty" not in checks
+    assert "stale" not in checks
+
+
+def test_audit_city_superseded_lifecycle_still_allows_other_checks():
+    city = _city()
+    city.extra = {"audit": {"lifecycle": {"status": "superseded"}}}
+    eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
+
+    findings = audit_city(city, provider=_FakeProvider(eps), now=NOW, view_counts=[100])
+
+    checks = {f.check for f in findings}
+    assert "stale" not in checks
+    assert "view-cap" in checks
+
+
 # ---------------------------------------------------------------------------
 # check_meetings_url
 # ---------------------------------------------------------------------------

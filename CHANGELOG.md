@@ -16,6 +16,16 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **Feed-health stale-body triage is quieter and easier to audit.** Feed YAMLs can now carry an
+  operator-stamped `audit.lifecycle.status` of `inactive` or `superseded`; the feed-health audit
+  suppresses `empty`/`stale` findings for those verified retired feeds while leaving structural
+  checks like `view-cap`, dead enclosures, and meetings-URL verification intact. The GitHub
+  feed-health reconciler also stops opening/refreshing standalone `empty` issues, closing existing
+  ones on the next run instead of keeping low-volume or temporary bodies like GH#843 in the issue
+  list forever. Remaining `stale` issues now include direct audit links back to the feed config,
+  city config, official meetings page, and provider source, so the manual verification loop for
+  "did this body die, rename, or keep meeting?" is a quick YAML-backed check instead of a search
+  exercise.
 - **Chapters now auto-heal after a later timeline correction instead of fossilizing served-time
   offsets (GH#775).** Provider chapter markers are now persisted separately as durable
   `source_chapters`, while `chapters` remains the current served-time/feed-facing projection.

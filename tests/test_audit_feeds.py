@@ -36,6 +36,7 @@ _parse_state = _mod._parse_state
 _parse_state_rows = _mod._parse_state_rows
 _parse_prior_rows = _mod._parse_prior_rows
 _FeedRow = _mod._FeedRow
+_FeedContext = _mod._FeedContext
 
 _NOW = datetime(2026, 6, 30, tzinfo=UTC)
 
@@ -65,7 +66,13 @@ def _grouped_issue(
     city_of = city_of or {}
     severity = ERROR if any(r.severity == ERROR for r in rows.values()) else WARN
     body = _render_grouped_body(
-        check, rows=rows, first_seen=first_seen, city_of=city_of, severity=severity, now=now
+        check,
+        rows=rows,
+        first_seen=first_seen,
+        city_of=city_of,
+        feed_context=None,
+        severity=severity,
+        now=now,
     )
     title = _grouped_title(
         check, n_feeds=len(rows), n_cities=len({city_of.get(s, s) for s in rows})
@@ -234,7 +241,13 @@ def test_render_grouped_body_contains_marker_key_and_severity():
     rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="ex")}
     first_seen = {"cityA": _NOW.isoformat()}
     body = _render_grouped_body(
-        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=WARN, now=_NOW
+        "drift",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        feed_context=None,
+        severity=WARN,
+        now=_NOW,
     )
     assert _mod.MARKER in body
     assert _key_marker("drift") in body
@@ -250,6 +263,7 @@ def test_render_grouped_body_timeline_repair_checks_link_to_workflow_dispatch():
         rows=rows,
         first_seen=first_seen,
         city_of={},
+        feed_context=None,
         severity=ERROR,
         now=_NOW,
     )
@@ -273,6 +287,32 @@ def test_repairable_timeline_guidance_links_to_workflow_dispatch():
         assert "timeline_repair=true" in guidance
 
 
+def test_render_grouped_body_stale_includes_audit_links():
+    rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="ex")}
+    first_seen = {"cityA": _NOW.isoformat()}
+    body = _render_grouped_body(
+        "stale",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={"cityA": "austin-tx"},
+        feed_context={
+            "cityA": _FeedContext(
+                city="austin-tx",
+                feed_config_url="https://github.com/BashfulBits/city-meeting-podcasts/blob/main/config/feeds/cityA.yml",
+                city_config_url="https://github.com/BashfulBits/city-meeting-podcasts/blob/main/config/cities/austin-tx.yml",
+                meetings_url="https://example.gov/meetings",
+                source_url="https://provider.example/feed",
+            )
+        },
+        severity=WARN,
+        now=_NOW,
+    )
+    assert "### Audit links" in body
+    assert "feed config" in body
+    assert "city meetings page" in body
+    assert "provider source" in body
+
+
 def test_render_grouped_body_truncates_past_max_rows(monkeypatch):
     monkeypatch.setattr(_mod, "_MAX_ROWS", 2)
     rows = {
@@ -281,7 +321,13 @@ def test_render_grouped_body_truncates_past_max_rows(monkeypatch):
     }
     first_seen = {f"city{i}": _NOW.isoformat() for i in range(3)}
     body = _render_grouped_body(
-        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=WARN, now=_NOW
+        "drift",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        feed_context=None,
+        severity=WARN,
+        now=_NOW,
     )
     assert "...and 1 more" in body
 
@@ -290,7 +336,13 @@ def test_render_grouped_body_parse_state_round_trip():
     rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="ex")}
     first_seen = {"cityA": "2026-06-01T00:00:00+00:00"}
     body = _render_grouped_body(
-        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=WARN, now=_NOW
+        "drift",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        feed_context=None,
+        severity=WARN,
+        now=_NOW,
     )
     state = _parse_state(body)
     assert state["check"] == "drift"
@@ -308,7 +360,13 @@ def test_render_grouped_body_state_rows_survive_display_cap(monkeypatch):
     }
     first_seen = {"cityA": _NOW.isoformat(), "cityB": _NOW.isoformat()}
     body = _render_grouped_body(
-        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=ERROR, now=_NOW
+        "drift",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        feed_context=None,
+        severity=ERROR,
+        now=_NOW,
     )
     assert "`cityB`" not in body  # beyond the display cap
     recovered = _parse_state_rows(_parse_state(body))
@@ -359,7 +417,13 @@ def test_render_state_block_escapes_html_comment_terminator_in_example():
     rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="broke here --> oops")}
     first_seen = {"cityA": _NOW.isoformat()}
     body = _render_grouped_body(
-        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=WARN, now=_NOW
+        "drift",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        feed_context=None,
+        severity=WARN,
+        now=_NOW,
     )
     # The raw payload embedded in the HTML comment must not contain an unescaped "-->".
     match = _mod._STATE_RE.search(body)
@@ -378,6 +442,7 @@ def test_parse_prior_rows_recovers_slug_count_and_example():
         rows=rows,
         first_seen=first_seen,
         city_of={"cityA": "CityA"},
+        feed_context=None,
         severity=WARN,
         now=_NOW,
     )
@@ -393,7 +458,13 @@ def test_parse_prior_rows_recovers_error_severity():
     rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=ERROR, example="boom")}
     first_seen = {"cityA": _NOW.isoformat()}
     body = _render_grouped_body(
-        "drift", rows=rows, first_seen=first_seen, city_of={}, severity=ERROR, now=_NOW
+        "drift",
+        rows=rows,
+        first_seen=first_seen,
+        city_of={},
+        feed_context=None,
+        severity=ERROR,
+        now=_NOW,
     )
     recovered = _parse_prior_rows(body)
     assert recovered["cityA"].severity == ERROR
@@ -471,6 +542,23 @@ def test_reconcile_grouped_creates_new_issue_with_count_in_title():
     create_calls = [a for a in calls if len(a) >= 2 and a[1] == "create"]
     assert create_calls
     assert "[feed-health] drift: 1 feed" in create_calls[0]
+
+
+def test_reconcile_grouped_empty_findings_do_not_open_issue():
+    f = _finding(slug="cityA", check="empty", msg="only 1 episode")
+    calls = _run_reconcile([f], existing_issues={}, now=_NOW)
+    create_calls = [a for a in calls if len(a) >= 2 and a[1] == "create"]
+    assert not create_calls
+
+
+def test_reconcile_grouped_existing_empty_issue_closes():
+    rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=WARN, example="only 1 episode")}
+    first_seen = {"cityA": _NOW.isoformat()}
+    existing = _grouped_issue("empty", number=22, first_seen=first_seen, rows=rows, now=_NOW)
+    calls = _run_reconcile([], existing, now=_NOW)
+    close_calls = [a for a in calls if len(a) >= 2 and a[1] == "close"]
+    assert close_calls
+    assert "22" in close_calls[0]
 
 
 def test_reconcile_grouped_no_action_when_unchanged():

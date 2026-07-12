@@ -45,6 +45,7 @@ from pathlib import Path
 from citypods.audit import ERROR, WARN, Finding, audit_all
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import source_key
+from citypods.security import iter_source_urls
 from citypods.state import pull_canonical_state
 from citypods.statesync import push_state
 from citypods.storage import make_storage
@@ -73,6 +74,7 @@ _DEAD_MEETINGS_URL_STATUSES = frozenset({404, 410, 451})
 # first-seen date regardless of the display cap, so nothing is lost across runs.
 _MAX_ROWS = 60
 _MAX_EXAMPLE_CHARS = 180
+_NON_ISSUE_CHECKS = frozenset({"empty"})
 _AUDIT_WORKFLOW_URL = (
     "https://github.com/BashfulBits/city-meeting-podcasts/actions/workflows/audit.yml"
 )
@@ -504,6 +506,15 @@ class _FeedRow:
     example: str
 
 
+@dataclass(frozen=True)
+class _FeedContext:
+    city: str
+    feed_config_url: str | None = None
+    city_config_url: str | None = None
+    meetings_url: str | None = None
+    source_url: str | None = None
+
+
 def _group_by_check(findings: list[Finding]) -> dict[str, dict[str, _FeedRow]]:
     """Group consolidated-model findings into ``{check: {slug: _FeedRow}}``."""
     by_check: dict[str, dict[str, list[Finding]]] = {}
@@ -594,6 +605,35 @@ def _render_state_block(check: str, first_seen: dict[str, str], rows: dict[str, 
     return f"<!-- citypods:feed-health:state\n{payload}\n-->"
 
 
+def _blob_url(github_repo: str | None, path: str) -> str | None:
+    if not github_repo:
+        return None
+    return f"https://github.com/{github_repo}/blob/main/{path}"
+
+
+def _first_source_url(source: dict) -> str | None:
+    for key in ("list_url", "feed_url"):
+        value = source.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return next(iter(iter_source_urls(source)), None)
+
+
+def _feed_context(city, *, github_repo: str | None) -> _FeedContext:
+    entity = getattr(city, "city_entity", None)
+    city_slug = entity or city.slug
+    source = getattr(city, "source", {}) or {}
+    meetings_url = getattr(city, "meetings_url", None)
+    city_website = getattr(city, "city_website", None)
+    return _FeedContext(
+        city=city_slug,
+        feed_config_url=_blob_url(github_repo, f"config/feeds/{city.slug}.yml"),
+        city_config_url=_blob_url(github_repo, f"config/cities/{entity}.yml") if entity else None,
+        meetings_url=meetings_url or city_website,
+        source_url=_first_source_url(source),
+    )
+
+
 def _merge_first_seen(
     prior_first_seen: dict[str, str],
     prior_slugs: set[str],
@@ -644,6 +684,7 @@ def _render_grouped_body(
     rows: dict[str, _FeedRow],
     first_seen: dict[str, str],
     city_of: Mapping[str, str],
+    feed_context: Mapping[str, _FeedContext] | None,
     severity: str,
     now: datetime,
 ) -> str:
@@ -681,6 +722,24 @@ def _render_grouped_body(
     if len(ordered_slugs) > _MAX_ROWS:
         parts.append(f"| _...and {len(ordered_slugs) - _MAX_ROWS} more_ | | | | | |")
 
+    if check == "stale":
+        parts += ["", "### Audit links", ""]
+        for slug in shown:
+            ctx = (feed_context or {}).get(slug)
+            if ctx is None:
+                continue
+            links = []
+            if ctx.feed_config_url:
+                links.append(f"[feed config]({ctx.feed_config_url})")
+            if ctx.city_config_url:
+                links.append(f"[city config]({ctx.city_config_url})")
+            if ctx.meetings_url:
+                links.append(f"[city meetings page]({ctx.meetings_url})")
+            if ctx.source_url:
+                links.append(f"[provider source]({ctx.source_url})")
+            if links:
+                parts.append(f"- `{slug}` ({ctx.city}): " + ", ".join(links))
+
     parts += ["", _footer(check)]
     parts += ["", _render_state_block(check, first_seen, rows)]
     return "\n".join(parts)
@@ -692,13 +751,18 @@ def _reconcile_grouped(
     dry_run: bool,
     audited_slugs: set[str] | None,
     city_of: Mapping[str, str],
+    feed_context: Mapping[str, _FeedContext] | None,
     existing: dict[str, dict],
     now: datetime,
 ) -> tuple[int, int, int]:
     """Reconcile the consolidated (one-issue-per-check) model.
 
     Returns ``(created, updated, closed)``."""
-    wanted = _group_by_check(findings)
+    wanted = {
+        check: rows
+        for check, rows in _group_by_check(findings).items()
+        if check not in _NON_ISSUE_CHECKS
+    }
     created = updated = closed = 0
 
     all_checks = set(wanted) | {key for key in existing if not _is_per_slug_key(key)}
@@ -761,6 +825,7 @@ def _reconcile_grouped(
             rows=merged_rows,
             first_seen=first_seen,
             city_of=city_of,
+            feed_context=feed_context,
             severity=severity,
             now=now,
         )
@@ -972,6 +1037,7 @@ def reconcile(
     dry_run: bool,
     audited_slugs: set[str] | None = None,
     city_of: Mapping[str, str] | None = None,
+    feed_context: Mapping[str, _FeedContext] | None = None,
     now: datetime | None = None,
 ) -> int:
     """Reconcile the current findings against open GitHub issues.
@@ -992,6 +1058,7 @@ def reconcile(
         dry_run=dry_run,
         audited_slugs=audited_slugs,
         city_of=city_of,
+        feed_context=feed_context,
         existing=existing,
         now=now,
     )
@@ -1106,7 +1173,15 @@ def main(argv: list[str] | None = None) -> int:
         _ensure_labels()
     audited_slugs = {c.slug for c in cities} if args.city else None
     city_of = {c.slug: (c.city_entity or c.slug) for c in cities}
-    reconcile(findings, dry_run=args.dry_run, audited_slugs=audited_slugs, city_of=city_of)
+    github_repo = site_config.get("github_repo")
+    feed_context = {c.slug: _feed_context(c, github_repo=github_repo) for c in cities}
+    reconcile(
+        findings,
+        dry_run=args.dry_run,
+        audited_slugs=audited_slugs,
+        city_of=city_of,
+        feed_context=feed_context,
+    )
     return 0
 
 
