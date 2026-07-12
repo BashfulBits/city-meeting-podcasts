@@ -70,6 +70,57 @@ stable `uid`) and is linked from playable feed `<item>` entries, city/archive vi
   link" affordance on transcript selections (the served timestamp + source deep-link).
 - **"Report a problem"** — links to the #56 issue template, prefilled with slug + uid.
 
+### City-level entry point (added 2026-07-13 — gap found during this design pass)
+
+**Problem.** The city index page (`render_city_page`, `citypods/site.py:80-116` → `templates/city.html.j2`
+→ `docs/<slug>/index.html`) already exists and is unrelated to Phase R — but it renders `feed_eps`, the
+**capped current feed window** (`citypods/run.py:542-544`, `feed_eps[:city.max_episodes]`; the section is
+literally headed "Recent meetings," `templates/city.html.j2:29`). R1 pages exist for the **full
+append-only archive**, deliberately including meetings older than the cap. Without a change here, those
+older pages are orphaned — reachable only by a direct URL or, later, search (R2) — for exactly the
+visitor this project is for: someone who wants everything their city council has done, not just the
+last N meetings. This must ship as part of R1, not be deferred to R2/search, since it's the primary
+human browse path, and search doesn't exist yet when R1 ships.
+
+**Approach — two changes, not one:**
+
+1. **Link each episode in the existing "Recent meetings" list to its meeting page.** `render_city_page`'s
+   `episode_view` dict (`citypods/site.py:95-104`) currently carries `title`, `duration`, `audio`,
+   `links` — no `uid`/page URL at all. Add `"page_url": meeting_page_url(city, e, base_url)`. In
+   `templates/city.html.j2:39`, wrap `{{ e.title }}` in `<a href="{{ e.page_url }}">` (or add an explicit
+   "Meeting page" link alongside the existing inline play button — **lean: wrap the title**, since the
+   play button stays the fast-path for podcast-style inline listening and the title becomes the research
+   path, matching how the rest of the page already separates those two affordances).
+2. **Add a distinct "browse full archive" view per city**, new `docs/<slug>/archive/index.html`, listing
+   **every retained episode** (not capped), each entry: title, date, availability-state badge (so an
+   unavailable-media entry is visibly marked before the visitor clicks through — consistent with "never
+   imply the meeting didn't occur," the archive list must not just silently omit or silently look normal),
+   and a link to its meeting page. New `render_city_archive_page(city, base_url, episodes, *,
+   site_config=None) -> str` in `citypods/site.py`, new `templates/city_archive.html.j2` (extends
+   `base.html.j2`, structurally similar to `city.html.j2`'s list but without the play buttons/subscribe
+   block — this page's job is browsing, not podcast-app subscription). The existing city page gets one
+   added line: a "Browse the full archive →" link near the "Recent meetings" heading.
+   **Rejected alternative:** just pass the full archive into the existing `render_city_page` instead of
+   adding a second page. Rejected because it conflates two different jobs (fast podcast-subscriber feed
+   view vs. full research browse) into one page, and would make the primary city page unboundedly large
+   for a city with a deep archive — the same "don't inline everything into one page" reasoning already
+   applied to transcripts (Implementation paths, below) applies here.
+
+**Data source — resolves an open question from the original draft of this design.** `_process_city`
+already has the full per-city archive in scope *before* it gets capped: `episodes` at
+`citypods/run.py:522/525/529` (from `pipeline.render_from_records`/`.enrich`/`.archive_from_records`) is
+the full archived set; `feed_eps` (`:542-544`) is `filter_by_body(episodes, city.source.get("body"))`
+**then** capped to `max_episodes`. So the archive view's input is simply `filter_by_body(episodes,
+city.source.get("body"))` **without** the `[:city.max_episodes]` slice — no new data access needed, just
+reusing the pre-cap value that's already computed and in scope. This also answers the open question the
+original Migration/backfill note below raised about how `_write_meeting_pages` reaches the full retained
+set: same value, same place, compute once and pass to both.
+
+**Pagination:** none initially — at today's catalog scale (~85 feeds, modest per-city archive depth) an
+unpaginated list is fine. Flag for pagination if a single city's archive page HTML exceeds roughly the
+same size discipline `review/16` already applies to search partitions (soft target well under 1 MB); not
+a near-term concern, don't build pagination speculatively ahead of that.
+
 ### Data model deltas (exact)
 
 1. **New per-episode render hash** — `meeting_page_hash(ep: Episode) -> str` in `citypods/records.py`,
@@ -134,6 +185,13 @@ stable `uid`) and is linked from playable feed `<item>` entries, city/archive vi
   one** — the current `<item>` block has no `<link>` at all (only the channel-level `<link>` exists,
   pointing at `city_url`).
 - `citypods/config.py` — `meeting_pages: bool = True`.
+- `citypods/site.py` — `render_city_page`'s `episode_view` (`:95-104`) gains a `page_url` field per
+  episode; new `render_city_archive_page(city: City, base_url: str, episodes: list[Episode], *,
+  site_config: dict | None = None) -> str`.
+- `templates/city.html.j2` — wrap the `{{ e.title }}` at line 39 in a link to `e.page_url`; add a
+  "Browse the full archive →" link near the "Recent meetings" heading (line 29).
+- `templates/city_archive.html.j2` — new, full-archive browse list (title, date, availability badge,
+  link), no play buttons/subscribe block.
 
 ### Pipeline / stage changes
 
@@ -152,20 +210,21 @@ per-uid page hash (delta #1) would correctly detect the change if it ever got th
 **Decision: decouple `_write_meeting_pages` from the outer city-level skip gate entirely** — call it
 unconditionally on every run for every city (cheap, because the per-uid hash cache from delta #2 makes
 unchanged pages a no-op check, not a re-render). Keep the outer gate governing only the feed/index-page
-render block, which legitimately is scoped to the feed window. **Open implementation question:**
-confirm how `_write_meeting_pages` gets the full retained-episode set for a city (not just `feed_eps`,
-which is already capped) — this needs its own look at how `_process_city` currently accesses records
-before `feed_eps` is computed; not resolved by this design pass, flagged for the implementer.
+render block, which legitimately is scoped to the feed window. **Data source resolved** (was an open
+question in the original draft of this design; closed by the City-level entry point section above):
+`_write_meeting_pages` and `render_city_archive_page` both consume `filter_by_body(episodes,
+city.source.get("body"))` — the same pre-cap value `feed_eps` (`citypods/run.py:542-544`) is derived
+from, just without the `[:city.max_episodes]` slice — computed once in `_process_city` and passed to
+both, no new data access needed.
 
 ### Migration / backfill
 
 First run after this ships needs a page for every currently-retained meeting record across the whole
-catalog (not just the current feed window) — at today's scale (~85 feeds, more per-city archive depth
-than the feed window) this could be several hundred pages on one run. Because each page write is a cheap
-static render and the per-uid cache means only page 1 pays full cost, **no dedicated backfill workflow is
-needed** — this ships as a normal scheduled run, just a longer one the first time. Confirm at
-implementation time that `_process_city` can reach the full retained set (see the open question above)
-before assuming this is free.
+catalog (not just the current feed window), plus one new archive page per city — at today's scale (~85
+feeds, more per-city archive depth than the feed window) this could be several hundred meeting pages on
+one run. Because each page write is a cheap static render and the per-uid cache means only page 1 pays
+full cost, **no dedicated backfill workflow is needed** — this ships as a normal scheduled run, just a
+longer one the first time.
 
 ### Implementation paths
 
@@ -201,6 +260,10 @@ before assuming this is free.
   pin the exact expected behavior at the seam in this test rather than leaving it implicit).
 - The transcript component tolerates a fixture word-JSON with no `speaker_id`/`speaker_name` fields
   (today's shape) and one with them present (R5's future shape) without erroring.
+- The city page's "Recent meetings" list links each episode title to its meeting page.
+- `render_city_archive_page` lists every retained episode for a city (not capped by `max_episodes`),
+  including withheld-media entries with a visible availability badge, each linking to its meeting page.
+- An episode outside the feed window appears on the archive page but not the "Recent meetings" list.
 
 ### Risks
 
@@ -232,7 +295,10 @@ civic metadata and canonical provenance link, a clear no-recording notice, and n
 podcast enclosure. Unchanged meetings do not re-render (verified per-episode, not just per-city); an
 archived episode outside the feed window still updates its page when it changes; feed-window changes do
 not delete archive pages; forks can disable the feature. The transcript component renders correctly
-against both today's word-JSON shape and R5's future speaker-attribution shape.
+against both today's word-JSON shape and R5's future speaker-attribution shape. **Every city has a
+discoverable browse path to its full archive** — the "Recent meetings" list links to meeting pages, and
+a "Browse the full archive" page lists every retained meeting, not just the current feed window — so a
+visitor interested in one city can reach any of its meetings without needing search (R2) to exist yet.
 
 ### Proposed GitHub issues (not filed — batch review pending)
 
@@ -244,6 +310,9 @@ against both today's word-JSON shape and R5's future speaker-attribution shape.
 4. `<item><link>` in `feeds.py`/`feed.xml.j2` pointing at the meeting page.
 5. Reserve (schema-only, no behavior) the `speaker_id`/`speaker_name` fields in the word-JSON contract
    and the `/speakers/<speaker_id>/` link convention, so R5 has a stable target.
+6. City-level entry point: link "Recent meetings" titles to meeting pages, add
+   `render_city_archive_page` + `templates/city_archive.html.j2` + the "Browse the full archive" link on
+   the city page.
 
 ---
 
