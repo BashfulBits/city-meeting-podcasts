@@ -43,23 +43,39 @@ designed precisely to find the right URL rather than assume a naming pattern. Bu
 Legistar" as the maintainer's recollection pending verification, not a confirmed fact this doc can build
 on as settled.
 
-| Video provider we ingest today | Owns it | Most-likely candidate sibling(s) | Portal/API pattern | Confirmed |
+**Corrected further, 2026-07-16 (same day): the "Rock Solid Technologies" framing overstated a
+distinction that no longer exists in practice.** Confirmed directly against granicus.com: OneMeeting is
+marketed today as a **direct Granicus product** ("Agenda OE"), not distinguished from Legistar
+("Agenda LE") by any Rock Solid branding on Granicus's own site. And there's a **third** parallel
+Granicus agenda-management line, missed in the original draft: **Agenda PE** (formerly "Peak Agenda
+Management"), explicitly positioned for **small-to-medium governments** — plausibly a strong fit for
+several of this catalog's smaller cities specifically. **This simplifies rather than complicates the
+picture**: Granicus doesn't sell one sibling per video-provider acquisition path, it sells (at least)
+**three parallel agenda-management products it markets directly** — Legistar, OneMeeting, and Agenda PE
+— and a given city's choice among them looks driven by government size/complexity, not by which
+Granicus-family video product (Granicus or Swagit) that city happens to use. This makes the "probe every
+candidate, don't assume a fixed mapping" principle (below) apply even more broadly than the original
+draft had it — **Granicus-primary cities could plausibly use OneMeeting or Agenda PE too, not just
+Legistar**, the same way Swagit-primary cities could use any of the three.
+
+| Video provider we ingest today | Owns it | Candidate sibling(s), any may apply | Portal/API pattern | Status |
 |---|---|---|---|---|
-| **Granicus** | Granicus (since 2011, via Daystar Systems acquisition) | **Legistar** | `{org}.legistar.com/Calendar.aspx` | Long-standing, deeply integrated — Part A already works |
-| **Swagit** | Granicus, via **Rock Solid Technologies** (acquired Oct 2022) | **OneMeeting** (formerly PrimeGov) *or* **Legistar** — both are viable, a given Swagit city could have either, neither, or (in principle) both | `portal-{org}.primegov.com` / `{org}.legistar.com/Calendar.aspx` | OneMeeting: real production example (Waco, below). Legistar: believed true for Denton, TX (maintainer recollection, exact URL unconfirmed — §B.2) |
+| **Granicus** | Granicus (since 2011) | **Legistar** (proven), **OneMeeting**, **Agenda PE** — any could apply, not just Legistar | `{org}.legistar.com/Calendar.aspx` (Legistar); OneMeeting/Agenda PE patterns TBD | Legistar: Part A already works. OneMeeting/Agenda PE: unconfirmed for any Granicus-primary city in this catalog |
+| **Swagit** | Granicus (both Legistar and Swagit are Granicus products; Swagit's acquisition happened later, via Rock Solid, but that distinction has no bearing on which agenda product a city chose) | Same three candidates as Granicus — **Legistar**, **OneMeeting**, **Agenda PE** | Same as above | OneMeeting: real production example (Waco, below). Legistar: believed true for Denton, TX (maintainer recollection, exact URL unconfirmed — §B.2). Agenda PE: no confirmed example yet, no confirmed portal URL pattern either |
 | **CivicPlus** | CivicPlus (since 2017, via BoardSync acquisition, rebranded CivicClerk) | **CivicClerk** | `{tenant}.api.civicclerk.com` (OData JSON API — this project's existing `civicclerk.py` already speaks it) | Same parent company; product bundling, not a technical integration |
 
-**Design consequence: discovery must probe every known candidate system for a city, not assume the
-"corporate sibling" and stop there.** §B.2 below revises the verification methodology accordingly —
-Part A's own Legistar mechanism is the thing to try *first* for a Swagit city too, not just OneMeeting,
-precisely because Denton already proves that pairing exists in this exact catalog.
+**Design consequence: discovery must probe every known candidate system for a city, not assume any
+single "sibling" and stop there — this now includes Granicus-primary cities too, not just Swagit ones.**
+§B.2 below revises the verification methodology accordingly.
 
-**Concrete proof OneMeeting↔Swagit is also real, not just a theoretical candidate:** the City of Waco
-moved to "a web-based OneMeeting agenda portal and uses Swagit for live streaming," where OneMeeting's
-agenda page has "on-screen 'play' links that open the Swagit player" and **item-level jump points into
-the Swagit video." Both this and the Denton/Legistar case are real — the point isn't that one is right
-and the other wrong, it's that **either can be true for any given Swagit city**, so the design can't
-hard-code one assumption.
+**Concrete proof OneMeeting↔Swagit is real, not just a theoretical candidate:** the City of Waco moved
+to "a web-based OneMeeting agenda portal and uses Swagit for live streaming," where OneMeeting's agenda
+page has "on-screen 'play' links that open the Swagit player" and **item-level jump points into the
+Swagit video." This and the Denton/Legistar case are both real — the point isn't that one is right and
+the other wrong, it's that **any of the three candidates can be true for any given city on either
+Granicus-family video provider**, so the design can't hard-code one assumption. Agenda PE has no
+confirmed real-world example in this research pass; it's named as a candidate worth checking, not a
+proven pairing.
 
 ### §0.2 The joining key already exists — this doesn't need new fuzzy-matching
 
@@ -715,38 +731,47 @@ episodes (that's Mechanism A's job, §0.3).
 
 ### §B.2 Discovery methodology — probe every known candidate, per city, before configuring
 
-**Corrected 2026-07-16, direct consequence of the Denton finding (§0.1):** `city.aux_provider` is a
-single, explicit, human-verified config value at runtime (kept simple deliberately — no live
-auto-probing on every scheduled run, matching Part A's own "verify before committing to YAML" discipline
-rather than a runtime guessing game). But the **verification step that decides what to put in that
-config value must try every known candidate system for that city, not just the "expected" corporate
-sibling** — Denton (Swagit-primary) is confirmed to use Legistar, not OneMeeting, which is exactly the
-pairing §0.1's original draft would have skipped checking.
+**Corrected 2026-07-16, direct consequence of the Denton finding and the confirmed three-product-line
+picture (§0.1):** `city.aux_provider` is a single, explicit, human-verified config value at runtime
+(kept simple deliberately — no live auto-probing on every scheduled run, matching Part A's own "verify
+before committing to YAML" discipline rather than a runtime guessing game). But the **verification step
+that decides what to put in that config value must try every known candidate system for that city — for
+*any* city on a Granicus-family video provider (Granicus *or* Swagit), not just an "expected" pairing.**
+Denton (Swagit-primary) is believed to use Legistar rather than OneMeeting (unconfirmed exact URL, see
+below); Granicus's own site confirms it directly markets *three* parallel agenda products (Legistar,
+OneMeeting, Agenda PE), so a Granicus-primary city checking only Legistar and stopping is making the
+same kind of unwarranted assumption the original Swagit→OneMeeting framing did.
 
 Per-city discovery checklist (run once, before writing `aux_provider`/`aux_source` into a feed's YAML,
-mirroring Part A's existing "Step 1 — Verify body names against live Legistar" discipline, generalized):
+mirroring Part A's existing "Step 1 — Verify body names against live Legistar" discipline, generalized,
+and applying to **both** Granicus-primary and Swagit-primary cities, not just Swagit ones):
 
 0. **Don't guess the subdomain slug — find it.** A live-verification attempt during this design pass
    (§C.3) tried naive `{cityname}tx.legistar.com`/`portal-{cityname}tx.primegov.com` string construction
-   for Austin and Dallas and got "Invalid parameters!"/DNS failures — inconclusive, not a confirmed
-   absence, but proof that slug-guessing isn't reliable even when a real Legistar/OneMeeting instance
-   exists. Pflugerville's pattern (`pflugerville.legistar.com`) worked in Part A only because it was
-   already confirmed live, not because "`{slug}.legistar.com`" is a dependable convention. Find the real
-   hostname from the city's own government website (most cities that use one of these systems link to it
-   directly, e.g. an "Agendas & Minutes" or "Meeting Portal" link), then verify that discovered URL —
-   don't construct and probe a guessed one.
+   for Austin, Dallas, *and* Denton itself and got "Invalid parameters!"/DNS failures across the board —
+   inconclusive, not a confirmed absence, but proof that slug-guessing isn't reliable even when a real
+   instance likely exists. Pflugerville's pattern (`pflugerville.legistar.com`) worked in Part A only
+   because it was already confirmed live and uses no state suffix — not because any predictable slug
+   convention exists. Find the real hostname from the city's own government website (most cities that
+   use one of these systems link to it directly, e.g. an "Agendas & Minutes" or "Meeting Portal" link),
+   then verify that discovered URL — don't construct and probe a guessed one.
 1. Try the discovered Legistar URL (if the city's site links one) — does it resolve, and does it list
    real meetings for this city's bodies? (Part A's mechanism already handles this fully once found.)
-2. Try the discovered OneMeeting/PrimeGov portal URL (if linked) — does it resolve, and does it carry
+2. Try the discovered OneMeeting/Agenda-OE portal URL (if linked) — does it resolve, and does it carry
    agenda content for this city? (Part C's mechanism, once built.)
-3. Try `{tenant}.api.civicclerk.com`, where `{tenant}` is confirmed against the city's own site (not
+3. Try the discovered Agenda PE (formerly Peak) portal URL (if linked) — does it resolve, and does it
+   carry agenda content for this city? **No confirmed portal URL pattern or worked example exists yet**
+   (unlike Legistar/Part A or OneMeeting/Part C's Waco example) — this candidate is named so it isn't
+   missed, not because it's ready to build against. Worth prioritizing checking for this project's
+   *smaller* cities specifically, given Agenda PE's explicit small-to-medium-government positioning.
+4. Try `{tenant}.api.civicclerk.com`, where `{tenant}` is confirmed against the city's own site (not
    assumed to equal the feed slug) — does it resolve, and does it return real event data? (Part D's
    mechanism, once built.)
-4. If more than one candidate resolves for the same city, prefer whichever has better coverage
+5. If more than one candidate resolves for the same city, prefer whichever has better coverage
    (checked the same way Part A's migration table already compares "more episodes than the capped
    window" per candidate) — there's no a priori reason to prefer one system over another once multiple
    are confirmed viable for the same city.
-5. If none resolve, the city stays on chapter-title-only agenda proxying (today's status quo) — not a
+6. If none resolve, the city stays on chapter-title-only agenda proxying (today's status quo) — not a
    regression, just no improvement available yet.
 
 **Denton, TX is the first concrete target for this checklist** — a real Swagit-primary city in this
@@ -969,13 +994,19 @@ before beginning its own text-extraction work.
    wait on anything else in this list.
 2. Part B: `City.aux_provider`/`aux_source` config + `fetch_merge` insertion point + the new
    `attach_auxiliary_agenda_links` reconciliation function. Everything below depends on it.
-3. **Denton verification** (§B.2): run the discovery checklist against `denton-tx`, confirm Legistar
-   coverage, wire it as Denton's `aux_provider` — zero new adapter code, the first real proof the
-   auxiliary mechanism works end to end.
+3. **Denton verification** (§B.2 step 0): find Denton's real Legistar hostname from the city's own
+   website (four guessed hostnames all failed live-verification during this design pass — not a
+   confirmed absence, but the exact URL is still unknown), then run the discovery checklist, confirm
+   coverage, wire it as Denton's `aux_provider` — zero new adapter code once found, the first real proof
+   the auxiliary mechanism works end to end.
 4. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (also reuses existing adapter
-   code, no live-HTML-verification blocker).
-5. Part B: resolve the `AgendaRecord`-vs-`Episode` interface question (§D.3) that Part D's design
-   surfaced, before Part D ships.
-6. Part C: live verification of a real OneMeeting portal for a real catalog city, before any
-   implementation commitment — sequenced last, least certain of the three.
-7. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 6's findings.
+   code, no live-HTML-verification blocker). Interface question with Part B already resolved (§D.3).
+5. Part C: live verification of a real OneMeeting portal for a real catalog city (Waco is a confirmed
+   real-world example but not one of this project's own cities; Austin/Dallas guesses both failed this
+   pass), before any implementation commitment.
+6. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 5's findings.
+7. **New, 2026-07-16**: discover whether Agenda PE (formerly Peak, Granicus's small-to-medium-government
+   agenda product) has a public portal at all, and if so its URL pattern — zero prior research exists
+   beyond confirming the product itself is real; worth prioritizing against this catalog's smaller
+   cities specifically, given Agenda PE's stated market fit. No Part E written yet — this is a research
+   step, not a design one, until something concrete is found to design against.
