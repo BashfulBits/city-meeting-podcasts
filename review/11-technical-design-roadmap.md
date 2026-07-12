@@ -137,10 +137,10 @@ sync · #20 video enclosures (partial).
 | Per-agenda-item "what changed" cards | #3/GH#155 | L1 | §5.1 |
 | Auto-summaries | #2 | L1 | §5.1 |
 | Soundbite highlights | #15/GH#156 | L1 | §5.1 |
-| Front-end design cycle | #55 (#20/#54) | L1 | §5.1 |
+| Speaker diarization | #7 | L1 | §5.1 — after H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment. **Sequenced ahead of front-end design cycle** (below): if speaker attribution ships, meeting pages need a speaker taxonomy (labels, per-speaker linking) baked into the page/UI design rather than retrofitted after a design pass locks the layout |
+| Front-end design cycle | #55 (#20/#54) | L1 | §5.1 — sequenced after speaker diarization above so the design pass can account for its taxonomy up front |
 | Accessibility (WCAG) | #50 | L1 | §5.1 |
 | `<podcast:funding>` link | #16 | L1 | §5.1 |
-| Speaker diarization | #7 | L1 | §5.1 — after H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment |
 | Durable provider-failure classification feed | new (absorbs closed GH#379) | L1 | §5.1 · append-friendly episode/source failure events with stable categories, terminal-vs-transient state, first/last seen, and references to existing provider telemetry; `/admin/status` is the first reader, with Phase-R query surfaces consuming it later |
 | Hosted-runner infrastructure failure monitoring + pinned-runtime fallback | new (Infra) | L1 | Track ASR/audio/other long-running GitHub Actions failures whose root cause is hosted-runner infrastructure (`exit 143` without the graceful-yield marker, lost runner communication, missing per-step logs, similar non-deterministic runner shutdowns). If those failures continue at a material rate after H14b/H14c/H19 stabilize the worker mix, promote a repo-owned pinned container runtime for the affected workflow(s) so the execution environment is versioned like the Python/ffmpeg/model inputs instead of relying on `ubuntu-latest`. This is reliability/reproducibility follow-up, not an automatic scope promotion over the external-worker path. |
 | Runtime/dependency maintenance automation | umbrella [GH#804](https://github.com/BashfulBits/city-meeting-podcasts/issues/804) | L2→L3 | **Final Phase-R release item; completing Phase R is the 1.0 gate. Foundation shipped** ([#805](https://github.com/BashfulBits/city-meeting-podcasts/pull/805), [#806](https://github.com/BashfulBits/city-meeting-podcasts/pull/806), [#807](https://github.com/BashfulBits/city-meeting-podcasts/pull/807)) — normative contract in [`review/22`](22-dependency-and-reproducibility-policy.md): compiled **version-pinned** Python `constraints/*.txt` (single source of truth for CI, the GHCR runner image, **and** the Modal/Beam worker images) with `lock.yml` + a `ci.yml` drift gate; all third-party Actions SHA-pinned ([GH#734](https://github.com/BashfulBits/city-meeting-podcasts/issues/734), closed); HF model revisions pinned ([GH#498](https://github.com/BashfulBits/city-meeting-podcasts/issues/498), closed) and shared canonically in `citypods.asr`; `.github/renovate.json5` two-lane flow (hygiene auto-PRs; a Dashboard-approval gate + **per-source** `dep-bump-smoke` for output-affecting bumps); `scripts/check_dependency_policy.py` CI guard keeps pins from rotting. **Remaining to close Phase R:** activate Renovate on the repo, the monthly immutable-URL/checksum FFmpeg update PR, and (optional hardening) hash-verified `--require-hashes` image installs. Weekly image builds verify pinned inputs but do not silently advance them. Absorbs the remaining useful scope of closed GH#339. |
@@ -293,7 +293,10 @@ the highlights reel (Phase E).
 
 **Front-end design cycle (#55, absorbs #20/#54).** *Problem:* index accordion polish, subscribe-button
 **app iconography**, clear **audio-vs-video** labeling. *Approach:* iterative mockup-driven redesign;
-coordinate with per-meeting pages (R1). 1.0-gating. *Tradeoff:* design effort, low risk.
+coordinate with per-meeting pages (R1). 1.0-gating. *Tradeoff:* design effort, low risk. **Sequenced
+after speaker diarization** (below) so the design pass has a real answer for speaker-attribution UI
+(labels, per-speaker linking on meeting pages) instead of locking a layout that has to be revisited if
+diarization ships later.
 
 **Accessibility (#50).** WCAG pass on generated pages (player labels, contrast, keyboard nav, transcript
 semantics). 1.0-gating. Pairs with R1 pages.
@@ -333,7 +336,9 @@ the backend interface). **New H14d note:** do not reuse ASR's current budget coe
 thresholds blindly here; diarize needs its own measured GPU/host-memory profile, its own budget-unit
 coefficient, and likely a stricter host-RSS guard than VRAM guard because the first external ASR runs were
 host-memory-heavier than GPU-memory-heavy. *Sequencing:* implement after H6b lands a separate ASR runner — do not add
-diarization to the current single-runner enrich path. When both products are requested externally,
+diarization to the current single-runner enrich path. Also implement (or at least settle its
+speaker-taxonomy data shape) **before** the front-end design cycle (above), since a speaker-attribution
+UI is a real input to that redesign, not a later bolt-on. When both products are requested externally,
 prefer one episode worker flow that shares download, decode/resample, normalized temporary audio,
 VAD/chunk planning, startup, and final timestamp/artifact coordination. ASR and diarization normally
 use different neural models, so the expected gain is operational reuse rather than shared model
