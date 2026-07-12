@@ -1,7 +1,7 @@
 # review/14 — Topic Tags & Strong Towns Lens (Phase R)
 
 **Maturity: L3 · matured 2026-07-14, grounded against current `main` · breakout of
-[`review/11`](11-technical-design-roadmap.md) Phase R (#4) · ROADMAP R3 · issues not yet cut, batch
+[`review/11`](11-technical-design-roadmap.md) Phase R (#4) · ROADMAP R5 · issues not yet cut, batch
 review pending**
 
 > Topic tags turn the catalog from "meetings you can listen to" into "meetings you can *track by issue*."
@@ -52,9 +52,17 @@ it remaps the canonical source-time chapters through the current `Timeline` into
 real editing (silence-trim/concat) occurred (`chapters.py:16-34`), so it's the same "what's actually
 served" semantics `feed_content_hash` already uses it for (`citypods/records.py:766`). **Rename the
 parameter in the actual function** to `agenda_item_titles: str` (built as `"\n".join(ch["title"] for ch
-in episode_served_chapters(ep))`) so a future reader isn't misled into expecting document content. Real
-agenda-PDF text extraction is Phase F's future "Backup-material (packet) analysis," not in scope here —
-if/when it ships, feeding its output into `tag_episode` is an additive input, not a redesign.
+in episode_served_chapters(ep))`) so a future reader isn't misled into expecting document content. The
+**rules engine** (path 1, below) stays on `agenda_item_titles` only — it ships without depending on real
+extraction existing, and chapter titles are a good-enough keyword-matching signal on their own.
+
+**Updated 2026-07-14 — this is no longer a vague "if/when Phase F ships" caveat.** Real agenda-document
+text extraction is now **ROADMAP R3** (a minimal, extraction-only slice pulled forward from Phase F's
+"Backup-material (packet) analysis," see `review/11` §5.1), sequenced *before* this item. The **LLM-assist
+path** (path 2, below) takes real `agenda_text` from R3 as an additional, optional input alongside
+`agenda_item_titles` — additive, not a replacement, and gracefully degrading to chapter-titles-only for
+any episode where extraction didn't run or failed. The full richer Phase-F "what's being proposed" brief
+stays out of scope for both this item and R3.
 
 ## Data model deltas (exact)
 
@@ -157,13 +165,25 @@ if/when it ships, feeding its output into `tag_episode` is an additive input, no
    untrusted/additive and clearly labeled. Improves recall on prose where rules miss. **Not greenfield —
    the `tag` task verb is already reserved** in the H13 compute-backend interface's `Task` `Literal`
    (`citypods/compute/base.py:28-35`, shipped, pre-1.0-locked), alongside `summarize`/`soundbite-select`,
-   specifically so "the R3/R4 LLM-API adapter slots in with no interface change" (module docstring,
-   `base.py:13-16`). `review/11` already names review/14 as the first `tag` verb caller. This path is an
-   `InferenceJob(task="tag", inputs={agenda_item_titles, transcript_text, taxonomy_version}, recipe_hash)`
-   call through the existing `Backend.run_inference` interface — `recipe_hash` must fold in `prompt_hash`
-   + `model_id` per review/11's LLM-verb convention, so a prompt or model change re-derives cleanly. No
-   adapter implements `tag` yet (only `transcribe`/`align` are live via the `local` adapter) — this path
-   is the first real LLM adapter, not just a new call site on an existing one.
+   specifically so "the R2 LLM-API adapter... slots in with no interface change" (module docstring,
+   `base.py:13-16`, updated 2026-07-14 when R2 was inserted). **The adapter itself is built at R2**
+   (dedicated infra item, ahead of this item); R5 is the first *feature* caller of the `tag` verb against
+   that already-working adapter, per `review/11`. **Inputs, updated 2026-07-14 — this path gets a richer
+   input than the rules engine, not the same one:** the rules engine (path 1, above) uses
+   `agenda_item_titles` (chapter titles) because that's all that exists without new infra. Once **R3**
+   (agenda text extraction, inserted 2026-07-14, ahead of this item) ships, the LLM path additionally
+   takes the **real extracted agenda-document text** — richer than chapter titles, and exactly the kind
+   of input an LLM pass is positioned to make good use of where a keyword rules engine could not. This is
+   an `InferenceJob(task="tag", inputs={agenda_item_titles, agenda_text, transcript_text,
+   taxonomy_version}, recipe_hash)` call through `Backend.run_inference` — `agenda_text` is optional
+   (`None` until R3 ships or for providers where extraction fails) and purely additive to
+   `agenda_item_titles`, never a replacement, so the LLM path degrades gracefully to the same input the
+   rules engine already has if real extraction isn't available for a given episode. `recipe_hash` must
+   fold in `prompt_hash` + `model_id` per review/11's LLM-verb convention, so a prompt or model change
+   re-derives cleanly. No
+   adapter implements `tag` yet today, but **R2 builds the first one** (dedicated infra item, ahead of
+   this item) — by the time this path is built, it's a new call site on an already-working adapter, not
+   the adapter's own construction.
 3. **Embedding/zero-shot classifier.** A local embedding model scores each taxonomy entry per meeting —
    no API cost, more infra. Consider only if (2)'s API cost or (1)'s precision proves limiting.
 
@@ -215,7 +235,7 @@ pattern H12's version-aware re-transcribe already established — not a special-
 
 - **The corrected `agenda_item_titles` input is a materially weaker signal than "real agenda text" would
   be** — chapter titles are short and not every meeting has rich ones. Acceptable for a rules-first
-  launch (matches what search (R2) already ships with for the same reason), but don't oversell precision
+  launch (matches what search (R4) already ships with for the same reason), but don't oversell precision
   expectations against this input until Phase F's real document extraction exists.
 - **The `tags_override` storage location (record-inline vs. `state/`) is a real open call**, not fully
   settled by this pass — recommended record-inline for `MediaAvailability` consistency, but confirm
@@ -230,11 +250,15 @@ pattern H12's version-aware re-transcribe already established — not a special-
 ## Sequencing & dependencies
 
 Depends on transcripts (shipped) and benefits from per-meeting pages (review/13, R1) as a display
-surface. Precedes topic feeds (#12/#13, Phase E) and watchlists/alerts (Phase F), which are its main
-consumers, and R4's "what changed" cards (review/11 §5.1: "Depends on tags (#4) for topic chips"). R3
-precedes R4–R7 in the outer ROADMAP sequence. Build rules-only (path 1) within Phase R; defer the LLM
-layer until the near-term LLM budget and transcript stability are confirmed — the LLM path is otherwise
-ready to build (the `tag` verb interface already exists), it's purely cost-gated, not blocked on missing
+surface. **Also depends on R2 (LLM backend) and R3 (agenda text extraction) for path 2 specifically** —
+both inserted 2026-07-14, ahead of this item, precisely so this item's LLM-assist path has a working
+adapter and real agenda text to consume rather than building either under its own time pressure. Path 1
+(rules-only) depends on neither and can ship as soon as R1 lands. Precedes topic feeds (#12/#13, Phase E)
+and watchlists/alerts (Phase F), which are its main consumers, and R6's "what changed" cards
+(review/11 §5.1: "Depends on tags (#4) for topic chips"). R5 precedes R6–R9 in the outer ROADMAP
+sequence. Build rules-only (path 1) within Phase R; defer the LLM layer until the near-term LLM budget
+and transcript stability are confirmed — the LLM path is otherwise ready to build (R2's adapter + R3's
+extraction both already exist by the time R5 is built), it's purely cost-gated, not blocked on missing
 infra.
 
 ## Acceptance
@@ -243,7 +267,7 @@ Meetings carry transparent, evidence-backed topic tags from agenda-item titles/t
 can add/remove/lock a tag and the lock is honored on re-tag without mutating the automated output;
 episodes without a transcript yet still get agenda-only tags rather than waiting; the optional LLM layer
 only augments (never overwrites) and is cost-bounded; tags drive at least one downstream surface (search
-facet, once R2's `tags: []` reserved field is populated) without requiring changes to R2's own code.
+facet, once R4's `tags: []` reserved field is populated) without requiring changes to R4's own code.
 
 ## Proposed GitHub issues (not filed — batch review pending)
 

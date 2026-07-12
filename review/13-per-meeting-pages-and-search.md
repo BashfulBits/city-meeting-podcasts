@@ -4,7 +4,7 @@
 [`review/11`](11-technical-design-roadmap.md) Phase R · last updated 2026-07-13**
 
 > Two tightly-coupled initiatives: per-meeting permalink pages (#46/GH#157, **ROADMAP R1**) and static
-> client-side transcript search (#6, **ROADMAP R2**). Pages are the **product hinge** from "podcast
+> client-side transcript search (#6, **ROADMAP R4**). Pages are the **product hinge** from "podcast
 > feeds" to "civic research tool"; search rides on the page content. Build pages first; search second.
 > Issues are **not yet cut** for either part — matured to L3 depth pending a maintainer review pass
 > across the whole Phase R sequence before filing.
@@ -15,7 +15,7 @@ Today the only per-meeting artifact is a feed `<item>`. A real HTML page per mee
 transcript + chapters/agenda + official + source-time links — is the biggest SEO/sharing win, the
 natural home for transcript display, and the surface every later phase (highlights, alerts, AI audio)
 links into. It also makes meetings **independently crawlable**, which demotes **directory-metadata**
-index sharding (#42). Transcript-search partitioning remains part of the R2 launch design below.
+index sharding (#42). Transcript-search partitioning remains part of the R4 launch design below.
 
 Prerequisite that is now satisfied: transcripts exist (ASR #1 shipped), chapters/agenda links exist, the
 timeline EDL can produce **source-time deep-links** (`video_deeplink` capability, review/08), and the
@@ -50,7 +50,7 @@ stable `uid`) and is linked from playable feed `<item>` entries, city/archive vi
   `citypods/availability.py:97-146`), render no player and show a clear availability notice with reason,
   last-check date, and recovery/operator-review state; never imply that the meeting itself did not occur.
 - **Synced transcript** — render the served-time VTT/JSON; clicking a line seeks the player; the player
-  position highlights the line. **Forward-compatible with speaker attribution (reserved for R5, not
+  position highlights the line. **Forward-compatible with speaker attribution (reserved for R7, not
   built here)** — see § Data model deltas #3.
 - **Chapters / agenda items** — the served-time chapters; **each entry is clickable to seek the player to
   that chapter's timestamp** (`chapters[i].start`, already on the record — no new data, this is a
@@ -90,9 +90,9 @@ stable `uid`) and is linked from playable feed `<item>` entries, city/archive vi
 **capped current feed window** (`citypods/run.py:542-544`, `feed_eps[:city.max_episodes]`; the section is
 literally headed "Recent meetings," `templates/city.html.j2:29`). R1 pages exist for the **full
 append-only archive**, deliberately including meetings older than the cap. Without a change here, those
-older pages are orphaned — reachable only by a direct URL or, later, search (R2) — for exactly the
+older pages are orphaned — reachable only by a direct URL or, later, search (R4) — for exactly the
 visitor this project is for: someone who wants everything their city council has done, not just the
-last N meetings. This must ship as part of R1, not be deferred to R2/search, since it's the primary
+last N meetings. This must ship as part of R1, not be deferred to R4/search, since it's the primary
 human browse path, and search doesn't exist yet when R1 ships.
 
 > **Terminology correction (2026-07-14, prompted by a maintainer question about "body pages"):** a
@@ -107,7 +107,7 @@ human browse path, and search doesn't exist yet when R1 ships.
 > (`citypods/site.py:49-77`) — but **no dedicated, crawlable, shareable municipality-wide page exists**
 > that aggregates meetings across all of a city's boards into one URL/feed/archive. That's a genuinely
 > separate, currently undesigned idea, not part of R1's scope — see review/13 Part B's "City vs. body
-> scoping in search" for why R2 search may cover this need without a dedicated page ever being necessary.
+> scoping in search" for why R4 search may cover this need without a dedicated page ever being necessary.
 
 **Approach — two changes, not one:**
 
@@ -158,7 +158,7 @@ a near-term concern, don't build pagination speculatively ahead of that.
    skips a page rewrite, which is worse than an artifact-key collision, so don't truncate; matches
    `feed_content_hash`'s precedent). `spec` fields: `uid`, `episode_served_chapters(ep)`, `ep.links`,
    `ep.summary`/`ep.description`, `transcript_hosted_url`, `transcript_synced`, `transcript_basis`,
-   `transcript_words_url` (so a diarization-only update to the word-JSON, once R5 lands, still triggers a
+   `transcript_words_url` (so a diarization-only update to the word-JSON, once R7 lands, still triggers a
    page re-render), served/source duration, `ep.media_availability.effective_state()` if set else
    `None`, and `timeline_digest(ep.timeline)` if `ep.timeline` else `""` (so deep-link offsets stay in
    sync with the EDL).
@@ -170,19 +170,19 @@ a near-term concern, don't build pagination speculatively ahead of that.
    city-level gate `_write_chapter_sidecars` rides on today, because at hundreds of retained
    episodes/city, one changed meeting rewriting every page in the city on every run is a real cost, not
    a theoretical one.
-3. **Reserved for R5, not populated here:** the word-level transcript JSON
+3. **Reserved for R7, not populated here:** the word-level transcript JSON
    (`transcript_words_url`/`transcript_words_key`) gains two optional fields per cue/word once
    diarization ships — `speaker_id: str | null` (a stable identifier distinct from display name; exact
-   format is R5's decision, but it must remain stable across re-diarization so cross-meeting aggregation
+   format is R7's decision, but it must remain stable across re-diarization so cross-meeting aggregation
    never needs a migration) and `speaker_name: str | null` (human-confirmed display name, `null` if
    unconfirmed — never auto-named, per the diarization sketch's integrity rule). **R1's contract:** the
    client-side transcript component must tolerate both fields being absent (true today) or present (true
-   after R5) without a template change — render a speaker label linking to `/speakers/<speaker_id>/`
+   after R7) without a template change — render a speaker label linking to `/speakers/<speaker_id>/`
    when present, plain unattributed text otherwise. R1 does no diarization work; it only must not assume
    these fields can't exist.
-4. **Reserved URL convention for R5's per-speaker pages** (not built here): `docs/speakers/<speaker_id>/
+4. **Reserved URL convention for R7's per-speaker pages** (not built here): `docs/speakers/<speaker_id>/
    index.html`, mirroring `docs/<slug>/<uid>/index.html`'s shape, so the link-out convention in #3 is
-   stable once R5 lands and doesn't require R1's template to change.
+   stable once R7 lands and doesn't require R1's template to change.
 
 ### Module / file plan (exact)
 
@@ -286,7 +286,7 @@ longer one the first time.
   flagged a boundary-inversion asymmetry between `served_to_source`/`source_to_served` at concat seams —
   pin the exact expected behavior at the seam in this test rather than leaving it implicit).
 - The transcript component tolerates a fixture word-JSON with no `speaker_id`/`speaker_name` fields
-  (today's shape) and one with them present (R5's future shape) without erroring.
+  (today's shape) and one with them present (R7's future shape) without erroring.
 - The city page's "Recent meetings" list links each episode title to its meeting page.
 - `render_city_archive_page` lists every retained episode for a city (not capped by `max_episodes`),
   including withheld-media entries with a visible availability badge, each linking to its meeting page.
@@ -315,8 +315,8 @@ longer one the first time.
 Within Part A: `_write_chapter_sidecars` → `_write_meeting_pages` (needs nothing from chapter sidecars,
 just sequenced immediately after by file-layout convention) → `build_rss` (needs each episode's
 `page_url`) → index/city page render. Across the catalog: Part A (this) before Part B (search, next);
-both depend on Phase H having already landed stable transcripts + throughput. R1 precedes R2–R7 in the
-outer ROADMAP sequence; nothing in R1 depends on R2 or later.
+both depend on Phase H having already landed stable transcripts + throughput. R1 precedes R4–R9 in the
+outer ROADMAP sequence; nothing in R1 depends on R4 or later.
 
 ### Acceptance
 
@@ -327,10 +327,10 @@ civic metadata and canonical provenance link, a clear no-recording notice, and n
 podcast enclosure. Unchanged meetings do not re-render (verified per-episode, not just per-city); an
 archived episode outside the feed window still updates its page when it changes; feed-window changes do
 not delete archive pages; forks can disable the feature. The transcript component renders correctly
-against both today's word-JSON shape and R5's future speaker-attribution shape. **Every city has a
+against both today's word-JSON shape and R7's future speaker-attribution shape. **Every city has a
 discoverable browse path to its full archive** — the "Recent meetings" list links to meeting pages, and
 a "Browse the full archive" page lists every retained meeting, not just the current feed window — so a
-visitor interested in one city can reach any of its meetings without needing search (R2) to exist yet.
+visitor interested in one city can reach any of its meetings without needing search (R4) to exist yet.
 Chapters seek the player in-page in addition to any outbound agenda-packet link. Sharing a quote or
 timestamp always produces our page URL as the primary link, with the provider's source-time deep-link
 only as a secondary reference — the site is the thing that gets shared and gains adoption, not the
@@ -345,7 +345,7 @@ source portal.
    testable unit, given it has no production callers today.
 4. `<item><link>` in `feeds.py`/`feed.xml.j2` pointing at the meeting page.
 5. Reserve (schema-only, no behavior) the `speaker_id`/`speaker_name` fields in the word-JSON contract
-   and the `/speakers/<speaker_id>/` link convention, so R5 has a stable target.
+   and the `/speakers/<speaker_id>/` link convention, so R7 has a stable target.
 6. City-level entry point: link "Recent meetings" titles to meeting pages, add
    `render_city_archive_page` + `templates/city_archive.html.j2` + the "Browse the full archive" link on
    the city page.
@@ -359,7 +359,7 @@ source portal.
 ## Part B — Static transcript search (#6)
 
 **Maturity: L3 · matured 2026-07-13, grounded against current `main` — see exploration citations
-inline. ROADMAP R2. Issues not yet cut, per the batch-review hold.**
+inline. ROADMAP R4. Issues not yet cut, per the batch-review hold.**
 
 ### Design (chosen approach)
 
@@ -367,14 +367,15 @@ A **client-side** search over a generated JSON index — no server until proven 
 documents = all retained meetings, including metadata-only unavailable recordings, with fields:
 `title`, `body`, `city`, `date`, `media_availability`, **chapter/agenda-item titles** (own field,
 timestamped — see clarification below), resource **link labels** (not document text — see
-clarification below), `tags` (schema reserved, always empty until R3 — see § Data model deltas), and
-**transcript text** (tokenized, when coverage allows). Results show snippets with **timestamps** that
-deep-link into the meeting page (`…/<uid>/#t=<seconds>`, R1). Filters: city, body, date range, topic
-(inert until R3 populates `tags`), and recording availability. A meeting without a transcript remains
-discoverable from its civic metadata and chapter titles; its result does not advertise playback or
-transcript seeking.
+clarification below), **real agenda-document text** (schema reserved, populated once R3 ships — see
+clarification below and § Data model deltas), `tags` (schema reserved, always empty until R5 — see
+§ Data model deltas), and **transcript text** (tokenized, when coverage allows). Results show snippets
+with **timestamps** that deep-link into the meeting page (`…/<uid>/#t=<seconds>`, R1). Filters: city,
+body, date range, topic (inert until R5 populates `tags`), and recording availability. A meeting without
+a transcript remains discoverable from its civic metadata and chapter titles; its result does not
+advertise playback or transcript seeking.
 
-**Two clarifications prompted by review feedback, both real gaps in the original draft:**
+**Three clarifications prompted by review feedback, all real gaps in the original draft:**
 - **Chapter/agenda-item titles are searchable and timestamped, distinct from transcript segments.**
   `ep.chapters`/`episode_served_chapters(ep)` (`[{"start": secs, "title": str}]`, confirmed in R1's
   exploration) are often descriptive human-curated labels ("Public Comment — Zoning Variance, 123 Main
@@ -385,12 +386,18 @@ transcript seeking.
   deltas #2 below: chapters get their own `chapters: [{title, start}]` array per document.
 - **"Agenda/resource link text" was ambiguous and is now precisely scoped: it means the link *labels*
   ("Agenda," "Minutes," "Canonical Video" — from `episode_resource_links(ep)`), not the *content* of the
-  agenda document itself.** No code anywhere in this repo extracts text from agenda PDFs — that's Phase
-  F's future "Backup-material (packet) analysis" (PDF parsing + LLM), not built, not in scope for R2.
-  Link labels are boilerplate and contribute almost nothing to search relevance on their own; they're
-  included only because the links themselves (as clickable results) are useful, not as searchable
-  content. Don't expect "agenda text" search to find anything beyond a chapter title matching that
-  language until Phase F ships real document extraction.
+  agenda document itself.** No code anywhere in this repo extracts text from agenda PDFs today. Link
+  labels are boilerplate and contribute almost nothing to search relevance on their own; they're included
+  only because the links themselves (as clickable results) are useful, not as searchable content.
+- **Updated 2026-07-14 — real agenda text is coming back as an actual search source, via R3.** Real
+  agenda-document text extraction is now **ROADMAP R3** (a minimal, extraction-only slice pulled forward
+  from Phase F's "Backup-material (packet) analysis," see `review/11` §5.1), sequenced *before* this item
+  specifically so it can be a genuine search source, not just chapter titles. Added as a distinct
+  `agenda_text` field (§ Data model deltas #2, below) alongside `chapters` and `segments` — additive, not
+  a replacement for either, and `null`/absent for any episode where extraction hasn't run or failed for
+  that provider's PDF format, in which case a result still falls back to chapter titles the same way it
+  does today. The richer Phase-F "what's being proposed" structured/LLM brief is a separate, still-fully
+  post-1.0 feature — R3 only extracts raw text, it doesn't synthesize anything.
 
 ### Engine decision — reversed from the L2 sketch, with reasoning
 
@@ -478,7 +485,7 @@ generation performance, not just output size** — the original draft only measu
   budget, re-open the Pagefind option **for that city specifically** (hybrid, not a wholesale engine
   swap) before assuming the whole approach needs to change.
 - This is implementation work (needs real transcript data), not something to execute inside this
-  docs-only design pass — it's Proposed issue #1 below, ideally the *first* thing built once R2 issues
+  docs-only design pass — it's Proposed issue #1 below, ideally the *first* thing built once R4 issues
   are cut, since it gates the engine choice becoming final.
 
 ### Index source: built from records, not scraped from HTML
@@ -550,7 +557,7 @@ scope became the default entry point. **Approach:**
 
 **Answering the actual question — is a dedicated municipality page needed, given search can do this?**
 Body pages (per-board) already exist and ship today (§ Part A's City-level entry point). A dedicated
-*municipality-wide* static page does not exist and isn't part of R1's or R2's current scope. Whether it's
+*municipality-wide* static page does not exist and isn't part of R1's or R4's current scope. Whether it's
 worth building later depends on how the progressive-fetch UX above actually performs at Austin's real
 scale — **that's a real open question, not a settled "obviously overkill,"** because 30 parallel shard
 fetches is a meaningfully different cost than the 2-3 I'd originally sized this against. Recommend
@@ -565,14 +572,19 @@ assumption.
    `docs/admin/` precedent (`citypods/cli.py:403-412`: `mkdir(parents=True, exist_ok=True)` +
    `write_text`) rather than inventing a new file-writing convention.
 2. **Per-shard document schema**: `{uid, title, body, city, date, media_availability_state,
-   is_withheld, page_url, links: [{label, url}], tags: [], chapters: [{title, start}], segments:
-   [{text, start}]}`. `chapters` comes from `episode_served_chapters(ep)` — populated whenever the
-   episode has chapters, **independent of transcript coverage**, so it's real searchable content even in
-   coverage-gated launch's step 1 (titles/metadata only, no transcript). `segments` (transcript text) is
-   the separate, coverage-gated field. `tags` is **always `[]` today** — schema-reserved for R3 (topic
-   tags don't exist anywhere in the codebase yet; `review/14` is itself still L2→L3 with no implemented
-   `Tag`/`TagsStage`) — populating it later is an additive field-fill, not a schema change, so R2 doesn't
-   block on R3 and R3 doesn't need to touch R2's index-building code, only the data it reads.
+   is_withheld, page_url, links: [{label, url}], tags: [], chapters: [{title, start}], agenda_text:
+   str | null, segments: [{text, start}]}`. `chapters` comes from `episode_served_chapters(ep)` —
+   populated whenever the episode has chapters, **independent of transcript coverage**, so it's real
+   searchable content even in coverage-gated launch's step 1 (titles/metadata only, no transcript).
+   `agenda_text` is `null` until **R3** (agenda text extraction) ships and successfully extracts that
+   episode's agenda PDF — additive alongside `chapters`, populated per-episode as extraction succeeds
+   (no coverage-gate/threshold needed the way transcript segments have one, since there's no equivalent
+   "60% of the city" concept for a per-episode extraction success/fail outcome). `segments` (transcript
+   text) is the separate, coverage-gated field. `tags` is **always `[]` today** — schema-reserved for R5
+   (topic tags don't exist anywhere in the codebase yet; `review/14` is itself still L2→L3 with no
+   implemented `Tag`/`TagsStage`) — populating it later is an additive field-fill, not a schema change,
+   so R4 doesn't
+   block on R5 and R5 doesn't need to touch R4's index-building code, only the data it reads.
 3. **Availability handling is not a copy of `feeds.py`'s gating** — `feeds.py:184-185` *excludes*
    withheld episodes from feeds entirely; the search index must do the opposite of exclusion: **always
    include** withheld-media episodes (so they stay discoverable by civic metadata, per the Design section
@@ -619,7 +631,7 @@ on R1 having already shipped `meeting_page_url`/per-episode pages to link result
 ### Coverage-gated launch
 
 Because forced alignment is paused and only post-#249/H12 transcripts carry word-level data, transcript
-coverage at R2 launch will be patchy across the catalog. Launch in two steps: **(1) titles + chapter/
+coverage at R4 launch will be patchy across the catalog. Launch in two steps: **(1) titles + chapter/
 agenda-item titles + resource link labels** across the whole catalog immediately — always present, zero
 transcript dependency, and meaningfully richer than titles alone since chapter titles are often specific
 and descriptive; **(2) add transcript text per city once that city's transcript coverage passes ~60%**,
@@ -637,8 +649,12 @@ transcript segments.
 - A withheld-media fixture episode **appears in the index** (`is_withheld: true`) but its result renders
   no play/seek affordance — the inverse-of-`feeds.py` behavior from § Data model deltas #3 needs its own
   explicit test, since copy-pasting the feeds.py exclusion pattern would be the natural (wrong) instinct.
-- `tags: []` on every document today; a fixture with a populated `tags` field (simulating R3's future
+- `tags: []` on every document today; a fixture with a populated `tags` field (simulating R5's future
   output) round-trips without schema changes.
+- `agenda_text: null` on a fixture episode without extraction; a fixture with a populated `agenda_text`
+  (simulating R3's output) is findable by a phrase present only in the extracted text, not in that
+  episode's chapter titles or transcript — proves it's a genuinely additive search source, not just
+  schema plumbing.
 - Coverage-gated launch: a city under the 60% transcript-coverage threshold gets a titles/metadata-only
   shard (now including chapter titles, not just the episode title) that a city over threshold gets
   transcript segments added to.
@@ -661,7 +677,7 @@ transcript segments.
 
 - **The `spike/static-search-size` spike must actually run against real transcript data before the
   MiniSearch decision is treated as final** — the reasoning above is sound but unvalidated; budget it as
-  the first R2 issue, not an afterthought. This now includes validating or refuting the Pagefind
+  the first R4 issue, not an afterthought. This now includes validating or refuting the Pagefind
   incremental-rebuild assumption (§ Index-generation performance) against its actual current docs/CLI,
   not just output size.
 - **Word-JSON fetch cost during index build** — `build_search_index` needs every episode's transcript
@@ -678,10 +694,10 @@ transcript segments.
 
 ### Sequencing / DAG
 
-R1 → R2 (search depends on pages: results link into `meeting_page_url`). Both depend on Phase H having
-landed stable transcripts + throughput. R2 benefits from R3 tags for topic filters but does not require
-them (tags ship as an empty-then-populated field, no R2 code change needed when R3 lands). R2 precedes
-R3–R7 in the outer ROADMAP sequence. Soundbites (#15, R4) and the Phase E highlights reel consume the
+R1 → R4 (search depends on pages: results link into `meeting_page_url`). Both depend on Phase H having
+landed stable transcripts + throughput. R4 benefits from R5 tags for topic filters but does not require
+them (tags ship as an empty-then-populated field, no R4 code change needed when R5 lands). R4 precedes
+R5–R9 in the outer ROADMAP sequence. Soundbites (#15, R6) and the Phase E highlights reel consume the
 same page/transcript surface later, independent of search itself.
 
 ### Acceptance
