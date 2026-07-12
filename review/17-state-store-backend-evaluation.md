@@ -25,7 +25,7 @@ cross-cutting infra · last updated 2026-06-19**
 | R2-CAS spike (boto3 conditional writes against R2) | **L3 · Shipped** | Run 2026-06-19; all 4 tests PASS; native params (boto3 1.43); see §7 |
 | Coordination control-plane → R2 (CAS) | L2 → L3 | **H17 do-next** — spike unblocked; one consolidated implementation issue with review/18 |
 | `episodes.json` records → R2 vs hold-for-DB | **Decided** | **Stay on B2** (per-uid lease ⇒ single-writer; no CAS need) → managed search-DB @ Phase R; skip R2 to avoid a double migration; see §3 |
-| Records → managed SQL (D1/Turso) | L0 (post-1.0) | Trigger-gated; merged with the Interaction-seam proposal (review/25 §3.1) into one deferred initiative; supersedes the "no hosted DB" note for this scope |
+| Records → managed SQL (D1/Turso) | L1 (post-1.0) | Trigger-gated; merged with the Interaction-seam proposal (review/25 §3.1) into one deferred initiative, now sketched inline in [review/11](11-technical-design-roadmap.md#55-cross-cutting--ongoing) §5.5; supersedes the "no hosted DB" note for this scope |
 | Coordination → dedicated KV/DO (fallback) | L1 | Deferred; trigger in §8 |
 | Immutable blobs + append-only logs | — | **Stay on B2** (settled) |
 

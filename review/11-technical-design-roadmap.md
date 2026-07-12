@@ -185,7 +185,7 @@ sync · #20 video enclosures (partial).
 | "National highlights" curated reel | new (Feature A) | L1 |
 | Substack newsletter channel | #18 (email split) | L1 |
 | Topic/issue + region roll-up feeds | #12/#13 | L1 |
-| Custom-query feed builder | #12+#13 | L1 |
+| Custom-query feed builder | #12+#13 | L1 · **the fully-general form is blocked on the Interaction seam (§5.5), post-1.0**; a curated pre-generated-combos version does not need it — see §5.2 |
 | OPML export | #17 | L1 |
 | Privacy-respecting download analytics | GH#125 | L1 |
 
@@ -216,7 +216,7 @@ sync · #20 video enclosures (partial).
 | Contributor scaffolding (labels, PR template, board) | #57 | L1 (partial: handoff docs shipped) |
 | Pluggable inference-execution backend (compute offload) | new (Infra) | L3 · **pre-1.0 lock** — GPU/ASR interface = H13; Modal+Beam GPU adapters = H14 (built in Phase H); first LLM API adapter = R3/R4 |
 | Catalog scaling readiness (10→500 cities) | new (Infra) | L2 · **trigger-gated, not active-phase work** — [`review/16`](16-scaling-review-plan.md); R2 owns the search-size spike/partitioned-search launch, while S0–S4 promote one tranche at a time only when their city/metric gates are reached |
-| **State-store backend + Interaction seam** (coordination → R2/CAS · records → managed SQL · dynamic edge tier for alerts/API/personalization) | new (Infra) | Coordination (leases/work-queue/budget) → R2/CAS: **L3, shipped as H17**; [`review/17`](17-state-store-backend-evaluation.md). Records→SQL + Interaction seam: **L0, post-1.0** — **reprioritized 2026-07-12:** records→managed-SQL (D1/Turso, kept open) moves decisively **past 1.0** and merges with the [review/25 §3.1](25-future-features-and-architecture.md#31-the-central-recommendation-a-dynamic-edge-tier-the-interaction-seam) "Interaction seam" proposal (Cloudflare Worker + D1 + Vectorize + Queues/DO) into one initiative — design the managed-SQL store, the entity-model schema (Person/Body/AgendaItem/Vote/Document, per review/25 §3.4), and the Worker tier together when the trigger fires (federated query need, a public API, or a search partition exceeding budget — review/17 §1.4), rather than scoping the DB now and the Worker tier later. Not yet promoted past L0/idea stage; break out to its own `review/NN` when it becomes next-up. |
+| **State-store backend + Interaction seam** (coordination → R2/CAS · records → managed SQL · dynamic edge tier for alerts/API/personalization) | new (Infra) | Coordination (leases/work-queue/budget) → R2/CAS: **L3, shipped as H17**; [`review/17`](17-state-store-backend-evaluation.md). Records→SQL + Interaction seam: **L1, post-1.0** (inline sketch: §5.5) — **reprioritized 2026-07-12:** records→managed-SQL (D1/Turso, kept open) moves decisively **past 1.0** and merges with the [review/25 §3.1](25-future-features-and-architecture.md#31-the-central-recommendation-a-dynamic-edge-tier-the-interaction-seam) "Interaction seam" proposal (Cloudflare Worker + D1 + Vectorize + Queues/DO) into one initiative — design the managed-SQL store, the entity-model schema (Person/Body/AgendaItem/Vote/Document, per review/25 §3.4), and the Worker tier together when the trigger fires (federated query need, a public API, a search partition exceeding budget, or the full custom-query feed builder — review/17 §1.4), rather than scoping the DB now and the Worker tier later. Not yet promoted past L1/sketch; break out to its own `review/NN` when it becomes next-up. |
 | Work distribution & sharding for distributed ASR workers | new (Infra) | L2 · Stage 1/Stage 2 substrate shipped as **H17** (closed); the remaining §6 step 4 in-Actions migration is now tracked as **H19** (its trigger fired — H14b/H14c are live); [`review/18`](18-work-distribution-sharding.md) |
 
 ### Deferred backlog (ongoing) — §6
@@ -377,9 +377,13 @@ digests/highlights to **Substack** (external — avoids native email/PII/CAN-SPA
 static digest is the source content. *Tradeoff:* some lock-in vs fast reach; keep RSS as the open mirror.
 
 **Topic/region roll-up feeds + custom-query builder (#12/#13/#17).** *Problem:* "all zoning items in
-TX," "my whole city." *Approach:* pre-generated combos (region/state/topic) as static feeds + **OPML**
-export; a custom-query builder needs either pre-gen combinations or a Cloudflare Worker (Pages is
-static). *Tradeoff:* combinatorial explosion → start with a curated set; depends on tags (#4).
+TX," "my whole city." *Approach — two tiers, not one feature:* (1) **pre-generated combos** (a curated
+set of region/state/topic feeds) as static files + **OPML** export — no DB, no Worker, ships the same
+way as the rest of Phase E; start here. (2) a **fully custom** query builder (arbitrary user-chosen
+filters at request time) needs the **Interaction seam** (§5.5) — it's one of the named triggers for the
+records→SQL move, and cannot ship before that seam exists. *Tradeoff:* (1) risks combinatorial
+explosion if the curated set grows unbounded, so keep it curated and depend on tags (#4) for
+useful combos; (2) is real new infra scope, correctly post-1.0, not a near-term item.
 
 **Privacy-respecting download analytics (GH#125).** *Approach:* OP3-style aggregate, self-owned
 analytics-prefix subdomain; no per-user tracking. Informs which feeds/cities to invest in.
@@ -454,6 +458,34 @@ downloads >2× assigned bytes or broad hot-path listings; empty heavy jobs >5% o
 <80%; repeated media downloads >10% of provider bytes; city search partitions above the 1 MB target
 (2 MB hard warning); or the sustained multi-signal migration gate in `review/16` §14.1. Crossing a
 round-number city count without the corresponding pressure does not force promotion.
+
+**State-store backend + Interaction seam (records → managed SQL, merged with the review/25 §3.1
+"Interaction seam" proposal; post-1.0, L1).** *Problem:* everything the static architecture serves is
+read-only-at-serve-time. Alerts/watchlists (Phase F), a public data API + bulk export, personalization,
+the **full** custom-query feed builder (below), and semantic search at scale all need *state written at
+request time* or *computation at query time* — the Jamstack model structurally cannot do this, and
+there is currently no seam for it (unlike storage/compute, which have clean Protocol+registry seams).
+*Approach:* one new port — an **Interaction backend** — mirroring the existing `storage`/`compute` seam
+pattern, `local`/`none` default so 1.0/dev are unaffected, **Cloudflare Workers** as the first real
+adapter (the granicus-media-proxy Worker already proves the deployment path; R2 is already the
+coordination backend). Concretely: **D1** (the review/17 records→SQL target, backing the API/query
+features), **Vectorize** (semantic search), **Queues + Durable Objects** (alert fan-out, subscriber/
+watchlist state), **KV** (hot config). Design the **entity-model schema** (`Person`/`Body`/`AgendaItem`/
+`Vote`/`Document`, review/25 §3.4) at the same time the SQL store is designed, even before it's
+populated — retrofitting it after an API ships is far more expensive than reserving it now. **Invariant
+(non-negotiable):** the public record stays static, free, and un-paywalled; the dynamic tier is strictly
+additive and must never become a required path to read a meeting — Pages keeps serving the archive even
+if the Worker tier is down, the same "degrade to static" discipline the storage router already uses.
+*Tradeoff:* real new infra (a Worker deployment, a subscriber-data trust boundary, D1/Vectorize/Queues
+billing) vs. designing it once, together, instead of a records-only SQL migration now followed by a
+second redesign for the Worker tier later. *Trigger:* federated cross-catalog query need, a public
+query API, a city/source search partition exceeding the client index budget, or the full custom-query
+builder (below) — see [review/17 §1.4](17-state-store-backend-evaluation.md). Not yet promoted past
+L1/sketch; break out to its own `review/NN` when it becomes next-up. **Unblocks:** Phase F's
+watchlists/topic alerts (email/push channel specifically — the RSS-only version doesn't need it), the
+fully-general custom-query feed builder (below), and two ideas review/25 flags as NEW/unadopted
+(a public data API, semantic search past a static nearest-neighbor index) if they're ever taken up —
+none of these ship before this seam exists.
 
 **Production/staging gate.** A live staging URL is also user-risk-triggered rather than city-triggered.
 The current beta keeps `preview.yml`'s read-only downloadable PR artifact plus the sole production Pages
