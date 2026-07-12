@@ -31,17 +31,22 @@ yet cut, batch review pending**
 **Correction, same day as the original draft: the relationships below name the *most likely* sibling
 per video provider, not a guaranteed or exclusive pairing.** A city's agenda-system vendor is an
 *independent procurement decision* from its video-system vendor — nothing about corporate ownership
-compels a city to buy the "matching" sibling product, or to buy any of them at all. **Confirmed with a
-real city already in this catalog**: Denton, TX (`denton-tx`, all 9 feeds configured `provider:
-swagit`) is understood to expose its agendas through **Legistar/Granicus** — Granicus's own product,
-not Rock Solid's OneMeeting — despite Swagit being its video source. So the "expected" Swagit→OneMeeting
-pairing (§0.1's original framing) does not hold universally, and the design below must not assume it
-does.
+compels a city to buy the "matching" sibling product, or to buy any of them at all. **The maintainer's
+domain knowledge**: Denton, TX (`denton-tx`, all 9 feeds configured `provider: swagit`, confirmed
+against the live config) is believed to expose its agendas through **Legistar/Granicus** — Granicus's
+own product, not Rock Solid's OneMeeting — despite Swagit being its video source. **This exact-URL claim
+was not confirmed live during this design pass** (§B.2 below has the details — several reasonable
+subdomain guesses all failed, and a working control case, Pflugerville, ruled out a methodology error).
+The *architectural point stands regardless* — a Swagit city having a Legistar-style agenda source at
+all is real and unsurprising given the corporate relationship, and the discovery methodology (§B.2) is
+designed precisely to find the right URL rather than assume a naming pattern. But treat "Denton uses
+Legistar" as the maintainer's recollection pending verification, not a confirmed fact this doc can build
+on as settled.
 
 | Video provider we ingest today | Owns it | Most-likely candidate sibling(s) | Portal/API pattern | Confirmed |
 |---|---|---|---|---|
 | **Granicus** | Granicus (since 2011, via Daystar Systems acquisition) | **Legistar** | `{org}.legistar.com/Calendar.aspx` | Long-standing, deeply integrated — Part A already works |
-| **Swagit** | Granicus, via **Rock Solid Technologies** (acquired Oct 2022) | **OneMeeting** (formerly PrimeGov) *or* **Legistar** — both are viable, a given Swagit city could have either, neither, or (in principle) both | `portal-{org}.primegov.com` / `{org}.legistar.com/Calendar.aspx` | OneMeeting: real production example (Waco, below). Legistar: **Denton, TX, in this catalog** |
+| **Swagit** | Granicus, via **Rock Solid Technologies** (acquired Oct 2022) | **OneMeeting** (formerly PrimeGov) *or* **Legistar** — both are viable, a given Swagit city could have either, neither, or (in principle) both | `portal-{org}.primegov.com` / `{org}.legistar.com/Calendar.aspx` | OneMeeting: real production example (Waco, below). Legistar: believed true for Denton, TX (maintainer recollection, exact URL unconfirmed — §B.2) |
 | **CivicPlus** | CivicPlus (since 2017, via BoardSync acquisition, rebranded CivicClerk) | **CivicClerk** | `{tenant}.api.civicclerk.com` (OData JSON API — this project's existing `civicclerk.py` already speaks it) | Same parent company; product bundling, not a technical integration |
 
 **Design consequence: discovery must probe every known candidate system for a city, not assume the
@@ -688,11 +693,14 @@ episodes (that's Mechanism A's job, §0.3).
 - **New reconciliation function** — `citypods/records.py` (or a new small module) — this doesn't fit
   `merge_persisted` (which only hydrates a provider's *own* prior state, confirmed) or `merge_records`/
   `merge_seed_episodes` (same-source dedup, confirmed) — needs new code:
+  Typed against the minimal `AgendaSource` structural `Protocol` (resolved in §D.3, not `Episode`
+  directly), so it works identically whether the auxiliary source is a full `MeetingProvider`
+  (Legistar/OneMeeting) or the lighter CivicClerk `AgendaRecord` path:
   ```python
   def attach_auxiliary_agenda_links(
-      episodes: list[Episode], aux_episodes: list[Episode]
+      episodes: list[Episode], aux_records: list[AgendaSource]
   ) -> None:
-      """Enrich `episodes` in place with agenda links from `aux_episodes`, matched by uid.
+      """Enrich `episodes` in place with agenda links from `aux_records`, matched by uid.
       Never adds or removes episodes -- unmatched aux rows are dropped, not promoted."""
   ```
 - **New link keys** — `links["agenda"]` already exists (PDF/PDF-redirect target). Add
@@ -718,12 +726,22 @@ pairing §0.1's original draft would have skipped checking.
 Per-city discovery checklist (run once, before writing `aux_provider`/`aux_source` into a feed's YAML,
 mirroring Part A's existing "Step 1 — Verify body names against live Legistar" discipline, generalized):
 
-1. Try `{slug}.legistar.com/Calendar.aspx` — does it resolve, and does it list real meetings for this
-   city's bodies? (Part A's mechanism already handles this fully once found.)
-2. Try `portal-{slug}.primegov.com` — does it resolve, and does it carry agenda content for this city?
-   (Part C's mechanism, once built.)
-3. Try `{slug}.api.civicclerk.com` (or the tenant name if it differs from the city slug) — does it
-   resolve, and does it return real event data? (Part D's mechanism, once built.)
+0. **Don't guess the subdomain slug — find it.** A live-verification attempt during this design pass
+   (§C.3) tried naive `{cityname}tx.legistar.com`/`portal-{cityname}tx.primegov.com` string construction
+   for Austin and Dallas and got "Invalid parameters!"/DNS failures — inconclusive, not a confirmed
+   absence, but proof that slug-guessing isn't reliable even when a real Legistar/OneMeeting instance
+   exists. Pflugerville's pattern (`pflugerville.legistar.com`) worked in Part A only because it was
+   already confirmed live, not because "`{slug}.legistar.com`" is a dependable convention. Find the real
+   hostname from the city's own government website (most cities that use one of these systems link to it
+   directly, e.g. an "Agendas & Minutes" or "Meeting Portal" link), then verify that discovered URL —
+   don't construct and probe a guessed one.
+1. Try the discovered Legistar URL (if the city's site links one) — does it resolve, and does it list
+   real meetings for this city's bodies? (Part A's mechanism already handles this fully once found.)
+2. Try the discovered OneMeeting/PrimeGov portal URL (if linked) — does it resolve, and does it carry
+   agenda content for this city? (Part C's mechanism, once built.)
+3. Try `{tenant}.api.civicclerk.com`, where `{tenant}` is confirmed against the city's own site (not
+   assumed to equal the feed slug) — does it resolve, and does it return real event data? (Part D's
+   mechanism, once built.)
 4. If more than one candidate resolves for the same city, prefer whichever has better coverage
    (checked the same way Part A's migration table already compares "more episodes than the capped
    window" per candidate) — there's no a priori reason to prefer one system over another once multiple
@@ -738,6 +756,21 @@ first city this feature is tried against, both because it's low-implementation-r
 code needed, just the new auxiliary-mode wiring from §B.1) and because it directly tests whether the
 "probe every candidate" methodology finds real coverage the original single-sibling assumption would
 have missed entirely.
+
+**Live-verification attempt during this design pass (2026-07-16) — the exact URL is still unresolved,
+recorded honestly rather than left implicit.** Tried `dentontx.legistar.com/Calendar.aspx` (bare and
+with `?Mode=2025`), `denton.legistar.com/Calendar.aspx`, and `cityofdenton.legistar.com/Calendar.aspx` —
+all returned "Invalid parameters!". **Control check**: `pflugerville.legistar.com/Calendar.aspx` (Part
+A's own already-documented working URL) loaded correctly with real, current meeting data — confirming
+the fetch method itself is sound and the Denton failures are about the URL, not the tooling. The
+Pflugerville control also reveals *why* the guesses likely failed: its working subdomain is the bare
+city name (`pflugerville`), with **no state suffix** — my Denton guesses that included a `tx` suffix
+(`dentontx`) followed a pattern the one confirmed example doesn't actually use, so they were probably
+never going to resolve. `denton`/`cityofdenton` without a suffix also didn't resolve, so the correct
+tenant name for Denton (if it exists) remains genuinely unknown from this pass. **This is exactly what
+step 0 of this checklist is for** — the real hostname needs to come from Denton's own city website, not
+further guessing. Treat this as the actual first task when Denton is picked up, not an already-solved
+prerequisite.
 
 ### §B.3 Tests
 
@@ -810,6 +843,16 @@ media resolution to the existing `SwagitProvider` logic — never re-derive it.
   systems a Swagit customer might use (or none at all); this generalizes Legistar's own experience (not
   every Granicus city had a usable Legistar calendar either — Part A's own migration table documents
   partial coverage, e.g. Fort Worth's board/commission feeds staying Granicus-only).
+- **A live-verification attempt this pass (2026-07-16) was inconclusive, not a confirmed negative —
+  worth recording so it isn't repeated blindly.** Tried `austintx.legistar.com/Calendar.aspx`,
+  `dallastx.legistar.com/Calendar.aspx` (both returned "Invalid parameters!"), and
+  `portal-austintx.primegov.com` (DNS resolution failure). These are consistent with *either* a wrong
+  guessed subdomain slug *or* genuine absence — Pflugerville's slug pattern (`pflugerville.legistar.com`)
+  worked because it was already confirmed live when Part A was written, not because "`{cityname}tx`" is a
+  reliable convention. **The discovery methodology (§B.2) needs real per-city subdomain discovery (check
+  the city's own website for a linked Legistar/PrimeGov URL, rather than guessing the slug pattern),
+  not naive `{slug}.legistar.com`/`portal-{slug}.primegov.com` string construction.** Part C stays L2
+  pending a correctly-discovered hostname for a real city, not just another guess.
 
 ---
 
@@ -862,13 +905,19 @@ implementation gap to close later.
   (likely `citypods/models.py`, alongside `Episode`). Reuses `_published_links`/`_file_stream_url`/
   `_FILE_TYPE_LINKS` unchanged.
 - Wired as an auxiliary source (Part B) for CivicPlus-primary cities: `city.aux_provider = "civicclerk"`.
-  **Note this needs its own capability surface** — `aux_provider`'s `fetch_episodes` contract (Part B)
-  expects `list[Episode]`, but CivicClerk's auxiliary path naturally returns `list[AgendaRecord]`
-  instead. Either (a) `AgendaRecord` needs to satisfy a narrower subset of what Part B's reconciliation
-  function actually reads (just enough to compute a uid and carry `links`), or (b) Part B's
-  `attach_auxiliary_agenda_links` should be typed to accept either shape. Flagged as an open
-  implementation decision, not resolved by this design pass — the CivicClerk case is what surfaces it,
-  but the resolution affects Part B's own interface.
+
+**Resolved 2026-07-16 (was an open question):** define a minimal structural `AgendaSource` `Protocol`
+(new, `citypods/providers/base.py`, alongside `MeetingProvider` — same `@runtime_checkable` pattern) —
+just the fields `attach_auxiliary_agenda_links` (§B.1) actually reads: `body: str`, `published:
+datetime`, `links: dict`. `Episode` already satisfies this structurally (no change needed); `AgendaRecord`
+is deliberately given the same three fields so it satisfies it too, without needing to carry any of
+`Episode`'s video-specific baggage. **`fetch_merge`'s auxiliary-dispatch logic branches on which method
+the configured `aux_provider` actually exposes** — `hasattr(aux_provider, "fetch_agenda_index")` (the
+CivicClerk-style lightweight path, returns `list[AgendaRecord]`) vs. the standard `fetch_episodes` (the
+Legistar/OneMeeting-style full-Protocol path, returns `list[Episode]`) — matching the exact `getattr`/
+`hasattr` duck-typing convention `fetch_chapters`/`fetch_view_counts` already use elsewhere in this
+codebase, not a new pattern. `attach_auxiliary_agenda_links` itself is typed against `AgendaSource`, so
+it doesn't need to know or care which concrete type it received.
 
 ### §D.4 Risks
 
@@ -876,9 +925,8 @@ implementation gap to close later.
   mean every CivicPlus customer also bought CivicClerk. Needs a per-city discovery/verification step
   (does `{tenant}.api.civicclerk.com` resolve and return real data for this city?) before assuming
   coverage, matching Part A/C's own "verify before committing" discipline.
-- **The `AgendaRecord` vs. `Episode` shape mismatch (§D.3)** touches Part B's own interface — resolve
-  this before implementing Part D in isolation, or Part B's reconciliation function will need a second
-  revision immediately after.
+- ~~The `AgendaRecord` vs. `Episode` shape mismatch~~ — **resolved 2026-07-16** via the `AgendaSource`
+  structural Protocol (§D.3); no longer an open risk.
 
 ---
 
