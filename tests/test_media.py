@@ -1107,6 +1107,48 @@ def test_chapters_passed_through_to_ffmpeg(tmp_path):
     assert ffmpeg.chapters == [[{"start": 0, "end": 10, "title": "Intro"}]]
 
 
+def test_source_chapters_drive_ffmpeg_when_stored_served_copy_is_stale(tmp_path):
+    from citypods.media import materialize_audio
+    from citypods.timeline import Segment, Timeline
+
+    ffmpeg = FakeFfmpeg()
+    storage = LocalStorage(root=tmp_path, url_prefix="https://cdn")
+    ep = _ep("g1", kind="hls")
+    ep.source_chapters = [{"start": 600, "title": "Agenda"}]
+    ep.chapters = [{"start": 9999, "title": "Stale served"}]
+    ep.chapters_basis = "served:old"
+    ep.timeline = Timeline(
+        version="silence-v1",
+        segments=(
+            Segment(
+                served_start=0,
+                served_end=300,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=300,
+            ),
+            Segment(
+                served_start=300,
+                served_end=3300,
+                kind="source",
+                source_id="s0",
+                source_start=600,
+                source_end=3600,
+            ),
+        ),
+    )
+    materialize_audio(
+        _city(),
+        [ep],
+        storage=storage,
+        ffmpeg=ffmpeg,
+        max_kbps=96,
+        resolve_media_url=lambda e: e.video_url,
+    )
+    assert ffmpeg.chapters == [[{"start": 300.0, "title": "Agenda"}]]
+
+
 # --- materialization backoff for repeatedly-failing episodes (issue #120) ------------------
 
 

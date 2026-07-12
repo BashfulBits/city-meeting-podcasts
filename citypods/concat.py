@@ -204,6 +204,7 @@ class SwagitConcatPlanner:
             for i, ((url, _), dur) in enumerate(zip(seg_objs, durations, strict=True))
         ]
         ep.sources = sources
+        ep.source_chapters = []
 
         # Build served-time chapters: each segment is itself an agenda item whose title
         # starts at the cumulative offset where that segment's audio begins.

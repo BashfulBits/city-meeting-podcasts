@@ -270,10 +270,60 @@ def test_chapters_stage_sets_chapters_and_transcript_link(tmp_path):
     p = ChapterProvider([{"start": 5, "end": 60, "title": "Item"}], transcript="https://t/x")
     stats = ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
     assert stats.ran == 1 and eps[0].chapters[0]["title"] == "Item"
+    assert eps[0].source_chapters == [{"start": 5, "end": 60, "title": "Item"}]
     assert eps[0].links["transcript"] == "https://t/x"
     # idempotent: episode already has chapters -> reused, no second fetch
     stats2 = ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
     assert stats2.reused == 1 and p.calls == 1
+
+
+def test_chapters_stage_backfills_source_chapters_from_existing_source_basis(tmp_path):
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("g1")]
+    eps[0].chapters = [{"start": 5, "title": "Item"}]
+    p = ChapterProvider([{"start": 10, "title": "ignored"}])
+    stats = ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
+    assert stats.reused == 1
+    assert p.calls == 0
+    assert eps[0].source_chapters == [{"start": 5, "title": "Item"}]
+
+
+def test_chapters_stage_refetches_old_served_only_records_to_backfill_source_chapters(tmp_path):
+    from citypods.stages import ChaptersStage
+
+    eps = [_ep("g1")]
+    eps[0].chapters = [{"start": 300, "title": "Stale served"}]
+    eps[0].chapters_basis = "served:older-version"
+    p = ChapterProvider([{"start": 5, "title": "Fresh source"}])
+    stats = ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
+    assert stats.ran == 1
+    assert p.calls == 1
+    assert eps[0].source_chapters == [{"start": 5, "title": "Fresh source"}]
+    assert eps[0].chapters == [{"start": 5, "title": "Fresh source"}]
+    assert eps[0].chapters_basis == "source:s0"
+
+
+def test_chapters_stage_skips_multisource_served_only_records(tmp_path):
+    from citypods.stages import ChaptersStage
+    from citypods.timeline import SourceMedia
+
+    eps = [_ep("g1")]
+    eps[0].chapters = [{"start": 300, "title": "Concat served"}]
+    eps[0].chapters_basis = "served:concat-v1"
+    eps[0].sources = [
+        SourceMedia(
+            id="s0", provider="swagit", ref="u0", media_kind="direct", duration=1.0, watch_url=None
+        ),
+        SourceMedia(
+            id="s1", provider="swagit", ref="u1", media_kind="direct", duration=1.0, watch_url=None
+        ),
+    ]
+    p = ChapterProvider([{"start": 5, "title": "Fresh source"}])
+    stats = ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
+    assert stats.reused == 1
+    assert p.calls == 0
+    assert eps[0].source_chapters == []
 
 
 def test_chapters_stage_stops_when_signalled(tmp_path):

@@ -26,6 +26,20 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   city config, official meetings page, and provider source, so the manual verification loop for
   "did this body die, rename, or keep meeting?" is a quick YAML-backed check instead of a search
   exercise.
+- **Chapters now auto-heal after a later timeline correction instead of fossilizing served-time
+  offsets (GH#775).** Provider chapter markers are now persisted separately as durable
+  `source_chapters`, while `chapters` remains the current served-time/feed-facing projection.
+  `ChaptersStage` backfills old single-source records into that shape automatically: source-basis
+  records copy their existing chapter list into `source_chapters` with no network call, and older
+  served-only records re-fetch provider chapters once to repopulate the source-time copy. With
+  that durable raw copy available, `RemapStage` now reprojects chapters whenever a stored
+  `served:<timeline-version>` no longer matches the episode's current timeline version, instead of
+  reusing stale served offsets forever. Synthetic served-only chapter sets (currently Swagit
+  concat's one-chapter-per-segment construction) remain intentionally write-once: they clear
+  `source_chapters` and are skipped by the new backfill/remap logic because there is no safe
+  single-source source-time representation to reproject. Cross-source planning reconciliation
+  now treats `source_chapters` as part of the canonical planning state too, so split record stores
+  cannot heal `chapters`/`timeline` while leaving the raw chapter copy stale.
 - **Internal ASR worker teardown no longer flips graceful yielded runs into failures.** The
   killable spawned inference backend now calls `multiprocessing.Process.close()` after the child
   has been joined/terminated, releasing tracked process resources so Python's

@@ -40,6 +40,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.bodies import filter_by_body
+from citypods.chapters import episode_served_chapters
 from citypods.durations import set_served_duration_seconds
 from citypods.feeds import enclosure_url
 from citypods.integrity import (
@@ -1220,7 +1221,7 @@ def check_timeline_integrity(
         # 5. Served-time chapters within [0, served_duration]. Basis is "served" or
         # "served:<edl-version>" (INFRA-5 stamps the version), so match the prefix.
         if ep.chapters_basis.startswith("served") and served_dur is not None:
-            for ch in ep.chapters or []:
+            for ch in episode_served_chapters(ep):
                 start = ch.get("start")
                 if start is None:
                     continue
@@ -1454,7 +1455,7 @@ _CROSS_SOURCE_AUDIO_FIELDS = ("key", "url", "spec_hash", "bytes", "encode_time",
 # sharing one physical uid can derive genuinely different chapters/timeline independently, with
 # nothing to notice — this is also what produces #850-style audio_spec_hash divergence in the
 # first place, since the spec hash is derived from these same fields.
-_CROSS_SOURCE_PLANNING_FIELDS = ("chapters", "chapters_basis", "timeline")
+_CROSS_SOURCE_PLANNING_FIELDS = ("source_chapters", "chapters", "chapters_basis", "timeline")
 
 
 def reconcile_cross_source_audio(

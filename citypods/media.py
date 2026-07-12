@@ -39,6 +39,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Protocol
 
+from citypods.chapters import episode_served_chapters
 from citypods.durations import episode_source_duration_seconds, set_served_duration_seconds
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
 from citypods.http import (
@@ -2938,7 +2939,7 @@ def materialize_audio(
                     render_timeline,
                     by_id,
                     dest,
-                    ep.chapters or None,
+                    episode_served_chapters(ep) or None,
                     sources=render_sources,
                     **render_options,
                 )

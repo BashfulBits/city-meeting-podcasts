@@ -1423,6 +1423,7 @@ class TestReconcileCrossSourceAudio:
                 "uid1": {
                     "audio": self._audio(),
                     "integrity": None,
+                    "source_chapters": [{"title": "Item 1", "start": 0.0}],
                     "chapters": [{"title": "Item 1", "start": 0.0}],
                     "chapters_basis": "source:s0",
                     "timeline": {"version": "v1"},
@@ -1432,6 +1433,7 @@ class TestReconcileCrossSourceAudio:
                 "uid1": {
                     "audio": self._audio(),
                     "integrity": None,
+                    "source_chapters": [{"title": "Item 1 (board copy)", "start": 0.0}],
                     "chapters": [{"title": "Item 1 (board copy)", "start": 0.0}],
                     "chapters_basis": "source:s0",
                     "timeline": {"version": "v1"},
@@ -1447,6 +1449,9 @@ class TestReconcileCrossSourceAudio:
 
         assert any(f.check == "cross-source-audio-divergence" for f in findings)
         assert touched == {"srcB"}  # not silently skipped as "already converged"
+        assert records_by_source["srcB"]["uid1"]["source_chapters"] == [
+            {"title": "Item 1", "start": 0.0}
+        ]
         assert records_by_source["srcB"]["uid1"]["chapters"] == [{"title": "Item 1", "start": 0.0}]
 
     def test_planning_fields_copied_from_canonical_to_followers(self):
@@ -1455,6 +1460,7 @@ class TestReconcileCrossSourceAudio:
                 "uid1": {
                     "audio": self._audio(spec_hash="stale"),
                     "integrity": None,
+                    "source_chapters": [{"title": "Stale source", "start": 0.0}],
                     "chapters": [{"title": "Stale chapter", "start": 0.0}],
                     "chapters_basis": "source:s0",
                     "timeline": {"version": "old"},
@@ -1464,6 +1470,7 @@ class TestReconcileCrossSourceAudio:
                 "uid1": {
                     "audio": self._audio(spec_hash="fresh"),
                     "integrity": None,
+                    "source_chapters": [{"title": "Fresh source", "start": 0.0}],
                     "chapters": [{"title": "Fresh chapter", "start": 0.0}],
                     "chapters_basis": "served:v2",
                     "timeline": {"version": "new"},
@@ -1479,6 +1486,7 @@ class TestReconcileCrossSourceAudio:
 
         assert touched == {"srcA"}
         healed = records_by_source["srcA"]["uid1"]
+        assert healed["source_chapters"] == [{"title": "Fresh source", "start": 0.0}]
         assert healed["chapters"] == [{"title": "Fresh chapter", "start": 0.0}]
         assert healed["chapters_basis"] == "served:v2"
         assert healed["timeline"] == {"version": "new"}
@@ -1493,6 +1501,7 @@ class TestReconcileCrossSourceAudio:
                 "uid1": {
                     "audio": self._audio(),
                     "integrity": None,
+                    "source_chapters": [{"title": "Item 1", "start": 0.0}],
                     "chapters": [{"title": "Item 1", "start": 0.0}],
                     "chapters_basis": "source:s0",
                     "timeline": {"version": "v1"},
@@ -1502,6 +1511,7 @@ class TestReconcileCrossSourceAudio:
                 "uid1": {
                     "audio": self._audio(),
                     "integrity": None,
+                    "source_chapters": [{"title": "Item 1", "start": 0.0}],
                     "chapters": [{"title": "Item 1", "start": 0.0}],
                     "chapters_basis": "source:s0",
                     "timeline": {"version": "v1"},
