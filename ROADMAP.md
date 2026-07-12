@@ -169,12 +169,23 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > order. Needs to exist and be testable (as a LiteLLM-compatible endpoint) by the time R2 is built, since
 > R2's Mistral integration is the first thing that needs it — see [`review/27`](review/27-llm-backend-and-provider-routing.md).
 
+> **Added 2026-07-16 (maintainer decision): "Legistar calendar provider" re-scoped into a broader
+> cross-provider agenda & history network, numbered R11, sequenced third (right after R10, before R2).**
+> Same no-renumbering convention as R10. Research found Swagit and CivicPlus each have a real
+> agenda-management sibling under common ownership (OneMeeting for Swagit, via Rock Solid Technologies;
+> CivicClerk for CivicPlus) — generalizing the existing, proven Legistar/Granicus mechanism to cover
+> them closes the agenda-URL gap for two of the four current providers that otherwise have zero agenda
+> data today. **R3 (agenda text extraction) now depends on R11 and narrows to text extraction only** —
+> R11 owns URL discovery, R3 owns extracting text from what R11 finds. See
+> [`review/15`](review/15-legistar-catalog-provider.md), which absorbs and expands the original item.
+
 | Pri | Item |
 |----:|------|
 | **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
 | **R10** | **Rate-limited LLM dispatch Worker** (new, infra — numbered R10, sequenced here, see note above) — a Cloudflare Worker (free tier; other free providers considered if better) that paces requests to tightly rate-limited LLM providers (Mistral's free tier is ~1-2 requests/minute) from the edge instead of a GitHub Actions runner idling between calls. Cloudflare Workers don't bill/limit CPU time spent awaiting a `fetch()` response, only active CPU cycles — the "runner mostly waiting" concern doesn't apply the same way there. Exposes an OpenAI-compatible endpoint LiteLLM can call like any other provider; results land in R2 (object storage) for the next scheduled run to pick up, reusing the same "stage checks if the artifact is ready, else skips and retries next run" pattern already used for ASR/diarization backlogs — no new synchronous coordination needed |
+| **R11** | **Cross-provider agenda & history network** (new, infra — numbered R11, sequenced here, see note above) — generalizes the existing Legistar/Granicus historical-backfill mechanism (originally "Legistar calendar provider") into three goals: ingest HTML/portal agenda URLs, ingest PDF agenda URLs, and extend meeting history for feeds with limited RSS/API windows. Adds **OneMeeting** (Swagit's real agenda-side sibling, both Granicus-owned via Rock Solid Technologies) and **CivicClerk cross-referencing** (already a supported provider, now also usable as an auxiliary agenda source for CivicPlus-video cities) alongside the proven Legistar/Granicus mechanism. Feeds R3 (agenda text extraction) and, transitively, R4 (search) and R5 (tags) |
 | **R2** | **LLM backend** (new, infra) — the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs: provider choice, cost/budget ledger, prompt-management conventions. Built ahead of R5's LLM-assist tagging path and R6's auto-summaries, neither of which need to invent this under their own time pressure |
-| **R3** | **Agenda text extraction** (new, infra) — pulls forward the minimal PDF-text-extraction slice of Phase F's "Backup-material (packet) analysis" (fetch the published agenda PDF, extract text; the richer "what's being proposed" LLM brief stays Phase F). Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy |
+| **R3** | **Agenda text extraction** (new, infra) — **narrowed 2026-07-16: text extraction only, now that R11 owns URL discovery.** Extracts plain text from whatever agenda URL (HTML portal or PDF) R11 already found for a meeting; the richer "what's being proposed" LLM brief stays Phase F. Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy |
 | **R4** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
 | **R5** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
 | **R6** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites |

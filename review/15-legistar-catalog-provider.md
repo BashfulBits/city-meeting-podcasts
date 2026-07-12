@@ -1,18 +1,98 @@
-# review/15 — Legistar Calendar Provider (historical Granicus coverage)
+# review/15 — Cross-Provider Agenda & History Network (was: Legistar Calendar Provider)
 
-**Maturity: L2→L3 · breakout of [`review/11`](11-technical-design-roadmap.md) Phase R · last updated
-2026-06-15**
+**Maturity: L3 · re-scoped and matured 2026-07-16 · breakout of
+[`review/11`](11-technical-design-roadmap.md) Phase R · ROADMAP R11 (numbered out of table-position on
+purpose, per the no-renumbering convention — sequenced third, right after R10, above R3) · issues not
+yet cut, batch review pending**
 
-> A new `legistar` provider that scrapes `Calendar.aspx` year-by-year and maps Granicus clip IDs to
-> normalized `Episode` objects. It solves or reduces the RSS 100-item view-cap for cities where the
-> Granicus RSS views hide older meetings — Pflugerville TX remains the first migration target, and
-> Arlington TX plus Fort Worth TX are now explicit follow-on feed-health targets. Media download,
-> deeplinks, and chapter indices continue to use Granicus infrastructure; only the episode-discovery
-> index moves to Legistar.
+> **Re-scoped 2026-07-16 (maintainer decision):** this item grows from "Legistar calendar scraping for
+> historical Granicus video coverage only" into a general **cross-provider agenda & history network**
+> with three goals: (1) ingest URLs for **non-PDF (HTML/portal) agendas**, (2) ingest URLs for **PDF
+> agendas**, (3) **extend meeting history** for feeds with limited RSS/API windows — generalized beyond
+> Legistar/Granicus to the other sibling-vendor relationships research turned up (§0). **R3 (agenda text
+> extraction) now depends on this item** and narrows to "extract text from whatever URL this item
+> already found" — R11 owns URL *discovery*, R3 owns text *extraction*. The original Legistar/Granicus
+> design (proven, already L3) is preserved below as **Part A**; everything else is new.
 
 ---
 
-## Why now (after Phase H)
+## §0. Three goals, and the relationships that make them possible
+
+1. **Ingest URLs for non-PDF (HTML/portal) agendas** — structured agenda-portal pages (Legistar
+   AgendaViewer, OneMeeting/PrimeGov portal, CivicClerk portal) are richer than a bare PDF: item-level
+   metadata, sometimes even video-sync points (see the Waco example below).
+2. **Ingest URLs for PDF agendas** — the original R3 scope, generalized: discover the actual document
+   link, wherever it lives, for R3 to extract text from.
+3. **Extend meeting histories for feeds with limited history** — generalizes Part A's existing
+   Legistar-for-Granicus mechanism (below) to the other sibling relationships, where viable.
+
+### §0.1 The corporate relationships that make this possible (verified 2026-07-16)
+
+| Video provider we ingest today | Owns it | Sibling agenda system | Portal/API pattern | Relationship confirmed |
+|---|---|---|---|---|
+| **Granicus** | Granicus (since 2011, via Daystar Systems acquisition) | **Legistar** | `{org}.legistar.com/Calendar.aspx` | Long-standing, deeply integrated — Part A already works |
+| **Swagit** | Granicus, via **Rock Solid Technologies** (acquired Oct 2022) | **OneMeeting** (formerly PrimeGov, Rock Solid's own agenda product — **not** Legistar) | `portal-{org}.primegov.com` | Real production integration, not hypothetical — see below |
+| **CivicPlus** | CivicPlus (since 2017, via BoardSync acquisition, rebranded CivicClerk) | **CivicClerk** | `{tenant}.api.civicclerk.com` (OData JSON API — this project's existing `civicclerk.py` already speaks it) | Same parent company; product bundling, not a technical integration |
+
+**The one-sentence correction to the maintainer's original hypothesis:** Swagit's agenda-side sibling is
+**OneMeeting**, not Legistar — both are Granicus-owned, but via a different, more recent acquisition
+chain (Rock Solid Technologies, Oct 2022), and Rock Solid's own agenda product was OneMeeting
+(rebranded from PrimeGov), not a resale of Legistar.
+
+**Concrete proof this isn't hypothetical:** the City of Waco moved to "a web-based OneMeeting agenda
+portal and uses Swagit for live streaming," where OneMeeting's agenda page has "on-screen 'play' links
+that open the Swagit player" and **item-level jump points into the Swagit video** — i.e., a real,
+current, production cross-product integration between exactly the two systems a Swagit-only city in
+this catalog would need bridged.
+
+### §0.2 The joining key already exists — this doesn't need new fuzzy-matching
+
+The hardest-looking part of this design — matching a sibling agenda source's rows to the *right*
+episode from a different, primary provider — turns out to already have a clean answer in this codebase.
+`Episode.uid` is computed by `_uid(author, body, date, seq)` (`citypods/records.py:229-238`) as
+`SHA1(author | body_key(canonical_body(body)) | date | sequence-within-that-(body,date)-bucket)` — this
+is **provider-independent by construction**: it depends only on the meeting's own facts (who, what
+body, what date, which same-day occurrence), never on any provider-specific field like `guid`. If an
+auxiliary source can independently compute `(canonical_body, date)` for its own rows — using the exact
+same `canonical_body`/`body_key` normalization already in `citypods/bodies.py:48-78` — it derives the
+**same uid** the primary provider's matching episode already has. No new string-similarity/fuzzy-match
+library is needed (confirmed: none exists in this codebase today); the join key is already the identity
+key.
+
+**The one real risk this doesn't eliminate:** if a body has more than one meeting on the same date, the
+`seq` (same-day sequence number) has to agree between the primary provider and the auxiliary source, or
+the uids diverge even though `(body, date)` matches. Sequencing by start-time-of-day (when both sources
+expose it) is the mitigation; this needs explicit handling, not an assumption that it always lines up.
+
+### §0.3 Which mechanism solves which goal — a deliberate scoping split
+
+Two complementary mechanisms, not one unified system — this is a deliberate risk-reduction choice, not
+a shortcut:
+
+| Mechanism | Solves | Status | Risk profile |
+|---|---|---|---|
+| **A. Full-replacement** (`city.provider` switches entirely to the sibling, e.g. `legistar`) | **Goal 3** (extended history) | Proven — Part A already does this for Legistar/Granicus | Low — the sibling *becomes* the episode-discovery source of truth, no cross-source reconciliation needed |
+| **B. Auxiliary attachment** (a new, optional second source enriches the primary's already-discovered episodes) | **Goals 1 + 2** (agenda URLs) | New — Part B | Higher — needs the new uid-join reconciliation (§0.2), but **deliberately never creates new episodes**, only enriches existing ones |
+
+**Why not make auxiliary mode also solve goal 3** (i.e., auto-promote an aux-only-discovered meeting
+into a full episode)? Because that requires the record-store to accept episodes whose identity/state
+isn't owned by the primary provider's own fetch — a genuinely new and riskier form of cross-source
+episode *creation*, not just enrichment. Full-replacement mode already solves goal 3 safely, proven in
+production for Legistar/Granicus; there's no need to take on that risk a second way when one is already
+working.
+
+---
+
+## Part A — Legistar, full-replacement mode (existing, proven — solves Goal 3 for Granicus/Legistar)
+
+**Everything in Part A is the original design, unchanged, still fully valid.** It's Mechanism A (§0.3):
+`city.provider` switches entirely to `legistar`, which becomes the episode-discovery source of truth
+while delegating media resolution back to Granicus. **Also usable in Mechanism B (auxiliary) for a
+Granicus-primary city that doesn't want a full migration** — the same `AgendaViewer.php`/`Calendar.aspx`
+scraping this section describes can run as an auxiliary source instead (see Part B), attaching agenda
+links without switching `provider:`.
+
+### Why now (after Phase H)
 
 Granicus RSS is hard-capped at 100 items per view. Pflugerville TX has a single Granicus view
 (`view_id=1`) used by all ten bodies. Once 100 items fill the view, older meetings disappear from the
@@ -57,7 +137,7 @@ are independent.
 
 ---
 
-## How Legistar Calendar.aspx works
+### How Legistar Calendar.aspx works
 
 `Calendar.aspx` is an ASP.NET WebForms page served by the Granicus/Accela Legistar platform.
 
@@ -118,7 +198,7 @@ button element is absent or disabled in the response HTML.
 
 ---
 
-## GUID and Episode construction
+### GUID and Episode construction
 
 ### GUID — MediaPlayer URL
 
@@ -168,7 +248,7 @@ string. Legistar calendar rows carry no per-meeting description.
 
 ---
 
-## Source config schema
+### Source config schema
 
 ```yaml
 provider: legistar
@@ -199,7 +279,7 @@ must also be `https://`.
 
 ---
 
-## Provider protocol mapping
+### Provider protocol mapping
 
 | Method | Implementation |
 |---|---|
@@ -215,7 +295,7 @@ must also be `https://`.
 
 ---
 
-## HTML parsing
+### HTML parsing
 
 No new dependency. Use `re` (stdlib) for the narrow patterns the provider needs:
 
@@ -262,7 +342,7 @@ surfaced quickly rather than silently producing empty results.
 
 ---
 
-## fetch_episodes implementation sketch
+### fetch_episodes implementation sketch
 
 ```python
 def fetch_episodes(self, source: dict) -> list[Episode]:
@@ -293,7 +373,7 @@ fast on the Actions runner. The result set is deduplicated by `guid` across year
 
 ---
 
-## Migration plan
+### Migration plan
 
 ### Step 1 — Verify body names against live Legistar
 
@@ -438,7 +518,7 @@ After provider rollout and YAML migrations, run feed-health and classify residua
 
 ---
 
-## Files
+### Files
 
 | File | Change |
 |---|---|
@@ -475,7 +555,7 @@ and calls it. This is a pure refactor — no behavior change.
 
 ---
 
-## Test plan
+### Test plan
 
 ### Unit tests (offline, fixture-based — default test run)
 
@@ -510,7 +590,7 @@ and calls it. This is a pure refactor — no behavior change.
 
 ---
 
-## Acceptance criteria
+### Acceptance criteria (Part A)
 
 - [ ] `citypods doctor pflugerville-tx-city-council` (after YAML migration) returns ≥ 200 episodes
   and no errors.
@@ -537,3 +617,226 @@ and calls it. This is a pure refactor — no behavior change.
   (confirmed by running `records.source_key` before and after the YAML change).
 - [ ] Old Pflugerville Granicus state files (under old `source_key`) are not deleted by the migration
   itself; they are left for the B2 GC sweep.
+
+---
+
+## Part B — Auxiliary agenda-source attachment (new mechanism — solves Goals 1 + 2)
+
+**Mechanism B from §0.3.** A city keeps its primary video provider unchanged and gains a second,
+optional source that enriches already-discovered episodes with agenda URLs — never creates new
+episodes (that's Mechanism A's job, §0.3).
+
+### §B.1 Architecture
+
+- **`MeetingProvider` Protocol is reused as-is for auxiliary sources** — confirmed it has exactly 7
+  members (`citypods/providers/base.py:33-99`): `name`, `capabilities`, `validate`, `detect_change`,
+  `fetch_episodes`, `resolve_media_url`, `video_deeplink`. `fetch_chapters`/`fetch_view_counts` are
+  optional duck-typed extensions (always `getattr`-guarded by callers), not part of the Protocol. An
+  auxiliary-only source implements all 7 for Protocol conformance, but the video-specific ones
+  (`resolve_media_url`, `video_deeplink`) are harmless no-ops — nothing calls them for an auxiliary
+  source, since it's never the one materializing media. `detect_change` can trivially `return None`
+  (confirmed dead code in practice — zero call sites outside a docstring mention — but still required to
+  satisfy the `runtime_checkable` Protocol's method-presence check). **No new Protocol needed** — this
+  reuses existing plumbing rather than inventing a parallel one.
+- **New optional `City` fields**: `aux_provider: str | None`, `aux_source: dict | None`
+  (`citypods/models.py`, alongside `provider`/`source` at lines 197-198). Loaded and validated the same
+  way as the primary (`get_provider(...).validate(...)`) in `citypods/config.py`'s `_build_city`
+  (currently lines 85-178) — but optional, absent for every city today, so no config migration needed
+  for cities that don't use this.
+- **Insertion point: `SourcePipeline.fetch_merge`** (`citypods/run.py:189-205`), the exact and only
+  place `provider.fetch_episodes(source)` is called in the live pipeline (line 194). After the existing
+  `assign_uids(city, episodes)` call (line 200) — which is what makes the join key (§0.2) available —
+  add: if `city.aux_provider` is set, call `aux_provider.fetch_episodes(city.aux_source)`, compute the
+  same uid for each returned row (via the same `canonical_body`/`body_key`/date/seq logic), and reconcile
+  against `episodes` by uid match.
+- **No new record store / `source_key`.** `source_key(city)` (`citypods/records.py:158-163`) hashes only
+  the primary `provider`+`source` — deliberately unchanged. The auxiliary fetch is ephemeral per run
+  (enrich-in-place), not persisted as its own source of truth. This keeps the primary provider as the
+  sole identity/state owner, consistent with Mechanism B never creating episodes.
+- **New reconciliation function** — `citypods/records.py` (or a new small module) — this doesn't fit
+  `merge_persisted` (which only hydrates a provider's *own* prior state, confirmed) or `merge_records`/
+  `merge_seed_episodes` (same-source dedup, confirmed) — needs new code:
+  ```python
+  def attach_auxiliary_agenda_links(
+      episodes: list[Episode], aux_episodes: list[Episode]
+  ) -> None:
+      """Enrich `episodes` in place with agenda links from `aux_episodes`, matched by uid.
+      Never adds or removes episodes -- unmatched aux rows are dropped, not promoted."""
+  ```
+- **New link keys** — `links["agenda"]` already exists (PDF/PDF-redirect target). Add
+  `links["agenda_portal"]` for the structured HTML/portal page (Legistar AgendaViewer, OneMeeting
+  portal, CivicClerk portal) — distinct from the raw PDF, matching Goal 1 vs Goal 2. **Naming note**:
+  `citypods/feeds.py:31`'s `LINK_LABELS` already has an unused `"documents": "Meeting documents"` entry
+  — different namespace (display label vs. link dict key) so no actual collision, but worth reusing that
+  label for whichever new key ends up user-facing, rather than inventing a second "documents" concept.
+- **`feed_content_hash`** (`citypods/records.py:328-358`) already includes `sorted((e.links or {}).items())`
+  (line 346) — a new agenda link populating means this hash naturally changes and triggers a re-render;
+  no separate wiring needed, this already works.
+
+### §B.2 Tests
+
+- A fixture primary-provider episode list + a fixture aux-provider episode list sharing a `(body, date)`
+  pair reconcile to the same uid and the primary episode gains `links["agenda"]`/`links["agenda_portal"]`.
+- An aux row with no matching primary uid is dropped, not promoted to a new episode (the core Mechanism-B
+  invariant — needs an explicit test, not just an implicit pass).
+- Same-body-same-date multiple-meetings fixture: sequencing agreement (or documented disagreement)
+  between primary and aux sources is exercised explicitly, not left untested.
+- `City.aux_provider`/`aux_source` absent (today's default for every city) — `fetch_merge` behaves
+  identically to before this change (regression guard).
+
+---
+
+## Part C — OneMeeting provider (new — Swagit's actual agenda-side sibling)
+
+**Confirmed facts (2026-07-16 research):** public portal pattern `portal-{org}.primegov.com` (OneMeeting
+is the current name for what was PrimeGov before Rock Solid's rebrand). Real production integration
+exists today (the Waco example, §0.1) — OneMeeting pages link directly to the Swagit player, including
+item-level jump points, which is structurally the same "embedded foreign-provider reference" pattern
+Legistar already uses for Granicus clip IDs (Part A, "Granicus clip_id extraction").
+
+### §C.1 Design — template lifted from Part A's Legistar mechanism, not invented fresh
+
+Part A's clip_id-extraction mechanism generalizes cleanly: (a) identify the interactive/embedded-widget
+attribute carrying the foreign provider's reference (for Legistar: `onclick="radopen('&lt;url&gt;', ...)"`;
+for OneMeeting: **unconfirmed without live HTML** — likely a `data-*` attribute, an `onclick` player-open
+call, or an `&lt;iframe src=...&gt;`, needs live verification before implementation, exactly like Part A's
+own "verify body names against live Legistar" step), (b) extract the Swagit reference via a narrow regex
+against that one attribute, not full HTML parsing, (c) skip rows where the pattern is absent (agenda-only
+or cancelled meetings), (d) reconstruct the reference into Swagit's own canonical URL scheme and delegate
+media resolution to the existing `SwagitProvider` logic — never re-derive it.
+
+**Two usage modes, both viable, decided per-city:**
+- **Full-replacement** (Mechanism A) — for a Swagit city with a genuinely limited RSS/API history window
+  and a verified-viable OneMeeting calendar with embedded Swagit references: `city.provider` switches to
+  `onemeeting`, mirroring Part A's Legistar migration exactly (same source_key-change/orphan-handling
+  concerns, same verification-before-YAML-migration discipline).
+- **Auxiliary** (Mechanism B, Part B) — for a Swagit city that just wants agenda URLs attached without a
+  full migration: `city.aux_provider = "onemeeting"`.
+
+### §C.2 Module / file plan
+
+- `citypods/providers/onemeeting.py` — new. Structurally mirrors `citypods/providers/legistar.py`:
+  `fetch_episodes` (portal scrape + pagination, mechanism TBD pending live HTML verification),
+  `resolve_media_url`/`video_deeplink`/`fetch_chapters` delegating to `SwagitProvider`'s existing logic
+  (same "extract module-level helper, delegate" refactor pattern Part A already used for
+  `granicus._resolve_download_url`).
+- `citypods/providers/__init__.py` — register `OneMeetingProvider`.
+- **Live verification required before any implementation commitment** (matching Part A's own
+  discipline): fetch a real `portal-{org}.primegov.com` page for a Swagit city already in this catalog,
+  confirm the portal exists, confirm it embeds a Swagit-resolvable reference, and document the actual
+  HTML pattern — none of this can be finalized from research alone the way Part A's Legistar mechanics
+  could be (Legistar's markup was already documented via live inspection when Part A was written).
+
+### §C.3 Risks
+
+- **Unverified HTML structure** — everything in §C.1's extraction mechanism is a template by analogy to
+  Legistar, not a confirmed pattern. This is the single biggest open risk in the whole document; treat
+  Part C as L2 (designed approach, needs verification), not L3 (dev-ready), until a real OneMeeting page
+  for a real catalog city is inspected.
+- **Not every Swagit city has OneMeeting** — Rock Solid's OneMeeting is one option among several agenda
+  systems a Swagit customer might use (or none at all); this generalizes Legistar's own experience (not
+  every Granicus city had a usable Legistar calendar either — Part A's own migration table documents
+  partial coverage, e.g. Fort Worth's board/commission feeds staying Granicus-only).
+
+---
+
+## Part D — CivicClerk auxiliary agenda index (new — for CivicPlus-video cities)
+
+**Confirmed facts (2026-07-16 research):** CivicClerk's real API is `https://{tenant}.api.civicclerk.com`
+(an OData JSON API — **not** the public HTML portal `{siteid}.portal.civicclerk.com` humans browse),
+already spoken by this project's existing `citypods/providers/civicclerk.py`. Relevant endpoints:
+`GET /v1/Events` (episode list), `GET /v1/Meetings/GetMeetingFileStream(fileId={id},plainText=false)`
+(the actual PDF-serving endpoint for agenda/packet/minutes/transcript files, via `_file_stream_url`,
+`civicclerk.py:70-72`), and `_published_links`/`_FILE_TYPE_LINKS` (`civicclerk.py:62-86`) — the pure,
+already-written function that maps an event's `publishedFiles` to agenda/packet/minutes/transcript URLs.
+
+### §D.1 The real blocker found in this codebase, not hypothetical
+
+`CivicClerkProvider.fetch_episodes`/`parse_events` (`civicclerk.py:89-129`) **unconditionally drops any
+event without `hasMedia=true` and a valid absolute-HTTPS `mediaSourcePathMp4`** — before
+`_published_links` ever runs. For a CivicPlus-video city, CivicClerk is never the video source, so most
+or all of its own events would have `hasMedia=false` from CivicClerk's perspective (the video lives on
+CivicPlus, not CivicClerk) — meaning `fetch_episodes` as it exists today **cannot** be reused directly
+for auxiliary agenda-only lookups. It would filter out exactly the rows this feature needs.
+
+### §D.2 Design — a new function, not a new provider
+
+Because `_published_links`/`_file_stream_url`/`_FILE_TYPE_LINKS` are already pure functions taking
+`(event: dict, api_base: str)`, the fix is narrow: a new sibling function in the same file, not a new
+adapter class:
+
+```python
+def fetch_agenda_index(source: dict) -> list[AgendaRecord]:
+    """Like fetch_episodes, but without the hasMedia/mediaSourcePathMp4 gate -- returns every
+    event's agenda/packet/minutes links regardless of whether CivicClerk itself hosts video."""
+```
+`AgendaRecord` — a new, deliberately lighter dataclass (`{body, date, links}`), not a repurposed
+`Episode` — avoids carrying `Episode`'s video-specific fields (`audio_url`, `media_kind`, etc.) into a
+context where they're meaningless and could mislead a future reader into treating an agenda-only record
+as a playable one.
+
+**Scope: Goals 1 + 2 only, auxiliary mode only (Mechanism B), never Goal 3.** Unlike Legistar/OneMeeting,
+CivicClerk doesn't embed a resolvable reference back to CivicPlus's own video hosting — the two products
+are independently operated, not one delegating media resolution to the other. So there's no equivalent
+of Part A/C's "extract the foreign clip reference, delegate to the primary provider" mechanism here —
+CivicClerk can only ever *enrich* an episode CivicPlus already discovered, never help discover one
+CivicPlus is missing. This is a real, structural difference from Legistar/OneMeeting, not an
+implementation gap to close later.
+
+### §D.3 Module / file plan
+
+- `citypods/providers/civicclerk.py` — add `fetch_agenda_index(source)` + a new `AgendaRecord` dataclass
+  (likely `citypods/models.py`, alongside `Episode`). Reuses `_published_links`/`_file_stream_url`/
+  `_FILE_TYPE_LINKS` unchanged.
+- Wired as an auxiliary source (Part B) for CivicPlus-primary cities: `city.aux_provider = "civicclerk"`.
+  **Note this needs its own capability surface** — `aux_provider`'s `fetch_episodes` contract (Part B)
+  expects `list[Episode]`, but CivicClerk's auxiliary path naturally returns `list[AgendaRecord]`
+  instead. Either (a) `AgendaRecord` needs to satisfy a narrower subset of what Part B's reconciliation
+  function actually reads (just enough to compute a uid and carry `links`), or (b) Part B's
+  `attach_auxiliary_agenda_links` should be typed to accept either shape. Flagged as an open
+  implementation decision, not resolved by this design pass — the CivicClerk case is what surfaces it,
+  but the resolution affects Part B's own interface.
+
+### §D.4 Risks
+
+- **CivicClerk coverage for a given CivicPlus city is not guaranteed** — same-parent-company doesn't
+  mean every CivicPlus customer also bought CivicClerk. Needs a per-city discovery/verification step
+  (does `{tenant}.api.civicclerk.com` resolve and return real data for this city?) before assuming
+  coverage, matching Part A/C's own "verify before committing" discipline.
+- **The `AgendaRecord` vs. `Episode` shape mismatch (§D.3)** touches Part B's own interface — resolve
+  this before implementing Part D in isolation, or Part B's reconciliation function will need a second
+  revision immediately after.
+
+---
+
+## §E. Consolidated sequencing, migration, and acceptance (Parts B–D)
+
+**Sequencing:** R11 precedes R3 (agenda text extraction) — R3 narrows to text extraction once this item
+supplies URLs. Within R11: Part A (already done) and Part D (CivicClerk, reuses existing adapter code,
+lowest implementation risk) can land first; Part B (the auxiliary-attachment mechanism both C and D
+depend on) must land before either C or D can be wired in as auxiliary sources; Part C (OneMeeting) is
+gated on live HTML verification and should follow, not lead.
+
+**Migration:** no backfill required — this is additive URL/link enrichment on already-existing episodes,
+governed by the same `feed_content_hash` re-render trigger every other link-affecting change already
+uses (Part B, §B.1).
+
+**Acceptance (Parts B–D, beyond Part A's own criteria above):** a Granicus-primary city with an
+auxiliary Legistar/OneMeeting source gains `links["agenda"]`/`links["agenda_portal"]` on matched
+episodes without any change to which provider supplies its video; a CivicPlus-primary city with an
+auxiliary CivicClerk source gains agenda links the same way; no auxiliary source ever creates a new
+episode; `City` configs without `aux_provider` set behave identically to today (regression guard); R3's
+own design (next) can assume agenda URLs are present for the large majority of the current feed index
+before beginning its own text-extraction work.
+
+## Proposed GitHub issues (not filed — batch review pending)
+
+1. Part B: `City.aux_provider`/`aux_source` config + `fetch_merge` insertion point + the new
+   `attach_auxiliary_agenda_links` reconciliation function.
+2. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (lowest-risk, ships first —
+   reuses existing adapter code, no live-HTML-verification blocker).
+3. Part C: live verification of a real OneMeeting portal for a real catalog city, before any
+   implementation commitment.
+4. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 3's findings.
+5. Part B: resolve the `AgendaRecord`-vs-`Episode` interface question (§D.3) that Part D's design
+   surfaced, before Part D ships.

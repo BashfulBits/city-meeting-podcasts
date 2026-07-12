@@ -132,11 +132,11 @@ sync · #20 video enclosures (partial).
 |---|---|---|---|
 | Per-meeting permalink pages | #46/GH#157 | **L3** (2026-07-13, issues not yet cut — batch review pending) | [`review/13`](13-per-meeting-pages-and-search.md) Part A |
 | **Rate-limited LLM dispatch Worker** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R10 — number out of table-position on purpose, see ROADMAP's insert note; sequenced second, right after R1** | [`review/27`](27-llm-backend-and-provider-routing.md) §Worker |
+| **Cross-provider agenda & history network** (was: Legistar calendar provider) | new | **L3** (2026-07-16) · **ROADMAP R11 — number out of table-position on purpose; sequenced third, right after R10** | [`review/15`](15-legistar-catalog-provider.md) · re-scoped from Granicus/Legistar-only into three goals (HTML/portal agenda URLs, PDF agenda URLs, extended meeting history); adds OneMeeting (Swagit's real sibling, both Granicus-owned) and CivicClerk cross-referencing (for CivicPlus cities) alongside the proven Legistar/Granicus mechanism. Feeds R3 |
 | **LLM backend** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R2, inserted 2026-07-14** | [`review/27`](27-llm-backend-and-provider-routing.md) · the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs; built ahead of R5 (tags)/R6 (auto-summaries) so neither invents this under its own time pressure |
-| **Agenda text extraction** (new, Infra) | new | L1 · **ROADMAP R3, inserted 2026-07-14** | §5.1 · pulls forward the minimal PDF-text-extraction slice of Phase F's "Backup-material (packet) analysis"; feeds R4 (search) and R5 (tags), both of which otherwise fall back to the weaker chapter-title proxy |
+| **Agenda text extraction** (new, Infra) | new | L1 · **ROADMAP R3, inserted 2026-07-14 · narrowed 2026-07-16** | §5.1 · **now text-extraction only** — R11 owns URL discovery (HTML portal or PDF), R3 extracts text from whatever R11 found; feeds R4 (search) and R5 (tags), both of which otherwise fall back to the weaker chapter-title proxy |
 | Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
-| Legistar calendar provider (historical Granicus coverage) | new | L2→L3 | [`review/15`](15-legistar-catalog-provider.md) |
 | Per-agenda-item "what changed" cards | #3/GH#155 | L1 | §5.1 |
 | Auto-summaries | #2 | L1 | §5.1 |
 | Soundbite highlights | #15/GH#156 | L1 | §5.1 |
@@ -282,19 +282,26 @@ Cloudflare Worker (R10) that paces requests to tightly rate-limited providers fr
 idling a GitHub Actions runner. The untrusted-output rule (all LLM output labeled, cached, never
 overwriting the official record, [SECURITY.md](../SECURITY.md)) applies from the first call.
 
-**Agenda text extraction (new, Infra — ROADMAP R3, inserted 2026-07-14).** *Problem:* R4 (search) and R5
-(tags) both want real agenda-document content as an input, but no code anywhere in this repo extracts
-text from agenda PDFs — only a link exists (`ep.links["agenda"]`). Both designs currently fall back to
-chapter/agenda-item titles (`episode_served_chapters`) as a weaker proxy. *Approach:* pull forward the
-minimal capability slice of Phase F's "Backup-material (packet) analysis" (§5.3) — fetch the published
-agenda PDF (via a new `documents` provider capability, additive like the existing `deeplink` capability
-token) and extract plain text (PDF parsing, no LLM synthesis at this stage). **Explicitly out of scope
-here:** the richer "what's being proposed" structured/LLM brief Phase F's full item describes — that
-stays post-1.0; this item is text extraction only, feeding it as an additional input to R4's search index
-and R5's tag generator, both additive to (not replacing) the chapter-title proxy they already use.
-*Tradeoff:* PDF parsing is provider-format-dependent (agenda PDFs vary in layout/quality across ~9
-municipalities' providers) and adds a new fetch+parse failure surface; scope narrowly (extraction only,
-no synthesis) to keep this a bounded infra item rather than reopening all of Phase F's scope.
+**Agenda text extraction (new, Infra — ROADMAP R3, inserted 2026-07-14, narrowed 2026-07-16).**
+*Problem:* R4 (search) and R5 (tags) both want real agenda-document content as an input, but no code
+anywhere in this repo extracts text from an agenda document — only a link exists in some cases
+(`ep.links["agenda"]`), and two of the four current providers (Swagit, CivicPlus) have **no agenda link
+at all**. Both designs currently fall back to chapter/agenda-item titles (`episode_served_chapters`) as
+a weaker proxy. **Narrowed 2026-07-16: URL discovery is no longer this item's job.** That's now
+**R11 (cross-provider agenda & history network, [`review/15`](15-legistar-catalog-provider.md))**,
+which generalizes the existing Legistar/Granicus mechanism to also cover Swagit (via OneMeeting) and
+CivicPlus (via CivicClerk cross-referencing), closing the coverage gap upstream of this item rather than
+leaving it as this item's problem to work around. *Approach (unchanged in kind, now assumes R11's output
+exists):* given a URL R11 already discovered — HTML/portal or PDF — extract plain text (PDF parsing via
+a new dependency per `review/22`'s process, or straightforward HTML text extraction for portal pages; no
+LLM synthesis at this stage). **Explicitly out of scope here:** the richer "what's being proposed"
+structured/LLM brief Phase F's full item describes — that stays post-1.0; this item is text extraction
+only, feeding it as an additional input to R4's search index and R5's tag generator, both additive to
+(not replacing) the chapter-title proxy they already use. *Tradeoff:* PDF/HTML parsing is
+provider-format-dependent (agenda documents vary in layout/quality) and adds a new fetch+parse failure
+surface; scope narrowly (extraction only, no synthesis) to keep this a bounded infra item. *Sequencing:*
+depends on R11 — begins once R11 supplies agenda URLs for "almost every meeting in the existing feed
+index" (the maintainer's own bar for moving on from R11).
 
 **Per-agenda-item "what changed" cards (#3/GH#155).** *Problem:* a freeform meeting summary is risky and
 low-trust; residents want "what did they decide on item 7?" *Approaches:* (1) **extractive** — join
