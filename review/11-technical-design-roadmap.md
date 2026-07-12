@@ -131,7 +131,8 @@ sync · #20 video enclosures (partial).
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|
 | Per-meeting permalink pages | #46/GH#157 | **L3** (2026-07-13, issues not yet cut — batch review pending) | [`review/13`](13-per-meeting-pages-and-search.md) Part A |
-| **LLM backend** (new, Infra) | new | L1 · **ROADMAP R2, inserted 2026-07-14** | §5.1 · the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs; built ahead of R5 (tags)/R6 (auto-summaries) so neither invents this under its own time pressure |
+| **Rate-limited LLM dispatch Worker** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R10 — number out of table-position on purpose, see ROADMAP's insert note; sequenced second, right after R1** | [`review/27`](27-llm-backend-and-provider-routing.md) §Worker |
+| **LLM backend** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R2, inserted 2026-07-14** | [`review/27`](27-llm-backend-and-provider-routing.md) · the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs; built ahead of R5 (tags)/R6 (auto-summaries) so neither invents this under its own time pressure |
 | **Agenda text extraction** (new, Infra) | new | L1 · **ROADMAP R3, inserted 2026-07-14** | §5.1 · pulls forward the minimal PDF-text-extraction slice of Phase F's "Backup-material (packet) analysis"; feeds R4 (search) and R5 (tags), both of which otherwise fall back to the weaker chapter-title proxy |
 | Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
@@ -272,20 +273,14 @@ Each: problem + 1–3 candidate approaches + rough tradeoffs. Promote to a break
 
 ### §5.1 Phase R remainder
 
-**LLM backend (new, Infra — ROADMAP R2, inserted 2026-07-14).** *Problem:* the H13 compute-backend
-interface already reserves `tag`/`summarize`/`soundbite-select` task verbs (`citypods/compute/base.py`,
-shipped, pre-1.0-locked), but no adapter implements any of them — only the ASR-facing `local` adapter
-exists. R5 (tags, LLM-assist path) and R6 (auto-summaries, soundbite selection) all need one. *Approach:*
-build the first real `InferenceJob`-conforming LLM adapter — provider choice (evaluate Anthropic,
-Deepseek, Gemini, OpenAI, Together per review/11 §5.5's existing H13 sketch), a cost/budget ledger
-mirroring H14d's provider-cycle dollar model for GPU workers (reserve-then-settle, per-task/provider cost
-coefficients), and a `recipe_hash` convention folding in `prompt_hash` + `model_id` so a prompt or model
-change re-derives cleanly, matching the convention already established for ASR recipe hashing.
-*Tradeoff:* real new infra (secrets, a provider ToS surface, budget tracking) built ahead of any feature
-needing it yet — deliberately, mirroring H13's own "prove the interface before features depend on it"
-precedent, so R5/R6 consume a working adapter instead of building one under time pressure. The
-untrusted-output rule (all LLM output labeled, cached, never overwriting the official record,
-[SECURITY.md](../SECURITY.md)) applies from the first call.
+**LLM backend + Rate-limited LLM dispatch Worker (new, Infra — ROADMAP R2 and R10).** Matured to L3 —
+full design in [`review/27`](27-llm-backend-and-provider-routing.md): a LiteLLM-backed `Backend` adapter
+running three providers (Gemini, DeepSeek, Mistral) under a windowed-recency allocation policy reusing
+H5's ordering engine, chapter-boundary retrieval-scoped chunking, a three-way round-robin tournament with
+cost-gated per-verb champion routing (a weekly GitHub-issue ticket + checkbox approval flow), and a
+Cloudflare Worker (R10) that paces requests to tightly rate-limited providers from the edge rather than
+idling a GitHub Actions runner. The untrusted-output rule (all LLM output labeled, cached, never
+overwriting the official record, [SECURITY.md](../SECURITY.md)) applies from the first call.
 
 **Agenda text extraction (new, Infra — ROADMAP R3, inserted 2026-07-14).** *Problem:* R4 (search) and R5
 (tags) both want real agenda-document content as an input, but no code anywhere in this repo extracts

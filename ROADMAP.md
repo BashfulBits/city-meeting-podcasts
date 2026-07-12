@@ -162,9 +162,17 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > mirroring H14d's provider-cycle dollar model, and prompt-management conventions all need deciding.
 > Everything from the old R2 onward shifts down by two (R2→R4, R3→R5, R4→R6, R5→R7, R6→R8, R7→R9).
 
+> **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced
+> second in the table below, right after R1.** This is deliberate, not a mistake — the maintainer asked
+> to avoid the renumbering churn a mid-sequence insert caused last time, so new items now get the next
+> unused number and are positioned by an explicit note rather than by forcing the label to match table
+> order. Needs to exist and be testable (as a LiteLLM-compatible endpoint) by the time R2 is built, since
+> R2's Mistral integration is the first thing that needs it — see [`review/27`](review/27-llm-backend-and-provider-routing.md).
+
 | Pri | Item |
 |----:|------|
 | **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
+| **R10** | **Rate-limited LLM dispatch Worker** (new, infra — numbered R10, sequenced here, see note above) — a Cloudflare Worker (free tier; other free providers considered if better) that paces requests to tightly rate-limited LLM providers (Mistral's free tier is ~1-2 requests/minute) from the edge instead of a GitHub Actions runner idling between calls. Cloudflare Workers don't bill/limit CPU time spent awaiting a `fetch()` response, only active CPU cycles — the "runner mostly waiting" concern doesn't apply the same way there. Exposes an OpenAI-compatible endpoint LiteLLM can call like any other provider; results land in R2 (object storage) for the next scheduled run to pick up, reusing the same "stage checks if the artifact is ready, else skips and retries next run" pattern already used for ASR/diarization backlogs — no new synchronous coordination needed |
 | **R2** | **LLM backend** (new, infra) — the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs: provider choice, cost/budget ledger, prompt-management conventions. Built ahead of R5's LLM-assist tagging path and R6's auto-summaries, neither of which need to invent this under their own time pressure |
 | **R3** | **Agenda text extraction** (new, infra) — pulls forward the minimal PDF-text-extraction slice of Phase F's "Backup-material (packet) analysis" (fetch the published agenda PDF, extract text; the richer "what's being proposed" LLM brief stays Phase F). Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy |
 | **R4** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
