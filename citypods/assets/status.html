@@ -82,6 +82,7 @@ tr:hover td{background:#1c2128}
 <nav class="nav">
   <a href="#kpis">At-a-glance</a>
   <a href="#backlog">Backlog</a>
+  <a href="#transcript_quality">H15 Trust</a>
   <a href="#issues">Issues</a>
   <a href="#table">Resource Table</a>
   <a href="#storage">Storage &amp; Retention</a>
@@ -92,6 +93,7 @@ tr:hover td{background:#1c2128}
 
 <div id="kpis"></div>
 <div id="backlog"></div>
+<div id="transcript_quality"></div>
 <div id="issues"></div>
 <div id="table"></div>
 <div id="storage"></div>
@@ -120,6 +122,16 @@ function fmtCost(usd){ return '$'+usd.toFixed(2)+'/mo'; }
 function fmtNum(n){ return n==null?'—':Number(n).toLocaleString(); }
 function fmtPct(a,b){ return b?Math.round(a/b*100)+'%':'—'; }
 function fmtDate(s){ return s?s.slice(0,10):'—'; }
+function fmtSigned(n, digits=3){
+  return n==null ? '—' : `${n>=0?'+':''}${Number(n).toFixed(digits)}`;
+}
+function fmtAgo(seconds){
+  if(seconds==null) return '—';
+  const s = Math.max(0, Number(seconds)||0);
+  if(s < 3600) return `${Math.max(1, Math.round(s/60))}m ago`;
+  if(s < 86400) return `${Math.round(s/3600)}h ago`;
+  return `${Math.round(s/86400)}d ago`;
+}
 
 function ghUrl(path){ return REPO?`https://github.com/${REPO}/${path}`:null; }
 function ghIssue(n){ return ghUrl(`issues/${n}`); }
@@ -383,7 +395,91 @@ function renderBacklog(){
 
 function fmtMb(b){ return b>=1e9?(b/1e9).toFixed(2)+' GB':(b/1e6).toFixed(1)+' MB'; }
 
-// ── Section 3: Episodes with Issues ─────────────────────────────────────────
+// ── Section 3: H15 Transcript Quality ───────────────────────────────────────
+
+function routeBadge(mode){
+  if(mode === 'provider-align') return '<span class="badge badge-ok">provider-align</span>';
+  if(mode === 'fresh-asr') return '<span class="badge badge-warn">fresh-asr</span>';
+  return '<span class="badge badge-err">unknown</span>';
+}
+
+function calibratedBadge(v){
+  return v
+    ? '<span class="badge badge-ok">calibrated</span>'
+    : '<span class="badge badge-warn">not yet</span>';
+}
+
+function renderTranscriptQuality(){
+  const TQ = S.transcript_quality || {};
+  const dist = TQ.distribution || {};
+  const route = dist.route_mode || {};
+  const cal = dist.calibrated || {};
+  const gold = TQ.gold_summary || {};
+  const latest = TQ.latest_calibration || null;
+  const rows = Array.isArray(TQ.rows) ? TQ.rows : [];
+  const attention = Array.isArray(TQ.needs_attention) ? TQ.needs_attention : [];
+  const rowsHtml = rows.length ? rows.map(row=>{
+    const l2 = row.l2_coverage || {};
+    return `<div class="bl-row" style="grid-template-columns:minmax(180px,1.4fr) 108px 98px 70px 72px 62px 120px 84px">
+      <div>${esc(row.body_name)}<div class="muted" style="font-size:.68rem">${esc(row.source_key)} / ${esc(row.body_key)}</div></div>
+      <div>${routeBadge(row.route_mode)}</div>
+      <div>${calibratedBadge(row.calibrated)}</div>
+      <div>${row.human_agreement_rate==null?'—':fmtPct(row.human_agreement_rate,1)}</div>
+      <div>${fmtSigned(row.auto_margin_avg, 3)}</div>
+      <div>${fmtNum(row.reviewed)}</div>
+      <div>${fmtNum(l2.used||0)}/${fmtNum(l2.total||0)}${l2.total?` <span class="muted">(${fmtPct(l2.used,l2.total)})</span>`:''}</div>
+      <div>${fmtAgo(row.last_sampled_age_seconds)}</div>
+    </div>`;
+  }).join('') : '<div class="muted" style="padding:.4rem 0;font-size:.8rem">No transcript-quality rows yet.</div>';
+
+  const attentionHtml = attention.length
+    ? attention.map(row=>{
+      const why = row.reviewed===0 ? 'no human reviews yet' : 'not calibrated yet';
+      return `<div style="font-size:.8rem;margin:.22rem 0">
+        ${routeBadge(row.route_mode)} <strong>${esc(row.body_name)}</strong>
+        <span class="muted">(${esc(row.source_key)})</span> · ${esc(why)} ·
+        auto margin ${fmtSigned(row.auto_margin_avg, 3)} · last sampled ${fmtAgo(row.last_sampled_age_seconds)}
+      </div>`;
+    }).join('')
+    : '<div class="muted" style="font-size:.8rem">Nothing currently stands out for review prioritization.</div>';
+
+  const latestLine = latest
+    ? `Latest calibration: <strong>${fmtNum(latest.point_count)}</strong> points · correlation <strong>${
+        latest.wer_vs_auto_score_correlation==null?'—':Number(latest.wer_vs_auto_score_correlation).toFixed(3)
+      }</strong> · ran <strong>${fmtDate(latest.run_at)}</strong>${
+        latest.l2_coverage_rate==null?'':` · L2 coverage <strong>${fmtPct(latest.l2_coverage_rate,1)}</strong>`
+      }`
+    : 'Latest calibration: <span class="muted">no calibration run yet</span>';
+
+  document.getElementById('transcript_quality').innerHTML = `
+<h2>H15 Transcript Quality</h2>
+<div class="section-card">
+  <div style="font-size:.85rem;margin-bottom:.65rem">
+    <div><strong>Trust distribution</strong> — provider-align <strong>${fmtNum(route['provider-align']||0)}</strong> · fresh-asr <strong>${fmtNum(route['fresh-asr']||0)}</strong> · unknown <strong>${fmtNum(route.unknown||0)}</strong></div>
+    <div>Calibration state — calibrated <strong>${fmtNum(cal.true||0)}</strong> · not yet <strong>${fmtNum(cal.false||0)}</strong> <span class="muted">(${fmtNum(dist.total||0)} source/body rows)</span></div>
+  </div>
+  <div class="bl-row hdr" style="grid-template-columns:minmax(180px,1.4fr) 108px 98px 70px 72px 62px 120px 84px">
+    <div>Body / Source</div><div>Route</div><div>Calibrated</div><div>Agreement</div><div>Margin</div><div>Reviewed</div><div>L2 coverage</div><div>Last sample</div>
+  </div>
+  ${rowsHtml}
+  <div class="muted" style="font-size:.75rem;margin:.45rem 0 0">
+    Agreement = human-vs-auto match rate on reviewed samples. Margin = signed automatic score average
+    (positive favors provider-align, negative favors fresh ASR). Unknown route = needs attention.
+  </div>
+</div>
+<div class="section-card" style="font-size:.85rem">
+  <div><strong>Needs attention</strong> <span class="muted">— reviewed == 0 or not yet calibrated, sorted by strongest automatic margin</span></div>
+  <div style="margin-top:.35rem">${attentionHtml}</div>
+</div>
+<div class="section-card" style="font-size:.85rem">
+  <div><strong>L3 gold / calibration summary</strong></div>
+  <div>Gold points: <strong>${fmtNum(gold.total||0)}</strong> total · both-correct <strong>${fmtNum(gold.both_correct||0)}</strong> · reviewer-correction <strong>${fmtNum(gold.reviewer_correction||0)}</strong></div>
+  <div>${latestLine}</div>
+  <div class="muted" style="font-size:.75rem;margin-top:.25rem">${link(ghSearch('H15 L3 calibration report in:title'), 'Search the standing H15 L3 calibration report issue')}</div>
+</div>`;
+}
+
+// ── Section 4: Episodes with Issues ─────────────────────────────────────────
 
 function renderIssues(){
   const I = S.issues;
@@ -425,7 +521,7 @@ function renderIssues(){
 </div>`;
 }
 
-// ── Section 4: Resource Table ────────────────────────────────────────────────
+// ── Section 5: Resource Table ────────────────────────────────────────────────
 
 let tableView = 'feed';
 let feedSort = {key:'gb_stored', dir:-1};
@@ -553,7 +649,7 @@ function renderCityTable(){
     </div>`;
 }
 
-// ── Section 5: Storage & Retention ──────────────────────────────────────────
+// ── Section 6: Storage & Retention ──────────────────────────────────────────
 
 let capVal = S.storage.archive_cap;
 const CAP_STEPS = [50,100,250,500,1000,2000,5000];
@@ -690,7 +786,7 @@ function updateAgeDisplay(idx){
   }
 }
 
-// ── Section 6: Build History ─────────────────────────────────────────────────
+// ── Section 7: Build History ─────────────────────────────────────────────────
 
 function renderHistory(){
   const rows = (S.run_history||[]).map(r=>{
@@ -752,6 +848,7 @@ function renderHistory(){
 
 renderKpis();
 renderBacklog();
+renderTranscriptQuality();
 renderIssues();
 renderTable();
 renderStorage();

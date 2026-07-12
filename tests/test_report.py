@@ -261,6 +261,13 @@ def _rec(
     return rec
 
 
+def _h15_blind(a_role: str, b_role: str) -> dict:
+    return {
+        "A": {"role": a_role, "recipe_hash": f"{a_role}-hash"},
+        "B": {"role": b_role, "recipe_hash": f"{b_role}-hash"},
+    }
+
+
 def test_build_status_empty():
     """build_status with no cities and no state_dir returns valid zero-counts."""
     status = build_status([], site_config=SITE)
@@ -270,6 +277,26 @@ def test_build_status_empty():
     assert status["kpis"]["linked_video"] == 0
     assert status["issues"]["deferred"] == 0
     assert status["issues"]["dead"] == 0
+
+
+def test_build_status_transcript_quality_empty(tmp_path):
+    """Fresh deployments with no H15 state files still render a well-formed empty panel."""
+    tq = build_status([], site_config=SITE, state_dir=tmp_path)["transcript_quality"]
+    assert tq == {
+        "rows": [],
+        "distribution": {
+            "total": 0,
+            "route_mode": {"provider-align": 0, "fresh-asr": 0, "unknown": 0},
+            "calibrated": {"true": 0, "false": 0},
+        },
+        "needs_attention": [],
+        "gold_summary": {
+            "total": 0,
+            "both_correct": 0,
+            "reviewer_correction": 0,
+        },
+        "latest_calibration": None,
+    }
 
 
 def test_build_status_last_deploy_uses_github_env(monkeypatch):
@@ -531,6 +558,128 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
         "min": 1.0,
         "avg": 1.0,
     }
+
+
+def test_build_status_transcript_quality_metrics(tmp_path):
+    from citypods.transcript_quality import save_rollups
+
+    save_rollups(
+        tmp_path,
+        {
+            "version": 1,
+            "rows": [
+                {
+                    "source_key": "src-1",
+                    "body_key": "city-council",
+                    "body_name": "City Council",
+                    "evidence": {
+                        "sample-1": {
+                            "sample_id": "sample-1",
+                            "manual_decision": "a_better",
+                            "auto_outcome": "a_better",
+                            "l2_used": True,
+                            "gold_text": "approved transcript",
+                            "gold_source": "both_correct",
+                            "blind_mapping": _h15_blind("provider-align", "asr-challenger"),
+                            "metrics": {"A": {"auto_score": 0.9}, "B": {"auto_score": 0.4}},
+                        },
+                        "sample-2": {
+                            "sample_id": "sample-2",
+                            "manual_decision": "a_better",
+                            "auto_outcome": "a_better",
+                            "l2_used": False,
+                            "blind_mapping": _h15_blind("provider-align", "asr-challenger"),
+                            "metrics": {"A": {"auto_score": 0.85}, "B": {"auto_score": 0.35}},
+                        },
+                    },
+                },
+                {
+                    "source_key": "src-2",
+                    "body_key": "planning",
+                    "body_name": "Planning Commission",
+                    "evidence": {
+                        "sample-3": {
+                            "sample_id": "sample-3",
+                            "auto_outcome": "b_better",
+                            "l2_used": True,
+                            "gold_text": "reviewer corrected text",
+                            "gold_source": "reviewer_correction",
+                            "blind_mapping": _h15_blind("provider-align", "asr-challenger"),
+                            "metrics": {"A": {"auto_score": 0.2}, "B": {"auto_score": 0.9}},
+                        }
+                    },
+                },
+            ],
+        },
+    )
+    (tmp_path / "transcript_quality_log.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "events": [
+                    {
+                        "id": "l1:src-1:ep-1:hash",
+                        "kind": "l1_sample",
+                        "source_key": "src-1",
+                        "body_key": "city-council",
+                        "created_at": "2026-07-01T00:00:00+00:00",
+                    }
+                ],
+            }
+        )
+    )
+    (tmp_path / "transcript_quality_calibration_trend.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "runs": [
+                    {
+                        "run_at": "2026-07-10T12:00:00+00:00",
+                        "point_count": 7,
+                        "wer_vs_auto_score_correlation": 0.81,
+                        "l2_coverage_rate": 0.5,
+                        "both_correct_accepted": 3,
+                        "both_correct_rejected": 1,
+                    }
+                ],
+            }
+        )
+    )
+
+    tq = build_status([], site_config=SITE, state_dir=tmp_path)["transcript_quality"]
+
+    assert tq["distribution"] == {
+        "total": 2,
+        "route_mode": {"provider-align": 1, "fresh-asr": 0, "unknown": 1},
+        "calibrated": {"true": 1, "false": 1},
+    }
+    assert tq["gold_summary"] == {
+        "total": 2,
+        "both_correct": 1,
+        "reviewer_correction": 1,
+    }
+    assert tq["latest_calibration"] == {
+        "run_at": "2026-07-10T12:00:00+00:00",
+        "point_count": 7,
+        "wer_vs_auto_score_correlation": 0.81,
+        "l2_coverage_rate": 0.5,
+        "both_correct_accepted": 3,
+        "both_correct_rejected": 1,
+    }
+    assert [row["body_name"] for row in tq["rows"]] == ["City Council", "Planning Commission"]
+    council, planning = tq["rows"]
+    assert council["route_mode"] == "provider-align"
+    assert council["calibrated"] is True
+    assert council["reviewed"] == 2
+    assert council["l2_coverage"] == {"used": 1, "total": 2, "rate": 0.5}
+    assert isinstance(council["last_sampled_age_seconds"], float)
+    assert council["last_sampled_age_seconds"] > 0
+    assert planning["route_mode"] == "unknown"
+    assert planning["calibrated"] is False
+    assert planning["reviewed"] == 0
+    assert planning["l2_coverage"] == {"used": 1, "total": 1, "rate": 1.0}
+    assert planning["last_sampled_age_seconds"] is None
+    assert [row["body_name"] for row in tq["needs_attention"]] == ["Planning Commission"]
 
 
 def test_build_status_overlays_persisted_work_manifest_state(tmp_path):
