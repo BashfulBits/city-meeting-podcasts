@@ -68,6 +68,9 @@ class Episode:
     audio_spec_hash: str | None = None
     # Enrichment artifacts populated by later stages (transcript/summary/chapters/links).
     links: dict = field(default_factory=dict)  # {"agenda": url, "canonical_video": url, ...}
+    # Source-time provider chapter markers retained durably so a later timeline change can
+    # reproject them onto a new served clock. Empty for synthetic served-only planners like concat.
+    source_chapters: list = field(default_factory=list)
     chapters: list = field(default_factory=list)  # [{"start": secs, "title": str}, ...]
     summary: str = ""
 

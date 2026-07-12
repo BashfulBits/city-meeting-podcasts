@@ -1072,10 +1072,15 @@ class RemapStage:
                 stats.reused += 1
                 continue
             source_id = ep.sources[0].id if ep.sources else "s0"
+            raw_chapters = _chapters_in_source_time(ep)
+            if not raw_chapters:
+                stats.reused += 1
+                continue
             # A cut chapter end stays None on purpose: the encoder derives it from the next
             # chapter's start, which is correct for a chapter truncated by a removed span
             # (clamping to the served duration would overlap later chapters).
-            ep.chapters = remap(ep.timeline, ep.chapters, source_id=source_id)
+            ep.source_chapters = [dict(ch) for ch in raw_chapters]
+            ep.chapters = remap(ep.timeline, raw_chapters, source_id=source_id)
             # Stamp the EDL version so a later run can tell these served-time chapters were
             # remapped against *this* timeline (staleness — see _needs_chapter_remap).
             ep.chapters_basis = f"served:{ep.timeline.version}"
@@ -1083,20 +1088,31 @@ class RemapStage:
         return stats
 
 
+def _served_chapter_basis_version(ep: Episode) -> str | None:
+    if not ep.chapters_basis.startswith("served:"):
+        return None
+    _served, _sep, version = ep.chapters_basis.partition(":")
+    return version or None
+
+
+def _chapters_in_source_time(ep: Episode) -> list[dict]:
+    if ep.source_chapters:
+        return [dict(ch) for ch in ep.source_chapters]
+    if ep.chapters_basis.startswith("served"):
+        return []
+    return [dict(ch) for ch in ep.chapters]
+
+
 def _needs_chapter_remap(ep: Episode) -> bool:
     """True when ep.chapters need to be remapped from source-time to served-time."""
     if ep.chapters_basis.startswith("served"):
-        # Already remapped (basis is "served" or "served:<edl-version>"). We do NOT re-remap
-        # even if the EDL has since changed (a bumped planner version → ep.timeline.version no
-        # longer matches the stamped one): remapping already-served values as if they were
-        # source-time would corrupt them, and the source-time originals aren't retained
-        # (served-time is canonical, design §10.2).
-        # TODO(#111): when SilencePlanner bumps its version, the stored timeline changes but
-        # chapters are already in served-time and can't be trivially re-remapped (the source-time
-        # originals are not retained — design §10.2). Re-fetch source chapters from the provider
-        # and re-run remap on EDL version mismatch. Inert until a planner version is bumped.
-        return False
-    if not ep.chapters:
+        # Served-time chapters are only safely reprojectable when the source-time originals were
+        # retained (``ep.source_chapters``). Synthetic served-only chapter sets (e.g. concat)
+        # intentionally leave that list empty and remain write-once.
+        if not ep.source_chapters:
+            return False
+        return _served_chapter_basis_version(ep) != ep.timeline.version
+    if not _chapters_in_source_time(ep):
         return False  # nothing to remap
     if ep.timeline is None:
         return False  # identity: source == served, no remap needed
@@ -1130,7 +1146,16 @@ class ChaptersStage:
         for ep in _materialize_set(
             episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
         ):
-            if ep.chapters:  # already captured; chapters don't change once set
+            if ep.source_chapters:
+                stats.reused += 1
+                continue
+            if ep.chapters and not ep.chapters_basis.startswith("served"):
+                ep.source_chapters = [dict(ch) for ch in ep.chapters]
+                stats.reused += 1
+                continue
+            if ep.chapters and len(ep.sources) > 1:
+                # Synthetic served-only chapter sets (currently Swagit concat) have no provider
+                # source-time equivalent we can safely remap across multiple sources.
                 stats.reused += 1
                 continue
             if remaining <= 0 or (ctx.stop is not None and ctx.stop()):
@@ -1143,7 +1168,9 @@ class ChaptersStage:
                 stats.errors.append(f"{ep.uid}: {exc}")
                 continue
             if chapters:
-                ep.chapters = chapters
+                ep.source_chapters = [dict(ch) for ch in chapters]
+                ep.chapters = [dict(ch) for ch in chapters]
+                ep.chapters_basis = "source:s0"
                 # Don't clobber a richer transcript already set (e.g. CivicClerk's published
                 # transcript PDF beats a closed-caption .srt fallback).
                 if transcript and "transcript" not in (ep.links or {}):

@@ -214,6 +214,7 @@ class SwagitConcatPlanner:
                 chapters.append({"start": offset, "end": offset + dur, "title": title})
             offset += dur
         if chapters:
+            ep.source_chapters = []
             ep.chapters = chapters
             ep.chapters_basis = "served"  # already in served time; RemapStage skips
 

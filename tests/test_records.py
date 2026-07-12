@@ -137,6 +137,42 @@ def test_audio_spec_hash_and_key_track_only_audio_inputs():
     assert audio_object_key(_city(), ep, base).endswith(f"u1-{base}.m4a")
 
 
+def test_audio_spec_hash_prefers_source_chapters_over_stale_served_copy():
+    from citypods.timeline import Segment, Timeline
+
+    ep = _ep("g1")
+    ep.uid = "u1"
+    ep.source_chapters = [{"start": 600, "title": "Agenda"}]
+    ep.chapters = [{"start": 9999, "title": "Stale served"}]
+    ep.chapters_basis = "served:old"
+    ep.timeline = Timeline(
+        version="silence-v1",
+        segments=(
+            Segment(
+                served_start=0,
+                served_end=300,
+                kind="source",
+                source_id="s0",
+                source_start=0,
+                source_end=300,
+            ),
+            Segment(
+                served_start=300,
+                served_end=3300,
+                kind="source",
+                source_id="s0",
+                source_start=600,
+                source_end=3600,
+            ),
+        ),
+    )
+
+    stale_hash = audio_spec_hash(ep, max_kbps=96)
+    ep.chapters = [{"start": 300.0, "title": "Agenda"}]
+    expected_hash = audio_spec_hash(ep, max_kbps=96)
+    assert stale_hash == expected_hash
+
+
 def test_transcript_media_hash_ignores_audio_only_inputs_but_tracks_timeline():
     ep = _ep("g1")
     ep.uid = "u1"

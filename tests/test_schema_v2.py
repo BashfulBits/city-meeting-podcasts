@@ -322,9 +322,11 @@ class TestAudioSpecHashV1Compat:
 class TestRoundTrip:
     def test_basic_fields_survive_round_trip(self):
         ep = _ep()
+        ep.source_chapters = [{"start": 0, "title": "source"}]
         ep2 = record_to_episode(episode_to_record(ep))
         assert ep2.guid == ep.guid
         assert ep2.title == ep.title
+        assert ep2.source_chapters == ep.source_chapters
         assert ep2.chapters == ep.chapters
         assert ep2.duration == ep.duration
 
