@@ -95,6 +95,20 @@ visitor this project is for: someone who wants everything their city council has
 last N meetings. This must ship as part of R1, not be deferred to R2/search, since it's the primary
 human browse path, and search doesn't exist yet when R1 ships.
 
+> **Terminology correction (2026-07-14, prompted by a maintainer question about "body pages"):** a
+> `City` config entry — and therefore every page/archive described in this section — is, in the common
+> case, already scoped to **one government body**, not one municipality. Confirmed against real configs:
+> `config/feeds/austin-tx-city-council.yml`, `config/feeds/austin-tx-design-commission.yml`, etc. are
+> ~30 separate `City` entries for Austin alone (Dallas ~26, Fort Worth ~14, Denton ~8), each with its own
+> `slug`, each already getting the full existing city-page treatment. **So "body pages" already exist and
+> ship today — that's what this section calls "city pages."** They share a `city_entity` field
+> (`citypods/models.py:205`, e.g. `austin-tx`, pointing at `config/cities/austin-tx.yml`) that supplies
+> shared branding, and the homepage groups them by `podcast_author` into a visual accordion
+> (`citypods/site.py:49-77`) — but **no dedicated, crawlable, shareable municipality-wide page exists**
+> that aggregates meetings across all of a city's boards into one URL/feed/archive. That's a genuinely
+> separate, currently undesigned idea, not part of R1's scope — see review/13 Part B's "City vs. body
+> scoping in search" for why R2 search may cover this need without a dedicated page ever being necessary.
+
 **Approach — two changes, not one:**
 
 1. **Link each episode in the existing "Recent meetings" list to its meeting page.** `render_city_page`'s
@@ -448,12 +462,15 @@ generation performance, not just output size** — the original draft only measu
   latency after construction; (c) confirm or refute Pagefind's incremental-rebuild capability against its
   actual current docs/CLI options (the § above reasons from its documented default behavior, not a
   verified test) — if Pagefind does support scoped/incremental indexing, the build-time scaling argument
-  against it weakens and should be revised.
+  against it weakens and should be revised; (d) **a real municipality-wide scope test against Austin's
+  actual ~30-board shard set** (§ City vs. body scoping above) — parallel-fetch-and-progressively-render
+  latency, not just single-shard latency, since that's the realistic worst case a "search all of Austin"
+  interaction hits today.
 - **Output:** a table of city → shard size, flagging any city over review/16's 1 MB soft target or 2 MB
   hard warning; a p50/p95 client-side query latency measurement (index load + `addAll()` construction +
   first keystroke-to-results) against the largest shard produced; the extraction-time baseline and its
   extrapolated cost at 500/1,000 cities (review/16's own scale gates); the Pagefind incremental-rebuild
-  finding.
+  finding; time-to-first-result and time-to-complete for the Austin 30-shard municipality-wide case.
 - **Decision gate:** if every current shard is comfortably under 1 MB, query latency (including
   client-side index construction) is acceptable (review/16's search-interaction p95 < 200 ms target
   after required partitions load), and extrapolated extraction time stays well inside the Actions
@@ -502,28 +519,44 @@ required partitions load; search-worker memory target < 100 MB.
   feedback**, see § Per-body scoping below) drives which shard(s) to fetch for a given query scope, kept
   well under the 200 KB initial-payload budget itself.
 
-### Per-body scoping — no new indexing infrastructure needed, but the mechanics weren't spelled out
+### City vs. body scoping in search — corrected after checking real config scale
 
-**No separate/nested indexes are needed — this falls entirely out of the existing shard-by-`source_key`
-design plus the per-document `body` field already in the schema, once the manifest carries `city`/`body`
-per entry (fixed above).** Two cases, both already handled by data already in the design, not by new
-machinery:
+**Correction to the previous draft of this section, prompted by a maintainer question about "body
+pages": per-body sharding is the *dominant* case, not a secondary one, and that changes the design, not
+just the terminology.** Confirmed against real configs: `config/feeds/` has **~30 separate per-board
+`City` entries for Austin alone** (Dallas ~26, Fort Worth ~14, Denton ~8), each its own `source_key`/
+shard. A combined single feed covering multiple boards is the exception. This means the field named
+`city` in the document/manifest schema (§ Data model deltas #2) must resolve to the shared **municipality
+identity** (`city.city_entity or city.slug`, `citypods/models.py:205`) — **not** the per-board
+`City.slug`/`podcast_title`, which is what `body` already covers. Fixed: the schema's `city` field is
+now explicitly `city.city_entity or city.slug` (falls back to the per-board slug only for the rare city
+with no shared entity file).
 
-1. **A city with per-body-separate feeds** (H16's "per-board vs combined feeds with divergent
-   `feed_urls` get distinct `source_key`s" — already a real, documented case in this codebase, e.g. a
-   council feed and a planning-commission feed as two separate sources for one city). Each body is
-   **already its own shard** — scoping a search to just that body is a single shard fetch, fully lazy,
-   no extra bytes downloaded. Scoping to the *whole city* means resolving all `source_key`s that share
-   that `city` in the manifest and fetching/merging results from each — the manifest addition above is
-   what makes that resolution possible client-side without guessing at a naming convention.
-2. **A city with one combined feed covering multiple bodies.** One shard, multiple `body` values inside
-   it. Scoping to a specific body is a **client-side filter** over the already-fetched shard's documents
-   using the per-document `body` field (already in § Data model deltas #2's schema) — no extra fetch,
-   just a filter predicate, exactly like the existing city/date-range filters.
+**The real problem this scale creates, previously understated as "fetch and merge a couple shards":** a
+search scoped to "all of Austin" now means resolving **up to ~30 shards** from the manifest, not two or
+three. Blocking on all 30 fetches before showing any result would be a real latency problem and would
+also defeat the "nothing downloaded before a search interaction" budget discipline if a municipality-wide
+scope became the default entry point. **Approach:**
+- **Fetch shards for a municipality-wide scope in parallel and render results progressively** as each
+  shard resolves, rather than blocking on the full set — a city-wide search shows results within one
+  shard's latency, not thirty.
+- **A city with many boards is exactly the case worth prioritizing which shards fetch first** — e.g. by
+  each board's recent-activity recency or episode count (data already in the manifest's
+  `episode_count`) — so the visible results fill in with the highest-signal boards first rather than in
+  arbitrary/alphabetical order.
+- Within any one already-fetched shard, `body` scoping is still a **client-side filter** on the
+  per-document `body` field — unchanged from the original design, just now clearly the common path
+  rather than an edge case.
 
-Either way, `body` scoping is answerable from data the design already produces; the fix here is
-documentation (the manifest needed `city`/`body` to make case 1's cross-shard resolution possible) and a
-small piece of frontend logic (resolve scope → shard set, then filter within), not a new index format.
+**Answering the actual question — is a dedicated municipality page needed, given search can do this?**
+Body pages (per-board) already exist and ship today (§ Part A's City-level entry point). A dedicated
+*municipality-wide* static page does not exist and isn't part of R1's or R2's current scope. Whether it's
+worth building later depends on how the progressive-fetch UX above actually performs at Austin's real
+scale — **that's a real open question, not a settled "obviously overkill,"** because 30 parallel shard
+fetches is a meaningfully different cost than the 2-3 I'd originally sized this against. Recommend
+deferring that call until the widened `spike/static-search-size` spike (§ above) includes a real
+30-shard-municipality case in its latency measurement, rather than deciding now on the wrong scale
+assumption.
 
 ### Data model deltas (exact)
 
@@ -614,10 +647,13 @@ transcript segments.
 - Link labels ("Agenda," "Minutes") appear in the document but a search for agenda-document *content*
   (not present anywhere in fixtures, since it isn't extracted) correctly returns no match — guards
   against a future contributor assuming link text search means document-content search.
-- The manifest carries `city`/`body` per `source_key` entry; a fixture with two `source_key`s sharing one
-  `city` (per-body-separate feeds) resolves to both shards when scoped to that city, and to one shard
-  when scoped to one body; a fixture with one combined-feed `source_key` covering two `body` values
-  filters correctly client-side without an extra fetch.
+- The manifest's `city` field resolves to `city_entity` (not the per-board slug); a fixture with N
+  `source_key`s sharing one `city_entity` (the realistic case — Austin-scale, not a 2-shard toy example)
+  resolves to all N shards when scoped to that municipality, and to exactly one shard when scoped to one
+  body.
+- A municipality-wide scope fetch renders results from whichever shards resolve first, without blocking
+  on the full shard set — assert partial results appear before the slowest shard in a fixture set
+  responds.
 - Size stays within the fixture set's expected budget (a coarse regression guard, not a substitute for
   the real spike against production data).
 
@@ -658,7 +694,8 @@ to it. Withheld-media meetings remain discoverable by civic metadata with no pla
 their result. Search works offline in tests. Coverage-gated launch means no city's results silently omit
 transcript hits it should have — either full transcript coverage or an honest metadata-only (now
 including chapter titles) result. A search scoped to one government body returns only that body's
-meetings, whether that body has its own shard or shares a combined-feed shard with others.
+meetings. A search scoped to a whole municipality (potentially dozens of boards, per real Austin/Dallas/
+Fort Worth scale) shows results progressively as shards resolve rather than blocking on the full set.
 
 ### Proposed GitHub issues (not filed — batch review pending)
 
@@ -672,8 +709,11 @@ meetings, whether that body has its own shard or shares a combined-feed shard wi
 4. Coverage-gated per-city shard content (titles-only vs. titles+transcript based on the ~60% threshold).
 5. Index chapter/agenda-item titles as their own searchable, timestamped field, independent of
    transcript coverage.
-6. Manifest `city`/`body` fields + frontend scope-resolution logic (shard set for a city vs. a single
-   body vs. client-side body filter within a combined-feed shard).
+6. Manifest `city` field resolved to `city_entity` (not per-board slug) + `body` per-document field +
+   frontend scope-resolution logic (shard set for a municipality — potentially dozens of shards at
+   Austin/Dallas/Fort Worth scale — vs. a single body's shard).
+7. Progressive parallel-fetch-and-render for municipality-wide search scope, prioritized by each board's
+   `episode_count`, so results appear incrementally rather than blocking on the full shard set.
 
 ---
 
