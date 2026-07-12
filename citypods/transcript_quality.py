@@ -2306,6 +2306,7 @@ def check_gold_corrections(
                         language=city.asr_language,
                     )
                 results[sample_id] = {
+                    "expected_gold_text": gold_text,
                     "gold_ctc_fit_score": fit.mean_score,
                     "gold_ctc_checked_at": _utc_now(),
                 }
@@ -2318,8 +2319,24 @@ def check_gold_corrections(
             for row in rows:
                 for sample_id, update in results.items():
                     evidence = (row.get("evidence") or {}).get(sample_id)
-                    if isinstance(evidence, dict):
-                        evidence.update(update)
+                    if not isinstance(evidence, dict):
+                        continue
+                    # A reviewer can edit the correction (via the separate ingest-review
+                    # workflow) in the window between this function's read pass above and this
+                    # CAS write — ingest_review_decision would already have cleared the stale
+                    # CTC fields for the new text (_gold_fields), but this callback must not
+                    # blindly re-apply an update scored against text that's no longer current,
+                    # or it would stamp the old score onto the new gold_text and mark it
+                    # "checked" (check_gold_corrections skips anything already checked, so the
+                    # new text would then never get scored at all).
+                    if (
+                        evidence.get("gold_source") != "reviewer_correction"
+                        or evidence.get("gold_text") != update["expected_gold_text"]
+                        or evidence.get("gold_ctc_checked_at")
+                    ):
+                        continue
+                    evidence["gold_ctc_fit_score"] = update["gold_ctc_fit_score"]
+                    evidence["gold_ctc_checked_at"] = update["gold_ctc_checked_at"]
             return rows
 
         mutate_rollups_ledger(state_dir, storage, _apply)

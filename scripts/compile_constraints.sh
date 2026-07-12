@@ -48,6 +48,9 @@ compile prod.txt --extra storage --extra wer
 # dependency, and compiling them separately risks two constraint files disagreeing on the exact
 # pinned version of the same package.
 compile asr.txt  --extra storage --extra asr --extra asr-align2
-compile dev.txt  --extra storage --extra dev
+# `wer` also needs to be in dev.txt: ci.yml's `test` job installs against this file, and the H15
+# L3 test suite exercises real jiwer computation (not mocked, unlike L2's heavier torch path —
+# jiwer has no exotic deps, so testing the genuine WER/CER output is cheap and worth doing).
+compile dev.txt  --extra storage --extra dev --extra wer
 
 echo "Constraints recompiled. Review the diff before committing."

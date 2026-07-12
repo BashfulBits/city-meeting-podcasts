@@ -1626,6 +1626,76 @@ def test_check_gold_corrections_scores_uncheck_corrections_only(tmp_path, monkey
     assert "gold_ctc_fit_score" not in evidence["sample-3"]  # not a reviewer_correction
 
 
+def test_check_gold_corrections_skips_write_if_correction_edited_mid_run(
+    tmp_path, monkeypatch, sample_city
+):
+    """Audio download + CTC inference (the expensive read/score pass) happens before any CAS
+    write. If a reviewer edits the correction via the separate ingest-review workflow in that
+    window, the queued update must not clobber the new text with a score computed against the
+    old one -- that would both show a wrong score and mark it "checked", so the new text would
+    never get scored at all (check_gold_corrections skips anything already checked)."""
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    save_rollups(
+        state_dir,
+        {
+            "version": 1,
+            "rows": [
+                _rollup_row(
+                    source_key_value=tq.source_key(sample_city),
+                    evidence={
+                        "sample-1": {
+                            "sample_id": "sample-1",
+                            "episode_uid": "ep-1",
+                            "clip_start": 0.0,
+                            "clip_end": 3.0,
+                            "gold_text": "foo",
+                            "gold_source": "reviewer_correction",
+                        },
+                    },
+                )
+            ],
+        },
+    )
+
+    class FakeEpisode:
+        hosted_audio_url = "https://example.invalid/audio.m4a"
+
+    monkeypatch.setattr(
+        "citypods.transcript_quality.load_records",
+        lambda state_dir, src_key: {"ep-1": {"uid": "ep-1"}},
+    )
+    monkeypatch.setattr("citypods.transcript_quality.record_to_episode", lambda rec: FakeEpisode())
+    monkeypatch.setattr(
+        "citypods.transcript_quality._download_audio_to_path",
+        lambda url, dest: dest.write_bytes(b"fake"),
+    )
+
+    def fake_ctc_fit(audio_path, text, *, clip_start, clip_end, language):
+        # Simulate a reviewer's concurrent edit landing (via ingest_review_decision, a separate
+        # workflow) in the window between this read/score pass and check_gold_corrections' own
+        # CAS write below.
+        def _edit(rows: list[dict]) -> list[dict]:
+            rows[0]["evidence"]["sample-1"]["gold_text"] = "bar"
+            return rows
+
+        from citypods.transcript_quality import mutate_rollups_ledger
+
+        mutate_rollups_ledger(state_dir, None, _edit)
+        return CtcFitResult(mean_score=0.42, coverage=1.0, word_count=2, aligned_word_count=2)
+
+    monkeypatch.setattr("citypods.ctc_align.ctc_fit", fake_ctc_fit)
+
+    result = check_gold_corrections(state_dir, cities_by_slug={sample_city.slug: sample_city})
+    assert result["checked"] == 1  # scored once, even though the write was skipped
+
+    evidence = load_rollups(state_dir)["rows"][0]["evidence"]["sample-1"]
+    assert evidence["gold_text"] == "bar"  # the concurrent edit, not clobbered
+    assert "gold_ctc_fit_score" not in evidence  # stale score for "foo" never applied
+    assert "gold_ctc_checked_at" not in evidence  # "bar" can still be picked up by a future run
+
+
 def test_parse_issue_decision_tolerates_crlf_issue_bodies():
     """GitHub normalizes issue bodies to CRLF after any edit through the web UI (HTML textarea
     submission). _CORRECTION_RE's fence boundaries are literal "```\\n...\\n```" -- without
