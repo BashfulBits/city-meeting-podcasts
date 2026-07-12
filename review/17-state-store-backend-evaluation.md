@@ -3,6 +3,15 @@
 **Maturity: L3 · breakout of [`review/11`](11-technical-design-roadmap.md)
 cross-cutting infra · last updated 2026-06-19**
 
+> **Reprioritized 2026-07-12 (maintainer decision):** the "records → managed SQL @ Phase R" line below
+> (row 4) moves decisively **past 1.0** and merges with [review/25](25-future-features-and-architecture.md)
+> §3.1's "Interaction seam" proposal into one initiative, designed together when the trigger fires rather
+> than scoping the DB now and a Worker/alerts/API tier later. This doesn't change any conclusion in this
+> doc — §1.4's "SQL-for-search is a trigger, not a default" and the B2-vs-R2-vs-DB analysis in §3 are
+> exactly why the migration is safe to defer: static pages + partitioned client search (review/13)
+> already carry Phase R without it. See [`review/11`](11-technical-design-roadmap.md) §5.5 for the
+> canonical catalog entry.
+
 > Forward-looking evaluation of where the project's **persistent state** should live as the catalog
 > scales ([`review/16`](16-scaling-review-plan.md)) and as transcription/diarization moves to runners
 > **outside GitHub Actions** (H13/H14). It does **not** propose moving large media. The canonical phase
@@ -16,7 +25,7 @@ cross-cutting infra · last updated 2026-06-19**
 | R2-CAS spike (boto3 conditional writes against R2) | **L3 · Shipped** | Run 2026-06-19; all 4 tests PASS; native params (boto3 1.43); see §7 |
 | Coordination control-plane → R2 (CAS) | L2 → L3 | **H17 do-next** — spike unblocked; one consolidated implementation issue with review/18 |
 | `episodes.json` records → R2 vs hold-for-DB | **Decided** | **Stay on B2** (per-uid lease ⇒ single-writer; no CAS need) → managed search-DB @ Phase R; skip R2 to avoid a double migration; see §3 |
-| Records → managed SQL (D1/Turso) | L1 (Phase R) | Trigger-gated; supersedes the "no hosted DB" note for this scope |
+| Records → managed SQL (D1/Turso) | L0 (post-1.0) | Trigger-gated; merged with the Interaction-seam proposal (review/25 §3.1) into one deferred initiative; supersedes the "no hosted DB" note for this scope |
 | Coordination → dedicated KV/DO (fallback) | L1 | Deferred; trigger in §8 |
 | Immutable blobs + append-only logs | — | **Stay on B2** (settled) |
 
@@ -412,9 +421,10 @@ the plumbing works against the **live** services without risking production data
 - **Reconciles the "hosted DB/API: out of scope (now)" stance** in
   [`review/11`](11-technical-design-roadmap.md) (§4 Deferred backlog, §6, §8). **R2 is object storage / the
   S3 API — it is *not* a hosted DB/API**, so the coordination-and-records → R2 move is fully consistent
-  with the current "bucket-as-truth" philosophy and does **not** supersede that stance. Only the **Phase-R
-  records-→-SQL** item is a hosted DB; it is **promoted from Deferred to Phase R (L1)**, scoped to
-  federated query + a query API + state integrity, trigger-gated. Off-Actions media migration is
+  with the current "bucket-as-truth" philosophy and does **not** supersede that stance. Only the
+  **records-→-SQL** item is a hosted DB; it was promoted from Deferred to Phase R, then **reprioritized
+  2026-07-12 to past-1.0 (L0)**, merged with the Interaction-seam proposal, scoped to federated query + a
+  query API + state integrity + the dynamic edge tier, trigger-gated. Off-Actions media migration is
   unaffected (runners still reach R2 via S3).
 - **Unblocks / aligns with:** H13/H14 external workers (clean multi-worker state access);
   [`review/16`](16-scaling-review-plan.md) S2 (shared work); [`review/13`](13-per-meeting-pages-and-search.md)
