@@ -36,6 +36,37 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   L3 gold/calibration summary with the latest trend snapshot. This is reporting-only — no H15
   schema or routing changes — and fulfills the fast-follow admin surface called out in
   [review/12 §H15](review/12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring).
+- **H15 Layer 3 — human-gold calibration anchor** ([#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884)).
+  Harvests gold-reference text opportunistically from the existing weekly blind A/B review loop
+  instead of a separate collection exercise. Redesigned the outcome model (no production review
+  data existed yet, so it was a clean redesign, not a migration): `A is better` / `B is better` /
+  **`Both fully correct`** (new, replaces the old ambiguous `Tie` option) / `Neither usable`. A
+  `both_correct` verdict makes either candidate's already-stored text gold, no typing required,
+  gated by a dedicated `gold_agreement_floor` (default 0.92) on the two candidates'
+  `text_agreement`; a `neither` verdict's optional correction box is now pre-filled with the
+  higher-`auto_score` candidate's text as an editable draft rather than left blank, and only an
+  actual edit (diffed against the original draft carried in the hidden metadata) counts as gold.
+  `package_reviews` also deliberately pulls `gold_coverage_good_limit`/`gold_coverage_bad_limit`
+  (default 1 each) already-evaluated, not-yet-reviewed samples the automatic scorer was already
+  confident about into each weekly batch — preferring L2-scored candidates and
+  under-represented sources, but never letting source-balance override genuine score extremity —
+  so gold coverage isn't limited to the ambiguous band `needs_review` already selects for. New
+  `citypods transcript-quality calibrate` subcommand (folded into the existing weekly
+  `asr-quality-review.yml`, installing a new lean `wer` extra rather than the full `asr` stack)
+  computes real WER/CER (`citypods/text_metrics.py`, extracted from `asr-bench`'s own jiwer usage)
+  against each gold-bearing sample, correlates it with `auto_score`/`l2_mean_score`, and writes a
+  plain-language calibration report — an `auto_score` coverage histogram, a Pearson correlation,
+  agreement-floor accept/reject counts, and a persistent trend log
+  (`state/transcript_quality_calibration_trend.json`) — opened/updated as a standing GitHub issue
+  each week. New `citypods transcript-quality check-gold-corrections` subcommand (run from
+  `asr-quality-eval.yml`, which already has the torch/torchaudio stack) sanity-checks
+  reviewer-typed corrections against their audio with the same independent CTC aligner L2 uses,
+  flagging low-fit corrections in the report rather than auto-excluding them. Deliberately a
+  reporting mechanism, not an auto-tuning one: with ~20-50 gold points expected,
+  `agreement_threshold`/`trust_margin_threshold` stay a human-reviewed follow-up. Multi-language
+  support stays out of scope, same boundary as L2. See
+  [review/12 §H15](review/12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring)
+  for the full design.
 
 - **H15 Layer 2 — independent CTC forced-alignment judge** ([#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883)).
   Added `citypods/ctc_align.py::ctc_fit()`, wrapping `torchaudio.pipelines.MMS_FA` (a wav2vec2
@@ -59,8 +90,7 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   (the `torchaudio.load()` decoder backend as of torchaudio 2.9+) is the only genuinely new
   package. `asr-quality-eval.yml` installs the extra and caches the ~1.2 GB MMS_FA checkpoint via
   `actions/cache`. See [review/12 §H15](review/12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring)
-  for the full design and the remaining open items (L3, still tracked as
-  [#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884)).
+  for the full design (L3 human-gold calibration, above, shipped as a follow-on).
 
 - **H15 transcript-quality workflow (L1 wired, calibration-gated routing).** Added
   `citypods transcript-quality` with four sub-commands: `sample`, `evaluate`, `package-review`, and

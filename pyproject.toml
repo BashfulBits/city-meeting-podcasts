@@ -50,6 +50,10 @@ asr = [
     "stable-ts[fw]>=2.17",
     "jiwer>=3.0",
 ]
+# H15 Layer 3 (review/12 §H15): WER/CER for the gold-anchored calibration report. Deliberately
+# separate from asr-bench/asr — those also pull in faster-whisper/stable-ts, which the weekly
+# asr-quality-review.yml workflow (this extra's only consumer) has no other reason to install.
+wer = ["jiwer>=3.0"]
 dev = ["pytest>=8.0", "ruff>=0.6", "boto3>=1.34", "pip-tools>=7.4"]
 
 [project.scripts]

@@ -10,15 +10,25 @@ from citypods.security import SecurityError
 from citypods.transcript_quality import (
     QualityConfig,
     TranscriptQualityRoute,
+    _auto_score_histogram,
     _blind_mapping,
     _candidate_metrics,
+    _gold_fields,
     _normalize_rollups,
     _read_ref_bytes,
     _render_review_page,
+    _route_from_row,
+    _select_gold_coverage_samples,
     _slug,
+    _summarize_evidence,
     accepted_recipe_allowed,
+    build_calibration_report,
+    check_gold_corrections,
+    collect_flagged_corrections,
+    collect_gold_points,
     evaluate_samples,
     ingest_review_decision,
+    load_calibration_trend,
     load_quality_routes,
     load_raw_log,
     load_rollups,
@@ -26,6 +36,7 @@ from citypods.transcript_quality import (
     package_reviews,
     parse_issue_decision,
     render_issue_body,
+    run_calibration,
     save_raw_log,
     save_rollups,
 )
@@ -745,8 +756,8 @@ def test_package_and_ingest_review(tmp_path):
     assert out["children"][0]["sample_id"] == "sample-1"
     body_file = Path(out["children"][0]["body_file"])
     edited = body_file.read_text().replace(
-        "- [ ] Tie / no meaningful difference",
-        "- [x] Tie / no meaningful difference",
+        "- [ ] Both fully correct",
+        "- [x] Both fully correct",
     )
 
     result = ingest_review_decision(
@@ -756,10 +767,10 @@ def test_package_and_ingest_review(tmp_path):
         actor="tester",
         issue_url="https://example.invalid/issues/12",
     )
-    assert result["manual_decision"] == "tie"
+    assert result["manual_decision"] == "both_correct"
     rollups = load_rollups(state_dir)
     evidence = rollups["rows"][0]["evidence"]["sample-1"]
-    assert evidence["manual_decision"] == "tie"
+    assert evidence["manual_decision"] == "both_correct"
     assert evidence["reviewed_by"] == "tester"
 
 
@@ -1135,3 +1146,630 @@ def test_calibrated_route_follows_continuous_auto_margin_over_stale_human_wins(t
     assert route.provider_wins == 2  # the (now stale) human win tally
     assert route.auto_margin_avg < 0
     assert route.route_mode == "fresh-asr"  # continuous signal wins, not the stale human count
+
+
+# --- H15 Layer 3: gold-anchored calibration -------------------------------------------------
+
+
+def test_l2_sample_limit_defaults_to_full_run_budget():
+    """Raised from 2 to 8 (== sample_limit): since sample_id exclusion means an episode is never
+    re-sampled once evaluated, a lower L2 budget would permanently strand a fraction of every
+    run's episodes on the Layer-1-only fallback, not just delay them."""
+    config = QualityConfig()
+    assert config.l2_sample_limit == config.sample_limit == 8
+
+
+def test_both_fully_correct_round_trip():
+    body = _issue_body()
+    edited = body.replace("- [ ] Both fully correct", "- [x] Both fully correct")
+    parsed = parse_issue_decision(edited)
+    assert parsed["manual_decision"] == "both_correct"
+    assert parsed["correction_text"] == ""
+
+
+def test_checking_both_fully_correct_and_neither_still_rejects():
+    body = (
+        _issue_body()
+        .replace("- [ ] Both fully correct", "- [x] Both fully correct")
+        .replace("- [ ] Neither usable", "- [x] Neither usable")
+    )
+    with pytest.raises(ValueError, match="exactly one"):
+        parse_issue_decision(body)
+
+
+def test_correction_draft_edit_detection():
+    """The correction box is pre-filled with a draft (the higher-auto_score candidate's text) --
+    leaving it untouched must not be harvested as a reviewer correction, only an actual edit."""
+    sample = {
+        "sample_id": "sample-1",
+        "source_key": "src-1",
+        "body_key": "city-council",
+        "episode_uid": "ep-1",
+        "review_page": "https://example.invalid/review",
+        "blind_mapping": {"A": {"candidate_id": "one"}, "B": {"candidate_id": "two"}},
+        "metrics": {
+            "A": {"auto_score": 0.4, "text": "the a candidate text"},
+            "B": {"auto_score": 0.8, "text": "the b candidate text"},
+        },
+    }
+    body = render_issue_body(sample)
+    assert "the b candidate text" in body  # higher auto_score (B) is the pre-filled draft
+
+    untouched = body.replace("- [ ] Neither usable", "- [x] Neither usable")
+    assert parse_issue_decision(untouched)["correction_text"] == ""
+
+    # Only replace the first occurrence (the visible fence) -- the hidden metadata's own copy of
+    # the draft must stay untouched, exactly like a reviewer editing only the rendered markdown.
+    edited = untouched.replace("the b candidate text", "the corrected text", 1)
+    assert parse_issue_decision(edited)["correction_text"] == "the corrected text"
+
+
+def test_summarize_evidence_counts_both_correct_as_reviewed_not_pending():
+    summary = _summarize_evidence({"s1": {"manual_decision": "both_correct"}})
+    assert summary["reviewed"] == 1
+    assert summary["pending"] == 0
+    assert summary["primary_counts"]["both_correct"] == 1
+
+
+def test_route_from_row_both_correct_is_a_tie_not_a_directional_win():
+    """both_correct must land in ties (not provider_wins/challenger_wins), must not perturb
+    recipe_ranks (a None role falling through would silently rank both candidates' recipes),
+    and must count as agreement when auto_outcome=='tie' -- the closest automatic equivalent to
+    a human-confirmed 'both correct' verdict, since auto_outcome itself never emits
+    'both_correct'."""
+    row = {
+        "source_key": "src-1",
+        "body_key": "city-council",
+        "evidence": {
+            "sample-1": _evidence_item(
+                score_a=0.8, score_b=0.82, manual_decision="both_correct", auto_outcome="tie"
+            ),
+        },
+    }
+    route = _route_from_row(row, fallback=QualityConfig())
+    assert route.ties == 1
+    assert route.provider_wins == 0
+    assert route.challenger_wins == 0
+    assert route.recipe_ranks == {}
+    assert route.human_agreement_rate == 1.0
+
+
+def _rollup_row(*, source_key_value: str = "src-1", evidence: dict) -> dict:
+    return {
+        "source_key": source_key_value,
+        "body_key": "city-council",
+        "body_name": "City Council",
+        "evidence": evidence,
+    }
+
+
+def _coverage_candidate(
+    sample_id: str, *, score_a: float, score_b: float, l2_used: bool = False
+) -> dict:
+    return {
+        "sample_id": sample_id,
+        "episode_uid": f"ep-{sample_id}",
+        "review_page": "https://example.invalid/review",
+        "clip_start": 0.0,
+        "clip_end": 3.0,
+        "blind_mapping": _blind("provider-align", "asr-challenger"),
+        "metrics": {"A": {"auto_score": score_a}, "B": {"auto_score": score_b}},
+        "l2_used": l2_used,
+    }
+
+
+def test_gold_coverage_selection_prefers_l2_scored_extremes_over_l1_only():
+    """The whole point of gold data is calibrating L2 -- a deliberately-sampled extreme that
+    turns out to be L1-only is a wasted pick, so L2-scored candidates are preferred even when an
+    L1-only candidate is nominally more extreme."""
+    rows = [
+        _rollup_row(
+            evidence={
+                "l1-extreme": _coverage_candidate(
+                    "l1-extreme", score_a=0.99, score_b=0.98, l2_used=False
+                ),
+                "l2-good": _coverage_candidate("l2-good", score_a=0.9, score_b=0.88, l2_used=True),
+            }
+        )
+    ]
+    picks = _select_gold_coverage_samples(
+        rows, already_selected_ids=set(), good_limit=1, bad_limit=0
+    )
+    assert [p["sample_id"] for p in picks] == ["l2-good"]
+    assert picks[0]["selection_reason"] == "gold_coverage_good"
+
+
+def test_gold_coverage_selection_never_lets_source_balance_override_true_extremity():
+    """A near-zero min_score candidate must never win the 'good' bucket just because its source
+    has fewer existing gold points -- that would defeat the purpose of sampling genuine
+    extremes. Source-balance may only decide between candidates that are already comparably
+    extreme (see the 0.1-wide rounding bucket in _select_gold_coverage_samples)."""
+    rows = [
+        _rollup_row(
+            source_key_value="city-a",
+            evidence={
+                "existing-gold": {
+                    "sample_id": "existing-gold",
+                    "gold_text": "x",
+                    "manual_decision": "both_correct",
+                    "metrics": {"A": {"auto_score": 0.5}, "B": {"auto_score": 0.5}},
+                },
+                "truly-good": _coverage_candidate(
+                    "truly-good", score_a=0.95, score_b=0.92, l2_used=True
+                ),
+            },
+        ),
+        _rollup_row(
+            source_key_value="city-b",
+            evidence={
+                "barely-good": _coverage_candidate(
+                    "barely-good", score_a=0.05, score_b=0.2, l2_used=True
+                ),
+            },
+        ),
+    ]
+    picks = _select_gold_coverage_samples(
+        rows, already_selected_ids=set(), good_limit=1, bad_limit=0
+    )
+    assert [p["sample_id"] for p in picks] == ["truly-good"]
+
+
+def test_gold_coverage_selection_respects_limits_and_excludes_already_selected():
+    rows = [
+        _rollup_row(
+            evidence={
+                "good1": _coverage_candidate("good1", score_a=0.95, score_b=0.93),
+                "good2": _coverage_candidate("good2", score_a=0.85, score_b=0.83),
+                "bad1": _coverage_candidate("bad1", score_a=0.1, score_b=0.05),
+            }
+        )
+    ]
+    picks = _select_gold_coverage_samples(
+        rows, already_selected_ids={"good1"}, good_limit=1, bad_limit=1
+    )
+    ids = {p["sample_id"] for p in picks}
+    assert "good1" not in ids  # already in the needs_review batch, must not be re-offered
+    assert ids == {"good2", "bad1"}
+
+
+def test_gold_fields_both_correct_requires_agreement_floor():
+    config = QualityConfig()
+    evidence = {
+        "pair_metrics": {"text_agreement": 0.95},
+        "blind_mapping": _blind("provider-align", "asr-challenger"),
+        "metrics": {"A": {"text": "the correct text"}, "B": {"text": "the correct text"}},
+    }
+    parsed = {"manual_decision": "both_correct", "correction_text": ""}
+    gold = _gold_fields(parsed, evidence, config=config)
+    assert gold["gold_text"] == "the correct text"
+    assert gold["gold_source"] == "both_correct"
+    assert gold["gold_role"] == "provider-align"
+
+    low_agreement = dict(evidence, pair_metrics={"text_agreement": 0.5})
+    rejected = _gold_fields(parsed, low_agreement, config=config)
+    assert rejected["gold_text"] is None
+    assert rejected["gold_source"] is None
+
+
+def test_gold_fields_neither_requires_an_actual_edited_correction():
+    config = QualityConfig()
+    evidence = {"pair_metrics": {}, "blind_mapping": {}, "metrics": {}}
+    edited = _gold_fields(
+        {"manual_decision": "neither", "correction_text": "what I actually heard"},
+        evidence,
+        config=config,
+    )
+    assert edited["gold_text"] == "what I actually heard"
+    assert edited["gold_source"] == "reviewer_correction"
+
+    untouched = _gold_fields(
+        {"manual_decision": "neither", "correction_text": ""}, evidence, config=config
+    )
+    assert untouched["gold_text"] is None
+
+
+def test_ingest_review_decision_harvests_gold_from_both_correct(tmp_path):
+    state_dir = tmp_path / "state"
+    save_rollups(
+        state_dir,
+        {
+            "version": 1,
+            "rows": [
+                _rollup_row(
+                    evidence={
+                        "sample-1": {
+                            "sample_id": "sample-1",
+                            "episode_uid": "ep-1",
+                            "review_page": "https://example.invalid/review",
+                            "needs_review": True,
+                            "pair_metrics": {"text_agreement": 0.99},
+                            "blind_mapping": _blind("provider-align", "asr-challenger"),
+                            "metrics": {
+                                "A": {"auto_score": 0.9, "text": "the correct transcript"},
+                                "B": {"auto_score": 0.88, "text": "the correct transcript"},
+                            },
+                        }
+                    }
+                )
+            ],
+        },
+    )
+    body = render_issue_body(
+        {
+            "sample_id": "sample-1",
+            "source_key": "src-1",
+            "body_key": "city-council",
+            "episode_uid": "ep-1",
+            "review_page": "https://example.invalid/review",
+            "blind_mapping": _blind("provider-align", "asr-challenger"),
+            "pair_metrics": {"text_agreement": 0.99},
+            "metrics": {
+                "A": {"auto_score": 0.9, "text": "the correct transcript"},
+                "B": {"auto_score": 0.88, "text": "the correct transcript"},
+            },
+        }
+    ).replace("- [ ] Both fully correct", "- [x] Both fully correct")
+
+    ingest_review_decision(state_dir, issue_number=1, issue_body=body)
+    evidence = load_rollups(state_dir)["rows"][0]["evidence"]["sample-1"]
+    assert evidence["gold_text"] == "the correct transcript"
+    assert evidence["gold_source"] == "both_correct"
+    assert evidence["gold_role"] == "provider-align"
+
+
+def test_ingest_review_decision_re_review_clears_stale_gold(tmp_path):
+    """asr-quality-ingest.yml re-triggers on issue edits even after close -- a reviewer flipping
+    an earlier both_correct verdict must not leave the old gold reference behind."""
+    state_dir = tmp_path / "state"
+    save_rollups(
+        state_dir,
+        {
+            "version": 1,
+            "rows": [
+                _rollup_row(
+                    evidence={
+                        "sample-1": {
+                            "sample_id": "sample-1",
+                            "episode_uid": "ep-1",
+                            "review_page": "https://example.invalid/review",
+                            "pair_metrics": {"text_agreement": 0.99},
+                            "blind_mapping": _blind("provider-align", "asr-challenger"),
+                            "metrics": {
+                                "A": {"auto_score": 0.9, "text": "the correct transcript"},
+                                "B": {"auto_score": 0.88, "text": "the correct transcript"},
+                            },
+                        }
+                    }
+                )
+            ],
+        },
+    )
+    base_sample = {
+        "sample_id": "sample-1",
+        "source_key": "src-1",
+        "body_key": "city-council",
+        "episode_uid": "ep-1",
+        "review_page": "https://example.invalid/review",
+        "blind_mapping": _blind("provider-align", "asr-challenger"),
+        "pair_metrics": {"text_agreement": 0.99},
+        "metrics": {
+            "A": {"auto_score": 0.9, "text": "the correct transcript"},
+            "B": {"auto_score": 0.88, "text": "the correct transcript"},
+        },
+    }
+    both_correct_body = render_issue_body(base_sample).replace(
+        "- [ ] Both fully correct", "- [x] Both fully correct"
+    )
+    ingest_review_decision(state_dir, issue_number=1, issue_body=both_correct_body)
+    assert load_rollups(state_dir)["rows"][0]["evidence"]["sample-1"]["gold_text"] is not None
+
+    a_better_body = render_issue_body(base_sample).replace("- [ ] A is better", "- [x] A is better")
+    ingest_review_decision(state_dir, issue_number=1, issue_body=a_better_body)
+    evidence = load_rollups(state_dir)["rows"][0]["evidence"]["sample-1"]
+    assert evidence["manual_decision"] == "a_better"
+    assert evidence["gold_text"] is None
+    assert evidence["gold_source"] is None
+
+
+def test_collect_gold_points_and_report_end_to_end(tmp_path):
+    state_dir = tmp_path / "state"
+    save_rollups(
+        state_dir,
+        {
+            "version": 1,
+            "rows": [
+                _rollup_row(
+                    evidence={
+                        "gold-1": {
+                            "sample_id": "gold-1",
+                            "gold_text": "the correct meeting text",
+                            "gold_source": "both_correct",
+                            "gold_role": "provider-align",
+                            "manual_decision": "both_correct",
+                            "blind_mapping": _blind("provider-align", "asr-challenger"),
+                            "metrics": {
+                                "A": {
+                                    "text": "the correct meeting text",
+                                    "auto_score": 0.9,
+                                    "l2_mean_score": 0.85,
+                                },
+                                "B": {
+                                    "text": "the correct meeting taxed",
+                                    "auto_score": 0.6,
+                                    "l2_mean_score": 0.55,
+                                },
+                            },
+                            "l2_used": True,
+                        },
+                        "no-gold": {
+                            "sample_id": "no-gold",
+                            "gold_text": None,
+                            "manual_decision": "a_better",
+                            "metrics": {"A": {"auto_score": 0.7}, "B": {"auto_score": 0.3}},
+                            "l2_used": False,
+                        },
+                    }
+                )
+            ],
+        },
+    )
+    points = collect_gold_points(state_dir)
+    assert len(points) == 2  # one per candidate label of the single gold-bearing sample
+    reference_point = next(p for p in points if p["is_reference"])
+    assert reference_point["wer"] == 0.0  # same-role self-comparison is trivially zero WER
+    other_point = next(p for p in points if not p["is_reference"])
+    assert other_point["wer"] > 0.0
+
+    from citypods.transcript_quality import _gold_harvest_stats
+
+    stats = _gold_harvest_stats(state_dir)
+    assert stats["l2_coverage"] == {
+        "total_evaluated": 2,
+        "l2_scored": 1,
+        "l2_coverage_rate": 0.5,
+    }
+    assert stats["agreement_floor"] == {
+        "both_correct_total": 1,
+        "accepted": 1,
+        "rejected": 0,
+    }
+    flagged = collect_flagged_corrections(state_dir)
+    assert flagged == []  # no reviewer_correction gold in this fixture
+
+    report = build_calibration_report(
+        points, scan_stats=stats, flagged_corrections=flagged, config=QualityConfig()
+    )
+    assert report["point_count"] == 2
+    assert report["l2_correlation_point_count"] == 2
+    assert sum(bucket["count"] for bucket in report["auto_score_histogram"]) == 2
+
+
+def test_run_calibration_appends_and_caps_trend_log(tmp_path):
+    state_dir = tmp_path / "state"
+    save_rollups(state_dir, {"version": 1, "rows": []})
+    config = QualityConfig(calibration_trend_cap=2)
+    for _ in range(3):
+        run_calibration(state_dir, config=config)
+    trend = load_calibration_trend(state_dir)
+    assert len(trend["runs"]) == 2  # capped, oldest evicted
+
+
+def test_check_gold_corrections_scores_uncheck_corrections_only(tmp_path, monkeypatch, sample_city):
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    save_rollups(
+        state_dir,
+        {
+            "version": 1,
+            "rows": [
+                _rollup_row(
+                    source_key_value=tq.source_key(sample_city),
+                    evidence={
+                        "sample-1": {
+                            "sample_id": "sample-1",
+                            "episode_uid": "ep-1",
+                            "clip_start": 0.0,
+                            "clip_end": 3.0,
+                            "gold_text": "hello world",
+                            "gold_source": "reviewer_correction",
+                        },
+                        "sample-2": {
+                            "sample_id": "sample-2",
+                            "episode_uid": "ep-1",
+                            "gold_text": "already checked",
+                            "gold_source": "reviewer_correction",
+                            "gold_ctc_fit_score": 0.5,
+                            "gold_ctc_checked_at": "2026-01-01T00:00:00+00:00",
+                        },
+                        "sample-3": {
+                            "sample_id": "sample-3",
+                            "episode_uid": "ep-1",
+                            "gold_text": "not a correction",
+                            "gold_source": "both_correct",
+                        },
+                    },
+                )
+            ],
+        },
+    )
+
+    class FakeEpisode:
+        hosted_audio_url = "https://example.invalid/audio.m4a"
+
+    monkeypatch.setattr(
+        "citypods.transcript_quality.load_records",
+        lambda state_dir, src_key: {"ep-1": {"uid": "ep-1"}},
+    )
+    monkeypatch.setattr("citypods.transcript_quality.record_to_episode", lambda rec: FakeEpisode())
+    monkeypatch.setattr(
+        "citypods.transcript_quality._download_audio_to_path",
+        lambda url, dest: dest.write_bytes(b"fake"),
+    )
+
+    fit_calls: list[str] = []
+
+    def fake_ctc_fit(audio_path, text, *, clip_start, clip_end, language):
+        fit_calls.append(text)
+        return CtcFitResult(mean_score=0.42, coverage=1.0, word_count=2, aligned_word_count=2)
+
+    monkeypatch.setattr("citypods.ctc_align.ctc_fit", fake_ctc_fit)
+
+    result = check_gold_corrections(state_dir, cities_by_slug={sample_city.slug: sample_city})
+    assert result["checked"] == 1
+    assert fit_calls == ["hello world"]
+
+    evidence = load_rollups(state_dir)["rows"][0]["evidence"]
+    assert evidence["sample-1"]["gold_ctc_fit_score"] == 0.42
+    assert evidence["sample-1"]["gold_ctc_checked_at"] is not None
+    assert evidence["sample-2"]["gold_ctc_fit_score"] == 0.5  # already checked, untouched
+    assert "gold_ctc_fit_score" not in evidence["sample-3"]  # not a reviewer_correction
+
+
+def test_check_gold_corrections_skips_write_if_correction_edited_mid_run(
+    tmp_path, monkeypatch, sample_city
+):
+    """Audio download + CTC inference (the expensive read/score pass) happens before any CAS
+    write. If a reviewer edits the correction via the separate ingest-review workflow in that
+    window, the queued update must not clobber the new text with a score computed against the
+    old one -- that would both show a wrong score and mark it "checked", so the new text would
+    never get scored at all (check_gold_corrections skips anything already checked)."""
+    import citypods.transcript_quality as tq
+
+    state_dir = tmp_path / "state"
+    save_rollups(
+        state_dir,
+        {
+            "version": 1,
+            "rows": [
+                _rollup_row(
+                    source_key_value=tq.source_key(sample_city),
+                    evidence={
+                        "sample-1": {
+                            "sample_id": "sample-1",
+                            "episode_uid": "ep-1",
+                            "clip_start": 0.0,
+                            "clip_end": 3.0,
+                            "gold_text": "foo",
+                            "gold_source": "reviewer_correction",
+                        },
+                    },
+                )
+            ],
+        },
+    )
+
+    class FakeEpisode:
+        hosted_audio_url = "https://example.invalid/audio.m4a"
+
+    monkeypatch.setattr(
+        "citypods.transcript_quality.load_records",
+        lambda state_dir, src_key: {"ep-1": {"uid": "ep-1"}},
+    )
+    monkeypatch.setattr("citypods.transcript_quality.record_to_episode", lambda rec: FakeEpisode())
+    monkeypatch.setattr(
+        "citypods.transcript_quality._download_audio_to_path",
+        lambda url, dest: dest.write_bytes(b"fake"),
+    )
+
+    def fake_ctc_fit(audio_path, text, *, clip_start, clip_end, language):
+        # Simulate a reviewer's concurrent edit landing (via ingest_review_decision, a separate
+        # workflow) in the window between this read/score pass and check_gold_corrections' own
+        # CAS write below.
+        def _edit(rows: list[dict]) -> list[dict]:
+            rows[0]["evidence"]["sample-1"]["gold_text"] = "bar"
+            return rows
+
+        from citypods.transcript_quality import mutate_rollups_ledger
+
+        mutate_rollups_ledger(state_dir, None, _edit)
+        return CtcFitResult(mean_score=0.42, coverage=1.0, word_count=2, aligned_word_count=2)
+
+    monkeypatch.setattr("citypods.ctc_align.ctc_fit", fake_ctc_fit)
+
+    result = check_gold_corrections(state_dir, cities_by_slug={sample_city.slug: sample_city})
+    assert result["checked"] == 1  # scored once, even though the write was skipped
+
+    evidence = load_rollups(state_dir)["rows"][0]["evidence"]["sample-1"]
+    assert evidence["gold_text"] == "bar"  # the concurrent edit, not clobbered
+    assert "gold_ctc_fit_score" not in evidence  # stale score for "foo" never applied
+    assert "gold_ctc_checked_at" not in evidence  # "bar" can still be picked up by a future run
+
+
+def test_parse_issue_decision_tolerates_crlf_issue_bodies():
+    """GitHub normalizes issue bodies to CRLF after any edit through the web UI (HTML textarea
+    submission). _CORRECTION_RE's fence boundaries are literal "```\\n...\\n```" -- without
+    normalizing the body first, a CRLF-line-ended body would never match, silently disabling the
+    entire reviewer-correction gold-harvest path in production even though every test here
+    builds bodies in-memory (LF only) and would never catch it."""
+    sample = {
+        "sample_id": "sample-1",
+        "source_key": "src-1",
+        "body_key": "city-council",
+        "episode_uid": "ep-1",
+        "review_page": "https://example.invalid/review",
+        "blind_mapping": {"A": {"role": "provider-align"}, "B": {"role": "asr-challenger"}},
+        "metrics": {
+            "A": {"auto_score": 0.4, "text": "a candidate text"},
+            "B": {"auto_score": 0.8, "text": "b candidate text"},
+        },
+    }
+    body = render_issue_body(sample)
+    body = body.replace("- [ ] Neither usable", "- [x] Neither usable")
+    body = body.replace("b candidate text", "what was actually said", 1)
+    crlf_body = body.replace("\n", "\r\n")
+    result = parse_issue_decision(crlf_body)
+    assert result["manual_decision"] == "neither"
+    assert result["correction_text"] == "what was actually said"
+
+
+def test_gold_fields_clears_stale_ctc_score_when_correction_text_changes():
+    """check_gold_corrections skips any evidence with gold_ctc_checked_at already set. If a
+    reviewer edits a correction from 'foo' to 'bar' without this clearing the old score, 'foo's
+    stale CTC fit would stay attached to 'bar' forever -- never re-scored."""
+    config = QualityConfig()
+    evidence = {
+        "pair_metrics": {},
+        "blind_mapping": {},
+        "metrics": {},
+        "gold_text": "foo",
+        "gold_source": "reviewer_correction",
+        "gold_ctc_fit_score": 0.9,
+        "gold_ctc_checked_at": "2026-01-01T00:00:00+00:00",
+    }
+    changed = _gold_fields(
+        {"manual_decision": "neither", "correction_text": "bar"}, evidence, config=config
+    )
+    assert changed["gold_text"] == "bar"
+    assert changed["gold_ctc_fit_score"] is None
+    assert changed["gold_ctc_checked_at"] is None
+
+
+def test_gold_fields_preserves_ctc_score_when_correction_text_is_unchanged():
+    """A no-op resubmission of the same correction text must not discard an already-computed,
+    still-valid CTC score."""
+    config = QualityConfig()
+    evidence = {
+        "pair_metrics": {},
+        "blind_mapping": {},
+        "metrics": {},
+        "gold_text": "foo",
+        "gold_source": "reviewer_correction",
+        "gold_ctc_fit_score": 0.9,
+        "gold_ctc_checked_at": "2026-01-01T00:00:00+00:00",
+    }
+    unchanged = _gold_fields(
+        {"manual_decision": "neither", "correction_text": "foo"}, evidence, config=config
+    )
+    assert "gold_ctc_fit_score" not in unchanged
+    assert "gold_ctc_checked_at" not in unchanged
+
+
+def test_auto_score_histogram_places_boundary_values_in_the_upper_bucket():
+    """0.6 / 0.2 == 2.9999999999999996 in binary floating point -- a naive int() truncation
+    would silently misfile an exact bucket-boundary score into the bucket below it."""
+    points = [{"auto_score": 0.6}, {"auto_score": 0.4}, {"auto_score": 0.2}]
+    histogram = {b["range"]: b["count"] for b in _auto_score_histogram(points)}
+    assert histogram["0.6-0.8"] == 1
+    assert histogram["0.4-0.6"] == 1
+    assert histogram["0.2-0.4"] == 1
