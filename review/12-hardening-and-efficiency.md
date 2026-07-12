@@ -1,7 +1,7 @@
 # review/12 — Hardening & Efficiency (Phase H)
 
 **Maturity: L3 (development-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) Phase H ·
-last updated 2026-07-08 (H14d GPU characterization results + rerun instructions)**
+last updated 2026-07-12 (H15 shipped-state sync after L3 + `/admin/status` merge)**
 
 > When the items here ship, stamp this doc "Implemented in PR #N", flip the `review/11` catalog rows to
 > Shipped, and add CHANGELOG entries (see the lifecycle contract in CONTRIBUTING.md).
@@ -1587,9 +1587,10 @@ gate:
   `human_agreement_rate` is recomputed live on every read, not a one-way ratchet, so a row that starts
   drifting from human judgment again (e.g. a vendor caption-quality regression) loses calibration and
   falls back to the conservative bootstrap count.
-- This is explicitly an interim mechanism: `trust_margin_threshold`/`agreement_threshold` are
-  hand-picked config constants, not grounded in an absolute WER/CER scale. That grounding is exactly
-  what L3 (below) is for.
+- This remains an explicitly operator-reviewed mechanism: `trust_margin_threshold`/
+  `agreement_threshold` still drive the production gate, but L3 now supplies the human-gold
+  WER/CER report and persistent trend log that ground future changes to those thresholds instead
+  of leaving them as an unmeasured heuristic.
 
 **Accepted-recipe policy keys on pipeline version, not per-episode spec hash.** `production_default` /
 `accepted_active_recipes` / `minimum_quality_rank` (operator-configured under
@@ -1623,10 +1624,11 @@ generated one) to a proper edit-distance alignment.
 platform auto-ASR) from the source/provider config where known — that's the prior the fit scores then
 confirm or override.
 
-**Open decisions.** **2026-07-11: L2 shipped (GH#883). L3 (GH#884) has since shipped too** — the
-calibration-gated routing mechanism (above) remains a documented interim mechanism, not the intended
-end state, until enough gold data accumulates through the harvesting loop for a human to actually act
-on the calibration report's suggested thresholds.
+**Post-ship notes.** **2026-07-12: L1/L2/L3 and the admin surface are all merged** — GH#883 shipped
+the independent CTC judge, GH#884 shipped the human-gold calibration/reporting loop, and GH#885 /
+PR #891 shipped the `/admin/status` panel. The calibration-gated routing mechanism above remains the
+production decision path; L3's role is to make threshold tuning a human-reviewed action grounded in
+the standing gold-set report and trend log rather than a one-time study or intuition.
 - ~~Independent aligner (L2): `torchaudio.functional.forced_align` vs WhisperX.~~ **Resolved:**
   `torchaudio.pipelines.MMS_FA` (wraps `forced_align`) — lean, rides torch/torchaudio already
   transitively pinned via `stable-ts[fw]`'s own `openai-whisper` dependency in `constraints/asr.txt`;
@@ -1665,8 +1667,8 @@ on the calibration report's suggested thresholds.
   zero marginal cost vs. a separate collection campaign); the calibration report's `auto_score`
   histogram makes the resulting coverage gaps visible rather than hiding them behind a bare
   correlation number, so this can be revisited if opportunistic supply proves too slow or too skewed.
-- `/admin/status` transcript-quality panel (trust distribution, stale-sample ages) — fast-follow,
-  additive reporting once built (see "Admin surface" above).
+- ~~`/admin/status` transcript-quality panel (trust distribution, stale-sample ages) — fast-follow,
+  additive reporting once built (see "Admin surface" above).~~ **Resolved by GH#885 / PR #891.**
 
 **Relationship to neighbors.** Distinct from **H6a** (runtime benchmark) and **H9** (throughput, $/hr
 across execution homes) — those measure *speed/cost*; H15 measures *correctness*. It reuses H9's "fixed
@@ -1790,6 +1792,13 @@ parallel if it only consumes the `float | null` confidence contract.
   "unscheduled").
 - `/admin/status` shows the trust distribution + stale-sample ages.
 - A documented human-gold sample anchors the thresholds to an absolute WER/CER.
+
+**Status (2026-07-12).** H15's planned surface is now fully shipped: Layer 1 evidence capture,
+Layer 2 independent scoring, Layer 3 human-gold calibration/reporting, and the `/admin/status`
+trust panel are all merged. The umbrella issue [GH#391](https://github.com/BashfulBits/city-meeting-podcasts/issues/391)
+and its follow-ups [#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883),
+[#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884), and
+[#885](https://github.com/BashfulBits/city-meeting-podcasts/issues/885) are closed.
 
 ---
 

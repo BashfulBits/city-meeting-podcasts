@@ -143,10 +143,11 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
     (`contains("Parent issue: #5")` also matched "#50"/"#500") with an anchored regex, and raised
     its issue-listing limit so a >200-open-issue backlog can't undercount a parent's true open
     children.
-  - L2 (independent forced aligner, [#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883))
-    and L3 (human-gold WER/CER anchor, [#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884))
-    remain unimplemented, scoped as the immediate next PRs; the `/admin/status` trust panel is
-    tracked as [#885](https://github.com/BashfulBits/city-meeting-podcasts/issues/885).
+  - The later H15 follow-ups all shipped: L2 in
+    [#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883), L3 in
+    [#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884), and the
+    `/admin/status` trust panel in [#885](https://github.com/BashfulBits/city-meeting-podcasts/issues/885)
+    via [PR #891](https://github.com/BashfulBits/city-meeting-podcasts/pull/891).
 
 - **H19 internal ASR pull workers now use the same lease ledger as external workers.**
   `asr.yml` no longer consumes a static transcribe shard plan; its reconcile job rebuilds the work
