@@ -4,6 +4,14 @@
 independent reviewer (Claude Fable 5). This is the **forward-looking, expansion-oriented** companion to
 the backward-looking code review in [`review/24`](24-comprehensive-code-review-2026-07.md).
 
+> **Partially adopted 2026-07-12:** the maintainer adopted Part 4 item 1 — the "Interaction seam" (§3.1)
+> — as a real (though still L0, unbroken-out) catalog direction, merged with the review/17 records→SQL
+> item and moved decisively past 1.0. See [`review/11`](11-technical-design-roadmap.md) §5.5's
+> "State-store backend + Interaction seam" row and [`review/17`](17-state-store-backend-evaluation.md)'s
+> top-of-doc note. The social-syndication bot (§2.4 #13) was also adopted as the first post-1.0 build
+> priority — see [`review/11`](11-technical-design-roadmap.md) §5.2. The rest of this document's
+> proposals remain unadopted ideas, not roadmap commitments.
+
 It exists to answer three commissioned questions:
 
 1. How does this project compare to similar projects and design paradigms?
