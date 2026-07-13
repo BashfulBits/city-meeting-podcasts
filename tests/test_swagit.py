@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from citypods.bodies import filter_by_body
+from citypods.feeds import build_rss
+from citypods.models import City
 from citypods.providers.base import ProviderError
 from citypods.providers.swagit import MAX_ARCHIVE_PAGES, SwagitProvider, _page_count, parse_list
+from citypods.records import assign_uids
 from citypods.security import SecurityError
 from tests.conftest import fixture_bytes
 
@@ -161,6 +166,32 @@ def test_fetch_episodes_follows_archive_pagination_and_dedups(monkeypatch):
 def test_page_count_rejects_implausibly_large_archive():
     with pytest.raises(ProviderError, match="implausible page count"):
         _page_count(f'<a href="/archive?page={MAX_ARCHIVE_PAGES + 1}">last</a>'.encode())
+
+
+def test_paginated_feed_projection_snapshot():
+    page = b"""
+    <table>
+      <tr><td><a href="/videos/300">Board A</a></td><td nowrap> May 27, 2026 </td></tr>
+      <tr><td><a href="/videos/301">Board A</a></td><td nowrap> May 20, 2026 </td></tr>
+    </table>
+    """
+    episodes = parse_list(page, ORIGIN)
+    for index, episode in enumerate(episodes):
+        episode.hosted_audio_url = f"https://cdn.example.gov/{index}.m4a"
+    city = City(
+        slug="swagit-pagination",
+        provider="swagit",
+        source={"list_url": f"{ORIGIN}/archive"},
+        podcast_title="Swagit Pagination",
+        podcast_author="City",
+        podcast_email="",
+        podcast_description="Test",
+        state="TX",
+    )
+    assign_uids(city, episodes)
+    generated = build_rss(city, episodes, "audio", "https://podcasts.example.gov")
+    snapshot = Path(__file__).parent / "snapshots" / "swagit-pagination_audio.xml"
+    assert generated == snapshot.read_text(encoding="utf-8")
 
 
 class _Resp:
