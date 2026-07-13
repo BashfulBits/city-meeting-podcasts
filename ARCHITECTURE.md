@@ -275,13 +275,15 @@ total on `/admin/status`.
 
 Hard-won facts that bite anyone adding/debugging providers:
 
-- **Granicus RSS is hard-capped at 100 items per view.** Cities split bodies across multiple views, so
-  a single feed can be incomplete — use `source.feed_urls` (merged + deduped by guid) to combine views,
-  and the feed-health `view-cap` check flags any view sitting at exactly 100.
-- **Granicus HEAD responses carry no `ETag`/`Last-Modified`**, so `detect_change`'s cheap probe never
-  short-circuits — change detection for Granicus always falls through to the content-hash path
-  (`granicus.py:detect_change`; the incremental-build content hash in `state.py` is what actually
-  skips unchanged cities).
+- **Granicus discovery is archive-first.** `ViewPublisherRSS.php` is hard-capped at 100 items per
+  view; `ViewPublisher.php` is its uncapped native archive, so `GranicusProvider` derives archive URLs
+  from the configured RSS view IDs and never fetches RSS at runtime. This preserves the existing
+  provider/source-key and Granicus clip identity while adding historical recordings and native
+  Agenda/Minutes links. Optional explicit archive URLs cover a tenant whose public shape differs.
+  The view-cap audit returns no finding for archive-first sources; calendar companions remain separately
+  configured, verified sources for agenda-only records and archive-missing clips (R11).
+- **Granicus archive pages carry no reliable `ETag`/`Last-Modified`**, so `detect_change` returns
+  `None` and the incremental-build content hash in `state.py` performs the actual unchanged-work skip.
 - **Swagit serves a "Carmel, IN" placeholder page for unknown subdomains** — a false-positive trap when
   probing/discovering. Cross-check the returned locality against the requested city before trusting it.
 - **Swagit `/videos/{id}/download` is broken for older meetings.** The 302 presigns only the bucket

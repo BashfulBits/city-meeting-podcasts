@@ -1,18 +1,22 @@
 """Granicus provider.
 
-Granicus exposes meeting archives as an RSS 2.0 feed via ``ViewPublisherRSS.php``.
-A single ``view_id`` selects one meeting type; one city YAML maps to one feed.
-
-Change detection uses a HEAD request and compares ETag / Last-Modified.
+``ViewPublisherRSS.php`` is capped at 100 items per view.  The corresponding
+``ViewPublisher.php`` page is the native, uncapped archive and is therefore this
+provider's recorded-meeting index.  RSS URLs remain in configuration solely as
+stable view identifiers while the catalog moves archive-first without changing a
+source key or episode identity.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from html import unescape
-from urllib.parse import parse_qs, urljoin, urlsplit
+from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
 from xml.etree import ElementTree as ET
 
 import defusedxml.ElementTree as DET
@@ -60,6 +64,185 @@ def _feed_urls(source: dict) -> list[str]:
     return [source["feed_url"]] if source.get("feed_url") else []
 
 
+def _archive_url_from_feed_url(feed_url: str) -> str:
+    """Turn a configured RSS view URL into its matching native archive URL.
+
+    Only the ``view_id`` survives: ``mode=vpodcast`` is RSS-specific, and retaining
+    it on the archive page is unnecessary surface area.  Keeping the RSS URL in
+    config makes this migration source-key preserving for every existing feed.
+    """
+    parts = urlsplit(feed_url)
+    if not parts.path.endswith("ViewPublisherRSS.php"):
+        raise ValueError(
+            "granicus archive-first discovery requires a ViewPublisherRSS.php feed URL "
+            f"or an explicit archive_url, got {feed_url!r}"
+        )
+    view_id = (parse_qs(parts.query).get("view_id") or [None])[0]
+    if not view_id:
+        raise ValueError(f"granicus RSS URL has no view_id: {feed_url!r}")
+    path = f"{parts.path[: -len('ViewPublisherRSS.php')]}ViewPublisher.php"
+    return urlunsplit((parts.scheme, parts.netloc, path, urlencode({"view_id": view_id}), ""))
+
+
+def _archive_urls(source: dict) -> list[str]:
+    """Configured archive overrides, or the archive equivalent of every RSS view."""
+    if source.get("archive_urls"):
+        return list(source["archive_urls"])
+    if source.get("archive_url"):
+        return [source["archive_url"]]
+    return [_archive_url_from_feed_url(url) for url in _feed_urls(source)]
+
+
+@dataclass
+class _ArchiveLink:
+    attrs: dict[str, str]
+    headers: str
+    text: str = ""
+
+
+@dataclass
+class _ArchiveRow:
+    cells: list[tuple[str, str]] = field(default_factory=list)
+    links: list[_ArchiveLink] = field(default_factory=list)
+
+
+class _ArchivePageParser(HTMLParser):
+    """Capture the few table fields that form Granicus' public archive contract."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[_ArchiveRow] = []
+        self._row: _ArchiveRow | None = None
+        self._cell_headers = ""
+        self._cell_text: list[str] | None = None
+        self._link: _ArchiveLink | None = None
+        self._link_text: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = {key: value or "" for key, value in attrs}
+        if tag == "tr" and self._row is None:
+            self._row = _ArchiveRow()
+        elif tag == "td" and self._row is not None:
+            self._cell_headers = values.get("headers", "")
+            self._cell_text = []
+        elif tag in {"a", "option"} and self._row is not None and self._cell_text is not None:
+            self._link = _ArchiveLink(values, self._cell_headers)
+            self._link_text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell_text is not None:
+            self._cell_text.append(data)
+        if self._link_text is not None:
+            self._link_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"a", "option"} and self._link is not None:
+            self._link.text = " ".join("".join(self._link_text or []).split())
+            has_url = any(self._link.attrs.get(name) for name in ("href", "onclick", "value"))
+            if has_url:
+                self._row.links.append(self._link)
+            self._link = None
+            self._link_text = None
+        elif tag == "td" and self._row is not None and self._cell_text is not None:
+            self._row.cells.append((self._cell_headers, " ".join("".join(self._cell_text).split())))
+            self._cell_headers = ""
+            self._cell_text = None
+        elif tag == "tr" and self._row is not None:
+            if self._row.cells:
+                self.rows.append(self._row)
+            self._row = None
+            self._cell_headers = ""
+            self._cell_text = None
+            self._link = None
+            self._link_text = None
+
+
+_PLAYER_RE = re.compile(r"MediaPlayer\.php\?view_id=(\d+)&clip_id=(\d+)", re.IGNORECASE)
+_ARCHIVE_DATE_RE = re.compile(r"([A-Z][a-z]{2,8}\s+\d{1,2},?\s+\d{4}|\d{1,2}/\d{1,2}/\d{2,4})$")
+
+
+def _archive_cell(row: _ArchiveRow, column: str) -> str:
+    for headers, text in row.cells:
+        if headers.lower().split(" ", 1)[0] == column.lower():
+            return text
+    return ""
+
+
+def _archive_date(row: _ArchiveRow) -> datetime | None:
+    match = _ARCHIVE_DATE_RE.search(_archive_cell(row, "Date"))
+    if not match:
+        return None
+    raw = match.group(1)
+    for fmt in ("%b %d, %Y", "%B %d, %Y", "%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
+def _archive_duration(row: _ArchiveRow) -> int | None:
+    raw = _archive_cell(row, "Duration")
+    match = re.search(r"(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?", raw, re.IGNORECASE)
+    if not match or not any(match.groups()):
+        return None
+    hours, minutes, seconds = (int(value or 0) for value in match.groups())
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _archive_link(row: _ArchiveRow, needle: str, archive_url: str) -> str | None:
+    needle = needle.lower()
+    for link in row.links:
+        for value in link.attrs.values():
+            if needle in value.lower():
+                return urljoin(archive_url, value)
+    return None
+
+
+def parse_archive_page(content: bytes, archive_url: str) -> list[Episode]:
+    """Normalize every recorded meeting in one native ``ViewPublisher.php`` page.
+
+    The page's ``Documents...`` selector places Agenda/Minutes URLs in ``option``
+    values, while the video player URL is an ``onclick`` attribute.  Parsing the
+    rendered archive directly retains those official links and avoids the RSS cap.
+    """
+    parser = _ArchivePageParser()
+    parser.feed(content.decode("utf-8", errors="replace"))
+    origin = urlsplit(archive_url)
+    base = f"{origin.scheme}://{origin.netloc}"
+    episodes: list[Episode] = []
+    for row in parser.rows:
+        name = _archive_cell(row, "Name")
+        published = _archive_date(row)
+        player = _archive_link(row, "MediaPlayer.php", archive_url)
+        match = _PLAYER_RE.search(player or "")
+        if not name or published is None or match is None:
+            continue
+        view_id, clip_id = match.groups()
+        canonical = f"{base}/MediaPlayer.php?view_id={view_id}&clip_id={clip_id}"
+        links = {
+            "canonical_video": canonical,
+            "agenda": _archive_link(row, "AgendaViewer.php", archive_url)
+            or f"{base}/AgendaViewer.php?view_id={view_id}&clip_id={clip_id}",
+        }
+        if minutes := _archive_link(row, "MinutesViewer.php", archive_url):
+            links["minutes"] = minutes
+        if packet := _archive_link(row, "AgendaPacket", archive_url):
+            links["agenda_packet"] = packet
+        episodes.append(
+            Episode(
+                guid=canonical,
+                title=name,
+                published=published,
+                video_url=f"{base}/DownloadFile.php?view_id={view_id}&clip_id={clip_id}",
+                duration=_archive_duration(row),
+                body=granicus_body(name),
+                links=links,
+            )
+        )
+    return episodes
+
+
 class GranicusProvider:
     name = "granicus"
     # Granicus MediaPlayer.php accepts &starttime=<seconds> for time-anchored deep-links.
@@ -81,33 +264,33 @@ class GranicusProvider:
     def validate(self, source: dict) -> None:
         if not _feed_urls(source):
             raise ValueError("granicus source requires 'feed_url' or 'feed_urls'")
+        archive_urls = source.get("archive_urls")
+        if archive_urls is not None and (
+            not isinstance(archive_urls, list)
+            or not archive_urls
+            or not all(isinstance(url, str) and url for url in archive_urls)
+        ):
+            raise ValueError("granicus archive_urls must be a non-empty list of URLs")
+        if source.get("archive_url") is not None and not isinstance(source["archive_url"], str):
+            raise ValueError("granicus archive_url must be a URL string")
 
     def detect_change(self, source: dict) -> ChangeToken | None:
-        url = _feed_urls(source)[0]  # probe the first view; Granicus HEAD lacks validators
-        with make_session() as session:
-            try:
-                resp = session.head(url, timeout=DEFAULT_TIMEOUT, allow_redirects=True)
-            except requests.RequestException as exc:
-                raise ProviderError(f"HEAD failed for {url}: {exc}") from exc
-        if resp.status_code >= 400:
-            raise ProviderError(f"HEAD {url} returned {resp.status_code}")
-        return ChangeToken(
-            etag=resp.headers.get("ETag"),
-            last_modified=resp.headers.get("Last-Modified"),
-        )
+        # Native archive pages have no reliable validators.  Avoid touching the capped
+        # RSS endpoint just to probe it: the archive itself is the source of truth.
+        return None
 
     def fetch_episodes(self, source: dict) -> list[Episode]:
         episodes: list[Episode] = []
         seen: set[str] = set()
         with make_session() as session:
-            for url in _feed_urls(source):
+            for url in _archive_urls(source):
                 try:
                     resp = session.get(url, timeout=DEFAULT_TIMEOUT)
                 except requests.RequestException as exc:
                     raise ProviderError(f"GET {url} failed: {exc}") from exc
                 if resp.status_code >= 400:
                     raise ProviderError(f"GET {url} returned {resp.status_code}")
-                for ep in parse_feed(resp.content):
+                for ep in parse_archive_page(resp.content, url):
                     if ep.guid not in seen:  # dedup across views
                         seen.add(ep.guid)
                         episodes.append(ep)
@@ -132,48 +315,39 @@ class GranicusProvider:
         return parse_index_json(resp.content), None
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
-        # DownloadFile.php 302-redirects to a signed archive-video.granicus.com URL. Pre-follow the
-        # redirect here so ffmpeg receives the signed URL directly; the CDN returns 403 for unsigned
-        # bare-path requests.
-        #
-        # DownloadFile.php rate-limits concurrent callers with 403 (not 429). That backoff+retry now
-        # lives in the shared layer — ``make_session``'s adapter treats 403 as a rate-limit signal
-        # (issue #39), and the per-host concurrency cap keeps parallel workers from hammering the
-        # endpoint in lockstep — so the bespoke retry loop that used to live here is gone. On any
-        # failure we fall back to the bare URL.
-        url = episode.video_url
-        if "DownloadFile.php" not in url:
-            return url
-        try:
-            with make_session() as session:
-                resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
-        except requests.RequestException:
-            return url
-        if resp.status_code in (301, 302, 303, 307, 308):
-            location = resp.headers.get("Location", "")
-            if location:
-                location = urljoin(url, location)
-                try:
-                    validate_source_url(location, resolve=True)
-                except SecurityError:
-                    return url
-                return location
-        return url
+        return _resolve_download_url(episode.video_url)
 
     def fetch_view_counts(self, source: dict) -> list[int]:
-        """Per-view item counts, for the feed-health view-cap check: Granicus RSS is
-        hard-capped at 100 items/view, so a view at the cap is probably truncated."""
-        counts: list[int] = []
+        """Archive pages are uncapped, so the RSS view-cap audit no longer applies."""
+        return []
+
+
+def _resolve_download_url(url: str) -> str:
+    """Follow a Granicus DownloadFile redirect to its signed media URL.
+
+    Non-RSS Granicus indexes, such as Legistar, reuse this exact redirect,
+    rate-limit, and SSRF behavior rather than carrying a second copy.
+    """
+    # DownloadFile.php 302-redirects to a signed archive-video.granicus.com URL. Pre-follow the
+    # redirect here so ffmpeg receives the signed URL directly; the CDN returns 403 for unsigned
+    # bare-path requests. The shared session handles 403 rate-limit retry/backoff.
+    if "DownloadFile.php" not in url:
+        return url
+    try:
         with make_session() as session:
-            for url in _feed_urls(source):
-                try:
-                    resp = session.get(url, timeout=DEFAULT_TIMEOUT)
-                except requests.RequestException as exc:
-                    raise ProviderError(f"GET {url} failed: {exc}") from exc
-                if resp.status_code >= 400:
-                    raise ProviderError(f"GET {url} returned {resp.status_code}")
-                counts.append(len(parse_feed(resp.content)))
-        return counts
+            resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+    except requests.RequestException:
+        return url
+    if resp.status_code in (301, 302, 303, 307, 308):
+        location = resp.headers.get("Location", "")
+        if location:
+            location = urljoin(url, location)
+            try:
+                validate_source_url(location, resolve=True)
+            except SecurityError:
+                return url
+            return location
+    return url
 
 
 def parse_feed(content: bytes) -> list[Episode]:

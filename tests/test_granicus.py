@@ -6,7 +6,12 @@ import pytest
 import requests
 
 from citypods.providers.base import ProviderError
-from citypods.providers.granicus import GranicusProvider, parse_feed
+from citypods.providers.granicus import (
+    GranicusProvider,
+    _archive_urls,
+    parse_archive_page,
+    parse_feed,
+)
 from tests.conftest import fixture_bytes, recorded_slugs
 
 SAMPLE = b"""<?xml version="1.0"?>
@@ -54,8 +59,15 @@ def test_validate_requires_feed_url():
     provider = GranicusProvider()
     with pytest.raises(ValueError):
         provider.validate({})
-    provider.validate({"feed_url": "https://x"})  # no raise
-    provider.validate({"feed_urls": ["https://a", "https://b"]})  # multi-view also valid
+    provider.validate({"feed_url": "https://x.granicus.com/ViewPublisherRSS.php?view_id=2"})
+    provider.validate(
+        {
+            "feed_urls": [
+                "https://a.granicus.com/ViewPublisherRSS.php?view_id=2",
+                "https://b.granicus.com/ViewPublisherRSS.php?view_id=3",
+            ]
+        }
+    )
 
 
 def test_feed_urls_normalizes_single_and_multi():
@@ -64,6 +76,36 @@ def test_feed_urls_normalizes_single_and_multi():
     assert _feed_urls({"feed_url": "https://a"}) == ["https://a"]
     assert _feed_urls({"feed_urls": ["https://a", "https://b"]}) == ["https://a", "https://b"]
     assert _feed_urls({}) == []
+
+
+def test_archive_urls_are_derived_without_changing_config_identity():
+    assert _archive_urls(
+        {"feed_url": "https://city.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast"}
+    ) == ["https://city.granicus.com/ViewPublisher.php?view_id=9"]
+    assert _archive_urls(
+        {
+            "feed_url": "https://city.granicus.com/ViewPublisherRSS.php?view_id=9",
+            "archive_url": "https://city.granicus.com/ViewPublisher.php?view_id=10",
+        }
+    ) == ["https://city.granicus.com/ViewPublisher.php?view_id=10"]
+
+
+def test_parse_native_archive_page_retains_official_document_links():
+    content = fixture_bytes("granicus", "archive")
+    episodes = parse_archive_page(content, "https://city.granicus.com/ViewPublisher.php?view_id=9")
+
+    assert len(episodes) == 1  # no Video link means a meeting, not a podcast episode
+    episode = episodes[0]
+    assert episode.guid == "https://city.granicus.com/MediaPlayer.php?view_id=9&clip_id=701"
+    assert episode.video_url == "https://city.granicus.com/DownloadFile.php?view_id=9&clip_id=701"
+    assert episode.published.isoformat() == "2026-07-07T00:00:00+00:00"
+    assert episode.duration == 8100
+    assert episode.body == "City Council - Regular Meeting"
+    assert episode.links == {
+        "canonical_video": "https://city.granicus.com/MediaPlayer.php?view_id=9&clip_id=701",
+        "agenda": "https://city.granicus.com/AgendaViewer.php?view_id=9&clip_id=701",
+        "minutes": "https://city.granicus.com/MinutesViewer.php?view_id=9&clip_id=701&doc_id=abc",
+    }
 
 
 def test_fetch_episodes_wraps_network_errors(monkeypatch):
@@ -79,8 +121,46 @@ def test_fetch_episodes_wraps_network_errors(monkeypatch):
 
     monkeypatch.setattr("citypods.providers.granicus.make_session", TimeoutSession)
 
-    with pytest.raises(ProviderError, match=r"GET https://city.example/rss failed: timed out"):
-        GranicusProvider().fetch_episodes({"feed_url": "https://city.example/rss"})
+    expected = r"GET https://city.example/ViewPublisher.php\?view_id=9 failed: timed out"
+    with pytest.raises(ProviderError, match=expected):
+        GranicusProvider().fetch_episodes(
+            {"feed_url": "https://city.example/ViewPublisherRSS.php?view_id=9"}
+        )
+
+
+def test_fetch_episodes_uses_archive_not_capped_rss(monkeypatch):
+    import citypods.providers.granicus as granicus
+
+    content = fixture_bytes("granicus", "archive")
+    calls = []
+
+    class Response:
+        status_code = 200
+
+    Response.content = content
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, timeout=None):
+            calls.append(url)
+            return Response()
+
+    monkeypatch.setattr(granicus, "make_session", Session)
+    episodes = GranicusProvider().fetch_episodes(
+        {"feed_url": "https://city.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast"}
+    )
+    assert [episode.guid for episode in episodes] == [
+        "https://city.granicus.com/MediaPlayer.php?view_id=9&clip_id=701"
+    ]
+    assert calls == ["https://city.granicus.com/ViewPublisher.php?view_id=9"]
+    source = {"feed_url": "https://city.granicus.com/ViewPublisherRSS.php?view_id=9"}
+    assert GranicusProvider().detect_change(source) is None
+    assert GranicusProvider().fetch_view_counts(source) == []
 
 
 @pytest.mark.parametrize("slug", recorded_slugs())
