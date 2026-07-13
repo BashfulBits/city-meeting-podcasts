@@ -26,7 +26,7 @@ from __future__ import annotations
 import html
 import re
 from datetime import UTC, datetime
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import requests
 
@@ -50,6 +50,8 @@ DOCUMENT_LINK_RE = re.compile(
     r"(?P<kind>agenda|minutes))\1[^>]*>",
     re.IGNORECASE,
 )
+PAGE_LINK_RE = re.compile(r"[?&]page=(\d+)", re.IGNORECASE)
+MAX_ARCHIVE_PAGES = 1_000
 
 # Agenda-item links on a video page double as chapter markers:
 #   <a class="playerControl" data-ts="51" data-end-ts="491" data-title="..." href="/play/ID/51">
@@ -98,6 +100,27 @@ def _list_urls(source: dict) -> list[str]:
     if source.get("list_urls"):
         return list(source["list_urls"])
     return [source["list_url"]] if source.get("list_url") else []
+
+
+def _page_url(url: str, page: int) -> str:
+    """Return a Swagit archive URL with its one-based page selector replaced."""
+    parts = urlsplit(url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key != "page"
+    ]
+    query.append(("page", str(page)))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def _page_count(content: bytes) -> int:
+    """Read the largest page number advertised by a Swagit archive page."""
+    text = content.decode("utf-8", errors="replace")
+    count = max((int(page) for page in PAGE_LINK_RE.findall(text)), default=1)
+    if count > MAX_ARCHIVE_PAGES:
+        raise ProviderError(f"archive advertises implausible page count: {count}")
+    return count
 
 
 def _origin(url: str) -> str:
@@ -251,23 +274,33 @@ class SwagitProvider:
         with make_session() as session:
             for url in _list_urls(source):
                 try:
-                    resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                    first = session.get(url, timeout=DEFAULT_TIMEOUT)
                 except requests.RequestException as exc:
                     raise ProviderError(f"GET {url} failed: {exc}") from exc
-                if resp.status_code >= 400:
-                    raise ProviderError(f"GET {url} returned {resp.status_code}")
-                for ep in parse_list(resp.content, _origin(url)):
-                    existing = by_guid.get(ep.guid)
-                    if existing is None:  # dedup across views
-                        by_guid[ep.guid] = ep
-                        episodes.append(ep)
-                        continue
-                    # Views can overlap but expose different document availability.  Keep
-                    # the first recording's identity/title/date and fill only absent
-                    # official links from a duplicate row.
-                    for key, value in ep.links.items():
-                        if value:
-                            existing.links.setdefault(key, value)
+                if first.status_code >= 400:
+                    raise ProviderError(f"GET {url} returned {first.status_code}")
+                pages = [first.content]
+                for page in range(2, _page_count(first.content) + 1):
+                    page_url = _page_url(url, page)
+                    try:
+                        response = session.get(page_url, timeout=DEFAULT_TIMEOUT)
+                    except requests.RequestException as exc:
+                        raise ProviderError(f"GET {page_url} failed: {exc}") from exc
+                    if response.status_code >= 400:
+                        raise ProviderError(f"GET {page_url} returned {response.status_code}")
+                    pages.append(response.content)
+                for content in pages:
+                    for ep in parse_list(content, _origin(url)):
+                        existing = by_guid.get(ep.guid)
+                        if existing is None:  # dedup across views and archive pages
+                            by_guid[ep.guid] = ep
+                            episodes.append(ep)
+                            continue
+                        # Views/pages can overlap but expose different document availability. Keep
+                        # the first recording's identity/title/date and fill only absent links.
+                        for key, value in ep.links.items():
+                            if value:
+                                existing.links.setdefault(key, value)
         return episodes
 
     def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:
