@@ -1376,6 +1376,35 @@ thousands of small governments, an unstructured PDF list *is* the entire meeting
 
 ---
 
+## Confirmed implementation workplan (2026-07-13)
+
+The maintainer has selected the following work for the next implementation pass. The earlier
+pre-workplan survey and the conditional Addison/Dallas/Denton companion spikes remain evidence in
+this document, but are not themselves implementation commitments.
+
+1. **Swagit pagination and Austin archive expansion.** Make `SwagitProvider` follow every
+   `?page=N` archive page, with fixtures and regression tests. Then use Austin's general archive
+   (`https://austintx.new.swagit.com/views/117/city-council`) in addition to, or as the canonical
+   source for, the currently configured dedicated views. Inventory all board and commission names,
+   map rows to existing Austin feeds, add missing bodies where appropriate, deduplicate overlapping
+   recordings, and validate historical plus ongoing coverage. This is a Swagit ingestion fix, not
+   a custom Austin CMS adapter. When general-archive rows overlap dedicated-view rows, matching must
+   reuse the existing source keys/UIDs and content-addressed artifact identities. Deduplication means
+   enriching the existing durable record, never creating duplicate episodes or silently migrating
+   identities; overlap fixtures and regression tests are acceptance criteria.
+2. **Gainesville CivicEngage Archive Center.** Build the agenda/minutes archive adapter for the
+   official Gainesville archive, add configuration and enrichment joins, and cover it with live-shaped
+   fixtures and offline tests. Keep the existing CivicPlus/CivicMedia recording ingestion unchanged.
+3. **Waco OneMeeting/PrimeGov.** Add Waco to the catalog and implement/test the PrimeGov auxiliary
+   ingestion using `https://wacotexas.primegov.com/public/portal?fromiframe=true`. Treat it as
+   meeting/document metadata alongside Swagit initially; do not replace Swagit media ingestion
+   without a separate coverage decision.
+4. **Phase F documentation note.** Record that non-recorded meetings with published agendas,
+   packets, or minutes could support future-meeting notifications and calendar awareness. Defer
+   document-only public meeting pages and RSS episodes until the Phase F design; current RSS remains
+   playable-media-only for meetings without recordings; existing recorded episodes may still retain
+   metadata pages when their media is unavailable.
+
 ## Proposed GitHub issues (not filed — batch review pending)
 
 1. **Part A migration execution** — re-verified live 2026-07-16: the same 33 Granicus feeds
