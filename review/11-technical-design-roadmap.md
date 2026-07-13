@@ -135,7 +135,7 @@ sync · #20 video enclosures (partial).
 | **Cross-provider agenda & history network** (was: Legistar calendar provider) | new | **L3 for Parts A/B/D; Part C design-complete (JSON API + two live portals verified 2026-07-12), awaiting a catalog city on OneMeeting** · **ROADMAP R11 — number out of table-position on purpose; sequenced third, right after R10** | [`review/15`](15-legistar-catalog-provider.md) · re-scoped from Granicus/Legistar-only into three goals (HTML/portal agenda URLs, PDF agenda URLs, extended meeting history); Granicus directly markets three parallel agenda products (Legistar, OneMeeting, Agenda PE) any of which may apply to a Granicus- or Swagit-primary city, plus CivicClerk cross-referencing for CivicPlus cities. **Appendix P (added 2026-07-12, extended to exhaustive same day)** censuses the wider vendor landscape — IQM2/NovusAGENDA (Granicus sunset 2027-09-30: migration tripwires, not build targets), CivicEngage Agenda Center, Municode Meetings, BoardDocs, CivicWeb, eScribe, AgendaQuick (confirmed Swagit hook), SIRE, ClerkBase, BoardBook (TASB — most TX-relevant), Simbli, Catalis, Streamline, independent video hosts (Cablecast, TelVue, Viebit, BoxCast, Open.Media, Castus, PEG Central, IBM Video), a dedicated YouTube analysis (no separate government platform exists — ordinary government channels; Data-API metadata path recorded, media-download decision deliberately deferred), and the unstructured CMS-tier long tail — with URL patterns + verification status per platform. Feeds R3 |
 | **LLM backend** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R2, inserted 2026-07-14** | [`review/27`](27-llm-backend-and-provider-routing.md) · the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs; built ahead of R5 (tags)/R6 (auto-summaries) so neither invents this under its own time pressure |
 | **LLM-assisted city/agenda-source discovery** (new, Infra) | new | **L3** (2026-07-12) · **ROADMAP R12, sequenced right after R2, before R3** | [`review/28`](28-llm-assisted-city-discovery.md) · Tavily search → classify against Appendix P via one mode-aware `classify-civic-platforms` verb → two-tier verify (platform signature + end-to-end sample-episode resolution through the existing provider adapter) → propose. **Two surfaces, both dev-ready:** a quarterly aux-discovery sweep (rolling digest issue, mirrors `scripts/audit_feeds.py`'s consolidated/hidden-state pattern) for cities already in the catalog, and a workflow triggered off the repo's existing `add-city` issue-template label for new-city bootstrapping (reply-comment, not a new issue) — new-city scope was reinstated after maintainer input, since this repo already has a manual `add-city` process to automate, not a hypothetical one. Checking the proposal's checkbox **commits directly to `main`** when the change is verified purely additive (new file, or new keys into a file that doesn't already have them) — gated by a redundant diff-stat backstop guaranteeing zero deletions/modifications — and falls back to a PR otherwise; verified live against this repo's actual ruleset (`deletion`+`non_fast_forward` only, no required-PR rule) rather than trusting `lock.yml`'s stale "branch protection blocks main" comment |
-| **Agenda text extraction** (new, Infra) | new | L1 · **ROADMAP R3, inserted 2026-07-14 · narrowed 2026-07-16** | §5.1 · **now text-extraction only** — R11 owns URL discovery (HTML portal or PDF), R3 extracts text from whatever R11 found; feeds R4 (search) and R5 (tags), both of which otherwise fall back to the weaker chapter-title proxy |
+| **Agenda text extraction** (new, Infra) | new | **L3** (2026-07-12) · **ROADMAP R3, inserted 2026-07-14 · narrowed 2026-07-16** | [`review/29`](29-agenda-text-extraction.md) · extracts from `ep.links["agenda"]`/`["agenda_portal"]` (PDF via `pypdf`, HTML via `beautifulsoup4`, both new output-affecting deps per `review/22`) into a content-addressed `agenda_text_url` sidecar under a new `AGENDA_TEXT_PIPELINE_VERSION`; explicitly never the separately-linked packet/exhibit bundle, no OCR, no LLM synthesis. Design-complete; execution should still wait on R11's real link coverage shipping |
 | Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
 | Per-agenda-item "what changed" cards | #3/GH#155 | L1 | §5.1 |
@@ -283,26 +283,22 @@ Cloudflare Worker (R10) that paces requests to tightly rate-limited providers fr
 idling a GitHub Actions runner. The untrusted-output rule (all LLM output labeled, cached, never
 overwriting the official record, [SECURITY.md](../SECURITY.md)) applies from the first call.
 
-**Agenda text extraction (new, Infra — ROADMAP R3, inserted 2026-07-14, narrowed 2026-07-16).**
-*Problem:* R4 (search) and R5 (tags) both want real agenda-document content as an input, but no code
-anywhere in this repo extracts text from an agenda document — only a link exists in some cases
-(`ep.links["agenda"]`), and two of the four current providers (Swagit, CivicPlus) have **no agenda link
-at all**. Both designs currently fall back to chapter/agenda-item titles (`episode_served_chapters`) as
-a weaker proxy. **Narrowed 2026-07-16: URL discovery is no longer this item's job.** That's now
-**R11 (cross-provider agenda & history network, [`review/15`](15-legistar-catalog-provider.md))**,
-which generalizes the existing Legistar/Granicus mechanism to also cover Swagit (via OneMeeting) and
-CivicPlus (via CivicClerk cross-referencing), closing the coverage gap upstream of this item rather than
-leaving it as this item's problem to work around. *Approach (unchanged in kind, now assumes R11's output
-exists):* given a URL R11 already discovered — HTML/portal or PDF — extract plain text (PDF parsing via
-a new dependency per `review/22`'s process, or straightforward HTML text extraction for portal pages; no
-LLM synthesis at this stage). **Explicitly out of scope here:** the richer "what's being proposed"
-structured/LLM brief Phase F's full item describes — that stays post-1.0; this item is text extraction
-only, feeding it as an additional input to R4's search index and R5's tag generator, both additive to
-(not replacing) the chapter-title proxy they already use. *Tradeoff:* PDF/HTML parsing is
-provider-format-dependent (agenda documents vary in layout/quality) and adds a new fetch+parse failure
-surface; scope narrowly (extraction only, no synthesis) to keep this a bounded infra item. *Sequencing:*
-depends on R11 — begins once R11 supplies agenda URLs for "almost every meeting in the existing feed
-index" (the maintainer's own bar for moving on from R11).
+**Agenda text extraction (new, Infra — ROADMAP R3, inserted 2026-07-14, narrowed 2026-07-16).** Matured
+to L3 — full design in [`review/29`](29-agenda-text-extraction.md): extracts plain text from
+`ep.links["agenda"]`/`["agenda_portal"]` (R11's discovery output) via `pypdf` (PDF) or `beautifulsoup4`
+(HTML) — both new, output-affecting dependencies per `review/22`'s contract — into a content-addressed
+`agenda_text_url` sidecar under a new `AGENDA_TEXT_PIPELINE_VERSION`, mirroring the existing
+transcript-sidecar/backoff conventions exactly (`transcript_words_url`,
+`transcript_timeout_attempts`/`_last_attempt`). Explicit non-goals: never the separately-linked
+packet/exhibit bundle (frequently huge, a real scope-creep risk flagged in the design), no OCR, no LLM
+synthesis (Phase F's "what's being proposed" brief stays post-1.0). Runs as an ordinary feed-only Stage
+(no dedicated H6b lane) after `AudioStage` and after R11's link-attachment point, before R5's future
+`TagsStage`; a new `ARTIFACT_BLOCKS` entry (`agenda_text`) protects it from being regressed by a scoped
+transcribe/align/diarize lane's whole-record push. **Design-complete; execution should still wait on R11's
+real link coverage shipping** — the maintainer's own stated bar for starting this item ("once R11 supplies
+agenda URLs for almost every meeting") is a production-execution bar R11 hasn't hit yet (Part A's
+migration is designed but not yet executed), distinct from this item's own design-readiness, which is now
+done.
 
 **LLM-assisted city/agenda-source discovery (new, Infra — ROADMAP R12).** Matured to L3 —
 full design in [`review/28`](28-llm-assisted-city-discovery.md). Pipeline: Tavily search (not LLM
