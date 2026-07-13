@@ -134,6 +134,7 @@ sync · #20 video enclosures (partial).
 | **Rate-limited LLM dispatch Worker** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R10 — number out of table-position on purpose, see ROADMAP's insert note; sequenced second, right after R1** | [`review/27`](27-llm-backend-and-provider-routing.md) §Worker |
 | **Cross-provider agenda & history network** (was: Legistar calendar provider) | new | **L3 for Parts A/B/D; Part C design-complete (JSON API + two live portals verified 2026-07-12), awaiting a catalog city on OneMeeting** · **ROADMAP R11 — number out of table-position on purpose; sequenced third, right after R10** | [`review/15`](15-legistar-catalog-provider.md) · re-scoped from Granicus/Legistar-only into three goals (HTML/portal agenda URLs, PDF agenda URLs, extended meeting history); Granicus directly markets three parallel agenda products (Legistar, OneMeeting, Agenda PE) any of which may apply to a Granicus- or Swagit-primary city, plus CivicClerk cross-referencing for CivicPlus cities. **Appendix P (added 2026-07-12, extended to exhaustive same day)** censuses the wider vendor landscape — IQM2/NovusAGENDA (Granicus sunset 2027-09-30: migration tripwires, not build targets), CivicEngage Agenda Center, Municode Meetings, BoardDocs, CivicWeb, eScribe, AgendaQuick (confirmed Swagit hook), SIRE, ClerkBase, BoardBook (TASB — most TX-relevant), Simbli, Catalis, Streamline, independent video hosts (Cablecast, TelVue, Viebit, BoxCast, Open.Media, Castus, PEG Central, IBM Video), a dedicated YouTube analysis (no separate government platform exists — ordinary government channels; Data-API metadata path recorded, media-download decision deliberately deferred), and the unstructured CMS-tier long tail — with URL patterns + verification status per platform. Feeds R3 |
 | **LLM backend** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R2, inserted 2026-07-14** | [`review/27`](27-llm-backend-and-provider-routing.md) · the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs; built ahead of R5 (tags)/R6 (auto-summaries) so neither invents this under its own time pressure |
+| **LLM-assisted city/agenda-source discovery** (new, Infra) | new | L1 (2026-07-12) · **ROADMAP R12, sequenced right after R2, before R3** | §5.1 · automates R11's manual §B.2 discovery checklist (search → classify against Appendix P → live-verify → propose) plus new-city onboarding; proposes via a GitHub-issue checkbox, never writes config directly. Two open decisions (search-grounding mechanism; `InferenceJob` vs. separate script) before it matures past L1 |
 | **Agenda text extraction** (new, Infra) | new | L1 · **ROADMAP R3, inserted 2026-07-14 · narrowed 2026-07-16** | §5.1 · **now text-extraction only** — R11 owns URL discovery (HTML portal or PDF), R3 extracts text from whatever R11 found; feeds R4 (search) and R5 (tags), both of which otherwise fall back to the weaker chapter-title proxy |
 | Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
@@ -302,6 +303,55 @@ provider-format-dependent (agenda documents vary in layout/quality) and adds a n
 surface; scope narrowly (extraction only, no synthesis) to keep this a bounded infra item. *Sequencing:*
 depends on R11 — begins once R11 supplies agenda URLs for "almost every meeting in the existing feed
 index" (the maintainer's own bar for moving on from R11).
+
+**LLM-assisted city/agenda-source discovery (new, Infra — ROADMAP R12, added 2026-07-12).** *Problem:*
+R11's §B.2 discovery checklist and Appendix P's platform census (`review/15`) make per-city agenda-source
+discovery *tractable* but still fully manual — a human has to find the city's real website, click
+through to whatever portal it links, and match that against the census by hand. The maintainer asked
+whether this (and new-city onboarding generally — finding a city's *video* provider too, not just its
+auxiliary agenda source) could be automated: given a city name, return real URLs and structured
+config Python can act on. *Two sub-problems, worth keeping distinct:* (a) **R11's own scope** —
+auxiliary agenda-source discovery for cities already in the catalog; (b) a **broader scope R11 doesn't
+cover** — bootstrapping a brand-new city's primary video-provider config from scratch. Both share the
+same mechanism below; (b) is the larger unlock but has no existing manual process to automate *against*,
+so (a) is the natural first target.
+
+*Proposed mechanism:* (1) **live web search, not LLM recall** — the exact failure mode already hit
+twice in R11's own research (`dentontx.legistar.com`, `portal-{org}.primegov.com` — both plausible,
+both wrong) is what this must avoid structurally, not just prompt around. Two candidate mechanisms,
+undecided: Gemini's built-in search-grounding tool (zero new dependency since R2 already selected
+Gemini via LiteLLM, but unverified this pass whether LiteLLM exposes it and whether it fits the free
+tier) vs. a dedicated search API called directly from Python with results handed to the LLM as retrieved
+context (more portable, matches R2 §4's existing "ground the model in retrieved text" pattern, but is a
+new dependency). (2) **LLM classification** of the search result against Appendix P's census as
+structured context — a retrieval-scoped classification task, not open-ended guessing. (3) **mandatory
+live verification** — Python fetches the candidate URL through the existing SSRF-gated `make_session()`
+(`citypods/http.py:264-337`, every fetch path in this codebase already goes through it) and confirms it
+matches a known platform signature (Appendix P's per-platform evidence sketches what "real" looks like —
+e.g. PrimeGov's JSON API returns `documentList[]`/`videoUrl`; formalizing per-platform verifier functions
+is real, non-trivial follow-on work, and should start only with the census's "live-verified"/
+"search-evidenced" tier, not the "unverified" entries). (4) **propose, don't apply** — a GitHub issue
+per city (or a batched digest, mirroring `scripts/audit_feeds.py`'s consolidated-issue/hidden-JSON-state
+reconciliation pattern) with the proposed YAML diff, the verification evidence, and a checkbox — wired to
+the same checkbox-parsing Action R2 §6.3 already designs for champion routing. **Checking the box is
+what writes the YAML; the LLM call never touches config directly.** This directly answers, and slightly
+corrects, the framing of the original question: not "ingest without a manual step," but "automate the
+research step, keep a one-click approval step" — matching every other automation already designed into
+this codebase, and safer than full autonomy given a wrong-but-plausible config is worse than no config.
+
+*Two real open decisions, not yet made:* whether this rides the existing `Task`/`InferenceJob` interface
+(`citypods/compute/base.py:29-55` — `inputs` is already an open `Mapping`, so a city-scoped payload
+fits without an interface change per §3.1's extension recipe; `recipe_hash` could key on
+city-slug + fetched-page-content so unchanged sources don't re-cost an LLM call) or a separate script
+that only reuses the LLM `Backend`'s LiteLLM client + budget ledger directly (simpler, but duplicates
+plumbing the first option gets for free). *Tradeoff:* the win is real (eliminates the single most
+tedious part of R11's own workflow — the four failed Denton subdomain guesses this session are exactly
+the cost this would remove) but the design has two genuine unknowns before it's buildable, unlike R10's
+or R11's L1→L3 jumps, which had no comparably open mechanism questions at the sketch stage. *Sequencing:*
+depends on R2 (needs the LLM adapter + budget ledger) and R11 (needs the census + config schema it
+targets) both existing first — both already precede it in the ROADMAP table. Feeds R11 (and any future
+new-city onboarding) as a productivity multiplier, not a blocker — R11's manual §B.2 path stays the
+fallback regardless of whether this ships.
 
 **Per-agenda-item "what changed" cards (#3/GH#155).** *Problem:* a freeform meeting summary is risky and
 low-trust; residents want "what did they decide on item 7?" *Approaches:* (1) **extractive** — join

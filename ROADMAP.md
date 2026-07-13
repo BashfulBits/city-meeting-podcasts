@@ -179,12 +179,26 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > R11 owns URL discovery, R3 owns extracting text from what R11 finds. See
 > [`review/15`](review/15-legistar-catalog-provider.md), which absorbs and expands the original item.
 
+> **Added 2026-07-12 (maintainer question → item): LLM-assisted city/agenda-source discovery, numbered
+> R12, sequenced right after R2 (before R3).** Same no-renumbering convention as R10/R11. Prompted by
+> asking whether R11's manual per-city discovery checklist (§B.2) — and new-city onboarding generally —
+> could be automated: given a city name, search for its real website/portal links (not LLM recall — the
+> same guessed-URL failure mode R11 already hit), classify the result against Appendix P's platform
+> census, live-verify the candidate before ever proposing it, and open a GitHub issue with a checkbox
+> for a human to approve applying the config. **Automates the research, keeps the approval step
+> manual** — not literally "ingest without a manual step" as first framed, matching every other
+> automation in this codebase (H4's audit-issue reconciliation, R2's champion-routing checkbox). L1
+> sketch only so far — see [`review/11`](review/11-technical-design-roadmap.md) §5.1; two real open
+> questions (search-grounding mechanism, whether it rides the `InferenceJob` interface or a separate
+> script) need deciding before this matures further.
+
 | Pri | Item |
 |----:|------|
 | **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
 | **R10** | **Rate-limited LLM dispatch Worker** (new, infra — numbered R10, sequenced here, see note above) — a Cloudflare Worker (free tier; other free providers considered if better) that paces requests to tightly rate-limited LLM providers (Mistral's free tier is ~1-2 requests/minute) from the edge instead of a GitHub Actions runner idling between calls. Cloudflare Workers don't bill/limit CPU time spent awaiting a `fetch()` response, only active CPU cycles — the "runner mostly waiting" concern doesn't apply the same way there. Exposes an OpenAI-compatible endpoint LiteLLM can call like any other provider; results land in R2 (object storage) for the next scheduled run to pick up, reusing the same "stage checks if the artifact is ready, else skips and retries next run" pattern already used for ASR/diarization backlogs — no new synchronous coordination needed |
 | **R11** | **Cross-provider agenda & history network** (new, infra — numbered R11, sequenced here, see note above) — generalizes the existing Legistar/Granicus historical-backfill mechanism (originally "Legistar calendar provider") into three goals: ingest HTML/portal agenda URLs, ingest PDF agenda URLs, and extend meeting history for feeds with limited RSS/API windows. Granicus directly markets three parallel agenda products — **Legistar** (proven), **OneMeeting**, and **Agenda PE** (small/medium-government focused, no confirmed portal pattern yet) — any of which may apply to a Granicus- or Swagit-primary city; adds **CivicClerk cross-referencing** (already a supported provider, now also usable as an auxiliary agenda source for CivicPlus-video cities) alongside these. Feeds R3 (agenda text extraction) and, transitively, R4 (search) and R5 (tags) |
 | **R2** | **LLM backend** (new, infra) — the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs: provider choice, cost/budget ledger, prompt-management conventions. Built ahead of R5's LLM-assist tagging path and R6's auto-summaries, neither of which need to invent this under their own time pressure |
+| **R12** | **LLM-assisted city/agenda-source discovery** (new, infra — numbered R12, sequenced here, see note above) — automates R11's manual §B.2 discovery checklist and new-city onboarding: given a city, live-search for its real website/portal links, classify the result against Appendix P's platform census, verify the candidate URL actually resolves before proposing anything, then open a GitHub issue with a checkbox for a human to approve applying the config. L1 sketch only, see review/11 §5.1 |
 | **R3** | **Agenda text extraction** (new, infra) — **narrowed 2026-07-16: text extraction only, now that R11 owns URL discovery.** Extracts plain text from whatever agenda URL (HTML portal or PDF) R11 already found for a meeting; the richer "what's being proposed" LLM brief stays Phase F. Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy |
 | **R4** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
 | **R5** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
