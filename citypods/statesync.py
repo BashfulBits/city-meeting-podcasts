@@ -65,8 +65,9 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
     """Download the durable state snapshot from the bucket into ``state_dir`` (bucket wins).
     Returns the number of files restored. No-op for backends without sync support.
 
-    A single key that keeps failing with a connectivity-level error (timeout, dropped
-    connection — see ``storage.s3.transient_download_errors``) is logged and skipped rather
+    A single key that keeps failing with a transient storage read error (timeout, dropped
+    connection, transient S3 response, or known botocore parser failure — see
+    ``storage.s3.is_transient_storage_error``) is logged and skipped rather
     than aborting the whole restore: render "must always finish so the deploy isn't gated"
     (citypods/run.py), and a skipped file just keeps its existing local copy — the bucket is
     canonical, so it self-heals on the next run that can reach it. A non-transient error
@@ -74,9 +75,8 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
     """
     if not _supported(storage):
         return 0
-    from citypods.storage.s3 import transient_download_errors
+    from citypods.storage.s3 import is_transient_storage_error
 
-    transient = transient_download_errors()
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
     restored = 0
@@ -88,7 +88,9 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
             continue
         try:
             got = storage.get_file(key, state_dir / rel)
-        except transient as exc:
+        except Exception as exc:
+            if not is_transient_storage_error(exc):
+                raise
             emit(f"state: WARNING transient error restoring {key} ({exc}); keeping local copy")
             continue
         if got:

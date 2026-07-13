@@ -29,22 +29,39 @@ class CASConflict(Exception):
         self.key = key
 
 
+_TRANSIENT_S3_CODES = frozenset(
+    {
+        "InternalError",
+        "RequestTimeout",
+        "RequestTimeTooSkewed",
+        "ServiceUnavailable",
+        "SlowDown",
+        "Throttling",
+        "ThrottlingException",
+    }
+)
+_TRANSIENT_S3_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+
 def transient_download_errors() -> tuple[type[BaseException], ...]:
-    """Connectivity-level exceptions a ``get_file`` download can exhaust its retries on —
-    timeouts, dropped connections, DNS/routing blips. Deliberately excludes ``ClientError``
-    (e.g. 403 ``AccessDenied``): those signal a real credentials/permissions problem an
-    operator needs to see, not a blip worth papering over.
+    """Connectivity-level exceptions that a storage read can safely retry.
 
     Returns an empty tuple if boto3 isn't installed (no S3 backend, so these can't occur) —
-    lets callers outside this module (e.g. ``statesync.pull_state``) build an ``except``
-    tuple without a hard dependency on the optional ``storage`` extra.
+    lets callers outside this module build an ``except`` tuple without a hard dependency on the
+    optional ``storage`` extra. S3 ``ClientError`` responses are handled separately by
+    :func:`is_transient_storage_error`, because only selected status codes are safe to retry.
     """
     try:
         import boto3
         from botocore.exceptions import (
             ConnectionClosedError,
+            ConnectTimeoutError,
             EndpointConnectionError,
+            HTTPClientError,
+            IncompleteReadError,
+            ProxyConnectionError,
             ReadTimeoutError,
+            SSLError,
         )
         from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
     except ImportError:
@@ -52,10 +69,55 @@ def transient_download_errors() -> tuple[type[BaseException], ...]:
     return (
         boto3.exceptions.RetriesExceededError,
         TransferRetriesExceededError,
+        ConnectTimeoutError,
         EndpointConnectionError,
         ReadTimeoutError,
         ConnectionClosedError,
+        HTTPClientError,
+        IncompleteReadError,
+        ProxyConnectionError,
+        SSLError,
     )
+
+
+def is_transient_storage_error(exc: BaseException) -> bool:
+    """Return whether a storage read may be retried without hiding an operator error.
+
+    S3-compatible services occasionally return 5xx/internal errors, throttling responses, or a
+    malformed error body that botocore turns into ``StreamingChecksumBody.strip``. The latter is
+    the exact parser failure seen in GH#887. Do not broaden this to every ``ClientError`` or
+    ``AttributeError``: 403s, bad requests, missing credentials, and programming errors must still
+    fail loudly.
+    """
+    if isinstance(exc, AttributeError):
+        return "StreamingChecksumBody" in str(exc) and "strip" in str(exc)
+    try:
+        from botocore.exceptions import ClientError
+    except ImportError:
+        return False
+    if not isinstance(exc, ClientError):
+        return isinstance(exc, transient_download_errors())
+    response = exc.response or {}
+    error = response.get("Error") or {}
+    code = str(error.get("Code") or "")
+    status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return code in _TRANSIENT_S3_CODES or status in _TRANSIENT_S3_STATUS
+
+
+def _retry_storage_read(operation):
+    """Run one idempotent S3 read with bounded retries for transient backend failures."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            return operation()
+        except BaseException as exc:
+            if not is_transient_storage_error(exc):
+                raise
+            last_error = exc
+            if attempt == 2:
+                raise
+            time.sleep(2**attempt)
+    raise AssertionError(f"unreachable: {last_error!r}")
 
 
 class S3CompatibleStorage:
@@ -98,7 +160,7 @@ class S3CompatibleStorage:
         from botocore.exceptions import ClientError
 
         try:
-            self._client.head_object(Bucket=self.bucket, Key=key)
+            _retry_storage_read(lambda: self._client.head_object(Bucket=self.bucket, Key=key))
             return True
         except ClientError as exc:
             # CR2-CP-52: distinguish genuine absence from a throttling/permission/transient
@@ -130,7 +192,7 @@ class S3CompatibleStorage:
         from botocore.exceptions import ClientError
 
         try:
-            resp = self._client.get_object(Bucket=self.bucket, Key=key)
+            resp = _retry_storage_read(lambda: self._client.get_object(Bucket=self.bucket, Key=key))
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
@@ -184,22 +246,17 @@ class S3CompatibleStorage:
 
         local_path = Path(local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        transient_errors = transient_download_errors()
-        for attempt in range(3):
-            try:
-                self._client.download_file(self.bucket, key, str(local_path))
-                return True
-            except ClientError as exc:
-                code = exc.response.get("Error", {}).get("Code")
-                status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-                if code in ("NoSuchKey", "404") or status == 404:
-                    return False
-                raise
-            except transient_errors:
-                if attempt == 2:
-                    raise
-                time.sleep(2**attempt)
-        raise AssertionError("unreachable")
+        try:
+            _retry_storage_read(
+                lambda: self._client.download_file(self.bucket, key, str(local_path))
+            )
+            return True
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("NoSuchKey", "404") or status == 404:
+                return False
+            raise
 
     def get_range(self, key: str, start: int, end: int) -> bytes | None:
         """Partial GET via the standard HTTP ``Range`` header — a Class-B op, far cheaper than
@@ -207,8 +264,10 @@ class S3CompatibleStorage:
         from botocore.exceptions import ClientError
 
         try:
-            resp = self._client.get_object(
-                Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
+            resp = _retry_storage_read(
+                lambda: self._client.get_object(
+                    Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
+                )
             )
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")

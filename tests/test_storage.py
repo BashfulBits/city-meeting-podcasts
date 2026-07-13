@@ -492,6 +492,28 @@ def test_get_bytes_roundtrip_and_absent():
     assert store._client.bodies["k.json"].closed is True
 
 
+def test_get_bytes_retries_transient_s3_internal_error(monkeypatch):
+    store = _s3_with_fake_client()
+
+    class _FlakyGetClient(_FakeS3Client):
+        def __init__(self):
+            super().__init__()
+            self.failures = [_client_error("InternalError", 500)]
+
+        def get_object(self, *, Bucket, Key, Range=None):
+            if self.failures:
+                raise self.failures.pop(0)
+            self.store[Key] = (b"hello", '"etag-1"')
+            return super().get_object(Bucket=Bucket, Key=Key, Range=Range)
+
+    client = _FlakyGetClient()
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    data, etag = store.get_bytes("lease.json")
+    assert data == b"hello" and etag == '"etag-1"'
+
+
 def test_lifecycle_rules_empty_then_put_readback():
     store = _s3_with_fake_client()
     assert store.get_lifecycle_rules() == []  # NoSuchLifecycleConfiguration → []
@@ -568,7 +590,20 @@ def test_get_file_returns_false_only_for_absent_objects(tmp_path):
 
 def test_get_file_raises_non_absent_client_errors(tmp_path):
     store = _s3_with_fake_client()
-    store._client = _FakeDownloadClient([_client_error("InternalError", 500)])
+    store._client = _FakeDownloadClient([_client_error("InternalError", 500) for _ in range(3)])
 
+    # Transient server errors are retried, but still surface after the bounded retry budget.
     with pytest.raises(Exception, match="InternalError"):
         store.get_file("state/k.json", tmp_path / "k.json")
+    assert store._client.calls == 3
+
+
+def test_get_file_retries_streaming_checksum_parser_failure_then_succeeds(tmp_path, monkeypatch):
+    store = _s3_with_fake_client()
+    parser_error = AttributeError("'StreamingChecksumBody' object has no attribute 'strip'")
+    client = _FakeDownloadClient([parser_error])
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    assert store.get_file("state/k.json", tmp_path / "state.json") is True
+    assert client.calls == 2
