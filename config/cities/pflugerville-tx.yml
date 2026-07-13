@@ -4,4 +4,10 @@ colors:
 - '#067b54'
 - '#93bebc'
 meetings_url: https://www.pflugervilletx.gov/188/Pf-Media
+aux_provider: legistar
+aux_source:
+  calendar_url: https://pflugerville.legistar.com/Calendar.aspx
+  granicus_base: https://pflugerville.granicus.com
+  view_id: 1
+  backfill_since: '2010-01-01'
 state: TX

@@ -2,8 +2,11 @@
 
 **Maturity: L3 · re-scoped and matured 2026-07-16 · breakout of
 [`review/11`](11-technical-design-roadmap.md) Phase R · ROADMAP R11 (numbered out of table-position on
-purpose, per the no-renumbering convention — sequenced third, right after R10, above R3) · issues not
-yet cut, batch review pending**
+purpose, per the no-renumbering convention — sequenced third, right after R10, above R3) · execution
+split into [#903](https://github.com/BashfulBits/city-meeting-podcasts/issues/903),
+[#904](https://github.com/BashfulBits/city-meeting-podcasts/issues/904), and
+[#905](https://github.com/BashfulBits/city-meeting-podcasts/issues/905); Phase 1 is
+[PR #906](https://github.com/BashfulBits/city-meeting-podcasts/pull/906)**
 
 > **Re-scoped 2026-07-16 (maintainer decision):** this item grows from "Legistar calendar scraping for
 > historical Granicus video coverage only" into a general **cross-provider agenda & history network**
@@ -22,11 +25,11 @@ yet cut, batch review pending**
 > missing from the native archive and (b) the full agenda/meeting metadata catalog, including
 > rows with no recording. The latter are durable meeting metadata, not synthetic podcast
 > episodes. This decision follows live coverage checks: Pflugerville's calendar has 2,402
-> meeting rows (2010–2026), including 784 video-linked rows representing 519 distinct Granicus
-> clips. The native archive has 228 clips: 180 overlap those calendar clips, 339 are
-> calendar-only, and 48 are archive-only (567 in the combined recording catalog). The archive
+> meeting rows (2010–2026), including 852 video-linked rows representing 784 distinct Granicus
+> clips. The native archive has 228 clips: 224 overlap those calendar clips, 560 are
+> calendar-only, and 4 are archive-only (788 in the combined recording catalog). The archive
 > therefore retains all 100 already-materialized episodes but cannot stand in for the calendar's
-> full meeting-metadata catalog or its 339 additional calendar-linked recordings. Arlington,
+> full meeting-metadata catalog or its 560 additional calendar-linked recordings. Arlington,
 > Fort Worth, and Denton County likewise have native archive pages that are strict supersets of
 > their current RSS windows.
 >
@@ -40,6 +43,30 @@ yet cut, batch review pending**
 > no hostname guessing or silent runtime probing is permitted. Execution issues: [#903](https://github.com/BashfulBits/city-meeting-podcasts/issues/903),
 > [#904](https://github.com/BashfulBits/city-meeting-podcasts/issues/904), and
 > [#905](https://github.com/BashfulBits/city-meeting-podcasts/issues/905).
+
+### §0.0 Current calendar-companion contract (Phase 2)
+
+Phase 2 implements the confirmed source composition rather than reviving the earlier
+full-replacement proposal below:
+
+- A city keeps its native archive provider and its existing `source_key`; the companion is an
+  explicit, verified `aux_provider` / `aux_source` on the city entity, inherited by its body feeds.
+- A companion fetch is a **full calendar index**. Rows with a verified Granicus clip are normalized
+  to the same canonical `MediaPlayer.php` GUID as the native archive. The native archive wins on
+  duplicate clip fields, while the calendar fills missing official agenda, packet, minutes, and
+  meeting-details links. Calendar-only clips become normal Episodes and follow the ordinary,
+  gradual audio backlog—there is no pipeline-version bump or forced re-encode of existing clips.
+- Every calendar row, including rows without a recording, is stored append-only in
+  `state/sources/<source_key>/calendar.json`. These rows are rendered in the city archive as
+  **Calendar-only meetings** with official links, but never enter an RSS feed, receive a meeting
+  page, or run audio/transcript stages. This is durable public-meeting metadata, not a synthetic
+  podcast episode.
+- A failed companion fetch is best-effort: the primary archive continues, and the last known
+  calendar catalog remains available. No runtime hostname discovery or RSS fallback is allowed.
+
+The figures in the decision above were re-verified against every 2010–2026 Pflugerville calendar
+page on 2026-07-13. The 852 video-linked row count and 784-clip count are intentionally separate:
+some calendar rows point at the same recorded clip.
 
 ---
 
@@ -137,6 +164,11 @@ expose it) is the mitigation; this needs explicit handling, not an assumption th
 
 ### §0.3 Which mechanism solves which goal — a deliberate scoping split
 
+> **Historical design note:** the full-replacement / ephemeral-attachment split in this section
+> predates the 2026-07-13 maintainer decision. It remains useful rationale for future portal
+> discovery, but its claims that calendar rows are dropped or have no separate store are superseded
+> by §0.0's calendar-companion contract.
+
 Two complementary mechanisms, not one unified system — this is a deliberate risk-reduction choice, not
 a shortcut:
 
@@ -155,6 +187,10 @@ working.
 ---
 
 ## Part A — Legistar, full-replacement mode (existing, proven — solves Goal 3 for Granicus/Legistar)
+
+> **Superseded for R11 execution:** Phase 2 keeps Granicus archive discovery primary and composes
+> verified Legistar rows into it as specified in §0.0. This retained section records the prior
+> migration analysis; do not switch a configured city to `provider: legistar` under the current plan.
 
 **Everything in Part A is the original design, unchanged, still fully valid.** It's Mechanism A (§0.3):
 `city.provider` switches entirely to `legistar`, which becomes the episode-discovery source of truth
@@ -717,6 +753,11 @@ and calls it. This is a pure refactor — no behavior change.
 **Mechanism B from §0.3.** A city keeps its primary video provider unchanged and gains a second,
 optional source that enriches already-discovered episodes with agenda URLs — never creates new
 episodes (that's Mechanism A's job, §0.3).
+
+> **Superseded execution detail:** §0.0 now makes every verified calendar row durable in a separate
+> append-only catalog. Only a row with an explicit canonical video reference may backfill an Episode;
+> no-video rows are retained and rendered outside RSS. The older "ephemeral" / "unmatched rows are
+> dropped" mechanics below are historical design context for non-calendar portal experiments.
 
 ### §B.1 Architecture
 

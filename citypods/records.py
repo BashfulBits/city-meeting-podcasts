@@ -49,10 +49,12 @@ from citypods.integrity import (
     REPAIR_TRANSCRIPT_REGENERATE,
     timeline_audio_repair_token,
 )
-from citypods.models import City, Episode
+from citypods.models import AgendaRecord, City, Episode
+from citypods.providers.base import AgendaSource
 from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
 
 SCHEMA_VERSION = 2
+CALENDAR_SCHEMA_VERSION = 1
 # Bump to force every audio file to be regenerated (e.g. a codec/loudness policy change that
 # isn't otherwise captured by the per-episode spec inputs below).
 AUDIO_PIPELINE_VERSION = "1"
@@ -237,18 +239,80 @@ def _uid(author: str, body: str | None, date: str, seq: int) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
 
-def assign_uids(city: City, episodes: list[Episode]) -> None:
-    """Assign each episode a provider-independent ``uid``. Episodes that share (body, date)
-    — e.g. a morning and an evening session — are disambiguated by a stable sequence ordered
-    by publish time, so the uid survives a provider change as long as both meetings do."""
+def assign_uids(city: City, episodes: list[AgendaSource]) -> None:
+    """Assign provider-independent UIDs to episode or calendar records.
+
+    Records that share ``(body, date)`` — e.g. a morning and an evening
+    session — are disambiguated by a stable sequence ordered by publish time.
+    The same algorithm gives a verified calendar row and its matching recording
+    the same UID without turning a no-video row into an Episode.
+    """
     author = _author_key(city)
-    buckets: dict[tuple[str, str], list[Episode]] = {}
+    buckets: dict[tuple[str, str], list[AgendaSource]] = {}
     for ep in episodes:
         k = (body_key(canonical_body(ep.body or "")), ep.published.date().isoformat())
         buckets.setdefault(k, []).append(ep)
     for (_, date), eps in buckets.items():
         for seq, ep in enumerate(sorted(eps, key=lambda e: e.published)):
             ep.uid = _uid(author, ep.body, date, seq)
+
+
+def merge_calendar_backfill(episodes: list[Episode], calendar_records: list[AgendaRecord]) -> None:
+    """Merge explicitly video-linked calendar rows into the primary episode list.
+
+    The stable Granicus MediaPlayer URL is the join key.  Native archive data
+    wins when the same recording appears in both sources, while the calendar's
+    additional official links fill gaps.  Only rows carrying both a canonical
+    video GUID and a media URL become Episodes; agenda-only rows remain in the
+    separate calendar store.
+    """
+    by_guid = {episode.guid: episode for episode in episodes}
+    for record in calendar_records:
+        if not record.video_guid or not record.video_url:
+            continue
+        existing = by_guid.get(record.video_guid)
+        if existing is None:
+            existing = Episode(
+                guid=record.video_guid,
+                title=record.title or f"{record.body} Meeting",
+                published=record.published,
+                video_url=record.video_url,
+                body=record.body,
+                links=dict(record.links),
+            )
+            by_guid[existing.guid] = existing
+            episodes.append(existing)
+            continue
+        for key, value in record.links.items():
+            if value:
+                existing.links.setdefault(key, value)
+
+
+def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[AgendaSource]) -> None:
+    """Attach official auxiliary links to matching primary episodes in place.
+
+    A video-linked calendar row joins its primary recording by the canonical
+    Granicus MediaPlayer GUID first. This remains reliable when a calendar has
+    additional same-day sessions (whose local identity sequence differs from
+    the recording-only archive) and lets a persisted calendar restore its
+    links after a temporary companion outage. Rows without a video identity
+    retain the original UID/date-body fallback. Primary links win on key
+    collision, so a companion cannot replace the primary provider's canonical
+    agenda or video reference.
+    """
+    by_uid = {record.uid: record for record in aux_records if record.uid}
+    by_video_guid = {
+        record.video_guid: record
+        for record in aux_records
+        if isinstance(record, AgendaRecord) and record.video_guid
+    }
+    for episode in episodes:
+        record = by_video_guid.get(episode.guid) or by_uid.get(episode.uid)
+        if record is None:
+            continue
+        for key, value in (record.links or {}).items():
+            if value:
+                episode.links.setdefault(key, value)
 
 
 def audio_spec_hash(
@@ -424,6 +488,107 @@ def save_records(state_dir: Path, src_key: str, records: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     envelope = {"schema_version": SCHEMA_VERSION, "episodes": records}
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+
+
+def calendar_records_path(state_dir: Path, src_key: str) -> Path:
+    """Path of the append-only, non-podcast calendar metadata store for a source."""
+    return Path(state_dir) / "sources" / src_key / "calendar.json"
+
+
+def calendar_record_to_dict(record: AgendaRecord) -> dict:
+    """Serialize a non-synthetic calendar row without any media-stage state."""
+    return {
+        "uid": record.uid,
+        "title": record.title,
+        "body": record.body,
+        "published": record.published.isoformat(),
+        "links": dict(record.links or {}),
+        "video_guid": record.video_guid,
+        "video_url": record.video_url,
+    }
+
+
+def calendar_record_from_dict(record: dict) -> AgendaRecord | None:
+    """Rehydrate one durable calendar row; skip malformed rows rather than failing a render."""
+    uid = record.get("uid")
+    body = record.get("body")
+    published = record.get("published")
+    if not isinstance(uid, str) or not uid or not isinstance(body, str) or not body:
+        return None
+    try:
+        when = datetime.fromisoformat(str(published))
+    except ValueError:
+        return None
+    return AgendaRecord(
+        body=body,
+        title=str(record.get("title") or f"{body} Meeting"),
+        published=when,
+        links=dict(record.get("links") or {}),
+        video_guid=record.get("video_guid") or None,
+        video_url=record.get("video_url") or None,
+        uid=uid,
+    )
+
+
+def load_calendar_records(state_dir: Path, src_key: str) -> dict[str, AgendaRecord]:
+    """Load the durable calendar catalog, returning an empty mapping when absent."""
+    path = calendar_records_path(state_dir, src_key)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    raw_records = data.get("records", {}) if isinstance(data, dict) else {}
+    if not isinstance(raw_records, dict):
+        return {}
+    records: dict[str, AgendaRecord] = {}
+    for key, value in raw_records.items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        if record := calendar_record_from_dict(value):
+            records[key] = record
+    return records
+
+
+def save_calendar_records(
+    state_dir: Path, src_key: str, records: Mapping[str, AgendaRecord]
+) -> None:
+    """Persist all known calendar rows.  This store intentionally has no retention prune."""
+    path = calendar_records_path(state_dir, src_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = {uid: calendar_record_to_dict(record) for uid, record in records.items()}
+    envelope = {"schema_version": CALENDAR_SCHEMA_VERSION, "records": serialized}
+    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+
+
+def merge_calendar_records(
+    persisted: Mapping[str, AgendaRecord], fresh: Iterable[AgendaRecord]
+) -> dict[str, AgendaRecord]:
+    """Append-only merge of the calendar catalog, preserving prior official links.
+
+    Calendar sources can temporarily omit old documents.  A fresh row updates its
+    title/date/video reference, but its links are unioned with the persisted row
+    so the independent meeting history is never silently diminished.
+    """
+    merged = dict(persisted)
+    for record in fresh:
+        if not record.uid:
+            continue
+        previous = merged.get(record.uid)
+        if previous is None:
+            merged[record.uid] = record
+            continue
+        merged[record.uid] = AgendaRecord(
+            body=record.body or previous.body,
+            title=record.title or previous.title,
+            published=record.published,
+            links={**previous.links, **record.links},
+            video_guid=record.video_guid or previous.video_guid,
+            video_url=record.video_url or previous.video_url,
+            uid=record.uid,
+        )
+    return merged
 
 
 def estimate_audio_shard_work(

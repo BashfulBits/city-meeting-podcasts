@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 import requests
 
 from citypods.http import DEFAULT_TIMEOUT, make_session
-from citypods.models import ChangeToken, Episode
+from citypods.models import AgendaRecord, ChangeToken, Episode
 from citypods.providers.base import ProviderError
 
 
@@ -129,6 +129,33 @@ def parse_events(
     return episodes
 
 
+def parse_agenda_index(
+    content: bytes, api_base: str = "", category_id: int | None = None
+) -> list[AgendaRecord]:
+    """Parse all dated CivicClerk events that expose official document links.
+
+    This deliberately bypasses ``parse_events``'s ``hasMedia`` / MP4 gate: as
+    an auxiliary source CivicClerk supplies agenda metadata while another
+    provider remains the video source of truth.
+    """
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise ProviderError(f"invalid CivicClerk JSON: {exc}") from exc
+
+    records: list[AgendaRecord] = []
+    for event in data.get("value", []):
+        if category_id is not None and event.get("categoryId") != category_id:
+            continue
+        published = _parse_dt(event.get("startDateTime", ""))
+        body = (event.get("categoryName") or event.get("meetingTypeName") or "").strip()
+        links = _published_links(event, api_base)
+        if published is None or not body or not links:
+            continue
+        records.append(AgendaRecord(body=body, published=published, links=links))
+    return records
+
+
 def parse_bookmarks(media: dict) -> tuple[list[dict], str | None]:
     """Extract ``(chapters, transcript_url)`` from a CivicClerk ``EventMediaApiModel``.
 
@@ -184,6 +211,23 @@ class CivicClerkProvider:
         if resp.status_code >= 400:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         return parse_events(resp.content, api_base=base, category_id=source.get("category_id"))
+
+    def fetch_agenda_index(self, source: dict) -> list[AgendaRecord]:
+        """Return agenda-bearing events even when CivicClerk hosts no video."""
+        base = source["api_base"].rstrip("/")
+        top = int(source.get("max_fetch", 100))
+        params = {"$orderby": "startDateTime desc", "$top": str(top)}
+        url = f"{base}/v1/Events"
+        with make_session() as session:
+            try:
+                resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {url} failed: {exc}") from exc
+        if resp.status_code >= 400:
+            raise ProviderError(f"GET {url} returned {resp.status_code}")
+        return parse_agenda_index(
+            resp.content, api_base=base, category_id=source.get("category_id")
+        )
 
     def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:
         """Fetch chapter markers + a transcript/caption link from the ``EventsMedia/{id}``

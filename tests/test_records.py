@@ -7,17 +7,21 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from citypods.models import City, Episode
+from citypods.models import AgendaRecord, City, Episode
 from citypods.records import (
     _capped_exponential_backoff,
     assign_uids,
+    attach_auxiliary_agenda_links,
     audio_object_key,
     audio_spec_hash,
     episode_to_record,
     estimate_audio_shard_work,
     estimate_transcribe_shard_work,
     feed_content_hash,
+    load_calendar_records,
     load_records,
+    merge_calendar_backfill,
+    merge_calendar_records,
     merge_persisted,
     merge_preserving_foreign,
     merge_records,
@@ -26,6 +30,7 @@ from citypods.records import (
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
+    save_calendar_records,
     save_records,
     shard_assignment,
     source_key,
@@ -69,6 +74,135 @@ def test_uid_disambiguates_same_day_sessions():
     evening = _ep("b", when=datetime(2026, 5, 19, 18, 0, tzinfo=UTC))
     assign_uids(_city(), [evening, morning])  # order-independent
     assert morning.uid != evening.uid
+
+
+def test_auxiliary_agenda_links_attach_without_creating_or_overwriting_episodes():
+    primary = [_ep("primary", body="City Council")]
+    auxiliary = [_ep("auxiliary", body="City Council")]
+    auxiliary[0].links = {
+        "agenda": "https://agenda.example/official.pdf",
+        "agenda_portal": "https://agenda.example/meeting/1",
+    }
+    primary[0].links = {"agenda": "https://primary.example/agenda.pdf"}
+    city = _city()
+
+    assign_uids(city, primary)
+    assign_uids(city, auxiliary)
+    attach_auxiliary_agenda_links(primary, auxiliary)
+
+    assert len(primary) == 1
+    assert primary[0].links == {
+        "agenda": "https://primary.example/agenda.pdf",
+        "agenda_portal": "https://agenda.example/meeting/1",
+    }
+
+
+def test_unmatched_auxiliary_agenda_record_is_dropped():
+    primary = [_ep("primary", when=datetime(2026, 5, 19, tzinfo=UTC))]
+    auxiliary = [_ep("auxiliary", when=datetime(2026, 5, 20, tzinfo=UTC))]
+    auxiliary[0].links = {"agenda": "https://agenda.example/official.pdf"}
+    city = _city()
+
+    assign_uids(city, primary)
+    assign_uids(city, auxiliary)
+    attach_auxiliary_agenda_links(primary, auxiliary)
+
+    assert primary[0].links == {}
+
+
+def test_video_linked_calendar_record_joins_by_canonical_guid_before_uid():
+    """Calendar sessions may have a different same-day sequence than archive rows."""
+    primary = [
+        _ep("primary", when=datetime(2026, 5, 19, tzinfo=UTC)),
+        _ep("archive-only", when=datetime(2026, 5, 19, 12, 0, tzinfo=UTC)),
+    ]
+    no_video_session = AgendaRecord(
+        body="City Council",
+        title="No-video session",
+        published=datetime(2026, 5, 19, 9, 0, tzinfo=UTC),
+    )
+    calendar = AgendaRecord(
+        body="City Council",
+        title="Calendar row",
+        # Deliberately a distinct time so date/body UID reconciliation cannot match.
+        published=datetime(2026, 5, 19, 18, 0, tzinfo=UTC),
+        links={"agenda": "https://agenda.example/official.pdf"},
+        video_guid="primary",
+        video_url="https://calendar.example/primary.mp4",
+    )
+    city = _city()
+
+    assign_uids(city, primary)
+    assign_uids(city, [no_video_session, calendar])
+    assert primary[0].uid != calendar.uid
+
+    attach_auxiliary_agenda_links(primary, [no_video_session, calendar])
+
+    assert primary[0].links == {"agenda": "https://agenda.example/official.pdf"}
+
+
+def test_calendar_video_rows_backfill_episodes_but_agenda_only_rows_do_not():
+    primary = [_ep("archive", body="City Council")]
+    calendar_rows = [
+        AgendaRecord(
+            body="City Council",
+            title="City Council Meeting",
+            published=primary[0].published,
+            links={"agenda": "https://calendar.example/agenda.pdf"},
+            video_guid="archive",
+            video_url="https://calendar.example/archive.mp4",
+        ),
+        AgendaRecord(
+            body="Library Board",
+            title="Library Board Meeting",
+            published=datetime(2026, 5, 20, tzinfo=UTC),
+            links={"agenda": "https://calendar.example/library.pdf"},
+        ),
+        AgendaRecord(
+            body="Planning Commission",
+            title="Planning Commission Meeting",
+            published=datetime(2026, 5, 21, tzinfo=UTC),
+            video_guid="calendar-only",
+            video_url="https://calendar.example/planning.mp4",
+        ),
+    ]
+
+    merge_calendar_backfill(primary, calendar_rows)
+
+    assert [episode.guid for episode in primary] == ["archive", "calendar-only"]
+    assert primary[0].video_url == "https://x/archive.mp4"  # native archive wins
+    assert primary[0].links["agenda"] == "https://calendar.example/agenda.pdf"
+    assert all(episode.body != "Library Board" for episode in primary)
+
+
+def test_calendar_records_are_append_only_and_preserve_old_links(tmp_path):
+    city = _city()
+    original = AgendaRecord(
+        body="City Council",
+        title="City Council Meeting",
+        published=datetime(2020, 5, 1, tzinfo=UTC),
+        links={"agenda": "https://calendar.example/original.pdf"},
+    )
+    assign_uids(city, [original])
+    first = merge_calendar_records({}, [original])
+    save_calendar_records(tmp_path, "source", first)
+
+    refreshed = AgendaRecord(
+        body="City Council",
+        title="Council Meeting",
+        published=original.published,
+        links={"minutes": "https://calendar.example/minutes.pdf"},
+        uid=original.uid,
+    )
+    merged = merge_calendar_records(load_calendar_records(tmp_path, "source"), [refreshed])
+    save_calendar_records(tmp_path, "source", merged)
+
+    loaded = load_calendar_records(tmp_path, "source")
+    assert set(loaded) == {original.uid}
+    assert loaded[original.uid].links == {
+        "agenda": "https://calendar.example/original.pdf",
+        "minutes": "https://calendar.example/minutes.pdf",
+    }
 
 
 def test_source_key_ignores_body_so_feeds_share_storage():

@@ -22,6 +22,9 @@ config (YAML)                       ── per-city + per-feed config
   │
   ▼
 providers.fetch_episodes()          ── Granicus / CivicPlus / CivicClerk / Swagit adapters
+  │ optional verified calendar companion (Legistar / CivicClerk)
+  ├─ recorded rows merge by canonical provider clip ID
+  └─ no-video rows persist as calendar metadata, never as podcast episodes
   │
   ▼
 records.assign_uids()               ── stable real-world episode UID (author+body+date)
@@ -130,8 +133,8 @@ and every other source-local record adopts that single CAS pointer (GH#421).
 
 | Area | Modules |
 |---|---|
-| **Providers** | `providers/{base,granicus,civicplus,civicclerk,swagit}.py` — `MeetingProvider` Protocol + registry; each normalizes to the episode model. |
-| **Records / identity** | `records.py` — stable `uid`, `source_key`, entity-level `source_family_key` (audio shard affinity only), `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, content-addressed keys, orphan-GC refs, and canonical persisted duration scalars (`source_duration_seconds`, `served_duration_seconds`) with compatibility reads for legacy `duration` / `audio.duration_served`. `models.py` — `Episode`/`City`. `availability.py` — versioned `media_availability` classification (H16 PR3). |
+| **Providers** | `providers/{base,granicus,legistar,civicplus,civicclerk,swagit}.py` — `MeetingProvider` Protocol + registry; each normalizes to the episode model. Granicus is archive-first; verified calendar companions are explicit config, never guessed at runtime. |
+| **Records / identity** | `records.py` — stable `uid`, `source_key`, entity-level `source_family_key` (audio shard affinity only), `audio_spec_hash`, `feed_content_hash`, append-only `merge_persisted`, and a separate append-only `calendar.json` metadata catalog. Calendar video rows merge by canonical clip ID; no-video rows are never Episodes or audio work. Also owns content-addressed keys, orphan-GC refs, and canonical persisted duration scalars (`source_duration_seconds`, `served_duration_seconds`) with compatibility reads for legacy `duration` / `audio.duration_served`. `models.py` — `Episode`/`AgendaRecord`/`City`. `availability.py` — versioned `media_availability` classification (H16 PR3). |
 | **Enrichment stages** | `stages.py` — `EnrichmentStage` Protocol + `default_stages()` (`Chapters→Timeline→Remap→Audio→Transcript→Links`); `StageContext`, `StageStats`, the wall-clock `stop()` budget. |
 | **Scheduling / backlog** | `ops/workqueue.py` — the `backlog_priority` policy (comparator registry: windowed `recency`, `city_order`, `body_order`, `feed_visible_first`, …), the derived **work manifest** (`WorkItem` per episode × output `work_class`, persisted to `state/work.json`), and the `lease`/`release`/`is_leased` API — the coordination substrate for ASR/diarization workers. `ops/work_leases.py` (H17 Stage 2, review/18 §4) — the **pull-based lease ledger**: per-item CAS objects `work-leases/<source>/<uid>.json` on R2 + `claim`/`renew`/`release`/`reap`. Both external GPU workers and the in-Actions internal worker now pull against this same ledger; `compute reconcile` rebuilds the manifest from canonical records before sweeping expired leases, so queue-ordering changes are no longer gated on an enrich shard finishing first. |
 | **Timeline / EDL** | `timeline.py` (served↔source map), `silence.py` (trim planner), `concat.py` (multi-segment), `clips.py` (clip/soundbite extraction). |

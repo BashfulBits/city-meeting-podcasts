@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
 from citypods.models import ChangeToken, Episode
@@ -97,3 +98,13 @@ class MeetingProvider(Protocol):
         to ``watch_url``."
         """
         ...
+
+
+@runtime_checkable
+class AgendaSource(Protocol):
+    """Minimum shape that may enrich a primary episode with official links."""
+
+    body: str
+    published: datetime
+    links: dict
+    uid: str | None

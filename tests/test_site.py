@@ -146,6 +146,49 @@ def test_city_page_renders_episode_resource_links():
     assert html.index("Agenda</a>") < html.index("Watch the video</a>")
 
 
+def test_archive_renders_calendar_only_rows_without_making_them_episode_pages():
+    from datetime import UTC, datetime
+
+    from citypods.models import AgendaRecord, Episode
+    from citypods.site import render_city_archive_page
+
+    episode = Episode(
+        guid="archive-1",
+        uid="episode-1",
+        title="Recorded Council Meeting",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://cdn.example/recording.mp4",
+        body="City Council",
+    )
+    html = render_city_archive_page(
+        _city("x-tx", "City of X", "X — Council"),
+        "https://e.test",
+        [episode],
+        calendar_records=[
+            AgendaRecord(
+                body="City Council",
+                title="Duplicate Calendar Row",
+                published=episode.published,
+                video_guid="archive-1",
+            ),
+            AgendaRecord(
+                body="Library Board",
+                title="Library Board Meeting",
+                published=datetime(2026, 5, 2, tzinfo=UTC),
+                links={"agenda": "https://agenda.example/library.pdf"},
+                uid="calendar-only",
+            ),
+        ],
+    )
+
+    assert "Recorded Council Meeting" in html
+    assert "Duplicate Calendar Row" not in html
+    assert "Calendar-only meetings" in html
+    assert "Library Board Meeting" in html
+    assert '<a href="https://agenda.example/library.pdf">Agenda</a>' in html
+    assert "/calendar-only/" not in html
+
+
 def test_city_page_renders_original_provider_transcript_link():
     from datetime import UTC, datetime
 

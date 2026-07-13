@@ -76,6 +76,62 @@ def test_provider_validates_source(tmp_path):
         load_city_configs(tmp_path, DEFAULTS)
 
 
+def test_auxiliary_provider_and_source_are_loaded_and_validated(tmp_path):
+    body = VALID.replace(
+        "podcast_description: Meetings.\n",
+        "podcast_description: Meetings.\n"
+        "aux_provider: legistar\n"
+        "aux_source:\n"
+        "  calendar_url: https://foo.legistar.com/Calendar.aspx\n"
+        "  granicus_base: https://foo.granicus.com\n"
+        "  backfill_since: '2024-01-01'\n"
+        "  view_id: 1\n",
+    )
+    _write(tmp_path, "foo-tx.yml", body)
+
+    city = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert city.aux_provider == "legistar"
+    assert city.aux_source == {
+        "calendar_url": "https://foo.legistar.com/Calendar.aspx",
+        "granicus_base": "https://foo.granicus.com",
+        "backfill_since": "2024-01-01",
+        "view_id": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    "addition, match",
+    [
+        ("aux_provider: legistar\n", "set together"),
+        ("aux_source: {}\n", "set together"),
+    ],
+)
+def test_auxiliary_source_fields_must_be_set_together(tmp_path, addition, match):
+    _write(tmp_path, "foo-tx.yml", VALID + addition)
+    with pytest.raises(ValueError, match=match):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_auxiliary_source_inherits_from_city_entity(tmp_path):
+    _write_entity(
+        tmp_path,
+        "foo-tx.yml",
+        """
+        aux_provider: legistar
+        aux_source:
+          calendar_url: https://foo.legistar.com/Calendar.aspx
+          granicus_base: https://foo.granicus.com
+          view_id: 1
+          backfill_since: '2010-01-01'
+        """,
+    )
+    _write(tmp_path, "foo-tx.yml", VALID.replace("state: TX\n", "city: foo-tx\n"))
+
+    city = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert city.aux_provider == "legistar"
+    assert city.aux_source["calendar_url"] == "https://foo.legistar.com/Calendar.aspx"
+
+
 @pytest.mark.parametrize(
     "bad_slug",
     ["../etc/passwd", "foo/bar", "foo.tx", "Foo-TX", "foo_tx", "/etc/passwd", ""],

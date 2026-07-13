@@ -5,15 +5,25 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import UTC, datetime
 
 import pytest
 
-from citypods.records import load_records, protected_blocks_for_lane, save_records
+from citypods.models import AgendaRecord
+from citypods.records import (
+    calendar_records_path,
+    load_calendar_records,
+    load_records,
+    protected_blocks_for_lane,
+    save_calendar_records,
+    save_records,
+)
 from citypods.statesync import (
     STATE_PREFIX,
     fetch_remote_records,
     pull_state,
     push_asr_runtime_log_merged,
+    push_calendar_records_merged,
     push_records_merged,
     push_state,
     push_transcript_quality_log_merged,
@@ -273,6 +283,62 @@ def test_push_records_merged_preserves_concurrent_audio(tmp_path):
     assert final["transcript"]["synced"] is True
     # The local on-disk copy is rewritten to match what was pushed (so a later reuse sees the URL).
     assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
+
+
+def test_push_calendar_records_merged_preserves_concurrent_history(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    when = datetime(2020, 5, 1, tzinfo=UTC)
+
+    remote_state = tmp_path / "remote-state"
+    save_calendar_records(
+        remote_state,
+        sk,
+        {
+            "u1": AgendaRecord(
+                body="City Council",
+                title="Council meeting",
+                published=when,
+                links={"agenda": "https://calendar.example/agenda.pdf"},
+                uid="u1",
+            )
+        },
+    )
+    bucket.put_file(
+        f"{STATE_PREFIX}/sources/{sk}/calendar.json",
+        calendar_records_path(remote_state, sk),
+        "application/json",
+    )
+    save_calendar_records(
+        state_dir,
+        sk,
+        {
+            "u1": AgendaRecord(
+                body="City Council",
+                title="Council meeting",
+                published=when,
+                links={"minutes": "https://calendar.example/minutes.pdf"},
+                uid="u1",
+            ),
+            "u2": AgendaRecord(
+                body="Library Board",
+                title="Library meeting",
+                published=when,
+                uid="u2",
+            ),
+        },
+    )
+
+    assert push_calendar_records_merged(bucket, state_dir, [sk]) == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    records = load_calendar_records(restored, sk)
+    assert set(records) == {"u1", "u2"}
+    assert records["u1"].links == {
+        "agenda": "https://calendar.example/agenda.pdf",
+        "minutes": "https://calendar.example/minutes.pdf",
+    }
 
 
 def test_push_records_merged_transcribe_lane_preserves_remote_served_duration(tmp_path):

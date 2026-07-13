@@ -8,8 +8,8 @@ import json
 
 from citypods.chapters import episode_served_chapters
 from citypods.durations import episode_served_duration_seconds
-from citypods.feeds import enclosure_url, episode_resource_links, meeting_page_url
-from citypods.models import City, Episode
+from citypods.feeds import enclosure_url, episode_resource_links, meeting_page_url, ordered_links
+from citypods.models import AgendaRecord, City, Episode
 from citypods.providers import get_provider
 from citypods.render import get_env
 from citypods.timeline import served_to_source
@@ -271,10 +271,13 @@ def render_city_archive_page(
     base_url: str,
     episodes: list[Episode],
     *,
+    calendar_records: list[AgendaRecord] | None = None,
     site_config: dict | None = None,
 ) -> str:
-    """Render the uncapped retained archive listing for one city/body feed."""
+    """Render retained recordings plus durable no-video calendar metadata for one feed."""
     site = base_url.rstrip("/")
+    episode_uids = {episode.uid for episode in episodes if episode.uid}
+    episode_guids = {episode.guid for episode in episodes if episode.guid}
     rows = [
         {
             "title": ep.title,
@@ -285,11 +288,25 @@ def render_city_archive_page(
         for ep in sorted(episodes, key=lambda e: e.published, reverse=True)
         if meeting_page_url(city, ep, base_url)
     ]
+    calendar_rows = [
+        {
+            "title": record.title or f"{record.body} Meeting",
+            "published": record.published.strftime("%B %-d, %Y"),
+            "links": ordered_links(record.links),
+        }
+        for record in sorted(
+            calendar_records or [], key=lambda record: record.published, reverse=True
+        )
+        # A row represented by an episode is already listed above.  Clip identity
+        # handles source-specific body-name differences that prevent a UID match.
+        if record.uid not in episode_uids and record.video_guid not in episode_guids
+    ]
     template = get_env().get_template("city_archive.html.j2")
     return template.render(
         city=city,
         site=site,
         config=site_config or {},
         episodes=rows,
+        calendar_records=calendar_rows,
         city_url=f"{site}/{city.slug}/",
     )

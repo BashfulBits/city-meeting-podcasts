@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from citypods.providers.civicclerk import CivicClerkProvider, parse_events
+from citypods.providers.civicclerk import CivicClerkProvider, parse_agenda_index, parse_events
 from tests.conftest import fixture_bytes
 
 SAMPLE = json.dumps(
@@ -132,6 +132,31 @@ def test_published_files_become_agenda_links():
 def test_no_links_without_api_base():
     eps = parse_events(fixture_bytes("civicclerk", "travis-county-tx"), category_id=26)
     assert all(e.links == {} for e in eps)  # api_base omitted -> no file links built
+
+
+def test_agenda_index_keeps_documented_events_without_media():
+    payload = json.dumps(
+        {
+            "value": [
+                {
+                    "id": 103,
+                    "startDateTime": "2026-05-16T12:20:00Z",
+                    "categoryId": 26,
+                    "categoryName": "Commissioners Court",
+                    "hasMedia": False,
+                    "publishedFiles": [{"type": "Agenda", "fileId": 99}],
+                }
+            ]
+        }
+    ).encode()
+
+    records = parse_agenda_index(
+        payload, api_base="https://traviscotx.api.civicclerk.com", category_id=26
+    )
+
+    assert len(records) == 1
+    assert records[0].body == "Commissioners Court"
+    assert records[0].links["agenda"].endswith("fileId=99,plainText=false)")
 
 
 def test_parse_bookmarks_drops_zero_time_and_picks_transcript():

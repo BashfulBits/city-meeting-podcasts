@@ -120,11 +120,29 @@ def _build_city(
     # here — the resolve/private-IP check runs at fetch time (citypods.http.GuardedHTTPAdapter).
     validate_city_sources(raw["provider"], raw["source"], _get("city_website"))
 
+    # Like meetings_url/state, a verified companion normally belongs to the
+    # city entity and is inherited by each of its body feeds.  A feed may still
+    # override it explicitly for an exceptional body-specific calendar.
+    aux_provider_name = _get("aux_provider")
+    aux_source = _get("aux_source")
+    if (aux_provider_name is None) != (aux_source is None):
+        raise ValueError(f"{source_file.name}: aux_provider and aux_source must be set together")
+    if aux_provider_name is not None:
+        if not isinstance(aux_provider_name, str) or not aux_provider_name.strip():
+            raise ValueError(f"{source_file.name}: aux_provider must be a non-empty provider name")
+        if not isinstance(aux_source, dict):
+            raise ValueError(f"{source_file.name}: aux_source must be a mapping")
+        aux_provider = get_provider(aux_provider_name)
+        aux_provider.validate(aux_source)
+        validate_city_sources(aux_provider_name, aux_source, _get("city_website"))
+
     known = (
         set(REQUIRED_CITY_KEYS)
         | set(PRESENT_BUT_MAY_BE_BLANK)
         | {
             "city",
+            "aux_provider",
+            "aux_source",
             "state",
             "city_website",
             "meetings_url",
@@ -152,6 +170,8 @@ def _build_city(
         podcast_author=raw["podcast_author"],
         podcast_email=raw["podcast_email"],
         podcast_description=raw["podcast_description"],
+        aux_provider=aux_provider_name,
+        aux_source=dict(aux_source) if isinstance(aux_source, dict) else None,
         city_entity=entity_slug,
         state=_get("state"),
         city_website=_get("city_website"),
