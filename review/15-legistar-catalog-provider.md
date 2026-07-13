@@ -60,8 +60,8 @@ Legistar**, the same way Swagit-primary cities could use any of the three.
 
 | Video provider we ingest today | Owns it | Candidate sibling(s), any may apply | Portal/API pattern | Status |
 |---|---|---|---|---|
-| **Granicus** | Granicus (since 2011) | **Legistar** (proven), **OneMeeting**, **Agenda PE** — any could apply, not just Legistar | `{org}.legistar.com/Calendar.aspx` (Legistar); OneMeeting/Agenda PE patterns TBD | Legistar: Part A already works. OneMeeting/Agenda PE: unconfirmed for any Granicus-primary city in this catalog |
-| **Swagit** | Granicus (both Legistar and Swagit are Granicus products; Swagit's acquisition happened later, via Rock Solid, but that distinction has no bearing on which agenda product a city chose) | Same three candidates as Granicus — **Legistar**, **OneMeeting**, **Agenda PE** | Same as above | OneMeeting: real production example (Waco, below). Legistar: believed true for Denton, TX (maintainer recollection, exact URL unconfirmed — §B.2). Agenda PE: no confirmed example yet, no confirmed portal URL pattern either |
+| **Granicus** | Granicus (since 2011) | **Legistar** (proven), **OneMeeting**, **Agenda PE** — any could apply, not just Legistar | `{org}.legistar.com/Calendar.aspx` (Legistar); `{city}.primegov.com/public/portal` (OneMeeting/PrimeGov, confirmed pattern — Part C); Agenda PE pattern still TBD | Legistar: Part A already works. OneMeeting/Agenda PE: unconfirmed for any Granicus-primary city in this catalog |
+| **Swagit** | Granicus (both Legistar and Swagit are Granicus products; Swagit's acquisition happened later, via Rock Solid, but that distinction has no bearing on which agenda product a city chose) | Same three candidates as Granicus — **Legistar**, **OneMeeting**, **Agenda PE** | Same as above | OneMeeting: real production example (Waco, below); platform mechanics now confirmed live against a real PrimeGov portal (Renton, WA, not in this catalog — Part C). Legistar: believed true for Denton, TX (maintainer recollection, exact URL unconfirmed — §B.2). Agenda PE: no confirmed example yet, no confirmed portal URL pattern either |
 | **CivicPlus** | CivicPlus (since 2017, via BoardSync acquisition, rebranded CivicClerk) | **CivicClerk** | `{tenant}.api.civicclerk.com` (OData JSON API — this project's existing `civicclerk.py` already speaks it) | Same parent company; product bundling, not a technical integration |
 
 **Design consequence: discovery must probe every known candidate system for a city, not assume any
@@ -810,7 +810,7 @@ prerequisite.
 
 ---
 
-## Part C — OneMeeting provider (new — one of two known candidate siblings for Swagit, not the only one)
+## Part C — OneMeeting/PrimeGov provider (new — one of several known candidate siblings for Swagit, not the only one)
 
 **Corrected 2026-07-16: this is *a* candidate for Swagit cities, not *the* one.** §0.1's Denton finding
 means a Swagit city might use OneMeeting, might use Legistar (already fully covered by Part A/B with no
@@ -819,65 +819,130 @@ production case (Waco), not because it's assumed to be every Swagit city's answe
 checklist (§B.2) is what actually decides which mechanism applies to which city, this Part just makes
 OneMeeting one of the checklist's viable options once built.
 
-**Confirmed facts (2026-07-16 research):** public portal pattern `portal-{org}.primegov.com` (OneMeeting
-is the current name for what was PrimeGov before Rock Solid's rebrand). Real production integration
-exists today (the Waco example, §0.1) — OneMeeting pages link directly to the Swagit player, including
-item-level jump points, which is structurally the same "embedded foreign-provider reference" pattern
-Legistar already uses for Granicus clip IDs (Part A, "Granicus clip_id extraction").
+**Confirmed facts (2026-07-16 research; corrected 2026-07-12 with a live portal inspection):** OneMeeting
+is sold today as PrimeGov's product line under the Granicus umbrella (§0.1) — "OneMeeting" and "PrimeGov"
+are the same commercial product, just different names used in Granicus's marketing vs. the product's own
+URLs/branding. **The URL pattern in the original draft, `portal-{org}.primegov.com`, was wrong.**
+Live-verified 2026-07-12 against a real, current production PrimeGov portal (City of Renton, WA,
+`https://renton.primegov.com/public/portal` — not a city in this catalog, but the same commercial product,
+used here purely to confirm the platform's real mechanics): the actual pattern is **`{city}.primegov.com`**,
+no `portal-` prefix. Confirmed endpoints, all read directly from a live accessibility-tree dump of the
+portal's Archived Meetings table, not inferred from a mockup or search result:
 
-### §C.1 Design — template lifted from Part A's Legistar mechanism, not invented fresh
+| Artifact | Confirmed URL pattern | Example (Renton) |
+|---|---|---|
+| Listing/search page | `https://{city}.primegov.com/public/portal` | `https://renton.primegov.com/public/portal` |
+| HTML agenda | `https://{city}.primegov.com/Portal/Meeting?meetingTemplateId={id}` | `.../Portal/Meeting?meetingTemplateId=1732` |
+| PDF agenda | `https://{city}.primegov.com/Public/CompiledDocument?meetingTemplateId={id}&compileOutputType=1` | `.../CompiledDocument?meetingTemplateId=1732&compileOutputType=1` |
+| PDF packet | Same endpoint as PDF agenda, **different `meetingTemplateId`** (a sibling ID, not a query-param variant — e.g. agenda `1732` pairs with packet `1734`, agenda `1554` pairs with packet `1556`) | `.../CompiledDocument?meetingTemplateId=1734&compileOutputType=1` |
+| Video (when present) | A plain `<a href="...">` in the row's "Video" column — **the target is an arbitrary external URL, not a fixed pattern.** Confirmed directly: two of Renton's five most recent archived meetings link straight to `https://youtube.com/watch?v={id}` (YouTube, not Swagit) | `https://youtube.com/watch?v=Ba7SzeAz4YM` |
 
-Part A's clip_id-extraction mechanism generalizes cleanly: (a) identify the interactive/embedded-widget
-attribute carrying the foreign provider's reference (for Legistar: `onclick="radopen('&lt;url&gt;', ...)"`;
-for OneMeeting: **unconfirmed without live HTML** — likely a `data-*` attribute, an `onclick` player-open
-call, or an `&lt;iframe src=...&gt;`, needs live verification before implementation, exactly like Part A's
-own "verify body names against live Legistar" step), (b) extract the Swagit reference via a narrow regex
-against that one attribute, not full HTML parsing, (c) skip rows where the pattern is absent (agenda-only
-or cancelled meetings), (d) reconstruct the reference into Swagit's own canonical URL scheme and delegate
-media resolution to the existing `SwagitProvider` logic — never re-derive it.
+Both the HTML-agenda and PDF-agenda endpoints were confirmed by loading real pages, not just reading their
+hrefs: `Portal/Meeting?meetingTemplateId=1732` renders a genuine, richly structured agenda (real item
+titles, dollar figures, descriptions) for an upcoming Finance Committee meeting — not a stub or a login
+wall.
 
-**Two usage modes, both viable, decided per-city:**
-- **Full-replacement** (Mechanism A) — for a Swagit city with a genuinely limited RSS/API history window
-  and a verified-viable OneMeeting calendar with embedded Swagit references: `city.provider` switches to
-  `onemeeting`, mirroring Part A's Legistar migration exactly (same source_key-change/orphan-handling
-  concerns, same verification-before-YAML-migration discipline).
-- **Auxiliary** (Mechanism B, Part B) — for a Swagit city that just wants agenda URLs attached without a
-  full migration: `city.aux_provider = "onemeeting"`.
+**The video-link mechanism is simpler than originally assumed, and it's provider-agnostic.** The original
+draft assumed the foreign-provider reference would be hidden in a JS `onclick`/`data-*` attribute needing
+regex extraction, by analogy to Legistar's Granicus clip-ID mechanism (Part A). That assumption doesn't
+hold: PrimeGov's Video column, when populated, is a **plain anchor tag** — no JS-attribute parsing needed,
+just read the row's Video-column `href`. But the href is **not guaranteed to be Swagit** — Renton's two
+observed examples are direct YouTube links. This doesn't contradict the Waco recollection (§0.1) that
+OneMeeting can embed a Swagit player with item-level jump points; it confirms PrimeGov's Video column is a
+generic external-link slot each city configures against its own video vendor, of which Swagit is one
+option (YouTube confirmed here; Vimeo or a direct Granicus embed are equally plausible elsewhere). **Design
+consequence: the extraction code must treat the Video href as an opaque external URL and dispatch on its
+domain, not assume-and-delegate to `SwagitProvider` unconditionally** — a real correction to the original
+"delegate media resolution to the existing `SwagitProvider` logic" plan, folded into §C.1 below.
+
+**Video coverage is sparse per body, not per meeting — a field observation, not necessarily
+generalizable to this catalog's own candidate cities.** Of Renton's 5 most recent archived meetings (all
+five with full HTML Agenda + PDF Agenda + PDF Packet), only 2 (a Regular City Council Meeting and a
+Special Committee of the Whole) had a populated Video link; the other 3 (Public Safety Committee, Planning
+Commission, and a cancelled LEOFF Disability Board meeting) had none. This reads as a normal per-body
+recording policy (not every committee gets videotaped) — the same pattern this codebase already handles
+via `MediaAvailability` — not a defect in PrimeGov's coverage. It does mean: (a) Mechanism A
+(full-replacement) needs the same per-body skip-if-absent handling Part A already has for Granicus, and
+(b) a city's OneMeeting/PrimeGov portal is a strong, now-confirmed source for agenda/document coverage
+(Goals 1–2) even where it's a weak or partial video source — reinforcing that Part C's primary value is
+Goals 1–2 (auxiliary attachment, Mechanism B), with Mechanism A viable only where a specific city's
+portal is separately checked to have comprehensive video coverage for the bodies this catalog ingests.
+
+### §C.1 Design — plain-anchor extraction, not JS-attribute parsing (revised 2026-07-12 with live data)
+
+Extraction is now confirmed simpler than Part A's Legistar mechanism, not just "lifted from it by
+analogy": (a) parse the Archived Meetings table rows (a standard HTML table with visible pagination
+controls — `Previous`/numbered pages/`Next` — no JS-attribute regex or hidden-widget interaction needed,
+confirmed via a live accessibility-tree dump), (b) for each row, collect the `HTML Agenda`/`Agenda`/
+`Packet` anchor hrefs (all same-origin, `meetingTemplateId`-keyed) and the `Video` anchor href if present,
+(c) skip rows with no Documents links at all (there were none in the observed sample — even a cancelled
+meeting, "LEOFF Disability Board - Cancelled", still carried an HTML Agenda link; only the Video link goes
+missing for unrecorded meetings), (d) classify the Video href by domain before deciding how to resolve it:
+`swagit.com`/`*.swagit.com` delegates to the existing `SwagitProvider` media-resolution logic (never
+re-derive it), any other domain (YouTube confirmed, others plausible) is stored as an opaque external
+video URL with no further resolution attempted — this project has no YouTube provider today, and an opaque
+link is sufficient for Mechanism B's auxiliary-attachment purpose, which only needs a pointer, not a
+resolvable stream.
+
+**Two usage modes, decided per-city; Mechanism B is now the better-evidenced default:**
+- **Auxiliary** (Mechanism B, Part B) — for a Swagit (or any) city that wants agenda URLs attached without
+  a full migration: `city.aux_provider = "onemeeting"`. This is the well-evidenced case: the confirmed
+  HTML-agenda and PDF-agenda/packet endpoints work regardless of that city's video vendor, and the
+  Video-column sparsity above doesn't block Goals 1–2 at all — a meeting missing a Video link still yields
+  a fully usable agenda URL.
+- **Full-replacement** (Mechanism A) — viable only where a city's OneMeeting/PrimeGov portal is separately
+  verified to carry comprehensive Swagit-resolvable video coverage for the specific bodies this catalog
+  already ingests, mirroring Part A's Legistar migration (same source_key-change/orphan-handling concerns,
+  same verification-before-YAML-migration discipline). Given the sparse per-body pattern observed above,
+  treat this as the exception, not the default path, until a specific city's coverage is checked.
 
 ### §C.2 Module / file plan
 
 - `citypods/providers/onemeeting.py` — new. Structurally mirrors `citypods/providers/legistar.py`:
-  `fetch_episodes` (portal scrape + pagination, mechanism TBD pending live HTML verification),
-  `resolve_media_url`/`video_deeplink`/`fetch_chapters` delegating to `SwagitProvider`'s existing logic
-  (same "extract module-level helper, delegate" refactor pattern Part A already used for
-  `granicus._resolve_download_url`).
+  `fetch_episodes` (portal table scrape + pagination — confirmed standard pagination controls, no special
+  JS interaction needed), `resolve_media_url`/`video_deeplink` dispatch on the Video href's domain
+  (Swagit → delegate to `SwagitProvider`'s existing logic; anything else → return the opaque external URL
+  as-is), `fetch_chapters` unimplemented (return `None`/`getattr`-absent) for non-Swagit video targets,
+  since this project has no other chapter-extraction path.
 - `citypods/providers/__init__.py` — register `OneMeetingProvider`.
-- **Live verification required before any implementation commitment** (matching Part A's own
-  discipline): fetch a real `portal-{org}.primegov.com` page for a Swagit city already in this catalog,
-  confirm the portal exists, confirm it embeds a Swagit-resolvable reference, and document the actual
-  HTML pattern — none of this can be finalized from research alone the way Part A's Legistar mechanics
-  could be (Legistar's markup was already documented via live inspection when Part A was written).
+- **Still required before implementation, now a narrower gap than before**: confirm at least one of this
+  catalog's own candidate cities (Waco, per the maintainer's recollection, is the strongest lead — §0.1)
+  actually resolves at `{city}.primegov.com` and exposes the expected table structure. The URL patterns,
+  table structure, and video-link mechanism are no longer speculative — they're confirmed against a real,
+  live, current production PrimeGov portal (Renton, WA) — but no catalog city's own hostname has been
+  independently re-verified this pass. That's the one remaining gap between L2 and L3.
 
 ### §C.3 Risks
 
-- **Unverified HTML structure** — everything in §C.1's extraction mechanism is a template by analogy to
-  Legistar, not a confirmed pattern. This is the single biggest open risk in the whole document; treat
-  Part C as L2 (designed approach, needs verification), not L3 (dev-ready), until a real OneMeeting page
-  for a real catalog city is inspected.
-- **Not every Swagit city has OneMeeting** — Rock Solid's OneMeeting is one option among several agenda
+- **No catalog city's OneMeeting hostname independently confirmed yet** — the platform mechanics (URL
+  patterns, table structure, video-link handling) are now confirmed against a real production PrimeGov
+  portal (Renton, WA, live-inspected 2026-07-12), but Renton isn't one of this catalog's cities. Waco is
+  the maintainer's recollection of a real OneMeeting↔Swagit case (§0.1), but its exact hostname wasn't
+  independently re-verified this pass. This is now the single biggest remaining gap to L3 — a much
+  narrower gap than the prior draft's "entire HTML structure is unconfirmed."
+- **Video href is an opaque external URL, not guaranteed Swagit** — confirmed directly (Renton links to
+  YouTube, not Swagit, for its two most recently recorded meetings). Extraction code must dispatch on
+  domain rather than assume Swagit universally; see §C.1's revised design. This is a genuine finding, not
+  a hedge — treat "OneMeeting embeds Swagit" as *possible per-city*, not a platform guarantee.
+- **Video coverage is sparse per body** — real example: 3 of Renton's 5 most recent archived meetings had
+  no Video link despite full agenda/document coverage. Likely reflects normal per-body recording policy
+  (see above), not a platform limitation, but means Mechanism A (full-replacement) needs the same
+  per-body skip-if-absent handling Part A already has for Granicus — don't assume uniform video coverage
+  across all bodies for a given city without checking.
+- **Not every Swagit city has OneMeeting** — OneMeeting/PrimeGov is one option among several agenda
   systems a Swagit customer might use (or none at all); this generalizes Legistar's own experience (not
   every Granicus city had a usable Legistar calendar either — Part A's own migration table documents
   partial coverage, e.g. Fort Worth's board/commission feeds staying Granicus-only).
-- **A live-verification attempt this pass (2026-07-16) was inconclusive, not a confirmed negative —
-  worth recording so it isn't repeated blindly.** Tried `austintx.legistar.com/Calendar.aspx`,
-  `dallastx.legistar.com/Calendar.aspx` (both returned "Invalid parameters!"), and
-  `portal-austintx.primegov.com` (DNS resolution failure). These are consistent with *either* a wrong
-  guessed subdomain slug *or* genuine absence — Pflugerville's slug pattern (`pflugerville.legistar.com`)
-  worked because it was already confirmed live when Part A was written, not because "`{cityname}tx`" is a
-  reliable convention. **The discovery methodology (§B.2) needs real per-city subdomain discovery (check
-  the city's own website for a linked Legistar/PrimeGov URL, rather than guessing the slug pattern),
-  not naive `{slug}.legistar.com`/`portal-{slug}.primegov.com` string construction.** Part C stays L2
-  pending a correctly-discovered hostname for a real city, not just another guess.
+- **A prior live-verification attempt for Legistar subdomain guessing (2026-07-16) was inconclusive, not
+  a confirmed negative — worth keeping this cautionary note, since it's exactly the mistake the original
+  `portal-{org}.primegov.com` guess also made, and which Renton's real URL just corrected.** Tried
+  `austintx.legistar.com/Calendar.aspx`, `dallastx.legistar.com/Calendar.aspx` (both "Invalid
+  parameters!"), and `portal-austintx.primegov.com` (DNS resolution failure — and now also known to be
+  the **wrong pattern entirely**, since the real pattern has no `portal-` prefix). **The discovery
+  methodology (§B.2) needs real per-city subdomain discovery (check the city's own website for a linked
+  Legistar/PrimeGov URL, rather than guessing the slug pattern)** — now demonstrated twice over: once by
+  the Legistar guesses failing, once by the original PrimeGov pattern guess itself being wrong until a
+  real example was found.
 
 ---
 
@@ -971,8 +1036,13 @@ supplies URLs. Within R11, in order:
    auxiliary-mode wiring, making it the lowest-risk, highest-confidence proof that the discovery
    methodology (§B.2) actually works, ahead of both Part C and Part D.
 4. **Part D (CivicClerk, also reuses existing adapter code) follows next.**
-5. **Part C (OneMeeting) is gated on live HTML verification and should follow all of the above, not
-   lead** — it's still the least-certain of the three sibling systems.
+5. **Part C (OneMeeting) should still follow all of the above, not lead** — it's still the least-certain
+   of the three sibling systems for *this catalog's* cities specifically, even though the platform
+   mechanics themselves are no longer the blocker they were: URL patterns, table structure, and the
+   video-link mechanism are now confirmed live against a real production PrimeGov portal (Renton, WA,
+   2026-07-12). What's still missing is a confirmed hostname for one of this catalog's own candidate
+   cities (Waco is the lead) — a narrower, faster verification step than re-deriving the HTML structure
+   from scratch would have been.
 
 **Migration:** no backfill required — this is additive URL/link enrichment on already-existing episodes,
 governed by the same `feed_content_hash` re-render trigger every other link-affecting change already
@@ -1001,10 +1071,14 @@ before beginning its own text-extraction work.
    the auxiliary mechanism works end to end.
 4. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (also reuses existing adapter
    code, no live-HTML-verification blocker). Interface question with Part B already resolved (§D.3).
-5. Part C: live verification of a real OneMeeting portal for a real catalog city (Waco is a confirmed
-   real-world example but not one of this project's own cities; Austin/Dallas guesses both failed this
-   pass), before any implementation commitment.
-6. Part C: `onemeeting.py` provider (full-replacement + auxiliary modes), gated on issue 5's findings.
+5. Part C: confirm a real catalog city's OneMeeting/PrimeGov hostname (Waco is a confirmed real-world
+   example but not one of this project's own cities; Austin/Dallas guesses both failed this pass). The
+   platform mechanics themselves (URL patterns, table structure, video-link handling) are no longer part
+   of this step — they're already confirmed live against a real production portal (Renton, WA,
+   2026-07-12, not a catalog city); this issue is now just per-city hostname discovery, not HTML
+   reverse-engineering.
+6. Part C: `onemeeting.py` provider (auxiliary mode by default; full-replacement mode only for a city with
+   separately-verified comprehensive video coverage — see §C.1), gated on issue 5's findings.
 7. **New, 2026-07-16**: discover whether Agenda PE (formerly Peak, Granicus's small-to-medium-government
    agenda product) has a public portal at all, and if so its URL pattern — zero prior research exists
    beyond confirming the product itself is real; worth prioritizing against this catalog's smaller
