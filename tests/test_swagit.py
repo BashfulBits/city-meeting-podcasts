@@ -113,6 +113,51 @@ def test_fetch_episodes_merges_and_dedups_multiple_list_urls(monkeypatch):
     assert eps[2].links["minutes"] == f"{ORIGIN}/videos/102/minutes"
 
 
+def test_fetch_episodes_follows_archive_pagination_and_dedups(monkeypatch):
+    import citypods.providers.swagit as sw
+
+    page_one = b"""
+    <ul><li><a href=\"/archive?page=2\">2</a></li><li><a href=\"/archive?page=3\">3</a></li></ul>
+    <table><tr><td><a href=\"/videos/300\">Board A</a></td>
+        <td nowrap> May 27, 2026 </td></tr></table>
+    """
+    page_two = b"""
+    <table><tr><td><a href=\"/videos/301\">Board A</a></td>
+        <td nowrap> May 20, 2026 </td></tr></table>
+    """
+    page_three = b"""
+    <table><tr><td><a href=\"/videos/300\">Board A</a></td>
+        <td nowrap> May 27, 2026 </td></tr></table>
+    """
+
+    class FakeResp:
+        status_code = 200
+
+        def __init__(self, content):
+            self.content = content
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, timeout=None):
+            return FakeResp(
+                {
+                    f"{ORIGIN}/archive": page_one,
+                    f"{ORIGIN}/archive?page=2": page_two,
+                    f"{ORIGIN}/archive?page=3": page_three,
+                }[url]
+            )
+
+    monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
+    eps = SwagitProvider().fetch_episodes({"list_url": f"{ORIGIN}/archive"})
+
+    assert [ep.guid for ep in eps] == ["300", "301"]
+
+
 class _Resp:
     def __init__(self, status, location=None):
         self.status_code = status
