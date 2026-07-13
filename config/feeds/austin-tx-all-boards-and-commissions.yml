@@ -1,0 +1,14 @@
+slug: austin-tx-all-boards-and-commissions
+city: austin-tx
+provider: swagit
+source:
+  # City-wide archive covering every Austin board, commission, committee, and council view.
+  # Dedicated body feeds remain canonical for recordings already represented there; the build
+  # reconciles this aggregate by Swagit video GUID before persisting or rendering overlap.
+  list_url: https://austintx.new.swagit.com/views/117/city-council
+  aggregate: true
+podcast_title: "Austin: All Boards and Commissions"
+podcast_author: "City of Austin, TX"
+podcast_email: ""
+podcast_description: "Austin public meeting recordings across city boards, commissions, committees, and City Council."
+max_episodes: 50

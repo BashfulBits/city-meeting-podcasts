@@ -21,6 +21,17 @@ Phase R (Research-Tool Surface)._
   walks the configured year range at `wacotexas.primegov.com`, preserving official agenda, packet,
   and minutes document links for meetings while Swagit remains the recording provider. It is
   auxiliary-only: PrimeGov rows do not become podcast episodes without a playable media source.
+- **Gainesville CivicEngage Archive Center enrichment (R11).** Gainesville's CivicMedia recording
+  feed now composes with its official CivicEngage City Council agenda and minutes archives. The
+  auxiliary adapter joins dated archive rows without creating document-only podcast episodes; links
+  remain additive and existing CivicMedia media/audio identities are unchanged.
+  
+- **Swagit archive pagination and Austin aggregate coverage (R11).** Swagit view fetches now follow
+  every advertised archive page instead of only the first 20 rows. Austin retains its dedicated body
+  feeds and adds a city-wide all-boards-and-commissions projection; overlapping recordings reconcile
+  by stable Swagit video GUID, enrich the canonical dedicated record, and reuse its UID/audio artifact
+  rather than creating a duplicate public episode. This is metadata/discovery behavior only: no audio
+  pipeline version changed and existing hosted audio is not invalidated.
 
 - **Granicus episode discovery is now archive-first (R11 phase 1).** The provider derives each native
   `ViewPublisher.php` archive from the configured `ViewPublisherRSS.php` view ID, removing the
