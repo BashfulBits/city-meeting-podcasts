@@ -495,6 +495,13 @@ already exists): Legistar/CivicClerk expose structured upcoming events + publish
 need agenda-portal scraping. Persist as forward-looking records. *Tradeoff:* provider-dependent coverage;
 strongest with Legistar (#31). The data spine for alerts + look-ahead.
 
+**Deferred document-only meeting discovery.** Some provider calendars expose meetings before or without
+a recording, together with agendas, packets, or minutes. Those rows could improve Phase F's upcoming
+meeting notifications and calendar awareness, but public entries for meetings with no recording are
+deliberately deferred: RSS remains playable-media-only, and no document-only episode pages are created
+until Phase F defines their lifecycle and presentation. This does not remove metadata pages for an
+existing recorded episode when its media is unavailable.
+
 **Upcoming-meetings `.ics` calendar (#19).** Generate per-city/body `.ics` from upcoming events; reuses
 the fetch above. Static, low-cost.
 
