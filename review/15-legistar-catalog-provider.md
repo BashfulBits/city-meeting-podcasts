@@ -78,12 +78,16 @@ confirmed real-world example in this research pass; it's named as a candidate wo
 proven pairing. *(Update 2026-07-12: Agenda PE now has a worked example — it publishes through the
 standard Granicus surfaces, see §B.2 step 3 and Appendix P.1.)*
 
-**The census goes wider than this family table (added 2026-07-12, maintainer request):** every other
-common civic video/agenda platform — the sunsetting Granicus lines (IQM2, NovusAGENDA), the CivicPlus
-lines beyond CivicClerk (CivicEngage Agenda Center, Municode Meetings), the Diligent lines (BoardDocs,
-CivicWeb), eScribe, the independents (AgendaQuick, SIRE, ClerkBase), and the independent video hosts
-(Cablecast, TelVue, Viebit, BoxCast, Open.Media) — is cataloged with URL patterns and verification
-status in **Appendix P** at the end of this doc. §B.2's discovery checklist consumes that census.
+**The census goes wider than this family table (added 2026-07-12, maintainer request; extended to
+exhaustive the same day):** every other common civic video/agenda platform — the sunsetting Granicus
+lines (IQM2, NovusAGENDA), the CivicPlus lines beyond CivicClerk (CivicEngage Agenda Center, Municode
+Meetings), the Diligent lines (BoardDocs, CivicWeb), eScribe, the independents (AgendaQuick, SIRE,
+ClerkBase, BoardBook, Simbli, Catalis, Streamline), the independent video hosts (Cablecast, TelVue,
+Viebit, BoxCast, Open.Media, Castus, PEG Central, IBM Video/Ustream), **YouTube specifically** (P.8 —
+no separate government platform exists; ordinary government-run channels, three distinct arrival
+paths), and the unstructured CMS-tier long tail (P.9 — Town Web, Revize, Digital Towpath et al.) — is
+cataloged with URL patterns and verification status in **Appendix P** at the end of this doc. §B.2's
+discovery checklist consumes that census.
 
 ### §0.2 The joining key already exists — this doesn't need new fuzzy-matching
 
@@ -1190,6 +1194,10 @@ for this catalog's 80 Swagit feeds, ahead of every auxiliary portal in this cens
 | **SIRE** (Hyland) | Self-/city-hosted: `{city-host}/sirepub/home.aspx`, agendas at `/sirepub/agview.aspx?agviewmeetid={id}&agviewdoctype=AGENDA` | Search-evidenced (Las Vegas NV, North Las Vegas NV, Hillsborough CA) | Legacy product, no standard hostname (lives on each city's own domain) — discoverable only via §B.2 step 0, never by pattern probing |
 | **ClerkBase** | `clerkshq.com/{org}-{st}` (listing) + `clerkshq.com/Content/{Org}-{st}/council/{yyyy}/{monDD_yy}ag.htm` (HTML agendas) | Search-evidenced (heavily Rhode Island/New England: South Kingstown, Westerly, Central Falls; + Tipp City OH) | Regional; unlikely for this catalog's Texas cities, listed for completeness |
 | **Laserfiche WebLink** | `{city-host}/WebLink/` (generic document repository, e.g. `lf.saratoga-springs.org/WebLink/`) | Search-evidenced | Not an agenda system — a doc-management portal some cities dump agendas into. Last-resort source; no structure to design against generally |
+| **BoardBook Premier** (Texas Association of School Boards) | `meetings.boardbook.org/Public/Agenda/{orgId}?meeting={meetingId}` — org keyed by numeric path id on a shared host, not a subdomain | Search-evidenced (2026-07-12; many live Texas agendas incl. Socorro ISD) | **The most Texas-relevant addition in this census** — TASB's product, dominant among TX school districts and used by some small TX governmental entities. If this catalog ever adds TX school boards or the small-city long tail, check BoardBook early |
+| **Simbli** (eBOARDsolutions) | `simbli.eboardsolutions.com/Meetings/...aspx?S={siteId}&MID={meetingId}` (+ `Attachment.aspx?S=&AID=&MID=` for documents) — shared host, org keyed by `S=` query param | Search-evidenced (2026-07-12) | School-board-centric (spread via state school-board associations); same "shared host, query-param org" shape as BoardBook/AgendaQuick — discoverable only from the entity's own site |
+| **Catalis Meeting Management** | No standard public hostname found — the public meeting site embeds on each government's own website | Search-evidenced product; no portal URL pattern observed this pass | Discoverable only via §B.2 step 0 (the city's own site); nothing to pattern-probe |
+| **Streamline** (special-district websites) | `{org}.specialdistrict.org` — meetings pages with agenda/minutes PDFs under `/files/{hash}/{name}.pdf` | Search-evidenced (2026-07-12; multiple live CA/OR districts) | Relevant if this catalog ever ingests special districts (water, library, harbor boards) — a large, structured, single-vendor surface for exactly the small-entity tier that otherwise has nothing |
 
 ### P.6 Independent video platforms
 
@@ -1203,9 +1211,69 @@ These matter mainly as (a) classification targets for §C.1's opaque-`videoUrl` 
 | **Viebit** | `{org}.viebit.com` (listing) + `/watch?hash={hash}` (legacy `/player.php?hash={hash}`) | Search-evidenced (NYC Council, Buffalo NY, Fremont CA) | Subdomain-per-org, clean patterns |
 | **BoxCast** | `boxcast.tv/channel/{opaqueId}` and `boxcast.tv/view/{slug}-{opaqueId}` | Search-evidenced (Durham NC, +) | Opaque IDs, no org subdomain — same discoverability caveat as TelVue |
 | **Open.Media** (Open Media Foundation, nonprofit) | No standard pattern — syncs agenda timestamps onto YouTube live streams; embeds on city sites | Search-evidenced (Colorado-centric, e.g. Colorado Channel) | Effectively resolves to YouTube underneath |
-| **Consumer hosts: YouTube / Vimeo / Facebook / Zoom** | n/a | **Live-verified as a real occurrence**: Renton's OneMeeting Video column links straight to `youtube.com/watch?v=` | This project has no consumer-host provider; a city publishing *only* via YouTube is a separate future decision (ToS/tooling), deliberately out of scope for R11 |
+| **Castus** | `{org}.vod.castus.tv/vod/?nav=programs/{Program+Name}` (e.g. `medford.vod.castus.tv/vod/?nav=programs/Medford+City+Council`) | Search-evidenced (2026-07-12; Medford OR) | PEG VOD; vendor advertises chapters *and attached PDF documents* per video — i.e., a Castus city may carry its agenda PDFs on the video platform itself, same shape as the swagit-attachments shortcut |
+| **PEG Central** | `pegcentral.com` player pages, linked from city sites (Tualatin OR); no per-org subdomain pattern observed this pass | Search-evidenced existence; URL pattern unconfirmed | Older PEG hosting; discoverable only via the city's own links |
+| **IBM Video Streaming** (formerly Ustream) | `video.ibm.com/channel/{slug}` | Search-evidenced (2026-07-12; Peterborough NH PEG, Lansing MI City-TV) | Legacy tail — Ustream's municipal base, still live for some cities |
+| **Vimeo Livestream** (`livestream.com`) | `livestream.com/accounts/{id}` (recalled pattern) | Unverified this pass — searches surfaced no current city usage, consistent with cities having largely moved off it | Declining legacy; listed so future discovery recognizes the domain, not as a build target |
+| **Consumer hosts: YouTube / Vimeo / Facebook / Zoom** | See **P.8** (YouTube gets its own subsection — maintainer question 2026-07-12) | **Live-verified as a real occurrence**: Renton's OneMeeting Video column links straight to `youtube.com/watch?v=` | This project has no consumer-host provider; a city publishing *only* via YouTube is a separate future decision (ToS/tooling), deliberately out of scope for R11 |
 
-### P.7 Rolled-up design consequences
+### P.8 YouTube specifically — there is no separate government platform (added 2026-07-12; numbered out of position so P.7's roll-up stays last, per the no-renumbering convention)
+
+**Direct answer to the maintainer's question ("do smaller governments use a separate government
+platform on YouTube, or is it just governments uploading under a government account?"): it's the
+latter — there is no government-specific YouTube product, portal, or URL space.** Cities of every size
+publish through **ordinary YouTube channels registered to the government** (a standard Brand Account),
+indistinguishable in URL structure from any other channel. Confirmed examples span the full size range:
+New York City Council (`youtube.com/@NYCCouncil`), Saint Paul MN (`youtube.com/stpaulgov`), Salt Lake
+City (`youtube.com/slclivemeetings`), Phoenix (`youtube.com/user/cityofphoenixaz`), plus Boulder CO,
+Raleigh NC, and Philadelphia all directing residents to their official channels — and at the small end,
+towns like Seaford, DE streaming council meetings via "Facebook Live and YouTube" with no other
+platform at all.
+
+**Three distinct ways a meeting ends up on YouTube — worth distinguishing because they imply different
+ingestion stories:**
+
+1. **Native**: the government runs its own channel and streams/uploads directly (the small-town default,
+   but also NYC-scale practice). The channel is the *primary and only* video archive.
+2. **Vendor simulcast**: the city's meeting platform pushes a copy. Confirmed concretely: **Granicus's
+   own Simulcast feature** (Live Cast/LiveManager) broadcasts a meeting simultaneously to MediaManager
+   *and* a YouTube/Facebook account, per Granicus's own support docs; Open.Media (P.6) likewise syncs
+   agenda timestamps onto YouTube streams. Here YouTube is a *mirror* — the vendor platform remains the
+   canonical archive, and this project should keep ingesting the vendor side.
+3. **Link-out**: an agenda platform's video field points at YouTube (live-verified at Renton — P.6/§C.1).
+   YouTube is canonical for the video, the agenda platform for everything else.
+
+**URL patterns** (ordinary YouTube, listed for the census's completeness): channel
+`youtube.com/@{handle}` / `/channel/{UCid}` / legacy `/user/{name}`; live tab `/@{handle}/streams`;
+playlist `/playlist?list={PLid}`; watch `?v={videoId}`; native deep-link `&t={seconds}s`. Some
+governments put timestamp "chapters" in video descriptions — parseable structure, when present.
+
+**Ingestion stance (unchanged by this research, now with its reasoning recorded):** if a catalog-relevant
+city turns out to be YouTube-native (path 1), the sanctioned integration surface is the **YouTube Data
+API v3** (official, free quota-based API: channel → uploads playlist → per-video metadata), which cleanly
+covers *metadata and links* — titles, dates, durations, deep links, description-chapters. That's enough
+for auxiliary attachment (Mechanism B) and for §C.1-style opaque-URL storage. Actually *downloading
+media* from YouTube for the transcription pipeline is a separate ToS/tooling decision this doc
+deliberately does not make — it's the one census platform where "we found the video" and "we can ingest
+the audio" are different questions. No catalog city currently needs this; it's recorded so the decision
+isn't re-derived from scratch when one does.
+
+**Discoverability caveat**: there is no directory of government YouTube channels — the channel must be
+found from the city's own website links, which is §B.2 step 0's discipline applied unchanged.
+
+### P.9 The CMS-tier long tail — no structured surface at all (added 2026-07-12; numbered out of position, same convention)
+
+Below every platform above sits the true long tail: small-government website CMS vendors whose
+"agendas" feature is a hand-uploaded PDF list on the city's own domain, with no standard URL structure,
+no API, and no cross-city pattern — **Town Web** (Wisconsin/Midwest tiny towns; confirmed
+agendas/minutes upload module + notification subscriptions), **Revize**, **GovOffice/Municipal Impact**,
+**Digital Towpath** (NY cooperative), and CivicPlus's own **CivicEngage** sites *without* the Agenda
+Center module. There is nothing to design against here as a class: per-city, the answer is §B.2 step 0
+(find what the city's site links to) and then R3's PDF-text extraction on whatever documents exist.
+Recorded so future catalog expansion doesn't mistake "no platform found" for "search harder" — for
+thousands of small governments, an unstructured PDF list *is* the entire meetings infrastructure.
+
+### P.7 Rolled-up design consequences (kept last on purpose; P.8/P.9 above are numbered out of position)
 
 1. **§B.2's checklist now probes this census, not just three Granicus siblings** — in practice the
    probe order per city is: Swagit-attachments shortcut (Swagit cities), then the city's own linked
@@ -1217,11 +1285,26 @@ These matter mainly as (a) classification targets for §C.1's opaque-`videoUrl` 
    gesture at.
 3. **Two platforms are confirmed JS-SPAs needing API-not-scrape integration** (PrimeGov — verified;
    BoardDocs — strongly suspected). The census's other agenda systems (Legistar, eScribe, CivicEngage,
-   NovusAGENDA, SIRE, ClerkBase, Municode) are plain-HTML surfaces a `requests` fetch can read.
+   NovusAGENDA, SIRE, ClerkBase, Municode, BoardBook, Simbli, Streamline) are plain-HTML surfaces a
+   `requests` fetch can read.
 4. **The catalog's actual near-term needs remain narrow**: Gainesville→check CivicEngage Agenda Center;
    Travis County→Part D (CivicClerk); the 4 Granicus cities→Part A (already designed); the 4 Swagit
    cities→swagit-attachments shortcut first, then per-city discovery. Everything else in this census is
    a lookup table for future catalog growth, not pending work.
+5. **Agenda PDFs sometimes live on the *video* platform, not an agenda system** — now seen twice:
+   `swagit-attachments.granicus.com` (§B.2 shortcut) and Castus's advertised per-video PDF attachments
+   (P.6). When probing a city, check the video side for attached documents before hunting for a separate
+   agenda portal at all.
+6. **YouTube is a distribution channel, not a platform to integrate** (P.8): mirrors (vendor simulcast)
+   should be ignored in favor of the canonical vendor archive; YouTube-native cities are a
+   metadata-via-Data-API question with a deliberately deferred media-download decision.
+7. **Names that redirect — vendor graveyard, so future research doesn't re-chase them**: PrimeGov →
+   OneMeeting/Agenda OE (same product, Granicus); Peak → Agenda PE (Granicus); AgendaPal → acquired by
+   Municode 2021, now inside Municode Meetings (CivicPlus); BoardSync → became CivicClerk (CivicPlus);
+   MinuteTraq/MediaTraq → IQM2 → Accela Legislative Management → Granicus (EOL 2027); NovusAGENDA →
+   Granicus (EOL 2027); Ustream → IBM Video Streaming; iCompass/CivicWeb → Diligent Community; eScribe →
+   OnBoard (Passageways). A "new" vendor name encountered in the wild should be checked against this
+   list before being treated as an uncensused platform.
 
 ---
 
