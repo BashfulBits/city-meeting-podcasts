@@ -3,7 +3,7 @@
 {% block content %}
   <p><a class="muted" href="{{ city_url }}">← Back to feed page</a></p>
   <h1>{{ city.podcast_title }} Archive</h1>
-  <p class="tagline">Every retained meeting page for this board, including metadata-only unavailable recordings.</p>
+  <p class="tagline">Retained recordings and official calendar history for this board.</p>
 
   <ul style="list-style:none;margin:1.5rem 0 0;padding:0;">
     {% for e in episodes %}
@@ -20,4 +20,24 @@
     </li>
     {% endfor %}
   </ul>
+
+  {% if calendar_records %}
+  <h2 style="font-size:1rem;margin:1.8rem 0 .3rem;">Calendar-only meetings</h2>
+  <p class="muted">Official meetings with no retained recording. They are not podcast episodes.</p>
+  <ul style="list-style:none;margin:0;padding:0;">
+    {% for record in calendar_records %}
+    <li style="padding:.8rem 0;border-bottom:1px solid var(--border);display:grid;gap:.25rem;">
+      <div style="display:flex;justify-content:space-between;gap:1rem;align-items:baseline;flex-wrap:wrap;">
+        <span>{{ record.title }}</span>
+        <span class="muted" style="font-size:.92rem;">{{ record.published }}</span>
+      </div>
+      {% if record.links %}
+      <div class="muted" style="font-size:.85rem;">
+        {% for label, url in record.links %}<a href="{{ url }}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
 {% endblock %}

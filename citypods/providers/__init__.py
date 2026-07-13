@@ -6,10 +6,11 @@ an instance here. Lookup is by the ``provider:`` key in a city's YAML.
 
 from __future__ import annotations
 
-from citypods.providers.base import MeetingProvider, ProviderError
+from citypods.providers.base import AgendaSource, MeetingProvider, ProviderError
 from citypods.providers.civicclerk import CivicClerkProvider
 from citypods.providers.civicplus import CivicPlusProvider
 from citypods.providers.granicus import GranicusProvider
+from citypods.providers.legistar import LegistarProvider
 from citypods.providers.swagit import SwagitProvider
 
 _REGISTRY: dict[str, MeetingProvider] = {}
@@ -37,8 +38,16 @@ def provider_names() -> list[str]:
 
 # Built-in providers.
 register(GranicusProvider())
+register(LegistarProvider())
 register(CivicPlusProvider())
 register(CivicClerkProvider())
 register(SwagitProvider())
 
-__all__ = ["MeetingProvider", "ProviderError", "get_provider", "provider_names", "register"]
+__all__ = [
+    "AgendaSource",
+    "MeetingProvider",
+    "ProviderError",
+    "get_provider",
+    "provider_names",
+    "register",
+]

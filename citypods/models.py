@@ -190,6 +190,36 @@ class Episode:
 
 
 @dataclass
+class AgendaRecord:
+    """A durable calendar row, optionally linked to a separately recorded meeting.
+
+    This is intentionally not an :class:`Episode`: rows without a recording are
+    meeting metadata, not synthetic podcast items.  A verified companion may set
+    ``video_guid`` and ``video_url`` for a row that *does* identify a playable
+    recording; the pipeline can then materialize that recording as an Episode
+    while retaining this richer calendar record independently.
+    """
+
+    body: str
+    published: datetime
+    title: str = ""
+    links: dict = field(default_factory=dict)
+    video_guid: str | None = None
+    video_url: str | None = None
+    # Assigned with the primary provider-independent identity algorithm before
+    # reconciliation and used as the append-only calendar-store key.
+    uid: str | None = None
+
+
+@dataclass
+class CalendarIndex:
+    """One companion fetch's recorded-meeting backfill and full calendar metadata."""
+
+    episodes: list[Episode] = field(default_factory=list)
+    records: list[AgendaRecord] = field(default_factory=list)
+
+
+@dataclass
 class City:
     """A configured city, after merging site-level defaults."""
 
@@ -200,6 +230,11 @@ class City:
     podcast_author: str
     podcast_email: str
     podcast_description: str
+    # Optional verified calendar/agenda companion.  It enriches primary-provider
+    # episodes, can backfill explicitly linked recordings, and owns a separate
+    # durable calendar-metadata store; it never turns no-video rows into episodes.
+    aux_provider: str | None = None
+    aux_source: dict | None = None
     # Slug of the config/cities/<slug>.yml entity that supplied
     # city_website / meetings_url / state / colors.
     city_entity: str | None = None

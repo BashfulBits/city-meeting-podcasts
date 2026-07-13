@@ -227,6 +227,74 @@ def push_records_merged(
     return pushed
 
 
+def push_calendar_records_merged(storage, state_dir: Path, source_keys, *, log=None) -> int:
+    """Append-only, race-safe scoped push for ``sources/<key>/calendar.json``.
+
+    Calendar metadata is not owned by an audio/transcript artifact lane, but a
+    scoped run still refreshes its primary source and may discover additional
+    companion rows. Re-read the remote catalog and union official links before
+    upload so one lane cannot erase another lane's concurrently discovered
+    history. Sources with no local calendar file are skipped.
+    """
+    from citypods.records import (
+        calendar_records_path,
+        load_calendar_records,
+        merge_calendar_records,
+        save_calendar_records,
+    )
+
+    if not _supported(storage) or not hasattr(storage, "put_file"):
+        return 0
+    state_dir = Path(state_dir)
+    emit = log or (lambda msg: print(msg, flush=True))
+    pushed = 0
+    for sk in sorted(set(source_keys)):
+        local_path = calendar_records_path(state_dir, sk)
+        if not local_path.exists():
+            continue
+        key = f"{STATE_PREFIX}/sources/{sk}/calendar.json"
+        try:
+            prefix = f"{STATE_PREFIX}/sources/{sk}/"
+            present = any(k == key for k, _ in storage.list_objects(prefix))
+        except Exception as exc:  # noqa: BLE001 — fail safe on backend listing failure
+            emit(
+                f"state: WARNING remote calendar read failed for source {sk}: {exc}; skipping push"
+            )
+            continue
+        remote = {}
+        if present:
+            with tempfile.TemporaryDirectory() as td:
+                dest = Path(td) / "calendar.json"
+                if not storage.get_file(key, dest):
+                    emit(
+                        f"state: WARNING remote calendar for source {sk} unreadable; skipping push"
+                    )
+                    continue
+                try:
+                    data = json.loads(dest.read_text())
+                except (OSError, ValueError):
+                    emit(f"state: WARNING remote calendar for source {sk} invalid; skipping push")
+                    continue
+                raw = data.get("records", {}) if isinstance(data, dict) else {}
+                if not isinstance(raw, dict):
+                    emit(f"state: WARNING remote calendar for source {sk} invalid; skipping push")
+                    continue
+                # Reuse the record-store parser by writing the validated envelope
+                # to a tiny temporary state tree; it is the single compatibility
+                # reader for calendar schema evolution.
+                remote_dir = Path(td) / "state"
+                remote_file = calendar_records_path(remote_dir, sk)
+                remote_file.parent.mkdir(parents=True, exist_ok=True)
+                remote_file.write_text(json.dumps(data))
+                remote = load_calendar_records(remote_dir, sk)
+        local = load_calendar_records(state_dir, sk)
+        merged = merge_calendar_records(remote, local.values())
+        save_calendar_records(state_dir, sk, merged)
+        storage.put_file(key, local_path, "application/json")
+        pushed += 1
+    return pushed
+
+
 def _fetch_remote_json(storage, rel: str) -> dict | None:
     key = f"{STATE_PREFIX}/{rel}"
     present = any(k == key for k, _ in storage.list_objects(f"{STATE_PREFIX}/"))

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from citypods import run
-from citypods.models import City, Episode
+from citypods.models import AgendaRecord, CalendarIndex, City, Episode
 from citypods.providers import get_provider, register
 from citypods.providers.base import ProviderError
 from citypods.records import feed_content_hash, meeting_page_hash
@@ -368,6 +368,209 @@ def test_changed_content_rebuilds(tmp_path, fake_provider):
     fake_provider.episodes.append(_ep("g3", title="Planning Commission"))
     result = _build(tmp_path, cities)
     assert [r.status for r in result] == ["built"]
+
+
+def test_auxiliary_source_enriches_existing_episode_without_creating_one(tmp_path, fake_provider):
+    class _AuxiliaryProvider:
+        name = "faketestaux"
+        capabilities = frozenset()
+
+        def validate(self, source):
+            pass
+
+        def detect_change(self, source):
+            return None
+
+        def fetch_episodes(self, source):
+            return [
+                Episode(
+                    guid="aux-g1",
+                    title="Agenda row",
+                    published=datetime(2026, 5, 1, tzinfo=UTC),
+                    video_url="https://x/aux.mp4",
+                    body="City Council",
+                    links={"agenda_portal": "https://agenda.example/meeting/1"},
+                )
+            ]
+
+        def resolve_media_url(self, episode, source):
+            return episode.video_url
+
+        def video_deeplink(self, ref, t_seconds):
+            return None
+
+    auxiliary = _AuxiliaryProvider()
+    register(auxiliary)
+    try:
+        cities = _setup(tmp_path)
+        config = cities / "feeds" / "fake-city.yml"
+        config.write_text(
+            config.read_text()
+            + "aux_provider: faketestaux\n"
+            + "aux_source: {feed_url: 'https://agenda.example'}\n"
+        )
+
+        result = _build(tmp_path, cities)
+
+        assert result[0].episode_count == len(fake_provider.episodes)
+        (records_file,) = (tmp_path / "state" / "sources").glob("*/episodes.json")
+        records = json.loads(records_file.read_text())["episodes"]
+        assert len(records) == len(fake_provider.episodes)
+        assert records[fake_provider.episodes[0].uid]["links"]["agenda_portal"] == (
+            "https://agenda.example/meeting/1"
+        )
+    finally:
+        from citypods.providers import _REGISTRY
+
+        _REGISTRY.pop(auxiliary.name, None)
+
+
+def test_calendar_companion_backfills_video_and_persists_no_video_meetings(tmp_path, fake_provider):
+    class _CalendarCompanion:
+        name = "faketestcalendar"
+        capabilities = frozenset()
+
+        def validate(self, source):
+            pass
+
+        def fetch_calendar_index(self, source):
+            return CalendarIndex(
+                records=[
+                    AgendaRecord(
+                        body="City Council",
+                        title="Archive meeting calendar metadata",
+                        published=datetime(2026, 5, 1, tzinfo=UTC),
+                        links={"agenda": "https://calendar.example/archive.pdf"},
+                        video_guid="archive",
+                        video_url="https://calendar.example/archive.mp4",
+                    ),
+                    AgendaRecord(
+                        body="Planning Commission",
+                        title="Calendar-only recording",
+                        published=datetime(2026, 5, 2, tzinfo=UTC),
+                        links={"agenda": "https://calendar.example/planning.pdf"},
+                        video_guid="calendar-recording",
+                        video_url="https://calendar.example/planning.mp4",
+                    ),
+                    AgendaRecord(
+                        body="Library Board",
+                        title="Calendar-only meeting",
+                        published=datetime(2026, 5, 3, tzinfo=UTC),
+                        links={"agenda": "https://calendar.example/library.pdf"},
+                    ),
+                ]
+            )
+
+    companion = _CalendarCompanion()
+    register(companion)
+    try:
+        fake_provider.episodes = [
+            Episode(
+                guid="archive",
+                title="Archive meeting",
+                published=datetime(2026, 5, 1, tzinfo=UTC),
+                video_url="https://archive.example/meeting.mp4",
+                body="City Council",
+            )
+        ]
+        cities = _setup(tmp_path)
+        config = cities / "feeds" / "fake-city.yml"
+        config.write_text(
+            config.read_text()
+            + "aux_provider: faketestcalendar\n"
+            + "aux_source: {calendar_url: 'https://calendar.example'}\n"
+        )
+
+        result = _build(tmp_path, cities)
+
+        assert result[0].episode_count == 2
+        source_dir = next((tmp_path / "state" / "sources").iterdir())
+        episodes = json.loads((source_dir / "episodes.json").read_text())["episodes"]
+        assert len(episodes) == 2
+        assert all(record["title"] != "Calendar-only meeting" for record in episodes.values())
+        assert (
+            next(record for record in episodes.values() if record["provider_guid"] == "archive")[
+                "links"
+            ]["agenda"]
+            == "https://calendar.example/archive.pdf"
+        )
+
+        calendar = json.loads((source_dir / "calendar.json").read_text())["records"]
+        assert len(calendar) == 3
+        assert any(record["title"] == "Calendar-only meeting" for record in calendar.values())
+        archive = (tmp_path / "docs" / "fake-city" / "archive" / "index.html").read_text()
+        assert "Calendar-only meetings" in archive
+        assert "Calendar-only meeting" in archive
+        assert "Calendar-only recording" in archive
+        assert "Calendar-only recording" not in archive.split("Calendar-only meetings", 1)[1]
+    finally:
+        from citypods.providers import _REGISTRY
+
+        _REGISTRY.pop(companion.name, None)
+
+
+def test_calendar_companion_failure_keeps_primary_archive_available(tmp_path, fake_provider):
+    class _FailingCalendarCompanion:
+        name = "failingcalendar"
+        capabilities = frozenset()
+
+        def validate(self, source):
+            pass
+
+        def fetch_calendar_index(self, source):
+            raise ProviderError("calendar temporarily unavailable")
+
+    companion = _FailingCalendarCompanion()
+    register(companion)
+    try:
+        cities = _setup(tmp_path)
+        config = cities / "feeds" / "fake-city.yml"
+        config.write_text(
+            config.read_text()
+            + "aux_provider: failingcalendar\n"
+            + "aux_source: {calendar_url: 'https://calendar.example'}\n"
+        )
+
+        result = _build(tmp_path, cities)
+
+        assert result[0].status == "built"
+        assert result[0].episode_count == len(fake_provider.episodes)
+    finally:
+        from citypods.providers import _REGISTRY
+
+        _REGISTRY.pop(companion.name, None)
+
+
+def test_calendar_companion_crash_keeps_primary_archive_available(tmp_path, fake_provider):
+    class _CrashingCalendarCompanion:
+        name = "crashingcalendar"
+        capabilities = frozenset()
+
+        def validate(self, source):
+            pass
+
+        def fetch_calendar_index(self, source):
+            raise RuntimeError("unexpected calendar parser failure")
+
+    companion = _CrashingCalendarCompanion()
+    register(companion)
+    try:
+        cities = _setup(tmp_path)
+        config = cities / "feeds" / "fake-city.yml"
+        config.write_text(
+            config.read_text()
+            + "aux_provider: crashingcalendar\n"
+            + "aux_source: {calendar_url: 'https://calendar.example'}\n"
+        )
+
+        result = _build(tmp_path, cities)
+
+        assert result[0].status == "built"
+        assert result[0].episode_count == len(fake_provider.episodes)
+    finally:
+        from citypods.providers import _REGISTRY
+
+        _REGISTRY.pop(companion.name, None)
 
 
 def test_missing_outputs_force_rebuild_even_if_hash_matches(tmp_path, fake_provider):

@@ -46,6 +46,7 @@ MAX_RESPONSE_BYTES = 64 * 1024 * 1024  # 64 MiB
 # the city's own ``city_website`` domain at validation time (see ``allowed_hosts_for_city``).
 PROVIDER_HOST_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "granicus": ("*.granicus.com",),
+    "legistar": ("*.legistar.com", "*.granicus.com"),
     "swagit": ("*.swagit.com", "*.granicus.com"),  # Swagit is Granicus-owned
     "civicclerk": ("*.api.civicclerk.com", "*.civicclerk.com"),
     "civicplus": (),  # filled per-city from city_website

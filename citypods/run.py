@@ -48,7 +48,7 @@ from citypods.media import (
     SourceCache,
     probe_hosted_audio_duration_seconds,
 )
-from citypods.models import City, Episode
+from citypods.models import AgendaRecord, City, Episode
 from citypods.ops.workqueue import (
     build_manifest,
     load_manifest,
@@ -62,16 +62,21 @@ from citypods.providers import get_provider
 from citypods.providers.base import ProviderError
 from citypods.records import (
     assign_uids,
+    attach_auxiliary_agenda_links,
     episode_to_record,
     feed_content_hash,
+    load_calendar_records,
     load_records,
     meeting_page_hash,
+    merge_calendar_backfill,
+    merge_calendar_records,
     merge_persisted,
     merge_records,
     migrate_legacy_manifests,
     protected_blocks_for_lane,
     prune_archive,
     record_to_episode,
+    save_calendar_records,
     save_records,
     source_key,
 )
@@ -112,6 +117,7 @@ from citypods.state import (
 from citypods.statesync import (
     pull_state,
     push_asr_runtime_log_merged,
+    push_calendar_records_merged,
     push_records_merged,
     push_state,
     push_transcript_quality_log_merged,
@@ -163,6 +169,9 @@ class SourcePipeline:
             enabled=ctx.lane == "audio",
         )
         self._cache: dict[str, list[Episode]] = {}
+        # A companion's no-video rows live beside, but never inside, episodes.json.
+        self._calendar_cache: dict[str, list[AgendaRecord]] = {}
+        self._calendar_store: dict[str, dict[str, AgendaRecord]] = {}
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
@@ -196,6 +205,48 @@ class SourcePipeline:
         Returns ``(provider, episodes, persisted, seeded)``. ``ProviderError`` propagates."""
         provider = get_provider(city.provider)
         episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
+        fresh_calendar: list[AgendaRecord] = []
+        if city.aux_provider and city.aux_source:
+            try:
+                aux_provider = get_provider(city.aux_provider)
+                fetch_calendar_index = getattr(aux_provider, "fetch_calendar_index", None)
+                if callable(fetch_calendar_index):
+                    index = fetch_calendar_index(city.aux_source)
+                    fresh_calendar = list(index.records)
+                else:
+                    fetch_agenda_index = getattr(aux_provider, "fetch_agenda_index", None)
+                    source_records = (
+                        fetch_agenda_index(city.aux_source)
+                        if callable(fetch_agenda_index)
+                        else aux_provider.fetch_episodes(city.aux_source)
+                    )
+                    fresh_calendar = [
+                        record
+                        if isinstance(record, AgendaRecord)
+                        else AgendaRecord(
+                            body=record.body or "",
+                            title=record.title,
+                            published=record.published,
+                            links=dict(record.links or {}),
+                        )
+                        for record in source_records
+                        if record.body
+                    ]
+                merge_calendar_backfill(episodes, fresh_calendar)
+                print(
+                    f"[enrich] companion fetched slug={city.slug} provider={city.aux_provider} "
+                    f"source={key} records={len(fresh_calendar)} "
+                    f"recorded={sum(bool(record.video_guid) for record in fresh_calendar)}",
+                    flush=True,
+                )
+            except Exception as exc:  # noqa: BLE001 — a companion is strictly best-effort
+                # A companion is additive: preserve its last-known calendar state and
+                # never suppress primary archive discovery when it is temporarily down.
+                print(
+                    f"[enrich] companion failed slug={city.slug} provider={city.aux_provider} "
+                    f"source={key} error={exc}",
+                    flush=True,
+                )
         print(
             f"[enrich] source fetched slug={city.slug} provider={city.provider} "
             f"source={key} episodes={len(episodes)}",
@@ -204,6 +255,13 @@ class SourcePipeline:
         assign_uids(city, episodes)
         persisted = load_records(self.state_dir, key)
         merge_persisted(episodes, persisted)
+        persisted_calendar = load_calendar_records(self.state_dir, key)
+        assign_uids(city, fresh_calendar)
+        calendar = merge_calendar_records(persisted_calendar, fresh_calendar)
+        attach_auxiliary_agenda_links(episodes, list(calendar.values()))
+        if city.aux_provider or calendar:
+            self._calendar_store[key] = calendar
+            self._calendar_cache[key] = list(calendar.values())
         seeded = migrate_legacy_manifests(self.state_dir, episodes)
         self.h16_identity.capture(city, episodes)
         return provider, episodes, persisted, seeded
@@ -222,6 +280,9 @@ class SourcePipeline:
         if not persisted:
             raise ProviderError(str(reason)) from reason
         episodes = [record_to_episode(rec) for rec in persisted.values()]
+        calendar = load_calendar_records(self.state_dir, key)
+        self._calendar_store[key] = calendar
+        self._calendar_cache[key] = list(calendar.values())
         self._notes[key] = f"stale provider fetch failed: {reason}"
         print(
             f"[enrich] source stale slug={city.slug} provider={city.provider} "
@@ -315,6 +376,8 @@ class SourcePipeline:
             notes.append(f"{archived} archived")
         if not self.ctx.dry_run and self.persist_records:
             save_records(self.state_dir, key, combined)
+            if key in self._calendar_store:
+                save_calendar_records(self.state_dir, key, self._calendar_store[key])
 
         # Render from the full archive: prefer this run's in-memory enriched Episode for a
         # uid, else rehydrate a persisted-only one (dropped from the provider window).
@@ -372,6 +435,18 @@ class SourcePipeline:
     def note(self, city: City) -> str:
         return self._notes.get(source_key(city), "")
 
+    def calendar_records(self, city: City) -> list[AgendaRecord]:
+        """Return the source's durable non-podcast calendar catalog for this feed."""
+        key = source_key(city)
+        with self._guard:
+            lock = self._locks[key]
+        with lock:
+            if key not in self._calendar_cache:
+                calendar = load_calendar_records(self.state_dir, key)
+                self._calendar_store[key] = calendar
+                self._calendar_cache[key] = list(calendar.values())
+            return self._calendar_cache[key]
+
     def render_from_records(self, city: City) -> list[Episode]:
         """Load the city's last-known archive from the record store with **no provider connection**
         — the ``--no-refresh`` render path (PR preview). Unlike :meth:`archive_from_records` (the
@@ -385,7 +460,10 @@ class SourcePipeline:
                 return self._cache[key]
             records = load_records(self.state_dir, key)
             archive = [record_to_episode(rec) for rec in records.values()]
+            calendar = load_calendar_records(self.state_dir, key)
             self._cache[key] = archive
+            self._calendar_store[key] = calendar
+            self._calendar_cache[key] = list(calendar.values())
             return archive
 
     def archive_from_records(self, city: City, reason: Exception) -> list[Episode]:
@@ -410,7 +488,10 @@ class SourcePipeline:
             if not records:
                 raise ProviderError(str(reason)) from reason
             archive = [record_to_episode(rec) for rec in records.values()]
+            calendar = load_calendar_records(self.state_dir, key)
             self._cache[key] = archive
+            self._calendar_store[key] = calendar
+            self._calendar_cache[key] = list(calendar.values())
             self._notes[key] = f"stale provider fetch failed: {reason}"
             print(
                 f"[render] source stale slug={city.slug} provider={city.provider} "
@@ -548,6 +629,11 @@ def _process_city(
         key=lambda e: e.published,
         reverse=True,
     )
+    calendar_records = sorted(
+        filter_by_body(pipeline.calendar_records(city), city.source.get("body")),
+        key=lambda record: record.published,
+        reverse=True,
+    )
     feed_eps = retained_eps[: city.max_episodes]
     detail = f"{archived} archived"
     if archived > len(feed_eps):
@@ -607,7 +693,7 @@ def _process_city(
             )
             new_entry["meeting_pages"] = rendered_page_cache
             meeting_outputs_changed = rendered_page_cache != page_cache
-            archive_hash = _city_archive_hash(city, retained_eps, base_url)
+            archive_hash = _city_archive_hash(city, retained_eps, calendar_records, base_url)
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
                 meeting_outputs_changed = True
@@ -618,6 +704,7 @@ def _process_city(
                         city,
                         base_url,
                         retained_eps,
+                        calendar_records=calendar_records,
                         site_config=site_config,
                     )
                 )
@@ -1826,6 +1913,12 @@ def _build_impl(
                     owned_uids=shard_owned_uids,
                     log=lambda msg: print(msg, flush=True),
                 )
+                pushed += push_calendar_records_merged(
+                    storage,
+                    state_dir,
+                    owned,
+                    log=lambda msg: print(msg, flush=True),
+                )
                 pushed += push_state(
                     storage,
                     state_dir,
@@ -1977,7 +2070,9 @@ def _write_chapter_sidecars(
                 stale.unlink()
 
 
-def _city_archive_hash(city: City, episodes: list[Episode], base_url: str) -> str:
+def _city_archive_hash(
+    city: City, episodes: list[Episode], calendar_records: list[AgendaRecord], base_url: str
+) -> str:
     """Hash the city archive page's render inputs for incremental publication."""
     payload = [
         city.slug,
@@ -1993,6 +2088,21 @@ def _city_archive_hash(city: City, episodes: list[Episode], base_url: str) -> st
                 ep.media_availability.effective_state() if ep.media_availability else None,
             ]
             for ep in sorted(episodes, key=lambda e: (e.published, e.uid or ""), reverse=True)
+        ],
+        [
+            [
+                record.uid,
+                record.title,
+                record.body,
+                record.published.isoformat(),
+                sorted((record.links or {}).items()),
+                record.video_guid,
+            ]
+            for record in sorted(
+                calendar_records,
+                key=lambda record: (record.published, record.uid or ""),
+                reverse=True,
+            )
         ],
         base_url.rstrip("/"),
     ]
