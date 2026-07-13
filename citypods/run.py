@@ -543,8 +543,11 @@ def _process_city(
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
     archived = len(episodes)
-    retained_eps = filter_by_body(episodes, city.source.get("body"))
-    retained_eps.sort(key=lambda e: e.published, reverse=True)
+    retained_eps = sorted(
+        filter_by_body(episodes, city.source.get("body")),
+        key=lambda e: e.published,
+        reverse=True,
+    )
     feed_eps = retained_eps[: city.max_episodes]
     detail = f"{archived} archived"
     if archived > len(feed_eps):
@@ -1975,6 +1978,7 @@ def _write_chapter_sidecars(
 
 
 def _city_archive_hash(city: City, episodes: list[Episode], base_url: str) -> str:
+    """Hash the city archive page's render inputs for incremental publication."""
     payload = [
         city.slug,
         city.podcast_title,
@@ -2004,6 +2008,7 @@ def _write_meeting_pages(
     site_config: dict,
     page_cache: dict,
 ) -> dict:
+    """Render retained meeting pages whose per-episode hashes or outputs changed."""
     pages_cache = dict(page_cache or {})
     wanted: set[str] = set()
     current_uids = {ep.uid for ep in episodes if ep.uid}

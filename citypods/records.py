@@ -374,6 +374,7 @@ def meeting_page_hash(ep: Episode) -> str:
         "chapters": episode_served_chapters(ep),
         "chapters_basis": ep.chapters_basis,
         "transcript_url": ep.transcript_hosted_url,
+        "transcript_format": ep.transcript_format,
         "transcript_synced": ep.transcript_synced,
         "transcript_basis": ep.transcript_basis,
         "transcript_words_url": ep.transcript_words_url,
@@ -383,7 +384,18 @@ def meeting_page_hash(ep: Episode) -> str:
         "video_url": ep.video_url,
         "media_kind": ep.media_kind,
         "media_availability": (
-            ep.media_availability.effective_state() if ep.media_availability is not None else None
+            {
+                "state": ep.media_availability.state,
+                "effective_state": ep.media_availability.effective_state(),
+                "reason": ep.media_availability.reason,
+                "operator_override": ep.media_availability.operator_override,
+                "operator_reason": ep.media_availability.operator_reason,
+                "last_check": ep.media_availability.last_check,
+                "recovered_at": ep.media_availability.recovered_at,
+                "withheld": ep.media_availability.is_withheld(),
+            }
+            if ep.media_availability is not None
+            else None
         ),
         "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline is not None else "",
         "sources": [dataclasses.asdict(source) for source in ep.sources],

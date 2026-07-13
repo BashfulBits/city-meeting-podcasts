@@ -128,6 +128,7 @@ def render_city_page(
 
 
 def _availability_view(ep: Episode) -> dict | None:
+    """Project durable media availability into the labels exposed to the HTML templates."""
     av = ep.media_availability
     if av is None:
         return None
@@ -144,6 +145,7 @@ def _availability_view(ep: Episode) -> dict | None:
 
 
 def _source_deeplink(city: City, ep: Episode, t_seconds: float) -> str | None:
+    """Map a served-time offset to a provider-specific source video URL when supported."""
     provider = get_provider(ep.sources[0].provider if ep.sources else city.provider)
     if "deeplink" not in getattr(provider, "capabilities", frozenset()):
         return None
@@ -165,6 +167,7 @@ def _source_deeplink(city: City, ep: Episode, t_seconds: float) -> str | None:
 
 
 def _transcript_client_config(city: City, ep: Episode, base_url: str) -> dict | None:
+    """Build the JSON configuration used by the browser transcript synchronizer."""
     if not (
         ep.transcript_synced and ep.transcript_hosted_url and ep.transcript_format in {"vtt", "srt"}
     ):
@@ -211,6 +214,7 @@ def render_meeting_page(
     *,
     site_config: dict | None = None,
 ) -> str:
+    """Render one stable meeting permalink with media, metadata, chapters, and transcript UI."""
     site = base_url.rstrip("/")
     page_url = meeting_page_url(city, ep, base_url)
     transcript_client = _transcript_client_config(city, ep, base_url)
@@ -269,6 +273,7 @@ def render_city_archive_page(
     *,
     site_config: dict | None = None,
 ) -> str:
+    """Render the uncapped retained archive listing for one city/body feed."""
     site = base_url.rstrip("/")
     rows = [
         {
