@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Waco now has a PrimeGov/OneMeeting agenda companion.** The new API-first auxiliary adapter
+  walks the configured year range at `wacotexas.primegov.com`, preserving official agenda, packet,
+  and minutes document links for meetings while Swagit remains the recording provider. It is
+  auxiliary-only: PrimeGov rows do not become podcast episodes without a playable media source.
+
 - **Granicus episode discovery is now archive-first (R11 phase 1).** The provider derives each native
   `ViewPublisher.php` archive from the configured `ViewPublisherRSS.php` view ID, removing the
   100-item RSS cap without changing an existing Granicus source key or clip-based episode identity.

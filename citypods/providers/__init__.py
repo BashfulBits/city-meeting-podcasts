@@ -11,6 +11,7 @@ from citypods.providers.civicclerk import CivicClerkProvider
 from citypods.providers.civicplus import CivicPlusProvider
 from citypods.providers.granicus import GranicusProvider
 from citypods.providers.legistar import LegistarProvider
+from citypods.providers.onemeeting import OneMeetingProvider
 from citypods.providers.swagit import SwagitProvider
 
 _REGISTRY: dict[str, MeetingProvider] = {}
@@ -42,6 +43,7 @@ register(LegistarProvider())
 register(CivicPlusProvider())
 register(CivicClerkProvider())
 register(SwagitProvider())
+register(OneMeetingProvider())
 
 __all__ = [
     "AgendaSource",

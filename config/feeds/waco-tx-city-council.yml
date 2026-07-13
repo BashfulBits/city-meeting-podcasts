@@ -1,0 +1,11 @@
+slug: waco-tx-city-council
+city: waco-tx
+provider: swagit
+source:
+  list_url: https://wacotx.new.swagit.com/views/851
+  body: City Council
+podcast_title: "Waco: City Council"
+podcast_author: "City of Waco, TX"
+podcast_email: ""
+podcast_description: "City Council meetings for Waco."
+max_episodes: 50

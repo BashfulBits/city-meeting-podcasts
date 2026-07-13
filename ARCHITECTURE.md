@@ -21,9 +21,9 @@ CDN. It is **provider-agnostic**: each meeting platform is a pluggable adapter b
 config (YAML)                       ── per-city + per-feed config
   │
   ▼
-providers.fetch_episodes()          ── Granicus / CivicPlus / CivicClerk / Swagit adapters
+  providers.fetch_episodes()          ── Granicus / CivicPlus / CivicClerk / Swagit adapters
   │
-  ├─ optional verified calendar companion (Legistar / CivicClerk)
+  ├─ optional verified calendar companion (Legistar / CivicClerk / PrimeGov-OneMeeting)
   │  ├─ recorded rows merge by canonical provider clip ID
   │  └─ no-video rows ──► records.assign_uids()
   │       └─► records.merge_calendar_records()
