@@ -262,6 +262,7 @@ function recordMetadata(record) {
     created_at: String(record.created_at || ""),
     updated_at: String(record.updated_at || ""),
     available_at: String(record.available_at || ""),
+    processing_started_at: String(record.processing_started_at || ""),
     attempts: String(record.attempts || 0),
   };
 }
@@ -335,44 +336,58 @@ async function enqueue(bucket, payload, cfg, now, idempotencyKey) {
   return raced.value;
 }
 
-async function listRequestObjects(bucket, limit) {
+function isClaimable(record, cfg, now) {
+  const status = String(record?.status || "");
+  if (status === "pending") {
+    return parseTime(record.available_at) <= now.getTime();
+  }
+  if (status === "processing") {
+    return (
+      now.getTime() - parseTime(record.processing_started_at || record.updated_at) >=
+      cfg.processingTimeoutSeconds * 1000
+    );
+  }
+  return false;
+}
+
+async function listRequestObjects(bucket, cfg, now) {
   const objects = [];
   let cursor;
   do {
+    const remaining = cfg.maxQueueScan - objects.length;
     const listed = await bucket.list({
       prefix: REQUEST_PREFIX,
-      limit: Math.min(1000, limit - objects.length),
+      limit: Math.min(1000, Math.max(1, remaining)),
       cursor,
       include: ["customMetadata"],
     });
-    objects.push(...listed.objects);
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor && objects.length < limit);
+    objects.push(
+      ...listed.objects.filter((object) => isClaimable(object.customMetadata, cfg, now)),
+    );
+    cursor = listed.truncated && objects.length < cfg.maxQueueScan ? listed.cursor : undefined;
+  } while (cursor);
   return objects;
 }
 
 async function claimNext(bucket, cfg, now) {
-  const objects = await listRequestObjects(bucket, cfg.maxQueueScan);
-  const candidates = [];
-  for (const object of objects) {
+  const objects = await listRequestObjects(bucket, cfg, now);
+  const candidates = objects.map((object) => ({
+    object,
+    createdAt: parseTime(object.customMetadata?.created_at),
+    key: object.key,
+  }));
+  candidates.sort((left, right) => left.createdAt - right.createdAt || left.key.localeCompare(right.key));
+
+  for (const candidate of candidates) {
+    const object = candidate.object;
     const loaded = await getJson(bucket, object.key);
     if (!loaded || !loaded.value || typeof loaded.value !== "object") {
       continue;
     }
     const record = loaded.value;
-    const staleProcessing =
-      record.status === "processing" &&
-      now.getTime() - parseTime(record.processing_started_at || record.updated_at) >=
-        cfg.processingTimeoutSeconds * 1000;
-    const readyPending = record.status === "pending" && parseTime(record.available_at) <= now.getTime();
-    if (readyPending || staleProcessing) {
-      candidates.push({ loaded, createdAt: parseTime(record.created_at), key: object.key });
+    if (!isClaimable(record, cfg, now)) {
+      continue;
     }
-  }
-  candidates.sort((left, right) => left.createdAt - right.createdAt || left.key.localeCompare(right.key));
-
-  for (const candidate of candidates) {
-    const record = candidate.loaded.value;
     const claimed = {
       ...record,
       status: "processing",
@@ -381,7 +396,7 @@ async function claimNext(bucket, cfg, now) {
       processing_started_at: now.toISOString(),
     };
     const stored = await putJson(bucket, candidate.key, claimed, {
-      etagMatches: candidate.loaded.object.etag,
+      etagMatches: loaded.object.etag,
     });
     if (stored) {
       return { key: candidate.key, record: claimed, object: stored };
@@ -486,6 +501,7 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
     const released = {
       ...claimed.record,
       status: "pending",
+      attempts: Math.max(0, claimed.record.attempts - 1),
       updated_at: now.toISOString(),
       available_at: now.toISOString(),
       processing_started_at: undefined,

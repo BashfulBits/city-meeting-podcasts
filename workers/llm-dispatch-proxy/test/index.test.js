@@ -225,7 +225,71 @@ test("conditional dispatch pacing prevents a second upstream call before the int
 
   const firstAt = new Date(Date.now() + 61_000);
   assert.equal((await dispatchOne(env, upstream, firstAt)).status, "completed");
-  assert.equal((await dispatchOne(env, upstream, new Date(firstAt.getTime() + 1_000))).status, "rate_limited");
+  const rateLimited = await dispatchOne(env, upstream, new Date(firstAt.getTime() + 1_000));
+  assert.equal(rateLimited.status, "rate_limited");
+  assert.equal(calls, 1);
+  const stored = await env.LLM_QUEUE.get(`requests/${rateLimited.requestId}.json`);
+  assert.equal((await stored.json()).attempts, 0);
+});
+
+test("queue scan limit counts claimable records instead of terminal records", async () => {
+  const env = isolatedEnv();
+  env.MAX_QUEUE_SCAN = "1";
+  const now = new Date(Date.now() + 61_000);
+  const timestamp = now.toISOString();
+  const metadata = (record) => ({
+    status: record.status,
+    created_at: record.created_at,
+    updated_at: record.updated_at,
+    available_at: record.available_at,
+    processing_started_at: record.processing_started_at || "",
+    attempts: String(record.attempts),
+  });
+  const terminal = {
+    schema: 1,
+    id: "chatcmpl-terminal",
+    status: "completed",
+    provider: "mistral",
+    model: "mistral/mistral-large-3",
+    created_at: timestamp,
+    updated_at: timestamp,
+    available_at: timestamp,
+    attempts: 1,
+    response: { id: "already-complete", choices: [] },
+  };
+  const pending = {
+    schema: 1,
+    id: "chatcmpl-ready",
+    status: "pending",
+    provider: "mistral",
+    model: "mistral/mistral-large-3",
+    request: {
+      model: "mistral-large-3",
+      messages: [{ role: "user", content: "ready" }],
+      stream: false,
+    },
+    created_at: timestamp,
+    updated_at: timestamp,
+    available_at: timestamp,
+    attempts: 0,
+  };
+  await env.LLM_QUEUE.put("requests/000-terminal.json", JSON.stringify(terminal), {
+    customMetadata: metadata(terminal),
+  });
+  await env.LLM_QUEUE.put("requests/999-ready.json", JSON.stringify(pending), {
+    customMetadata: metadata(pending),
+  });
+
+  let calls = 0;
+  const result = await dispatchOne(
+    env,
+    async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ id: "new-completion", choices: [] }), { status: 200 });
+    },
+    now,
+  );
+  assert.equal(result.status, "completed");
   assert.equal(calls, 1);
 });
 
