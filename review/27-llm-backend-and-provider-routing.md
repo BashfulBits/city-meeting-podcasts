@@ -76,7 +76,7 @@ judge, which is fine for exactly one pair but leaves the other pair with no inde
 
 ---
 
-## §3. Architecture — LiteLLM adapter, our own dispatch layer above it
+## §3. Architecture — LiteLLM adapter, our own async dispatch transport beside it
 
 **Decision: adopt LiteLLM as a dependency**, not a hand-rolled per-provider client. Unlike the
 Pagefind-vs-MiniSearch call in `review/13`, this is a pure-Python pip dependency (no new build toolchain)
@@ -86,11 +86,26 @@ code per new provider, which a hand-rolled adapter can't match. Needs to clear `
 dependency-pinning policy like any new dependency.
 
 - `citypods/compute/llm.py` — new. A `Backend`-conforming adapter (`citypods/compute/base.py`'s
-  `Backend` Protocol) whose `run_inference(job: InferenceJob) -> JobResult` translates
-  `job.task`/`job.inputs` into a `litellm.completion(model=..., messages=..., response_format=...)` call
-  and back. LiteLLM owns wire-format translation, retries, and streaming; **it does not own provider
-  selection** — that's ours (§5), because it depends on this project's own budget/tournament state, which
-  LiteLLM has no concept of.
+  `Backend` Protocol) that builds one normalized chat request from `job.task`/`job.inputs` and has two
+  execution paths:
+  - **direct**: call `litellm.completion(model=..., messages=..., response_format=...)` and map the
+    normalized response to a `JobResult`;
+  - **rate-limited**: submit that same normalized request to the R10 Worker and return a `JobHandle`.
+    A later reconcile/poll operation fetches the Worker result and maps it to the same `JobResult` shape.
+    The H13 union return type is intentional: a direct LiteLLM call completes in-band, while the Worker
+    route preserves the no-runner-idle queue boundary.
+- LiteLLM owns provider-native wire-format translation, response normalization, and its configured
+  retry/fallback behavior. **It does not own provider selection or this project's durable pacing** —
+  those depend on our budget/tournament state and the explicit rate-limit policy in §5/§9.
+- The R10 endpoint is **OpenAI-shaped asynchronous transport, not a synchronous LiteLLM provider
+  endpoint**: `POST /v1/chat/completions` returns `202` + a poll location. Therefore `llm.py` must use
+  its enqueue/poll protocol rather than passing the Worker URL as `api_base` to a plain
+  `litellm.completion()` call. This keeps LiteLLM as the provider adapter without pretending an async
+  queue is a synchronous completion API.
+- A Worker deployment may point at (a) a provider's own OpenAI-compatible endpoint, such as Mistral's,
+  or (b) an OpenAI-compatible LiteLLM Proxy when the selected provider needs native wire-format
+  translation. The Cloudflare Worker never grows provider-specific clients; the latter proxy is a
+  separately provisioned LiteLLM runtime and is not hidden inside the JavaScript Worker.
 - Model strings follow LiteLLM's `provider/model` convention: `gemini/gemini-3-flash`,
   `deepseek/deepseek-v4-flash`, `deepseek/deepseek-v4-pro`, `mistral/mistral-large-3`.
 
@@ -199,7 +214,7 @@ that load solo. Keep Mistral scoped to judging + occasional champion duty, not a
 
 During any period a task-verb has an active tournament or a non-default champion, the **same
 episode+task can have outputs from more than one provider** — a canonical/served one and a
-comparison-only shadow one. See §9.2 for the exact field shape; the short version is a `source_provider`
+comparison-only shadow one. See §10 for the exact field shape; the short version is a `source_provider`
 field on the stored output, and shadow/comparison outputs are stored separately, never racing the
 canonical write.
 
@@ -348,8 +363,9 @@ champion-stats ticket (§6.3) is the first real consumer of this telemetry once 
 
 **Numbered R10, not R2-point-something — deliberately, to avoid the renumbering churn a mid-sequence
 insert caused earlier this session.** Sequenced *second* in the ROADMAP priority table, right after R1,
-so it exists and is testable as a real LiteLLM-compatible endpoint by the time this item (R2) is built —
-R2's Mistral integration is the first thing that needs it.
+so its async enqueue/poll contract exists and is testable by the time this item (R2) is built — R2's
+Mistral integration is the first thing that needs it. It is not itself a LiteLLM runtime; LiteLLM stays
+in the Python adapter or in an explicitly configured LiteLLM Proxy upstream.
 
 ### §9.1 Problem
 
@@ -375,9 +391,14 @@ semantics and existing operational familiarity.
 
 - New Worker (own directory, e.g. `workers/llm-dispatch-proxy/`, following `granicus-media-proxy`'s
   existing structure/secrets conventions).
-- Exposes an **OpenAI-compatible endpoint** — LiteLLM supports custom `base_url` configuration for
-  OpenAI-compatible providers, so this Worker can be configured as just another LiteLLM "provider," no
-  special-casing in `llm.py` (§3).
+- Exposes an **OpenAI-shaped asynchronous queue protocol**. It accepts the same normalized request
+  shape LiteLLM uses, but because `POST` returns `202` rather than a completed `200` response, it is
+  consumed by R2's dispatch transport, not configured as a normal LiteLLM `base_url` provider.
+- The configured upstream is also OpenAI-shaped. It may be a provider endpoint that already accepts
+  that shape (Mistral is the first route) or an OpenAI-compatible LiteLLM Proxy that performs native
+  provider translation for a provider whose API is not OpenAI-shaped. The Worker stays provider-
+  agnostic at the wire-format level: provider/model route selection is configuration, not a new client
+  implementation in JavaScript.
 - Internally: a Cron Trigger (per-minute or the tightest interval the target provider's rate limit
   allows) drains a small pending-request queue and issues **one** request per allowed interval to the
   real provider, writing the result back to R2 (object storage) — reusing the R2 CAS pattern already
@@ -387,6 +408,24 @@ semantics and existing operational familiarity.
   if the artifact isn't ready, retries next run" pattern already used for ASR/diarization backlogs and
   the `TagsStage` no-transcript-yet case (`review/14`). This is the existing pattern applied again, not a
   new one.
+
+### §9.4 Current implementation contract
+
+The first Worker implementation keeps the queue boundary explicit: `POST /v1/chat/completions` returns
+`202` with a `Location` for `GET /v1/requests/{id}`, which returns the upstream OpenAI-shaped response
+once the Cron dispatcher has completed it. This is the asynchronous form required by the durable
+R2-handoff design; `stream: true` is rejected. `MODEL_ID` is a provider-qualified public route
+(currently `mistral/mistral-large-3`); the Worker rejects a request naming another provider/model.
+`UPSTREAM_REQUEST_MODEL` optionally separates the upstream wire value from that public route, which is
+needed when the upstream is a LiteLLM Proxy rather than the provider's own endpoint. The upstream path,
+bearer secrets, request/response byte caps, retry limits, processing timeout, and dispatch interval are
+Wrangler configuration, with the upstream base URL required to be HTTPS. R2
+`etagMatches`/`etagDoesNotMatch` conditional writes protect both request claims and the durable
+one-request-per-interval gate. The dedicated Worker bucket is ephemeral/derivable and intentionally
+separate from the Python catalog state and `RoutingStorage` coordination prefixes. The R2 Python adapter
+must persist the returned Worker `ref`/poll URL as the `JobHandle`, and reconcile the completed
+OpenAI-shaped response into the normal `JobResult`; it must not ask LiteLLM to synchronously consume the
+Worker's `202` response.
 
 ---
 
@@ -407,12 +446,19 @@ semantics and existing operational familiarity.
    per-cycle, soft-cap semantics (§8.1).
 5. **Champion routing config** — which provider is currently dispatched for each task-verb; updated only
    by the weekly-ticket checkbox flow (§6.3), never silently.
+6. **Async dispatch state** — a Worker-backed job stores the provider-qualified `model_id`, request
+   fingerprint, Worker `ref`/poll location, and status (`queued`/`processing`/`completed`/`failed`) as
+   ephemeral coordination state. It is not the canonical LLM artifact and is not a second output schema:
+   reconciliation maps the Worker's completed OpenAI-shaped response into the same `JobResult` used by
+   direct LiteLLM calls, after which the task-specific content-addressed output is written by the normal
+   R2 pipeline path.
 
 ---
 
 ## §11. Module / file plan (exact, where confirmed against existing conventions)
 
-- `citypods/compute/llm.py` — new. LiteLLM-backed `Backend` adapter (§3).
+- `citypods/compute/llm.py` — new. LiteLLM-backed `Backend` adapter plus the small Worker enqueue/poll
+  transport and `JobHandle` → `JobResult` reconciliation (§3/§9); no provider-specific HTTP clients.
 - `citypods/compute/chunking.py` (or similar) — new. Chapter-boundary chunking + fallback escalation
   (§4.1), map-reduce recombination helpers (§4.2).
 - New per-task-verb prompt templates, one file/entry each (§4.3).
@@ -427,8 +473,14 @@ semantics and existing operational familiarity.
 
 ## §12. Tests
 
-- `citypods/compute/llm.py`: `InferenceJob` → LiteLLM call translation is deterministic and mockable (no
-  real network in CI, matching the existing LLM-mocking convention already used for `review/14`'s tests).
+- `citypods/compute/llm.py`: direct `InferenceJob` → LiteLLM call translation is deterministic and
+  mockable (no real network in CI, matching the existing LLM-mocking convention already used for
+  `review/14`'s tests); the same job maps to a provider-qualified Worker enqueue request when the
+  selected route is rate-limited.
+- Worker transport: a queued request returns a `JobHandle`, polling a completed fixture maps the
+  OpenAI-shaped response to the same `JobResult`, a pending result remains deferred, and a failed
+  result is retryable without exposing prompts or provider error bodies. Tests must prove a provider
+  mismatch is rejected and that a LiteLLM Proxy route can use a distinct `UPSTREAM_REQUEST_MODEL`.
 - Chunking: a fixture episode with chapters splits at chapter boundaries; a fixture without chapters
   falls back to whole-transcript; an oversized single-chapter fixture escalates to the larger-context
   tier, not the whole episode.
@@ -488,19 +540,20 @@ ticket (§6.3) once a real champion switch is decided — never automatic, never
 ## §16. Acceptance
 
 An `InferenceJob(task="tag", ...)` (or any reserved verb) dispatches through the LiteLLM adapter to the
-policy-selected provider and returns a `JobResult`. Large transcripts are chunked at chapter boundaries,
-escalating individual oversized chunks rather than the whole episode. Adding a new task-verb requires no
-change to dispatch/budget/tournament code — only a new Literal member, version constant, prompt template,
-and calling Stage. The weekly champion-stats ticket accurately reports quality, live per-month cost, and
+policy-selected provider. A direct route returns a `JobResult`; a rate-limited route returns a
+`JobHandle`, and a later reconcile maps its completed Worker response to that same `JobResult` without
+runner-side idle-waiting. Large transcripts are chunked at chapter boundaries, escalating individual
+oversized chunks rather than the whole episode. Adding a new task-verb requires no change to
+dispatch/budget/tournament code — only a new Literal member, version constant, prompt template, and
+calling Stage. The weekly champion-stats ticket accurately reports quality, live per-month cost, and
 one-time back-catalog cost per option, proposes a switch only when a challenger clears the required
-win-rate margin, and a checked box both applies the change and clears itself. Mistral's rate limit is
-respected via the R10 Worker with no runner-side idle-waiting. A soft budget-cap breach degrades
-gracefully with no pipeline failure.
+win-rate margin, and a checked box both applies the change and clears itself. A soft budget-cap breach
+degrades gracefully with no pipeline failure.
 
 ## Proposed GitHub issues (not filed — batch review pending)
 
-1. R10: `workers/llm-dispatch-proxy/` Cloudflare Worker — OpenAI-compatible endpoint, Cron-paced dispatch,
-   R2 result handoff.
+1. R10: `workers/llm-dispatch-proxy/` Cloudflare Worker — OpenAI-shaped asynchronous enqueue/poll
+   transport, Cron-paced dispatch, and R2 result handoff; it is not a synchronous LiteLLM endpoint.
 2. `citypods/compute/llm.py` — LiteLLM-backed `Backend` adapter + `TASK_VERSIONS`/`TASK_PROMPTS`
    registries.
 3. Chapter-boundary chunking + map-reduce recombination (tags vs. summaries).

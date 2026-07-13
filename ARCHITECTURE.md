@@ -240,6 +240,14 @@ total on `/admin/status`.
   R2 has no soft-delete and is aggressively expired, and its keys are excluded from the B2 state backup,
   so a canonical record there would be unrecoverable; `routing.py` enforces this (`_EPHEMERAL_R2_PREFIXES`
   + an import-time/test guard fails if a coordination prefix isn't declared ephemeral).
+- **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
+  private R2 queue. Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending
+  requests; a per-minute Cron Trigger claims one ready request with an R2 conditional write, reserves a
+  durable dispatch interval slot, calls the configured OpenAI-shaped HTTPS route, and persists either
+  the response or a bounded retry/failure state. R2's planned Python LLM backend will use this as its
+  `JobHandle` path; direct provider translation remains LiteLLM's responsibility, either in Python or
+  in an explicitly configured LiteLLM Proxy upstream. The queue is ephemeral/derivable and is not part
+  of the B2-backed catalog records or the Python `RoutingStorage` control-plane prefixes.
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
   downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
   retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),
@@ -250,6 +258,7 @@ total on `/admin/status`.
   `modal-deploy.yml` (path-scoped deploy of the
   Modal pull worker from `main`, protected by the `modal-production` GitHub Environment),
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
+  `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
   provider calls), `audit.yml` (daily feed-health → GitHub issues), `contracts.yml` (weekly live endpoint
   contracts), `asr-bench.yml` (manual ASR benchmark), `audio-gc.yml` (**"Storage reclaim"**, weekly —
