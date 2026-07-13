@@ -32,7 +32,10 @@ def recorded_slugs(provider: str = "granicus") -> list[str]:
     d = FIXTURE_DIR / provider
     if not d.exists():
         return []
-    return sorted(p.stem for p in d.glob("*.*"))
+    # Granicus has both RSS XML snapshots and native-archive HTML parser fixtures.
+    # Only the former are feed snapshots consumed by ``episodes_for``.
+    pattern = "*.xml" if provider == "granicus" else "*.*"
+    return sorted(p.stem for p in d.glob(pattern))
 
 
 def write_local_backend_site_config(tmp_path: Path, state_dir: Path) -> Path:

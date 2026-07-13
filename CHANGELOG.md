@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Changed
+
+- **Granicus episode discovery is now archive-first (R11 phase 1).** The provider derives each native
+  `ViewPublisher.php` archive from the configured `ViewPublisherRSS.php` view ID, removing the
+  100-item RSS cap without changing an existing Granicus source key or clip-based episode identity.
+  Archive rows add official Agenda and Minutes links when published. This does **not** bump an audio or
+  stage pipeline version: existing audio specifications remain valid, while newly discovered historical
+  recordings enter the normal restartable backlog and are materialized gradually under the existing
+  budgets. RSS is no longer fetched as a discovery source or fallback; verified calendar companions are
+  a subsequent R11 phase for archive-missing recordings and agenda-only meetings.
+
 ### Fixed
 
 - **`ASR Quality Ingest` no longer fails on unrelated issue comments, and its parent-close pass

@@ -14,6 +14,30 @@ yet cut, batch review pending**
 > already found" — R11 owns URL *discovery*, R3 owns text *extraction*. The original Legistar/Granicus
 > design (proven, already L3) is preserved below as **Part A**; everything else is new.
 
+> **Authoritative implementation decision — 2026-07-13 (maintainer confirmed):** replace the
+> proposed standalone `legistar` full-replacement migration with an **archive-first Granicus
+> adapter** plus an explicitly configured, best-effort calendar companion. Native
+> `ViewPublisher.php` pages are the recorded-meeting discovery source; the legacy RSS endpoint
+> is not a runtime fallback. A verified Legistar calendar contributes (a) Granicus-video rows
+> missing from the native archive and (b) the full agenda/meeting metadata catalog, including
+> rows with no recording. The latter are durable meeting metadata, not synthetic podcast
+> episodes. This decision follows live coverage checks: Pflugerville's calendar has 2,402
+> meeting rows (2010–2026), 784 video-linked rows, and 228 native-archive recordings; archive
+> alone would discard 2,178 calendar rows, including 560 playable recordings. It retains all
+> 100 already-materialized episodes. Arlington, Fort Worth, and Denton County likewise have
+> native archive pages that are strict supersets of their current RSS windows.
+>
+> This re-scopes Part A below: its Legistar parser remains useful, but as the calendar
+> companion—not as the primary `provider:`. It is a deliberate deviation from the prior L3
+> plan, approved by the maintainer after the coverage investigation. The implementation ships
+> in three reviewable PR phases: **(1)** archive-first Granicus discovery and rich official
+> links, without changing `source_key`; **(2)** calendar catalog/backfill composition and
+> agenda-only record persistence/rendering; **(3)** Swagit first-party agenda/minutes link
+> extraction. Each non-Granicus calendar or portal remains a verified per-city configuration;
+> no hostname guessing or silent runtime probing is permitted. Execution issues: [#903](https://github.com/BashfulBits/city-meeting-podcasts/issues/903),
+> [#904](https://github.com/BashfulBits/city-meeting-podcasts/issues/904), and
+> [#905](https://github.com/BashfulBits/city-meeting-podcasts/issues/905).
+
 ---
 
 ## §0. Three goals, and the relationships that make them possible
