@@ -1,12 +1,18 @@
-"""Render the directory index (grouped by city) and per-feed pages."""
+"""Render the directory index (grouped by city), per-feed pages, and meeting/archive pages."""
 
 from __future__ import annotations
 
+import dataclasses
 import html
+import json
 
-from citypods.feeds import enclosure_url, episode_resource_links
+from citypods.chapters import episode_served_chapters
+from citypods.durations import episode_served_duration_seconds
+from citypods.feeds import enclosure_url, episode_resource_links, meeting_page_url
 from citypods.models import City, Episode
+from citypods.providers import get_provider
 from citypods.render import get_env
+from citypods.timeline import served_to_source
 
 
 def render_redirect_feed(title: str, new_feed_url: str, new_page_url: str) -> str:
@@ -85,10 +91,12 @@ def render_city_page(
     site_config: dict | None = None,
     has_audio: bool = True,
     has_video: bool = True,
+    meeting_pages: bool = True,
 ) -> str:
     site = base_url.rstrip("/")
     city_url = f"{site}/{city.slug}/"
     audio_url = f"{city_url}audio_feed.xml"
+    archive_url = f"{city_url}archive/"
     # CR2-CP-12: keep an episode when it has a usable enclosure of *either* kind the city
     # actually offers — filtering on audio only meant a video-only city (has_audio=False,
     # has_video=True) rendered a page with zero episodes despite a populated video feed.
@@ -98,6 +106,7 @@ def render_city_page(
             "duration": _duration(e.duration),
             "audio": enclosure_url(e, "audio"),
             "links": episode_resource_links(e),
+            "page_url": meeting_page_url(city, e, base_url) if meeting_pages else None,
         }
         for e in episodes
         if (has_audio and enclosure_url(e, "audio")) or (has_video and enclosure_url(e, "video"))
@@ -113,4 +122,174 @@ def render_city_page(
         episodes=episode_view,
         has_audio=has_audio,
         has_video=has_video,
+        meeting_pages=meeting_pages,
+        archive_url=archive_url,
+    )
+
+
+def _availability_view(ep: Episode) -> dict | None:
+    """Project durable media availability into the labels exposed to the HTML templates."""
+    av = ep.media_availability
+    if av is None:
+        return None
+    state = av.effective_state()
+    label = state.replace("_", " ")
+    return {
+        "state": state,
+        "label": label.title(),
+        "reason": av.operator_reason or av.reason,
+        "last_check": av.last_check,
+        "recovered_at": av.recovered_at,
+        "withheld": av.is_withheld(),
+    }
+
+
+def _source_deeplink(city: City, ep: Episode, t_seconds: float) -> str | None:
+    """Map a served-time offset to a provider-specific source video URL when supported."""
+    provider = get_provider(ep.sources[0].provider if ep.sources else city.provider)
+    if "deeplink" not in getattr(provider, "capabilities", frozenset()):
+        return None
+    ref = None
+    source_time = t_seconds
+    if ep.timeline is not None:
+        mapping = served_to_source(ep.timeline, t_seconds)
+        if mapping is None:
+            return None
+        source_id, source_time = mapping
+        ref = next((src.ref for src in ep.sources if src.id == source_id), None)
+    elif ep.sources:
+        ref = ep.sources[0].ref
+    else:
+        ref = (ep.links or {}).get("canonical_video")
+    if not ref:
+        return None
+    return provider.video_deeplink(ref, source_time)
+
+
+def _transcript_client_config(city: City, ep: Episode, base_url: str) -> dict | None:
+    """Build the JSON configuration used by the browser transcript synchronizer."""
+    if not (
+        ep.transcript_synced and ep.transcript_hosted_url and ep.transcript_format in {"vtt", "srt"}
+    ):
+        return None
+    sources = [dataclasses.asdict(src) for src in ep.sources]
+    if not sources:
+        fallback_ref = (ep.links or {}).get("canonical_video")
+        if fallback_ref:
+            sources = [
+                {
+                    "id": "s0",
+                    "provider": city.provider,
+                    "ref": fallback_ref,
+                    "media_kind": ep.media_kind,
+                    "duration": episode_served_duration_seconds(ep),
+                    "watch_url": fallback_ref,
+                    "backup_key": None,
+                    "duration_basis": None,
+                }
+            ]
+    segments = [dataclasses.asdict(seg) for seg in ep.timeline.segments] if ep.timeline else []
+    return {
+        "transcriptUrl": ep.transcript_hosted_url,
+        "transcriptFormat": ep.transcript_format,
+        "pageUrl": meeting_page_url(city, ep, base_url),
+        "sourceLinkBase": _source_deeplink(city, ep, 0.0),
+        "sources": sources,
+        "segments": segments,
+        "cityLabel": city.podcast_author,
+        "bodyLabel": ep.body or city.podcast_title,
+        "dateLabel": ep.published.strftime("%B %-d, %Y"),
+    }
+
+
+def _script_json(value: dict) -> str:
+    """Serialize data for an inline JSON script without allowing a closing script tag."""
+    return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def render_meeting_page(
+    city: City,
+    ep: Episode,
+    base_url: str,
+    *,
+    site_config: dict | None = None,
+) -> str:
+    """Render one stable meeting permalink with media, metadata, chapters, and transcript UI."""
+    site = base_url.rstrip("/")
+    page_url = meeting_page_url(city, ep, base_url)
+    transcript_client = _transcript_client_config(city, ep, base_url)
+    official_links = episode_resource_links(ep)
+    if city.meetings_url:
+        official_links.append(("Official meetings page", city.meetings_url))
+    elif city.city_website:
+        official_links.append(("City website", city.city_website))
+    availability = _availability_view(ep)
+    player_url = enclosure_url(ep, "audio")
+    chapters = [
+        {
+            "start": int(ch.get("start", 0)),
+            "title": ch.get("title", ""),
+            "source_url": _source_deeplink(city, ep, float(ch.get("start", 0))),
+        }
+        for ch in episode_served_chapters(ep)
+    ]
+    report_url = None
+    github_repo = (site_config or {}).get("github_repo")
+    if github_repo and ep.uid:
+        body = (
+            f"slug: {city.slug}\nuid: {ep.uid}\nmeeting page: {page_url}\n"
+            f"canonical video: {(ep.links or {}).get('canonical_video', '')}\n"
+        )
+        from urllib.parse import quote
+
+        report_url = (
+            f"https://github.com/{github_repo}/issues/new?template=bug_report.yml"
+            f"&title={quote(f'Meeting page issue: {city.slug} {ep.uid}')}"
+            f"&body={quote(body)}"
+        )
+    template = get_env().get_template("meeting.html.j2")
+    return template.render(
+        city=city,
+        ep=ep,
+        site=site,
+        config=site_config or {},
+        page_url=page_url,
+        city_url=f"{site}/{city.slug}/",
+        player_url=player_url,
+        duration=_duration(episode_served_duration_seconds(ep) or ep.duration),
+        availability=availability,
+        chapters=chapters,
+        official_links=official_links,
+        transcript_client_json=_script_json(transcript_client) if transcript_client else None,
+        source_link_url=_source_deeplink(city, ep, 0.0),
+        report_url=report_url,
+    )
+
+
+def render_city_archive_page(
+    city: City,
+    base_url: str,
+    episodes: list[Episode],
+    *,
+    site_config: dict | None = None,
+) -> str:
+    """Render the uncapped retained archive listing for one city/body feed."""
+    site = base_url.rstrip("/")
+    rows = [
+        {
+            "title": ep.title,
+            "published": ep.published.strftime("%B %-d, %Y"),
+            "page_url": meeting_page_url(city, ep, base_url),
+            "availability": _availability_view(ep),
+        }
+        for ep in sorted(episodes, key=lambda e: e.published, reverse=True)
+        if meeting_page_url(city, ep, base_url)
+    ]
+    template = get_env().get_template("city_archive.html.j2")
+    return template.render(
+        city=city,
+        site=site,
+        config=site_config or {},
+        episodes=rows,
+        city_url=f"{site}/{city.slug}/",
     )

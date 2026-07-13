@@ -47,6 +47,20 @@ def test_audio_uses_audio_mime(sample_city, sample_episodes):
     assert enc.get("type") == "audio/mp4"
 
 
+def test_item_links_to_its_meeting_page_when_enabled(sample_city, sample_episodes):
+    sample_episodes[0].uid = "meeting-1"
+    xml = build_rss(sample_city, [sample_episodes[0]], "audio", "https://x.test")
+    assert _items(xml)[0].find("link").text == "https://x.test/denton-tx/meeting-1/"
+
+
+def test_item_omits_meeting_page_link_when_disabled(sample_city, sample_episodes):
+    sample_episodes[0].uid = "meeting-1"
+    xml = build_rss(
+        sample_city, [sample_episodes[0]], "audio", "https://x.test", meeting_pages=False
+    )
+    assert _items(xml)[0].find("link") is None
+
+
 def test_withheld_availability_omits_enclosure_from_both_kinds(sample_episodes):
     ep = sample_episodes[0]
     ep.media_availability = MediaAvailability(state=CONFIRMED_EMPTY)

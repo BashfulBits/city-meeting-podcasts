@@ -165,6 +165,13 @@ def chapters_url(city: City, ep: Episode, base_url: str) -> str | None:
     return f"{base_url.rstrip('/')}/{city.slug}/chapters/{ep.uid}.json"
 
 
+def meeting_page_url(city: City, ep: Episode, base_url: str) -> str | None:
+    """Stable public URL for one meeting's permalink page."""
+    if not ep.uid:
+        return None
+    return f"{base_url.rstrip('/')}/{city.slug}/{ep.uid}/"
+
+
 def _ordered(episodes: list[Episode], max_episodes: int) -> list[Episode]:
     ordered = sorted(episodes, key=lambda e: e.published, reverse=True)
     return ordered[:max_episodes]
@@ -217,7 +224,14 @@ def enclosure_duration(ep: Episode, kind: str) -> int | None:
     return int(round(source)) if source is not None else None
 
 
-def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> str:
+def build_rss(
+    city: City,
+    episodes: list[Episode],
+    kind: str,
+    base_url: str,
+    *,
+    meeting_pages: bool = True,
+) -> str:
     """Render an iTunes RSS feed.
 
     ``kind`` is "audio" or "video". Episodes with no enclosure for that kind (see
@@ -240,6 +254,7 @@ def build_rss(city: City, episodes: list[Episode], kind: str, base_url: str) -> 
         items.append(
             {
                 "ep": ep,
+                "page_url": meeting_page_url(city, ep, base_url) if meeting_pages else None,
                 "enclosure_url": url,
                 "duration": enclosure_duration(ep, kind),
                 "notes_html": episode_notes_html(ep),

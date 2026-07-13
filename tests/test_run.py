@@ -12,7 +12,7 @@ from citypods import run
 from citypods.models import City, Episode
 from citypods.providers import get_provider, register
 from citypods.providers.base import ProviderError
-from citypods.records import feed_content_hash
+from citypods.records import feed_content_hash, meeting_page_hash
 from citypods.stages import StageContext, StageStats
 from citypods.state import build_fingerprint
 from citypods.timeline import Segment, Timeline
@@ -47,6 +47,33 @@ def test_content_hash_changes_with_episodes_and_fingerprint():
     assert base != feed_content_hash([_ep("g1")], "fp1")  # fingerprint bust
     # A newly-hosted enclosure changes the hash so the feed re-renders.
     assert base != feed_content_hash([_ep("g1", hosted="https://cdn/g1.m4a")], "fp0")
+
+
+def test_meeting_page_hash_tracks_transcript_and_availability_render_inputs():
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+
+    ep = _ep()
+    base = meeting_page_hash(ep)
+
+    ep.transcript_format = "vtt"
+    assert meeting_page_hash(ep) != base
+
+    ep.media_availability = MediaAvailability(
+        state=CONFIRMED_EMPTY,
+        reason="empty file",
+        last_check="2026-07-01T00:00:00+00:00",
+        recovered_at=None,
+    )
+    changed = meeting_page_hash(ep)
+    assert changed != base
+
+    ep.media_availability = MediaAvailability(
+        state=CONFIRMED_EMPTY,
+        reason="updated operator note",
+        last_check="2026-07-02T00:00:00+00:00",
+        recovered_at="2026-07-03T00:00:00+00:00",
+    )
+    assert meeting_page_hash(ep) != changed
 
 
 def test_build_fingerprint_tracks_base_url_and_templates():
@@ -316,6 +343,22 @@ def test_unchanged_city_is_skipped_on_second_build(tmp_path, fake_provider):
     assert [r.status for r in second] == ["skipped"]
     # State persisted outside docs/ so it survives a wiped output tree.
     assert (tmp_path / "state" / "feed_etags.json").exists()
+
+
+def test_archived_meeting_page_updates_even_when_feed_window_is_unchanged(tmp_path, fake_provider):
+    cities = _setup(tmp_path)
+    (cities / "feeds" / "fake-city.yml").write_text(
+        (cities / "feeds" / "fake-city.yml").read_text() + "max_episodes: 1\n"
+    )
+    _build(tmp_path, cities)
+
+    old_page = tmp_path / "docs" / "fake-city" / fake_provider.episodes[1].uid / "index.html"
+    assert old_page.exists()
+    fake_provider.episodes[1].title = "Corrected archival title"
+
+    result = _build(tmp_path, cities)
+    assert [r.status for r in result] == ["built"]
+    assert "Corrected archival title" in old_page.read_text()
 
 
 def test_changed_content_rebuilds(tmp_path, fake_provider):

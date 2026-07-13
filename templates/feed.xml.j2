@@ -28,6 +28,9 @@
     {% for item in items %}
     <item>
       <title>{{ item.ep.title }}</title>
+      {% if item.page_url %}
+      <link>{{ item.page_url }}</link>
+      {% endif %}
       <description>{{ item.ep.description }}</description>
       {% if item.notes_html %}
       <content:encoded><![CDATA[{{ item.notes_html | safe }}]]></content:encoded>
