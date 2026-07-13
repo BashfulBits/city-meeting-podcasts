@@ -258,6 +258,19 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > review/11's diarization row, left over from before the R2/R3 insertion shifted numbering — corrected
 > to R7 to match the live table.
 
+> **Matured to L3, 2026-07-13: R7 (diarization, minimal attendee extraction, per-speaker pages), full
+> design in [`review/31`](review/31-speaker-diarization-attendee-extraction.md).** Checked every
+> dependency the L1 sketch named against the live codebase rather than trusting the sketch: H6b (its
+> named blocker) is shipped; H9 was already deferred/closed (H14d's telemetry answered its question),
+> flagged only as a real candidate to reopen once diarization's own cost profile is measured; and the
+> execution-backend interface already includes `"diarize"` in its `Task` Literal since H13/H14b/H14c
+> shipped — this item never needed to build backend dispatch, only a real adapter. That adapter
+> (`citypods/diarize.py`, wespeaker ECAPA-TDNN) wires into an already-reserved-but-inert `diarize`
+> lane/`speakers` block and **unifies with the existing provider-diarize schema** (built for PT-PR6)
+> rather than a parallel one. Attendee extraction reuses R3's own PDF/HTML extraction functions against a
+> newly-wired `links["minutes"]` — the identical one-line gap `agenda_packet` had. Identify-then-
+> human-confirm only, never auto-named; per-speaker pages render only for confirmed speakers.
+
 | Pri | Item |
 |----:|------|
 | **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
@@ -269,7 +282,7 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R4** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
 | **R5** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
 | **R6** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites — cards drop "action, vote" (no vote/minutes data exists in this codebase) and gain per-item doc links from R3's `agenda_backup`; summaries are inline record fields, not a sidecar, and never touch the feed's own `<description>`; soundbites give `extract_clip` (already built, zero callers today) its first real consumer via a longest-chapter heuristic, LLM selection additive. **L3**, see [`review/30`](review/30-cards-summaries-soundbites.md) |
-| **R7** | **#7** speaker diarization (CPU-viable execution-backend model, meeting-wide identity reconciliation) + a minimal **#14** attendee-extraction slice (names present at a meeting, parsed from official minutes/platform metadata — never inferred from audio) so diarized voice clusters get human-confirmed real-name labels instead of staying anonymous. **Full pull-forward, 2026-07-12** — sequenced before R8 so the front-end design cycle has a real taxonomy to design around |
+| **R7** | **#7** speaker diarization (wespeaker ECAPA-TDNN adapter on the already-shipped execution-backend interface, meeting-wide identity reconciliation via cross-window embedding matching) + a minimal **#14** attendee-extraction slice (name list parsed from released minutes via `links["minutes"]`, reusing R3's own PDF/HTML extraction — never inferred from audio) so diarized voice clusters get human-confirmed real-name labels instead of staying anonymous, never auto-named + per-speaker pages for confirmed speakers only (`review/25` §2.3 #11). **Full pull-forward, 2026-07-12** — sequenced before R8 so the front-end design cycle has a real taxonomy to design around. **L3**, see [`review/31`](review/31-speaker-diarization-attendee-extraction.md) |
 | **R8** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
 | **R9** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |
 

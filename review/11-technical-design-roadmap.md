@@ -139,7 +139,7 @@ sync · #20 video enclosures (partial).
 | Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
 | **Per-agenda-item cards, auto-summaries, soundbites** (#3/GH#155, #2, #15/GH#156) | — | **L3** (2026-07-12) · **ROADMAP R6** | [`review/30`](30-cards-summaries-soundbites.md) · three Parts, one doc, bundled as they are in the ROADMAP table. Cards: extractive first (chapter + real transcript-slice excerpt + R3's per-item `agenda_backup` doc links — no vote/minutes data exists anywhere in this codebase, so "what was decided" stays out of scope, corrected from the L1 sketch's assumption), LLM one-liner additive via the existing `summarize` verb, mode-aware, not a new one. Summaries: inline record fields, not a sidecar (small and bounded by construction, unlike this item's other artifacts), never overwrites the feed's own `<description>`. Soundbites: the already-built, zero-caller `extract_clip`/`ClipArtifact` (`citypods/clips.py`) gets its first real consumer — a longest-chapter heuristic ships free of any new dependency, LLM selection additive. **All three Parts' non-LLM paths ship independent of R2/R5** (verified neither has any code yet, despite being "L3" — design-complete, not implemented); only the LLM-assisted halves wait on R2 |
-| **Speaker diarization + per-speaker pages** | #7 | L1 | §5.1 — **ROADMAP R7 (corrected 2026-07-12 — this row said "R5," stale from before the R2/R3 insertion shifted numbering), full pull-forward, gating 1.0 (2026-07-12).** After H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment. **Sequenced ahead of front-end design cycle** (below): meeting pages need a speaker taxonomy (labels, per-speaker linking) baked into the page/UI design rather than retrofitted after a design pass locks the layout. **Depends on a minimal pull-forward of Phase F's attendee extraction (#14)** — diarization alone only clusters anonymous voices; real-name labeling needs the "who was present" name list §5.3 describes. The richer Phase-F attendee/vote item (platform-metadata tallies, entity-model linkage) stays post-1.0. **Per-speaker pages adopted from review/25 §2.3 #11** (2026-07-13, maintainer decision) — "everything Councilmember X has said, across meetings"; a static, generated-from-records page per **confirmed** speaker, the same build-time mechanism as R1's meeting pages, not gated on the Interaction seam (the speaker roster is bounded, like the city roster). Requires a **stable speaker/person identifier** distinct from the display name, so cross-meeting aggregation doesn't need a later migration when the seam/entity-model (§5.5) eventually formalizes `Person` — R1's transcript data model must reserve this identifier now even though it stays unpopulated until R7 (corrected 2026-07-12 — also said "R5," same stale-numbering issue as this row's other reference) |
+| **Speaker diarization + minimal attendee extraction + per-speaker pages** | #7, #14 | **L3** (2026-07-13) · **ROADMAP R7, full pull-forward, gating 1.0** | [`review/31`](31-speaker-diarization-attendee-extraction.md) · verified before designing further: H6b (its named blocker) is shipped, and the execution-backend interface already includes `"diarize"` in `Task` since H13/H14b/H14c shipped — this item does **not** need to build backend dispatch, only a real adapter (`citypods/diarize.py`, wespeaker ECAPA-TDNN, re-verified still the right CPU-viable choice) wired into `local.py`'s `run_inference` and the already-reserved-but-inert `diarize` lane/`speakers` block. Native diarization output **unifies with the existing provider-diarize `speakers_*` schema** (built for PT-PR6) rather than a parallel one, with provider-sourced data taking precedence when both exist. Attendee extraction reuses R3's own PDF/HTML extraction functions against a newly-wired `links["minutes"]` (the identical one-line gap `agenda_packet` had). Identify-then-human-confirm only, never auto-named; per-speaker pages render only for confirmed speakers. H9 (deferred, not blocking) is flagged as a real candidate for reopening once this item's own cost profile is measured, not treated as settled forever |
 | Front-end design cycle | #55 (#20/#54) | L1 | §5.1 — sequenced after speaker diarization above so the design pass can account for its taxonomy up front |
 | Accessibility (WCAG) | #50 | L1 | §5.1 |
 | `<podcast:funding>` link | #16 | L1 | §5.1 |
@@ -376,41 +376,21 @@ Phase R still owns archive/page presentation, availability filters, `/admin/stat
 surfaces, history browsing, and the later query API. Keep the event/history schema
 storage-adapter-neutral so review/17's SQL path can index it later.
 
-**Speaker diarization (#7).** *Problem:* transcripts don't identify who's speaking — council members,
-staff, and public commenters look identical. *Approach:* run a speaker-embedding diarization model over
-the audio after transcription, align speaker-change boundaries to the word-level VTT cues (now emitted
-by the ASR stage), and enrich the canonical word/segment artifact with reconciled speaker assignments;
-do not regenerate or discard successful transcript text merely because diarization fails. For long
-audio, overlapping diarization windows must reconcile identities across the whole meeting through
-speaker embeddings plus meeting-wide clustering/identity reconciliation — independently numbered
-per-chunk labels cannot be concatenated. Two CPU-viable backends:
-(a) **wespeaker ECAPA-TDNN** (~100 MB, no HF gate, ~2× transcription cost on CPU); (b) **speechbrain
-ECAPA-TDNN** via simple-diarizer (~300 MB, similarly lightweight). A free/low-cost GPU API
-(H9 evaluation) cuts diarization cost further — pyannote v3 on GPU is fast and accurate but gated;
-the CPU-only path uses the lighter backends to stay within the Actions runner budget. It runs on the
-**execution backend** (§5.5) — the same interface as transcription — so the diarization model can target a
-GPU backend (Modal/Kaggle/self-hosted/AWS) without changing the diarization logic; this is exactly the
-infra the maintainer wants **locked pre-1.0**. *Depends on:* word timing — H12 moves it into the
-word-JSON sidecar, which diarization consumes (built on PR #249's `word_timestamps`); H6b sharded ASR
-workflow (dedicated runner/lane for heavy inference); H9 offload evaluation (cost/quality baseline against
-the backend interface). **Naming (2026-07-12, full pull-forward):** diarization alone produces only
-anonymous voice clusters ("Speaker 2") — turning that into a real name needs the minimal attendee-name
-list pulled forward from Phase F's attendee extraction (§5.3) for that meeting, matched to voice
-clusters **identify-then-human-confirm, never auto-named**, consistent with the project's "never
-editorialize/auto-attribute the factual record" stance. Ship diarization without names before the
-matching UI exists rather than block the transcript-level feature on it; anonymous "Speaker N" labels
-are still strictly better than no attribution. **New H14d note:** do not reuse ASR's current budget
-coefficients or admission thresholds blindly here; diarize needs its own measured GPU/host-memory
-profile, its own budget-unit coefficient, and likely a stricter host-RSS guard than VRAM guard because
-the first external ASR runs were host-memory-heavier than GPU-memory-heavy. *Sequencing:* implement
-after H6b lands a separate ASR runner — do not add diarization to the current single-runner enrich path.
-**Full pull-forward (2026-07-12):** implement **before** the front-end design cycle (above), not just
-settle its data shape, since a speaker-attribution UI is a real input to that redesign, not a later
-bolt-on. When both products are requested externally,
-prefer one episode worker flow that shares download, decode/resample, normalized temporary audio,
-VAD/chunk planning, startup, and final timestamp/artifact coordination. ASR and diarization normally
-use different neural models, so the expected gain is operational reuse rather than shared model
-computation. This records the integration direction without promoting diarization out of Phase R.
+**Speaker diarization + minimal attendee extraction + per-speaker pages (#7, #14, `review/25` §2.3 #11
+— ROADMAP R7).** Matured to L3 — full design in
+[`review/31`](31-speaker-diarization-attendee-extraction.md). Verified before designing further: the
+execution-backend interface (§5.5) already includes `"diarize"` in its `Task` Literal since H13/H14b/H14c
+shipped, and H6b's separate-ASR-runner blocker is cleared — this item does **not** need to build or wait
+on backend dispatch, only give it a real adapter (`citypods/diarize.py`, wespeaker ECAPA-TDNN, re-checked
+still the right CPU-viable choice on 2026-07-13) wired into the already-reserved-but-inert `diarize`
+lane/`speakers` block. Native diarization output unifies with the existing provider-diarize `speakers_*`
+schema (built for PT-PR6) rather than a parallel one; meeting-wide identity reconciliation uses
+cross-window embedding matching, not naive per-chunk concatenation. Attendee extraction reuses R3's own
+PDF/HTML extraction functions against a newly-wired `links["minutes"]` — the identical one-line gap
+`agenda_packet` had. **Identify-then-human-confirm only, never auto-named**, unchanged from the original
+constraint; per-speaker pages render only for confirmed speakers, the same build-time mechanism as R1's
+meeting pages. H9 (deferred, not blocking) is flagged as a real candidate for reopening once this item's
+own cost profile is measured — not treated as permanently settled.
 
 ### §5.2 Phase E — Engagement & Distribution
 
