@@ -75,6 +75,7 @@ from citypods.records import (
     migrate_legacy_manifests,
     protected_blocks_for_lane,
     prune_archive,
+    reconcile_cross_feed_episodes,
     record_to_episode,
     save_calendar_records,
     save_records,
@@ -169,6 +170,7 @@ class SourcePipeline:
             enabled=ctx.lane == "audio",
         )
         self._cache: dict[str, list[Episode]] = {}
+        self._cache_cities: dict[str, City] = {}
         # A companion's no-video rows live beside, but never inside, episodes.json.
         self._calendar_cache: dict[str, list[AgendaRecord]] = {}
         self._calendar_store: dict[str, dict[str, AgendaRecord]] = {}
@@ -266,6 +268,14 @@ class SourcePipeline:
         assign_uids(city, episodes)
         persisted = load_records(self.state_dir, key)
         merge_persisted(episodes, persisted)
+        self._cache_cities[key] = city
+        if city.source.get("aggregate"):
+            episodes, reconciled = self.reconcile_aggregate(city, episodes)
+            if reconciled:
+                print(
+                    f"[enrich] cross-feed reconciled slug={city.slug} duplicates={reconciled}",
+                    flush=True,
+                )
         persisted_calendar = load_calendar_records(self.state_dir, key)
         assign_uids(city, fresh_calendar)
         calendar = merge_calendar_records(persisted_calendar, fresh_calendar)
@@ -276,6 +286,28 @@ class SourcePipeline:
         seeded = migrate_legacy_manifests(self.state_dir, episodes)
         self.h16_identity.capture(city, episodes)
         return provider, episodes, persisted, seeded
+
+    def reconcile_aggregate(self, city: City, episodes: list[Episode]) -> tuple[list[Episode], int]:
+        """Reconcile an aggregate source against already-prepared dedicated feeds for its city."""
+        canonical_by_key = {
+            key: archive
+            for key, archive in self._cache.items()
+            if key != source_key(city)
+            and (peer := self._cache_cities.get(key)) is not None
+            and peer.city_entity == city.city_entity
+            and not peer.source.get("aggregate")
+        }
+        unique, reconciled = reconcile_cross_feed_episodes(canonical_by_key.values(), episodes)
+        if reconciled and self.persist_records and not self.ctx.dry_run:
+            # The aggregate may carry links absent from a dedicated view. Persist those link-only
+            # enrichments back to the canonical source store without changing its UID or audio key.
+            for key, archive in canonical_by_key.items():
+                save_records(
+                    self.state_dir,
+                    key,
+                    {episode.uid: episode_to_record(episode) for episode in archive if episode.uid},
+                )
+        return unique, reconciled
 
     def fetch_merge_from_records(
         self, city: City, key: str, reason: Exception
@@ -1123,6 +1155,24 @@ def _run_enrich_global_queue(
                 "persisted": persisted,
                 "notes": notes,
             }
+    # Aggregate archive feeds are projections over the dedicated feeds. Reconcile them before
+    # candidate selection so an overlapping recording is never materialized or persisted twice.
+    for key, state in prepared.items():
+        if not state["city"].source.get("aggregate"):
+            continue
+        canonical = [
+            other["episodes"]
+            for other_key, other in prepared.items()
+            if other_key != key
+            and other["city"].city_entity == state["city"].city_entity
+            and not other["city"].source.get("aggregate")
+        ]
+        state["episodes"], reconciled = reconcile_cross_feed_episodes(canonical, state["episodes"])
+        if reconciled:
+            print(
+                f"[enrich] cross-feed reconciled slug={state['city'].slug} duplicates={reconciled}",
+                flush=True,
+            )
     if transcript_stages:
 
         def _normalize_prepared(item: tuple[str, dict]) -> None:
@@ -1692,32 +1742,41 @@ def _build_impl(
                         _recs_by_slug[c.slug] = _recs_by_source[sk]
                     cities = order_cities_by_policy(cities, _recs_by_slug, backlog_policy)
 
-                with (
-                    source_cache or _nullcontext(),
-                    ThreadPoolExecutor(max_workers=max_workers) as pool,
-                ):
-                    futures = [
-                        pool.submit(
-                            _process_city,
-                            c,
-                            base_url,
-                            output_dir,
-                            cache,
-                            request_delay,
-                            dry_run,
-                            pipeline,
-                            site_config,
-                            fingerprint,
-                            do_render,
-                            no_refresh,
-                        )
-                        for c in cities
-                    ]
-                    for fut in futures:
-                        result, entry = fut.result()
-                        results.append(result)
-                        if entry is not None:
-                            cache[result.slug] = entry
+                # Aggregate sources run after dedicated sources so their cross-feed reconciliation
+                # sees the canonical records and can omit overlap before persisting/rendering.
+                ordered_city_groups = (
+                    [c for c in cities if not c.source.get("aggregate")],
+                    [c for c in cities if c.source.get("aggregate")],
+                )
+                result_by_slug: dict[str, CityResult] = {}
+                with source_cache or _nullcontext():
+                    for city_group in ordered_city_groups:
+                        if not city_group:
+                            continue
+                        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                            futures = [
+                                pool.submit(
+                                    _process_city,
+                                    c,
+                                    base_url,
+                                    output_dir,
+                                    cache,
+                                    request_delay,
+                                    dry_run,
+                                    pipeline,
+                                    site_config,
+                                    fingerprint,
+                                    do_render,
+                                    no_refresh,
+                                )
+                                for c in city_group
+                            ]
+                            for fut in futures:
+                                result, entry = fut.result()
+                                result_by_slug[result.slug] = result
+                                if entry is not None:
+                                    cache[result.slug] = entry
+                results = [result_by_slug[c.slug] for c in cities]
     finally:
         # M9/CR2-CP-37: close the owned ffmpeg process pool even if the block above raises, so a
         # _process_city future's exception can't leak it.

@@ -318,6 +318,38 @@ def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[Age
         _fill_missing_links(episode.links, record.links)
 
 
+def reconcile_cross_feed_episodes(
+    canonical_sources: Iterable[Iterable[Episode]], aggregate: list[Episode]
+) -> tuple[list[Episode], int]:
+    """Remove aggregate duplicates while enriching the canonical feed record in place.
+
+    Swagit archive views can expose the same recording under a dedicated body view and a
+    city-wide archive.  The provider GUID is the only safe cross-view join key: body/date
+    matching can collapse distinct same-day sessions.  Canonical episodes retain their
+    existing UID, source key, and content-addressed artifacts; links present only on the
+    aggregate row are filled into that existing record.  The returned list contains only
+    recordings that are not already represented by a canonical feed.
+    """
+    by_guid: dict[str, Episode] = {}
+    by_uid: dict[str, Episode] = {}
+    for episodes in canonical_sources:
+        for episode in episodes:
+            by_guid.setdefault(episode.guid, episode)
+            if episode.uid:
+                by_uid.setdefault(episode.uid, episode)
+
+    unique: list[Episode] = []
+    reconciled = 0
+    for episode in aggregate:
+        existing = by_guid.get(episode.guid) or (by_uid.get(episode.uid) if episode.uid else None)
+        if existing is None:
+            unique.append(episode)
+            continue
+        _fill_missing_links(existing.links, episode.links)
+        reconciled += 1
+    return unique, reconciled
+
+
 def audio_spec_hash(
     ep: Episode,
     *,

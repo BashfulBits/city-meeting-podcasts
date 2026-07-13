@@ -29,6 +29,7 @@ from citypods.records import (
     pending_transcribe_items,
     protected_blocks_for_lane,
     prune_archive,
+    reconcile_cross_feed_episodes,
     record_to_episode,
     save_calendar_records,
     save_records,
@@ -95,6 +96,25 @@ def test_auxiliary_agenda_links_attach_without_creating_or_overwriting_episodes(
         "agenda": "https://primary.example/agenda.pdf",
         "agenda_portal": "https://agenda.example/meeting/1",
     }
+
+
+def test_cross_feed_reconciliation_reuses_canonical_episode_and_drops_aggregate_duplicate():
+    canonical = _ep("swagit-100")
+    canonical.links = {"canonical_video": "https://swagit.example/videos/100"}
+    aggregate_duplicate = _ep("swagit-100")
+    aggregate_duplicate.links = {
+        "canonical_video": "https://swagit.example/videos/100",
+        "agenda": "https://swagit.example/videos/100/agenda",
+    }
+    aggregate_only = _ep("swagit-200", body="New Commission")
+
+    kept, reconciled = reconcile_cross_feed_episodes(
+        [[canonical]], [aggregate_duplicate, aggregate_only]
+    )
+
+    assert reconciled == 1
+    assert kept == [aggregate_only]
+    assert canonical.links["agenda"] == "https://swagit.example/videos/100/agenda"
 
 
 def test_unmatched_auxiliary_agenda_record_is_dropped():
