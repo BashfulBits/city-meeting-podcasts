@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Swagit Pagination (Audio)</title>
+    <link>https://podcasts.example.gov/swagit-pagination/</link>
+    <atom:link href="https://podcasts.example.gov/swagit-pagination/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Test</description>
+    <language>en-us</language>
+    <itunes:author>City</itunes:author>
+    <itunes:summary>Test</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://podcasts.example.gov/swagit-pagination/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://podcasts.example.gov/swagit-pagination/artwork.jpg</url>
+      <title>Swagit Pagination</title>
+      <link>https://podcasts.example.gov/swagit-pagination/</link>
+    </image>
+    <item>
+      <title>Board A – May 27, 2026</title>
+      <link>https://podcasts.example.gov/swagit-pagination/a11a2beb68e560a2/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/300">Watch the video</a></li></ul>]]></content:encoded>
+      <pubDate>Wed, 27 May 2026 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">a11a2beb68e560a2</guid>
+      <enclosure url="https://cdn.example.gov/0.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+    <item>
+      <title>Board A – May 20, 2026</title>
+      <link>https://podcasts.example.gov/swagit-pagination/af16da4c7e5abfaf/</link>
+      <description></description>
+      <content:encoded><![CDATA[<p>Resources:</p><ul><li><a href="https://dallastx.new.swagit.com/videos/301">Watch the video</a></li></ul>]]></content:encoded>
+      <pubDate>Wed, 20 May 2026 00:00:00 +0000</pubDate>
+      <guid isPermaLink="false">af16da4c7e5abfaf</guid>
+      <enclosure url="https://cdn.example.gov/1.m4a" type="audio/mp4" length="0"/>
+      <itunes:explicit>false</itunes:explicit>
+    </item>
+  </channel>
+</rss>

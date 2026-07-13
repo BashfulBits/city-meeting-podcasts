@@ -23,6 +23,7 @@ Why this exists (see project memory, "episode-record / identity refactor"):
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import hashlib
 import json
@@ -316,6 +317,42 @@ def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[Age
         if record is None:
             continue
         _fill_missing_links(episode.links, record.links)
+
+
+def reconcile_cross_feed_episodes(
+    canonical_sources: Iterable[Iterable[Episode]], aggregate: list[Episode]
+) -> tuple[list[Episode], list[Episode], int]:
+    """Build a public aggregate projection and a complete durable observation archive.
+
+    Swagit archive views can expose the same recording under a dedicated body view and a
+    city-wide archive.  The provider GUID is the only safe cross-view join key: body/date
+    matching can collapse distinct same-day sessions.  Canonical episodes retain their
+    existing UID and content-addressed identity.  Matched observations are retained in the
+    complete archive as suppressed copies carrying the canonical UID; the public projection
+    contains only recordings not already represented by a canonical feed.
+    """
+    by_guid: dict[str, Episode] = {}
+    for episodes in canonical_sources:
+        for episode in episodes:
+            by_guid.setdefault(episode.guid, episode)
+
+    unique: list[Episode] = []
+    complete: list[Episode] = []
+    reconciled = 0
+    for episode in aggregate:
+        existing = by_guid.get(episode.guid)
+        if existing is None:
+            unique.append(episode)
+            complete.append(episode)
+            continue
+        _fill_missing_links(existing.links, episode.links)
+        observation = copy.deepcopy(existing)
+        _fill_missing_links(observation.links, episode.links)
+        observation.integrity = dict(observation.integrity or {})
+        observation.integrity["aggregate_suppressed"] = True
+        complete.append(observation)
+        reconciled += 1
+    return unique, complete, reconciled
 
 
 def audio_spec_hash(
