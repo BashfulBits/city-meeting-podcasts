@@ -18,6 +18,21 @@ ROADMAP R8 (bundles #55 front-end design cycle absorbing #20/#54, #50 accessibil
 > up the survivors against real content, present them for the maintainer to choose from) for whoever
 > implements this later. The one direction drafted live during this session is kept as a worked example
 > proving the process produces something distinctive (§A.5) — explicitly not the chosen design.
+>
+> **Extended same day: Part C's funding platform decided (§C.1–§C.4); Part A gains a Substack
+> forward-look (§A.6).** Funding splits by audience across two platforms rather than one: GitHub
+> Discussions for dev/API-style support (zero new account, already the audience's habit), Ko-fi + Discord
+> for sponsors/community/feedback (Ko-fi's Discord role-sync is native and first-party, unlike GitHub
+> Sponsors, which has no official Discord integration and would require running a third-party bot). A new
+> self-hosted `/support/` page — not a third-party link-in-bio tool — is what `<podcast:funding>` actually
+> points at, listing both surfaces; `City.funding_url` now defaults from a site-wide config value instead
+> of requiring per-city setup. GitHub→Discord activity updates are a native, zero-code webhook feature; a
+> scheduled roadmap/changelog digest is flagged as a real future item, deliberately not designed here.
+> Separately, Part A's process now carries a forward-looking constraint: Substack is on the maintainer's
+> radar as a future digest/newsletter layer, self-hosted under a subdomain (confirmed: a one-time $50 fee,
+> not recurring) — whichever visual direction is eventually chosen should stay reproducible within
+> Substack's own customization surface, not depend on custom chrome only a fully bespoke template could
+> render.
 
 ---
 
@@ -141,6 +156,22 @@ whichever identity wins:
   **Whoever implements this must check each app's own site/press page for an official asset before using
   one; where none is confirmed, use a neutral, non-trademarked glyph** (styled to match whichever
   direction was chosen) rather than guess or approximate a trademarked logo.
+- **Forward-looking, not a current requirement: keep whichever direction wins reproducible on Substack.**
+  The maintainer has flagged Substack as a real future direction — a newsletter/digest layer (`review/11`
+  §5.2/§5.4's "weekly look-back digest"/"national highlights reel" items) self-hosted under a subdomain
+  (e.g. `news.{domain}`) rather than living on a bare `*.substack.com` URL. Checked directly (2026-07-13):
+  Substack supports mapping a subdomain to a publication via a CNAME record for a **one-time $50 fee**
+  (not a recurring platform charge), and recommends the subdomain path specifically over a root-domain
+  mapping (root domains need CNAME flattening, which works on Cloudflare but is trickier elsewhere). This
+  project already runs real Cloudflare DNS infrastructure (the R10 Worker, the existing
+  `granicus-media-proxy` Worker), so the DNS side fits what's already there with no new vendor
+  relationship. **Consequence for the identity work**: Substack allows custom CSS/branding on a mapped
+  domain but has its own template constraints — a chosen direction doesn't need to be pixel-identical on
+  a Substack-hosted page, but its core tokens (palette, type pairing, wordmark treatment) should stay
+  simple enough to approximate within Substack's customization surface. Not a hard requirement blocking
+  Part A's own shipping — just a reason to avoid choosing a direction whose whole identity depends on
+  custom chrome (elaborate SVG structure, non-standard layout) that only a fully custom template can
+  reproduce, since that identity would visibly break the moment a newsletter section exists.
 
 ### A.7 Module/file plan (files affected, whichever direction is chosen)
 
@@ -228,24 +259,102 @@ Real, checked findings, not generic WCAG advice:
 
 ## Part C — `<podcast:funding>` link (#16)
 
-**Genuinely close to trivial, as the L1 sketch says** — a single channel-level tag, no per-episode work,
-no new dependency.
+**Genuinely close to trivial as infrastructure, as the L1 sketch says** — a single channel-level tag, no
+per-episode work, no new dependency. What it points *at* got a real decision (§C.1–§C.3), researched and
+resolved 2026-07-13.
+
+### C.1 The platform decision — two surfaces, not one
+
+**Decided:** split by audience rather than force one platform to serve both.
+
+- **Dev/API-style support** (feed broken, data-access questions, integration help) → **GitHub
+  Discussions** on this repo. Already-present audience (anyone filing a support question here already
+  uses GitHub for the `add-city` template and feed-health issues), zero new account, zero setup cost
+  beyond enabling the tab.
+- **Sponsors, community, and general feedback/roadmap input** → **Ko-fi + Discord.** Ko-fi's Discord
+  integration is native and first-party (attach a Discord role to a Ko-fi membership tier; the Ko-fi bot
+  grants/revokes it automatically on payment/lapse — no bot-hosting burden, unlike the GitHub-Sponsors-
+  to-Discord route, which has no official integration and would require running and maintaining a
+  third-party bot). Ko-fi's fee: 5% on memberships on the free plan (0% on one-time tips), dropping to 0%
+  on Ko-fi Gold (a flat monthly subscription — check ko-fi.com/gold for the current price before
+  committing, sources disagreed on the exact figure at research time) once membership volume justifies
+  it. GitHub Sponsors can still exist as an alternative payment method for people who'd rather not create
+  a Ko-fi account, linked from the same page (§C.2) — it just isn't the one wired to Discord.
+
+**Community automation, so the space doesn't go stale from under-posting:**
+- **GitHub → Discord activity feed is a native, zero-code feature**, not a custom build: Discord Server
+  Settings → Integrations → Webhooks → create one pointed at a channel; GitHub repo Settings → Webhooks →
+  paste that URL with `/github` appended, content-type `application/json`, select which events (releases,
+  PRs, issues) to forward. The `/github` suffix exists specifically so Discord parses GitHub's native
+  payload format with no bot or middleware. For nicer-formatted release announcements specifically, the
+  "Github Releases To Discord" GitHub Action (Marketplace) can replace the raw webhook for that one event
+  type if the default formatting is too noisy.
+- **Discord's native poll message type** covers lightweight feedback/surveys with zero extra tooling.
+- **A scheduled roadmap/changelog digest is a real future item, not designed here** — this project already
+  has the exact right shape of infrastructure for it (the weekly champion-stats ticket, `review/27` §6.3,
+  and the feed-health digest, `scripts/audit_feeds.py`, are both "a scheduled Action summarizes state and
+  posts it somewhere"). A "post this week's `ROADMAP.md`/`CHANGELOG.md` diff to the Discord webhook"
+  Action would follow the identical pattern. Flagged as a plausible follow-on, deliberately not specified
+  further in this pass — it's ops/automation work adjacent to R8, not required to ship the funding link
+  itself.
+
+### C.2 A single self-hosted landing page — what `<podcast:funding>` actually points at
+
+**The `<podcast:funding>` URL should point at one self-hosted page listing both surfaces, not directly at
+Ko-fi** — otherwise the Discord/community half of §C.1's split is invisible to anyone who only ever sees
+the podcast app's funding link. Self-hosted, not a third-party link-in-bio tool (Linktree etc.): this
+project's whole site is already a static generator with zero external hosting dependencies for its own
+pages, and a links page is exactly that same pattern, not a new category of thing.
+
+- **New route**: `/support/`, following this project's existing static-page convention exactly (same
+  shape as the index/city pages, `citypods/site.py`).
+- **New template**: `templates/support.html.j2`, extending `base.html.j2` — styled through whichever
+  identity Part A's process lands on, not a separate visual system.
+- **Content**: financial support (Ko-fi primary, GitHub Sponsors as an alternative), community/Discord
+  invite, dev/API support (link to GitHub Discussions, reusing the `config.github_repo` value the
+  footer's own GitHub link already reads from `base.html.j2:62-63` — no new config field needed for that
+  one link specifically).
+- **New `site_config.yml` fields**: `support_kofi_url`, `support_discord_url` (`support_github_discussions_url`
+  derived from the existing `github_repo` field, not a separate setting) — site-wide, not per-city, since
+  every city's feed should point at the same one landing page.
+- **`City.funding_url`/`funding_label` (as already specified) now default from a new site-wide
+  `site_config.yml` value** rather than requiring per-city configuration in the common case — mirrors the
+  existing site-default-plus-optional-override pattern this project already uses for
+  `podcast_language`/`podcast_category` (`config/feeds/_template.yml`'s own documented "Optional
+  overrides of site_config.yml defaults" comment). The default value is the `/support/` page's own URL;
+  a specific city could still override `funding_url` to something else if ever needed, but the common
+  case needs zero per-city configuration.
+
+### C.3 Tag shape and insertion (unchanged from the original design)
 
 - **Tag shape** (Podcasting 2.0 namespace, channel-level, one per feed): `<podcast:funding
   url="{{ city.funding_url }}">{{ city.funding_label }}</podcast:funding>`.
-- **New `City` config fields** (`citypods/models.py`, alongside `podcast_language`/`podcast_category` at
-  `:211-212`): `funding_url: str | None = None`, `funding_label: str = "Support this project"` (a
-  reasonable default label, overridable per city same as every other podcast-metadata field).
+- **`City` config fields** (`citypods/models.py`, alongside `podcast_language`/`podcast_category` at
+  `:211-212`): `funding_url: str | None = None` (defaults from `site_config.yml`, §C.2), `funding_label:
+  str = "Support this project"`.
 - **Template insertion point**: `templates/feed.xml.j2`, channel level, immediately after
   `<itunes:image href="{{ artwork_url }}"/>` (`:18`) and before the per-item loop starts (`:25`) — the
   same channel-vs-item placement discipline `<podcast:chapters>`/`<podcast:transcript>` already follow at
   the item level, just one level up. Rendered only `{% if city.funding_url %}`, same optional-tag pattern
-  `podcast_transcript`'s `None`-return already establishes (`citypods/feeds.py:81-103`) — no config, no
-  tag, exactly like today.
+  `podcast_transcript`'s `None`-return already establishes (`citypods/feeds.py:81-103`).
 
-No `citypods/feeds.py` function needed — unlike `podcast_transcript`/the proposed `podcast_soundbite`
-(`review/30`), there's no derived logic here, just a direct config passthrough, so the template's own
-`{% if %}` guard is sufficient without a Python helper.
+No `citypods/feeds.py` function needed for the tag itself — unlike `podcast_transcript`/the proposed
+`podcast_soundbite` (`review/30`), there's no derived logic here, just a direct config passthrough, so
+the template's own `{% if %}` guard is sufficient without a Python helper. `render_support_page()` (§C.2)
+is the one new piece of actual Python, following the exact same static-generation pattern as every other
+page.
+
+### C.4 Risks specific to this decision
+
+- **Ko-fi's exact Gold pricing wasn't pinned down precisely** (§C.1) — two sources disagreed during
+  research; confirm the live figure before deciding whether Gold is worth it at the project's actual
+  membership volume, rather than trusting either number here.
+- **The GitHub-Sponsors-to-Discord gap is a real, documented limitation, not an oversight** — no official
+  integration exists; third-party bots exist but come with real desync/OAuth caveats. This is *why* Ko-fi
+  is the platform paired with Discord in this design, not GitHub Sponsors — worth remembering if a future
+  pass is tempted to simplify to "just use GitHub Sponsors for everything."
+- **The scheduled digest-Action (§C.1) is explicitly out of scope for this item** — don't let it quietly
+  become a blocker for shipping the funding link and support page, which don't depend on it.
 
 ---
 
@@ -258,8 +367,15 @@ No `citypods/feeds.py` function needed — unlike `podcast_transcript`/the propo
 - A rendered `city.html.j2` includes `aria-live="polite"` on both the play-status span and the `#copy`
   button.
 - A fixture city with `funding_url` set renders `<podcast:funding url="..." >...</podcast:funding>` at
-  channel level; a fixture without it renders no tag at all — mirrors the existing `None`-handling test
-  shape already used for `podcast_transcript`.
+  channel level; a fixture without a site-wide default *and* no per-city override renders no tag at all —
+  mirrors the existing `None`-handling test shape already used for `podcast_transcript`.
+- A fixture city with no explicit `funding_url` inherits the site-wide `site_config.yml` default (§C.2) —
+  proves the default-inheritance path actually works, not just the override path; a second fixture with
+  an explicit per-city override confirms it still wins over the site default.
+- `render_support_page()` output includes the Ko-fi link, the Discord invite link, and a GitHub
+  Discussions link derived from `config.github_repo` (not a separate hardcoded value) — a fixture with
+  `support_kofi_url`/`support_discord_url` unset omits those specific links rather than rendering broken
+  `href=""` anchors.
 - Audio/video badge markup includes both an icon element and visible text — a regression test against the
   icon-only constraint (§B.2 item 4), since "just show the icon, it's obvious" is the natural (wrong)
   shortcut a future edit could take.
@@ -303,8 +419,11 @@ official badge verbatim, or a neutral glyph where no other app's official asset 
 alongside its existing text label — never icon-only. **Accessibility (Part B, independent of which
 direction is chosen):** the search result count, the play-status change, and the "Copy RSS" state change
 are all announced via `aria-live="polite"` to assistive technology; a skip-to-content link is the first
-focusable element on every page. **Funding (Part C):** a city with `funding_url` configured emits a
-channel-level `<podcast:funding>` tag; one without emits nothing.
+focusable element on every page. **Funding (Part C):** `/support/` renders with links to Ko-fi, the
+Discord invite, and GitHub Discussions (each present only when its underlying `site_config.yml` value is
+set); every city's feed emits a channel-level `<podcast:funding>` tag pointing at that page by default,
+with the same per-city-override capability every other podcast-metadata field already has; a deployment
+with no funding config at all emits no tag, exactly like today.
 
 ---
 
@@ -331,5 +450,14 @@ dependency on either and could ship independently/earlier if useful.
    `templates/city.html.j2`, Part A, gated on issue 1.
 4. `aria-live` regions (search count, play status, copy-RSS state) + skip-to-content link — Part B,
    independent of Part A's process/timeline.
-5. `City.funding_url`/`funding_label` + `<podcast:funding>` template tag — Part C, independent of both,
-   smallest/do-first item in this whole set.
+5. Enable GitHub Discussions on the repo; set up Ko-fi (membership tier + Discord role attachment) and a
+   Discord server — Part C, prerequisite to everything else in Part C, no code.
+6. `templates/support.html.j2` + `render_support_page()` + new `site_config.yml` fields
+   (`support_kofi_url`, `support_discord_url`) — Part C, gated on issue 5 (needs real URLs to link to).
+7. `City.funding_url`/`funding_label` defaulting from the new site-wide config + `<podcast:funding>`
+   template tag — Part C, gated on issue 6 (needs `/support/`'s URL to default to).
+8. GitHub → Discord webhook (native, zero-code) for release/activity notifications — Part C, independent
+   of 5–7, can happen anytime after the Discord server exists.
+9. *(Deferred, not this item — see §C.1)* a scheduled Action posting a `ROADMAP.md`/`CHANGELOG.md` digest
+   to Discord, following the champion-stats-ticket/feed-health-digest pattern already used elsewhere in
+   this project.
