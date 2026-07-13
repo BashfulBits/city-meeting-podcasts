@@ -20,7 +20,7 @@ Phase R (Research-Tool Surface)._
 - **Waco now has a PrimeGov/OneMeeting agenda companion.** The new API-first auxiliary adapter
   walks the configured year range at `wacotexas.primegov.com`, preserving official agenda, packet,
   and minutes document links for meetings while Swagit remains the recording provider. It is
-  auxiliary-only: PrimeGov rows do not become podcast episodes without a playable media source.
+  auxiliary-only: PrimeGov rows remain calendar records; Swagit supplies any podcast episodes.
 - **Gainesville CivicEngage Archive Center enrichment (R11).** Gainesville's CivicMedia recording
   feed now composes with its official CivicEngage City Council agenda and minutes archives. The
   auxiliary adapter joins dated archive rows without creating document-only podcast episodes; links

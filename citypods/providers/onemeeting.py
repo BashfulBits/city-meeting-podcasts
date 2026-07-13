@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import requests
 
@@ -37,9 +37,11 @@ def _body(title: str) -> str:
 def _document_url(base: str, template_id: object, output_type: object = 1) -> str | None:
     if template_id in (None, ""):
         return None
+    encoded_id = quote(str(template_id), safe="")
+    encoded_output = quote(str(output_type if output_type is not None else 1), safe="")
     return (
-        f"{base.rstrip('/')}/Public/CompiledDocument?meetingTemplateId={template_id}"
-        f"&compileOutputType={output_type or 1}"
+        f"{base.rstrip('/')}/Public/CompiledDocument?meetingTemplateId={encoded_id}"
+        f"&compileOutputType={encoded_output}"
     )
 
 
@@ -49,7 +51,12 @@ def parse_archived_meetings(content: bytes, portal_url: str) -> list[AgendaRecor
         payload = json.loads(content)
     except json.JSONDecodeError as exc:
         raise ProviderError(f"invalid PrimeGov JSON: {exc}") from exc
-    rows = payload if isinstance(payload, list) else payload.get("data", payload.get("items", []))
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict):
+        rows = payload.get("data", payload.get("items", []))
+    else:
+        raise ProviderError("PrimeGov response did not contain a meeting list")
     if not isinstance(rows, list):
         raise ProviderError("PrimeGov response did not contain a meeting list")
 
@@ -113,14 +120,13 @@ class OneMeetingProvider:
         # enclosure. Swagit remains the media provider; this adapter is auxiliary-only.
         return []
 
-    def _fetch_year(self, source: dict, year: int) -> bytes:
+    def _fetch_year(self, session: requests.Session, source: dict, year: int) -> bytes:
         portal = source["portal_url"].rstrip("/")
         url = f"{portal}/api/v2/PublicPortal/ListArchivedMeetings?year={year}"
-        with make_session() as session:
-            try:
-                response = session.get(url, timeout=DEFAULT_TIMEOUT)
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {url} failed: {exc}") from exc
+        try:
+            response = session.get(url, timeout=DEFAULT_TIMEOUT)
+        except requests.RequestException as exc:
+            raise ProviderError(f"GET {url} failed: {exc}") from exc
         if response.status_code == 404:
             return b"[]"
         if response.status_code >= 400:
@@ -133,10 +139,13 @@ class OneMeetingProvider:
         if end < start:
             raise ProviderError("onemeeting through_year precedes backfill_since")
         records: list[AgendaRecord] = []
-        for year in range(start, end + 1):
-            records.extend(
-                parse_archived_meetings(self._fetch_year(source, year), source["portal_url"])
-            )
+        with make_session() as session:
+            for year in range(start, end + 1):
+                records.extend(
+                    parse_archived_meetings(
+                        self._fetch_year(session, source, year), source["portal_url"]
+                    )
+                )
         records.sort(key=lambda record: record.published, reverse=True)
         return records
 
