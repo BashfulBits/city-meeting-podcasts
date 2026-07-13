@@ -75,7 +75,15 @@ Swagit video." This and the Denton/Legistar case are both real — the point isn
 the other wrong, it's that **any of the three candidates can be true for any given city on either
 Granicus-family video provider**, so the design can't hard-code one assumption. Agenda PE has no
 confirmed real-world example in this research pass; it's named as a candidate worth checking, not a
-proven pairing.
+proven pairing. *(Update 2026-07-12: Agenda PE now has a worked example — it publishes through the
+standard Granicus surfaces, see §B.2 step 3 and Appendix P.1.)*
+
+**The census goes wider than this family table (added 2026-07-12, maintainer request):** every other
+common civic video/agenda platform — the sunsetting Granicus lines (IQM2, NovusAGENDA), the CivicPlus
+lines beyond CivicClerk (CivicEngage Agenda Center, Municode Meetings), the Diligent lines (BoardDocs,
+CivicWeb), eScribe, the independents (AgendaQuick, SIRE, ClerkBase), and the independent video hosts
+(Cablecast, TelVue, Viebit, BoxCast, Open.Media) — is cataloged with URL patterns and verification
+status in **Appendix P** at the end of this doc. §B.2's discovery checklist consumes that census.
 
 ### §0.2 The joining key already exists — this doesn't need new fuzzy-matching
 
@@ -754,16 +762,26 @@ and applying to **both** Granicus-primary and Swagit-primary cities, not just Sw
    because it was already confirmed live and uses no state suffix — not because any predictable slug
    convention exists. Find the real hostname from the city's own government website (most cities that
    use one of these systems link to it directly, e.g. an "Agendas & Minutes" or "Meeting Portal" link),
-   then verify that discovered URL — don't construct and probe a guessed one.
+   then verify that discovered URL — don't construct and probe a guessed one. **Further confirmed
+   2026-07-12 by the Waco case**: `waco.primegov.com` fails DNS while the real hostname is
+   `wacotexas.primegov.com` — and Waco's *own* slug isn't even consistent across products
+   (`wacocitytx` on its old IQM2 portal vs `wacotexas` on PrimeGov), so a slug confirmed on one
+   platform can't be reused on another either.
 1. Try the discovered Legistar URL (if the city's site links one) — does it resolve, and does it list
    real meetings for this city's bodies? (Part A's mechanism already handles this fully once found.)
 2. Try the discovered OneMeeting/Agenda-OE portal URL (if linked) — does it resolve, and does it carry
    agenda content for this city? (Part C's mechanism, once built.)
-3. Try the discovered Agenda PE (formerly Peak) portal URL (if linked) — does it resolve, and does it
-   carry agenda content for this city? **No confirmed portal URL pattern or worked example exists yet**
-   (unlike Legistar/Part A or OneMeeting/Part C's Waco example) — this candidate is named so it isn't
-   missed, not because it's ready to build against. Worth prioritizing checking for this project's
-   *smaller* cities specifically, given Agenda PE's explicit small-to-medium-government positioning.
+3. Check for Agenda PE (formerly Peak) — **updated 2026-07-12: Agenda PE appears to have no separate
+   public-portal domain at all; its published output rides the standard Granicus surfaces this project
+   already ingests.** Evidence: Saratoga Springs, NY — a self-identified Peak customer (its city site
+   has a "Peak Agenda by Granicus" page) — surfaces its agendas through ordinary
+   `saratoga-springs.granicus.com/ViewPublisher.php` + `AgendaViewer.php` pages and
+   `swagit-attachments.granicus.com` PDFs, with no `peakagenda.com`-style portal anywhere in sight (a
+   targeted search for such a domain found only Granicus product/support pages). Working conclusion: a
+   Peak city looks like a normal Granicus city from the outside, and the existing `granicus` provider
+   likely already covers it with zero new adapter work. In discovery, this step collapses into checking
+   the city's standard Granicus ViewPublisher/AgendaViewer pages — worth one more confirming example
+   before treating it as settled, but no longer an unknown platform to design against.
 4. Try `{tenant}.api.civicclerk.com`, where `{tenant}` is confirmed against the city's own site (not
    assumed to equal the feed slug) — does it resolve, and does it return real event data? (Part D's
    mechanism, once built.)
@@ -773,6 +791,19 @@ and applying to **both** Granicus-primary and Swagit-primary cities, not just Sw
    are confirmed viable for the same city.
 6. If none resolve, the city stays on chapter-title-only agenda proxying (today's status quo) — not a
    regression, just no improvement available yet.
+
+**Swagit-primary shortcut, added 2026-07-12 — check this before any of the portal probes above for the
+catalog's 80 Swagit feeds.** Research turned up `swagit-attachments.granicus.com` hosting real agenda
+PDFs tied to Swagit-played meetings (observed for Saratoga Springs, NY: URLs under
+`swagit-attachments.granicus.com/uploads/video/agenda_file/{id}/...pdf` and
+`.../archive/agendas/{id}/original/...pdf`). If Swagit's own player pages/API expose these agenda
+attachments for a given city, that's the cheapest possible Goal-2 win — agenda PDFs keyed to meetings
+this project *already ingests*, with no auxiliary portal, no new provider, and no uid-matching risk
+(the attachment is already on the meeting). Verify per city whether the Swagit surfaces this codebase
+already fetches (player pages, RSS/API) carry agenda-attachment references before configuring any
+`aux_provider` at all. Not yet verified against a catalog city — flagged as the first thing to check
+when Part B work begins, since it could shrink the auxiliary-portal problem to only the cities where
+Swagit attachments turn out to be absent.
 
 **Denton, TX is the first concrete target for this checklist** — a real Swagit-primary city in this
 catalog with a plausible Legistar pairing, using a mechanism (Part A's) that's already fully built and
@@ -836,11 +867,34 @@ portal's Archived Meetings table, not inferred from a mockup or search result:
 | PDF agenda | `https://{city}.primegov.com/Public/CompiledDocument?meetingTemplateId={id}&compileOutputType=1` | `.../CompiledDocument?meetingTemplateId=1732&compileOutputType=1` |
 | PDF packet | Same endpoint as PDF agenda, **different `meetingTemplateId`** (a sibling ID, not a query-param variant — e.g. agenda `1732` pairs with packet `1734`, agenda `1554` pairs with packet `1556`) | `.../CompiledDocument?meetingTemplateId=1734&compileOutputType=1` |
 | Video (when present) | A plain `<a href="...">` in the row's "Video" column — **the target is an arbitrary external URL, not a fixed pattern.** Confirmed directly: two of Renton's five most recent archived meetings link straight to `https://youtube.com/watch?v={id}` (YouTube, not Swagit) | `https://youtube.com/watch?v=Ba7SzeAz4YM` |
+| **JSON API (archived meetings)** | `https://{city}.primegov.com/api/v2/PublicPortal/ListArchivedMeetings?year={yyyy}` — **open, unauthenticated, live-verified 2026-07-12.** Returns a JSON array of meetings with `id`, `title`, `dateTime` (ISO 8601), `committeeId`, `location`, `videoUrl` (when present), and `documentList[]` (each with `templateName` — "Agenda"/"Minutes"/"Packet" — `publishDate`, and `compileOutputType`). An upcoming-meetings sibling endpoint presumably exists but wasn't probed this pass | `.../api/v2/PublicPortal/ListArchivedMeetings?year=2026` returned ~100+ real Renton meetings for Jan–Apr 2026 |
 
 Both the HTML-agenda and PDF-agenda endpoints were confirmed by loading real pages, not just reading their
 hrefs: `Portal/Meeting?meetingTemplateId=1732` renders a genuine, richly structured agenda (real item
 titles, dollar figures, descriptions) for an upcoming Finance Committee meeting — not a stub or a login
 wall.
+
+**Waco's hostname is now confirmed too (2026-07-12): `wacotexas.primegov.com`** — surfaced by a search
+result linking directly to `https://wacotexas.primegov.com/Portal/Meeting?meetingTemplateId=1571` (the
+exact endpoint pattern confirmed at Renton), and the portal root (`wacotexas.primegov.com/public/portal`)
+was then fetched live and confirmed to be a real, working PrimeGov portal. This closes the "Waco hostname
+discovery" step: the maintainer's recollection that Waco runs OneMeeting is now verified against the live
+platform. Two corroborating details: (a) the bare guess `waco.primegov.com` fails DNS while `wacotexas`
+works — a third demonstration (after the Legistar and `portal-` failures) that slugs must be discovered,
+never guessed (§B.2 step 0); (b) Waco's *old* IQM2 portal (`wacocitytx.iqm2.com/Citizens/default.aspx`,
+still live, checked the same day) carries a banner redirecting City Council agendas to the city's new
+meeting-agendas page — Waco is mid-migration off IQM2, which Granicus is sunsetting platform-wide by
+September 30, 2027 (Appendix P). Note the slug isn't even stable *within* one city across products:
+`wacocitytx` on IQM2 vs `wacotexas` on PrimeGov.
+
+**Implementation-critical (2026-07-12): the portal HTML is a JavaScript-rendered SPA — the JSON API is
+the only viable non-browser fetch path, not merely the nicer one.** Confirmed by direct observation: a
+plain HTTP fetch of `renton.primegov.com/public/portal` (no JS execution) returns only an empty template
+shell; the meeting table exists only after client-side rendering (a real browser was required to see it
+this pass). The `requests`-based scraping approach this project uses everywhere else would get nothing
+from the portal page. The JSON API above returns everything the rendered table shows — so §C.1's design
+is **API-first by necessity**, with the rendered-table findings above serving as ground truth for what
+the API's fields mean, not as the scraping target.
 
 **The video-link mechanism is simpler than originally assumed, and it's provider-agnostic.** The original
 draft assumed the foreign-provider reference would be hidden in a JS `onclick`/`data-*` attribute needing
@@ -868,21 +922,26 @@ via `MediaAvailability` — not a defect in PrimeGov's coverage. It does mean: (
 Goals 1–2 (auxiliary attachment, Mechanism B), with Mechanism A viable only where a specific city's
 portal is separately checked to have comprehensive video coverage for the bodies this catalog ingests.
 
-### §C.1 Design — plain-anchor extraction, not JS-attribute parsing (revised 2026-07-12 with live data)
+### §C.1 Design — JSON-API-first; the rendered portal is ground truth, not the fetch target (revised 2026-07-12 with live data)
 
 Extraction is now confirmed simpler than Part A's Legistar mechanism, not just "lifted from it by
-analogy": (a) parse the Archived Meetings table rows (a standard HTML table with visible pagination
-controls — `Previous`/numbered pages/`Next` — no JS-attribute regex or hidden-widget interaction needed,
-confirmed via a live accessibility-tree dump), (b) for each row, collect the `HTML Agenda`/`Agenda`/
-`Packet` anchor hrefs (all same-origin, `meetingTemplateId`-keyed) and the `Video` anchor href if present,
-(c) skip rows with no Documents links at all (there were none in the observed sample — even a cancelled
-meeting, "LEOFF Disability Board - Cancelled", still carried an HTML Agenda link; only the Video link goes
-missing for unrecorded meetings), (d) classify the Video href by domain before deciding how to resolve it:
-`swagit.com`/`*.swagit.com` delegates to the existing `SwagitProvider` media-resolution logic (never
-re-derive it), any other domain (YouTube confirmed, others plausible) is stored as an opaque external
-video URL with no further resolution attempted — this project has no YouTube provider today, and an opaque
-link is sufficient for Mechanism B's auxiliary-attachment purpose, which only needs a pointer, not a
-resolvable stream.
+analogy" — and it's an **API integration, not a scrape** (the portal HTML is a JS-rendered SPA a plain
+HTTP fetch can't see; the open JSON API above is the fetch path): (a) call
+`/api/v2/PublicPortal/ListArchivedMeetings?year={yyyy}` per year of interest (one request per year, no
+pagination walking — the observed response carried ~100+ meetings for a partial year in one payload),
+(b) for each meeting object, take `title`/`dateTime`/`committeeId`, construct document URLs from
+`documentList[]` (each entry's `templateName` — "Agenda"/"Minutes"/"Packet" — maps to the confirmed
+`CompiledDocument`/`Portal/Meeting` URL patterns keyed by the meeting-template id), and take `videoUrl`
+directly when present, (c) skip nothing on missing video — even cancelled meetings carried agenda
+documents in the observed sample; only `videoUrl` goes absent for unrecorded meetings, (d) classify
+`videoUrl` by domain before deciding how to resolve it: `swagit.com`/`*.swagit.com` delegates to the
+existing `SwagitProvider` media-resolution logic (never re-derive it), any other domain (YouTube
+confirmed at Renton, others plausible) is stored as an opaque external video URL with no further
+resolution attempted — this project has no YouTube provider today, and an opaque link is sufficient for
+Mechanism B's auxiliary-attachment purpose, which only needs a pointer, not a resolvable stream. One
+field-mapping detail to confirm during implementation (flagged, not assumed): whether `documentList[]`
+entries carry their own per-document `meetingTemplateId`s matching the observed agenda-vs-packet
+sibling-ID pattern, or whether URL construction needs another field from the payload.
 
 **Two usage modes, decided per-city; Mechanism B is now the better-evidenced default:**
 - **Auxiliary** (Mechanism B, Part B) — for a Swagit (or any) city that wants agenda URLs attached without
@@ -898,28 +957,32 @@ resolvable stream.
 
 ### §C.2 Module / file plan
 
-- `citypods/providers/onemeeting.py` — new. Structurally mirrors `citypods/providers/legistar.py`:
-  `fetch_episodes` (portal table scrape + pagination — confirmed standard pagination controls, no special
-  JS interaction needed), `resolve_media_url`/`video_deeplink` dispatch on the Video href's domain
-  (Swagit → delegate to `SwagitProvider`'s existing logic; anything else → return the opaque external URL
-  as-is), `fetch_chapters` unimplemented (return `None`/`getattr`-absent) for non-Swagit video targets,
-  since this project has no other chapter-extraction path.
+- `citypods/providers/onemeeting.py` — new. Structurally closer to `citypods/providers/civicclerk.py`
+  (JSON API client) than to `legistar.py` (HTML scraper), a simplification over the original plan:
+  `fetch_episodes` calls `/api/v2/PublicPortal/ListArchivedMeetings?year={yyyy}` (one request per year —
+  no pagination walking, no HTML parsing; the portal HTML is a JS SPA and can't be scraped statically
+  anyway), `resolve_media_url`/`video_deeplink` dispatch on the `videoUrl` field's domain (Swagit →
+  delegate to `SwagitProvider`'s existing logic; anything else → return the opaque external URL as-is),
+  `fetch_chapters` unimplemented (return `None`/`getattr`-absent) for non-Swagit video targets, since
+  this project has no other chapter-extraction path.
 - `citypods/providers/__init__.py` — register `OneMeetingProvider`.
-- **Still required before implementation, now a narrower gap than before**: confirm at least one of this
-  catalog's own candidate cities (Waco, per the maintainer's recollection, is the strongest lead — §0.1)
-  actually resolves at `{city}.primegov.com` and exposes the expected table structure. The URL patterns,
-  table structure, and video-link mechanism are no longer speculative — they're confirmed against a real,
-  live, current production PrimeGov portal (Renton, WA) — but no catalog city's own hostname has been
-  independently re-verified this pass. That's the one remaining gap between L2 and L3.
+- **Still required before implementation, now a narrower gap than before**: (a) find a *catalog* city
+  that actually uses OneMeeting — Waco's hostname (`wacotexas.primegov.com`) is now live-confirmed, but
+  Waco isn't in this catalog, so Part C has a confirmed platform and a confirmed real-world city yet no
+  confirmed catalog customer; discovery per §B.2 decides whether/where this adapter gets used. (b)
+  Confirm the `documentList[]`→URL field mapping flagged in §C.1. The URL patterns, JSON API, and
+  video-link mechanism are no longer speculative — those are confirmed against two live production
+  portals (Renton, WA and Waco, TX).
 
 ### §C.3 Risks
 
-- **No catalog city's OneMeeting hostname independently confirmed yet** — the platform mechanics (URL
-  patterns, table structure, video-link handling) are now confirmed against a real production PrimeGov
-  portal (Renton, WA, live-inspected 2026-07-12), but Renton isn't one of this catalog's cities. Waco is
-  the maintainer's recollection of a real OneMeeting↔Swagit case (§0.1), but its exact hostname wasn't
-  independently re-verified this pass. This is now the single biggest remaining gap to L3 — a much
-  narrower gap than the prior draft's "entire HTML structure is unconfirmed."
+- **No *catalog* city confirmed on OneMeeting yet** — the platform mechanics (JSON API, URL patterns,
+  video-link handling) are now confirmed against two live production portals (Renton, WA and Waco, TX,
+  both live-inspected 2026-07-12, Waco's hostname `wacotexas.primegov.com` closing the earlier
+  hostname-discovery gap), but neither is one of this catalog's cities. Whether any current catalog city
+  (or a future addition) actually uses OneMeeting is what §B.2's discovery checklist decides — until one
+  does, this adapter has a confirmed design and no confirmed first customer. That's the remaining gap to
+  "build it now," and it's a demand question, not a design question.
 - **Video href is an opaque external URL, not guaranteed Swagit** — confirmed directly (Renton links to
   YouTube, not Swagit, for its two most recently recorded meetings). Extraction code must dispatch on
   domain rather than assume Swagit universally; see §C.1's revised design. This is a genuine finding, not
@@ -1036,13 +1099,12 @@ supplies URLs. Within R11, in order:
    auxiliary-mode wiring, making it the lowest-risk, highest-confidence proof that the discovery
    methodology (§B.2) actually works, ahead of both Part C and Part D.
 4. **Part D (CivicClerk, also reuses existing adapter code) follows next.**
-5. **Part C (OneMeeting) should still follow all of the above, not lead** — it's still the least-certain
-   of the three sibling systems for *this catalog's* cities specifically, even though the platform
-   mechanics themselves are no longer the blocker they were: URL patterns, table structure, and the
-   video-link mechanism are now confirmed live against a real production PrimeGov portal (Renton, WA,
-   2026-07-12). What's still missing is a confirmed hostname for one of this catalog's own candidate
-   cities (Waco is the lead) — a narrower, faster verification step than re-deriving the HTML structure
-   from scratch would have been.
+5. **Part C (OneMeeting) should still follow all of the above, not lead** — the platform is fully
+   de-risked (JSON API, URL patterns, and video-link mechanism confirmed live against two production
+   portals: Renton, WA and Waco, TX — both 2026-07-12, Waco's hostname `wacotexas.primegov.com` now
+   confirmed too), but **no catalog city is known to use OneMeeting**, so there's no first customer to
+   build for yet. §B.2 discovery across the catalog decides if/when this Part activates; until then it's
+   a finished design on the shelf.
 
 **Migration:** no backfill required — this is additive URL/link enrichment on already-existing episodes,
 governed by the same `feed_content_hash` re-render trigger every other link-affecting change already
@@ -1055,6 +1117,113 @@ auxiliary CivicClerk source gains agenda links the same way; no auxiliary source
 episode; `City` configs without `aux_provider` set behave identically to today (regression guard); R3's
 own design (next) can assume agenda URLs are present for the large majority of the current feed index
 before beginning its own text-extraction work.
+
+## Appendix P — Platform census: the wider civic video/agenda vendor landscape (researched 2026-07-12)
+
+**Purpose (maintainer request, 2026-07-12): enumerate every other common civic video/agenda platform —
+beyond the Granicus-family siblings Parts A–D already cover — with URL patterns concrete enough to
+implement against, in this one document.** This feeds two things: (1) §B.2's per-city discovery
+checklist, which should probe this whole census rather than only the three Granicus agenda lines, and
+(2) future catalog expansion — when a new city is added, this is the lookup table for "what system is
+that, and how do we ingest it." The lettering (`Appendix P`, not `Part E`) is deliberate: the doc
+already has a `§E` section, and per this project's no-renumbering convention new material takes a fresh
+identifier rather than forcing renames.
+
+**Catalog context** (current provider distribution, confirmed against `config/feeds/` 2026-07-12):
+80 Swagit feeds (Addison, Austin, Dallas, Denton), 34 Granicus feeds (Arlington, Denton County,
+Fort Worth, Pflugerville), 1 CivicPlus (Gainesville), 1 CivicClerk (Travis County). Census entries note
+their relevance against this mix.
+
+**Integration surface**: almost none of these ever needs a full `MeetingProvider` — Part B's
+`AgendaSource` structural Protocol means most only ever need a lightweight
+`fetch_agenda_index`-style adapter (Part D's CivicClerk pattern), and the video-only platforms matter
+mainly as classification targets for opaque `videoUrl` fields (§C.1's domain-dispatch), not as
+providers to build.
+
+**Prior art worth knowing**: the open-source `civic-scraper` project (Big Local News, Stanford)
+maintains scrapers for CivicPlus Agenda Center, CivicClerk, Legistar, Granicus, and PrimeGov — useful
+as reference implementations and as independent confirmation that these platforms' public surfaces are
+scrapable/ingestable in practice.
+
+**Verification legend**: *live-verified* = fetched a real instance this pass; *search-evidenced* =
+multiple real production URLs observed in search results this pass (pattern read off real URLs, no
+instance fetched); *unverified* = pattern known only from documentation/recall.
+
+### P.1 Granicus family (agenda) — beyond Parts A/C
+
+| Platform | URL pattern | Status / evidence | Design consequence |
+|---|---|---|---|
+| **IQM2** (was Accela Legislative Management; MinuteTraq/MediaTraq) | `{org}.iqm2.com/Citizens/default.aspx`, `/Citizens/calendar.aspx` | Search-evidenced (10+ live cities incl. `wacocitytx.iqm2.com` — Waco's fetched live, still up, with a migration banner). Acquired by Accela 2014, Granicus bought Accela's Legislative Management unit 2018 | **Do not build an adapter — Granicus has a published end-of-life plan moving all customers off IQM2 by September 30, 2027.** Treat any IQM2 city as a migration tripwire: it will land on OneMeeting/Legistar soon (Waco already did, mid-migration to `wacotexas.primegov.com`), so discovering IQM2 in §B.2 means "check again in a few months," not "integrate" |
+| **NovusAGENDA** (Novusolutions) | `{org}.novusagenda.com/agendapublic/` (+ `MeetingView.aspx?MeetingID={id}`) | Search-evidenced (10+ live cities incl. Houston and Brazos County, TX). Granicus acquired Novusolutions Aug 2017 | **Same end-of-life plan, same September 30, 2027 sunset, same conclusion** — e.g. Boulder, CO already publicly moved NovusAGENDA→OneMeeting. Don't build; treat as tripwire |
+| **Agenda PE** (formerly Peak) | No separate portal domain found — publishes through standard `{org}.granicus.com/ViewPublisher.php` + `AgendaViewer.php` + `swagit-attachments.granicus.com` PDFs | Search-evidenced via Saratoga Springs, NY (self-identified Peak customer; §B.2 step 3 has the full finding) | Likely **zero new work** — a Peak city looks like a normal Granicus city from outside; the existing `granicus` provider already speaks these surfaces. One more confirming example wanted |
+| **Legistar public web API** | `webapi.legistar.com/v1/{client}/...` (OData) | Unverified — a probe with `{client}=pflugerville` returned HTTP 400 this pass (wrong tenant name or unenabled; inconclusive) | Part A's Calendar.aspx scraping is proven and stays the plan; the API is a possible future upgrade only if a city's tenant name is confirmed |
+
+Also confirmed in this family's orbit: **`swagit-attachments.granicus.com`** hosting agenda PDFs tied
+to Swagit-played meetings — see §B.2's "Swagit-primary shortcut" (potentially the cheapest Goal-2 win
+for this catalog's 80 Swagit feeds, ahead of every auxiliary portal in this census).
+
+### P.2 CivicPlus family (agenda) — beyond Part D
+
+| Platform | URL pattern | Status / evidence | Design consequence |
+|---|---|---|---|
+| **CivicEngage Agenda Center** | `{city-site}/AgendaCenter` (on the city's own domain, e.g. `www.cityofdestin.com/AgendaCenter`, or `{st}-{city}.civicplus.com/AgendaCenter`); agenda PDFs at `/AgendaCenter/ViewFile/Agenda/_{MMDDYYYY}-{seq}` | Search-evidenced (Saratoga CA, Waukee IA, Greenville SC, Starkville MS, Destin FL, +) | **The single most widespread agenda surface in this census** — CivicPlus's website CMS ships it, so thousands of small/mid cities have one even when they use a *different* vendor for video. `civic-scraper` has a working scraper. **First thing to check for Gainesville** (the catalog's one CivicPlus city), and a strong general fallback for any city whose dedicated agenda system can't be found |
+| **Municode Meetings** | `{city}-{st}.municodemeetings.com` | Search-evidenced (Fort Collins CO, Norman OK, Indianapolis IN, Tomball TX, +). Municode acquired by CivicPlus 2020 | Lightweight `fetch_agenda_index` candidate if a catalog city turns up on it; none known yet |
+
+### P.3 Diligent family (agenda)
+
+| Platform | URL pattern | Status / evidence | Design consequence |
+|---|---|---|---|
+| **BoardDocs** | `go.boarddocs.com/{st}/{org}/Board.nsf/Public` | Search-evidenced (Raleigh NC, Tallahassee FL, Bryan TX, +). Diligent since Dec 2016 | Real city-council presence (not just school boards). Caveat: Lotus-Notes-derived, heavily JS-rendered — expect the PrimeGov problem (needs an API/JSON path, not HTML fetch); don't design against it until a catalog city needs it |
+| **CivicWeb / iCompass** ("Diligent Community") | `{org}.civicweb.net/Portal/` | Search-evidenced (Jersey City NJ, Evanston IL, Winchester VA, + a large Canadian base) | Lightweight `fetch_agenda_index` candidate; none of the catalog's cities known to use it |
+
+### P.4 OnBoard family (agenda)
+
+| Platform | URL pattern | Status / evidence | Design consequence |
+|---|---|---|---|
+| **eScribe** | `pub-{org}.escribemeetings.com` (listing) + `Meeting.aspx?Id={guid}&Agenda=Agenda&lang=English` (per-meeting HTML agenda) | Search-evidenced (Greensboro NC, Orlando FL; dominant in large Canadian cities — Calgary, Edmonton, Saskatoon). Acquired by OnBoard/Passageways Aug 2021 | Clean, stable, HTML-first URLs (good scrape target, unlike PrimeGov/BoardDocs). No catalog city known to use it |
+
+### P.5 Independent agenda systems
+
+| Platform | URL pattern | Status / evidence | Design consequence |
+|---|---|---|---|
+| **AgendaQuick** (Destiny Software) | `destinyhosted.com/agenda_publish.cfm?id={org_id}` (listing; note org is a query param, not a subdomain) + document PDFs at `public.destinyhosted.com/{org}docs/{yyyy}/{type}/...pdf` | Search-evidenced. **One observed URL carried `&swagitPlayer=true`** — direct evidence of a built-in Swagit player integration, a fourth confirmed Swagit-agenda pairing besides Legistar/OneMeeting/swagit-attachments | Relevant precisely because of the Swagit hook; worth checking for Swagit-primary catalog cities during §B.2 discovery |
+| **SIRE** (Hyland) | Self-/city-hosted: `{city-host}/sirepub/home.aspx`, agendas at `/sirepub/agview.aspx?agviewmeetid={id}&agviewdoctype=AGENDA` | Search-evidenced (Las Vegas NV, North Las Vegas NV, Hillsborough CA) | Legacy product, no standard hostname (lives on each city's own domain) — discoverable only via §B.2 step 0, never by pattern probing |
+| **ClerkBase** | `clerkshq.com/{org}-{st}` (listing) + `clerkshq.com/Content/{Org}-{st}/council/{yyyy}/{monDD_yy}ag.htm` (HTML agendas) | Search-evidenced (heavily Rhode Island/New England: South Kingstown, Westerly, Central Falls; + Tipp City OH) | Regional; unlikely for this catalog's Texas cities, listed for completeness |
+| **Laserfiche WebLink** | `{city-host}/WebLink/` (generic document repository, e.g. `lf.saratoga-springs.org/WebLink/`) | Search-evidenced | Not an agenda system — a doc-management portal some cities dump agendas into. Last-resort source; no structure to design against generally |
+
+### P.6 Independent video platforms
+
+These matter mainly as (a) classification targets for §C.1's opaque-`videoUrl` domain dispatch and
+(b) awareness of what a future catalog city might arrive with — none is proposed for adapter work now.
+
+| Platform | URL pattern | Status / evidence | Notes |
+|---|---|---|---|
+| **Cablecast** (Tightrope Media) | `reflect-vod-{org}.cablecast.tv` and `{org}-vod.cablecast.tv/CablecastPublicSite/`; shows at `/show/{id}`, **native `?seekto={seconds}` deep-link param** | Search-evidenced (Detroit MI, Fort Collins CO) | PEG-channel VOD; the `seekto` param means deep-linking would work if ever ingested |
+| **TelVue CloudCast** | `videoplayer.telvue.com/player/{opaque-token}/playlists/{id}/media/{mediaId}` | Search-evidenced (multiple cities) | Org keyed by opaque token, not subdomain — not discoverable by pattern, only via the city's own links |
+| **Viebit** | `{org}.viebit.com` (listing) + `/watch?hash={hash}` (legacy `/player.php?hash={hash}`) | Search-evidenced (NYC Council, Buffalo NY, Fremont CA) | Subdomain-per-org, clean patterns |
+| **BoxCast** | `boxcast.tv/channel/{opaqueId}` and `boxcast.tv/view/{slug}-{opaqueId}` | Search-evidenced (Durham NC, +) | Opaque IDs, no org subdomain — same discoverability caveat as TelVue |
+| **Open.Media** (Open Media Foundation, nonprofit) | No standard pattern — syncs agenda timestamps onto YouTube live streams; embeds on city sites | Search-evidenced (Colorado-centric, e.g. Colorado Channel) | Effectively resolves to YouTube underneath |
+| **Consumer hosts: YouTube / Vimeo / Facebook / Zoom** | n/a | **Live-verified as a real occurrence**: Renton's OneMeeting Video column links straight to `youtube.com/watch?v=` | This project has no consumer-host provider; a city publishing *only* via YouTube is a separate future decision (ToS/tooling), deliberately out of scope for R11 |
+
+### P.7 Rolled-up design consequences
+
+1. **§B.2's checklist now probes this census, not just three Granicus siblings** — in practice the
+   probe order per city is: Swagit-attachments shortcut (Swagit cities), then the city's own linked
+   agenda portal (whatever it is — this census identifies it), then candidates by family.
+2. **EOL tripwires**: any city found on IQM2 or NovusAGENDA will be forced off by 2027-09-30 — record
+   the finding, expect a OneMeeting/Legistar landing, and re-check rather than integrating. This also
+   means *existing* knowledge can rot: agenda sources configured today can migrate under us, which is
+   an argument for the audit-style periodic re-verification Part A's acceptance criteria already
+   gesture at.
+3. **Two platforms are confirmed JS-SPAs needing API-not-scrape integration** (PrimeGov — verified;
+   BoardDocs — strongly suspected). The census's other agenda systems (Legistar, eScribe, CivicEngage,
+   NovusAGENDA, SIRE, ClerkBase, Municode) are plain-HTML surfaces a `requests` fetch can read.
+4. **The catalog's actual near-term needs remain narrow**: Gainesville→check CivicEngage Agenda Center;
+   Travis County→Part D (CivicClerk); the 4 Granicus cities→Part A (already designed); the 4 Swagit
+   cities→swagit-attachments shortcut first, then per-city discovery. Everything else in this census is
+   a lookup table for future catalog growth, not pending work.
+
+---
 
 ## Proposed GitHub issues (not filed — batch review pending)
 
@@ -1071,16 +1240,24 @@ before beginning its own text-extraction work.
    the auxiliary mechanism works end to end.
 4. Part D: `civicclerk.py` `fetch_agenda_index` + `AgendaRecord` dataclass (also reuses existing adapter
    code, no live-HTML-verification blocker). Interface question with Part B already resolved (§D.3).
-5. Part C: confirm a real catalog city's OneMeeting/PrimeGov hostname (Waco is a confirmed real-world
-   example but not one of this project's own cities; Austin/Dallas guesses both failed this pass). The
-   platform mechanics themselves (URL patterns, table structure, video-link handling) are no longer part
-   of this step — they're already confirmed live against a real production portal (Renton, WA,
-   2026-07-12, not a catalog city); this issue is now just per-city hostname discovery, not HTML
-   reverse-engineering.
-6. Part C: `onemeeting.py` provider (auxiliary mode by default; full-replacement mode only for a city with
-   separately-verified comprehensive video coverage — see §C.1), gated on issue 5's findings.
-7. **New, 2026-07-16**: discover whether Agenda PE (formerly Peak, Granicus's small-to-medium-government
-   agenda product) has a public portal at all, and if so its URL pattern — zero prior research exists
-   beyond confirming the product itself is real; worth prioritizing against this catalog's smaller
-   cities specifically, given Agenda PE's stated market fit. No Part E written yet — this is a research
-   step, not a design one, until something concrete is found to design against.
+5. Part C: determine whether any *catalog* city uses OneMeeting/PrimeGov (via §B.2 discovery). **Scope
+   shrank twice on 2026-07-12**: the platform mechanics are confirmed live (Renton, WA — JSON API, URL
+   patterns, video-link handling), and Waco's hostname is confirmed too (`wacotexas.primegov.com`,
+   live-fetched — though Waco isn't in the catalog). What remains is purely a demand question: does any
+   current or soon-added catalog city actually run OneMeeting? If none does, issue 6 stays unbuilt with
+   a finished design on the shelf.
+6. Part C: `onemeeting.py` provider — **JSON-API-based** (`/api/v2/PublicPortal/ListArchivedMeetings`),
+   not an HTML scraper (the portal is a JS SPA; §C.1); auxiliary mode by default, full-replacement only
+   for a city with separately-verified comprehensive video coverage. Gated on issue 5 finding a real
+   catalog customer. Includes confirming the `documentList[]`→URL field mapping flagged in §C.1.
+7. **Updated 2026-07-12 (was: discover whether Agenda PE has a public portal)** — largely answered:
+   Agenda PE appears to have no separate portal; it publishes through the standard
+   `{org}.granicus.com` ViewPublisher/AgendaViewer surfaces the existing `granicus` provider already
+   ingests (worked example: Saratoga Springs, NY — §B.2 step 3, Appendix P.1). Remaining scope: one
+   more confirming example, then close as a no-op for adapter work.
+8. **New, 2026-07-12 (from Appendix P)**: verify the Swagit-attachments shortcut against a catalog city —
+   do the Swagit surfaces this codebase already fetches expose agenda-attachment references
+   (`swagit-attachments.granicus.com` PDFs) for Addison/Austin/Dallas/Denton meetings? If yes for even
+   some bodies, this beats every auxiliary portal in cost-per-agenda-URL and shrinks Part B's target
+   list to the leftovers. Also from Appendix P: check Gainesville's CivicEngage Agenda Center
+   (`/AgendaCenter`) as that city's likely agenda source.
