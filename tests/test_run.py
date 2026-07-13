@@ -318,6 +318,22 @@ def test_unchanged_city_is_skipped_on_second_build(tmp_path, fake_provider):
     assert (tmp_path / "state" / "feed_etags.json").exists()
 
 
+def test_archived_meeting_page_updates_even_when_feed_window_is_unchanged(tmp_path, fake_provider):
+    cities = _setup(tmp_path)
+    (cities / "feeds" / "fake-city.yml").write_text(
+        (cities / "feeds" / "fake-city.yml").read_text() + "max_episodes: 1\n"
+    )
+    _build(tmp_path, cities)
+
+    old_page = tmp_path / "docs" / "fake-city" / fake_provider.episodes[1].uid / "index.html"
+    assert old_page.exists()
+    fake_provider.episodes[1].title = "Corrected archival title"
+
+    result = _build(tmp_path, cities)
+    assert [r.status for r in result] == ["built"]
+    assert "Corrected archival title" in old_page.read_text()
+
+
 def test_changed_content_rebuilds(tmp_path, fake_provider):
     cities = _setup(tmp_path)
     _build(tmp_path, cities)

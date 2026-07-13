@@ -358,6 +358,40 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
+def meeting_page_hash(ep: Episode) -> str:
+    """Hash of the render-relevant fields for one meeting page.
+
+    Deliberately separate from ``feed_content_hash`` because meeting pages project the retained
+    archive, not the capped current feed window.
+    """
+    payload = {
+        "uid": ep.uid,
+        "title": ep.title,
+        "published": ep.published.isoformat(),
+        "description": ep.description,
+        "summary": ep.summary,
+        "links": sorted((ep.links or {}).items()),
+        "chapters": episode_served_chapters(ep),
+        "chapters_basis": ep.chapters_basis,
+        "transcript_url": ep.transcript_hosted_url,
+        "transcript_synced": ep.transcript_synced,
+        "transcript_basis": ep.transcript_basis,
+        "transcript_words_url": ep.transcript_words_url,
+        "source_duration": episode_source_duration_seconds(ep),
+        "served_duration": episode_served_duration_seconds(ep),
+        "hosted_audio_url": ep.hosted_audio_url,
+        "video_url": ep.video_url,
+        "media_kind": ep.media_kind,
+        "media_availability": (
+            ep.media_availability.effective_state() if ep.media_availability is not None else None
+        ),
+        "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline is not None else "",
+        "sources": [dataclasses.asdict(source) for source in ep.sources],
+    }
+    blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
 # --- the store -------------------------------------------------------------------------
 
 

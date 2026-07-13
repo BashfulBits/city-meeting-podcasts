@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import collections
 import faulthandler
+import hashlib
 import json
 import os
 import sys
@@ -64,6 +65,7 @@ from citypods.records import (
     episode_to_record,
     feed_content_hash,
     load_records,
+    meeting_page_hash,
     merge_persisted,
     merge_records,
     migrate_legacy_manifests,
@@ -84,8 +86,10 @@ from citypods.security import SecurityError
 from citypods.seeds import merge_seed_episodes
 from citypods.sharding import create_shard_plan, episodes_for_shard, load_shard_plan
 from citypods.site import (
+    render_city_archive_page,
     render_city_page,
     render_index,
+    render_meeting_page,
     render_redirect_feed,
     render_redirect_page,
 )
@@ -539,9 +543,9 @@ def _process_city(
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
     archived = len(episodes)
-    feed_eps = filter_by_body(episodes, city.source.get("body"))
-    feed_eps.sort(key=lambda e: e.published, reverse=True)
-    feed_eps = feed_eps[: city.max_episodes]
+    retained_eps = filter_by_body(episodes, city.source.get("body"))
+    retained_eps.sort(key=lambda e: e.published, reverse=True)
+    feed_eps = retained_eps[: city.max_episodes]
     detail = f"{archived} archived"
     if archived > len(feed_eps):
         detail += f", {len(feed_eps)} after filter/cap"
@@ -567,38 +571,87 @@ def _process_city(
             None,
         )
 
+    defaults = site_config.get("defaults", {}) if isinstance(site_config, dict) else {}
+    meeting_pages_enabled = bool(defaults.get("meeting_pages", True))
+
     # feed_content_hash drives the re-render skip: hash the render-relevant fields + build
     # fingerprint. Unchanged + outputs present -> skip the (re-)render entirely. (Audio is a
     # separate concern, gated by audio_spec_hash inside materialize_audio.)
     content_hash = feed_content_hash(feed_eps, fingerprint)
     new_entry = {"content_hash": content_hash}
     cache_entry = cache.get(city.slug)
-    if (
-        not dry_run
-        and cache_entry is not None
+    feed_unchanged = (
+        cache_entry is not None
         and cache_entry.get("content_hash") == content_hash
         and _city_outputs_exist(output_dir, city.slug)
-    ):
-        return (
-            CityResult(
-                city.slug,
-                "skipped",
-                episode_count=len(feed_eps),
-                detail=detail + ", unchanged",
-                has_audio=has_audio,
-                has_video=has_video,
-            ),
-            new_entry,
-        )
+    )
+    meeting_outputs_changed = False
 
     if not dry_run:
         city_dir = output_dir / city.slug
         city_dir.mkdir(parents=True, exist_ok=True)
+        if meeting_pages_enabled:
+            page_cache = {}
+            if isinstance(cache_entry, dict):
+                page_cache = dict(cache_entry.get("meeting_pages") or {})
+            rendered_page_cache = _write_meeting_pages(
+                city_dir,
+                city,
+                retained_eps,
+                base_url,
+                site_config,
+                page_cache,
+            )
+            new_entry["meeting_pages"] = rendered_page_cache
+            meeting_outputs_changed = rendered_page_cache != page_cache
+            archive_hash = _city_archive_hash(city, retained_eps, base_url)
+            new_entry["archive_hash"] = archive_hash
+            if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
+                meeting_outputs_changed = True
+                archive_dir = city_dir / "archive"
+                archive_dir.mkdir(parents=True, exist_ok=True)
+                (archive_dir / "index.html").write_text(
+                    render_city_archive_page(
+                        city,
+                        base_url,
+                        retained_eps,
+                        site_config=site_config,
+                    )
+                )
+        if feed_unchanged and not meeting_outputs_changed:
+            return (
+                CityResult(
+                    city.slug,
+                    "skipped",
+                    episode_count=len(feed_eps),
+                    detail=detail + ", unchanged",
+                    has_audio=has_audio,
+                    has_video=has_video,
+                ),
+                new_entry,
+            )
+
         _write_chapter_sidecars(city_dir, city, feed_eps, base_url)
         if has_audio:
-            (city_dir / "audio_feed.xml").write_text(build_rss(city, feed_eps, "audio", base_url))
+            (city_dir / "audio_feed.xml").write_text(
+                build_rss(
+                    city,
+                    feed_eps,
+                    "audio",
+                    base_url,
+                    meeting_pages=meeting_pages_enabled,
+                )
+            )
         if has_video:
-            (city_dir / "video_feed.xml").write_text(build_rss(city, feed_eps, "video", base_url))
+            (city_dir / "video_feed.xml").write_text(
+                build_rss(
+                    city,
+                    feed_eps,
+                    "video",
+                    base_url,
+                    meeting_pages=meeting_pages_enabled,
+                )
+            )
         else:
             (city_dir / "video_feed.xml").unlink(missing_ok=True)
         # Cover art: never overwrite a hand-committed artwork.jpg. Wordmark = the
@@ -615,6 +668,7 @@ def _process_city(
                 site_config=site_config,
                 has_audio=has_audio,
                 has_video=has_video,
+                meeting_pages=meeting_pages_enabled,
             )
         )
         (city_dir / "meta.json").write_text(
@@ -1918,6 +1972,80 @@ def _write_chapter_sidecars(
         for stale in chap_dir.glob("*.json"):
             if stale.name not in wanted:
                 stale.unlink()
+
+
+def _city_archive_hash(city: City, episodes: list[Episode], base_url: str) -> str:
+    payload = [
+        city.slug,
+        city.podcast_title,
+        city.podcast_author,
+        city.meetings_url,
+        city.city_website,
+        [
+            [
+                ep.uid,
+                ep.title,
+                ep.published.isoformat(),
+                ep.media_availability.effective_state() if ep.media_availability else None,
+            ]
+            for ep in sorted(episodes, key=lambda e: (e.published, e.uid or ""), reverse=True)
+        ],
+        base_url.rstrip("/"),
+    ]
+    blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def _write_meeting_pages(
+    city_dir: Path,
+    city: City,
+    episodes: list[Episode],
+    base_url: str,
+    site_config: dict,
+    page_cache: dict,
+) -> dict:
+    pages_cache = dict(page_cache or {})
+    wanted: set[str] = set()
+    current_uids = {ep.uid for ep in episodes if ep.uid}
+    for uid in list(pages_cache):
+        if uid not in current_uids:
+            pages_cache.pop(uid, None)
+    for ep in episodes:
+        if not ep.uid:
+            continue
+        wanted.add(ep.uid)
+        # The page also carries city-level labels, provider deep-link behavior, and a configured
+        # bug-report destination; include that small context so an operator edit re-renders it.
+        page_context = [
+            city.provider,
+            city.podcast_title,
+            city.podcast_author,
+            city.meetings_url,
+            city.city_website,
+            base_url.rstrip("/"),
+            site_config.get("github_repo"),
+        ]
+        page_hash = hashlib.sha256(
+            json.dumps([meeting_page_hash(ep), page_context], separators=(",", ":")).encode()
+        ).hexdigest()
+        if pages_cache.get(ep.uid) == page_hash and (city_dir / ep.uid / "index.html").exists():
+            continue
+        page_dir = city_dir / ep.uid
+        page_dir.mkdir(parents=True, exist_ok=True)
+        (page_dir / "index.html").write_text(
+            render_meeting_page(city, ep, base_url, site_config=site_config)
+        )
+        pages_cache[ep.uid] = page_hash
+    for child in city_dir.iterdir():
+        if not child.is_dir():
+            continue
+        if child.name in {"chapters", "archive"}:
+            continue
+        if child.name not in wanted and (child / "index.html").exists():
+            import shutil
+
+            shutil.rmtree(child)
+    return pages_cache
 
 
 RUN_HISTORY_NAME = "run_history.jsonl"

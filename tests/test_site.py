@@ -193,3 +193,88 @@ def test_city_page_formats_float_duration_from_archival_metadata():
     html = render_city_page(_city("x-tx", "City of X", "X — Council"), "https://e.test", [ep])
 
     assert "1h 01m" in html
+
+
+def test_meeting_page_renders_permalinks_chapters_and_transcript(sample_city):
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.site import render_meeting_page
+
+    ep = Episode(
+        guid="g",
+        uid="meeting-1",
+        title="City Council - May 1",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://media.example/x.mp4",
+        hosted_audio_url="https://cdn.example/x.m4a",
+        transcript_hosted_url="https://cdn.example/x.vtt",
+        transcript_format="vtt",
+        transcript_synced=True,
+        duration=600,
+        links={"canonical_video": "https://city.granicus.com/MediaPlayer.php?view_id=1&clip_id=2"},
+        chapters=[{"start": 120, "title": "Public comment"}],
+        chapters_basis="served",
+    )
+    html = render_meeting_page(
+        sample_city,
+        ep,
+        "https://e.test",
+        site_config={"github_repo": "owner/repo"},
+    )
+    assert 'rel="canonical" href="https://e.test/denton-tx/meeting-1/"' in html
+    assert 'src="https://cdn.example/x.m4a"' in html
+    assert "Public comment" in html
+    assert "Loading transcript" in html
+    assert "Report a problem" in html
+    assert "starttime=120" in html
+
+
+def test_meeting_page_keeps_unavailable_recording_discoverable(sample_city):
+    from datetime import UTC, datetime
+
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+    from citypods.models import Episode
+    from citypods.site import render_meeting_page
+
+    ep = Episode(
+        guid="g",
+        uid="missing-1",
+        title="Missing meeting",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://media.example/x.mp4",
+        media_availability=MediaAvailability(state=CONFIRMED_EMPTY, reason="empty file"),
+    )
+    html = render_meeting_page(sample_city, ep, "https://e.test")
+    assert "Recording unavailable" in html
+    assert "empty file" in html
+    assert '<audio id="player"' not in html
+
+
+def test_city_page_links_recent_meetings_and_archive(sample_city, sample_episodes):
+    from citypods.site import render_city_page
+
+    sample_episodes[0].uid = "meeting-1"
+    html = render_city_page(sample_city, "https://e.test", [sample_episodes[0]])
+    assert 'href="https://e.test/denton-tx/meeting-1/"' in html
+    assert 'href="https://e.test/denton-tx/archive/"' in html
+
+
+def test_city_archive_lists_retained_unavailable_meetings(sample_city):
+    from datetime import UTC, datetime
+
+    from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
+    from citypods.models import Episode
+    from citypods.site import render_city_archive_page
+
+    ep = Episode(
+        guid="g",
+        uid="missing-1",
+        title="Missing meeting",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://media.example/x.mp4",
+        media_availability=MediaAvailability(state=CONFIRMED_EMPTY, reason="empty file"),
+    )
+    html = render_city_archive_page(sample_city, "https://e.test", [ep])
+    assert 'href="https://e.test/denton-tx/missing-1/"' in html
+    assert "Confirmed Empty" in html

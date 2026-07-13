@@ -1,0 +1,208 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ ep.title }} — {{ city.podcast_title }}{% endblock %}
+{% block head %}
+  {% if page_url %}<link rel="canonical" href="{{ page_url }}">{% endif %}
+{% endblock %}
+{% block content %}
+  <p><a class="muted" href="{{ city_url }}">← Back to {{ city.podcast_title }}</a></p>
+
+  <h1>{{ ep.title }}</h1>
+  <p class="tagline">{{ city.podcast_author }} · {{ ep.published.strftime("%B %-d, %Y") }}{% if duration %} · {{ duration }}{% endif %}</p>
+
+  {% if availability and availability.withheld %}
+  <div style="padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--hover);margin:1rem 0 1.5rem;">
+    <strong>Recording unavailable</strong>
+    <div class="muted" style="margin-top:.35rem;">
+      {{ availability.label }}{% if availability.reason %} · {{ availability.reason }}{% endif %}
+      {% if availability.last_check %} · checked {{ availability.last_check }}{% endif %}
+      {% if availability.recovered_at %} · recovered {{ availability.recovered_at }}{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if player_url %}
+  <audio id="player" controls preload="metadata" src="{{ player_url }}" style="width:100%;margin:0 0 1rem;"></audio>
+  {% endif %}
+
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1.2rem;">
+    {% if page_url %}<a class="btn" href="{{ page_url }}">Permalink</a>{% endif %}
+    {% if source_link_url %}<a class="btn" id="source-link" href="{{ source_link_url }}">Watch this moment on the city's archive</a>{% endif %}
+    {% if report_url %}<a class="btn" href="{{ report_url }}">Report a problem</a>{% endif %}
+  </div>
+
+  {% if official_links %}
+  <h2 style="font-size:1rem;margin:1.6rem 0 .4rem;">Official links</h2>
+  <p class="muted" style="margin:0 0 1rem;">
+    {% for label, url in official_links %}<a href="{{ url }}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+
+  {% if ep.summary or ep.description %}
+  <h2 style="font-size:1rem;margin:1.6rem 0 .4rem;">Meeting notes</h2>
+  <p style="margin:0 0 1rem;">{{ ep.summary or ep.description }}</p>
+  {% endif %}
+
+  {% if chapters %}
+  <h2 style="font-size:1rem;margin:1.6rem 0 .4rem;">Agenda and chapters</h2>
+  <ul style="list-style:none;margin:0 0 1.2rem;padding:0;">
+    {% for chapter in chapters %}
+    <li style="padding:.45rem 0;border-bottom:1px solid var(--border);display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;">
+      <button type="button" class="btn chapter-seek" data-seconds="{{ chapter.start }}" style="margin:0;padding:.2rem .55rem;">{{ chapter.start }}</button>
+      <span style="flex:1;">{{ chapter.title }}</span>
+      {% if chapter.source_url %}<a class="muted" href="{{ chapter.source_url }}">City archive</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h2 style="font-size:1rem;margin:1.6rem 0 .4rem;">Transcript</h2>
+  {% if transcript_client_json %}
+  <div id="transcript" class="muted">Loading transcript…</div>
+  <noscript>
+    <p><a href="{{ ep.transcript_hosted_url }}">Open transcript</a></p>
+  </noscript>
+  {% else %}
+  <p class="muted">No synced transcript is available for this meeting yet.</p>
+  {% endif %}
+
+  {% if transcript_client_json %}
+  <script id="transcript-config" type="application/json">{{ transcript_client_json | safe }}</script>
+  <script>
+    const config = JSON.parse(document.getElementById('transcript-config').textContent);
+    const player = document.getElementById('player');
+    const transcriptRoot = document.getElementById('transcript');
+    const sourceLink = document.getElementById('source-link');
+
+    function parseTimestamp(raw) {
+      const parts = raw.trim().replace(',', '.').split(':').map(Number);
+      if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+      if (parts.length === 2) return (parts[0] * 60) + parts[1];
+      return Number(raw) || 0;
+    }
+
+    function parseTranscript(text) {
+      const lines = text.replace(/\r/g, '').split('\n');
+      const cues = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i].trim();
+        if (!line || line === 'WEBVTT') { i += 1; continue; }
+        if (line.includes('-->')) {
+          const [start, end] = line.split('-->').map(x => parseTimestamp(x));
+          i += 1;
+          const textLines = [];
+          while (i < lines.length && lines[i].trim()) {
+            textLines.push(lines[i].trim());
+            i += 1;
+          }
+          cues.push({ start, end, text: textLines.join(' ') });
+        } else {
+          i += 1;
+        }
+      }
+      return cues;
+    }
+
+    function servedToSource(seconds) {
+      if (!config.segments || !config.segments.length) {
+        return config.sources && config.sources[0] ? { provider: config.sources[0].provider, ref: config.sources[0].ref, time: seconds } : null;
+      }
+      for (const seg of config.segments) {
+        const last = seg === config.segments[config.segments.length - 1];
+        const inSpan = last ? (seconds >= seg.served_start && seconds <= seg.served_end) : (seconds >= seg.served_start && seconds < seg.served_end);
+        if (!inSpan) continue;
+        if (seg.kind !== 'source') return null;
+        const src = (config.sources || []).find(s => s.id === seg.source_id);
+        if (!src) return null;
+        return { provider: src.provider, ref: src.ref, time: seg.source_start + (seconds - seg.served_start) };
+      }
+      return null;
+    }
+
+    function providerDeeplink(provider, ref, seconds) {
+      const whole = Math.max(0, Math.floor(seconds));
+      if (provider === 'granicus' && ref.includes('MediaPlayer.php')) return `${ref}&starttime=${whole}`;
+      if (provider === 'swagit') {
+        const match = ref.match(/\/videos\/(\d+)\/?$/);
+        if (!match) return null;
+        const origin = new URL(ref).origin;
+        return `${origin}/play/${match[1]}/${whole}`;
+      }
+      return null;
+    }
+
+    function updateHash(seconds) {
+      const hash = `#t=${Math.max(0, Math.floor(seconds))}`;
+      if (location.hash !== hash) history.replaceState(null, '', hash);
+    }
+
+    function updateSourceLink(seconds) {
+      if (!sourceLink) return;
+      const mapped = servedToSource(seconds);
+      const url = mapped ? providerDeeplink(mapped.provider, mapped.ref, mapped.time) : null;
+      if (url) sourceLink.href = url;
+    }
+
+    function seek(seconds) {
+      if (player) {
+        player.currentTime = seconds;
+        player.play().catch(() => {});
+      }
+      updateHash(seconds);
+      updateSourceLink(seconds);
+    }
+
+    function renderTranscript(cues) {
+      const list = document.createElement('div');
+      list.style.display = 'grid';
+      list.style.gap = '.45rem';
+      for (const cue of cues) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'cue';
+        row.dataset.start = String(Math.floor(cue.start));
+        row.style.textAlign = 'left';
+        row.style.padding = '.55rem .7rem';
+        row.style.border = '1px solid var(--border)';
+        row.style.borderRadius = '10px';
+        row.style.background = 'var(--card)';
+        row.innerHTML = `<div class="muted" style="font-size:.8rem;">${Math.floor(cue.start)}</div><div>${cue.text}</div>`;
+        row.addEventListener('click', () => seek(cue.start));
+        row.addEventListener('dblclick', async () => {
+          const mapped = servedToSource(cue.start);
+          const sourceUrl = mapped ? providerDeeplink(mapped.provider, mapped.ref, mapped.time) : null;
+          const quote = `"${cue.text}" — ${config.cityLabel} ${config.bodyLabel}, ${config.dateLabel} at ${Math.floor(cue.start)} — ${config.pageUrl}#t=${Math.floor(cue.start)}${sourceUrl ? ` (source: ${sourceUrl})` : ''}`;
+          try { await navigator.clipboard.writeText(quote); } catch (err) {}
+        });
+        list.appendChild(row);
+      }
+      transcriptRoot.replaceChildren(list);
+      function highlight() {
+        if (!player) return;
+        const current = player.currentTime;
+        for (const row of list.querySelectorAll('.cue')) {
+          const start = Number(row.dataset.start);
+          const active = current >= start && current < start + 8;
+          row.style.background = active ? 'var(--hover)' : 'var(--card)';
+        }
+        updateHash(current);
+        updateSourceLink(current);
+      }
+      if (player) player.addEventListener('timeupdate', highlight);
+      highlight();
+    }
+
+    for (const button of document.querySelectorAll('.chapter-seek')) {
+      button.addEventListener('click', () => seek(Number(button.dataset.seconds || '0')));
+    }
+
+    fetch(config.transcriptUrl)
+      .then(resp => resp.text())
+      .then(text => renderTranscript(parseTranscript(text)))
+      .catch(() => { transcriptRoot.textContent = 'Transcript unavailable right now.'; });
+
+    const match = location.hash.match(/#t=(\d+)/);
+    if (match && player) player.addEventListener('loadedmetadata', () => seek(Number(match[1])), { once: true });
+  </script>
+  {% endif %}
+{% endblock %}
