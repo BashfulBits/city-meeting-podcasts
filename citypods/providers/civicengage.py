@@ -105,8 +105,10 @@ class CivicEngageProvider:
         for key in ("agenda_url", "minutes_url", "body"):
             if not source.get(key):
                 raise ValueError(f"civicengage source requires {key!r}")
-        validate_source_url(str(source["agenda_url"]))
-        validate_source_url(str(source["minutes_url"]))
+        # Config validation must remain DNS-free; make_session and the fetch loop apply the
+        # resolving SSRF check at request time.
+        validate_source_url(str(source["agenda_url"]), resolve=False)
+        validate_source_url(str(source["minutes_url"]), resolve=False)
 
     def detect_change(self, source: dict) -> ChangeToken | None:
         return None
@@ -138,7 +140,16 @@ class CivicEngageProvider:
                     if existing is None:
                         records[marker] = record
                     else:
-                        existing.links.update(record.links)
+                        for kind, link in record.links.items():
+                            if link in existing.links.values():
+                                continue
+                            if kind not in existing.links:
+                                existing.links[kind] = link
+                                continue
+                            suffix = 2
+                            while f"{kind}_{suffix}" in existing.links:
+                                suffix += 1
+                            existing.links[f"{kind}_{suffix}"] = link
         return sorted(records.values(), key=lambda record: record.published)
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:

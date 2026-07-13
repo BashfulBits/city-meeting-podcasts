@@ -48,3 +48,43 @@ def test_civicengage_provider_requires_both_archives_and_body(monkeypatch):
             "body": "City Council",
         }
     )
+
+
+def test_fetch_agenda_index_merges_agenda_and_minutes(monkeypatch):
+    agenda = (
+        b'<a href="Archive.aspx?ADID=200">April 7, 2026 Agenda</a>'
+        b'<a href="Archive.aspx?ADID=202">April 7, 2026 Revised Agenda</a>'
+    )
+    minutes = b'<a href="Archive.aspx?ADID=201">April 7, 2026 Minutes</a>'
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, content):
+            self.content = content
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, timeout=None):
+            return Response(agenda if "AMID=36" in url else minutes)
+
+    monkeypatch.setattr("citypods.providers.civicengage.make_session", lambda: Session())
+    monkeypatch.setattr(
+        "citypods.providers.civicengage.validate_source_url", lambda *_a, **_k: None
+    )
+    records = CivicEngageProvider().fetch_agenda_index(
+        {
+            "agenda_url": "https://example.gov/Archive.aspx?AMID=36",
+            "minutes_url": "https://example.gov/Archive.aspx?AMID=37",
+            "body": "City Council",
+        }
+    )
+    assert len(records) == 1
+    assert records[0].links["agenda"].endswith("ADID=200")
+    assert records[0].links["agenda_2"].endswith("ADID=202")
+    assert records[0].links["minutes"].endswith("ADID=201")
