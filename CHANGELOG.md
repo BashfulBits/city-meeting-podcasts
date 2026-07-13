@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Gainesville CivicEngage Archive Center enrichment (R11).** Gainesville's CivicMedia recording
+  feed now composes with its official CivicEngage City Council agenda and minutes archives. The
+  auxiliary adapter joins dated archive rows without creating document-only podcast episodes; links
+  remain additive and existing CivicMedia media/audio identities are unchanged.
+
 - **Granicus episode discovery is now archive-first (R11 phase 1).** The provider derives each native
   `ViewPublisher.php` archive from the configured `ViewPublisherRSS.php` view ID, removing the
   100-item RSS cap without changing an existing Granicus source key or clip-based episode identity.
