@@ -22,10 +22,13 @@ yet cut, batch review pending**
 > missing from the native archive and (b) the full agenda/meeting metadata catalog, including
 > rows with no recording. The latter are durable meeting metadata, not synthetic podcast
 > episodes. This decision follows live coverage checks: Pflugerville's calendar has 2,402
-> meeting rows (2010–2026), 784 video-linked rows, and 228 native-archive recordings; archive
-> alone would discard 2,178 calendar rows, including 560 playable recordings. It retains all
-> 100 already-materialized episodes. Arlington, Fort Worth, and Denton County likewise have
-> native archive pages that are strict supersets of their current RSS windows.
+> meeting rows (2010–2026), including 784 video-linked rows representing 519 distinct Granicus
+> clips. The native archive has 228 clips: 180 overlap those calendar clips, 339 are
+> calendar-only, and 48 are archive-only (567 in the combined recording catalog). The archive
+> therefore retains all 100 already-materialized episodes but cannot stand in for the calendar's
+> full meeting-metadata catalog or its 339 additional calendar-linked recordings. Arlington,
+> Fort Worth, and Denton County likewise have native archive pages that are strict supersets of
+> their current RSS windows.
 >
 > This re-scopes Part A below: its Legistar parser remains useful, but as the calendar
 > companion—not as the primary `provider:`. It is a deliberate deviation from the prior L3
