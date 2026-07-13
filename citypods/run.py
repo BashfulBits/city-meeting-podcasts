@@ -295,6 +295,7 @@ class SourcePipeline:
             if key != source_key(city)
             and (peer := self._cache_cities.get(key)) is not None
             and peer.city_entity == city.city_entity
+            and peer.provider == city.provider
             and not peer.source.get("aggregate")
         }
         unique, reconciled = reconcile_cross_feed_episodes(canonical_by_key.values(), episodes)
@@ -1165,6 +1166,7 @@ def _run_enrich_global_queue(
             for other_key, other in prepared.items()
             if other_key != key
             and other["city"].city_entity == state["city"].city_entity
+            and other["city"].provider == state["city"].provider
             and not other["city"].source.get("aggregate")
         ]
         state["episodes"], reconciled = reconcile_cross_feed_episodes(canonical, state["episodes"])
@@ -1770,6 +1772,45 @@ def _build_impl(
                                     no_refresh,
                                 )
                                 for c in city_group
+                            ]
+                            for fut in futures:
+                                result, entry = fut.result()
+                                result_by_slug[result.slug] = result
+                                if entry is not None:
+                                    cache[result.slug] = entry
+                    # Aggregate reconciliation enriches canonical dedicated records in place.
+                    # Re-render those canonical feeds from their persisted archives so links
+                    # discovered only through the aggregate view are visible in this run.
+                    if (
+                        do_render
+                        and not dry_run
+                        and any(c.source.get("aggregate") for c in city_group)
+                    ):
+                        aggregate_entities = {
+                            c.city_entity for c in city_group if c.source.get("aggregate")
+                        }
+                        canonical_cities = [
+                            c
+                            for c in cities
+                            if c.city_entity in aggregate_entities and not c.source.get("aggregate")
+                        ]
+                        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                            futures = [
+                                pool.submit(
+                                    _process_city,
+                                    c,
+                                    base_url,
+                                    output_dir,
+                                    cache,
+                                    request_delay,
+                                    dry_run,
+                                    pipeline,
+                                    site_config,
+                                    fingerprint,
+                                    True,
+                                    True,
+                                )
+                                for c in canonical_cities
                             ]
                             for fut in futures:
                                 result, entry = fut.result()

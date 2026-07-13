@@ -6,7 +6,7 @@ import pytest
 
 from citypods.bodies import filter_by_body
 from citypods.providers.base import ProviderError
-from citypods.providers.swagit import SwagitProvider, parse_list
+from citypods.providers.swagit import MAX_ARCHIVE_PAGES, SwagitProvider, _page_count, parse_list
 from citypods.security import SecurityError
 from tests.conftest import fixture_bytes
 
@@ -156,6 +156,11 @@ def test_fetch_episodes_follows_archive_pagination_and_dedups(monkeypatch):
     eps = SwagitProvider().fetch_episodes({"list_url": f"{ORIGIN}/archive"})
 
     assert [ep.guid for ep in eps] == ["300", "301"]
+
+
+def test_page_count_rejects_implausibly_large_archive():
+    with pytest.raises(ProviderError, match="implausible page count"):
+        _page_count(f'<a href="/archive?page={MAX_ARCHIVE_PAGES + 1}">last</a>'.encode())
 
 
 class _Resp:

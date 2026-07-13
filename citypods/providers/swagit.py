@@ -51,6 +51,7 @@ DOCUMENT_LINK_RE = re.compile(
     re.IGNORECASE,
 )
 PAGE_LINK_RE = re.compile(r"[?&]page=(\d+)", re.IGNORECASE)
+MAX_ARCHIVE_PAGES = 1_000
 
 # Agenda-item links on a video page double as chapter markers:
 #   <a class="playerControl" data-ts="51" data-end-ts="491" data-title="..." href="/play/ID/51">
@@ -116,7 +117,10 @@ def _page_url(url: str, page: int) -> str:
 def _page_count(content: bytes) -> int:
     """Read the largest page number advertised by a Swagit archive page."""
     text = content.decode("utf-8", errors="replace")
-    return max((int(page) for page in PAGE_LINK_RE.findall(text)), default=1)
+    count = max((int(page) for page in PAGE_LINK_RE.findall(text)), default=1)
+    if count > MAX_ARCHIVE_PAGES:
+        raise ProviderError(f"archive advertises implausible page count: {count}")
+    return count
 
 
 def _origin(url: str) -> str:

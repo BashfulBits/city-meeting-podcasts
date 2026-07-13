@@ -331,17 +331,14 @@ def reconcile_cross_feed_episodes(
     recordings that are not already represented by a canonical feed.
     """
     by_guid: dict[str, Episode] = {}
-    by_uid: dict[str, Episode] = {}
     for episodes in canonical_sources:
         for episode in episodes:
             by_guid.setdefault(episode.guid, episode)
-            if episode.uid:
-                by_uid.setdefault(episode.uid, episode)
 
     unique: list[Episode] = []
     reconciled = 0
     for episode in aggregate:
-        existing = by_guid.get(episode.guid) or (by_uid.get(episode.uid) if episode.uid else None)
+        existing = by_guid.get(episode.guid)
         if existing is None:
             unique.append(episode)
             continue

@@ -117,6 +117,23 @@ def test_cross_feed_reconciliation_reuses_canonical_episode_and_drops_aggregate_
     assert canonical.links["agenda"] == "https://swagit.example/videos/100/agenda"
 
 
+def test_cross_feed_reconciliation_does_not_use_uid_when_guid_differs():
+    canonical = _ep("swagit-100")
+    aggregate = _ep("swagit-101")
+    aggregate.uid = canonical.uid
+    kept, reconciled = reconcile_cross_feed_episodes([[canonical]], [aggregate])
+    assert reconciled == 0
+    assert kept == [aggregate]
+
+
+def test_cross_feed_reconciliation_does_not_match_guid_across_provider_sources():
+    other_provider = _ep("100")
+    other_provider.uid = "different-provider-uid"
+    kept, reconciled = reconcile_cross_feed_episodes([], [other_provider])
+    assert reconciled == 0
+    assert kept == [other_provider]
+
+
 def test_unmatched_auxiliary_agenda_record_is_dropped():
     primary = [_ep("primary", when=datetime(2026, 5, 19, tzinfo=UTC))]
     auxiliary = [_ep("auxiliary", when=datetime(2026, 5, 20, tzinfo=UTC))]
