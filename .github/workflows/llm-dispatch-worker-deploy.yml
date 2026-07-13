@@ -1,0 +1,44 @@
+name: Deploy LLM dispatch Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/llm-dispatch-proxy/src/**"
+      - "workers/llm-dispatch-proxy/wrangler.jsonc"
+      - "workers/llm-dispatch-proxy/package.json"
+      - "workers/llm-dispatch-proxy/package-lock.json"
+      - ".github/workflows/llm-dispatch-worker-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-dispatch-worker-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+
+      - name: Test Worker
+        working-directory: workers/llm-dispatch-proxy
+        run: npm test
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/llm-dispatch-proxy
+          wranglerVersion: "4"
