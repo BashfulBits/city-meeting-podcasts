@@ -22,11 +22,15 @@ config (YAML)                       ── per-city + per-feed config
   │
   ▼
 providers.fetch_episodes()          ── Granicus / CivicPlus / CivicClerk / Swagit adapters
-  │ optional verified calendar companion (Legistar / CivicClerk)
-  ├─ recorded rows merge by canonical provider clip ID
-  └─ no-video rows persist as calendar metadata, never as podcast episodes
   │
-  ▼
+  ├─ optional verified calendar companion (Legistar / CivicClerk)
+  │  ├─ recorded rows merge by canonical provider clip ID
+  │  └─ no-video rows ──► records.assign_uids()
+  │       └─► records.merge_calendar_records()
+  │            └─► state/sources/<key>/calendar.json ──► city archive pages
+  │                                                 (no RSS, meeting page, or episode stages)
+  │
+  ▼ recorded rows only
 records.assign_uids()               ── stable real-world episode UID (author+body+date)
   │
   ▼

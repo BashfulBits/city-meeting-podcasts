@@ -194,6 +194,18 @@ class CivicClerkProvider:
         # always fetch (matches other providers without usable validators).
         return None
 
+    def _get_events(self, api_base: str, params: dict[str, str]) -> bytes:
+        """Fetch an Events listing and normalize provider-level request failures."""
+        url = f"{api_base.rstrip('/')}/v1/Events"
+        with make_session() as session:
+            try:
+                resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {url} failed: {exc}") from exc
+        if resp.status_code >= 400:
+            raise ProviderError(f"GET {url} returned {resp.status_code}")
+        return resp.content
+
     def fetch_episodes(self, source: dict) -> list[Episode]:
         base = source["api_base"].rstrip("/")
         top = int(source.get("max_fetch", 100))
@@ -202,31 +214,17 @@ class CivicClerkProvider:
             "$orderby": "startDateTime desc",
             "$top": str(top),
         }
-        url = f"{base}/v1/Events"
-        with make_session() as session:
-            try:
-                resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {url} failed: {exc}") from exc
-        if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
-        return parse_events(resp.content, api_base=base, category_id=source.get("category_id"))
+        return parse_events(
+            self._get_events(base, params), api_base=base, category_id=source.get("category_id")
+        )
 
     def fetch_agenda_index(self, source: dict) -> list[AgendaRecord]:
         """Return agenda-bearing events even when CivicClerk hosts no video."""
         base = source["api_base"].rstrip("/")
         top = int(source.get("max_fetch", 100))
         params = {"$orderby": "startDateTime desc", "$top": str(top)}
-        url = f"{base}/v1/Events"
-        with make_session() as session:
-            try:
-                resp = session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
-            except requests.RequestException as exc:
-                raise ProviderError(f"GET {url} failed: {exc}") from exc
-        if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
         return parse_agenda_index(
-            resp.content, api_base=base, category_id=source.get("category_id")
+            self._get_events(base, params), api_base=base, category_id=source.get("category_id")
         )
 
     def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:

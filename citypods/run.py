@@ -199,6 +199,17 @@ class SourcePipeline:
             }
         )
 
+    def _hydrate_calendar(self, key: str) -> dict[str, AgendaRecord]:
+        """Load and cache the durable calendar catalog for ``key``.
+
+        Callers hold the corresponding source lock, so the store and list cache remain
+        consistent with the on-disk calendar snapshot.
+        """
+        calendar = load_calendar_records(self.state_dir, key)
+        self._calendar_store[key] = calendar
+        self._calendar_cache[key] = list(calendar.values())
+        return calendar
+
     def fetch_merge(self, city: City, key: str) -> tuple[object, list[Episode], dict, int]:
         """Fetch the source + merge persisted records + migrate legacy manifests. The cheap
         prepare step shared by ``enrich`` (per-source) and the global orchestrator (PR3).
@@ -280,9 +291,7 @@ class SourcePipeline:
         if not persisted:
             raise ProviderError(str(reason)) from reason
         episodes = [record_to_episode(rec) for rec in persisted.values()]
-        calendar = load_calendar_records(self.state_dir, key)
-        self._calendar_store[key] = calendar
-        self._calendar_cache[key] = list(calendar.values())
+        self._hydrate_calendar(key)
         self._notes[key] = f"stale provider fetch failed: {reason}"
         print(
             f"[enrich] source stale slug={city.slug} provider={city.provider} "
@@ -442,9 +451,7 @@ class SourcePipeline:
             lock = self._locks[key]
         with lock:
             if key not in self._calendar_cache:
-                calendar = load_calendar_records(self.state_dir, key)
-                self._calendar_store[key] = calendar
-                self._calendar_cache[key] = list(calendar.values())
+                self._hydrate_calendar(key)
             return self._calendar_cache[key]
 
     def render_from_records(self, city: City) -> list[Episode]:
@@ -460,10 +467,8 @@ class SourcePipeline:
                 return self._cache[key]
             records = load_records(self.state_dir, key)
             archive = [record_to_episode(rec) for rec in records.values()]
-            calendar = load_calendar_records(self.state_dir, key)
             self._cache[key] = archive
-            self._calendar_store[key] = calendar
-            self._calendar_cache[key] = list(calendar.values())
+            self._hydrate_calendar(key)
             return archive
 
     def archive_from_records(self, city: City, reason: Exception) -> list[Episode]:
@@ -488,10 +493,8 @@ class SourcePipeline:
             if not records:
                 raise ProviderError(str(reason)) from reason
             archive = [record_to_episode(rec) for rec in records.values()]
-            calendar = load_calendar_records(self.state_dir, key)
             self._cache[key] = archive
-            self._calendar_store[key] = calendar
-            self._calendar_cache[key] = list(calendar.values())
+            self._hydrate_calendar(key)
             self._notes[key] = f"stale provider fetch failed: {reason}"
             print(
                 f"[render] source stale slug={city.slug} provider={city.provider} "

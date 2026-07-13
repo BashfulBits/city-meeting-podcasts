@@ -247,7 +247,7 @@ class SwagitProvider:
 
     def fetch_episodes(self, source: dict) -> list[Episode]:
         episodes: list[Episode] = []
-        seen: set[str] = set()
+        by_guid: dict[str, Episode] = {}
         with make_session() as session:
             for url in _list_urls(source):
                 try:
@@ -257,14 +257,14 @@ class SwagitProvider:
                 if resp.status_code >= 400:
                     raise ProviderError(f"GET {url} returned {resp.status_code}")
                 for ep in parse_list(resp.content, _origin(url)):
-                    if ep.guid not in seen:  # dedup across views
-                        seen.add(ep.guid)
+                    existing = by_guid.get(ep.guid)
+                    if existing is None:  # dedup across views
+                        by_guid[ep.guid] = ep
                         episodes.append(ep)
                         continue
                     # Views can overlap but expose different document availability.  Keep
                     # the first recording's identity/title/date and fill only absent
                     # official links from a duplicate row.
-                    existing = next(item for item in episodes if item.guid == ep.guid)
                     for key, value in ep.links.items():
                         if value:
                             existing.links.setdefault(key, value)
