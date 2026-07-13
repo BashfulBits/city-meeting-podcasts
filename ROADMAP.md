@@ -53,10 +53,10 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > operational exit criteria below (≥95% run success, zero stalled feeds, declining backlog ETAs), which
 > need a live read of `run_history.jsonl`/the status dashboard over a trailing 14-day window before
 > Phase H is declared formally closed.
-> Runtime/dependency update automation (**R7**) is the one item still open, and it now lives in
+> Runtime/dependency update automation (**R9**) is the one item still open, and it now lives in
 > **Phase R**, not Phase H: `.github/renovate.json5` is committed but the Renovate GitHub App has not
 > yet been activated on the repo (zero Renovate-authored PRs, no dependency-dashboard issue as of
-> 2026-07-12). Completing R7 is the final gate to 1.0.
+> 2026-07-12). Completing R9 is the final gate to 1.0.
 > The local-ASR duration guard is a narrow H14 reliability prerequisite, not a promotion of later
 > scaling work: ship it now, then continue with Modal and Beam workers that explicitly support audio
 > longer than the local ceiling.
@@ -109,7 +109,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 | **H11b** | ✓ Shipped — Render-only `deploy.yml` (no ffmpeg/ASR; `actions: read` dropped) + heavy phase → new `enrich.yml` (own `enrich` concurrency group) **+ render stops persisting records** — `build()` gates `save_records`/`push_state`/`reconcile_state` off `--phase render` so the enrich workflow is the sole record writer (closes the lost-update race); `statesync` `only_prefixes=`/`full_run=` scope hooks ready for H6b ([#272](https://github.com/BashfulBits/city-meeting-podcasts/issues/272)) |
 | **H11c** | **Graceful SIGTERM + mid-run checkpoint** (implemented, unreleased — [#386](https://github.com/BashfulBits/city-meeting-podcasts/pull/386)): a runner-level SIGTERM/GitHub-cancel now converts to the existing graceful-stop path (workers defer, the run still persists records + writes its `run_history` entry) instead of dying mid-queue; the enrich queue persists each source as the audio pass drains and again at the end (idempotent); interrupted runs are tagged in `run_history.jsonl` and exit `143`. Directly serves the Phase-H exit criterion "no exit-143 / lost-comms kills" below |
 | **H12** | ✓ Shipped — transcript artifact rework (PR #253): clean segment-cue VTT for players + a word-level JSON sidecar for search/clips/diarization + version-aware gradual re-transcribe (fixes #249's word-per-cue regression) |
-| **H13** | **GPU/ASR execution-backend interface** (+ `local` adapter) — the pre-1.0 "compute is pluggable" lock; `citypods/compute/` mirrors `storage/`. Do **first** (seam for H6b lanes + H14 adapters). LLM-API half of the interface lands with R3/R4 |
+| **H13** | **GPU/ASR execution-backend interface** (+ `local` adapter) — the pre-1.0 "compute is pluggable" lock; `citypods/compute/` mirrors `storage/`. Do **first** (seam for H6b lanes + H14 adapters). LLM-API half of the interface lands with **R2** (dedicated infra item, inserted 2026-07-14 — see Phase R below), consumed by R5 (tags) and R6 (auto-summaries) |
 | **H14** | ✓ Shipped — **External transcription workers — Modal + Beam** (free-tier-bounded async dispatch behind H13; `asr.yml` dispatches). H14a substrate ([#275](https://github.com/BashfulBits/city-meeting-podcasts/issues/275)): budget ledger ($0 guarantee), router + `DispatchCoordinator`, live H5 leases, `compute reconcile`, `compute_backend: auto`. The local guard defers known recordings above 4h when external dispatch declines; the separate runtime estimator still protects the Actions deadline. ASR shard weighting separates local duration cost from cheap dispatch, blocked, and in-flight work; a once-per-run planner restores B2 state once and publishes one immutable state/assignment artifact consumed by every matrix shard. **H14b Modal** ([#807](https://github.com/BashfulBits/city-meeting-podcasts/pull/807), GH#276 closed 2026-07-05) and **H14c Beam** ([#808](https://github.com/BashfulBits/city-meeting-podcasts/pull/808), GH#277 closed 2026-07-05): real Modal + Beam workers that install the runner's version-pinned deps + baked pinned Whisper model on a CUDA12+cuDNN9 base (dependency-policy umbrella [#804](https://github.com/BashfulBits/city-meeting-podcasts/issues/804)), support longer recordings with bounded memory, and report peak RSS/GPU VRAM telemetry. Live validation passed the pre-live checklist ([#706](https://github.com/BashfulBits/city-meeting-podcasts/issues/706), closed 2026-07-08). **H14d** ([GH#794](https://github.com/BashfulBits/city-meeting-podcasts/issues/794), closed 2026-07-08) turned that telemetry into production admission/chunking/pacing defaults. Local overflow is allowed only when both local guards pass; otherwise work remains queued, not failed. The locked episode-level `transcribe`/`align`/`diarize` interface remains unchanged; `diarize` implementation stays in Phase R and Mac-mini/AWS stay post-1.0. |
 | **H15** | ✓ Shipped — **Transcript-quality metric** ([GH#391](https://github.com/BashfulBits/city-meeting-podcasts/issues/391), now closed): all three layers are live — L1 free acoustic-fit evidence on every production transcript/alignment run, L2 independent CTC forced-alignment scoring ([#883](https://github.com/BashfulBits/city-meeting-podcasts/issues/883)), and L3 human-gold calibration/trend reporting ([#884](https://github.com/BashfulBits/city-meeting-podcasts/issues/884)). Trusted `route_mode` now gates align-vs-transcribe routing per source/body, and `/admin/status` now includes the H15 trust panel via [PR #891](https://github.com/BashfulBits/city-meeting-podcasts/pull/891). Provider-transcript rollout through PT-PR7 remains implemented without invalidating ASR. |
 | **H16** | ✓ Shipped — **Granicus proxy validation + simplification** ([GH#353](https://github.com/BashfulBits/city-meeting-podcasts/issues/353), closed 2026-06-24): direct-first Cloudflare Worker fallback validated across production Audio runs; the storage-backed rate-limit circuit breaker/parking/canary machinery was disproved and removed. Duplicate combined/per-board audio work is also fixed ([GH#421](https://github.com/BashfulBits/city-meeting-podcasts/issues/421)): entity-family shard affinity + run-local stable-uid/recipe coalescing, with no source-key migration or backfill. |
@@ -134,43 +134,199 @@ Deferred from the active Phase-H queue on 2026-07-10: **H9** combined-throughput
 Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeting-pages-and-search.md)
 (pages + search) and [`review/14`](review/14-topic-tags-strong-towns-lens.md) (tags).
 
-> **Scope (depth-first):** prove R1–R6 across the **entire current city catalog** before onboarding new
-> cities (VISION "Depth-first"). The pilot set *is* today's roster — not a hand-picked subset — so search
-> index size and page volume stay bounded by the current ~85 feeds while the engine choices (e.g.
-> Pagefind) are validated.
+> **Scope (depth-first):** prove the full Phase R feature set (**R1, R4–R8** — everything except the R2/
+> R3 infrastructure items and the R9 maintenance gate, neither of which are catalog features) across the
+> **entire current city catalog** before onboarding new cities (VISION "Depth-first"). The pilot set *is*
+> today's roster — not a hand-picked subset — so search index size and page volume stay bounded by the
+> current ~85 feeds while the engine choices (e.g. Pagefind) are validated.
 
-> **Reprioritized 2026-07-12 (maintainer decision): speaker diarization is fully pulled forward as R5,
-> gating 1.0** — previously an L1 catalog item with no committed slot. Old R5 (front-end design cycle)
-> and R6 (dependency automation) shift to R6/R7. Rationale: the front-end design cycle needs a real
-> speaker-attribution taxonomy (labels, per-speaker linking) to design around, not a placeholder — see
-> [`review/11`](review/11-technical-design-roadmap.md) §4/§5.1. **This also pulls forward a minimal
-> slice of Phase F's attendee extraction (#14)** — diarization alone only produces anonymous voice
-> clusters ("Speaker 2"); turning that into real names needs a "who was present" ground truth from
-> official minutes. Only that minimal name-list slice moves up; the richer Phase-F item (vote-linked,
-> full entity model) stays post-1.0. **Called out as a real scope increase, not a free reorder:**
-> diarization is GPU/ML work (speaker-embedding models, meeting-wide identity reconciliation) and the
-> attendee slice is a new minutes-parsing capability — both genuinely land before the 1.0 tag now,
-> traded for a front-end design cycle that doesn't need a later redesign.
+> **Reprioritized 2026-07-12 (maintainer decision): speaker diarization is fully pulled forward as R7,
+> gating 1.0** — previously an L1 catalog item with no committed slot. Rationale: the front-end design
+> cycle (R8) needs a real speaker-attribution taxonomy (labels, per-speaker linking) to design around,
+> not a placeholder — see [`review/11`](review/11-technical-design-roadmap.md) §4/§5.1. **This also
+> pulls forward a minimal slice of Phase F's attendee extraction (#14)** — diarization alone only
+> produces anonymous voice clusters ("Speaker 2"); turning that into real names needs a "who was present"
+> ground truth from official minutes. Only that minimal name-list slice moves up; the richer Phase-F item
+> (vote-linked, full entity model) stays post-1.0. **Called out as a real scope increase, not a free
+> reorder:** diarization is GPU/ML work (speaker-embedding models, meeting-wide identity reconciliation)
+> and the attendee slice is a new minutes-parsing capability — both genuinely land before the 1.0 tag
+> now, traded for a front-end design cycle that doesn't need a later redesign.
+
+> **Reprioritized 2026-07-14 (maintainer decision): two infrastructure items inserted as R2/R3, between
+> per-meeting pages and search.** R1 (pages) needs neither. R4 (search, was R2) and R5 (tags, was R3)
+> both benefit from real agenda-document text as a search/tagging input, richer than the chapter-title
+> proxy those designs otherwise use — and R5's LLM-assisted tagging path needs a working LLM adapter.
+> Per H13's own precedent (build+prove the compute-backend interface before features depend on it), both
+> land as dedicated infra ahead of their first consumer rather than under a feature's time pressure.
+> **R2 (LLM backend) is real infra work, not a config flip** — provider choice, a cost/budget ledger
+> mirroring H14d's provider-cycle dollar model, and prompt-management conventions all need deciding.
+> Everything from the old R2 onward shifts down by two (R2→R4, R3→R5, R4→R6, R5→R7, R6→R8, R7→R9).
+
+> **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced
+> second in the table below, right after R1.** This is deliberate, not a mistake — the maintainer asked
+> to avoid the renumbering churn a mid-sequence insert caused last time, so new items now get the next
+> unused number and are positioned by an explicit note rather than by forcing the label to match table
+> order. Needs to exist and be testable as an **asynchronous OpenAI-shaped enqueue/poll transport** by
+> the time R2 is built, since R2's Mistral integration is the first thing that needs its `JobHandle`
+> path. It is not a synchronous LiteLLM provider; LiteLLM remains in R2's Python adapter or an explicitly
+> configured LiteLLM Proxy upstream — see [`review/27`](review/27-llm-backend-and-provider-routing.md).
+
+> **Added 2026-07-16 (maintainer decision): "Legistar calendar provider" re-scoped into a broader
+> cross-provider agenda & history network, numbered R11, sequenced third (right after R10, before R2).**
+> Same no-renumbering convention as R10. Research found Swagit and CivicPlus each have a real
+> agenda-management sibling under common ownership (OneMeeting for Swagit, via Rock Solid Technologies;
+> CivicClerk for CivicPlus) — generalizing the existing, proven Legistar/Granicus mechanism to cover
+> them closes the agenda-URL gap for two of the four current providers that otherwise have zero agenda
+> data today. **R3 (agenda text extraction) now depends on R11 and narrows to text extraction only** —
+> R11 owns URL discovery, R3 owns extracting text from what R11 finds. See
+> [`review/15`](review/15-legistar-catalog-provider.md), which absorbs and expands the original item.
+
+> **Added 2026-07-12 (maintainer question → item): LLM-assisted city/agenda-source discovery, numbered
+> R12, sequenced right after R2 (before R3).** Same no-renumbering convention as R10/R11. Prompted by
+> asking whether R11's manual per-city discovery checklist (§B.2) — and new-city onboarding generally —
+> could be automated: given a city name, search for its real website/portal links (not LLM recall — the
+> same guessed-URL failure mode R11 already hit), classify the result against Appendix P's platform
+> census, live-verify the candidate before ever proposing it, and open a GitHub issue with a checkbox
+> for a human to approve applying the config. **Automates the research, keeps the approval step
+> manual** — not literally "ingest without a manual step" as first framed, matching every other
+> automation in this codebase (H4's audit-issue reconciliation, R2's champion-routing checkbox).
+>
+> **Promoted to L2, 2026-07-12 (maintainer request: "push toward L2, research the best answer for
+> each"), full design in [`review/28`](review/28-llm-assisted-city-discovery.md).** Both open questions
+> resolved by research, and the answers converged on one architecture change: search turns out not to be
+> an LLM call at all. **Search mechanism: Tavily (dedicated search API), not native LLM-provider
+> grounding** — Gemini's free-tier grounding is model-restricted (500 RPD on 2.5 Flash only; Gemini 3 has
+> no free-tier grounding at all) and LiteLLM has confirmed bugs mixing search with structured output;
+> Bing Search API is fully retired (Aug 2025); Brave killed its free tier (Feb 2026); SerpApi carries an
+> active Google DMCA lawsuit. Tavily's free tier (1,000 searches/month, no card) comfortably covers this
+> catalog. **Architecture: only the classification step rides `InferenceJob`**, as one new task verb
+> (`classify-civic-platforms`) — the budget ledger/tournament are already Stage-agnostic, so this needed
+> no new plumbing; the search step is a plain, non-LLM API call outside that interface.
+>
+> **Matured to L3, same day (maintainer request: "push further, ask me with anything you're not sure
+> of").** Two remaining decisions were put to the maintainer directly rather than assumed: trigger
+> cadence, and what checking the approval box actually does. The answers **reinstated new-city
+> bootstrapping into scope** — previously deferred in the L2 pass as "no existing process to automate
+> against," which was wrong: this repo's `add-city` issue template already promises exactly that, by
+> hand. **Two trigger surfaces**: a quarterly scheduled sweep (+ `workflow_dispatch`) for cities already
+> in the catalog missing an agenda source, and a workflow triggered off the existing `add-city` label
+> that replies on the requesting issue rather than opening a new one. **Checking the checkbox commits
+> directly to `main`** when a fresh-checkout additivity check confirms the change is purely additive (a
+> new file, or new keys into a file that doesn't already have them), backstopped by a redundant
+> zero-deletions diff-stat assertion; anything else falls back to a PR instead. This was verified
+> achievable by checking this repo's *actual live* branch ruleset (`gh api .../rulesets` — only
+> `deletion`/`non_fast_forward` enforced, no required-PR rule) rather than trusting `lock.yml`'s own
+> comment ("branch protection blocks main"), which turned out to be stale. Also added: a second
+> verification tier beyond "the portal loads" — an end-to-end sample-episode resolution through the
+> classified provider's existing adapter, gating whether a config is ever offered as apply-able at all.
+> Full design: [`review/28`](review/28-llm-assisted-city-discovery.md). Flagged explicitly as this
+> codebase's first automation with write access to `main`.
+
+> **Matured to L3, 2026-07-12: agenda text extraction (R3), full design in
+> [`review/29`](review/29-agenda-text-extraction.md).** Extracts from `ep.links["agenda"]`/
+> `["agenda_portal"]` via two new output-affecting dependencies (`pypdf`, `beautifulsoup4`) into a
+> content-addressed sidecar under `AGENDA_TEXT_PIPELINE_VERSION`, mirroring the existing
+> transcript-artifact/backoff conventions exactly. Two non-goals: OCR, and any LLM synthesis.
+>
+> **Corrected and expanded, same day: backup/packet material is now in scope too, stored as a fully
+> separate artifact.** The original draft excluded it citing "hundreds of pages or multi-GB" — that
+> number was never actually verified (the only "multi-GB" claim anywhere in this session's research
+> describes source *video* files, not agenda packets), and the exclusion didn't survive the maintainer's
+> follow-up questions. Per the maintainer's explicit requirement, backup text gets its own sidecar and
+> pipeline version (`agenda_backup_url` / `AGENDA_BACKUP_PIPELINE_VERSION`), independent of agenda-only
+> text, so "just the agenda," "one item's backup," and "just a link" (backup URLs are populated even when
+> text extraction fails, for show-notes/HTML rendering) are all independently usable. Sourced from
+> CivicClerk's already-coded `agenda_packet` link, `pypdf.extract_uris()` on internal PDF links
+> (order-based chapter attribution, explicitly a heuristic), and — proposed as an R11 follow-on —
+> Legistar's structured per-item Attachments API. **Design-complete; execution should still wait on R11's
+> real link coverage shipping** — the maintainer's own bar for starting this item ("once R11 supplies
+> agenda URLs for almost every meeting") is about production execution, and R11's Part A migration is
+> designed but not yet executed, distinct from this item's own design readiness.
+
+> **Matured to L3, 2026-07-12: R6 (cards, summaries, soundbites), full design in
+> [`review/30`](review/30-cards-summaries-soundbites.md).** Verified against the live Pri table before
+> starting — R4/R5 are already L3, so R6 was the next item actually needing work, not R7 as first
+> guessed. Also checked directly rather than assumed: neither R2's LLM `Backend` nor R5's tag system has
+> any code yet despite both being "L3" — so every LLM-assisted path across all three Parts is flagged as
+> depending on R2 shipping; the non-LLM paths ship independently. **Cards** correct a scoping error in
+> the original sketch (no vote-tally/minutes-parsing code exists anywhere in this codebase — "action,
+> vote" drops out of a first cut) and get a direct payoff from R3's backup-material work this session
+> (per-item doc links joined by `chapter_index`). **Summaries** are inline record fields, not a sidecar
+> — the first artifact in this stretch of items small enough to justify breaking that pattern — and never
+> touch the feed's own `<description>`. **Soundbites** give `citypods/clips.py`'s already-built,
+> zero-caller `extract_clip` its first real consumer; a longest-chapter heuristic ships free of any new
+> dependency, while a "longest public-comment turn" variant closer to the original wording is deferred
+> since it needs diarization (R7, not yet shipped). Also fixed two stale "ROADMAP R5" references in
+> review/11's diarization row, left over from before the R2/R3 insertion shifted numbering — corrected
+> to R7 to match the live table.
+
+> **Matured to L3, 2026-07-13: R7 (diarization, minimal attendee extraction, per-speaker pages), full
+> design in [`review/31`](review/31-speaker-diarization-attendee-extraction.md).** Checked every
+> dependency the L1 sketch named against the live codebase rather than trusting the sketch: H6b (its
+> named blocker) is shipped; H9 was already deferred/closed (H14d's telemetry answered its question),
+> flagged only as a real candidate to reopen once diarization's own cost profile is measured; and the
+> execution-backend interface already includes `"diarize"` in its `Task` Literal since H13/H14b/H14c
+> shipped — this item never needed to build backend dispatch, only a real adapter. That adapter
+> (`citypods/diarize.py`, wespeaker ECAPA-TDNN) wires into an already-reserved-but-inert `diarize`
+> lane/`speakers` block and **unifies with the existing provider-diarize schema** (built for PT-PR6)
+> rather than a parallel one. Attendee extraction reuses R3's own PDF/HTML extraction functions against a
+> newly-wired `links["minutes"]` — the identical one-line gap `agenda_packet` had. Identify-then-
+> human-confirm only, never auto-named; per-speaker pages render only for confirmed speakers.
+
+> **Matured to L3, 2026-07-13: R8 (front-end design, accessibility, funding link), full design in
+> [`review/32`](review/32-frontend-design-accessibility-funding.md).** First confirmed the L1 sketch's
+> `#55`/`#20`/`#54`/`#50`/`#16` references aren't real GitHub issue numbers — `gh issue view` on each
+> resolves to unrelated, already-closed feed-health issues (this project's older internal backlog
+> numbering, not GH issues, same system R6's items used before their `GH#` companions existed). Real
+> gaps grounded against the actual current templates, not the abstract: the index page's "accordion" is
+> already a native, keyboard-accessible `<details>`/`<summary>`; audio/video labels are today a bare
+> `· audio`/`· video` text suffix; subscribe buttons have zero iconography at all.
+>
+> **Corrected same day: this doc specifies a design *process*, not a prescribed visual identity.** An
+> earlier pass drafted one specific redesign in full (chevron treatment, particular icons, a complete
+> color/type system, built and shown as a mockup) — maintainer correction on two counts: this branch
+> produces roadmap/design documents, not the actual visual design, and separately, a single
+> boilerplate-avoiding identity handed down in prose is still the wrong shape for this doc. Part A now
+> specifies a concrete process for whoever implements this later: ground the direction in this project's
+> own subject matter (not generic "civic tech" or "podcast app" references), draft at least 2–3 genuinely
+> distinct options, check each against a real checklist of identifiable AI-generated-design patterns
+> (specific combinations like warm-cream+serif+terracotta, not "using a serif" in general), mock up the
+> survivors against real site content, and present them for the maintainer to choose from before any
+> template changes. The one direction drafted live this session is kept as a worked example proving the
+> process produces something distinctive — explicitly not the chosen design. Apple's official "Listen on
+> Apple Podcasts" badge is confirmed safe to use verbatim regardless of direction; Overcast/Pocket Casts/
+> Castro have no independently-verified official asset, falling back to a neutral glyph. Accessibility
+> gaps (Part B, independent of Part A's process) found by reading the markup, not generic checklist
+> advice: no `aria-live` region on three dynamic updates (search-result count, play-state change,
+> copy-RSS feedback), no skip-to-content link — plus WCAG contrast ratios computed precisely from this
+> project's own CSS custom properties (light-mode muted text 4.83:1, dark-mode 7.27:1, both passing AA)
+> rather than eyeballed. `<podcast:funding>` (Part C) is a near-trivial channel-level tag + two new
+> `City` fields.
 
 | Pri | Item |
 |----:|------|
 | **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
-| **R2** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
-| **R3** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
-| **R4** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites |
-| **R5** | **#7** speaker diarization (CPU-viable execution-backend model, meeting-wide identity reconciliation) + a minimal **#14** attendee-extraction slice (names present at a meeting, parsed from official minutes/platform metadata — never inferred from audio) so diarized voice clusters get human-confirmed real-name labels instead of staying anonymous. **Full pull-forward, 2026-07-12** — sequenced before R6 so the front-end design cycle has a real taxonomy to design around |
-| **R6** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
-| **R7** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |
+| **R10** | **Rate-limited LLM dispatch Worker** (new, infra — numbered R10, sequenced here, see note above) — a Cloudflare Worker (free tier; other free providers considered if better) that paces requests to tightly rate-limited LLM providers (Mistral's free tier is ~1-2 requests/minute) from the edge instead of a GitHub Actions runner idling between calls. Cloudflare Workers don't bill/limit CPU time spent awaiting a `fetch()` response, only active CPU cycles — the "runner mostly waiting" concern doesn't apply the same way there. Exposes an OpenAI-shaped **asynchronous enqueue/poll transport** for R2's `JobHandle` path; it is not configured as a synchronous LiteLLM provider. The configured upstream may be a provider's OpenAI-compatible endpoint or a LiteLLM Proxy for native provider translation. Results land in R2 (object storage) for the next scheduled run to pick up, reusing the same "stage checks if the artifact is ready, else skips and retries next run" pattern already used for ASR/diarization backlogs — no new synchronous coordination needed |
+| **R11** | **Cross-provider agenda & history network** (new, infra — numbered R11, sequenced here, see note above) — generalizes the existing Legistar/Granicus historical-backfill mechanism (originally "Legistar calendar provider") into three goals: ingest HTML/portal agenda URLs, ingest PDF agenda URLs, and extend meeting history for feeds with limited RSS/API windows. Granicus directly markets three parallel agenda products — **Legistar** (proven), **OneMeeting**, and **Agenda PE** (small/medium-government focused, no confirmed portal pattern yet) — any of which may apply to a Granicus- or Swagit-primary city; adds **CivicClerk cross-referencing** (already a supported provider, now also usable as an auxiliary agenda source for CivicPlus-video cities) alongside these. Feeds R3 (agenda text extraction) and, transitively, R4 (search) and R5 (tags) |
+| **R2** | **LLM backend** (new, infra) — LiteLLM owns provider translation and response normalization; direct routes return `JobResult`, while rate-limited routes enqueue through R10 and return `JobHandle` for later reconciliation. It is the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs, with provider choice, cost/budget ledger, and prompt-management conventions, built ahead of R5/R6 |
+| **R12** | **LLM-assisted city/agenda-source discovery** (new, infra — numbered R12, sequenced here, see note above) — automates R11's manual §B.2 discovery checklist *and* the existing `add-city` template's manual fulfillment: Tavily search → classify against Appendix P's platform census via a `classify-civic-platforms` task verb → two-tier verify (platform signature + end-to-end sample-episode resolution) → propose via a quarterly digest issue (existing cities) or a reply on the `add-city` issue (new cities), with a checkbox that commits directly to `main` when the change is verified purely additive, else falls back to a PR. **L3**, see [`review/28`](review/28-llm-assisted-city-discovery.md) |
+| **R3** | **Agenda text extraction** (new, infra) — **narrowed 2026-07-16: text extraction only, now that R11 owns URL discovery.** Extracts plain text from `ep.links["agenda"]`/`["agenda_portal"]` (no OCR, no LLM synthesis) into a content-addressed sidecar mirroring the existing transcript-artifact conventions; the richer "what's being proposed" LLM brief stays Phase F. **Backup/packet material is now also in scope, as a fully separate sidecar/pipeline-version** so agenda-only text, per-item backup text, and backup links can each be consumed independently. Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy. **L3**, see [`review/29`](review/29-agenda-text-extraction.md) |
+| **R4** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
+| **R5** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
+| **R6** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites — cards drop "action, vote" (no vote/minutes data exists in this codebase) and gain per-item doc links from R3's `agenda_backup`; summaries are inline record fields, not a sidecar, and never touch the feed's own `<description>`; soundbites give `extract_clip` (already built, zero callers today) its first real consumer via a longest-chapter heuristic, LLM selection additive. **L3**, see [`review/30`](review/30-cards-summaries-soundbites.md) |
+| **R7** | **#7** speaker diarization (wespeaker ECAPA-TDNN adapter on the already-shipped execution-backend interface, meeting-wide identity reconciliation via cross-window embedding matching) + a minimal **#14** attendee-extraction slice (name list parsed from released minutes via `links["minutes"]`, reusing R3's own PDF/HTML extraction — never inferred from audio) so diarized voice clusters get human-confirmed real-name labels instead of staying anonymous, never auto-named + per-speaker pages for confirmed speakers only (`review/25` §2.3 #11). **Full pull-forward, 2026-07-12** — sequenced before R8 so the front-end design cycle has a real taxonomy to design around. **L3**, see [`review/31`](review/31-speaker-diarization-attendee-extraction.md) |
+| **R8** | **#55** front-end design cycle — a process spec, not a prescribed identity: ground the visual direction in this project's own subject matter, draft 2–3 genuinely distinct options, check each against a real boilerplate-pattern checklist, mock up the survivors against real content, let the maintainer choose before any template changes (Apple's official subscribe badge verbatim regardless of direction; neutral glyphs for apps with no verified license; kept reproducible on a future Substack-hosted subdomain digest layer) · **#50** accessibility (`aria-live` on search/play/copy-RSS state changes, skip-to-content link, computed WCAG contrast — both light/dark pass AA) · **#16** `<podcast:funding>` link → a new self-hosted `/support/` page (GitHub Discussions for dev/API support, Ko-fi + Discord — native role-sync — for sponsors/community, GitHub Sponsors as an alternative payment method). **L3**, see [`review/32`](review/32-frontend-design-accessibility-funding.md) |
+| **R9** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |
 
 ## 1.0 milestone (drop the beta tag)
 
-Complete Phase **H** and the Phase **R** research-tool/release-hardening series above. R7 carries the
+Complete Phase **H** and the Phase **R** research-tool/release-hardening series above. R9 carries the
 former standalone runtime-maintenance gate, so Phase-R completion is the single canonical 1.0 gate.
 
 ## Beyond 1.0 (the long-horizon phases)
 Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](review/11-technical-design-roadmap.md):
 - **Phase E — Engagement & Distribution**: a **social syndication bot** is the recommended first
-  post-1.0 build (near-zero cost — rides directly on R4 soundbites + the already-built, currently-unwired
+  post-1.0 build (near-zero cost — rides directly on R6 soundbites + the already-built, currently-unwired
   `clips.extract_clip`); then site-news RSS + Substack newsletter, weekly look-back digest,
   "national highlights", **#13** roll-up feeds, **#17** OPML, **#12** custom-query feed builder.
 - **Phase F — Pre-Meeting Foresight**: upcoming agendas + weekly staff reports, **#19** `.ics` calendar,
@@ -191,7 +347,7 @@ Documented in [VISION.md](VISION.md); designed at sketch level in [`review/11`](
   (D1/Turso) moves decisively **past 1.0**, merged with the "Interaction seam" dynamic-edge-tier proposal
   (alerts/API/personalization/scaled search) into one initiative designed together when its trigger
   fires — see [`review/11`](review/11-technical-design-roadmap.md) §5.5.
-  (Speaker diarization (#7) moved to **Phase R**, now **R5** — gating 1.0, see
+  (Speaker diarization (#7) moved to **Phase R**, now **R7** — gating 1.0, see
   [`review/11`](review/11-technical-design-roadmap.md).)
 
 ## How priorities work here

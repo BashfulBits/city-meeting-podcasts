@@ -12,7 +12,8 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-_Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency)._
+_Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
+Phase R (Research-Tool Surface)._
 
 ### Fixed
 
@@ -56,6 +57,20 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
   the process object as well as terminating it.
 
 ### Added
+
+- **Rate-limited LLM dispatch Worker (R10).** Added a private, R2-backed Cloudflare Worker at
+  `workers/llm-dispatch-proxy/` with bearer-authenticated OpenAI-shaped asynchronous queue/poll
+  endpoints, a per-minute Cron dispatcher, R2 conditional request claims and rate-slot CAS,
+  provider-qualified model routing, configurable HTTPS upstream/model settings, bounded exponential
+  retry, idempotency keys, and redacted failure handling. It is an async transport for the future
+  ROADMAP R2 LiteLLM backend's `JobHandle` path—not a replacement for LiteLLM or a synchronous
+  LiteLLM endpoint;
+  the configured upstream may be a provider's OpenAI-compatible API or a LiteLLM Proxy. The Worker
+  stores queued prompts and generated results in its dedicated R2 bucket so scheduled
+  pipeline work can pick up results later without keeping a GitHub Actions runner idle between
+  tightly rate-limited provider calls. Deployment is path-scoped and uses the existing Cloudflare
+  credentials. This is new infrastructure; it does not backfill existing records or change any
+  pipeline version.
 
 - **H15 `/admin/status` transcript-quality panel** ([#885](https://github.com/BashfulBits/city-meeting-podcasts/issues/885)).
   `/admin/status` now surfaces H15's existing trust-routing state as a first-class dashboard

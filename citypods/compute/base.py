@@ -12,8 +12,9 @@ content-addresses the output) and runs it, returning either:
 
 ``task`` is typed for the **full §5.5 verb set** up front — the GPU/ASR verbs
 ``transcribe``/``align``/``diarize`` **and** the reserved LLM verbs
-``summarize``/``tag``/``soundbite-select`` — so the R3/R4 LLM-API adapter slots in with no
-interface change. This shape is the pre-1.0-locked contract; treat additions as breaking.
+``summarize``/``tag``/``soundbite-select`` — so the R2 LLM-API adapter (ROADMAP, first built as
+dedicated infra ahead of its R5/R6 feature consumers) slots in with no interface change. This
+shape is the pre-1.0-locked contract; treat additions as breaking.
 """
 
 from __future__ import annotations
