@@ -16,6 +16,13 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 
 ### Fixed
 
+- **`ASR Quality Ingest` no longer fails on unrelated issue comments, and its parent-close pass
+  now works without a checkout.** The workflow still listens to `issue_comment`, but the
+  `finalize` job now skips runs where `resolve` found no H15 child issue to ingest, so routine PR
+  automation comments stop generating red Xs. When `finalize` does run, it now passes
+  `GH_REPO=${{ github.repository }}` to `gh`, avoiding the regression where the job intentionally
+  skipped checkout and then failed with "not a git repository" while listing/closing parent
+  issues.
 - **Feed-health stale-body triage is quieter and easier to audit.** Feed YAMLs can now carry an
   operator-stamped `audit.lifecycle.status` of `inactive` or `superseded`; the feed-health audit
   suppresses `empty`/`stale` findings for those verified retired feeds while leaving structural
