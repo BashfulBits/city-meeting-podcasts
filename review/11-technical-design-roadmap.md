@@ -134,7 +134,7 @@ sync · #20 video enclosures (partial).
 | **Rate-limited LLM dispatch Worker** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R10 — number out of table-position on purpose, see ROADMAP's insert note; sequenced second, right after R1** | [`review/27`](27-llm-backend-and-provider-routing.md) §Worker |
 | **Cross-provider agenda & history network** (was: Legistar calendar provider) | new | **L3 for Parts A/B/D; Part C design-complete (JSON API + two live portals verified 2026-07-12), awaiting a catalog city on OneMeeting** · **ROADMAP R11 — number out of table-position on purpose; sequenced third, right after R10** | [`review/15`](15-legistar-catalog-provider.md) · re-scoped from Granicus/Legistar-only into three goals (HTML/portal agenda URLs, PDF agenda URLs, extended meeting history); Granicus directly markets three parallel agenda products (Legistar, OneMeeting, Agenda PE) any of which may apply to a Granicus- or Swagit-primary city, plus CivicClerk cross-referencing for CivicPlus cities. **Appendix P (added 2026-07-12, extended to exhaustive same day)** censuses the wider vendor landscape — IQM2/NovusAGENDA (Granicus sunset 2027-09-30: migration tripwires, not build targets), CivicEngage Agenda Center, Municode Meetings, BoardDocs, CivicWeb, eScribe, AgendaQuick (confirmed Swagit hook), SIRE, ClerkBase, BoardBook (TASB — most TX-relevant), Simbli, Catalis, Streamline, independent video hosts (Cablecast, TelVue, Viebit, BoxCast, Open.Media, Castus, PEG Central, IBM Video), a dedicated YouTube analysis (no separate government platform exists — ordinary government channels; Data-API metadata path recorded, media-download decision deliberately deferred), and the unstructured CMS-tier long tail — with URL patterns + verification status per platform. Feeds R3 |
 | **LLM backend** (new, Infra) | new | **L3** (2026-07-14) · **ROADMAP R2, inserted 2026-07-14** | [`review/27`](27-llm-backend-and-provider-routing.md) · the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs; built ahead of R5 (tags)/R6 (auto-summaries) so neither invents this under its own time pressure |
-| **LLM-assisted city/agenda-source discovery** (new, Infra) | new | **L2** (2026-07-12) · **ROADMAP R12, sequenced right after R2, before R3** | [`review/28`](28-llm-assisted-city-discovery.md) · automates R11's manual §B.2 discovery checklist (Tavily search → classify against Appendix P via a new `classify-agenda-source` verb → live-verify → propose) plus new-city onboarding; proposes via a GitHub-issue checkbox, never writes config directly. Both L1-stage open decisions resolved with research: a dedicated search API (Tavily) beats native LLM-provider grounding (Gemini's free-tier grounding is model-restricted and has real LiteLLM bugs mixing search with structured output; Bing is dead; Brave lost its free tier; SerpApi has an active legal cloud), and the classification step (not the search step) rides `InferenceJob` as one new task verb, since the budget ledger/tournament are already Stage-agnostic |
+| **LLM-assisted city/agenda-source discovery** (new, Infra) | new | **L3** (2026-07-12) · **ROADMAP R12, sequenced right after R2, before R3** | [`review/28`](28-llm-assisted-city-discovery.md) · Tavily search → classify against Appendix P via one mode-aware `classify-civic-platforms` verb → two-tier verify (platform signature + end-to-end sample-episode resolution through the existing provider adapter) → propose. **Two surfaces, both dev-ready:** a quarterly aux-discovery sweep (rolling digest issue, mirrors `scripts/audit_feeds.py`'s consolidated/hidden-state pattern) for cities already in the catalog, and a workflow triggered off the repo's existing `add-city` issue-template label for new-city bootstrapping (reply-comment, not a new issue) — new-city scope was reinstated after maintainer input, since this repo already has a manual `add-city` process to automate, not a hypothetical one. Checking the proposal's checkbox **commits directly to `main`** when the change is verified purely additive (new file, or new keys into a file that doesn't already have them) — gated by a redundant diff-stat backstop guaranteeing zero deletions/modifications — and falls back to a PR otherwise; verified live against this repo's actual ruleset (`deletion`+`non_fast_forward` only, no required-PR rule) rather than trusting `lock.yml`'s stale "branch protection blocks main" comment |
 | **Agenda text extraction** (new, Infra) | new | L1 · **ROADMAP R3, inserted 2026-07-14 · narrowed 2026-07-16** | §5.1 · **now text-extraction only** — R11 owns URL discovery (HTML portal or PDF), R3 extracts text from whatever R11 found; feeds R4 (search) and R5 (tags), both of which otherwise fall back to the weaker chapter-title proxy |
 | Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
@@ -304,19 +304,23 @@ surface; scope narrowly (extraction only, no synthesis) to keep this a bounded i
 depends on R11 — begins once R11 supplies agenda URLs for "almost every meeting in the existing feed
 index" (the maintainer's own bar for moving on from R11).
 
-**LLM-assisted city/agenda-source discovery (new, Infra — ROADMAP R12).** Promoted to L2 —
-full design in [`review/28`](28-llm-assisted-city-discovery.md): automates R11's manual §B.2 discovery
-checklist (and, longer-term, new-city onboarding) by searching for a city's real agenda/video-provider
-links, classifying the result against Appendix P's census, live-verifying the candidate before ever
-proposing it, and opening a GitHub issue with a checkbox for human approval — never applying config
-directly. Both L1-stage open decisions are now resolved: **a dedicated search API (Tavily), not native
-LLM-provider grounding** — Gemini's free-tier grounding is model-restricted and has confirmed LiteLLM
-bugs mixing search with structured output, Bing is dead, Brave lost its free tier, SerpApi carries an
-active legal cloud — and **the classification step alone rides `InferenceJob` as one new task verb**
-(`classify-agenda-source`), since the budget ledger and tournament are already Stage-agnostic; the search
-step itself turns out not to be an LLM call at all, which is what actually resolved both questions
-together. Still short of L3: exact prompt template, per-platform verifier functions, and the GitHub
-issue/Action wiring are not yet written.
+**LLM-assisted city/agenda-source discovery (new, Infra — ROADMAP R12).** Matured to L3 —
+full design in [`review/28`](28-llm-assisted-city-discovery.md). Pipeline: Tavily search (not LLM
+recall) → one mode-aware `classify-civic-platforms` task verb against Appendix P's census → two-tier
+verification (platform signature, then an end-to-end sample-episode resolution through the classified
+provider's *existing* `fetch_episodes`/`resolve_media_url` — confirming a portal loads isn't confirming
+media resolves) → propose, never auto-apply. **Scope was reinstated to cover new-city bootstrapping**,
+previously deferred in the L2 pass as having "no existing manual process to automate against" — that
+premise was wrong: this repo's own `add-city` issue template already promises exactly that, by hand;
+R12 automates fulfilling it rather than inventing a new intake path. Two trigger surfaces: a quarterly
+scheduled sweep (+ `workflow_dispatch`) for existing catalog cities missing an agenda source, and a
+workflow triggered off the `add-city` label that replies on the requesting issue. The approval checkbox
+**commits directly to `main`** — verified achievable against this repo's actual live ruleset (only
+`deletion`/`non_fast_forward` enforced, no required-PR rule; `lock.yml`'s own "branch protection blocks
+main" comment is stale) — but only when a fresh-checkout additivity check confirms the change is a new
+file or new keys into a file that doesn't already have them, backstopped by a zero-deletions diff-stat
+assertion; anything else falls back to a PR. Flagged explicitly as this codebase's first automation with
+write access to `main`.
 
 **Per-agenda-item "what changed" cards (#3/GH#155).** *Problem:* a freeform meeting summary is risky and
 low-trust; residents want "what did they decide on item 7?" *Approaches:* (1) **extractive** — join
