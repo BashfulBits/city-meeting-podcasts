@@ -241,6 +241,23 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > agenda URLs for almost every meeting") is about production execution, and R11's Part A migration is
 > designed but not yet executed, distinct from this item's own design readiness.
 
+> **Matured to L3, 2026-07-12: R6 (cards, summaries, soundbites), full design in
+> [`review/30`](review/30-cards-summaries-soundbites.md).** Verified against the live Pri table before
+> starting — R4/R5 are already L3, so R6 was the next item actually needing work, not R7 as first
+> guessed. Also checked directly rather than assumed: neither R2's LLM `Backend` nor R5's tag system has
+> any code yet despite both being "L3" — so every LLM-assisted path across all three Parts is flagged as
+> depending on R2 shipping; the non-LLM paths ship independently. **Cards** correct a scoping error in
+> the original sketch (no vote-tally/minutes-parsing code exists anywhere in this codebase — "action,
+> vote" drops out of a first cut) and get a direct payoff from R3's backup-material work this session
+> (per-item doc links joined by `chapter_index`). **Summaries** are inline record fields, not a sidecar
+> — the first artifact in this stretch of items small enough to justify breaking that pattern — and never
+> touch the feed's own `<description>`. **Soundbites** give `citypods/clips.py`'s already-built,
+> zero-caller `extract_clip` its first real consumer; a longest-chapter heuristic ships free of any new
+> dependency, while a "longest public-comment turn" variant closer to the original wording is deferred
+> since it needs diarization (R7, not yet shipped). Also fixed two stale "ROADMAP R5" references in
+> review/11's diarization row, left over from before the R2/R3 insertion shifted numbering — corrected
+> to R7 to match the live table.
+
 | Pri | Item |
 |----:|------|
 | **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
@@ -251,7 +268,7 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R3** | **Agenda text extraction** (new, infra) — **narrowed 2026-07-16: text extraction only, now that R11 owns URL discovery.** Extracts plain text from `ep.links["agenda"]`/`["agenda_portal"]` (no OCR, no LLM synthesis) into a content-addressed sidecar mirroring the existing transcript-artifact conventions; the richer "what's being proposed" LLM brief stays Phase F. **Backup/packet material is now also in scope, as a fully separate sidecar/pipeline-version** so agenda-only text, per-item backup text, and backup links can each be consumed independently. Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy. **L3**, see [`review/29`](review/29-agenda-text-extraction.md) |
 | **R4** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
 | **R5** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
-| **R6** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites |
+| **R6** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites — cards drop "action, vote" (no vote/minutes data exists in this codebase) and gain per-item doc links from R3's `agenda_backup`; summaries are inline record fields, not a sidecar, and never touch the feed's own `<description>`; soundbites give `extract_clip` (already built, zero callers today) its first real consumer via a longest-chapter heuristic, LLM selection additive. **L3**, see [`review/30`](review/30-cards-summaries-soundbites.md) |
 | **R7** | **#7** speaker diarization (CPU-viable execution-backend model, meeting-wide identity reconciliation) + a minimal **#14** attendee-extraction slice (names present at a meeting, parsed from official minutes/platform metadata — never inferred from audio) so diarized voice clusters get human-confirmed real-name labels instead of staying anonymous. **Full pull-forward, 2026-07-12** — sequenced before R8 so the front-end design cycle has a real taxonomy to design around |
 | **R8** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
 | **R9** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |

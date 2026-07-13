@@ -138,10 +138,8 @@ sync · #20 video enclosures (partial).
 | **Agenda text extraction** (new, Infra) | new | **L3** (2026-07-12, extended same day) · **ROADMAP R3, inserted 2026-07-14 · narrowed 2026-07-16** | [`review/29`](29-agenda-text-extraction.md) · extracts from `ep.links["agenda"]`/`["agenda_portal"]` into a content-addressed `agenda_text_url` sidecar under `AGENDA_TEXT_PIPELINE_VERSION` (PDF via `pypdf`, HTML via `beautifulsoup4`). **Backup/packet material is now also in scope, stored as a fully separate artifact** (`agenda_backup_url`, its own `AGENDA_BACKUP_PIPELINE_VERSION`) so a consumer can request agenda-only text, one item's backup, or just a link, independently — corrects an earlier unverified "packets can be multi-GB" claim that had excluded it (no citation for that ever existed; the real bound is non-OCR extraction itself, which already discards image-heavy content regardless of source-file size). Still no OCR, no LLM synthesis. Design-complete; execution should still wait on R11's real link coverage shipping |
 | Static transcript search | #6 | **L3** (2026-07-13, issues not yet cut — batch review pending; engine lean reversed to MiniSearch, see review/13 Part B) | [`review/13`](13-per-meeting-pages-and-search.md) Part B |
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
-| Per-agenda-item "what changed" cards | #3/GH#155 | L1 | §5.1 |
-| Auto-summaries | #2 | L1 | §5.1 |
-| Soundbite highlights | #15/GH#156 | L1 | §5.1 |
-| **Speaker diarization + per-speaker pages** | #7 | L1 | §5.1 — **ROADMAP R5, full pull-forward, gating 1.0 (2026-07-12).** After H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment. **Sequenced ahead of front-end design cycle** (below): meeting pages need a speaker taxonomy (labels, per-speaker linking) baked into the page/UI design rather than retrofitted after a design pass locks the layout. **Depends on a minimal pull-forward of Phase F's attendee extraction (#14)** — diarization alone only clusters anonymous voices; real-name labeling needs the "who was present" name list §5.3 describes. The richer Phase-F attendee/vote item (platform-metadata tallies, entity-model linkage) stays post-1.0. **Per-speaker pages adopted from review/25 §2.3 #11** (2026-07-13, maintainer decision) — "everything Councilmember X has said, across meetings"; a static, generated-from-records page per **confirmed** speaker, the same build-time mechanism as R1's meeting pages, not gated on the Interaction seam (the speaker roster is bounded, like the city roster). Requires a **stable speaker/person identifier** distinct from the display name, so cross-meeting aggregation doesn't need a later migration when the seam/entity-model (§5.5) eventually formalizes `Person` — R1's transcript data model must reserve this identifier now even though it stays unpopulated until R5 |
+| **Per-agenda-item cards, auto-summaries, soundbites** (#3/GH#155, #2, #15/GH#156) | — | **L3** (2026-07-12) · **ROADMAP R6** | [`review/30`](30-cards-summaries-soundbites.md) · three Parts, one doc, bundled as they are in the ROADMAP table. Cards: extractive first (chapter + real transcript-slice excerpt + R3's per-item `agenda_backup` doc links — no vote/minutes data exists anywhere in this codebase, so "what was decided" stays out of scope, corrected from the L1 sketch's assumption), LLM one-liner additive via the existing `summarize` verb, mode-aware, not a new one. Summaries: inline record fields, not a sidecar (small and bounded by construction, unlike this item's other artifacts), never overwrites the feed's own `<description>`. Soundbites: the already-built, zero-caller `extract_clip`/`ClipArtifact` (`citypods/clips.py`) gets its first real consumer — a longest-chapter heuristic ships free of any new dependency, LLM selection additive. **All three Parts' non-LLM paths ship independent of R2/R5** (verified neither has any code yet, despite being "L3" — design-complete, not implemented); only the LLM-assisted halves wait on R2 |
+| **Speaker diarization + per-speaker pages** | #7 | L1 | §5.1 — **ROADMAP R7 (corrected 2026-07-12 — this row said "R5," stale from before the R2/R3 insertion shifted numbering), full pull-forward, gating 1.0 (2026-07-12).** After H6b; runs on the execution backend (H9 / §5.5), preferably sharing an external episode worker with ASR while remaining an independently versioned/publishable enrichment. **Sequenced ahead of front-end design cycle** (below): meeting pages need a speaker taxonomy (labels, per-speaker linking) baked into the page/UI design rather than retrofitted after a design pass locks the layout. **Depends on a minimal pull-forward of Phase F's attendee extraction (#14)** — diarization alone only clusters anonymous voices; real-name labeling needs the "who was present" name list §5.3 describes. The richer Phase-F attendee/vote item (platform-metadata tallies, entity-model linkage) stays post-1.0. **Per-speaker pages adopted from review/25 §2.3 #11** (2026-07-13, maintainer decision) — "everything Councilmember X has said, across meetings"; a static, generated-from-records page per **confirmed** speaker, the same build-time mechanism as R1's meeting pages, not gated on the Interaction seam (the speaker roster is bounded, like the city roster). Requires a **stable speaker/person identifier** distinct from the display name, so cross-meeting aggregation doesn't need a later migration when the seam/entity-model (§5.5) eventually formalizes `Person` — R1's transcript data model must reserve this identifier now even though it stays unpopulated until R7 (corrected 2026-07-12 — also said "R5," same stale-numbering issue as this row's other reference) |
 | Front-end design cycle | #55 (#20/#54) | L1 | §5.1 — sequenced after speaker diarization above so the design pass can account for its taxonomy up front |
 | Accessibility (WCAG) | #50 | L1 | §5.1 |
 | `<podcast:funding>` link | #16 | L1 | §5.1 |
@@ -331,25 +329,28 @@ file or new keys into a file that doesn't already have them, backstopped by a ze
 assertion; anything else falls back to a PR. Flagged explicitly as this codebase's first automation with
 write access to `main`.
 
-**Per-agenda-item "what changed" cards (#3/GH#155).** *Problem:* a freeform meeting summary is risky and
-low-trust; residents want "what did they decide on item 7?" *Approaches:* (1) **extractive** — join
-chapter/agenda-item boundaries (already have chapters) with the transcript span + official
-minutes/vote metadata into a structured card (title, action, vote, excerpt+timestamp, doc link), no LLM;
-(2) **LLM-assisted** — same skeleton, LLM drafts a one-line "what changed" per item from the transcript
-span, clearly labeled + cached. *Tradeoff:* (1) is auditable and ~$0 but only as rich as the source
-metadata; (2) adds cost + the untrusted-output rule. **Lean: (1) first, (2) additive.** Depends on tags
-(#4) for topic chips. Auditable structure precedes any freeform summary (#2).
-
-**Auto-summaries (#2).** *Problem:* a short "what happened" blurb in notes/pages. *Approaches:* (1)
-agenda-derived templated blurb ($0); (2) LLM 3–5 sentence summary from transcript (sub-cent–3¢/meeting,
-cached). *Tradeoff:* cost-gated (<$20/mo near-term); never overwrites official text. Build **after** #3
-cards so summaries cite structured items.
-
-**Soundbite highlights (#15/GH#156).** *Problem:* surface a shareable ~60s clip per meeting. *Approach:*
-consume the existing EDL via `clips.extract_clip` (forward-map a served range → source cuts); selection
-is (1) manual/config, (2) heuristic (longest public-comment turn / agenda-item peak), or (3) LLM-picked
-from the transcript. *Tradeoff:* infra exists; only selection is new. Powers `<podcast:soundbite>` +
-the highlights reel (Phase E).
+**Per-agenda-item cards, auto-summaries, and soundbites (#3/GH#155, #2, #15/GH#156 — ROADMAP R6).**
+Matured to L3 — full design in [`review/30`](30-cards-summaries-soundbites.md). Verified before writing
+that neither R2's `Backend` nor R5's tag system has any actual code yet (both "L3, issues not yet cut" —
+design-complete, not implemented), so every LLM-assisted path across all three Parts is flagged as
+depending on R2 shipping; the non-LLM paths don't and can ship independently. **Cards:** extractive first
+— chapter boundaries + a real transcript-text slice (not a synthesized "best" snippet) + R3's per-item
+`agenda_backup` doc links joined by `chapter_index`, a direct payoff from R3's backup-material work this
+session. **Corrected from the L1 sketch:** no vote-tally or minutes-parsing code exists anywhere in this
+codebase, so "action, vote" drops out of a first cut — a card shows what was discussed, not what was
+decided, until Phase F's real vote capture exists (R7's own sketch already scoped that the same way).
+LLM one-liner reuses the `summarize` verb with a `scope: "item"` mode rather than a new verb, matching
+the mode-aware-verb precedent R12 established. **Summaries:** inline `Episode` fields, not a sidecar —
+a deliberate break from this item's other artifacts, justified by size (a few sentences, not thousands of
+characters); renders as an additional labeled block on meeting pages/search, never substituted into the
+feed's own `<description>`. **Soundbites:** the already-built `extract_clip`/`ClipArtifact`
+(`citypods/clips.py`) has zero callers anywhere in this codebase today — this item is its first real
+consumer. Two outputs from one selection decision: the `<podcast:soundbite>` RSS tag (metadata only, no
+clip file needed, mirrors the existing `podcast_transcript` emission pattern exactly) and a standalone
+extracted clip feeding the future Phase E highlights reel, built eagerly since the marginal cost is
+near-zero once a range is picked. A longest-chapter heuristic ships free of any new dependency; a
+"longest public-comment turn" variant closer to the original wording needs diarization (R7, not yet
+shipped) and is deferred, not silently assumed available.
 
 **Front-end design cycle (#55, absorbs #20/#54).** *Problem:* index accordion polish, subscribe-button
 **app iconography**, clear **audio-vs-video** labeling. *Approach:* iterative mockup-driven redesign;
