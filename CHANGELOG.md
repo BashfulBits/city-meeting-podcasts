@@ -37,6 +37,12 @@ Phase R (Research-Tool Surface)._
   re-encode existing clips. A companion failure leaves the primary archive and last-known calendar
   metadata available.
 
+- **Swagit retains first-party agenda and minutes links (R11 phase 3).** Its archive-list parser now
+  preserves a recording row's official `/videos/{id}/agenda` and `/videos/{id}/minutes` links when
+  present, including when duplicate videos appear in overlapping views. Swagit remains the video
+  discovery and media-resolution provider; this adds feed metadata only, with no pipeline-version
+  bump or audio backfill.
+
 ### Fixed
 
 - **`ASR Quality Ingest` no longer fails on unrelated issue comments, and its parent-close pass

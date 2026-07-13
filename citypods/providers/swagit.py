@@ -26,7 +26,7 @@ from __future__ import annotations
 import html
 import re
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -35,9 +35,19 @@ from citypods.models import ChangeToken, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, MediaUnavailable, ProviderError
 from citypods.security import validate_source_url
 
-# <a ... href="/videos/123">Body Name</a> </td> <td nowrap> May 26, 2026 </td>
-ROW_RE = re.compile(
-    r'<a[^>]*href="/videos/(\d+)"[^>]*>([^<]+)</a>\s*</td>\s*<td[^>]*nowrap[^>]*>\s*([^<]+?)\s*</td>',
+# Swagit list pages render one table row per recording.  Its first ``/videos/{id}``
+# anchor names the meeting; the separate Links cell may provide first-party
+# ``/agenda`` / ``/minutes`` documents.  Parse a bounded row rather than scanning
+# the whole page so document links never bleed into a neighbouring meeting.
+ROW_RE = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+VIDEO_LINK_RE = re.compile(
+    r"<a\b[^>]*\bhref\s*=\s*([\"'])(?:/)?videos/(\d+)\1[^>]*>([^<]+)</a>",
+    re.IGNORECASE,
+)
+DATE_CELL_RE = re.compile(r"<td\b[^>]*\bnowrap\b[^>]*>\s*(.*?)\s*</td>", re.IGNORECASE | re.DOTALL)
+DOCUMENT_LINK_RE = re.compile(
+    r"<a\b[^>]*\bhref\s*=\s*([\"'])(?P<href>(?:/)?videos/(?P<id>\d+)/"
+    r"(?P<kind>agenda|minutes))\1[^>]*>",
     re.IGNORECASE,
 )
 
@@ -161,11 +171,24 @@ def parse_list(content: bytes, origin: str) -> list[Episode]:
     """
     text = content.decode("utf-8", errors="replace")
     episodes: list[Episode] = []
-    for vid, raw_body, raw_date in ROW_RE.findall(text):
+    for row in ROW_RE.findall(text):
+        video = VIDEO_LINK_RE.search(row)
+        date_cell = DATE_CELL_RE.search(row)
+        if video is None or date_cell is None:
+            continue
+        vid, raw_body = video.group(2), video.group(3)
+        raw_date = html.unescape(re.sub(r"<[^>]+>", " ", date_cell.group(1))).strip()
         body_name = html.unescape(raw_body).strip()
         published = _parse_date(raw_date)
         if published is None:
             continue
+        links = {"canonical_video": f"{origin}/videos/{vid}"}
+        for document in DOCUMENT_LINK_RE.finditer(row):
+            if document.group("id") != vid:
+                continue
+            links[document.group("kind").lower()] = urljoin(
+                f"{origin.rstrip('/')}/", document.group("href")
+            )
         episodes.append(
             Episode(
                 guid=vid,
@@ -176,7 +199,8 @@ def parse_list(content: bytes, origin: str) -> list[Episode]:
                 body=body_name,
                 # video_url is the expiring /download redirect; the canonical human watch
                 # page is /videos/{id}, so link there rather than the download endpoint.
-                links={"canonical_video": f"{origin}/videos/{vid}"},
+                # The list page's agenda/minutes links are official per-video documents.
+                links=links,
             )
         )
     return episodes
@@ -236,6 +260,14 @@ class SwagitProvider:
                     if ep.guid not in seen:  # dedup across views
                         seen.add(ep.guid)
                         episodes.append(ep)
+                        continue
+                    # Views can overlap but expose different document availability.  Keep
+                    # the first recording's identity/title/date and fill only absent
+                    # official links from a duplicate row.
+                    existing = next(item for item in episodes if item.guid == ep.guid)
+                    for key, value in ep.links.items():
+                        if value:
+                            existing.links.setdefault(key, value)
         return episodes
 
     def fetch_chapters(self, episode: Episode, source: dict) -> tuple[list[dict], str | None]:

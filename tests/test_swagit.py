@@ -36,6 +36,32 @@ def test_parse_sets_body_and_media():
     assert ep.published.year == 2026 and ep.published.month == 5
 
 
+def test_parse_list_retains_relative_first_party_agenda_and_minutes_links():
+    page = b"""
+    <table><tr>
+      <td><a href="videos/100">City Council Agenda Meetings</a></td>
+      <td nowrap> May 27, 2026 </td>
+      <td><a href="videos/100/agenda">Agenda</a>
+          <a href="/videos/100/minutes">Minutes</a></td>
+    </tr></table>
+    """
+
+    ep = parse_list(page, ORIGIN)[0]
+
+    assert ep.links == {
+        "canonical_video": f"{ORIGIN}/videos/100",
+        "agenda": f"{ORIGIN}/videos/100/agenda",
+        "minutes": f"{ORIGIN}/videos/100/minutes",
+    }
+
+
+def test_parse_list_leaves_missing_document_links_absent():
+    ep = parse_list(SAMPLE, ORIGIN)[0]
+
+    assert "agenda" not in ep.links
+    assert "minutes" not in ep.links
+
+
 def test_generic_body_filter():
     eps = parse_list(SAMPLE, ORIGIN)
     assert [e.guid for e in filter_by_body(eps, "City Council Agenda Meetings")] == ["100", "102"]
@@ -58,7 +84,8 @@ def test_fetch_episodes_merges_and_dedups_multiple_list_urls(monkeypatch):
     page_b = b"""
     <table>
     <tr><td><a href="/videos/102">City Council Agenda Meetings</a></td>
-        <td nowrap> Apr 22, 2026 </td><td>03h</td></tr>
+        <td nowrap> Apr 22, 2026 </td><td><a href="/videos/102/agenda">Agenda</a>
+        <a href="/videos/102/minutes">Minutes</a></td></tr>
     <tr><td><a href="/videos/200">City Council Work Session</a></td>
         <td nowrap> May 28, 2026 </td><td>01h</td></tr>
     </table>
@@ -82,6 +109,8 @@ def test_fetch_episodes_merges_and_dedups_multiple_list_urls(monkeypatch):
     monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
     eps = SwagitProvider().fetch_episodes({"list_urls": [f"{ORIGIN}/a", f"{ORIGIN}/b"]})
     assert [e.guid for e in eps] == ["100", "101", "102", "200"]  # 102 deduped
+    assert eps[2].links["agenda"] == f"{ORIGIN}/videos/102/agenda"
+    assert eps[2].links["minutes"] == f"{ORIGIN}/videos/102/minutes"
 
 
 class _Resp:
