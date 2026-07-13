@@ -140,9 +140,7 @@ sync · #20 video enclosures (partial).
 | Topic tags / Strong Towns lens | #4 | **L3** (2026-07-14, issues not yet cut — batch review pending; "agenda text" corrected to mean chapter titles, see review/14) | [`review/14`](14-topic-tags-strong-towns-lens.md) |
 | **Per-agenda-item cards, auto-summaries, soundbites** (#3/GH#155, #2, #15/GH#156) | — | **L3** (2026-07-12) · **ROADMAP R6** | [`review/30`](30-cards-summaries-soundbites.md) · three Parts, one doc, bundled as they are in the ROADMAP table. Cards: extractive first (chapter + real transcript-slice excerpt + R3's per-item `agenda_backup` doc links — no vote/minutes data exists anywhere in this codebase, so "what was decided" stays out of scope, corrected from the L1 sketch's assumption), LLM one-liner additive via the existing `summarize` verb, mode-aware, not a new one. Summaries: inline record fields, not a sidecar (small and bounded by construction, unlike this item's other artifacts), never overwrites the feed's own `<description>`. Soundbites: the already-built, zero-caller `extract_clip`/`ClipArtifact` (`citypods/clips.py`) gets its first real consumer — a longest-chapter heuristic ships free of any new dependency, LLM selection additive. **All three Parts' non-LLM paths ship independent of R2/R5** (verified neither has any code yet, despite being "L3" — design-complete, not implemented); only the LLM-assisted halves wait on R2 |
 | **Speaker diarization + minimal attendee extraction + per-speaker pages** | #7, #14 | **L3** (2026-07-13) · **ROADMAP R7, full pull-forward, gating 1.0** | [`review/31`](31-speaker-diarization-attendee-extraction.md) · verified before designing further: H6b (its named blocker) is shipped, and the execution-backend interface already includes `"diarize"` in `Task` since H13/H14b/H14c shipped — this item does **not** need to build backend dispatch, only a real adapter (`citypods/diarize.py`, wespeaker ECAPA-TDNN, re-verified still the right CPU-viable choice) wired into `local.py`'s `run_inference` and the already-reserved-but-inert `diarize` lane/`speakers` block. Native diarization output **unifies with the existing provider-diarize `speakers_*` schema** (built for PT-PR6) rather than a parallel one, with provider-sourced data taking precedence when both exist. Attendee extraction reuses R3's own PDF/HTML extraction functions against a newly-wired `links["minutes"]` (the identical one-line gap `agenda_packet` had). Identify-then-human-confirm only, never auto-named; per-speaker pages render only for confirmed speakers. H9 (deferred, not blocking) is flagged as a real candidate for reopening once this item's own cost profile is measured, not treated as settled forever |
-| Front-end design cycle | #55 (#20/#54) | L1 | §5.1 — sequenced after speaker diarization above so the design pass can account for its taxonomy up front |
-| Accessibility (WCAG) | #50 | L1 | §5.1 |
-| `<podcast:funding>` link | #16 | L1 | §5.1 |
+| **Front-end design cycle, accessibility, and funding link** | #55/#20/#54, #50, #16 | **L3** (2026-07-13) · **ROADMAP R8** | [`review/32`](32-frontend-design-accessibility-funding.md) · confirmed the bare `#N` references aren't real GitHub issue numbers (checked — they resolve to unrelated closed feed-health issues) before designing further. Part A specifies a design **process**, not a prescribed identity (corrected same day, see the doc's own header note): ground the direction in this project's own subject matter, draft 2–3 genuinely distinct options, check each against a real boilerplate-pattern checklist, mock up survivors against real content, let the maintainer choose before any template changes — real current-state gaps (the "accordion" is already an accessible native `<details>`/`<summary>`; audio/video labels are bare text suffixes; subscribe buttons have zero iconography) and hard constraints (Apple's official badge verbatim regardless of direction; icon-only controls never acceptable) are fixed regardless of which direction wins. Accessibility gaps found by reading the markup, not generic advice: no `aria-live` on three dynamic updates (search count, play state, copy-RSS feedback), no skip link — plus computed (not eyeballed) contrast ratios for the existing muted-text color in both themes, both passing AA. `<podcast:funding>` is a near-trivial channel-level tag + two new `City` fields |
 | Durable provider-failure classification feed | new (absorbs closed GH#379) | L1 · **deprioritized below R6/R7 (diarization)/R8 (2026-07-12)** | §5.1 · append-friendly episode/source failure events with stable categories, terminal-vs-transient state, first/last seen, and references to existing provider telemetry; `/admin/status` is the first reader, with Phase-R query surfaces consuming it later. **Why lower priority:** the safety-critical part already shipped as H16 PR3 (withholding empty/broken media, redacted evidence, weekly digest); what's left here is an observability/trust *presentation* layer on data that's already being captured safely — valuable, but nothing user-facing breaks by deferring it |
 | Hosted-runner infrastructure failure monitoring + pinned-runtime fallback | new (Infra) | L1 · **deprioritized below R6/R7 (diarization)/R8 (2026-07-12)** | Track ASR/audio/other long-running GitHub Actions failures whose root cause is hosted-runner infrastructure (`exit 143` without the graceful-yield marker, lost runner communication, missing per-step logs, similar non-deterministic runner shutdowns). If those failures continue at a material rate after H14b/H14c/H19 stabilize the worker mix, promote a repo-owned pinned container runtime for the affected workflow(s) so the execution environment is versioned like the Python/ffmpeg/model inputs instead of relying on `ubuntu-latest`. This is reliability/reproducibility follow-up, not an automatic scope promotion over the external-worker path. **Why lower priority:** this is an evidence-gated watch item with no GitHub issue behind it — there's nothing to build until a `run_history.jsonl`/exit-143 telemetry check confirms the trigger has actually fired, which hasn't been done |
 | Runtime/dependency maintenance automation | umbrella [GH#804](https://github.com/BashfulBits/city-meeting-podcasts/issues/804) | L2→L3 | **Final Phase-R release item; completing Phase R is the 1.0 gate. Foundation shipped** ([#805](https://github.com/BashfulBits/city-meeting-podcasts/pull/805), [#806](https://github.com/BashfulBits/city-meeting-podcasts/pull/806), [#807](https://github.com/BashfulBits/city-meeting-podcasts/pull/807)) — normative contract in [`review/22`](22-dependency-and-reproducibility-policy.md): compiled **version-pinned** Python `constraints/*.txt` (single source of truth for CI, the GHCR runner image, **and** the Modal/Beam worker images) with `lock.yml` + a `ci.yml` drift gate; all third-party Actions SHA-pinned ([GH#734](https://github.com/BashfulBits/city-meeting-podcasts/issues/734), closed); HF model revisions pinned ([GH#498](https://github.com/BashfulBits/city-meeting-podcasts/issues/498), closed) and shared canonically in `citypods.asr`; `.github/renovate.json5` two-lane flow (hygiene auto-PRs; a Dashboard-approval gate + **per-source** `dep-bump-smoke` for output-affecting bumps); `scripts/check_dependency_policy.py` CI guard keeps pins from rotting. **Remaining to close Phase R:** activate Renovate on the repo, the monthly immutable-URL/checksum FFmpeg update PR, and (optional hardening) hash-verified `--require-hashes` image installs. Weekly image builds verify pinned inputs but do not silently advance them. Absorbs the remaining useful scope of closed GH#339. |
@@ -352,17 +350,44 @@ near-zero once a range is picked. A longest-chapter heuristic ships free of any 
 "longest public-comment turn" variant closer to the original wording needs diarization (R7, not yet
 shipped) and is deferred, not silently assumed available.
 
-**Front-end design cycle (#55, absorbs #20/#54).** *Problem:* index accordion polish, subscribe-button
-**app iconography**, clear **audio-vs-video** labeling. *Approach:* iterative mockup-driven redesign;
-coordinate with per-meeting pages (R1). 1.0-gating. *Tradeoff:* design effort, low risk. **Sequenced
-after speaker diarization** (below) so the design pass has a real answer for speaker-attribution UI
-(labels, per-speaker linking on meeting pages) instead of locking a layout that has to be revisited if
-diarization ships later.
+**Front-end design cycle, accessibility, and funding link (#55/#20/#54, #50, #16 — ROADMAP R8).** Matured
+to L3 — full design in [`review/32`](32-frontend-design-accessibility-funding.md). First checked whether
+the bare `#N` references were real GitHub issues (they're not — `gh issue view` on each resolves to
+unrelated, already-closed feed-health issues; this project's older internal backlog numbering, same
+system R6's cards/summaries/soundbites used before their `GH#` companions existed).
 
-**Accessibility (#50).** WCAG pass on generated pages (player labels, contrast, keyboard nav, transcript
-semantics). 1.0-gating. Pairs with R1 pages.
+**Corrected same day: Part A specifies a design process, not a prescribed visual identity.** A first pass
+drafted one specific redesign in full — a chevron treatment, particular icons, a complete color/type
+system, built and shown as a live mockup. Maintainer correction, on two counts: this branch produces
+roadmap/design documents, not the actual visual design; and separately, a single boilerplate-avoiding
+identity handed down in prose is still the wrong shape here — a real identity benefits from seeing
+genuine, distinct options side by side, not from being locked into one direction described months before
+anyone builds it. Part A now specifies the process itself for whoever implements this later: ground the
+direction in this project's own subject matter (timecodes, agendas/minutes, docket structure — not
+generic "civic tech" or "podcast app" references), draft at least 2–3 genuinely distinct options, check
+each against a concrete checklist of identifiable AI-generated-design patterns (specific combinations
+like warm-cream-background + generic-serif + terracotta-accent, not "using a serif" in the abstract —
+also near-black+neon-accent, purple-blue gradient heroes, Inter/Space Grotesk as "the safe font",
+everything centered, `rounded-lg` everywhere), mock up the survivors against real site content, and
+present them for the maintainer to choose from before any template changes. The one direction drafted
+live this session is preserved as a worked example proving the process produces something distinctive —
+explicitly not the chosen design. What stays fixed regardless of which direction wins: the real
+current-state gaps found by reading the actual templates (the "accordion" is already a native,
+keyboard-accessible `<details>`/`<summary>`; audio/video labels are today a bare `· audio`/`· video` text
+suffix; subscribe buttons have zero iconography at all), Apple's official "Listen on Apple Podcasts"
+badge policy (confirmed safe to use verbatim per its own published guidelines), the Overcast/Pocket
+Casts/Castro licensing gap (no independently-verified official asset, so those fall back to a neutral,
+non-trademarked glyph), and the icon-only-controls-never-acceptable accessibility constraint.
 
-**`<podcast:funding>` link (#16).** Trivial feed tag + config; funds the rest. Near-$0 do-now.
+Accessibility (Part B, independent of Part A's process) gaps found by reading the
+markup, not generic checklist advice: no `aria-live` region on three dynamic updates (search-result
+count, play-state change, copy-RSS feedback), no skip-to-content link — plus WCAG contrast ratios
+computed precisely from this project's own CSS custom properties (light-mode muted text 4.83:1, dark-mode
+7.27:1, both passing AA) rather than eyeballed. `<podcast:funding>` (Part C) is a near-trivial
+channel-level tag + two new `City` fields, no Python logic needed beyond a template `{% if %}` guard.
+**Sequenced after speaker diarization** (above, R7, matured to L3 this session) unchanged from the L1
+sketch's own reasoning — the design pass needs a real answer for speaker-attribution UI before locking a
+layout.
 
 **Durable provider-failure classification feed (closed GH#379).** *Problem:* provider health beyond
 `catching-up`/`stalled` currently requires log archaeology. *Approach:* persist append-friendly

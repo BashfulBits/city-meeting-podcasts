@@ -273,6 +273,36 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > newly-wired `links["minutes"]` — the identical one-line gap `agenda_packet` had. Identify-then-
 > human-confirm only, never auto-named; per-speaker pages render only for confirmed speakers.
 
+> **Matured to L3, 2026-07-13: R8 (front-end design, accessibility, funding link), full design in
+> [`review/32`](review/32-frontend-design-accessibility-funding.md).** First confirmed the L1 sketch's
+> `#55`/`#20`/`#54`/`#50`/`#16` references aren't real GitHub issue numbers — `gh issue view` on each
+> resolves to unrelated, already-closed feed-health issues (this project's older internal backlog
+> numbering, not GH issues, same system R6's items used before their `GH#` companions existed). Real
+> gaps grounded against the actual current templates, not the abstract: the index page's "accordion" is
+> already a native, keyboard-accessible `<details>`/`<summary>`; audio/video labels are today a bare
+> `· audio`/`· video` text suffix; subscribe buttons have zero iconography at all.
+>
+> **Corrected same day: this doc specifies a design *process*, not a prescribed visual identity.** An
+> earlier pass drafted one specific redesign in full (chevron treatment, particular icons, a complete
+> color/type system, built and shown as a mockup) — maintainer correction on two counts: this branch
+> produces roadmap/design documents, not the actual visual design, and separately, a single
+> boilerplate-avoiding identity handed down in prose is still the wrong shape for this doc. Part A now
+> specifies a concrete process for whoever implements this later: ground the direction in this project's
+> own subject matter (not generic "civic tech" or "podcast app" references), draft at least 2–3 genuinely
+> distinct options, check each against a real checklist of identifiable AI-generated-design patterns
+> (specific combinations like warm-cream+serif+terracotta, not "using a serif" in general), mock up the
+> survivors against real site content, and present them for the maintainer to choose from before any
+> template changes. The one direction drafted live this session is kept as a worked example proving the
+> process produces something distinctive — explicitly not the chosen design. Apple's official "Listen on
+> Apple Podcasts" badge is confirmed safe to use verbatim regardless of direction; Overcast/Pocket Casts/
+> Castro have no independently-verified official asset, falling back to a neutral glyph. Accessibility
+> gaps (Part B, independent of Part A's process) found by reading the markup, not generic checklist
+> advice: no `aria-live` region on three dynamic updates (search-result count, play-state change,
+> copy-RSS feedback), no skip-to-content link — plus WCAG contrast ratios computed precisely from this
+> project's own CSS custom properties (light-mode muted text 4.83:1, dark-mode 7.27:1, both passing AA)
+> rather than eyeballed. `<podcast:funding>` (Part C) is a near-trivial channel-level tag + two new
+> `City` fields.
+
 | Pri | Item |
 |----:|------|
 | **R1** | **#46/#157** per-meeting permalink pages over the append-only archive: playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata + canonical provenance with a clear no-recording notice and no broken player |
@@ -285,7 +315,7 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R5** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
 | **R6** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites — cards drop "action, vote" (no vote/minutes data exists in this codebase) and gain per-item doc links from R3's `agenda_backup`; summaries are inline record fields, not a sidecar, and never touch the feed's own `<description>`; soundbites give `extract_clip` (already built, zero callers today) its first real consumer via a longest-chapter heuristic, LLM selection additive. **L3**, see [`review/30`](review/30-cards-summaries-soundbites.md) |
 | **R7** | **#7** speaker diarization (wespeaker ECAPA-TDNN adapter on the already-shipped execution-backend interface, meeting-wide identity reconciliation via cross-window embedding matching) + a minimal **#14** attendee-extraction slice (name list parsed from released minutes via `links["minutes"]`, reusing R3's own PDF/HTML extraction — never inferred from audio) so diarized voice clusters get human-confirmed real-name labels instead of staying anonymous, never auto-named + per-speaker pages for confirmed speakers only (`review/25` §2.3 #11). **Full pull-forward, 2026-07-12** — sequenced before R8 so the front-end design cycle has a real taxonomy to design around. **L3**, see [`review/31`](review/31-speaker-diarization-attendee-extraction.md) |
-| **R8** | **#55** front-end design cycle · **#50** accessibility · **#16** funding link |
+| **R8** | **#55** front-end design cycle — a process spec, not a prescribed identity: ground the visual direction in this project's own subject matter, draft 2–3 genuinely distinct options, check each against a real boilerplate-pattern checklist, mock up the survivors against real content, let the maintainer choose before any template changes (Apple's official subscribe badge verbatim regardless of direction; neutral glyphs for apps with no verified license) · **#50** accessibility (`aria-live` on search/play/copy-RSS state changes, skip-to-content link, computed WCAG contrast — both light/dark pass AA) · **#16** `<podcast:funding>` link. **L3**, see [`review/32`](review/32-frontend-design-accessibility-funding.md) |
 | **R9** | **Automated runtime/dependency maintenance** — Dependabot for Python/Docker/Actions, reproducible constraints, and tested immutable FFmpeg update PRs |
 
 ## 1.0 milestone (drop the beta tag)
