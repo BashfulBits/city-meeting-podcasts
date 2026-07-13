@@ -4,4 +4,9 @@ colors:
 - '#92271f'
 - '#d5c1b8'
 meetings_url: https://gainesville.tx.us/civicmedia
+aux_provider: civicengage
+aux_source:
+  agenda_url: https://www.gainesville.tx.us/Archive.aspx?AMID=36
+  minutes_url: https://www.gainesville.tx.us/Archive.aspx?AMID=37
+  body: City Council
 state: TX

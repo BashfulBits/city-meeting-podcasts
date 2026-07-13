@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Gainesville CivicEngage Archive Center enrichment (R11).** Gainesville's CivicMedia recording
+  feed now composes with its official CivicEngage City Council agenda and minutes archives. The
+  auxiliary adapter joins dated archive rows without creating document-only podcast episodes; links
+  remain additive and existing CivicMedia media/audio identities are unchanged.
+  
 - **Swagit archive pagination and Austin aggregate coverage (R11).** Swagit view fetches now follow
   every advertised archive page instead of only the first 20 rows. Austin retains its dedicated body
   feeds and adds a city-wide all-boards-and-commissions projection; overlapping recordings reconcile

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from citypods.providers.base import AgendaSource, MeetingProvider, ProviderError
 from citypods.providers.civicclerk import CivicClerkProvider
+from citypods.providers.civicengage import CivicEngageProvider
 from citypods.providers.civicplus import CivicPlusProvider
 from citypods.providers.granicus import GranicusProvider
 from citypods.providers.legistar import LegistarProvider
@@ -41,6 +42,7 @@ register(GranicusProvider())
 register(LegistarProvider())
 register(CivicPlusProvider())
 register(CivicClerkProvider())
+register(CivicEngageProvider())
 register(SwagitProvider())
 
 __all__ = [
