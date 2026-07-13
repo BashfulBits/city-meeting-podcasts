@@ -223,13 +223,23 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > **Matured to L3, 2026-07-12: agenda text extraction (R3), full design in
 > [`review/29`](review/29-agenda-text-extraction.md).** Extracts from `ep.links["agenda"]`/
 > `["agenda_portal"]` via two new output-affecting dependencies (`pypdf`, `beautifulsoup4`) into a
-> content-addressed sidecar under a new `AGENDA_TEXT_PIPELINE_VERSION`, mirroring the existing
-> transcript-artifact/backoff conventions exactly. Three explicit non-goals scoped out: the
-> separately-linked packet/exhibit bundle (frequently huge — a real scope-creep risk worth naming), OCR,
-> and any LLM synthesis. **Design-complete; execution should still wait on R11's real link coverage
-> shipping** — the maintainer's own bar for starting this item ("once R11 supplies agenda URLs for
-> almost every meeting") is about production execution, and R11's Part A migration is designed but not
-> yet executed, distinct from this item's own design readiness.
+> content-addressed sidecar under `AGENDA_TEXT_PIPELINE_VERSION`, mirroring the existing
+> transcript-artifact/backoff conventions exactly. Two non-goals: OCR, and any LLM synthesis.
+>
+> **Corrected and expanded, same day: backup/packet material is now in scope too, stored as a fully
+> separate artifact.** The original draft excluded it citing "hundreds of pages or multi-GB" — that
+> number was never actually verified (the only "multi-GB" claim anywhere in this session's research
+> describes source *video* files, not agenda packets), and the exclusion didn't survive the maintainer's
+> follow-up questions. Per the maintainer's explicit requirement, backup text gets its own sidecar and
+> pipeline version (`agenda_backup_url` / `AGENDA_BACKUP_PIPELINE_VERSION`), independent of agenda-only
+> text, so "just the agenda," "one item's backup," and "just a link" (backup URLs are populated even when
+> text extraction fails, for show-notes/HTML rendering) are all independently usable. Sourced from
+> CivicClerk's already-coded `agenda_packet` link, `pypdf.extract_uris()` on internal PDF links
+> (order-based chapter attribution, explicitly a heuristic), and — proposed as an R11 follow-on —
+> Legistar's structured per-item Attachments API. **Design-complete; execution should still wait on R11's
+> real link coverage shipping** — the maintainer's own bar for starting this item ("once R11 supplies
+> agenda URLs for almost every meeting") is about production execution, and R11's Part A migration is
+> designed but not yet executed, distinct from this item's own design readiness.
 
 | Pri | Item |
 |----:|------|
@@ -238,7 +248,7 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R11** | **Cross-provider agenda & history network** (new, infra — numbered R11, sequenced here, see note above) — generalizes the existing Legistar/Granicus historical-backfill mechanism (originally "Legistar calendar provider") into three goals: ingest HTML/portal agenda URLs, ingest PDF agenda URLs, and extend meeting history for feeds with limited RSS/API windows. Granicus directly markets three parallel agenda products — **Legistar** (proven), **OneMeeting**, and **Agenda PE** (small/medium-government focused, no confirmed portal pattern yet) — any of which may apply to a Granicus- or Swagit-primary city; adds **CivicClerk cross-referencing** (already a supported provider, now also usable as an auxiliary agenda source for CivicPlus-video cities) alongside these. Feeds R3 (agenda text extraction) and, transitively, R4 (search) and R5 (tags) |
 | **R2** | **LLM backend** (new, infra) — the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs: provider choice, cost/budget ledger, prompt-management conventions. Built ahead of R5's LLM-assist tagging path and R6's auto-summaries, neither of which need to invent this under their own time pressure |
 | **R12** | **LLM-assisted city/agenda-source discovery** (new, infra — numbered R12, sequenced here, see note above) — automates R11's manual §B.2 discovery checklist *and* the existing `add-city` template's manual fulfillment: Tavily search → classify against Appendix P's platform census via a `classify-civic-platforms` task verb → two-tier verify (platform signature + end-to-end sample-episode resolution) → propose via a quarterly digest issue (existing cities) or a reply on the `add-city` issue (new cities), with a checkbox that commits directly to `main` when the change is verified purely additive, else falls back to a PR. **L3**, see [`review/28`](review/28-llm-assisted-city-discovery.md) |
-| **R3** | **Agenda text extraction** (new, infra) — **narrowed 2026-07-16: text extraction only, now that R11 owns URL discovery.** Extracts plain text from `ep.links["agenda"]`/`["agenda_portal"]` (never the separately-linked packet/exhibit bundle, no OCR, no LLM synthesis) into a content-addressed sidecar mirroring the existing transcript-artifact conventions; the richer "what's being proposed" LLM brief stays Phase F. Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy. **L3**, see [`review/29`](review/29-agenda-text-extraction.md) |
+| **R3** | **Agenda text extraction** (new, infra) — **narrowed 2026-07-16: text extraction only, now that R11 owns URL discovery.** Extracts plain text from `ep.links["agenda"]`/`["agenda_portal"]` (no OCR, no LLM synthesis) into a content-addressed sidecar mirroring the existing transcript-artifact conventions; the richer "what's being proposed" LLM brief stays Phase F. **Backup/packet material is now also in scope, as a fully separate sidecar/pipeline-version** so agenda-only text, per-item backup text, and backup links can each be consumed independently. Feeds real agenda content into R4's search index and R5's tag generator, both of which otherwise fall back to the weaker chapter-title proxy. **L3**, see [`review/29`](review/29-agenda-text-extraction.md) |
 | **R4** | **#6** static client-side transcript/meeting search, including metadata-only unavailable recordings and an availability filter |
 | **R5** | **#4** topic tags / **Strong Towns lens** (transparent rules + human overrides; LLM-assist later) |
 | **R6** | **#3** per-agenda-item "what changed" cards · **#2** auto-summaries · **#15** soundbites |

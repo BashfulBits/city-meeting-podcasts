@@ -1344,3 +1344,14 @@ thousands of small governments, an unstructured PDF list *is* the entire meeting
    some bodies, this beats every auxiliary portal in cost-per-agenda-URL and shrinks Part B's target
    list to the leftovers. Also from Appendix P: check Gainesville's CivicEngage Agenda Center
    (`/AgendaCenter`) as that city's likely agenda source.
+9. **New, 2026-07-12 (from R3's backup-material design, `review/29` §3a):** wire Part D's already-computed
+   `_FILE_TYPE_LINKS["Agenda Packet"]` (`citypods/providers/civicclerk.py:64`) through to
+   `Episode.links["agenda_packet"]` — the mapping already exists in code, this is closing a one-line gap,
+   not new design. R3 consumes it directly once wired.
+10. **New, 2026-07-12, Phase 2 of R3's backup-material scope, proposed here since it's provider-discovery
+    work, not extraction work:** Legistar Web API `EventItems?Attachments=true` (`EventItemMatterAttachments`,
+    `webapi.legistar.com` — distinct from the Calendar.aspx HTML scraping Part A actually uses) exposes
+    genuinely structured, per-agenda-item attachment metadata. Higher-confidence than R3's own
+    order-based internal-PDF-link heuristic; not required for R3 to ship (Phase 1 covers Legistar cities
+    via that heuristic in the meantime), but the natural next step once Part A's Calendar.aspx migration
+    is stable.
