@@ -207,8 +207,8 @@ class SourcePipeline:
         episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
         fresh_calendar: list[AgendaRecord] = []
         if city.aux_provider and city.aux_source:
-            aux_provider = get_provider(city.aux_provider)
             try:
+                aux_provider = get_provider(city.aux_provider)
                 fetch_calendar_index = getattr(aux_provider, "fetch_calendar_index", None)
                 if callable(fetch_calendar_index):
                     index = fetch_calendar_index(city.aux_source)
@@ -239,7 +239,7 @@ class SourcePipeline:
                     f"recorded={sum(bool(record.video_guid) for record in fresh_calendar)}",
                     flush=True,
                 )
-            except (ProviderError, SecurityError) as exc:
+            except Exception as exc:  # noqa: BLE001 — a companion is strictly best-effort
                 # A companion is additive: preserve its last-known calendar state and
                 # never suppress primary archive discovery when it is temporarily down.
                 print(

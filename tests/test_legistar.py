@@ -72,6 +72,17 @@ def test_parse_calendar_records_retains_rows_without_video_as_metadata():
     assert agenda_only.links["agenda"] == "https://pflugerville.legistar.com/View.ashx?M=A&ID=2"
 
 
+def test_video_row_without_a_view_id_is_retained_as_calendar_metadata():
+    records = _parse_calendar_records_page(
+        _fixture("legistar_calendar_2024_p1.html"), {**SOURCE, "view_id": None}
+    )
+
+    assert len(records) == 2
+    assert records[0].video_guid is None
+    assert records[0].video_url is None
+    assert records[0].links["agenda"] == "https://pflugerville.legistar.com/View.ashx?M=A&ID=1"
+
+
 def test_body_filter_and_row_view_id_precedence():
     source = {**SOURCE, "body": "City Council", "view_id": 1}
     episodes = _parse_calendar_page(_fixture("legistar_calendar_2024_p2.html"), source)

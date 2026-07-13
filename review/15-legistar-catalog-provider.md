@@ -44,23 +44,23 @@ split into [#903](https://github.com/BashfulBits/city-meeting-podcasts/issues/90
 > [#904](https://github.com/BashfulBits/city-meeting-podcasts/issues/904), and
 > [#905](https://github.com/BashfulBits/city-meeting-podcasts/issues/905).
 
-### §0.0 Current calendar-companion contract (Phase 2)
+## §0.0 Current calendar-companion contract (Phase 2)
 
 Phase 2 implements the confirmed source composition rather than reviving the earlier
 full-replacement proposal below:
 
 - A city keeps its native archive provider and its existing `source_key`; the companion is an
   explicit, verified `aux_provider` / `aux_source` on the city entity, inherited by its body feeds.
-- A companion fetch is a **full calendar index**. Rows with a verified Granicus clip are normalized
-  to the same canonical `MediaPlayer.php` GUID as the native archive. The native archive wins on
-  duplicate clip fields, while the calendar fills missing official agenda, packet, minutes, and
-  meeting-details links. Calendar-only clips become normal Episodes and follow the ordinary,
-  gradual audio backlog—there is no pipeline-version bump or forced re-encode of existing clips.
-- Every calendar row, including rows without a recording, is stored append-only in
-  `state/sources/<source_key>/calendar.json`. These rows are rendered in the city archive as
-  **Calendar-only meetings** with official links, but never enter an RSS feed, receive a meeting
-  page, or run audio/transcript stages. This is durable public-meeting metadata, not a synthetic
-  podcast episode.
+- A companion fetch is a **full calendar index**. Every calendar row is stored append-only in
+  `state/sources/<source_key>/calendar.json`.
+- A video-linked row with a verified Granicus clip is normalized to the same canonical
+  `MediaPlayer.php` GUID as the native archive. The native archive wins duplicate clip fields,
+  while the calendar fills missing official agenda, packet, minutes, and meeting-details links.
+  An archive-missing calendar clip becomes a normal Episode and follows the ordinary, gradual audio backlog—
+  there is no pipeline-version bump or forced re-encode of existing clips.
+- A row without a recording remains a **Calendar-only meeting** with official links in the city
+  archive. It never enters an RSS feed, receives a meeting page, or runs audio/transcript stages:
+  it is durable public-meeting metadata, not a synthetic podcast episode.
 - A failed companion fetch is best-effort: the primary archive continues, and the last known
   calendar catalog remains available. No runtime hostname discovery or RSS fallback is allowed.
 
@@ -175,7 +175,7 @@ a shortcut:
 | Mechanism | Solves | Status | Risk profile |
 |---|---|---|---|
 | **A. Full-replacement** (`city.provider` switches entirely to the sibling, e.g. `legistar`) | **Goal 3** (extended history) | Proven — Part A already does this for Legistar/Granicus | Low — the sibling *becomes* the episode-discovery source of truth, no cross-source reconciliation needed |
-| **B. Auxiliary attachment** (a new, optional second source enriches the primary's already-discovered episodes) | **Goals 1 + 2** (agenda URLs) | New — Part B | Higher — needs the new uid-join reconciliation (§0.2), but **deliberately never creates new episodes**, only enriches existing ones |
+| **B. Auxiliary attachment** (a new, optional second source enriches the primary's already-discovered episodes) | **Goals 1 + 2** (agenda URLs) | New — Part B | Higher — needs the new uid-join reconciliation (§0.2). The generic non-calendar form only enriches existing episodes; §0.0 adds a verified calendar-video backfill exception. |
 
 **Why not make auxiliary mode also solve goal 3** (i.e., auto-promote an aux-only-discovered meeting
 into a full episode)? Because that requires the record-store to accept episodes whose identity/state
@@ -750,14 +750,14 @@ and calls it. This is a pure refactor — no behavior change.
 
 ## Part B — Auxiliary agenda-source attachment (new mechanism — solves Goals 1 + 2)
 
-**Mechanism B from §0.3.** A city keeps its primary video provider unchanged and gains a second,
-optional source that enriches already-discovered episodes with agenda URLs — never creates new
-episodes (that's Mechanism A's job, §0.3).
+**Historical Mechanism B from §0.3.** Before the Phase 2 calendar contract, the generic
+non-calendar portal proposal kept a primary video provider unchanged and used a second, optional
+source only to enrich already-discovered episodes with agenda URLs — never to create new episodes.
 
 > **Superseded execution detail:** §0.0 now makes every verified calendar row durable in a separate
-> append-only catalog. Only a row with an explicit canonical video reference may backfill an Episode;
-> no-video rows are retained and rendered outside RSS. The older "ephemeral" / "unmatched rows are
-> dropped" mechanics below are historical design context for non-calendar portal experiments.
+> append-only catalog. A video-linked row with an explicit canonical video reference may backfill an
+> Episode; a no-video row is retained and rendered outside RSS. The older "ephemeral" / "unmatched
+> rows are dropped" mechanics below are historical design context for non-calendar portal experiments.
 
 ### §B.1 Architecture
 

@@ -28,8 +28,8 @@ Phase R (Research-Tool Surface)._
 
 - **Verified calendar companions compose history without replacing video discovery (R11 phase 2).** A
   city can inherit an explicit `aux_provider` / `aux_source` from its entity configuration. Legistar
-  supplies a full calendar index: video-linked rows merge with the native Granicus archive by canonical
-  clip URL, while every no-video row is retained append-only in `calendar.json` and shown as a
+  supplies a full calendar index: video-linked rows merge with the native Granicus archive by normalized
+  Granicus clip ID/GUID, while every no-video row is retained append-only in `calendar.json` and shown as a
   Calendar-only meeting in the city archive—not as an RSS item or an audio/transcript job. Pflugerville
   now uses its official calendar alongside the archive, covering 2,402 calendar rows and a 788-clip
   native-plus-calendar union (560 calendar-only recordings). This adds historical work gradually under

@@ -17,7 +17,7 @@ import requests
 from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import AgendaRecord, CalendarIndex, ChangeToken, Episode
 from citypods.providers.base import ProviderError
-from citypods.providers.granicus import GranicusProvider, _resolve_download_url
+from citypods.providers.granicus import GranicusProvider
 
 _ROW_RE = re.compile(
     r'<tr\s+class="rg(?:Alt)?Row"[^>]*id="ctl00_ContentPlaceHolder1_gridCalendar_ctl00__\d+"[^>]*>(.*?)</tr>',
@@ -178,17 +178,17 @@ def _parse_calendar_records_page(html: str, source: dict) -> list[AgendaRecord]:
         video_url = None
         if clip_id is not None:
             view_id = _row_view_id(row) or fallback_view
-            if not view_id:
-                raise ProviderError(
-                    "Legistar video row has no view_id and source has no fallback view_id"
+            # A malformed video link must not discard the rest of a multi-year
+            # calendar scan. Retain its meeting metadata as a no-video row;
+            # verified rows continue to become ordinary Episodes below.
+            if view_id:
+                video_guid = f"{granicus_base}/MediaPlayer.php?view_id={view_id}&clip_id={clip_id}"
+                video_url = f"{granicus_base}/DownloadFile.php?view_id={view_id}&clip_id={clip_id}"
+                links["canonical_video"] = video_guid
+                links.setdefault(
+                    "agenda_portal",
+                    f"{granicus_base}/AgendaViewer.php?view_id={view_id}&clip_id={clip_id}",
                 )
-            video_guid = f"{granicus_base}/MediaPlayer.php?view_id={view_id}&clip_id={clip_id}"
-            video_url = f"{granicus_base}/DownloadFile.php?view_id={view_id}&clip_id={clip_id}"
-            links["canonical_video"] = video_guid
-            links.setdefault(
-                "agenda_portal",
-                f"{granicus_base}/AgendaViewer.php?view_id={view_id}&clip_id={clip_id}",
-            )
 
         records.append(
             AgendaRecord(
@@ -294,7 +294,7 @@ class LegistarProvider:
         return self.fetch_calendar_index(source).records
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
-        return _resolve_download_url(episode.video_url)
+        return GranicusProvider().resolve_media_url(episode, source)
 
     def video_deeplink(self, ref: str, t_seconds: float) -> str | None:
         return GranicusProvider().video_deeplink(ref, t_seconds)

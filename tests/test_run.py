@@ -541,6 +541,38 @@ def test_calendar_companion_failure_keeps_primary_archive_available(tmp_path, fa
         _REGISTRY.pop(companion.name, None)
 
 
+def test_calendar_companion_crash_keeps_primary_archive_available(tmp_path, fake_provider):
+    class _CrashingCalendarCompanion:
+        name = "crashingcalendar"
+        capabilities = frozenset()
+
+        def validate(self, source):
+            pass
+
+        def fetch_calendar_index(self, source):
+            raise RuntimeError("unexpected calendar parser failure")
+
+    companion = _CrashingCalendarCompanion()
+    register(companion)
+    try:
+        cities = _setup(tmp_path)
+        config = cities / "feeds" / "fake-city.yml"
+        config.write_text(
+            config.read_text()
+            + "aux_provider: crashingcalendar\n"
+            + "aux_source: {calendar_url: 'https://calendar.example'}\n"
+        )
+
+        result = _build(tmp_path, cities)
+
+        assert result[0].status == "built"
+        assert result[0].episode_count == len(fake_provider.episodes)
+    finally:
+        from citypods.providers import _REGISTRY
+
+        _REGISTRY.pop(companion.name, None)
+
+
 def test_missing_outputs_force_rebuild_even_if_hash_matches(tmp_path, fake_provider):
     cities = _setup(tmp_path)
     _build(tmp_path, cities)

@@ -191,7 +191,7 @@ def test_calendar_records_are_append_only_and_preserve_old_links(tmp_path):
         body="City Council",
         title="Council Meeting",
         published=original.published,
-        links={"minutes": "https://calendar.example/minutes.pdf"},
+        links={"agenda": "", "minutes": "https://calendar.example/minutes.pdf"},
         uid=original.uid,
     )
     merged = merge_calendar_records(load_calendar_records(tmp_path, "source"), [refreshed])

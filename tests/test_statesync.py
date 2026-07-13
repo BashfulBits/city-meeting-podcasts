@@ -341,6 +341,51 @@ def test_push_calendar_records_merged_preserves_concurrent_history(tmp_path):
     }
 
 
+def test_push_calendar_records_merged_skips_missing_local_calendar(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+
+    assert push_calendar_records_merged(bucket, tmp_path / "state", ["src1"]) == 0
+    assert not bucket.exists(f"{STATE_PREFIX}/sources/src1/calendar.json")
+
+
+def test_push_calendar_records_merged_skips_remote_listing_failure(tmp_path):
+    class _ListingFailsStorage(LocalStorage):
+        def list_objects(self, prefix=""):
+            raise RuntimeError("remote listing failed")
+
+    bucket = _ListingFailsStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    record = AgendaRecord(
+        body="City Council",
+        title="Council meeting",
+        published=datetime(2020, 5, 1, tzinfo=UTC),
+        uid="u1",
+    )
+    save_calendar_records(state_dir, "src1", {record.uid: record})
+
+    assert push_calendar_records_merged(bucket, state_dir, ["src1"]) == 0
+    assert load_calendar_records(state_dir, "src1") == {record.uid: record}
+
+
+def test_push_calendar_records_merged_skips_malformed_remote_calendar(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    record = AgendaRecord(
+        body="City Council",
+        title="Council meeting",
+        published=datetime(2020, 5, 1, tzinfo=UTC),
+        uid="u1",
+    )
+    save_calendar_records(state_dir, "src1", {record.uid: record})
+    malformed = _tmpfile(tmp_path, "not json", "malformed-calendar.json")
+    key = f"{STATE_PREFIX}/sources/src1/calendar.json"
+    bucket.put_file(key, malformed, "application/json")
+
+    assert push_calendar_records_merged(bucket, state_dir, ["src1"]) == 0
+    assert bucket._path(key).read_text() == "not json"
+    assert load_calendar_records(state_dir, "src1") == {record.uid: record}
+
+
 def test_push_records_merged_transcribe_lane_preserves_remote_served_duration(tmp_path):
     bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"

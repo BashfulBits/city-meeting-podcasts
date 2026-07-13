@@ -257,6 +257,13 @@ def assign_uids(city: City, episodes: list[AgendaSource]) -> None:
             ep.uid = _uid(author, ep.body, date, seq)
 
 
+def _fill_missing_links(target: dict, source: Mapping[str, object] | None) -> None:
+    """Add non-empty official links without replacing the target's primary links."""
+    for key, value in (source or {}).items():
+        if value:
+            target.setdefault(key, value)
+
+
 def merge_calendar_backfill(episodes: list[Episode], calendar_records: list[AgendaRecord]) -> None:
     """Merge explicitly video-linked calendar rows into the primary episode list.
 
@@ -283,9 +290,7 @@ def merge_calendar_backfill(episodes: list[Episode], calendar_records: list[Agen
             by_guid[existing.guid] = existing
             episodes.append(existing)
             continue
-        for key, value in record.links.items():
-            if value:
-                existing.links.setdefault(key, value)
+        _fill_missing_links(existing.links, record.links)
 
 
 def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[AgendaSource]) -> None:
@@ -310,9 +315,7 @@ def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[Age
         record = by_video_guid.get(episode.guid) or by_uid.get(episode.uid)
         if record is None:
             continue
-        for key, value in (record.links or {}).items():
-            if value:
-                episode.links.setdefault(key, value)
+        _fill_missing_links(episode.links, record.links)
 
 
 def audio_spec_hash(
@@ -567,9 +570,9 @@ def merge_calendar_records(
 ) -> dict[str, AgendaRecord]:
     """Append-only merge of the calendar catalog, preserving prior official links.
 
-    Calendar sources can temporarily omit old documents.  A fresh row updates its
-    title/date/video reference, but its links are unioned with the persisted row
-    so the independent meeting history is never silently diminished.
+    Calendar sources can temporarily omit old documents. A fresh row updates its
+    title/date/video reference; an empty fresh link never removes a persisted
+    one, while a non-empty fresh official URL can correct a previous URL.
     """
     merged = dict(persisted)
     for record in fresh:
@@ -583,7 +586,10 @@ def merge_calendar_records(
             body=record.body or previous.body,
             title=record.title or previous.title,
             published=record.published,
-            links={**previous.links, **record.links},
+            links={
+                **previous.links,
+                **{key: value for key, value in record.links.items() if value},
+            },
             video_guid=record.video_guid or previous.video_guid,
             video_url=record.video_url or previous.video_url,
             uid=record.uid,
