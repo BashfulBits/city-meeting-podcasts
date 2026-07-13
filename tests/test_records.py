@@ -108,12 +108,15 @@ def test_cross_feed_reconciliation_reuses_canonical_episode_and_drops_aggregate_
     }
     aggregate_only = _ep("swagit-200", body="New Commission")
 
-    kept, reconciled = reconcile_cross_feed_episodes(
+    kept, complete, reconciled = reconcile_cross_feed_episodes(
         [[canonical]], [aggregate_duplicate, aggregate_only]
     )
 
     assert reconciled == 1
     assert kept == [aggregate_only]
+    assert len(complete) == 2
+    assert complete[0].uid == canonical.uid
+    assert complete[0].integrity["aggregate_suppressed"] is True
     assert canonical.links["agenda"] == "https://swagit.example/videos/100/agenda"
 
 
@@ -121,17 +124,19 @@ def test_cross_feed_reconciliation_does_not_use_uid_when_guid_differs():
     canonical = _ep("swagit-100")
     aggregate = _ep("swagit-101")
     aggregate.uid = canonical.uid
-    kept, reconciled = reconcile_cross_feed_episodes([[canonical]], [aggregate])
+    kept, complete, reconciled = reconcile_cross_feed_episodes([[canonical]], [aggregate])
     assert reconciled == 0
     assert kept == [aggregate]
+    assert complete == [aggregate]
 
 
 def test_cross_feed_reconciliation_does_not_match_guid_across_provider_sources():
     other_provider = _ep("100")
     other_provider.uid = "different-provider-uid"
-    kept, reconciled = reconcile_cross_feed_episodes([], [other_provider])
+    kept, complete, reconciled = reconcile_cross_feed_episodes([], [other_provider])
     assert reconciled == 0
     assert kept == [other_provider]
+    assert complete == [other_provider]
 
 
 def test_unmatched_auxiliary_agenda_record_is_dropped():

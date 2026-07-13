@@ -174,6 +174,7 @@ class SourcePipeline:
         # A companion's no-video rows live beside, but never inside, episodes.json.
         self._calendar_cache: dict[str, list[AgendaRecord]] = {}
         self._calendar_store: dict[str, dict[str, AgendaRecord]] = {}
+        self._aggregate_persist: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
@@ -270,7 +271,8 @@ class SourcePipeline:
         merge_persisted(episodes, persisted)
         self._cache_cities[key] = city
         if city.source.get("aggregate"):
-            episodes, reconciled = self.reconcile_aggregate(city, episodes)
+            episodes, complete, reconciled = self.reconcile_aggregate(city, episodes)
+            self._aggregate_persist[key] = complete
             if reconciled:
                 print(
                     f"[enrich] cross-feed reconciled slug={city.slug} duplicates={reconciled}",
@@ -287,7 +289,9 @@ class SourcePipeline:
         self.h16_identity.capture(city, episodes)
         return provider, episodes, persisted, seeded
 
-    def reconcile_aggregate(self, city: City, episodes: list[Episode]) -> tuple[list[Episode], int]:
+    def reconcile_aggregate(
+        self, city: City, episodes: list[Episode]
+    ) -> tuple[list[Episode], list[Episode], int]:
         """Reconcile an aggregate source against already-prepared dedicated feeds for its city."""
         canonical_by_key = {
             key: archive
@@ -298,7 +302,9 @@ class SourcePipeline:
             and peer.provider == city.provider
             and not peer.source.get("aggregate")
         }
-        unique, reconciled = reconcile_cross_feed_episodes(canonical_by_key.values(), episodes)
+        unique, complete, reconciled = reconcile_cross_feed_episodes(
+            canonical_by_key.values(), episodes
+        )
         if reconciled and self.persist_records and not self.ctx.dry_run:
             # The aggregate may carry links absent from a dedicated view. Persist those link-only
             # enrichments back to the canonical source store without changing its UID or audio key.
@@ -308,7 +314,7 @@ class SourcePipeline:
                     key,
                     {episode.uid: episode_to_record(episode) for episode in archive if episode.uid},
                 )
-        return unique, reconciled
+        return unique, complete, reconciled
 
     def fetch_merge_from_records(
         self, city: City, key: str, reason: Exception
@@ -465,7 +471,13 @@ class SourcePipeline:
             self.accumulate_stats(stats)
             if seeded:
                 notes.append(f"{seeded} legacy")
-            archive = self.persist_source(key, episodes, persisted, notes=notes)
+            persist_episodes = self._aggregate_persist.pop(key, episodes)
+            archive = self.persist_source(key, persist_episodes, persisted, notes=notes)
+            if city.source.get("aggregate"):
+                # The durable source archive retains suppressed observations, while callers
+                # receive the aggregate's deduplicated public projection.
+                self._cache[key] = episodes
+                archive = episodes
             elapsed = time.perf_counter() - t0
             print(
                 f"[enrich] source done slug={city.slug} provider={city.provider} source={key} "
@@ -500,6 +512,12 @@ class SourcePipeline:
                 return self._cache[key]
             records = load_records(self.state_dir, key)
             archive = [record_to_episode(rec) for rec in records.values()]
+            if city.source.get("aggregate"):
+                archive = [
+                    episode
+                    for episode in archive
+                    if not (episode.integrity or {}).get("aggregate_suppressed")
+                ]
             self._cache[key] = archive
             self._hydrate_calendar(key)
             return archive
@@ -526,6 +544,12 @@ class SourcePipeline:
             if not records:
                 raise ProviderError(str(reason)) from reason
             archive = [record_to_episode(rec) for rec in records.values()]
+            if city.source.get("aggregate"):
+                archive = [
+                    episode
+                    for episode in archive
+                    if not (episode.integrity or {}).get("aggregate_suppressed")
+                ]
             self._cache[key] = archive
             self._hydrate_calendar(key)
             self._notes[key] = f"stale provider fetch failed: {reason}"
@@ -1155,6 +1179,7 @@ def _run_enrich_global_queue(
                 "episodes": episodes,
                 "persisted": persisted,
                 "notes": notes,
+                "persist_episodes": getattr(pipeline, "_aggregate_persist", {}).pop(key, episodes),
             }
     # Aggregate archive feeds are projections over the dedicated feeds. Reconcile them before
     # candidate selection so an overlapping recording is never materialized or persisted twice.
@@ -1169,7 +1194,9 @@ def _run_enrich_global_queue(
             and other["city"].provider == state["city"].provider
             and not other["city"].source.get("aggregate")
         ]
-        state["episodes"], reconciled = reconcile_cross_feed_episodes(canonical, state["episodes"])
+        state["episodes"], state["persist_episodes"], reconciled = reconcile_cross_feed_episodes(
+            canonical, state["episodes"]
+        )
         if reconciled:
             print(
                 f"[enrich] cross-feed reconciled slug={state['city'].slug} duplicates={reconciled}",
@@ -1230,7 +1257,12 @@ def _run_enrich_global_queue(
         starts, GH#377) and again at the end (to capture transcripts). ``persist_source`` /
         ``merge_records`` are append-only and idempotent, so the repeat is safe."""
         for key, st in prepared.items():
-            pipeline.persist_source(key, st["episodes"], st["persisted"], notes=st["notes"])
+            pipeline.persist_source(
+                key,
+                st.get("persist_episodes", st["episodes"]),
+                st["persisted"],
+                notes=st["notes"],
+            )
 
     with source_cache or _nullcontext():
         if audio_stages:
