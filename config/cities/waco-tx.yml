@@ -1,0 +1,11 @@
+# Entity record for City of Waco, TX
+city_website: https://www.waco-texas.com
+meetings_url: https://www.waco-texas.com/Government/Meeting-Agendas
+state: TX
+colors:
+- '#0066a1'
+- '#f5b335'
+aux_provider: onemeeting
+aux_source:
+  portal_url: https://wacotexas.primegov.com
+  backfill_since: 2020

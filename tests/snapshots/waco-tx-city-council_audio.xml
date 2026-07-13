@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Waco: City Council (Audio)</title>
+    <link>https://podcasts.example.gov/waco-tx-city-council/</link>
+    <atom:link href="https://podcasts.example.gov/waco-tx-city-council/audio_feed.xml" rel="self" type="application/rss+xml"/>
+    <description>City Council meetings for Waco.</description>
+    <language>en-us</language>
+    <itunes:author>City of Waco, TX</itunes:author>
+    <itunes:summary>City Council meetings for Waco.</itunes:summary>
+    <itunes:type>episodic</itunes:type>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="Government"/>
+    <itunes:image href="https://podcasts.example.gov/waco-tx-city-council/artwork.jpg"/>
+    <itunes:owner>
+      <itunes:name>City of Waco, TX</itunes:name>
+      <itunes:email></itunes:email>
+    </itunes:owner>
+    <image>
+      <url>https://podcasts.example.gov/waco-tx-city-council/artwork.jpg</url>
+      <title>Waco: City Council</title>
+      <link>https://podcasts.example.gov/waco-tx-city-council/</link>
+    </image>
+  </channel>
+</rss>
