@@ -1134,6 +1134,60 @@ def test_global_queue_persists_after_audio_pass_and_again_after_transcript(tmp_p
     assert events == ["audio:uid-e1", "persist", "transcript:uid-e1", "persist"]
 
 
+def test_global_queue_runs_document_stages_once_per_complete_source(tmp_path, monkeypatch):
+    """Agenda-derived minutes inheritance needs the full source archive, before audio work."""
+    city = City(
+        slug="c",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="C",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    episodes = [_ep("e1"), _ep("e2")]
+    events: list[str] = []
+
+    class _Stage:
+        def __init__(self, name):
+            self.name = name
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.stages = [
+                _Stage("links"),
+                _Stage("agenda_text"),
+                _Stage("minutes_text"),
+                _Stage("audio"),
+            ]
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    def _run_stages(_p, _c, batch, stages, _ctx, *, quiet):
+        events.append(
+            f"{','.join(stage.name for stage in stages)}:{','.join(ep.uid for ep in batch)}"
+        )
+        return [StageStats(stage.name, ran=1) for stage in stages]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+
+    run._run_enrich_global_queue(_Pipeline(), [city], source_cache=None, max_workers=1, policy=None)
+
+    assert events[0] == "links,agenda_text,minutes_text:uid-e1,uid-e2"
+    assert events[1:3] == ["audio:uid-e1", "audio:uid-e2"]
+
+
 def test_repeat_persist_source_is_idempotent(tmp_path):
     """A source flushed early (incremental persist) and then again at end-of-run must not corrupt
     or duplicate records, and must not double-append notes to the caller's list (GH#377)."""
@@ -1804,8 +1858,6 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
 def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider, monkeypatch):
     """A transcribe-lane shard must hand ``push_records_merged`` the ``audio`` block to preserve, so
     a late-finishing ASR run can't erase a concurrent audio run's hosted audio (review/12 §H6)."""
-    from citypods.records import protected_blocks_for_lane
-
     for ep in fake_provider.episodes:
         ep.media_kind = "hls"
     cities_dir = _setup_multi(tmp_path)
@@ -1825,10 +1877,18 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
     _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), shard=(0, 2), lane="transcribe")
     # The transcribe lane preserves the artifact blocks it does not write: hosted audio,
     # audio-derived media availability, and diarize-owned speakers.
-    assert (
-        captured["protected"]
-        == protected_blocks_for_lane("transcribe")
-        == frozenset({"audio", "media_availability", "speakers", "integrity"})
+    assert captured["protected"] == frozenset(
+        {
+            "audio",
+            "speakers",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+        }
     )
     # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).
     assert isinstance(captured["owned_uids"], dict)

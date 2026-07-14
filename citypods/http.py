@@ -337,6 +337,25 @@ def make_session() -> requests.Session:
     return session
 
 
+def fetch_document_bytes(
+    session: requests.Session, url: str, *, timeout: float = DEFAULT_TIMEOUT
+) -> tuple[bytes, str]:
+    """Fetch one document through the guarded session and return bounded buffered bytes.
+
+    ``GuardedHTTPAdapter`` validates every redirect, applies retries, and caps buffered response
+    bytes before this helper reads ``response.content``. Keeping document callers on this narrow
+    helper makes that security boundary explicit rather than relying on each stage to remember it.
+    """
+    response = session.get(url, timeout=timeout)
+    try:
+        response.raise_for_status()
+        return response.content, response.headers.get("Content-Type", "")
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+
+
 _CONTENT_RANGE_TOTAL_RE = re.compile(r"bytes\s+\d+-\d+/(\d+)")
 
 

@@ -520,6 +520,13 @@ built, feeds R4 (search, additive `agenda_text` field already schema-reserved) a
 already in place) — both already designed to consume `agenda_text` as `null`-tolerant and purely additive,
 so this item can ship independently of either's own timeline without blocking or being blocked by them.
 
+**Minutes and structured meeting data extension:** Agenda extraction also discovers minutes links. Those
+links fill a missing effective `links["minutes"]` only when the provider has not supplied one; provider
+links remain canonical and win on every later refresh. The minutes URL is then consumed by the separate
+`MinutesTextStage`, which writes minutes text independently from agenda text. Per-item vote records and
+member rosters are extracted from that text with evidence/source URLs and become inputs to the later
+diarization lane; they are not inferred from audio. Full schema and sequencing are in [`review/30`](30-minutes-text-votes-rosters.md).
+
 **Backup material specifically, phased (§3a):** Phase 1 (`links["agenda_packet"]` consumption + internal
 PDF link extraction) ships with this item — zero new R11 discovery work required, since CivicClerk's link
 already exists in code and internal-link extraction is a byproduct of extraction already happening. Phase

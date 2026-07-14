@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Agenda/minutes document enrichment (R3).** Added bounded agenda/packet text and backup-link
+  extraction, agenda-derived minutes candidates for the immediately preceding same-body meeting,
+  and a separate minutes text stage with conservative per-member vote and roster sidecars. A
+  provider-supplied minutes URL always overrides an agenda-derived candidate; document artifacts are
+  content-addressed and do not affect audio specifications.
+
 - **LiteLLM LLM backend (R2).** Added `citypods.compute.llm.LiteLLMBackend` with direct provider
   completion and asynchronous R10 Worker enqueue/poll transports. The adapter validates the
   provider-qualified model route, keeps per-task prompt/version registries, maps both transports to

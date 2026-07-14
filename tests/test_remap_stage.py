@@ -354,8 +354,28 @@ class TestRemapOrdering:
 
     def test_full_order_default(self):
         names = self._names(default_stages())
-        assert names == ["chapters", "timeline", "remap", "audio", "transcript", "diarize", "links"]
+        assert names == [
+            "chapters",
+            "timeline",
+            "remap",
+            "audio",
+            "transcript",
+            "links",
+            "agenda_text",
+            "minutes_text",
+            "diarize",
+        ]
 
     def test_full_order_enrich(self):
         names = self._names(enrich_stages())
-        assert names == ["chapters", "timeline", "remap", "audio", "transcript", "diarize"]
+        assert names == [
+            "chapters",
+            "timeline",
+            "remap",
+            "audio",
+            "transcript",
+            "links",
+            "agenda_text",
+            "minutes_text",
+            "diarize",
+        ]

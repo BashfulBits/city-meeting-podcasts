@@ -15,6 +15,8 @@ dependencies = [
     "Jinja2>=3.1",
     "Pillow>=10.0",                  # podcast cover-art generation
     "defusedxml>=0.7",               # hardened XML parsing of provider feeds
+    "pypdf>=5.0",                     # agenda/minutes PDF text and link extraction
+    "beautifulsoup4>=4.12",           # agenda/minutes HTML extraction
 ]
 
 [project.optional-dependencies]
