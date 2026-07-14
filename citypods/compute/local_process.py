@@ -8,6 +8,8 @@ pipe, and lets the parent terminate/restart that process when an item exceeds it
 from __future__ import annotations
 
 import multiprocessing
+import os
+import signal
 import threading
 import traceback
 from multiprocessing.connection import Connection
@@ -61,6 +63,11 @@ def _worker_main(conn: Connection, asr_override: ModuleType | object | None) -> 
                 return
             try:
                 conn.send(("ok", _run_job(asr, message)))
+            except KeyboardInterrupt:
+                # SIGINT is the cooperative first step of parent teardown. Do not turn it into a
+                # user-facing inference error; exiting through the outer ``finally`` lets native
+                # resources unregister before terminate/kill escalation is needed.
+                return
             except BaseException as exc:  # noqa: BLE001 - serialize worker failures to parent
                 conn.send(
                     (
@@ -124,6 +131,9 @@ class ProcessLocalBackend:
                 pass
         if self._process is not None:
             if self._process.is_alive():
+                self._interrupt_process(self._process)
+                self._process.join(timeout=1)
+            if self._process.is_alive():
                 self._process.terminate()
                 self._process.join(timeout=5)
                 if self._process.is_alive():
@@ -138,6 +148,25 @@ class ProcessLocalBackend:
                 pass
         self._conn = None
         self._process = None
+
+    @staticmethod
+    def _interrupt_process(process: multiprocessing.Process) -> None:
+        """Give Python/native inference a chance to unwind before SIGTERM/SIGKILL.
+
+        The spawned ASR process can own named semaphores created by its native dependencies. A
+        hard terminate skips their normal unregister path and leaves the shared multiprocessing
+        resource tracker to report a leak at runner shutdown. SIGINT is catchable as
+        ``KeyboardInterrupt`` and the worker's ``finally`` block closes its IPC endpoint, so use
+        it as the first shutdown signal; the existing terminate/kill escalation remains the
+        bounded backstop for genuinely stuck native code.
+        """
+        pid = getattr(process, "pid", None)
+        if not pid:
+            return
+        try:
+            os.kill(pid, signal.SIGINT)
+        except (OSError, ProcessLookupError):
+            pass
 
     def run_inference(self, job: InferenceJob) -> JobResult:
         with self._call_lock:
@@ -171,7 +200,10 @@ class ProcessLocalBackend:
             if process is None or not process.is_alive():
                 self._reset_worker_locked()
                 return False
-            process.terminate()
+            self._interrupt_process(process)
+            process.join(timeout=1)
+            if process.is_alive():
+                process.terminate()
             process.join(timeout=5)
             if process.is_alive():
                 process.kill()
@@ -192,6 +224,9 @@ class ProcessLocalBackend:
                 except (BrokenPipeError, OSError):
                     pass
                 process.join(timeout=5)
+            if process.is_alive():
+                self._interrupt_process(process)
+                process.join(timeout=1)
             if process.is_alive():
                 process.terminate()
                 process.join(timeout=5)

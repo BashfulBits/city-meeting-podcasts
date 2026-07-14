@@ -60,10 +60,11 @@ def test_spawn_worker_starts_and_returns_serialized_error_without_asr_dependenci
         backend.close()
 
 
-def test_process_backend_close_kills_worker_that_ignores_terminate():
+def test_process_backend_close_kills_worker_that_ignores_terminate(monkeypatch):
     class _StubbornProcess:
         def __init__(self):
             self.alive = True
+            self.pid = 12345
             self.terminated = 0
             self.killed = 0
             self.closed = 0
@@ -87,9 +88,14 @@ def test_process_backend_close_kills_worker_that_ignores_terminate():
     backend = ProcessLocalBackend()
     process = _StubbornProcess()
     backend._process = process
+    signals = []
+    monkeypatch.setattr(
+        "citypods.compute.local_process.os.kill", lambda pid, sig: signals.append((pid, sig))
+    )
 
     backend.close()
 
+    assert signals and signals[0][0] == process.pid
     assert process.terminated == 1
     assert process.killed == 1
     assert process.closed == 1

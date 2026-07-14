@@ -92,9 +92,18 @@ def is_transient_storage_error(exc: BaseException) -> bool:
     if isinstance(exc, AttributeError):
         return "StreamingChecksumBody" in str(exc) and "strip" in str(exc)
     try:
+        from boto3.exceptions import S3UploadFailedError
         from botocore.exceptions import ClientError
     except ImportError:
         return False
+    if isinstance(exc, S3UploadFailedError):
+        # ``upload_file`` wraps the final multipart ``ClientError`` in
+        # ``S3UploadFailedError`` and drops the original exception as ``__cause__``.
+        # Preserve the same narrow transient allow-list for this write-side wrapper.
+        text = str(exc)
+        return any(code in text for code in _TRANSIENT_S3_CODES) or any(
+            f"({status})" in text for status in _TRANSIENT_S3_STATUS
+        )
     if not isinstance(exc, ClientError):
         return isinstance(exc, transient_download_errors())
     response = exc.response or {}
@@ -106,6 +115,27 @@ def is_transient_storage_error(exc: BaseException) -> bool:
 
 def _retry_storage_read(operation):
     """Run one idempotent S3 read with bounded retries for transient backend failures."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            return operation()
+        except BaseException as exc:
+            if not is_transient_storage_error(exc):
+                raise
+            last_error = exc
+            if attempt == 2:
+                raise
+            time.sleep(2**attempt)
+    raise AssertionError(f"unreachable: {last_error!r}")
+
+
+def _retry_storage_write(operation):
+    """Run one idempotent object upload with bounded retries for transient failures.
+
+    boto3's transfer manager retries individual multipart requests, but can still surface a
+    transient ``ServiceUnavailable`` after its own retry budget is exhausted.  Retrying the
+    complete content-addressed upload is safe and handles that wrapper error as well.
+    """
     last_error = None
     for attempt in range(3):
         try:
@@ -173,8 +203,10 @@ class S3CompatibleStorage:
             raise
 
     def put_file(self, key: str, local_path: Path, content_type: str) -> str:
-        self._client.upload_file(
-            str(local_path), self.bucket, key, ExtraArgs={"ContentType": content_type}
+        _retry_storage_write(
+            lambda: self._client.upload_file(
+                str(local_path), self.bucket, key, ExtraArgs={"ContentType": content_type}
+            )
         )
         return self.public_url(key)
 

@@ -807,7 +807,7 @@ class ExternalTranscribeWorker:
                 # path, so it must not consume a ``max_claims`` slot the way a genuine attempt does
                 # (a run full of timeouts would otherwise report itself "done" with zero output).
                 outcome = "deferred"
-            except Exception:
+            except Exception as exc:
                 actual = max(0.0, time.monotonic() - started)
                 work_leases.release(
                     self.storage,
@@ -819,6 +819,12 @@ class ExternalTranscribeWorker:
                 summary.failed += 1
                 worked += 1
                 outcome = "failed"
+                print(
+                    f"[{self.config.backend}-worker] failed "
+                    f"{item.source_key}/{item.episode_uid}: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
             else:
                 actual = max(0.0, time.monotonic() - started)
                 summary.completed += 1
