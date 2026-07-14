@@ -445,6 +445,30 @@ def _s3_with_fake_client():
     return store
 
 
+def test_put_file_retries_transient_multipart_upload_failure(tmp_path, monkeypatch):
+    """Retry the transfer-manager wrapper after boto exhausts its per-part attempts."""
+    from boto3.exceptions import S3UploadFailedError
+
+    store = _s3_with_fake_client()
+    source = tmp_path / "episodes.json"
+    source.write_bytes(b"{}")
+    calls = 0
+
+    def flaky_upload(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise S3UploadFailedError("Failed to upload: An error occurred (ServiceUnavailable)")
+
+    store._client.upload_file = flaky_upload
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    assert store.put_file("state/episodes.json", source, "application/json") == (
+        "https://pub/state/episodes.json"
+    )
+    assert calls == 3
+
+
 def test_exists_true_for_present_key_false_for_absent():
     store = _s3_with_fake_client()
     store.put_cas("k.json", b"v", "application/json", if_none_match="*")

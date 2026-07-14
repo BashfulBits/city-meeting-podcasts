@@ -20,7 +20,6 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: beam-production
     env:
       BEAM_TOKEN: ${{ secrets.BEAM_TOKEN }}
       CITYPODS_BEAM_APP: citypods-beam-worker

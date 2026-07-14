@@ -17,6 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Runner reliability fixes.** Content-addressed S3 uploads now retry transient transfer-manager
+  failures after boto's per-part retry budget is exhausted. Internal ASR workers first receive a
+  catchable interrupt before terminate/kill escalation so native semaphore resources can unregister
+  cleanly; failed claims now log their exception type and redacted message for diagnosis. Beam and
+  Modal deploy workflows no longer use protected GitHub environments, so vetted deployments
+  proceed without a manual approval gate.
+
 - **Agenda/minutes document enrichment (R3).** Added bounded agenda/packet text and backup-link
   extraction, agenda-derived minutes candidates for the immediately preceding same-body meeting,
   and a separate minutes text stage with conservative per-member vote and roster sidecars. A
