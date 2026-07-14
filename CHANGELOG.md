@@ -21,8 +21,8 @@ Phase R (Research-Tool Surface)._
   failures after boto's per-part retry budget is exhausted. Internal ASR workers first receive a
   catchable interrupt before terminate/kill escalation so native semaphore resources can unregister
   cleanly; failed claims now log their exception type and redacted message for diagnosis. Beam and
-  Modal deploy workflows no longer use protected GitHub environments, so vetted deployments
-  proceed without a manual approval gate.
+  Modal deploy workflows retain their protected GitHub environments so environment-scoped provider
+  credentials are available during deployment.
 
 - **Agenda/minutes document enrichment (R3).** Added bounded agenda/packet text and backup-link
   extraction, agenda-derived minutes candidates for the immediately preceding same-body meeting,
