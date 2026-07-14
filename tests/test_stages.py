@@ -11,6 +11,8 @@ from citypods.stages import (
     StageContext,
     StageStats,
     default_stages,
+    enrich_stages,
+    render_stages,
     run_stages,
 )
 from citypods.storage.local import LocalStorage
@@ -136,10 +138,10 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
         "remap",
         "audio",
         "transcript",
-        "diarize",
         "links",
         "agenda_text",
         "minutes_text",
+        "diarize",
     ]
     assert [s.name for s in stats] == expected
     # chapters is a no-op (FakeProvider has no fetch_chapters); audio hosts; links defaults.
@@ -210,11 +212,18 @@ def test_default_lane_none_runs_every_stage(tmp_path):
         "remap",
         "audio",
         "transcript",
-        "diarize",
         "links",
         "agenda_text",
         "minutes_text",
+        "diarize",
     ]
+
+
+def test_production_stage_composition_extracts_minutes_before_diarization():
+    assert [stage.name for stage in render_stages()] == ["links"]
+    names = [stage.name for stage in enrich_stages()]
+    assert names.index("links") < names.index("agenda_text") < names.index("minutes_text")
+    assert names.index("minutes_text") < names.index("diarize")
 
 
 def test_links_stage_defaults_canonical_video_and_is_idempotent(tmp_path):

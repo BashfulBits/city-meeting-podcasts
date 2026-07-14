@@ -1246,7 +1246,7 @@ class AgendaTextStage:
             extract_document,
             minutes_links,
         )
-        from citypods.http import make_session
+        from citypods.http import fetch_document_bytes, make_session
         from citypods.records import (
             agenda_backup_backoff_until,
             agenda_text_backoff_until,
@@ -1254,15 +1254,13 @@ class AgendaTextStage:
         )
 
         stats = StageStats(self.name)
-        if ctx.dry_run:
+        if ctx.dry_run or ctx.storage is None:
             return stats
         session = make_session()
         src_key = source_key(city)
 
         def fetch(url: str) -> tuple[bytes, str]:
-            response = session.get(url, timeout=30)
-            response.raise_for_status()
-            return response.content, response.headers.get("Content-Type", "")
+            return fetch_document_bytes(session, _validated_document_url(city, url), timeout=30)
 
         for ep in _materialize_set(
             episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
@@ -1292,7 +1290,11 @@ class AgendaTextStage:
                     content, content_type=content_type, source_url=agenda_url
                 )
                 text = text[:AGENDA_TEXT_MAX_CHARS]
-                links = minutes_links(discovered)
+                links = [
+                    link
+                    for link in minutes_links(discovered)
+                    if _is_valid_document_url(city, link.url)
+                ]
                 ep.agenda_text_url = agenda_url
                 ep.agenda_text_attempts = 0
                 ep.agenda_text_last_attempt = datetime.now(UTC).isoformat()
@@ -1309,7 +1311,7 @@ class AgendaTextStage:
                 # agenda-discovered minutes URL as a derived candidate for the previous meeting.
                 if links:
                     ep.links = dict(ep.links or {})
-                    ep.links.setdefault("agenda_minutes_candidates", [link.url for link in links])
+                    ep.links["agenda_minutes_candidates"] = [link.url for link in links]
                     target = _previous_same_body(ep, episodes)
                     if target is not None and not (target.links or {}).get("minutes"):
                         target.links = dict(target.links or {})
@@ -1333,7 +1335,13 @@ class AgendaTextStage:
                         candidates.append(
                             DocumentLink(packet_url, "Agenda Packet", agenda_url, kind="backup")
                         )
-                candidates = [link for link in candidates if link is not None][:50]
+                candidates = list(
+                    {
+                        link.url: link
+                        for link in candidates
+                        if link is not None and _is_valid_document_url(city, link.url)
+                    }.values()
+                )[:50]
                 manifest = [
                     {
                         "url": link.url,
@@ -1410,11 +1418,11 @@ class MinutesTextStage:
         from datetime import UTC, datetime
 
         from citypods.agenda_text import extract_document, parse_roster, parse_votes
-        from citypods.http import make_session
+        from citypods.http import fetch_document_bytes, make_session
         from citypods.records import minutes_text_backoff_until, source_key
 
         stats = StageStats(self.name)
-        if ctx.dry_run:
+        if ctx.dry_run or ctx.storage is None:
             return stats
         session = make_session()
         src_key = source_key(city)
@@ -1440,11 +1448,12 @@ class MinutesTextStage:
                 stats.skipped += 1
                 continue
             try:
-                response = session.get(minutes_url, timeout=30)
-                response.raise_for_status()
+                content, content_type = fetch_document_bytes(
+                    session, _validated_document_url(city, minutes_url), timeout=30
+                )
                 text, _ = extract_document(
-                    response.content,
-                    content_type=response.headers.get("Content-Type", ""),
+                    content,
+                    content_type=content_type,
                     source_url=minutes_url,
                 )
                 roster = parse_roster(text)
@@ -1470,41 +1479,46 @@ class MinutesTextStage:
                     for item, members in grouped.items()
                 ]
                 uid = ep.uid or ep.guid
-                ep.minutes_text_url = minutes_url
-                ep.minutes_text_attempts = 0
-                ep.minutes_text_last_attempt = datetime.now(UTC).isoformat()
-                ep.minutes_votes = votes
-                ep.minutes_roster = roster
-                ep.minutes_votes_url = _store_document(
+                votes_payload = _json.dumps(
+                    {
+                        "version": MINUTES_VOTES_PIPELINE_VERSION,
+                        "source_url": minutes_url,
+                        "method": "deterministic",
+                        "votes": votes,
+                    },
+                    sort_keys=True,
+                ).encode()
+                roster_payload = _json.dumps(
+                    {
+                        "version": MINUTES_ROSTER_PIPELINE_VERSION,
+                        "source_url": minutes_url,
+                        "method": "deterministic",
+                        "members": roster,
+                    },
+                    sort_keys=True,
+                ).encode()
+                minutes_payload = _json.dumps(
+                    {
+                        "version": MINUTES_TEXT_PIPELINE_VERSION,
+                        "source_url": minutes_url,
+                        "text": text,
+                    },
+                    sort_keys=True,
+                ).encode()
+                votes_url = _store_document(
                     ctx,
                     src_key,
                     uid,
                     "minutes-votes",
-                    _json.dumps(
-                        {
-                            "version": MINUTES_VOTES_PIPELINE_VERSION,
-                            "source_url": minutes_url,
-                            "method": "deterministic",
-                            "votes": votes,
-                        },
-                        sort_keys=True,
-                    ).encode(),
+                    votes_payload,
                     "application/json",
                 )
-                ep.minutes_roster_url = _store_document(
+                roster_url = _store_document(
                     ctx,
                     src_key,
                     uid,
                     "minutes-roster",
-                    _json.dumps(
-                        {
-                            "version": MINUTES_ROSTER_PIPELINE_VERSION,
-                            "source_url": minutes_url,
-                            "method": "deterministic",
-                            "members": roster,
-                        },
-                        sort_keys=True,
-                    ).encode(),
+                    roster_payload,
                     "application/json",
                 )
                 artifact_url = _store_document(
@@ -1512,22 +1526,24 @@ class MinutesTextStage:
                     src_key,
                     uid,
                     "minutes-text",
-                    _json.dumps(
-                        {
-                            "version": MINUTES_TEXT_PIPELINE_VERSION,
-                            "source_url": minutes_url,
-                            "text": text,
-                        },
-                        sort_keys=True,
-                    ).encode(),
+                    minutes_payload,
                     "application/json",
                 )
-                if artifact_url:
-                    ep.links = dict(ep.links or {})
-                    ep.links["minutes_text_artifact"] = artifact_url
-                    ep.links["minutes_text_artifact_key"] = _document_key(
-                        src_key, uid, "minutes-text", text.encode()
-                    )
+                if not (votes_url and roster_url and artifact_url):
+                    raise RuntimeError("minutes sidecar storage returned no URL")
+                updated_links = dict(ep.links or {})
+                updated_links["minutes_text_artifact"] = artifact_url
+                updated_links["minutes_text_artifact_key"] = _document_key(
+                    src_key, uid, "minutes-text", minutes_payload
+                )
+                ep.minutes_text_url = minutes_url
+                ep.minutes_text_attempts = 0
+                ep.minutes_text_last_attempt = now.isoformat()
+                ep.minutes_votes = votes
+                ep.minutes_roster = roster
+                ep.minutes_votes_url = votes_url
+                ep.minutes_roster_url = roster_url
+                ep.links = updated_links
                 stats.ran += 1
             except Exception as exc:
                 ep.minutes_text_attempts += 1
@@ -1537,12 +1553,38 @@ class MinutesTextStage:
 
 
 def _previous_same_body(ep: Episode, episodes: list[Episode]) -> Episode | None:
+    if not ep.body:
+        return None
     candidates = [
         other
         for other in episodes
         if other is not ep and other.body == ep.body and other.published < ep.published
     ]
-    return max(candidates, key=lambda item: item.published, default=None)
+    if not candidates:
+        return None
+    latest = max(item.published for item in candidates)
+    latest_day_matches = [item for item in candidates if item.published.date() == latest.date()]
+    return latest_day_matches[0] if len(latest_day_matches) == 1 else None
+
+
+def _validated_document_url(city: City, url: str) -> str:
+    """Validate provider-derived document URLs before fetching or persisting them."""
+    from citypods.security import allowed_hosts_for_city, validate_source_url
+
+    validate_source_url(
+        url,
+        allowed_hosts=allowed_hosts_for_city(city.provider, city.city_website),
+        resolve=True,
+    )
+    return url
+
+
+def _is_valid_document_url(city: City, url: str) -> bool:
+    try:
+        _validated_document_url(city, url)
+    except ValueError:
+        return False
+    return True
 
 
 def _store_document(
@@ -1645,6 +1687,14 @@ def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
         "v": PROVIDER_DIARIZE_PIPELINE_VERSION,
         "transcript": ep.transcript_spec_hash,
         "provider_align": artifact.get("align_spec_hash"),
+        "minutes_roster": sorted(
+            (
+                {"name": item.get("name"), "status": item.get("status")}
+                for item in ep.minutes_roster
+                if isinstance(item, dict) and item.get("name")
+            ),
+            key=lambda item: (str(item["name"]).casefold(), str(item.get("status") or "")),
+        ),
     }
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
@@ -3406,10 +3456,10 @@ def default_stages() -> list[EnrichmentStage]:
         RemapStage(),
         AudioStage(),
         TranscriptStage(),
-        ProviderTranscriptDiarizeStage(),
         LinksStage(),
         AgendaTextStage(),
         MinutesTextStage(),
+        ProviderTranscriptDiarizeStage(),
     ]
 
 
@@ -3438,6 +3488,9 @@ def enrich_stages() -> list[EnrichmentStage]:
         RemapStage(),
         AudioStage(),
         TranscriptStage(),
+        LinksStage(),
+        AgendaTextStage(),
+        MinutesTextStage(),
         ProviderTranscriptDiarizeStage(),
     ]
 
@@ -3450,7 +3503,19 @@ def enrich_stages() -> list[EnrichmentStage]:
 # ``records.protected_blocks_for_lane`` — owned-stages and owned-blocks must stay consistent; extend
 # both together when a lane lands (e.g. ``"diarize": frozenset({"diarize"})`` — review/12 §H5).
 LANE_STAGES: dict[str, frozenset[str]] = {
-    "audio": frozenset({"chapters", "timeline", "remap", "audio"}),
+    # The audio worker owns document extraction too: it is source-scoped, needs the complete
+    # meeting list for conservative prior-meeting minutes inheritance, and does not depend on ASR.
+    "audio": frozenset(
+        {
+            "chapters",
+            "timeline",
+            "remap",
+            "audio",
+            "links",
+            "agenda_text",
+            "minutes_text",
+        }
+    ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),

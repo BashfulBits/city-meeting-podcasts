@@ -17,7 +17,7 @@ from citypods.stages import _previous_same_body
 
 
 def test_minutes_parser_keeps_explicit_member_votes_and_roster():
-    text = "Present: Alice Smith, Bob Jones\nVote: Yes: Alice Smith; No: Bob Jones"
+    text = "Present: Alice Smith, Bob Jones\nVote: Yes: Alice Smith, Carol Outsider; No: Bob Jones"
     roster = parse_roster(text)
     votes = parse_votes(text, roster=roster)
     assert {row["name"] for row in roster} == {"Alice Smith", "Bob Jones"}
@@ -25,6 +25,7 @@ def test_minutes_parser_keeps_explicit_member_votes_and_roster():
         ("Alice Smith", "yes"),
         ("Bob Jones", "no"),
     }
+    assert all(row["member"] != "Carol Outsider" for row in votes)
 
 
 def test_agenda_minutes_can_target_previous_same_body_only():
@@ -32,6 +33,16 @@ def test_agenda_minutes_can_target_previous_same_body_only():
     newer = Episode("new", "Newer", datetime.now(UTC), "video", body="Council")
     other = Episode("other", "Other", datetime.now(UTC), "video", body="Planning")
     assert _previous_same_body(newer, [older, newer, other]) is older
+    same_day_a = Episode(
+        "same-a", "Earlier", newer.published - timedelta(hours=2), "video", body="Council"
+    )
+    same_day_b = Episode(
+        "same-b", "Later", newer.published - timedelta(hours=1), "video", body="Council"
+    )
+    assert _previous_same_body(newer, [same_day_a, same_day_b, newer]) is None
+    no_body_old = Episode("none-old", "Older", older.published, "video")
+    no_body_new = Episode("none-new", "Newer", newer.published, "video")
+    assert _previous_same_body(no_body_new, [no_body_old, no_body_new]) is None
 
 
 def test_record_round_trip_preserves_document_artifacts():
@@ -87,9 +98,9 @@ def test_portal_is_preferred_and_noise_is_removed():
 
 def test_link_attribution_is_bounded_and_chapter_aware():
     result = attribute_links_to_chapters(
-        [(0, "https://example.test/a.pdf"), (1, "https://example.test/b.pdf")],
+        [(1, "https://example.test/a.pdf"), (8, "https://example.test/b.pdf")],
         [{"title": "Item A"}, {"title": "Item B"}],
-        2,
+        10,
     )
     assert [row[0] for row in result] == [0, 1]
 

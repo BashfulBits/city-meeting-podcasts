@@ -72,6 +72,8 @@ AGENDA_TEXT_BACKOFF_BASE = timedelta(days=1)
 AGENDA_TEXT_BACKOFF_MAX = timedelta(days=14)
 AGENDA_BACKUP_BACKOFF_BASE = timedelta(days=1)
 AGENDA_BACKUP_BACKOFF_MAX = timedelta(days=14)
+MINUTES_TEXT_BACKOFF_BASE = timedelta(days=1)
+MINUTES_TEXT_BACKOFF_MAX = timedelta(days=14)
 
 # Once an episode is *confirmed dead* (empty/missing/invalid) it is no longer "failing" — it is a
 # known-dead recording we poll occasionally in case the source is restored. Recheck it on a flat
@@ -145,7 +147,7 @@ def minutes_text_backoff_until(ep: Episode) -> datetime | None:
     if not stamp or ep.minutes_text_attempts <= 0:
         return None
     return stamp + _capped_exponential_backoff(
-        AGENDA_TEXT_BACKOFF_BASE, AGENDA_TEXT_BACKOFF_MAX, ep.minutes_text_attempts
+        MINUTES_TEXT_BACKOFF_BASE, MINUTES_TEXT_BACKOFF_MAX, ep.minutes_text_attempts
     )
 
 
@@ -1370,11 +1372,23 @@ PLANNING_FIELDS: frozenset[str] = frozenset(
     {"sources", "timeline", "source_chapters", "chapters", "chapters_basis"}
 )
 
-# Which artifact block(s) each lane writes authoritatively. A lane absent here (e.g. ``None`` — a
-# full unsharded enrich or a manual single-source run that runs *every* stage) owns everything, so
-# it preserves nothing (behaves like the legacy whole-record push).
+# Which artifact block(s) each lane writes authoritatively. Document extraction runs with the
+# source-scoped audio lane: it has the complete archive needed to attach agenda-derived minutes to
+# a prior meeting and is independent of ASR. A lane absent here (e.g. ``None`` — a full unsharded
+# enrich or a manual single-source run that runs *every* stage) owns everything, so it preserves
+# nothing (behaves like the legacy whole-record push).
 _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
-    "audio": frozenset({"audio", "media_availability"}),
+    "audio": frozenset(
+        {
+            "audio",
+            "media_availability",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+        }
+    ),
     "transcribe": frozenset({"transcript", "provider_transcript"}),
     "align": frozenset({"transcript", "provider_transcript"}),
     "diarize": frozenset({"speakers", "provider_transcript"}),

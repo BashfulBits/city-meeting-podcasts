@@ -1326,18 +1326,14 @@ def test_prune_archive_keeps_undated_records():
 
 def test_protected_blocks_for_lane():
     # A lane preserves the artifact block(s) it does NOT own from the freshest remote. The audio
-    # lane owns both the audio bytes and the media-availability verdict it derives (H16 PR3).
+    # lane owns both the audio bytes and the media-availability verdict it derives (H16 PR3), plus
+    # agenda/minutes artifacts extracted against its complete source archive.
     assert protected_blocks_for_lane("audio") == frozenset(
         {
             "transcript",
             "provider_transcript",
             "speakers",
             "integrity",
-            "agenda_text",
-            "agenda_backup",
-            "minutes_text",
-            "minutes_votes",
-            "minutes_roster",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(

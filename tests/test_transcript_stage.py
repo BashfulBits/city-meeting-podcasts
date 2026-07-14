@@ -715,10 +715,10 @@ class TestTranscriptStageOrdering:
             "remap",
             "audio",
             "transcript",
-            "diarize",
             "links",
             "agenda_text",
             "minutes_text",
+            "diarize",
         ]
 
     def test_full_order_enrich(self):
@@ -728,6 +728,9 @@ class TestTranscriptStageOrdering:
             "remap",
             "audio",
             "transcript",
+            "links",
+            "agenda_text",
+            "minutes_text",
             "diarize",
         ]
 

@@ -1134,15 +1134,27 @@ def _run_enrich_global_queue(
     # is gated inside TranscriptStage by ``ctx.lane``). ``None`` (combined enrich) runs both passes.
     # When a new lane lands (e.g. diarization — review/12 §H5) it gains an entry there, not here.
     allowed = LANE_STAGES.get(ctx.lane) if ctx.lane is not None else None
+    # Document stages need a source-wide episode list: agenda-derived minutes attach to the
+    # preceding same-body meeting, which a one-episode global-queue invocation cannot see.
+    source_stage_names = {"links", "agenda_text", "minutes_text"}
+    source_stages = [
+        s
+        for s in pipeline.stages
+        if s.name in source_stage_names and (allowed is None or s.name in allowed)
+    ]
+    # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
+    # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
+    post_transcript = {"transcript", "diarize"}
     audio_stages = [
         s
         for s in pipeline.stages
-        if s.name != "transcript" and (allowed is None or s.name in allowed)
+        if s.name not in post_transcript | source_stage_names
+        and (allowed is None or s.name in allowed)
     ]
     transcript_stages = [
         s
         for s in pipeline.stages
-        if s.name == "transcript" and (allowed is None or s.name in allowed)
+        if s.name in post_transcript and (allowed is None or s.name in allowed)
     ]
 
     # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
@@ -1240,6 +1252,16 @@ def _run_enrich_global_queue(
         except Exception as exc:  # noqa: BLE001 — one bad episode must not abort the pass
             print(f"[enrich] global queue item failed source={key} uid={ep.uid}: {exc}", flush=True)
             return []
+
+    # Links/documents are source-scoped rather than materialization-scoped.  In addition to
+    # avoiding repeated document downloads for shared source views, this provides AgendaTextStage
+    # the complete source archive it needs for conservative prior-meeting minutes inheritance.
+    if source_stages:
+        for st in prepared.values():
+            stats = run_stages(
+                st["provider"], st["city"], st["episodes"], source_stages, ctx, quiet=True
+            )
+            pipeline.accumulate_stats(stats)
 
     # 3) Passes. Submission order = global priority order; the native_work_gate still serializes
     #    the actual encodes (so the top-priority batch encodes first), and stages self-limit on

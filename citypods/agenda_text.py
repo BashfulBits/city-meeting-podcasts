@@ -34,21 +34,28 @@ def _clean_url(url: str) -> str:
 
 
 def extract_pdf_text(content: bytes) -> str:
-    try:
-        from pypdf import PdfReader
-    except ImportError:
-        return content.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
-    reader = PdfReader(io.BytesIO(content))
-    return "\n".join(page.extract_text() or "" for page in reader.pages)[:MAX_TEXT_CHARS]
+    return _extract_pdf(content)[0]
 
 
 def extract_pdf_links(content: bytes, source_url: str | None = None) -> list[DocumentLink]:
-    links: list[DocumentLink] = []
+    return _extract_pdf(content, source_url=source_url)[1]
+
+
+def _extract_pdf(
+    content: bytes, *, source_url: str | None = None
+) -> tuple[str, list[DocumentLink]]:
+    """Extract both text and URI annotations from one PdfReader pass."""
     try:
         from pypdf import PdfReader
-
+    except ImportError:
+        text = content.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
+        return text, _links_from_text(text, source_url)
+    links: list[DocumentLink] = []
+    texts: list[str] = []
+    try:
         reader = PdfReader(io.BytesIO(content))
         for page in reader.pages:
+            texts.append(page.extract_text() or "")
             for annot in page.get("/Annots", []) or []:
                 obj = annot.get_object()
                 action = obj.get("/A") if obj else None
@@ -63,18 +70,22 @@ def extract_pdf_links(content: bytes, source_url: str | None = None) -> list[Doc
                             kind="minutes" if _MINUTES_RE.search(url) else "backup",
                         )
                     )
-    except (ImportError, TypeError, ValueError, KeyError):
+    except (TypeError, ValueError, KeyError):
         pass
-    # Some providers expose URLs as plain text rather than PDF annotations.
-    text = extract_pdf_text(content)
-    for raw in _URL_RE.findall(text):
-        url = _clean_url(raw)
-        links.append(
-            DocumentLink(
-                url, url, source_url, kind="minutes" if _MINUTES_RE.search(url) else "backup"
-            )
+    text = "\n".join(texts)[:MAX_TEXT_CHARS]
+    return text, _dedupe_links(links + _links_from_text(text, source_url))
+
+
+def _links_from_text(text: str, source_url: str | None) -> list[DocumentLink]:
+    return [
+        DocumentLink(
+            _clean_url(raw),
+            _clean_url(raw),
+            source_url,
+            kind="minutes" if _MINUTES_RE.search(raw) else "backup",
         )
-    return _dedupe_links(links)
+        for raw in _URL_RE.findall(text)
+    ]
 
 
 def extract_html(
@@ -127,11 +138,12 @@ def extract_agenda_text(
     if not url:
         return None
     try:
-        response = session.get(url, timeout=30)
-        response.raise_for_status()
+        from citypods.http import fetch_document_bytes
+
+        content, content_type = fetch_document_bytes(session, url, timeout=30)
         text, _ = extract_document(
-            response.content,
-            content_type=response.headers.get("Content-Type", ""),
+            content,
+            content_type=content_type,
             source_url=url,
         )
         text = re.sub(r"\s+", " ", text).strip()[:AGENDA_TEXT_MAX_CHARS]
@@ -145,25 +157,22 @@ def attribute_links_to_chapters(
 ) -> list[tuple[int | None, str | None, str]]:
     if not chapters:
         return [(None, None, url) for _, url in links]
-    return [
-        (
-            min(len(chapters) - 1, (index * len(chapters)) // max(1, len(links))),
-            chapters[min(len(chapters) - 1, (index * len(chapters)) // max(1, len(links)))].get(
-                "title"
-            ),
-            url,
-        )
-        for index, (_, url) in enumerate(links)
-    ]
+    total_pages = max(1, pdf_page_count)
+    out: list[tuple[int | None, str | None, str]] = []
+    for page_index, url in links:
+        chapter_index = min(len(chapters) - 1, (max(0, page_index) * len(chapters)) // total_pages)
+        out.append((chapter_index, chapters[chapter_index].get("title"), url))
+    return out
 
 
 def extract_backup_item(url: str, session) -> tuple[str | None, bool]:
     try:
-        response = session.get(url, timeout=30)
-        response.raise_for_status()
+        from citypods.http import fetch_document_bytes
+
+        content, content_type = fetch_document_bytes(session, url, timeout=30)
         text, _ = extract_document(
-            response.content,
-            content_type=response.headers.get("Content-Type", ""),
+            content,
+            content_type=content_type,
             source_url=url,
         )
         truncated = len(text) > BACKUP_ITEM_MAX_CHARS
@@ -179,7 +188,7 @@ def extract_document(
         ".pdf"
     )
     if is_pdf:
-        return extract_pdf_text(content), extract_pdf_links(content, source_url)
+        return _extract_pdf(content, source_url=source_url)
     return extract_html(content, source_url)
 
 
@@ -222,6 +231,17 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
     Ambiguous prose is intentionally ignored.  Each returned item includes the original evidence.
     """
     allowed = {"yes", "no", "absent", "recused", "abstain", "abstained"}
+    roster_names = {
+        _name_key(str(member.get("name"))): str(member["name"])
+        for member in (roster or [])
+        if isinstance(member, dict) and member.get("name")
+    }
+
+    def canonical_member(name: str) -> str | None:
+        if roster is None:
+            return name
+        return roster_names.get(_name_key(name))
+
     votes: list[dict] = []
     current_item: str | None = None
     for line in text.splitlines():
@@ -235,10 +255,13 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
             line,
             re.I,
         ):
+            member = canonical_member(name.strip())
+            if member is None:
+                continue
             votes.append(
                 {
                     "agenda_item": current_item,
-                    "member": name.strip(),
+                    "member": member,
                     "value": value.lower().replace("abstained", "abstain"),
                     "evidence": line[:500],
                 }
@@ -249,12 +272,19 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
             for name in re.split(r",|\band\b", names):
                 name = name.strip(" .")
                 if name and name.lower() not in allowed:
+                    member = canonical_member(name)
+                    if member is None:
+                        continue
                     votes.append(
                         {
                             "agenda_item": current_item,
-                            "member": name,
+                            "member": member,
                             "value": value.lower().replace("abstained", "abstain"),
                             "evidence": line[:500],
                         }
                     )
     return votes
+
+
+def _name_key(name: str) -> str:
+    return re.sub(r"[^a-z]", "", name.lower())
