@@ -13,7 +13,7 @@ import json
 import re
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -390,12 +390,14 @@ def _coverage(documents: Iterable[dict[str, Any]]) -> dict[str, int]:
 
 def _write_search_asset(output_dir: Path) -> None:
     assets = Path(__file__).resolve().parent / "assets"
-    for relative in (SEARCH_ASSET, SEARCH_LICENSE):
-        source = assets / relative
+    sources = [(relative, assets / relative) for relative in (SEARCH_ASSET, SEARCH_LICENSE)]
+    for _, source in sources:
+        if not source.is_file():
+            raise FileNotFoundError(f"missing vendored search asset: {source}")
+    for relative, source in sources:
         target = output_dir / "assets" / relative
-        if source.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
 
 
 def build_search_index(
@@ -406,11 +408,14 @@ def build_search_index(
     *,
     storage: Any = None,
     cache: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    stop: Callable[[], bool] | None = None,
+) -> dict[str, Any] | None:
     """Build deterministic source shards and return the small public manifest.
 
     ``cache`` belongs in the existing render cache.  It makes the normal scheduled run avoid
-    downloading every transcript/document sidecar when the durable records are unchanged.
+    downloading every transcript/document sidecar when the durable records are unchanged.  ``stop``
+    is checked before each restartable source/record unit.  A stopped build leaves the last complete
+    manifest intact and returns ``None`` so its caller can avoid advertising a partial first build.
     """
     state_dir = Path(state_dir)
     output_dir = Path(output_dir)
@@ -425,6 +430,8 @@ def build_search_index(
     wanted_names = {"manifest.json"}
 
     for src_key, city in sorted(representatives.items()):
+        if stop is not None and stop():
+            return None
         filename = f"{src_key}.json"
         wanted_names.add(filename)
         shard_path = search_dir / filename
@@ -442,19 +449,19 @@ def build_search_index(
             manifest.append(cached["manifest"])
             continue
 
-        documents = [
-            document
-            for record in records.values()
-            if (
-                document := _record_to_document(
-                    _city_for_record(candidates, record),
-                    record,
-                    base_url=base_url,
-                    storage=storage,
-                    artifact_cache=artifact_cache,
-                )
+        documents: list[dict[str, Any]] = []
+        for record in records.values():
+            if stop is not None and stop():
+                return None
+            document = _record_to_document(
+                _city_for_record(candidates, record),
+                record,
+                base_url=base_url,
+                storage=storage,
+                artifact_cache=artifact_cache,
             )
-        ]
+            if document:
+                documents.append(document)
         documents.sort(key=lambda document: (document["date"], document["uid"]), reverse=True)
         coverage = _coverage(documents)
         transcript_coverage_pct = (

@@ -1977,27 +1977,47 @@ def _build_impl(
                 r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results
             }
             search_enabled = bool(site_config.get("defaults", {}).get("search", True))
-            (output_dir / "index.html").write_text(
-                render_index(
-                    all_cities, site_config, base_url, feed_info, search_enabled=search_enabled
-                )
-            )
             _write_aliases(output_dir, base_url, all_cities, feed_info)
             _write_cname(output_dir, site_config)
             _prune_stale_dirs(output_dir, all_cities)
+            search_manifest = {"shards": []}
+            search_available = False
             if search_enabled:
                 search_cache = cache.setdefault("_static_search", {})
-                search_manifest = build_search_index(
+                search_stop = stop
+                if search_stop is None:
+                    search_budget_min = float(defaults.get("search_index_budget_minutes", 20))
+                    search_deadline = (
+                        time.monotonic() + search_budget_min * 60 if search_budget_min > 0 else None
+                    )
+                    search_stop = StopSignal(
+                        deadline=search_deadline,
+                        superseded=_newer_run_queued,
+                    )
+                    if search_deadline is not None:
+                        print(f"search: index budget {search_budget_min:g}m")
+                built_search_manifest = build_search_index(
                     state_dir,
                     all_cities,
                     output_dir,
                     base_url,
                     storage=storage,
                     cache=search_cache,
+                    stop=search_stop,
                 )
-                search_dir = output_dir / "search"
-                search_dir.mkdir(parents=True, exist_ok=True)
-                (search_dir / "index.html").write_text(render_search_page(site_config, base_url))
+                if built_search_manifest is None:
+                    # The source shards are restartable/cacheable, but a partial manifest would
+                    # lie about catalog coverage. Preserve the last complete public index and do
+                    # not add an entry point until a full first build completes.
+                    print("search: index build deferred; retaining the last complete search output")
+                else:
+                    search_manifest = built_search_manifest
+                    search_dir = output_dir / "search"
+                    search_dir.mkdir(parents=True, exist_ok=True)
+                    (search_dir / "index.html").write_text(
+                        render_search_page(site_config, base_url)
+                    )
+                    search_available = True
             else:
                 # A config opt-out must not leave the previously deployed public search behind.
                 shutil.rmtree(output_dir / "search", ignore_errors=True)
@@ -2006,7 +2026,11 @@ def _build_impl(
                 (output_dir / "assets" / "LICENSES" / "minisearch-7.1.2.txt").unlink(
                     missing_ok=True
                 )
-                search_manifest = {"shards": []}
+            (output_dir / "index.html").write_text(
+                render_index(
+                    all_cities, site_config, base_url, feed_info, search_enabled=search_available
+                )
+            )
             (output_dir / "meta.json").write_text(
                 json.dumps(
                     {

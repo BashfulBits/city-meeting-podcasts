@@ -1,6 +1,9 @@
 import json
 from datetime import UTC, datetime
 
+import pytest
+
+import citypods.search as search_mod
 from citypods.availability import MISSING, MediaAvailability
 from citypods.models import City, Episode
 from citypods.records import episode_to_record, save_records, source_key
@@ -220,3 +223,35 @@ def test_search_uses_body_specific_page_and_copies_vendored_license(tmp_path):
     assert doc["page_url"].endswith("/austin-council/u1/")
     assert manifest["shards"][0]["shard_gzip_bytes"] > 0
     assert (tmp_path / "docs" / "assets" / "LICENSES" / "minisearch-7.1.2.txt").exists()
+
+
+def test_search_defers_without_publishing_a_partial_manifest(tmp_path):
+    city = _city()
+    _save(tmp_path, city, {"u1": episode_to_record(_episode())})
+    complete = build_search_index(
+        tmp_path / "state", [city], tmp_path / "docs", "https://site.test"
+    )
+    complete_manifest = (tmp_path / "docs" / "data" / "search" / "manifest.json").read_text()
+
+    manifest = build_search_index(
+        tmp_path / "state",
+        [city],
+        tmp_path / "docs",
+        "https://site.test",
+        stop=lambda: True,
+    )
+
+    assert manifest is None
+    assert complete is not None
+    manifest_path = tmp_path / "docs" / "data" / "search" / "manifest.json"
+    assert manifest_path.read_text() == complete_manifest
+    assert (tmp_path / "docs" / "assets" / "minisearch-7.1.2.js").exists()
+
+
+def test_search_assets_fail_before_copying_when_a_vendored_file_is_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(search_mod, "SEARCH_LICENSE", "LICENSES/missing.txt")
+
+    with pytest.raises(FileNotFoundError, match="missing vendored search asset"):
+        search_mod._write_search_asset(tmp_path / "docs")
+
+    assert not (tmp_path / "docs" / "assets" / "minisearch-7.1.2.js").exists()

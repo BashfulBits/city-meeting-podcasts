@@ -56,6 +56,9 @@ def load_site_config(path: str | Path) -> dict:
     # Search is a site-wide render feature, not a per-feed provider setting.  Keep the opt-out
     # explicit so a deployment that disables it also has a deterministic default.
     data["defaults"].setdefault("search", True)
+    # Search reads bounded, restartable sidecars during render.  Keep that optional work from
+    # turning the deploy-only phase into an unbounded job; zero deliberately disables this cap.
+    data["defaults"].setdefault("search_index_budget_minutes", 20)
     return data
 
 

@@ -226,9 +226,20 @@
         .filter(Boolean).map(value => [value, value]))), 'All bodies');
       optionValues(tag, new Map(data.shards.flatMap(shard => (shard.tags || []).map(value => [value, value]))), 'All topics');
       renderCoverage();
-      [q, city, body, tag, from, to, availability].forEach(element => {
-        element.addEventListener(element === q ? 'input' : 'change', search);
+      let queryTimer;
+      q.addEventListener('input', () => {
+        clearTimeout(queryTimer);
+        queryTimer = window.setTimeout(search, 200);
       });
-    }).catch(() => { status.textContent = 'Search is temporarily unavailable.'; });
+      [city, body, tag, from, to, availability].forEach(element => {
+        element.addEventListener('change', () => {
+          clearTimeout(queryTimer);
+          search();
+        });
+      });
+    }).catch(() => {
+      status.textContent = 'Search is temporarily unavailable.';
+      coverage.textContent = 'Transcript coverage temporarily unavailable.';
+    });
   </script>
 {% endblock %}

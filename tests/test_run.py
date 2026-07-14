@@ -354,6 +354,22 @@ def test_render_writes_static_search_outputs(tmp_path, fake_provider):
     assert (tmp_path / "docs" / "assets" / "LICENSES" / "minisearch-7.1.2.txt").exists()
 
 
+def test_render_does_not_advertise_an_incomplete_static_search_index(
+    tmp_path, fake_provider, monkeypatch
+):
+    cities = _setup(tmp_path)
+
+    def defer_search(*args, **kwargs):
+        assert kwargs["stop"] is not None
+        return None
+
+    monkeypatch.setattr(run, "build_search_index", defer_search)
+    _build(tmp_path, cities)
+
+    assert "/search/" not in (tmp_path / "docs" / "index.html").read_text()
+    assert not (tmp_path / "docs" / "search" / "index.html").exists()
+
+
 def test_archived_meeting_page_updates_even_when_feed_window_is_unchanged(tmp_path, fake_provider):
     cities = _setup(tmp_path)
     (cities / "feeds" / "fake-city.yml").write_text(

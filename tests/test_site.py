@@ -75,6 +75,8 @@ def test_search_page_points_at_static_manifest_and_vendored_engine():
     # Withheld results deliberately set their timestamp to null before an href is assembled.
     assert "const time = doc.is_withheld ? null : hitTime(doc, terms);" in html
     assert "unavailable" in html
+    assert "Transcript coverage temporarily unavailable." in html
+    assert "window.setTimeout(search, 200)" in html
 
 
 def test_index_hides_global_search_link_when_disabled():

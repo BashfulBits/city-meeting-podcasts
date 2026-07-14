@@ -585,14 +585,16 @@ assumption.
    directory (confirmed: no `docs/data/` prefix exists anywhere today). Follows the existing
    `docs/admin/` precedent (`citypods/cli.py:403-412`: `mkdir(parents=True, exist_ok=True)` +
    `write_text`) rather than inventing a new file-writing convention.
-2. **Per-shard document schema**: `{uid, title, body, city, date, media_availability_state,
-   is_withheld, page_url, links: [{label, url}], tags: [], chapters: [{title, start}], agenda_text:
-   str | null, segments: [{text, start}]}`. `chapters` comes from `episode_served_chapters(ep)` —
-   populated whenever the episode has chapters, independent of transcript availability, so it's real
-   searchable content even where no word-level transcript exists. `agenda_text` is `null` until **R3**
-   (agenda text extraction) ships and successfully extracts that episode's agenda PDF — additive alongside
-   `chapters`, populated per-episode as extraction succeeds. `segments` contains every available
-   word-level transcript segment, while manifest coverage counts make partial availability explicit.
+2. **Per-shard document schema**: `{id, uid, title, body, city, city_label, date, date_label, year,
+   media_availability_state, is_withheld, page_url, links: [{label, url}], tags: [str], chapters:
+   [{title, start}], segments: [{text, start}], agenda_text: str | null, backup_text: str | null,
+   backup_labels: [str], minutes_text: str | null, roster_text: str, votes_text: str, description:
+   str}`. `chapters` comes from `episode_served_chapters(ep)` — populated whenever the episode has
+   chapters, independent of transcript availability, so it's real searchable content even where no
+   word-level transcript exists. The document-extraction fields are `null` when their corresponding
+   sidecar is unavailable; `backup_labels` is an empty list and roster/vote/description fields are empty
+   strings when absent. `segments` contains every available word-level transcript segment, while manifest
+   coverage counts make partial availability explicit.
    `tags` is **always `[]` today** — schema-reserved for R5
    (topic tags don't exist anywhere in the codebase yet; `review/14` is itself still L2→L3 with no
    implemented `Tag`/`TagsStage`) — populating it later is an additive field-fill, not a schema change,
@@ -753,5 +755,6 @@ Pages (A) → search (B). Both depend on Phase H landing (stable transcripts + t
 on pages (results link into them) and benefits from tags (#4, review/14) for topic filters but does not
 require them. Soundbites (#15) and the highlights reel (Phase E) consume the same page/transcript surface
 later. Run the `spike/static-search-size` measurement (now concretely defined in Part B above) before
-treating the MiniSearch engine choice as final. **Coverage-gated launch is specified in Part B above**
-(superseding the shorter note that used to live here).
+treating the MiniSearch engine choice as final. **Partial-transcript launch with coverage disclosure is
+specified in Part B above**: all available segments remain searchable, and the selected catalog/city/body
+scope reports its exact retained-meeting coverage (superseding the shorter note that used to live here).
