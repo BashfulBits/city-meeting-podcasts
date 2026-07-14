@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LiteLLM LLM backend (R2).** Added `citypods.compute.llm.LiteLLMBackend` with direct provider
+  completion and asynchronous R10 Worker enqueue/poll transports. The adapter validates the
+  provider-qualified model route, keeps per-task prompt/version registries, maps both transports to
+  the shared `JobResult`/`JobHandle` contract, and never logs or persists provider secrets. Install
+  the optional `llm` extra; no LLM backfill or pipeline-version bump is performed by this change.
+
 - **Waco now has a PrimeGov/OneMeeting agenda companion.** The new API-first auxiliary adapter
   walks the configured year range at `wacotexas.primegov.com`, preserving official agenda, packet,
   and minutes document links for meetings while Swagit remains the recording provider. It is

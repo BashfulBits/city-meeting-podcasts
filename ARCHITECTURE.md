@@ -248,6 +248,11 @@ total on `/admin/status`.
   R2 has no soft-delete and is aggressively expired, and its keys are excluded from the B2 state backup,
   so a canonical record there would be unrecoverable; `routing.py` enforces this (`_EPHEMERAL_R2_PREFIXES`
   + an import-time/test guard fails if a coordination prefix isn't declared ephemeral).
+- **LLM inference** → `citypods/compute/llm.py` is the LiteLLM-backed adapter for the reserved
+  `summarize`, `tag`, and `soundbite-select` verbs. Direct calls use LiteLLM's provider translation;
+  rate-limited calls enqueue the same OpenAI-shaped payload through `workers/llm-dispatch-proxy` and
+  reconcile its completed response into the normal `JobResult` shape. Provider API keys remain in
+  environment/secret storage and are never persisted in catalog records or logs.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue. Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending
   requests; a per-minute Cron Trigger claims one ready request with an R2 conditional write, reserves a

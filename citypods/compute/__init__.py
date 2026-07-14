@@ -37,6 +37,7 @@ from citypods.compute.dispatch import (
     reconcile_compute,
     select_backend,
 )
+from citypods.compute.llm import LiteLLMBackend
 from citypods.compute.local import LocalBackend
 from citypods.compute.local_process import ProcessLocalBackend
 from citypods.compute.policy import backend_policy
@@ -117,6 +118,7 @@ __all__ = [
     "JobHandle",
     "JobResult",
     "LocalBackend",
+    "LiteLLMBackend",
     "ProcessLocalBackend",
     "Task",
     "lease_owner_for",
