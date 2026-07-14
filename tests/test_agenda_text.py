@@ -1,8 +1,18 @@
 from datetime import UTC, datetime, timedelta
 
-from citypods.agenda_text import parse_roster, parse_votes
+from citypods.agenda_text import (
+    attribute_links_to_chapters,
+    extract_agenda_text,
+    parse_roster,
+    parse_votes,
+)
 from citypods.models import Episode
-from citypods.records import episode_to_record, merge_persisted, record_to_episode
+from citypods.records import (
+    agenda_text_backoff_until,
+    episode_to_record,
+    merge_persisted,
+    record_to_episode,
+)
 from citypods.stages import _previous_same_body
 
 
@@ -47,3 +57,45 @@ def test_provider_minutes_link_overrides_persisted_agenda_derived_link():
     merge_persisted([fresh], {"uid": episode_to_record(persisted)})
     assert fresh.links["minutes"] == "https://example.test/provider-minutes.pdf"
     assert "minutes_source" not in fresh.links
+
+
+def test_portal_is_preferred_and_noise_is_removed():
+    class Response:
+        headers = {"Content-Type": "text/html"}
+        content = (
+            b"<nav>noise</nav><main>Official agenda text for council</main><script>bad</script>"
+        )
+
+        def raise_for_status(self):
+            return None
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, timeout):
+            self.urls.append(url)
+            return Response()
+
+    session = Session()
+    text = extract_agenda_text(
+        "https://example.test/agenda.pdf", "https://example.test/portal", session
+    )
+    assert "Official agenda text" in text
+    assert session.urls == ["https://example.test/portal"]
+
+
+def test_link_attribution_is_bounded_and_chapter_aware():
+    result = attribute_links_to_chapters(
+        [(0, "https://example.test/a.pdf"), (1, "https://example.test/b.pdf")],
+        [{"title": "Item A"}, {"title": "Item B"}],
+        2,
+    )
+    assert [row[0] for row in result] == [0, 1]
+
+
+def test_agenda_text_backoff_is_nonzero_after_failure():
+    episode = Episode("g", "Meeting", datetime.now(UTC), "video")
+    episode.agenda_text_attempts = 1
+    episode.agenda_text_last_attempt = datetime.now(UTC).isoformat()
+    assert agenda_text_backoff_until(episode) is not None

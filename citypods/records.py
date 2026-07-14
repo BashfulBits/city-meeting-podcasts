@@ -68,6 +68,10 @@ BACKOFF_BASE = timedelta(days=1)
 BACKOFF_MAX = timedelta(days=30)
 TRANSCRIPT_TIMEOUT_BACKOFF_BASE = timedelta(days=1)
 TRANSCRIPT_TIMEOUT_BACKOFF_MAX = timedelta(days=30)
+AGENDA_TEXT_BACKOFF_BASE = timedelta(days=1)
+AGENDA_TEXT_BACKOFF_MAX = timedelta(days=14)
+AGENDA_BACKUP_BACKOFF_BASE = timedelta(days=1)
+AGENDA_BACKUP_BACKOFF_MAX = timedelta(days=14)
 
 # Once an episode is *confirmed dead* (empty/missing/invalid) it is no longer "failing" — it is a
 # known-dead recording we poll occasionally in case the source is restored. Recheck it on a flat
@@ -116,6 +120,33 @@ def _parse_iso_utc(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def agenda_text_backoff_until(ep: Episode) -> datetime | None:
+    stamp = _parse_iso_utc(ep.agenda_text_last_attempt)
+    if not stamp or ep.agenda_text_attempts <= 0:
+        return None
+    return stamp + _capped_exponential_backoff(
+        AGENDA_TEXT_BACKOFF_BASE, AGENDA_TEXT_BACKOFF_MAX, ep.agenda_text_attempts
+    )
+
+
+def agenda_backup_backoff_until(ep: Episode) -> datetime | None:
+    stamp = _parse_iso_utc(ep.agenda_backup_last_attempt)
+    if not stamp or ep.agenda_backup_attempts <= 0:
+        return None
+    return stamp + _capped_exponential_backoff(
+        AGENDA_BACKUP_BACKOFF_BASE, AGENDA_BACKUP_BACKOFF_MAX, ep.agenda_backup_attempts
+    )
+
+
+def minutes_text_backoff_until(ep: Episode) -> datetime | None:
+    stamp = _parse_iso_utc(ep.minutes_text_last_attempt)
+    if not stamp or ep.minutes_text_attempts <= 0:
+        return None
+    return stamp + _capped_exponential_backoff(
+        AGENDA_TEXT_BACKOFF_BASE, AGENDA_TEXT_BACKOFF_MAX, ep.minutes_text_attempts
+    )
 
 
 def _in_backoff(ep: Episode, now: datetime) -> bool:
@@ -1031,7 +1062,13 @@ def episode_to_record(ep: Episode) -> dict:
         }
         if ep.agenda_text_url or ep.agenda_text_attempts
         else None,
-        "agenda_backup": {"url": ep.agenda_backup_url} if ep.agenda_backup_url else None,
+        "agenda_backup": {
+            "url": ep.agenda_backup_url,
+            "attempts": ep.agenda_backup_attempts,
+            "last_attempt": ep.agenda_backup_last_attempt,
+        }
+        if ep.agenda_backup_url or ep.agenda_backup_attempts
+        else None,
         "minutes_text": {
             "url": ep.minutes_text_url,
             "attempts": ep.minutes_text_attempts,
@@ -1251,6 +1288,8 @@ def record_to_episode(rec: dict) -> Episode:
         agenda_text_attempts=_coerce_non_negative_int(agenda.get("attempts")),
         agenda_text_last_attempt=agenda.get("last_attempt"),
         agenda_backup_url=backup.get("url"),
+        agenda_backup_attempts=_coerce_non_negative_int(backup.get("attempts")),
+        agenda_backup_last_attempt=backup.get("last_attempt"),
         minutes_text_url=minutes.get("url"),
         minutes_text_attempts=_coerce_non_negative_int(minutes.get("attempts")),
         minutes_text_last_attempt=minutes.get("last_attempt"),
@@ -1585,6 +1624,8 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.agenda_text_attempts = _coerce_non_negative_int(agenda.get("attempts"))
         ep.agenda_text_last_attempt = agenda.get("last_attempt")
         ep.agenda_backup_url = backup.get("url")
+        ep.agenda_backup_attempts = _coerce_non_negative_int(backup.get("attempts"))
+        ep.agenda_backup_last_attempt = backup.get("last_attempt")
         ep.minutes_text_url = minutes.get("url")
         ep.minutes_text_attempts = _coerce_non_negative_int(minutes.get("attempts"))
         ep.minutes_text_last_attempt = minutes.get("last_attempt")

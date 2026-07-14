@@ -74,6 +74,8 @@ class Episode:
     agenda_text_attempts: int = 0
     agenda_text_last_attempt: str | None = None
     agenda_backup_url: str | None = None
+    agenda_backup_attempts: int = 0
+    agenda_backup_last_attempt: str | None = None
     minutes_text_url: str | None = None
     minutes_text_attempts: int = 0
     minutes_text_last_attempt: str | None = None

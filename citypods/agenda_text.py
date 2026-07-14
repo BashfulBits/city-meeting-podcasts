@@ -16,6 +16,8 @@ _AGENDA_RE = re.compile(r"\bagenda|packet|backup|attachment|supporting\b", re.I)
 _URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
 MAX_TEXT_CHARS = 1_000_000
 MAX_LINKS = 200
+AGENDA_TEXT_MAX_CHARS = 50_000
+BACKUP_ITEM_MAX_CHARS = 20_000
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,8 @@ def extract_html(
             ]
         )
     soup = BeautifulSoup(raw, "html.parser")
+    for node in soup.find_all(["script", "style", "nav", "footer", "noscript"]):
+        node.decompose()
     links: list[DocumentLink] = []
     for anchor in soup.find_all("a", href=True):
         href = urljoin(source_url or "", str(anchor.get("href")))
@@ -106,6 +110,66 @@ def extract_html(
             continue
         links.append(DocumentLink(_clean_url(href), label, source_url, label or None, kind))
     return soup.get_text("\n", strip=True)[:MAX_TEXT_CHARS], _dedupe_links(links)
+
+
+def extract_agenda_pdf(content: bytes) -> str:
+    return extract_pdf_text(content)
+
+
+def extract_agenda_html(content: bytes) -> str:
+    return extract_html(content)[0]
+
+
+def extract_agenda_text(
+    agenda_url: str | None, agenda_portal_url: str | None, session
+) -> str | None:
+    url = agenda_portal_url or agenda_url
+    if not url:
+        return None
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        text, _ = extract_document(
+            response.content,
+            content_type=response.headers.get("Content-Type", ""),
+            source_url=url,
+        )
+        text = re.sub(r"\s+", " ", text).strip()[:AGENDA_TEXT_MAX_CHARS]
+        return text if len(text) >= 20 else None
+    except Exception:
+        return None
+
+
+def attribute_links_to_chapters(
+    links: list[tuple[int, str]], chapters: list[dict], pdf_page_count: int
+) -> list[tuple[int | None, str | None, str]]:
+    if not chapters:
+        return [(None, None, url) for _, url in links]
+    return [
+        (
+            min(len(chapters) - 1, (index * len(chapters)) // max(1, len(links))),
+            chapters[min(len(chapters) - 1, (index * len(chapters)) // max(1, len(links)))].get(
+                "title"
+            ),
+            url,
+        )
+        for index, (_, url) in enumerate(links)
+    ]
+
+
+def extract_backup_item(url: str, session) -> tuple[str | None, bool]:
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        text, _ = extract_document(
+            response.content,
+            content_type=response.headers.get("Content-Type", ""),
+            source_url=url,
+        )
+        truncated = len(text) > BACKUP_ITEM_MAX_CHARS
+        return (text[:BACKUP_ITEM_MAX_CHARS].strip() or None), truncated
+    except Exception:
+        return None, False
 
 
 def extract_document(
@@ -159,7 +223,11 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
     """
     allowed = {"yes", "no", "absent", "recused", "abstain", "abstained"}
     votes: list[dict] = []
+    current_item: str | None = None
     for line in text.splitlines():
+        heading = re.match(r"\s*(?:item\s+)?(\d+[A-Za-z.]*)[.)\-:]\s*(.+)$", line, re.I)
+        if heading:
+            current_item = heading.group(2).strip()
         if not re.search(r"\b(vote|ayes?|nays?|motion|approved|opposed)\b", line, re.I):
             continue
         for name, value in re.findall(
@@ -169,7 +237,7 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
         ):
             votes.append(
                 {
-                    "agenda_item": None,
+                    "agenda_item": current_item,
                     "member": name.strip(),
                     "value": value.lower().replace("abstained", "abstain"),
                     "evidence": line[:500],
@@ -183,7 +251,7 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
                 if name and name.lower() not in allowed:
                     votes.append(
                         {
-                            "agenda_item": None,
+                            "agenda_item": current_item,
                             "member": name,
                             "value": value.lower().replace("abstained", "abstain"),
                             "evidence": line[:500],
