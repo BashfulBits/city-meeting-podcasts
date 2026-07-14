@@ -1,0 +1,234 @@
+{% extends "base.html.j2" %}
+{% block title %}Search meetings · {{ config.site_title }}{% endblock %}
+{% block content %}
+  <p><a class="muted" href="{{ site }}/">← Directory</a></p>
+  <h1>Search meetings</h1>
+  <p class="tagline">Search transcripts, agendas, minutes, votes, rosters, and meeting metadata.</p>
+
+  <label for="q">Search the meeting archive</label>
+  <input id="q" type="search" placeholder="budget, zoning, parks…" autocomplete="off"
+         aria-label="Search the meeting archive"
+         style="width:100%;padding:.7rem .9rem;font-size:1rem;border:1px solid var(--border);
+                border-radius:10px;background:var(--card);color:var(--fg);margin:.35rem 0 .8rem;">
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+    <label class="muted">City <select id="city"><option value="">All cities</option></select></label>
+    <label class="muted">Body <select id="body"><option value="">All bodies</option></select></label>
+    <label class="muted">Topic <select id="tag"><option value="">All topics</option></select></label>
+    <label class="muted">From <input id="from" type="date"></label>
+    <label class="muted">To <input id="to" type="date"></label>
+    <label class="muted">Availability <select id="availability">
+      <option value="">All meetings</option><option value="playable">Playable recording</option>
+      <option value="withheld">No recording</option>
+    </select></label>
+  </div>
+  <p id="coverage" class="muted" aria-live="polite">Loading transcript coverage…</p>
+  <p id="status" class="muted" aria-live="polite">Type a phrase to search.</p>
+  <ol id="results" style="padding-left:1.2rem;"></ol>
+
+  <script src="{{ minisearch_url }}"></script>
+  <script>
+    const manifestUrl = {{ manifest_url|tojson }};
+    const fields = {{ [
+      'title', 'body', 'city', 'city_label', 'date', 'description', 'tags', 'link_labels_text',
+      'chapters_text', 'agenda_text', 'backup_text', 'backup_labels_text', 'minutes_text',
+      'roster_text', 'votes_text', 'transcript_text'
+    ]|tojson }};
+    const q = document.getElementById('q');
+    const city = document.getElementById('city');
+    const body = document.getElementById('body');
+    const tag = document.getElementById('tag');
+    const from = document.getElementById('from');
+    const to = document.getElementById('to');
+    const availability = document.getElementById('availability');
+    const coverage = document.getElementById('coverage');
+    const status = document.getElementById('status');
+    const results = document.getElementById('results');
+    let manifest = null;
+    const engines = new Map();
+    const documents = new Map();
+    const pending = new Map();
+    let searchGeneration = 0;
+
+    function documentKey(sourceKey, uid) { return `${sourceKey}:${uid}`; }
+    function words(value) { return String(value || '').toLowerCase().split(/\s+/).filter(Boolean); }
+    function joined(items, key) { return (items || []).map(item => item && item[key]).filter(Boolean).join(' '); }
+
+    // Keep the static shard compact: MiniSearch's flattened fields exist only in browser memory.
+    function searchableDocument(doc) {
+      return {
+        ...doc,
+        tags: (doc.tags || []).join(' '),
+        link_labels_text: joined(doc.links, 'label'),
+        chapters_text: joined(doc.chapters, 'title'),
+        backup_labels_text: (doc.backup_labels || []).join(' '),
+        transcript_text: joined(doc.segments, 'text')
+      };
+    }
+
+    function optionValues(select, pairs, allLabel) {
+      const current = select.value;
+      select.replaceChildren(new Option(allLabel, ''));
+      [...pairs].sort((a, b) => a[1].localeCompare(b[1])).forEach(([value, label]) => {
+        select.add(new Option(label, value));
+      });
+      select.value = current;
+    }
+
+    async function loadShard(shard) {
+      if (engines.has(shard.source_key)) return engines.get(shard.source_key);
+      if (pending.has(shard.source_key)) return pending.get(shard.source_key);
+      const task = fetch(shard.shard_url).then(response => {
+        if (!response.ok) throw new Error(`search shard ${response.status}`);
+        return response.json();
+      }).then(payload => {
+        (payload.documents || []).forEach(doc => documents.set(documentKey(shard.source_key, doc.uid), doc));
+        const engine = new MiniSearch({
+          fields: payload.fields || fields,
+          storeFields: ['uid'],
+          searchOptions: { prefix: true, fuzzy: 0.15, boost: { title: 3, body: 2, city_label: 2 } }
+        });
+        engine.addAll((payload.documents || []).map(searchableDocument));
+        engines.set(shard.source_key, engine);
+        return engine;
+      }).finally(() => pending.delete(shard.source_key));
+      pending.set(shard.source_key, task);
+      return task;
+    }
+
+    function selectedShards() {
+      return manifest.shards
+        .filter(shard => !city.value || shard.city === city.value)
+        .sort((a, b) => b.episode_count - a.episode_count || a.source_key.localeCompare(b.source_key));
+    }
+
+    function renderCoverage() {
+      if (!manifest) return;
+      let episodeCount = 0;
+      let transcriptEpisodeCount = 0;
+      for (const shard of selectedShards()) {
+        const value = body.value ? (shard.body_coverage || {})[body.value] : shard;
+        if (!value) continue;
+        episodeCount += value.episode_count || 0;
+        transcriptEpisodeCount += value.transcript_episode_count || 0;
+      }
+      if (!episodeCount) {
+        coverage.textContent = 'Transcript coverage: no meetings in this scope.';
+        return;
+      }
+      const percent = (100 * transcriptEpisodeCount / episodeCount).toFixed(1).replace(/\.0$/, '');
+      coverage.textContent = `Transcript coverage: ${percent}% (${transcriptEpisodeCount} of ${episodeCount} retained meetings).`;
+    }
+
+    function termsMatch(value, terms) {
+      const text = String(value || '').toLowerCase();
+      return terms.every(term => text.includes(term));
+    }
+
+    function snippet(doc, terms) {
+      const candidates = [
+        ['Transcript', joined(doc.segments, 'text')], ['Minutes', doc.minutes_text],
+        ['Agenda', doc.agenda_text], ['Backup material', doc.backup_text],
+        ['Chapter', joined(doc.chapters, 'title')],
+        ['Metadata', `${doc.title} ${doc.body} ${doc.city_label} ${joined(doc.links, 'label')}`]
+      ];
+      for (const [label, value] of candidates) {
+        const lowered = String(value || '').toLowerCase();
+        const at = terms.map(term => lowered.indexOf(term)).find(index => index >= 0);
+        if (at !== undefined) return `${label}: …${String(value).slice(Math.max(0, at - 100), at + 220)}…`;
+      }
+      return '';
+    }
+
+    function hitTime(doc, terms) {
+      for (const item of [...(doc.segments || []), ...(doc.chapters || [])]) {
+        if (termsMatch(item.text || item.title, terms)) return item.start;
+      }
+      return null;
+    }
+
+    function filteredRows(rows) {
+      const byUid = new Map();
+      for (const row of rows) {
+        const doc = documents.get(documentKey(row.source_key, row.id));
+        if (!doc) continue;
+        if (body.value && doc.body !== body.value) continue;
+        if (tag.value && !(doc.tags || []).includes(tag.value)) continue;
+        if (from.value && doc.date < from.value) continue;
+        if (to.value && doc.date > to.value) continue;
+        if (availability.value === 'playable' && doc.is_withheld) continue;
+        if (availability.value === 'withheld' && !doc.is_withheld) continue;
+        const prior = byUid.get(doc.uid);
+        if (!prior || row.score > prior.score || (row.score === prior.score && row.source_key < prior.source_key)) {
+          byUid.set(doc.uid, row);
+        }
+      }
+      return [...byUid.values()].sort((a, b) => b.score - a.score || a.source_key.localeCompare(b.source_key));
+    }
+
+    function render(rows, failedShards = 0) {
+      results.replaceChildren();
+      const terms = words(q.value);
+      filteredRows(rows).slice(0, 100).forEach(row => {
+        const doc = documents.get(documentKey(row.source_key, row.id));
+        const li = document.createElement('li');
+        li.style.marginBottom = '.9rem';
+        const a = document.createElement('a');
+        // A withheld meeting remains discoverable, but must never advertise a media seek/play link.
+        const time = doc.is_withheld ? null : hitTime(doc, terms);
+        a.href = doc.page_url ? doc.page_url + (time === null ? '' : `#t=${time}`) : '#';
+        a.textContent = doc.title || 'Meeting';
+        if (!doc.page_url) a.removeAttribute('href');
+        const meta = document.createElement('div'); meta.className = 'muted';
+        meta.textContent = `${doc.city_label || doc.city} · ${doc.body} · ${doc.date_label || doc.date}`
+          + (doc.is_withheld ? ' · no recording' : '');
+        li.append(a, meta);
+        const text = snippet(doc, terms);
+        if (text) { const paragraph = document.createElement('div'); paragraph.textContent = text; li.append(paragraph); }
+        results.append(li);
+      });
+      const suffix = failedShards ? ` · ${failedShards} shard${failedShards === 1 ? '' : 's'} unavailable` : '';
+      status.textContent = `${results.children.length} result${results.children.length === 1 ? '' : 's'}${suffix}`;
+    }
+
+    async function search() {
+      const generation = ++searchGeneration;
+      renderCoverage();
+      const term = q.value.trim();
+      if (!term) { results.replaceChildren(); status.textContent = 'Type a phrase to search.'; return; }
+      status.textContent = 'Loading matching archive shards…';
+      const all = [];
+      let failedShards = 0;
+      const tasks = selectedShards().map(async shard => {
+        try {
+          const engine = await loadShard(shard);
+          const rows = engine.search(term).map(row => ({ ...row, source_key: shard.source_key }));
+          all.push(...rows);
+          if (generation === searchGeneration) render(all, failedShards);
+        } catch (error) {
+          console.warn(error);
+          failedShards += 1;
+          if (generation === searchGeneration) render(all, failedShards);
+        }
+      });
+      await Promise.all(tasks);
+      if (generation !== searchGeneration) return;
+      render(all, failedShards);
+      if (!all.length && !failedShards) status.textContent = 'No meetings matched that search.';
+    }
+
+    fetch(manifestUrl).then(response => {
+      if (!response.ok) throw new Error(`search manifest ${response.status}`);
+      return response.json();
+    }).then(data => {
+      manifest = data;
+      optionValues(city, new Map(data.shards.map(shard => [shard.city, shard.city_label || shard.city])), 'All cities');
+      optionValues(body, new Map(data.shards.flatMap(shard => (shard.bodies || [shard.body])
+        .filter(Boolean).map(value => [value, value]))), 'All bodies');
+      optionValues(tag, new Map(data.shards.flatMap(shard => (shard.tags || []).map(value => [value, value]))), 'All topics');
+      renderCoverage();
+      [q, city, body, tag, from, to, availability].forEach(element => {
+        element.addEventListener(element === q ? 'input' : 'change', search);
+      });
+    }).catch(() => { status.textContent = 'Search is temporarily unavailable.'; });
+  </script>
+{% endblock %}

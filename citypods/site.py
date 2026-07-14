@@ -52,7 +52,7 @@ def _duration(seconds: int | float | None) -> str:
     return f"{h}h {m:02d}m" if h else f"{m}m"
 
 
-def render_index(cities, site_config, base_url, feed_info=None):
+def render_index(cities, site_config, base_url, feed_info=None, *, search_enabled: bool = True):
     """Group feeds by city (podcast_author) into a searchable accordion."""
     site = base_url.rstrip("/")
     feed_info = feed_info or {}
@@ -80,7 +80,24 @@ def render_index(cities, site_config, base_url, feed_info=None):
         rows.append(g)
 
     template = get_env().get_template("index.html.j2")
-    return template.render(groups=rows, config=site_config, site=site)
+    return template.render(
+        groups=rows, config=site_config, site=site, search_enabled=search_enabled
+    )
+
+
+def render_search_page(site_config: dict, base_url: str) -> str:
+    """Render the global static meeting-search shell.
+
+    The shell is intentionally tiny: shards and the search engine are loaded only after a visitor
+    searches, so the normal directory landing page never pays the transcript payload cost.
+    """
+    template = get_env().get_template("search.html.j2")
+    return template.render(
+        config=site_config,
+        site=base_url.rstrip("/"),
+        manifest_url=f"{base_url.rstrip('/')}/data/search/manifest.json",
+        minisearch_url=f"{base_url.rstrip('/')}/assets/minisearch-7.1.2.js",
+    )
 
 
 def render_city_page(

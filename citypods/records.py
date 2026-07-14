@@ -1099,7 +1099,14 @@ def episode_to_record(ep: Episode) -> dict:
             "timeout_attempts": ep.transcript_timeout_attempts,
             "timeout_last_attempt": ep.transcript_timeout_last_attempt,
         }
-        if ep.transcript_key or ep.transcript_timeout_attempts
+        # A word-JSON sidecar is independently useful to search/clips/diarization.  Do not drop
+        # its pointer merely because a producer did not set the feed-facing transcript key.
+        if (
+            ep.transcript_key
+            or ep.transcript_words_key
+            or ep.transcript_words_url
+            or ep.transcript_timeout_attempts
+        )
         else None,
         # Provider/city-supplied source transcript registry.  Separate from the active
         # transcript block so ASR/alignment can be the podcast transcript while the original

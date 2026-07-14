@@ -1284,6 +1284,17 @@ def test_timeout_attempts_coerce_malformed_persisted_values_to_zero():
     assert fresh.transcript_timeout_attempts == 0
 
 
+def test_word_json_pointer_round_trips_without_a_feed_transcript_key():
+    ep = _ep("g-search-sidecar")
+    ep.transcript_words_key = "transcripts/g-search-sidecar.words.json"
+    ep.transcript_words_url = "https://objects.test/transcripts/g-search-sidecar.words.json"
+
+    rec = episode_to_record(ep)
+    restored = record_to_episode(rec)
+    assert rec["transcript"]["words_key"] == ep.transcript_words_key
+    assert restored.transcript_words_key == ep.transcript_words_key
+
+
 def test_merge_records_is_append_only_with_fresh_winning():
     persisted = {"a": {"uid": "a", "title": "old-a"}, "b": {"uid": "b", "title": "old-b"}}
     fresh = {"b": {"uid": "b", "title": "new-b"}, "c": {"uid": "c", "title": "new-c"}}

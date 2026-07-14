@@ -345,6 +345,15 @@ def test_unchanged_city_is_skipped_on_second_build(tmp_path, fake_provider):
     assert (tmp_path / "state" / "feed_etags.json").exists()
 
 
+def test_render_writes_static_search_outputs(tmp_path, fake_provider):
+    cities = _setup(tmp_path)
+    _build(tmp_path, cities)
+    assert (tmp_path / "docs" / "search" / "index.html").exists()
+    assert (tmp_path / "docs" / "data" / "search" / "manifest.json").exists()
+    assert (tmp_path / "docs" / "assets" / "minisearch-7.1.2.js").exists()
+    assert (tmp_path / "docs" / "assets" / "LICENSES" / "minisearch-7.1.2.txt").exists()
+
+
 def test_archived_meeting_page_updates_even_when_feed_window_is_unchanged(tmp_path, fake_provider):
     cities = _setup(tmp_path)
     (cities / "feeds" / "fake-city.yml").write_text(

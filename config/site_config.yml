@@ -75,6 +75,7 @@ backlog_priority:
 # city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
 
 defaults:
+  search: true                           # static browser search; false removes its public output
   podcast_language: "en-us"
   podcast_category: "Government"
   max_episodes: 500                      # how many episodes a FEED renders (display cap)

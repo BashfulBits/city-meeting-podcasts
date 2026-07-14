@@ -2,6 +2,9 @@
 {% block content %}
   <h1>{{ config.site_title }}</h1>
   <p class="tagline">{{ config.site_description }}</p>
+  {% if search_enabled %}
+  <p><a class="btn btn-primary" href="{{ site }}/search/">Search meeting transcripts &amp; documents →</a></p>
+  {% endif %}
 
   <input id="q" type="search" placeholder="Search cities &amp; boards…" autocomplete="off"
          aria-label="Search cities &amp; boards"

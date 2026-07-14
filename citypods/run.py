@@ -15,6 +15,7 @@ import faulthandler
 import hashlib
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -88,6 +89,7 @@ from citypods.resources import (
     current_snapshot,
     snapshot_string,
 )
+from citypods.search import build_search_index
 from citypods.security import SecurityError
 from citypods.seeds import merge_seed_episodes
 from citypods.sharding import create_shard_plan, episodes_for_shard, load_shard_plan
@@ -98,6 +100,7 @@ from citypods.site import (
     render_meeting_page,
     render_redirect_feed,
     render_redirect_page,
+    render_search_page,
 )
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
@@ -1962,6 +1965,9 @@ def _build_impl(
         print(f"run end: {stop.fired_reason or 'completed within the window (no stop triggered)'}")
 
     if not dry_run:
+        # Preserve the pre-search behavior: a later static-render error must not discard the
+        # provider refresh validators already earned this run.  A second save below persists a
+        # successful render's search cache.
         save_etag_cache(state_dir, cache)
         # Render-phase outputs (feeds/pages already written per-city above; here the site-wide
         # index/aliases/meta). The enrich phase skips all of this — it only backfills + persists.
@@ -1970,19 +1976,51 @@ def _build_impl(
             feed_info = {
                 r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results
             }
+            search_enabled = bool(site_config.get("defaults", {}).get("search", True))
             (output_dir / "index.html").write_text(
-                render_index(all_cities, site_config, base_url, feed_info)
+                render_index(
+                    all_cities, site_config, base_url, feed_info, search_enabled=search_enabled
+                )
             )
             _write_aliases(output_dir, base_url, all_cities, feed_info)
             _write_cname(output_dir, site_config)
             _prune_stale_dirs(output_dir, all_cities)
+            if search_enabled:
+                search_cache = cache.setdefault("_static_search", {})
+                search_manifest = build_search_index(
+                    state_dir,
+                    all_cities,
+                    output_dir,
+                    base_url,
+                    storage=storage,
+                    cache=search_cache,
+                )
+                search_dir = output_dir / "search"
+                search_dir.mkdir(parents=True, exist_ok=True)
+                (search_dir / "index.html").write_text(render_search_page(site_config, base_url))
+            else:
+                # A config opt-out must not leave the previously deployed public search behind.
+                shutil.rmtree(output_dir / "search", ignore_errors=True)
+                shutil.rmtree(output_dir / "data" / "search", ignore_errors=True)
+                (output_dir / "assets" / "minisearch-7.1.2.js").unlink(missing_ok=True)
+                (output_dir / "assets" / "LICENSES" / "minisearch-7.1.2.txt").unlink(
+                    missing_ok=True
+                )
+                search_manifest = {"shards": []}
             (output_dir / "meta.json").write_text(
                 json.dumps(
-                    {"cities": len(all_cities), "built": sum(r.status == "built" for r in results)},
+                    {
+                        "cities": len(all_cities),
+                        "built": sum(r.status == "built" for r in results),
+                        "search_shards": len(search_manifest.get("shards", [])),
+                    },
                     indent=2,
                 )
                 + "\n"
             )
+        # Search shard hashes are part of this same render cache.  Save after successful rendering
+        # so a failed render cannot record a cache hit for files it did not finish publishing.
+        save_etag_cache(state_dir, cache)
         # Run history calibrates the cost projection from real encode time, so record it only for
         # the phase that does that work (enrich/all) — a near-zero-cost render run would dilute it.
         if time_bounded:

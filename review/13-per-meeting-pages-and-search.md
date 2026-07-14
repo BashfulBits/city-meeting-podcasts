@@ -1,7 +1,7 @@
 # review/13 — Per-Meeting Pages & Static Transcript Search (Phase R)
 
-**Maturity: Part A **L3** · Part B **L3** (both matured 2026-07-13) · breakout of
-[`review/11`](11-technical-design-roadmap.md) Phase R · last updated 2026-07-13**
+**Maturity: Part A **L3** · Part B **implemented in the current static-search PR** · breakout of
+[`review/11`](11-technical-design-roadmap.md) Phase R · last updated 2026-07-14**
 
 > Two tightly-coupled initiatives: per-meeting permalink pages (#46/GH#157, **ROADMAP R1**) and static
 > client-side transcript search (#6, **ROADMAP R4**). Pages are the **product hinge** from "podcast
@@ -358,8 +358,23 @@ source portal.
 
 ## Part B — Static transcript search (#6)
 
-**Maturity: L3 · matured 2026-07-13, grounded against current `main` — see exploration citations
-inline. ROADMAP R4. Issues not yet cut, per the batch-review hold.**
+**Implementation status: shipped in the current branch, grounded against current `main` — see
+exploration citations inline. ROADMAP R4.**
+
+The implementation follows the sharded MiniSearch approach below. Render builds read the durable
+record store and content-addressed transcript word-JSON, agenda, backup, and minutes sidecars to emit
+`docs/data/search/manifest.json` plus one shard per source and a global `docs/search/index.html` shell.
+Metadata-only records remain indexed; available text is additive and may be absent for a particular
+episode when its sidecar is missing. The builder hashes each source's durable records/configuration to
+skip unchanged sidecar reads and prunes retired shards. Every available transcript segment is indexed;
+the manifest instead carries exact transcripted/retained counts per source and body, so the browser can
+disclose coverage for the active municipality/body scope without hiding useful partial history. Source
+shards remain an internal lazy-loading implementation detail, never a public filter or metric.
+The browser filters municipality/body/topic/date/availability, loads selected shards in parallel
+(largest first), renders results progressively, deduplicates stable UIDs across source views, and links
+playable transcript/chapter matches to the stable meeting page. Deterministic minutes roster/vote names
+and reserved future tags are indexed as fields. Calendar-only `AgendaRecord` rows remain outside R4
+until the no-recording meeting-page decision in Phase F is revisited.
 
 ### Design (chosen approach)
 
@@ -369,7 +384,7 @@ documents = all retained meetings, including metadata-only unavailable recording
 timestamped — see clarification below), resource **link labels** (not document text — see
 clarification below), **real agenda-document text** (schema reserved, populated once R3 ships — see
 clarification below and § Data model deltas), `tags` (schema reserved, always empty until R5 — see
-§ Data model deltas), and **transcript text** (tokenized, when coverage allows). Results show snippets
+§ Data model deltas), and every available **transcript text** segment (tokenized). Results show snippets
 with **timestamps** that deep-link into the meeting page (`…/<uid>/#t=<seconds>`, R1). Filters: city,
 body, date range, topic (inert until R5 populates `tags`), and recording availability. A meeting without
 a transcript remains discoverable from its civic metadata and chapter titles; its result does not
@@ -379,10 +394,9 @@ advertise playback or transcript seeking.
 - **Chapter/agenda-item titles are searchable and timestamped, distinct from transcript segments.**
   `ep.chapters`/`episode_served_chapters(ep)` (`[{"start": secs, "title": str}]`, confirmed in R1's
   exploration) are often descriptive human-curated labels ("Public Comment — Zoning Variance, 123 Main
-  St") — a meaningfully stronger signal than generic transcript text, and, critically, **available
-  independent of transcript coverage**. The original draft's field list only implied transcript text as
-  the searchable body content, which would have left chapter titles unsearchable and made the
-  coverage-gated launch's "titles + agenda text" step 1 weaker than it needs to be. Fixed in § Data model
+  St") — a meaningfully stronger signal than generic transcript text, and, critically, available even
+  when no word-level transcript exists. The original draft's field list only implied transcript text as
+  the searchable body content, which would have left chapter titles unsearchable. Fixed in § Data model
   deltas #2 below: chapters get their own `chapters: [{title, start}]` array per document.
 - **"Agenda/resource link text" was ambiguous and is now precisely scoped: it means the link *labels*
   ("Agenda," "Minutes," "Canonical Video" — from `episode_resource_links(ep)`), not the *content* of the
@@ -574,13 +588,12 @@ assumption.
 2. **Per-shard document schema**: `{uid, title, body, city, date, media_availability_state,
    is_withheld, page_url, links: [{label, url}], tags: [], chapters: [{title, start}], agenda_text:
    str | null, segments: [{text, start}]}`. `chapters` comes from `episode_served_chapters(ep)` —
-   populated whenever the episode has chapters, **independent of transcript coverage**, so it's real
-   searchable content even in coverage-gated launch's step 1 (titles/metadata only, no transcript).
-   `agenda_text` is `null` until **R3** (agenda text extraction) ships and successfully extracts that
-   episode's agenda PDF — additive alongside `chapters`, populated per-episode as extraction succeeds
-   (no coverage-gate/threshold needed the way transcript segments have one, since there's no equivalent
-   "60% of the city" concept for a per-episode extraction success/fail outcome). `segments` (transcript
-   text) is the separate, coverage-gated field. `tags` is **always `[]` today** — schema-reserved for R5
+   populated whenever the episode has chapters, independent of transcript availability, so it's real
+   searchable content even where no word-level transcript exists. `agenda_text` is `null` until **R3**
+   (agenda text extraction) ships and successfully extracts that episode's agenda PDF — additive alongside
+   `chapters`, populated per-episode as extraction succeeds. `segments` contains every available
+   word-level transcript segment, while manifest coverage counts make partial availability explicit.
+   `tags` is **always `[]` today** — schema-reserved for R5
    (topic tags don't exist anywhere in the codebase yet; `review/14` is itself still L2→L3 with no
    implemented `Tag`/`TagsStage`) — populating it later is an additive field-fill, not a schema change,
    so R4 doesn't
@@ -628,17 +641,16 @@ whole catalog, not just current feed windows — bounded by the same per-shard b
 meeting was recorded. No dedicated backfill workflow; a normal scheduled run pays the cost once. Depends
 on R1 having already shipped `meeting_page_url`/per-episode pages to link results into.
 
-### Coverage-gated launch
+### Partial-transcript launch with coverage disclosure
 
 Because forced alignment is paused and only post-#249/H12 transcripts carry word-level data, transcript
-coverage at R4 launch will be patchy across the catalog. Launch in two steps: **(1) titles + chapter/
-agenda-item titles + resource link labels** across the whole catalog immediately — always present, zero
-transcript dependency, and meaningfully richer than titles alone since chapter titles are often specific
-and descriptive; **(2) add transcript text per city once that city's transcript coverage passes ~60%**,
-so early results aren't silently missing half a city's meetings. The index is rebuilt per city/shard, so
-this is a data-availability gate on shard content, not a code fork — `build_search_index` computes each
-city's coverage % from the records it already has in hand and decides per-shard whether to include
-transcript segments.
+coverage at R4 launch will be patchy across the catalog. Index every available transcript segment rather
+than withholding useful partial history. The manifest carries the exact numerator and denominator for
+non-suppressed retained episodes, both for each source shard and each body within it. The client reports
+that coverage for the selected municipality and body filter (or the whole catalog when unfiltered): for
+example, “Transcript coverage: 37% (185 of 500 retained meetings).” Titles, chapter/
+agenda-item titles, resource link labels, agendas, and minutes remain searchable regardless of transcript
+coverage.
 
 ### Tests
 
@@ -655,9 +667,9 @@ transcript segments.
   (simulating R3's output) is findable by a phrase present only in the extracted text, not in that
   episode's chapter titles or transcript — proves it's a genuinely additive search source, not just
   schema plumbing.
-- Coverage-gated launch: a city under the 60% transcript-coverage threshold gets a titles/metadata-only
-  shard (now including chapter titles, not just the episode title) that a city over threshold gets
-  transcript segments added to.
+- Partial-transcript disclosure: a fixture city/source under 60% still retains available transcript
+  segments, and the manifest carries the exact transcripted/retained numerator and denominator for the
+  city/source and each body.
 - A fixture episode's chapter titles are indexed and findable independent of that episode having any
   transcript segments at all.
 - Link labels ("Agenda," "Minutes") appear in the document but a search for agenda-document *content*
@@ -707,9 +719,9 @@ timestamp, and the result links to the meeting page seeked to that moment. A key
 chapter title is findable even when that meeting has no transcript yet. The index loads incrementally —
 a manifest under 200 KB, per-city shards under 1 MB, no shard fetched before a search interaction scopes
 to it. Withheld-media meetings remain discoverable by civic metadata with no play/seek affordance in
-their result. Search works offline in tests. Coverage-gated launch means no city's results silently omit
-transcript hits it should have — either full transcript coverage or an honest metadata-only (now
-including chapter titles) result. A search scoped to one government body returns only that body's
+their result. Search works offline in tests. Partial transcript availability is disclosed with the exact
+transcripted/retained numerator and denominator for the active municipality/body scope, rather
+than hiding useful matches. A search scoped to one government body returns only that body's
 meetings. A search scoped to a whole municipality (potentially dozens of boards, per real Austin/Dallas/
 Fort Worth scale) shows results progressively as shards resolve rather than blocking on the full set.
 
@@ -722,7 +734,9 @@ Fort Worth scale) shows results progressively as shards resolve rather than bloc
    `_build_impl` after `_prune_stale_dirs`.
 3. Vendored MiniSearch frontend integration (`templates/search.html.j2` or equivalent, `#q` input,
    result rendering with the withheld-media affordance suppression from § Data model deltas #3).
-4. Coverage-gated per-city shard content (titles-only vs. titles+transcript based on the ~60% threshold).
+4. Partial transcript coverage disclosure: manifest counts for each shard/body, aggregated only into the
+   visible whole-catalog/city/body numerator and denominator; every available transcript segment remains
+   searchable. Shards themselves are never a public filter or metric.
 5. Index chapter/agenda-item titles as their own searchable, timestamped field, independent of
    transcript coverage.
 6. Manifest `city` field resolved to `city_entity` (not per-board slug) + `body` per-document field +

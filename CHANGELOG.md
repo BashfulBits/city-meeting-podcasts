@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Static meeting search (R4).** Render builds now publish deterministic per-source search shards and
+  a global `/search/` page using a vendored MiniSearch bundle. Results search durable metadata, chapter
+  titles, available transcript segments, agenda/backup/minutes text, vote and roster names, and future
+  tags; unavailable recordings remain discoverable without playback controls. The first build after
+  deployment backfills every retained episode from the append-only record store; unchanged sources
+  then skip sidecar reads and stale shards are pruned. Available transcript text is always indexed,
+  while the search page discloses exact transcript coverage for the selected city/body scope;
+  missing sidecars remain partial text coverage and do not block the rest of the index.
+
 - **Runner reliability fixes.** Content-addressed S3 uploads now retry transient transfer-manager
   failures after boto's per-part retry budget is exhausted. Internal ASR workers first receive a
   catchable interrupt before terminate/kill escalation so native semaphore resources can unregister
