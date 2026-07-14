@@ -20,13 +20,13 @@ def test_direct_litellm_call_is_normalized():
         return SimpleNamespace(model_dump=lambda: {"choices": [{"message": {"content": "ok"}}]})
 
     backend = LiteLLMBackend(
-        LLMBackendConfig(model="gemini/gemini-3-flash"), completion=completion
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), completion=completion
     )
     result = backend.run_inference(job(content="meeting text"))
 
     assert isinstance(result, JobResult)
     assert result.output["choices"][0]["message"]["content"] == "ok"
-    assert calls[0]["model"] == "gemini/gemini-3-flash"
+    assert calls[0]["model"] == "gemini/gemini-3-flash-preview"
     assert calls[0]["stream"] is False
 
 

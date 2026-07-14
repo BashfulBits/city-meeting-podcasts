@@ -37,7 +37,7 @@ TASK_PROMPTS: dict[Task, str] = {
 
 SUPPORTED_MODELS = frozenset(
     {
-        "gemini/gemini-3-flash",
+        "gemini/gemini-3-flash-preview",
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
         "mistral/mistral-large-3",
@@ -53,7 +53,7 @@ class LLMBackendError(RuntimeError):
 class LLMBackendConfig:
     """Runtime routing configuration; secrets are read from the environment, never persisted."""
 
-    model: str = "gemini/gemini-3-flash"
+    model: str = "gemini/gemini-3-flash-preview"
     mode: str = "direct"  # ``direct`` or ``dispatch``
     dispatch_url: str | None = None
     dispatch_auth_token: str | None = None

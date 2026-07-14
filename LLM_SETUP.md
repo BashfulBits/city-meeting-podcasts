@@ -5,12 +5,12 @@ LiteLLM routes:
 
 | Route | Environment secret |
 | --- | --- |
-| `gemini/gemini-3-flash` | `GEMINI_API_KEY` |
+| `gemini/gemini-3-flash-preview` | `GEMINI_API_KEY` |
 | `deepseek/deepseek-v4-flash` / `deepseek/deepseek-v4-pro` | `DEEPSEEK_API_KEY` |
 | `mistral/mistral-large-3` | `MISTRAL_API_KEY` |
 
 Install the optional dependency with `pip install -e ".[llm]"`. Select a direct route with
-`LLM_MODEL=gemini/gemini-3-flash` and `LLM_MODE=direct`. LiteLLM reads the provider key from the
+`LLM_MODEL=gemini/gemini-3-flash-preview` and `LLM_MODE=direct`. LiteLLM reads the provider key from the
 matching environment variable; do not put keys in YAML, source, or episode records.
 
 For the paced Mistral path, deploy the existing Worker and set `LLM_MODE=dispatch`,

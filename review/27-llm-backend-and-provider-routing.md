@@ -106,7 +106,7 @@ dependency-pinning policy like any new dependency.
   or (b) an OpenAI-compatible LiteLLM Proxy when the selected provider needs native wire-format
   translation. The Cloudflare Worker never grows provider-specific clients; the latter proxy is a
   separately provisioned LiteLLM runtime and is not hidden inside the JavaScript Worker.
-- Model strings follow LiteLLM's `provider/model` convention: `gemini/gemini-3-flash`,
+- Model strings follow LiteLLM's `provider/model` convention: `gemini/gemini-3-flash-preview`,
   `deepseek/deepseek-v4-flash`, `deepseek/deepseek-v4-pro`, `mistral/mistral-large-3`.
 
 ### §3.1 Extensible task-verb design (per maintainer requirement — no re-architecture to add a verb)
