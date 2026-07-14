@@ -599,7 +599,17 @@ class TestStageOrdering:
 
     def test_default_stages_order(self):
         names = self._names(default_stages())
-        assert names == ["chapters", "timeline", "remap", "audio", "transcript", "diarize", "links"]
+        assert names == [
+            "chapters",
+            "timeline",
+            "remap",
+            "audio",
+            "transcript",
+            "diarize",
+            "links",
+            "agenda_text",
+            "minutes_text",
+        ]
 
     def test_enrich_stages_order(self):
         names = self._names(enrich_stages())

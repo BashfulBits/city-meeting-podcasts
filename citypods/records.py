@@ -1004,6 +1004,9 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
                 for artifact in provider_transcript.get("history") or []:
                     if isinstance(artifact, dict) and artifact.get("key"):
                         keys.add(artifact["key"])
+            for link_key, link_value in (rec.get("links") or {}).items():
+                if link_key.endswith("_artifact_key") and isinstance(link_value, str):
+                    keys.add(link_value)
     return keys
 
 
@@ -1021,6 +1024,27 @@ def episode_to_record(ep: Episode) -> dict:
         "chapters": ep.chapters,
         "chapters_basis": ep.chapters_basis,
         "summary": ep.summary,
+        "agenda_text": {
+            "url": ep.agenda_text_url,
+            "attempts": ep.agenda_text_attempts,
+            "last_attempt": ep.agenda_text_last_attempt,
+        }
+        if ep.agenda_text_url or ep.agenda_text_attempts
+        else None,
+        "agenda_backup": {"url": ep.agenda_backup_url} if ep.agenda_backup_url else None,
+        "minutes_text": {
+            "url": ep.minutes_text_url,
+            "attempts": ep.minutes_text_attempts,
+            "last_attempt": ep.minutes_text_last_attempt,
+        }
+        if ep.minutes_text_url or ep.minutes_text_attempts
+        else None,
+        "minutes_votes": {"url": ep.minutes_votes_url, "items": ep.minutes_votes}
+        if ep.minutes_votes_url or ep.minutes_votes
+        else None,
+        "minutes_roster": {"url": ep.minutes_roster_url, "members": ep.minutes_roster}
+        if ep.minutes_roster_url or ep.minutes_roster
+        else None,
         # v2 transcript block (INFRA-8): replaces old transcript_url (external link).
         # External provider transcript links remain in ep.links["transcript"].
         "transcript": {
@@ -1190,6 +1214,11 @@ def record_to_episode(rec: dict) -> Episode:
     published = rec.get("published")
     when = datetime.fromisoformat(published) if published else datetime.now(UTC)
     audio = rec.get("audio") or {}
+    agenda = rec.get("agenda_text") or {}
+    backup = rec.get("agenda_backup") or {}
+    minutes = rec.get("minutes_text") or {}
+    votes = rec.get("minutes_votes") or {}
+    roster = rec.get("minutes_roster") or {}
     source_duration = record_source_duration_seconds(rec)
     served_duration = record_served_duration_seconds(rec)
 
@@ -1218,6 +1247,17 @@ def record_to_episode(rec: dict) -> Episode:
         materialize_error_spec_hash=audio.get("error_spec_hash"),
         audio_bytes=audio.get("bytes"),
         links=rec.get("links") or {},
+        agenda_text_url=agenda.get("url"),
+        agenda_text_attempts=_coerce_non_negative_int(agenda.get("attempts")),
+        agenda_text_last_attempt=agenda.get("last_attempt"),
+        agenda_backup_url=backup.get("url"),
+        minutes_text_url=minutes.get("url"),
+        minutes_text_attempts=_coerce_non_negative_int(minutes.get("attempts")),
+        minutes_text_last_attempt=minutes.get("last_attempt"),
+        minutes_votes_url=votes.get("url"),
+        minutes_votes=votes.get("items") if isinstance(votes.get("items"), list) else [],
+        minutes_roster_url=roster.get("url"),
+        minutes_roster=roster.get("members") if isinstance(roster.get("members"), list) else [],
         source_chapters=rec.get("source_chapters") or [],
         chapters=rec.get("chapters") or [],
         provider_transcript=(
@@ -1273,7 +1313,19 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
 # ``provider_transcript`` registry is a transcript-lane artifact: PT-PR5/PT-PR6 update candidate /
 # known-good confidence and must preserve it from audio-lane snapshots.
 ARTIFACT_BLOCKS: frozenset[str] = frozenset(
-    {"audio", "transcript", "provider_transcript", "speakers", "media_availability", "integrity"}
+    {
+        "audio",
+        "transcript",
+        "provider_transcript",
+        "speakers",
+        "media_availability",
+        "integrity",
+        "agenda_text",
+        "agenda_backup",
+        "minutes_text",
+        "minutes_votes",
+        "minutes_roster",
+    }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
     {"sources", "timeline", "source_chapters", "chapters", "chapters_basis"}
@@ -1513,7 +1565,33 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
             ep.speakers_confidence = speakers.get("confidence")
             ep.speakers_pipeline_version = speakers.get("pipeline_version")
             ep.speakers_error = speakers.get("error")
-        ep.links = rec.get("links") or ep.links
+        # Persisted links are derived artifacts, except a freshly supplied provider link.  In
+        # particular an agenda-derived minutes URL must never mask a later canonical provider URL.
+        persisted_links = rec.get("links") or {}
+        merged_links = dict(persisted_links)
+        for key, value in (ep.links or {}).items():
+            if value and (key not in merged_links or key == "minutes"):
+                merged_links[key] = value
+        if (ep.links or {}).get("minutes") and merged_links.get("minutes_source") == "agenda_link":
+            merged_links.pop("minutes_source", None)
+            merged_links.pop("minutes_source_episode_uid", None)
+        ep.links = merged_links or ep.links
+        agenda = rec.get("agenda_text") or {}
+        backup = rec.get("agenda_backup") or {}
+        minutes = rec.get("minutes_text") or {}
+        votes = rec.get("minutes_votes") or {}
+        roster = rec.get("minutes_roster") or {}
+        ep.agenda_text_url = agenda.get("url")
+        ep.agenda_text_attempts = _coerce_non_negative_int(agenda.get("attempts"))
+        ep.agenda_text_last_attempt = agenda.get("last_attempt")
+        ep.agenda_backup_url = backup.get("url")
+        ep.minutes_text_url = minutes.get("url")
+        ep.minutes_text_attempts = _coerce_non_negative_int(minutes.get("attempts"))
+        ep.minutes_text_last_attempt = minutes.get("last_attempt")
+        ep.minutes_votes_url = votes.get("url")
+        ep.minutes_votes = votes.get("items") if isinstance(votes.get("items"), list) else []
+        ep.minutes_roster_url = roster.get("url")
+        ep.minutes_roster = roster.get("members") if isinstance(roster.get("members"), list) else []
         ep.source_chapters = rec.get("source_chapters") or ep.source_chapters
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)

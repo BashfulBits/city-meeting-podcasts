@@ -1228,6 +1228,229 @@ class LinksStage:
         return stats
 
 
+class AgendaTextStage:
+    """Fetch agenda/packet documents, retain bounded text, and discover backup/minutes links."""
+
+    name = "agenda_text"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        import json as _json
+        from datetime import UTC, datetime
+
+        from citypods.agenda_text import extract_document, minutes_links
+        from citypods.http import make_session
+        from citypods.records import source_key
+
+        stats = StageStats(self.name)
+        if ctx.dry_run:
+            return stats
+        session = make_session()
+        src_key = source_key(city)
+
+        def fetch(url: str) -> tuple[bytes, str]:
+            response = session.get(url, timeout=30)
+            response.raise_for_status()
+            return response.content, response.headers.get("Content-Type", "")
+
+        for ep in _materialize_set(
+            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+        ):
+            agenda_url = (ep.links or {}).get("agenda") or (ep.links or {}).get("agenda_packet")
+            if not agenda_url:
+                stats.reused += 1
+                continue
+            if ep.agenda_text_url == agenda_url and ep.agenda_backup_url:
+                stats.reused += 1
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.skipped += 1
+                continue
+            try:
+                content, content_type = fetch(agenda_url)
+                text, discovered = extract_document(
+                    content, content_type=content_type, source_url=agenda_url
+                )
+                links = minutes_links(discovered)
+                ep.agenda_text_url = agenda_url
+                ep.agenda_text_attempts = 0
+                ep.agenda_text_last_attempt = datetime.now(UTC).isoformat()
+                agenda_artifact_url = _store_document(
+                    ctx, src_key, ep.uid or ep.guid, "agenda", text.encode()
+                )
+                if agenda_artifact_url:
+                    ep.links = dict(ep.links or {})
+                    ep.links["agenda_text_artifact"] = agenda_artifact_url
+                    ep.links["agenda_text_artifact_key"] = _document_key(
+                        src_key, ep.uid or ep.guid, "agenda", text.encode()
+                    )
+                # Preserve a provider-supplied canonical link.  Otherwise retain the first
+                # agenda-discovered minutes URL as a derived candidate for the previous meeting.
+                if links:
+                    ep.links = dict(ep.links or {})
+                    ep.links.setdefault("agenda_minutes_candidates", [link.url for link in links])
+                    target = _previous_same_body(ep, episodes)
+                    if target is not None and not (target.links or {}).get("minutes"):
+                        target.links = dict(target.links or {})
+                        target.links["minutes"] = links[0].url
+                        target.links["minutes_source"] = "agenda_link"
+                        target.links["minutes_source_episode_uid"] = ep.uid or ep.guid
+                # Consolidated link manifest is intentionally bounded and source-attributed.
+                manifest = [
+                    {
+                        "url": link.url,
+                        "label": link.label,
+                        "source_url": link.source_url,
+                        "kind": link.kind,
+                        "item_label": link.item_label,
+                    }
+                    for link in discovered
+                ]
+                ep.agenda_backup_url = _store_document(
+                    ctx,
+                    src_key,
+                    ep.uid or ep.guid,
+                    "backup",
+                    _json.dumps({"links": manifest, "text": text}, sort_keys=True).encode(),
+                    "application/json",
+                )
+                stats.ran += 1
+            except Exception as exc:  # one malformed document must not stop the source
+                ep.agenda_text_attempts += 1
+                ep.agenda_text_last_attempt = datetime.now(UTC).isoformat()
+                stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+        return stats
+
+
+class MinutesTextStage:
+    """Fetch effective minutes documents and publish deterministic vote/roster sidecars."""
+
+    name = "minutes_text"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        import json as _json
+        from datetime import UTC, datetime
+
+        from citypods.agenda_text import extract_document, parse_roster, parse_votes
+        from citypods.http import make_session
+        from citypods.records import source_key
+
+        stats = StageStats(self.name)
+        if ctx.dry_run:
+            return stats
+        session = make_session()
+        src_key = source_key(city)
+        for ep in _materialize_set(
+            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+        ):
+            minutes_url = (ep.links or {}).get("minutes")
+            if not minutes_url:
+                stats.reused += 1
+                continue
+            if (
+                ep.minutes_text_url == minutes_url
+                and ep.minutes_votes_url
+                and ep.minutes_roster_url
+            ):
+                stats.reused += 1
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.skipped += 1
+                continue
+            try:
+                response = session.get(minutes_url, timeout=30)
+                response.raise_for_status()
+                text, _ = extract_document(
+                    response.content,
+                    content_type=response.headers.get("Content-Type", ""),
+                    source_url=minutes_url,
+                )
+                roster = parse_roster(text)
+                votes = parse_votes(text, roster=roster)
+                uid = ep.uid or ep.guid
+                ep.minutes_text_url = minutes_url
+                ep.minutes_text_attempts = 0
+                ep.minutes_text_last_attempt = datetime.now(UTC).isoformat()
+                ep.minutes_votes = votes
+                ep.minutes_roster = roster
+                ep.minutes_votes_url = _store_document(
+                    ctx,
+                    src_key,
+                    uid,
+                    "minutes-votes",
+                    _json.dumps(
+                        {"source_url": minutes_url, "votes": votes}, sort_keys=True
+                    ).encode(),
+                    "application/json",
+                )
+                ep.minutes_roster_url = _store_document(
+                    ctx,
+                    src_key,
+                    uid,
+                    "minutes-roster",
+                    _json.dumps(
+                        {"source_url": minutes_url, "members": roster}, sort_keys=True
+                    ).encode(),
+                    "application/json",
+                )
+                artifact_url = _store_document(ctx, src_key, uid, "minutes-text", text.encode())
+                if artifact_url:
+                    ep.links = dict(ep.links or {})
+                    ep.links["minutes_text_artifact"] = artifact_url
+                    ep.links["minutes_text_artifact_key"] = _document_key(
+                        src_key, uid, "minutes-text", text.encode()
+                    )
+                stats.ran += 1
+            except Exception as exc:
+                ep.minutes_text_attempts += 1
+                ep.minutes_text_last_attempt = datetime.now(UTC).isoformat()
+                stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
+        return stats
+
+
+def _previous_same_body(ep: Episode, episodes: list[Episode]) -> Episode | None:
+    candidates = [
+        other
+        for other in episodes
+        if other is not ep and other.body == ep.body and other.published < ep.published
+    ]
+    return max(candidates, key=lambda item: item.published, default=None)
+
+
+def _store_document(
+    ctx: StageContext,
+    source: str,
+    uid: str,
+    kind: str,
+    content: bytes,
+    content_type: str = "text/plain",
+) -> str | None:
+    if ctx.storage is None:
+        return None
+    import tempfile
+    from pathlib import Path
+
+    key = _document_key(source, uid, kind, content)
+    if ctx.storage.exists(key):
+        return ctx.storage.public_url(key)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / kind
+        path.write_bytes(content)
+        return ctx.storage.put_file(key, path, content_type)
+
+
+def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
+    import hashlib
+
+    digest = hashlib.sha1(content).hexdigest()[:16]
+    return f"documents/{source}/{uid}/{kind}-{digest}"
+
+
 TRANSCRIPT_PIPELINE_VERSION = "1"
 PROVIDER_ALIGN_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
@@ -3003,6 +3226,13 @@ class ProviderTranscriptDiarizeStage:
                 "source": "provider-transcript",
                 "confidence": confidence,
                 "turns": turns,
+                # Minutes rosters are candidate vocabulary for future diarization/identity
+                # assignment. They never rewrite provider speaker labels by themselves.
+                "candidate_members": [
+                    member.get("name")
+                    for member in ep.minutes_roster
+                    if isinstance(member, dict) and member.get("name")
+                ],
             }
             with tempfile.TemporaryDirectory() as t:
                 dest = Path(t) / "speakers.json"
@@ -3050,6 +3280,8 @@ def default_stages() -> list[EnrichmentStage]:
         TranscriptStage(),
         ProviderTranscriptDiarizeStage(),
         LinksStage(),
+        AgendaTextStage(),
+        MinutesTextStage(),
     ]
 
 

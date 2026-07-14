@@ -717,6 +717,8 @@ class TestTranscriptStageOrdering:
             "transcript",
             "diarize",
             "links",
+            "agenda_text",
+            "minutes_text",
         ]
 
     def test_full_order_enrich(self):

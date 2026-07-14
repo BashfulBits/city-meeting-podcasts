@@ -130,7 +130,17 @@ def test_audio_stage_skips_withheld_availability(tmp_path):
 def test_run_stages_returns_stats_per_stage(tmp_path):
     eps = [_ep("g1")]
     stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
-    expected = ["chapters", "timeline", "remap", "audio", "transcript", "diarize", "links"]
+    expected = [
+        "chapters",
+        "timeline",
+        "remap",
+        "audio",
+        "transcript",
+        "diarize",
+        "links",
+        "agenda_text",
+        "minutes_text",
+    ]
     assert [s.name for s in stats] == expected
     # chapters is a no-op (FakeProvider has no fetch_chapters); audio hosts; links defaults.
     audio = next(s for s in stats if s.name == "audio")
@@ -202,6 +212,8 @@ def test_default_lane_none_runs_every_stage(tmp_path):
         "transcript",
         "diarize",
         "links",
+        "agenda_text",
+        "minutes_text",
     ]
 
 

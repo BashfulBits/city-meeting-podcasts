@@ -68,6 +68,19 @@ class Episode:
     audio_spec_hash: str | None = None
     # Enrichment artifacts populated by later stages (transcript/summary/chapters/links).
     links: dict = field(default_factory=dict)  # {"agenda": url, "canonical_video": url, ...}
+    # Document enrichment sidecars. URLs are the effective source links (provider links remain
+    # canonical; agenda-derived minutes links carry provenance in ``links``).
+    agenda_text_url: str | None = None
+    agenda_text_attempts: int = 0
+    agenda_text_last_attempt: str | None = None
+    agenda_backup_url: str | None = None
+    minutes_text_url: str | None = None
+    minutes_text_attempts: int = 0
+    minutes_text_last_attempt: str | None = None
+    minutes_votes_url: str | None = None
+    minutes_roster_url: str | None = None
+    minutes_votes: list[dict] = field(default_factory=list)
+    minutes_roster: list[dict] = field(default_factory=list)
     # Source-time provider chapter markers retained durably so a later timeline change can
     # reproject them onto a new served clock. Empty for synthetic served-only planners like concat.
     source_chapters: list = field(default_factory=list)

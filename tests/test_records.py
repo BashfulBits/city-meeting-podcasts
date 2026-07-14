@@ -1328,16 +1328,56 @@ def test_protected_blocks_for_lane():
     # A lane preserves the artifact block(s) it does NOT own from the freshest remote. The audio
     # lane owns both the audio bytes and the media-availability verdict it derives (H16 PR3).
     assert protected_blocks_for_lane("audio") == frozenset(
-        {"transcript", "provider_transcript", "speakers", "integrity"}
+        {
+            "transcript",
+            "provider_transcript",
+            "speakers",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+        }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
-        {"audio", "speakers", "media_availability", "integrity"}
+        {
+            "audio",
+            "speakers",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+        }
     )
     assert protected_blocks_for_lane("align") == frozenset(
-        {"audio", "speakers", "media_availability", "integrity"}
+        {
+            "audio",
+            "speakers",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+        }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
-        {"audio", "transcript", "media_availability", "integrity"}
+        {
+            "audio",
+            "transcript",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+        }
     )
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
     assert protected_blocks_for_lane(None) == frozenset()
