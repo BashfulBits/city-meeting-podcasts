@@ -62,6 +62,24 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
     assert "actions/cache@v5" not in workflow_text
 
 
+@pytest.mark.parametrize(
+    "workflow,environment,secret_names",
+    [
+        ("modal-deploy.yml", "modal-production", {"MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"}),
+        ("beam-deploy.yml", "beam-production", {"BEAM_TOKEN"}),
+    ],
+)
+def test_external_worker_deploys_use_secret_scoped_environments(
+    workflow, environment, secret_names
+):
+    """Provider credentials are stored as environment secrets, not repository secrets."""
+    _wf, job = _job(workflow, "deploy")
+    assert job.get("environment") == environment
+    env = job.get("env", {})
+    for name in secret_names:
+        assert env.get(name) == f"${{{{ secrets.{name} }}}}"
+
+
 @pytest.mark.parametrize("workflow,lane,job_name", HEAVY_WORKFLOWS)
 def test_heavy_workflow_wires_graceful_yield(workflow, lane, job_name):
     """Graceful yield needs the Actions API: ``actions: read`` AND ``GITHUB_TOKEN`` for the
