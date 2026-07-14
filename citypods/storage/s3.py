@@ -191,19 +191,22 @@ class S3CompatibleStorage:
         """
         from botocore.exceptions import ClientError
 
+        def read_object() -> tuple[bytes, str]:
+            resp = self._client.get_object(Bucket=self.bucket, Key=key)
+            body = resp["Body"]
+            try:
+                return body.read(), resp["ETag"]
+            finally:
+                body.close()
+
         try:
-            resp = _retry_storage_read(lambda: self._client.get_object(Bucket=self.bucket, Key=key))
+            return _retry_storage_read(read_object)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if code in ("NoSuchKey", "404") or status == 404:
                 return None
             raise
-        body = resp["Body"]
-        try:
-            return body.read(), resp["ETag"]
-        finally:
-            body.close()
 
     def put_cas(
         self,
@@ -263,23 +266,24 @@ class S3CompatibleStorage:
         ``get_file`` for a header-only read (e.g. an MP4 ``moov`` duration probe)."""
         from botocore.exceptions import ClientError
 
-        try:
-            resp = _retry_storage_read(
-                lambda: self._client.get_object(
-                    Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
-                )
+        def read_range() -> bytes:
+            resp = self._client.get_object(
+                Bucket=self.bucket, Key=key, Range=f"bytes={start}-{end}"
             )
+            body = resp["Body"]
+            try:
+                return body.read()
+            finally:
+                body.close()
+
+        try:
+            return _retry_storage_read(read_range)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if code in ("NoSuchKey", "404") or status in (404, 416):
                 return None
             raise
-        body = resp["Body"]
-        try:
-            return body.read()
-        finally:
-            body.close()
 
     # --- orphan GC support (optional StorageBackend capability) ---
 
