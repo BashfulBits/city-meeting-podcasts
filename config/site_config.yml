@@ -75,6 +75,10 @@ backlog_priority:
 # city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
 
 defaults:
+  search: true                           # static browser search; false removes its public output
+  # Search-sidecar reads are restartable. Keep the render-only deployment bounded; a stopped build
+  # retains the last complete manifest and tries again on the next render (0 = no time cap).
+  search_index_budget_minutes: 20
   podcast_language: "en-us"
   podcast_category: "Government"
   max_episodes: 500                      # how many episodes a FEED renders (display cap)

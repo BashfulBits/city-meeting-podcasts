@@ -67,6 +67,20 @@ knowing before searching for issue history that isn't there.
   anywhere in the subscribe block. This is exactly the gap "subscribe-button app iconography" in the L1
   sketch names.
 
+### A.1.1 Search information architecture boundary (R4 decision, 2026-07-14)
+
+Static search is physically partitioned into provider/source shards so the browser can fetch a small
+subset of its index lazily. That partition is an implementation and performance concern, **not a civic
+concept and not a public navigation dimension**. A redesign must therefore never expose a raw source key,
+an "archive" selector, provider-shard counts, or a per-shard transcript-coverage percentage.
+
+The user-facing search hierarchy is: whole catalog → municipality → government body. Transcript coverage
+is shown only at those scopes as `transcripted retained meetings / all non-suppressed retained meetings`.
+The client may aggregate source-shard numerators/denominators internally to render the municipality/body
+number, but the resulting interface must not reveal or require knowledge of the underlying provider
+collection. This preserves the lazy-load benefit while keeping the public mental model about governments
+and their meeting bodies rather than ingestion architecture.
+
 ### A.2 This doc specifies a process, not a visual identity — deliberately
 
 **Maintainer decision, 2026-07-13: this session produces roadmap/design documents, not the actual visual

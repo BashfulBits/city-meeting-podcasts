@@ -1378,21 +1378,28 @@ class AgendaTextStage:
                         manifest_item.update(
                             {"text": None, "truncated": False, "source": "link-only"}
                         )
+                backup_payload = _json.dumps(
+                    {
+                        "version": AGENDA_BACKUP_PIPELINE_VERSION,
+                        "links": manifest,
+                        "text": text,
+                    },
+                    sort_keys=True,
+                ).encode()
                 ep.agenda_backup_url = _store_document(
                     ctx,
                     src_key,
                     ep.uid or ep.guid,
                     "backup",
-                    _json.dumps(
-                        {
-                            "version": AGENDA_BACKUP_PIPELINE_VERSION,
-                            "links": manifest,
-                            "text": text,
-                        },
-                        sort_keys=True,
-                    ).encode(),
+                    backup_payload,
                     "application/json",
                 )
+                if ep.agenda_backup_url:
+                    ep.links = dict(ep.links or {})
+                    ep.links["agenda_backup_artifact"] = ep.agenda_backup_url
+                    ep.links["agenda_backup_artifact_key"] = _document_key(
+                        src_key, ep.uid or ep.guid, "backup", backup_payload
+                    )
                 ep.agenda_backup_attempts = 0
                 ep.agenda_backup_last_attempt = now.isoformat()
                 stats.ran += 1

@@ -6,7 +6,7 @@ import json
 import re
 
 from citypods.models import City
-from citypods.site import render_index
+from citypods.site import render_index, render_search_page
 
 
 def _city(slug, author, title):
@@ -60,6 +60,34 @@ def test_index_has_noscript_fallback_listing_all_feeds():
     noscript = html[html.index("<noscript>") : html.index("</noscript>")]
     assert "City of A, TX" in noscript
     assert "https://e.test/a-tx-council/" in noscript
+
+
+def test_search_page_points_at_static_manifest_and_vendored_engine():
+    html = render_search_page({"site_title": "T", "site_description": "D"}, "https://e.test")
+    assert "https://e.test/data/search/manifest.json" in html
+    assert "https://e.test/assets/minisearch-7.1.2.js" in html
+    assert "Search meetings" in html
+    assert 'id="tag"' in html
+    assert 'id="coverage"' in html
+    assert 'id="source"' not in html
+    assert "Transcript coverage:" in html
+    assert "documentKey(shard.source_key, doc.uid)" in html
+    # Withheld results deliberately set their timestamp to null before an href is assembled.
+    assert "const time = doc.is_withheld ? null : hitTime(doc, terms);" in html
+    assert "unavailable" in html
+    assert "Transcript coverage temporarily unavailable." in html
+    assert "window.setTimeout(search, 200)" in html
+
+
+def test_index_hides_global_search_link_when_disabled():
+    city = _city("a-tx-council", "City of A, TX", "A — Council")
+    html = render_index(
+        [city],
+        {"site_title": "T", "site_description": "D"},
+        "https://e.test",
+        search_enabled=False,
+    )
+    assert "/search/" not in html
 
 
 def test_city_page_keeps_video_only_episode_for_video_only_city(monkeypatch):

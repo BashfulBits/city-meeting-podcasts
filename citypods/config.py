@@ -53,6 +53,12 @@ def _validate_asr_workers(asr_workers: int, *, source_file: Path) -> int:
 def load_site_config(path: str | Path) -> dict:
     data = yaml.safe_load(Path(path).read_text()) or {}
     data.setdefault("defaults", {})
+    # Search is a site-wide render feature, not a per-feed provider setting.  Keep the opt-out
+    # explicit so a deployment that disables it also has a deterministic default.
+    data["defaults"].setdefault("search", True)
+    # Search reads bounded, restartable sidecars during render.  Keep that optional work from
+    # turning the deploy-only phase into an unbounded job; zero deliberately disables this cap.
+    data["defaults"].setdefault("search_index_budget_minutes", 20)
     return data
 
 
@@ -201,7 +207,7 @@ def _build_city(
 # Top-level files/dirs the build owns directly; a feed slug/alias landing on one of these
 # would write into (or be pruned alongside) the build's own reserved tree. Shared with
 # run.py's _prune_stale_dirs, which must leave these alone.
-RESERVED_PUBLIC_DIRS = {"audio", "assets", "static", ".git"}
+RESERVED_PUBLIC_DIRS = {"audio", "assets", "data", "search", "static", ".git"}
 
 
 def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
