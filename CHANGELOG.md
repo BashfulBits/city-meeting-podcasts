@@ -61,6 +61,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **S3-compatible state and coordination reads now survive transient boto failures.** Shared storage
+  reads retry transient transport errors, throttling/5xx responses, and the botocore
+  `StreamingChecksumBody.strip` parser failure seen in GH#887. Missing objects, credentials,
+  permission errors, malformed requests, and other non-transient failures still surface normally;
+  no audio or ASR pipeline version changed and stored artifacts are not invalidated.
+
 - **`ASR Quality Ingest` no longer fails on unrelated issue comments, and its parent-close pass
   now works without a checkout.** The workflow still listens to `issue_comment`, but the
   `finalize` job now skips runs where `resolve` found no H15 child issue to ingest, so routine PR

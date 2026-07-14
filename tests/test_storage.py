@@ -492,6 +492,60 @@ def test_get_bytes_roundtrip_and_absent():
     assert store._client.bodies["k.json"].closed is True
 
 
+def test_get_bytes_retries_transient_s3_internal_error(monkeypatch):
+    store = _s3_with_fake_client()
+
+    class _FlakyGetClient(_FakeS3Client):
+        def __init__(self):
+            super().__init__()
+            self.failures = [_client_error("InternalError", 500)]
+
+        def get_object(self, *, Bucket, Key, Range=None):
+            if self.failures:
+                raise self.failures.pop(0)
+            self.store[Key] = (b"hello", '"etag-1"')
+            return super().get_object(Bucket=Bucket, Key=Key, Range=Range)
+
+    client = _FlakyGetClient()
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    data, etag = store.get_bytes("lease.json")
+    assert data == b"hello" and etag == '"etag-1"'
+
+
+@pytest.mark.parametrize("operation", ["bytes", "range"])
+def test_get_reads_retry_transient_body_read_error(monkeypatch, operation):
+    store = _s3_with_fake_client()
+
+    class _ReadFlakyClient(_FakeS3Client):
+        def __init__(self):
+            super().__init__()
+            self.failures = [_client_error("InternalError", 500)]
+            self.store["k"] = (b"0123456789", '"etag-1"')
+
+        def get_object(self, *, Bucket, Key, Range=None):
+            response = super().get_object(Bucket=Bucket, Key=Key, Range=Range)
+            body = response["Body"]
+            read = body.read
+
+            def flaky_read():
+                if self.failures:
+                    raise self.failures.pop(0)
+                return read()
+
+            body.read = flaky_read
+            return response
+
+    store._client = _ReadFlakyClient()
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    if operation == "bytes":
+        assert store.get_bytes("k") == (b"0123456789", '"etag-1"')
+    else:
+        assert store.get_range("k", 2, 5) == b"2345"
+
+
 def test_lifecycle_rules_empty_then_put_readback():
     store = _s3_with_fake_client()
     assert store.get_lifecycle_rules() == []  # NoSuchLifecycleConfiguration → []
@@ -566,9 +620,23 @@ def test_get_file_returns_false_only_for_absent_objects(tmp_path):
     assert store.get_file("missing.json", tmp_path / "missing.json") is False
 
 
-def test_get_file_raises_non_absent_client_errors(tmp_path):
+def test_get_file_raises_non_absent_client_errors(tmp_path, monkeypatch):
     store = _s3_with_fake_client()
-    store._client = _FakeDownloadClient([_client_error("InternalError", 500)])
+    store._client = _FakeDownloadClient([_client_error("InternalError", 500) for _ in range(3)])
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
 
+    # Transient server errors are retried, but still surface after the bounded retry budget.
     with pytest.raises(Exception, match="InternalError"):
         store.get_file("state/k.json", tmp_path / "k.json")
+    assert store._client.calls == 3
+
+
+def test_get_file_retries_streaming_checksum_parser_failure_then_succeeds(tmp_path, monkeypatch):
+    store = _s3_with_fake_client()
+    parser_error = AttributeError("'StreamingChecksumBody' object has no attribute 'strip'")
+    client = _FakeDownloadClient([parser_error])
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    assert store.get_file("state/k.json", tmp_path / "state.json") is True
+    assert client.calls == 2
