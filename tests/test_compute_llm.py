@@ -55,7 +55,7 @@ def test_dispatch_enqueue_and_poll():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-3",
+            model="mistral/mistral-large-latest",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
             dispatch_auth_token="secret",

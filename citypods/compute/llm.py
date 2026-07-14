@@ -40,7 +40,8 @@ SUPPORTED_MODELS = frozenset(
         "gemini/gemini-3-flash-preview",
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
-        "mistral/mistral-large-3",
+        "mistral/mistral-large-latest",
+        "mistral/mistral-large-3",  # compatibility with earlier Worker configurations
     }
 )
 
