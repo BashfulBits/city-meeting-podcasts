@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import signal
 import threading
 import time
 from pathlib import Path
@@ -95,7 +96,7 @@ def test_process_backend_close_kills_worker_that_ignores_terminate(monkeypatch):
 
     backend.close()
 
-    assert signals and signals[0][0] == process.pid
+    assert signals and signals[0] == (process.pid, signal.SIGINT)
     assert process.terminated == 1
     assert process.killed == 1
     assert process.closed == 1

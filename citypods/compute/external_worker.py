@@ -87,6 +87,7 @@ from citypods.records import (
     source_key,
     transcript_timeout_backoff_until,
 )
+from citypods.security import redact_subprocess_text
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
     TRANSCRIPT_MIME,
@@ -819,10 +820,11 @@ class ExternalTranscribeWorker:
                 summary.failed += 1
                 worked += 1
                 outcome = "failed"
+                safe_error = redact_subprocess_text(str(exc))
                 print(
                     f"[{self.config.backend}-worker] failed "
                     f"{item.source_key}/{item.episode_uid}: "
-                    f"{type(exc).__name__}: {exc}",
+                    f"{type(exc).__name__}: {safe_error}",
                     flush=True,
                 )
             else:

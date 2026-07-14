@@ -80,7 +80,7 @@ def _worker_main(conn: Connection, asr_override: ModuleType | object | None) -> 
                         },
                     )
                 )
-    except (EOFError, BrokenPipeError, OSError):
+    except (EOFError, BrokenPipeError, OSError, KeyboardInterrupt):
         return
     finally:
         conn.close()
