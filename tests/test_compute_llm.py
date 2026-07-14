@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMBackendError
 
 
 def job(task="tag", **inputs):
@@ -68,6 +68,51 @@ def test_dispatch_enqueue_and_poll():
     assert backend.poll(handle) is None
     assert backend.poll(handle).output["choices"][0]["message"]["content"] == "done"
     assert requests[0][2]["headers"]["idempotency-key"] == "recipe-1"
+
+
+def test_dispatch_rejects_malformed_body_and_cross_host_location():
+    class Response:
+        status_code = 202
+        headers = {"location": "https://evil.example/v1/requests/1"}
+
+        def json(self):
+            return None
+
+    class Session:
+        def post(self, *_args, **_kwargs):
+            return Response()
+
+        def get(self, *_args, **_kwargs):
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+    )
+    handle = backend.run_inference(job(content="hello"))
+    with pytest.raises(LLMBackendError, match="unexpected host"):
+        backend.reconcile(handle)
+
+    class MalformedSession(Session):
+        def post(self, *_args, **_kwargs):
+            response = Response()
+            response.headers = {}
+            return response
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=MalformedSession(),
+    )
+    with pytest.raises(LLMBackendError, match="omitted a request reference"):
+        backend.run_inference(job(content="hello"))
 
 
 def test_rejects_gpu_and_unknown_routes():

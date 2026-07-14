@@ -257,7 +257,7 @@ total on `/admin/status`.
   private R2 queue. Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending
   requests; a per-minute Cron Trigger claims one ready request with an R2 conditional write, reserves a
   durable dispatch interval slot, calls the configured OpenAI-shaped HTTPS route, and persists either
-  the response or a bounded retry/failure state. R2's planned Python LLM backend will use this as its
+  the response or a bounded retry/failure state. The implemented Python LLM backend uses this as its
   `JobHandle` path; direct provider translation remains LiteLLM's responsibility, either in Python or
   in an explicitly configured LiteLLM Proxy upstream. The queue is ephemeral/derivable and is not part
   of the B2-backed catalog records or the Python `RoutingStorage` control-plane prefixes.

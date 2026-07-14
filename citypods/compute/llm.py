@@ -12,11 +12,12 @@ import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult, Task
+from citypods.security import SecurityError, validate_source_url
 
 LLM_TASKS: frozenset[Task] = frozenset({"summarize", "tag", "soundbite-select"})
 TASK_VERSIONS: dict[Task, str] = {
@@ -62,6 +63,7 @@ class LLMBackendConfig:
 
     @classmethod
     def from_env(cls) -> LLMBackendConfig:
+        """Build configuration from environment variables without reading provider keys."""
         return cls(
             model=os.environ.get("LLM_MODEL", cls.model),
             mode=os.environ.get("LLM_MODE", cls.mode),
@@ -85,6 +87,7 @@ def _response_mapping(response: Any) -> dict[str, Any]:
 
 
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
+    """Return caller-supplied messages or construct the task's default structured prompt."""
     supplied = job.inputs.get("messages")
     if supplied is not None:
         if not isinstance(supplied, list) or not supplied:
@@ -123,6 +126,7 @@ class LiteLLMBackend(Backend):
         self._session = http_session or requests.Session()
 
     def _completion_fn(self) -> Callable[..., Any]:
+        """Resolve LiteLLM lazily so users of ASR-only paths need not install the extra."""
         if self._completion is not None:
             return self._completion
         try:
@@ -133,6 +137,7 @@ class LiteLLMBackend(Backend):
             ) from exc
 
     def _payload(self, job: InferenceJob) -> dict[str, Any]:
+        """Build the provider-neutral OpenAI-shaped request sent by either transport."""
         payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": _messages(job),
@@ -144,6 +149,7 @@ class LiteLLMBackend(Backend):
         return payload
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
+        """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
         if job.task not in LLM_TASKS:
             raise ValueError(f"LiteLLM backend does not handle task {job.task!r}")
         payload = self._payload(job)
@@ -170,7 +176,9 @@ class LiteLLMBackend(Backend):
             if response.status_code != 202:
                 raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
             body = response.json()
-            ref = response.headers.get("location") or body.get("id")
+            ref = response.headers.get("location")
+            if not ref and isinstance(body, Mapping):
+                ref = body.get("id")
             if not ref:
                 raise LLMBackendError("LLM dispatch response omitted a request reference")
             return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend=self.name, ref=ref)
@@ -182,12 +190,29 @@ class LiteLLMBackend(Backend):
         if handle.backend != self.name:
             raise ValueError(f"cannot reconcile handle for backend {handle.backend!r}")
         ref = handle.ref
+        base = self.config.dispatch_url.rstrip("/") + "/"
+        base_parts = urlsplit(base)
         if ref.startswith("http"):
-            url = ref
+            candidate = ref
+            candidate_parts = urlsplit(candidate)
+            if (candidate_parts.scheme, candidate_parts.netloc) != (
+                base_parts.scheme,
+                base_parts.netloc,
+            ):
+                raise LLMBackendError("LLM dispatch location points to an unexpected host")
         elif ref.startswith("/"):
-            url = urljoin(self.config.dispatch_url.rstrip("/") + "/", ref.lstrip("/"))
+            candidate = urljoin(base, ref.lstrip("/"))
         else:
-            url = urljoin(self.config.dispatch_url.rstrip("/") + "/", f"v1/requests/{ref}")
+            candidate = urljoin(base, f"v1/requests/{ref}")
+        try:
+            validate_source_url(
+                candidate,
+                allowed_hosts=(base_parts.hostname or "",),
+                resolve=False,
+            )
+        except SecurityError as exc:
+            raise LLMBackendError("LLM dispatch location is not an allowed HTTPS URL") from exc
+        url = candidate
         headers = {}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
