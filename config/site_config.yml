@@ -6,6 +6,17 @@ site_description: "Subscribe to your local government."
 site_author: ""
 site_author_url: ""
 github_repo: "BashfulBits/city-meeting-podcasts"   # "user/repo" for Issue links
+# Public website city-request form. Both values are intentionally public: Formspark's action URL
+# and Turnstile's site key are emitted into the page. Spam verification uses the Turnstile secret
+# stored only in Formspark; the Formspark→Worker shared secret stays only in the private webhook URL.
+city_request_form:
+  formspark_action: "https://submit-form.com/lyq8iwEP2"  # https://submit-form.com/<form-id>
+  turnstile_site_key: "0x4AAAAAAD2JkYk0lOKcinjB"  # public Cloudflare Turnstile site key
+# R12-only inference route. This is committed configuration, not a repository-wide LLM preference;
+# future summary/tag features may select different models without changing city discovery.
+city_discovery:
+  llm_model: "gemini/gemini-3-flash-preview"
+  llm_mode: "direct"  # direct | dispatch
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)

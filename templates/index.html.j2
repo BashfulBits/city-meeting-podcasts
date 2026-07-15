@@ -10,7 +10,11 @@
          aria-label="Search cities &amp; boards"
          style="width:100%;padding:.7rem .9rem;font-size:1rem;border:1px solid var(--border);
                 border-radius:10px;background:var(--card);color:var(--fg);">
-  {% if config.github_repo %}
+  {% if config.city_request_form and config.city_request_form.formspark_action and config.city_request_form.turnstile_site_key %}
+  <p style="margin:.6rem 0 1.5rem;">
+    <a class="muted" href="{{ site }}/request-a-city/">+ Add your city</a>
+  </p>
+  {% elif config.github_repo %}
   <p style="margin:.6rem 0 1.5rem;">
     <a class="muted" href="https://github.com/{{ config.github_repo }}/issues/new?template=add-city.yml">+ Add your city</a>
   </p>

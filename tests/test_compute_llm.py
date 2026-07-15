@@ -30,6 +30,16 @@ def test_direct_litellm_call_is_normalized():
     assert calls[0]["stream"] is False
 
 
+def test_blank_actions_variables_preserve_direct_gemini_defaults(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL", "")
+    monkeypatch.setenv("LLM_MODE", "")
+
+    config = LLMBackendConfig.from_env()
+
+    assert config.model == "gemini/gemini-3-flash-preview"
+    assert config.mode == "direct"
+
+
 def test_dispatch_enqueue_and_poll():
     requests = []
 

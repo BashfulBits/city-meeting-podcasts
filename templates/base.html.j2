@@ -59,8 +59,12 @@
     <p>An independent directory — not affiliated with or endorsed by these governments.
        Audio is re-hosted from public meeting recordings.</p>
     <p>
-      {% if config.github_repo %}<a href="https://github.com/{{ config.github_repo }}">Open source on GitHub</a> ·
-      <a href="https://github.com/{{ config.github_repo }}/issues/new?template=add-city.yml">Add your city</a>{% endif %}
+      {% if config.github_repo %}<a href="https://github.com/{{ config.github_repo }}">Open source on GitHub</a> ·{% endif %}
+      {% if config.city_request_form and config.city_request_form.formspark_action and config.city_request_form.turnstile_site_key %}
+      <a href="{{ site }}/request-a-city/">Add your city</a>
+      {% elif config.github_repo %}
+      <a href="https://github.com/{{ config.github_repo }}/issues/new?template=add-city.yml">Add your city</a>
+      {% endif %}
     </p>
   </footer>
 </body>

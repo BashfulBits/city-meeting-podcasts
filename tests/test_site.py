@@ -6,7 +6,7 @@ import json
 import re
 
 from citypods.models import City
-from citypods.site import render_index, render_search_page
+from citypods.site import render_city_request_page, render_index, render_search_page
 
 
 def _city(slug, author, title):
@@ -77,6 +77,26 @@ def test_search_page_points_at_static_manifest_and_vendored_engine():
     assert "unavailable" in html
     assert "Transcript coverage temporarily unavailable." in html
     assert "window.setTimeout(search, 200)" in html
+
+
+def test_city_request_page_wires_public_formspark_and_turnstile_values():
+    html = render_city_request_page(
+        {
+            "site_title": "T",
+            "site_description": "D",
+            "city_request_form": {
+                "formspark_action": "https://submit-form.com/public-form-id",
+                "turnstile_site_key": "public-site-key",
+            },
+        },
+        "https://e.test",
+    )
+    assert 'action="https://submit-form.com/public-form-id"' in html
+    assert 'data-sitekey="public-site-key"' in html
+    assert 'name="city_state"' in html
+    assert 'name="email"' in html
+    assert 'name="cf-turnstile-response"' not in html
+    assert "new FormData(form)" in html
 
 
 def test_index_hides_global_search_link_when_disabled():

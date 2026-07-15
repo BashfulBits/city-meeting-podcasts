@@ -33,6 +33,7 @@ Task = Literal[
     "summarize",
     "tag",
     "soundbite-select",
+    "classify-civic-platforms",
 ]
 
 

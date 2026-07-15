@@ -1,0 +1,43 @@
+title: "[City request] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Request public-meeting podcast coverage for a city. An automated reply will link the
+        canonical GitHub issue where research, maintainer decisions, and progress are tracked.
+  - type: input
+    id: city_state
+    attributes:
+      label: City and state
+      description: Use the format City, ST.
+      placeholder: Denton, TX
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Video platform (if known)
+      options:
+        - Not sure
+        - Granicus
+        - CivicClerk
+        - Swagit
+        - YouTube
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: source_url
+    attributes:
+      label: Meeting video / feed URL
+      description: Optional public meetings or video page.
+  - type: input
+    id: city_website
+    attributes:
+      label: City website
+      description: Optional official city website.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Optional boards, meeting bodies, or context that may help research.

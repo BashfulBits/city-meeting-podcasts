@@ -1,0 +1,11 @@
+{
+  "name": "citypods-city-request-intake",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "4.111.0"
+  }
+}
