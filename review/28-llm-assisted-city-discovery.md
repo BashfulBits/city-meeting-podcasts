@@ -1,7 +1,7 @@
 # review/28 — LLM-Assisted City & Agenda-Source Discovery
 
 **Maturity: L3 (dev-ready) · ROADMAP R12 — number out of table-position on purpose, per the
-no-renumbering convention; sequenced right after R2, before R3 · issues not yet cut**
+no-renumbering convention; sequenced right after R2, before R3 · implementation issues not yet cut**
 
 > **Promoted 2026-07-12 (maintainer request): "push toward L2, research the best answer for each open
 > question."** The L1 sketch left two decisions open: which search-grounding mechanism, and whether this
@@ -10,12 +10,14 @@ no-renumbering convention; sequenced right after R2, before R3 · issues not yet
 > questions together.
 >
 > **Matured further to L3, same day (maintainer request: "push further, ask me with anything you're not
-> sure of").** Two open decisions — trigger cadence, and what the checkbox-approval Action does — were
+> sure of").** Two open decisions — trigger cadence, and what the approval Action does — were
 > put to the maintainer directly rather than assumed. The answers **expanded scope**: this item now
 > explicitly covers new-city bootstrapping (previously deferred as "no existing manual process to
 > automate against"), because this repo already has one — the `add-city` issue template (§5.2) — R12
 > automates fulfilling it, not a new intake surface. The answers also specified a real, non-trivial
-> commit-gating algorithm (§7) rather than a simple "PR vs. direct commit" toggle.
+> approval and batching workflow (§10) rather than a direct-to-main path. The maintainer subsequently
+> chose one permission model: approved proposals are bundled into a maintainer-reviewed PR; R12 never
+> commits directly to main.
 
 ---
 
@@ -83,7 +85,7 @@ discipline:
 | Option | Free tier (2026-07-12) | Verdict |
 |---|---|---|
 | **Bing Search API** | None — **fully retired August 11, 2025**, public endpoints return HTTP 410. Not a live option at all | Dead; confirming this in research (rather than assuming from training-data recall) is itself the kind of "verify, don't guess" mistake this whole item exists to prevent |
-| **Brave Search API** | **None as of Feb 12, 2026** — free tier eliminated, now $5 prepaid credit (~1,000 queries) then metered, credit card required, mandatory public attribution | Real, recent precedent for "a vendor's free tier can vanish with little warning" — noted as a live risk for whichever option is chosen (§9) |
+| **Brave Search API** | **None as of Feb 12, 2026** — free tier eliminated, now $5 prepaid credit (~1,000 queries) then metered, credit card required, mandatory public attribution | Real, recent precedent for "a vendor's free tier can vanish with little warning" — noted as a live risk for whichever option is chosen (§11) |
 | **SerpApi** | Conflicting reports (10–100/month depending on source — inconsistent enough to distrust); paid tiers from ~$25–75/month | Also under an active Google DMCA lawsuit (filed Dec 2025, motion to dismiss Feb 2026, hearing scheduled May 2026) — a ToS/legal cloud independent of price, reason enough to avoid regardless of tier details |
 | **Tavily** | **1,000 free credits/month, no credit card required**, $0.008/credit pay-as-you-go beyond that. Purpose-built for LLM/RAG grounding — returns structured, chunked results designed to be handed straight to a model | **Recommended.** Matches this project's free-tier-first posture (no card, no billing-account precondition), purpose-fit for exactly this "ground the model in retrieved text" pattern R2 §4 already established for chapter-boundary chunking, and provider-independent (works with whichever of Gemini/DeepSeek/Mistral R2's routing picks, no lock-in to one LLM vendor's search feature) |
 
@@ -179,18 +181,20 @@ depth (§6), and where output is posted (§7).
    allocation policy routes to. No tool-calling, no grounding feature, none of §2.1's bugs are in play.
 3. **Verify** (Python, mandatory, never skipped, tiered by mode — §6).
 4. **Assemble evidence** (§7) — the bundle a human actually reviews before checking a box.
-5. **Propose or reply** (§5/§7) — a GitHub issue/comment with a checkbox. Steps 1–4 never touch config
-   directly; checking the box is what triggers §8's apply logic.
+5. **Propose or reply** (§5/§7) — a GitHub issue/comment with evidence and an approval control. Steps 1–4
+   never touch config directly; maintainer approval queues the proposal for the next batch PR. No R12
+   path commits directly to `main`.
 
 ---
 
 ## §5. Two trigger surfaces
 
-**Resolved 2026-07-12 (maintainer decision, both confirmed): a low-frequency scheduled sweep for
-aux-discovery, plus dispatch off the existing `add-city` issue label for new-city requests.** Not a
-single mechanism — the two modes have genuinely different triggers because one operates over a small,
-known, existing set of cities and the other is inherently on-demand (triggered by whoever files the
-request).
+**Resolved 2026-07-14 (maintainer decision): one daily scheduled workflow plus manual dispatch.** Do not
+trigger discovery directly from every issue edit: `issues.edited` is noisy and can loop on bot comments,
+labels, and evidence updates. The daily run gives queued R2/Tavily work an overnight window;
+`workflow_dispatch` is the maintainer fast path. Both use the same idempotent queue/state logic. The two
+modes still have different queue eligibility: new-city work is request-driven, while auxiliary work is
+coverage- and `next_check_at`-driven.
 
 ### §5.1 Aux-discovery: scheduled sweep + manual dispatch
 
@@ -201,25 +205,51 @@ rather than riding PR CI):
 ```yaml
 on:
   schedule:
-    - cron: "0 9 1 */3 *"  # 09:00 UTC on the 1st, every 3 months — quarterly
+    - cron: "0 3 * * *"  # 03:00 UTC / 22:00 Central — daily overnight run
   workflow_dispatch:
     inputs:
       city_slug:
-        description: "Run against one city only (optional; default sweeps every eligible city)"
+        description: "Run one city only (optional)"
+        required: false
+      mode:
+        description: "all, new-city, auxiliary, batch"
         required: false
 ```
 
-**Cadence: quarterly, proposed as a concrete default, tunable.** Reasoning: unlike `availability-digest`'s
-continuously-changing withheld-media queue, aux-discovery's target list is small and near-static (§9.1) —
+**Cadence: daily, with weekly auxiliary eligibility.** The daily workflow processes newly queued
+website/community/add-city requests, runs discovery, posts evidence, and batches approved proposals
+into a PR. This provides the intended overnight turnaround while permitting a maintainer to dispatch
+the same workflow immediately when needed. Auxiliary discovery is evaluated weekly within the daily
+workflow using persisted `next_check_at` state; a city can be deliberately deferred for a three-month
+recheck. The former quarterly-only cadence is superseded.
+
+<!--
+**Former cadence rationale:** unlike `availability-digest`'s
+continuously-changing withheld-media queue, aux-discovery's target list is small and near-static (§11.1) —
 weekly would mostly re-confirm "still nothing new" and burn Tavily/LLM budget for no benefit; quarterly
 still catches Appendix P's IQM2/NovusAGENDA EOL migrations (which unfold over months, per the Waco
 precedent in `review/15`) well within their runway. Every run is also independently triggerable via
 `workflow_dispatch` for an on-demand check.
+-->
 
 **Eligible cities for the sweep** (computed at run time, not hardcoded): every `City` whose current
 `provider` lacks native agenda data (Swagit, and any Granicus city not already covered by Part A's
 migration) **and** whose `aux_provider` is not already set. This makes the sweep self-limiting as R11
 Part A/B execution proceeds — cities gain `aux_provider` and drop out of future sweeps automatically.
+
+Before search, measure native agenda coverage over the trailing 365 days. A city with at least five
+recent meetings enters `agenda-covered` at **≥95% verified agenda coverage** and is excluded from
+auxiliary discovery. It leaves that state only below 90% for two consecutive checks or by explicit
+maintainer request. Cities below the five-meeting minimum remain eligible rather than being declared
+covered from a tiny sample:
+
+```text
+agenda_coverage = meetings_with_verified_agenda_links / meetings_with_expected_agenda_links
+```
+
+Persist the numerator, denominator, ratio, measurement time, and evidence source. Other discovery
+states are `eligible`, `known-no-agenda`, `assigned-unsupported-provider`, `verified`, `needs-discovery`,
+and `rejected`.
 
 ### §5.2 New-city bootstrapping: dispatch off the existing `add-city` label
 
@@ -257,7 +287,7 @@ already route to full discovery either way.
 candidate URL through the existing SSRF-gated `make_session()` (`citypods/http.py:264-337` — the same
 gate every other fetch path in this codebase already goes through) and confirms it matches a known
 platform signature. A candidate that fails is dropped, never proposed. Scoped initially to Appendix P's
-"live-verified"/"search-evidenced" tier (§9.3 has the concrete near-term list).
+"live-verified"/"search-evidenced" tier (§11.3 has the concrete near-term list).
 
 **New for this pass: end-to-end sample-episode verification, required before any config is ever
 proposed as apply-able.** The maintainer's evidence requirement ("link to a sample video... proving it
@@ -302,30 +332,187 @@ is asked to decide anything:**
    maintainer can see at a glance whether this looks like real, complete coverage or a partial match.
 5. The proposed YAML diff itself (new file for new-city mode; `aux_provider`/`aux_source` keys for
    aux-discovery mode).
-6. A checkbox: **"- [ ] Apply this configuration"** — present only when §6's verification fully passed
-   (platform signature **and** end-to-end sample resolution); absent (replaced by the "research finding
-   only" label) otherwise.
+6. An approval control: `/r12 approve` is available only when §6's verification fully passed (platform
+   signature **and** end-to-end sample resolution). Approval queues the proposal for the next batch PR;
+   it never writes configuration directly. Unsupported or unverified findings show the "research finding
+   only" label instead.
 
 **Aux-discovery mode** — one rolling digest issue (title `[city-discovery] N candidate(s) pending`),
 mirroring `scripts/audit_feeds.py`'s consolidated-issue/hidden-JSON-state pattern: one section per city,
 a hidden `<!-- citypods:city-discovery:state ... -->` JSON block tracking per-city status
-(`proposed`/`applied`/`rejected`/`no-match`) across runs so a quarterly re-run only adds/updates sections
+(`proposed`/`approved`/`batched`/`applied`/`rejected`/`no-match`/`expired`) across runs so the daily
+workflow only adds/updates sections
 that changed, exactly like `audit_feeds.py`'s create/update/close reconciliation loop. Cities with no
-confident match get a one-line, no-checkbox mention (visibility without checkbox-noise), not a full
+confident match get a one-line, no-proposal mention (visibility without proposal noise), not a full
 section.
 
 **New-city mode** — a reply **comment** on the originating `add-city` issue (not a new issue), containing
-the same evidence bundle scoped to that one city, with its own checkbox. Once applied (§8), the workflow
+the same evidence bundle scoped to that one city, with its own approval control. Once included in a
+merged batch PR (§10), the workflow
 labels the issue `add-city:applied` and closes it, mirroring this project's general open-while-unresolved/
 auto-close-on-resolution issue lifecycle convention (H4's audit issues).
 
 ---
 
-## §8. Apply mechanism — commit-gating algorithm
+## §8. Unsupported-provider backlog and operator controls
 
-**Resolved 2026-07-12 (maintainer decision): commit directly to main when checked, gated so a direct
-commit is only ever allowed when the change is purely additive — nothing in the repository is ever
-modified or deleted by this path. Falls back to opening a PR otherwise.**
+A research-only result must never disappear when the discovered provider has no adapter. Preserve the
+originating issue and evidence, but record the actionable gap in the canonical machine-readable tracker
+`config/discovery/pending-providers.yml`. A generated or maintained rolling issue may summarize counts
+for maintainers, for example:
+
+```md
+## Unsupported agenda-provider backlog
+
+| Provider | Cities pending | Status | Next action |
+|---|---:|---|---|
+| PrimeGov | 4 | adapter needed | build provider adapter |
+| OneMeeting | 5 | adapter needed | build provider adapter |
+| Agenda PE | 2 | research needed | verify platform scope |
+```
+
+Each tracker entry retains the city slug, originating issue, evidence URL, discovered/last-checked
+timestamps, provider key, adapter status, and next action. A city assigned to this backlog is removed
+from weekly auxiliary discovery noise until manually rechecked or the adapter becomes available.
+
+Maintainer-only slash commands are documented in the originating issue body and must be idempotent:
+
+```text
+/r12 assign-provider <provider-key>
+/r12 create-provider <key> name="..."
+/r12 recheck
+/r12 defer-agenda until=YYYY-MM-DD reason="..."
+/r12 clear-disposition
+```
+
+`assign-provider` records a known unsupported Appendix-P provider. `create-provider` adds a new research
+category only after a maintainer confirms it is genuinely distinct. `defer-agenda` sets
+`known-no-agenda` plus `next_check_at`, which suppresses weekly checks until that date. None of these
+commands deletes or hides the originating issue; they change its active queue state while preserving
+the evidence and adding it to the visible backlog count.
+
+## §9. Website, Discord, and Discussions intake
+
+R12 should accept requests from people without GitHub or Discord accounts through a static website form.
+The initial free path is **Formspark + a small Cloudflare Worker + Discord webhook + GitHub App + Resend**:
+
+```text
+website form
+  → Formspark notification email to maintainer
+  → Formspark webhook
+      → Cloudflare Worker
+          → private deduplication/contact record
+          → GitHub issue with add-city + source:website + needs:discovery
+          → Discord notification containing the issue URL
+          → requester acknowledgement email via Resend
+```
+
+According to [Formspark pricing](https://formspark.io/pricing/) and its [webhook documentation](https://documentation.formspark.io/integration/webhooks.html),
+the current free account starts with 250 submissions and supports notification emails and webhooks. Its
+webhook requests are not signed, so the Worker must require a secret, validate the payload,
+deduplicate submissions, and apply Turnstile or equivalent abuse controls. The Worker creates issues
+directly through a GitHub App installation token; Discord is a notification surface, not the authority
+for repository writes. Resend's free tier is sufficient for low-volume acknowledgements and has a
+3,000-email/month, 100-email/day limit ([Resend pricing](https://resend.com/pricing)). If volume or automation needs grow, the form endpoint can remain
+unchanged while the Worker gains GitHub issue webhooks for lifecycle emails. The private requester record
+must never be placed in the public issue body.
+
+Formspark also advertises a one-time submission bundle, but the initial design must not depend on that
+purchase or assume it unlocks undocumented premium automation. The Worker owns the GitHub/Discord/email
+glue regardless; the bundle is only an optional future capacity purchase if the free allowance becomes
+insufficient.
+
+The initial acknowledgement includes the public issue URL and explains how to follow status. Later
+status emails are a follow-on: GitHub issue events map the issue number to the private contact record.
+The `citymeetings.fyi` sending/reply identity is a maintainer-provided configuration input, not a
+committed secret; implementation will document the required Formspark, Cloudflare, GitHub App, Resend,
+DNS, SPF/DKIM/DMARC, Turnstile, and webhook settings as they are provisioned.
+
+### §9.1 Requester email templates and future branding
+
+R12 must prepare email templates as separate branded HTML and plain-text variants. The initial templates
+should be content-complete but use design tokens/partials that the future R8 website design phase can
+replace or align without changing the workflow logic. The sender/reply identity will be provisioned at
+`citymeetings.fyi` by the maintainer; no credentials or mailbox secrets belong in the repository.
+
+Required templates:
+
+- `submission_received`: confirms the request, gives the public issue URL, explains that discovery runs
+  daily/overnight, and states how to follow progress.
+- `evidence_ready`: explains that research is ready for maintainer review and links to the evidence issue.
+- `batched_for_review`: links to the batch PR and explains that merge is still required.
+- `applied`: gives the merged PR/commit and published-site expectation.
+- `needs_more_information`: asks for a missing city website, meeting URL, or contact clarification.
+- `research_only`: explains that an unsupported provider was found and links to the provider-gap tracker.
+- `evidence_expired`: explains the 90-day expiry and links to the fresh-discovery request.
+
+Each template has:
+
+```text
+HTML version: branded, responsive, accessible, restrained, with plaintext-equivalent content
+Plaintext version: complete message with no dependency on HTML rendering
+Subject: stable, recognizable prefix such as "City Meeting Podcasts — ..."
+From: citymeetings.fyi mailbox configured by the maintainer
+Reply-To: monitored citymeetings.fyi mailbox or configured support address
+Footer: public project URL, privacy/contact note, and opt-out language where applicable
+```
+
+The HTML version should not hard-code the final R8 palette or typography. Use named tokens for colors,
+font stacks, spacing, links, and callouts so the future website design cycle can unify the email and site
+brand. The plaintext version is authoritative for meaning and must remain useful when images, styles, or
+email-client HTML are unavailable.
+
+Discord and GitHub Discussions remain alternate front doors. A Discord slash-command/modal or a
+Discussion marked as a city request creates the same canonical `add-city` issue, tagged with
+`source:discord` or `source:discussion`; all discovery, approval, batching, and evidence remain in GitHub.
+
+## §10. Apply mechanism — maintainer-reviewed batch PR
+
+**Resolved 2026-07-14 (maintainer decision): all approved add-city proposals are bundled into a
+maintainer-reviewed PR.** R12 never commits directly to `main`, regardless of whether a patch is
+additive. This removes the parallel permission path and gives maintainers one review surface.
+
+The daily batch phase collects issues labelled `r12:approved` whose evidence is less than 90 days old.
+It creates or updates one PR with a descriptive, non-phase-number title such as:
+
+```text
+Add verified cities: Gainesville, FL; Waco, TX
+```
+
+The PR body lists every originating issue, includes each proposal diff and verification summary, and
+asserts that no existing configuration is overwritten unless a maintainer explicitly approves that
+class of change. New-city requests that would modify an existing file are excluded from the normal
+batch and placed in a separate review queue.
+
+The batch workflow must:
+
+1. Fetch a fresh `main` checkout.
+2. Revalidate proposal age, issue state, and source evidence.
+3. Re-check that target city/feed paths are still absent or unchanged as expected.
+4. Stage exact target paths only; never use `git add -A`.
+5. Run the full additive/deletion/modification diff backstop.
+6. Run config and provider tests for the batch.
+7. Open or update one PR and comment its URL on every source issue.
+
+Maintainer commands are the only approval path:
+
+```text
+/r12 approve
+/r12 reject reason="..."
+/r12 batch
+/r12 recheck
+```
+
+`/r12 approve` adds `r12:approved`; it does not write files. `/r12 batch` is an optional immediate
+dispatch of the same batch logic used by the daily schedule. The PR remains the only repository write
+path and is merged through the normal maintainer review process.
+
+Evidence expires after **90 days** for both new-city and auxiliary-source proposals. On expiry, preserve
+the original evidence, add `r12:expired` and `needs:discovery`, remove approval eligibility, and allow a
+new discovery run to post fresh evidence. Expiry must never close or erase an unresolved request.
+
+<!-- Superseded 2026-07-14: the original direct-to-main design is retained below only as historical
+context for the research that led to the final batch-PR decision. -->
 
 ### §8.1 This repo's real branch rules, verified live (not assumed from a code comment)
 
@@ -376,9 +563,11 @@ push step. R12's Action copies this verbatim rather than inventing a new credent
 
 ---
 
-## §9. New dependency, and risks
+<!-- End superseded direct-to-main design. -->
 
-### §9.1 Tavily (new dependency)
+## §11. New dependency, and risks
+
+### §11.1 Tavily (new dependency)
 
 A genuinely new kind of dependency for this codebase — every existing external integration is either an
 LLM provider (via LiteLLM) or a civic-data provider (Legistar/Granicus/Swagit/CivicClerk/CivicPlus);
@@ -392,15 +581,15 @@ Tavily is the first pure search-vendor dependency.
   anything else in the catalog. If Tavily's free tier disappears, R12 stops running and both surfaces
   fall back to their existing manual paths, a regression to today's status quo, not a break.
 
-### §9.2 Risks
+### §11.2 Risks
 
 - **First automation in this codebase with `contents: write` on `main`.** Every prior automation
   (`audit_feeds.py`, `availability-digest.yml`, R2's champion-routing ticket) only ever writes GitHub
   issues — this is a materially higher-trust capability, worth stating plainly rather than downplaying.
-  Mitigated by §8's additivity gate + redundant diff-stat backstop + `lock.yml`'s proven credential
+  Mitigated by §10's fresh-checkout validation + redundant diff-stat backstop + `lock.yml`'s proven credential
   pattern, but the risk class itself (a bug in the gating logic could, in principle, commit something
   unintended) is new to this project and should be reviewed with that in mind before shipping.
-- **Vendor free-tier risk** (§9.1) — bounded by the graceful-degradation posture above.
+- **Vendor free-tier risk** (§11.1) — bounded by the graceful-degradation posture above.
 - **Census incompleteness** — Appendix P is "exhaustive" for platforms found by research this session,
   not a closed set; the classification prompt has a clean "no confident match" output (§3.2) rather than
   forcing a guess, falling through to manual discovery.
@@ -411,13 +600,13 @@ Tavily is the first pure search-vendor dependency.
 - **SSRF discipline must actually be followed at every verification fetch** — candidate URLs are
   LLM-proposed, i.e. indirectly externally-influenced, so every one goes through `make_session()` like
   every other externally-sourced URL this codebase fetches.
-- **Per-platform verifier functions are real work, not a detail** (§9.3) — as many small
+- **Per-platform verifier functions are real work, not a detail** (§11.3) — as many small
   `verify_{platform}(url) -> bool` functions as census entries this actually tries against.
 - **New-city mode's provider hints (from the `add-city` form) must never be trusted uncritically** —
   treated as search-disambiguation hints only, verified the same way as anything else (§3.2), matching
   R11's own "maintainer recollection ≠ confirmed fact" discipline.
 
-### §9.3 Near-term verifier/adapter targets (corrected from the L2 pass)
+### §11.3 Near-term verifier/adapter targets (corrected from the L2 pass)
 
 The L2 draft listed Travis County as a "near-term target" — **wrong, corrected here.** Travis County
 already runs `provider: civicclerk` **natively** as its primary provider (`config/feeds/travis-county-tx.yml`
@@ -447,18 +636,30 @@ Agenda PE needs no distinct verifier — Appendix P found it publishes through s
 
 ## Proposed GitHub issues (not filed — batch review pending)
 
-1. `citypods/discovery/search.py` — Tavily client wrapper (new dependency, new `TAVILY_API_KEY` secret).
-2. `Task` Literal + `TASK_VERSIONS`/`TASK_PROMPTS` additions for `classify-civic-platforms`
-   (`citypods/compute/base.py`, LLM-adjacent module per `review/27`'s module plan), mode-aware prompt
-   per §3.2.
-3. Per-platform verifier functions scoped to §9.3's near-term list, plus the end-to-end
-   sample-episode-resolution check (§6) reusing each provider's existing `fetch_episodes`/
-   `resolve_media_url`.
-4. `.github/workflows/city-discovery.yml` — aux-discovery sweep (schedule + `workflow_dispatch`),
-   modeled on `availability-digest.yml`; rolling digest issue with hidden-state reconciliation per §7.
-5. New-city workflow triggered off the existing `add-city` label (§5.2); reply-comment posting, issue
-   labeling/close-on-apply lifecycle.
-6. The shared commit-gating Action (§8) — additivity check, diff-stat backstop, direct-commit and
-   PR-fallback paths, credential handling mirroring `lock.yml`.
-7. Optional, non-blocking: extend `add-city.yml`'s `provider` dropdown with Appendix P's fuller platform
-   list (§5.2).
+Titles should describe the work, not use the R12 phase number:
+
+1. **Add the civic-platform discovery client** — `citypods/discovery/search.py`, Tavily client wrapper,
+   `TAVILY_API_KEY`, bounded search budget, caching, and SSRF-safe candidate handling.
+2. **Add structured civic-platform classification** — `Task` Literal,
+   `TASK_VERSIONS`/`TASK_PROMPTS`, and the mode-aware `classify-civic-platforms` prompt per §3.2.
+3. **Verify civic platforms through real provider adapters** — platform signatures plus end-to-end
+   sample-episode resolution, scoped to §11.3's near-term list.
+4. **Run daily city discovery and weekly auxiliary eligibility** — `.github/workflows/city-discovery.yml`,
+   daily schedule/manual dispatch, coverage measurement, `agenda-covered`/`known-no-agenda` state,
+   90-day expiry, and rolling digest reconciliation.
+5. **Process website and community city requests** — Formspark webhook receiver, Cloudflare Worker,
+   GitHub App issue creation, Discord notification, private requester record, Resend acknowledgement,
+   deduplication, and Turnstile/abuse controls.
+6. **Add maintainer-operated discovery dispositions** — slash commands for approval, rejection,
+   unsupported-provider assignment, new provider category, no-agenda deferral, and recheck.
+7. **Track unsupported civic providers and pending cities** — canonical
+   `config/discovery/pending-providers.yml`, visible backlog summary, issue cross-links, counts, and
+   adapter-status transitions.
+8. **Batch approved city proposals into one review PR** — fresh checkout, proposal revalidation,
+   additive/deletion/modification backstop, exact-path staging, provider/config tests, PR creation or
+   update, and source-issue comments. No direct-to-`main` path.
+9. **Prepare branded requester email templates** — HTML plus plaintext fallback for acknowledgement,
+   evidence, batching, applied, research-only, missing-information, and expiry states; tokenized so R8's
+   future visual design can align email and website branding.
+10. Optional, non-blocking: extend `add-city.yml`'s provider dropdown with Appendix P's fuller platform
+    list. `Not sure`/`other` remain valid fallbacks.
