@@ -5,11 +5,25 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
+import requests
+
 from citypods.models import ChangeToken, Episode
 
 
 class ProviderError(Exception):
     """Raised when a provider cannot fetch or parse a city's source."""
+
+
+def is_transient_provider_error(exc: BaseException) -> bool:
+    """Return whether a provider error carries a retryable requests transport cause."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (requests.ConnectionError, requests.Timeout)):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 # Stable categories for a materialization failure, recorded on the episode for monitoring

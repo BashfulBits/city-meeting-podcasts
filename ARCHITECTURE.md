@@ -128,6 +128,9 @@ uids — the cross-*uid* lost update two shards splitting one source would other
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
 pass is *dispatch-not-await-ready* — transcription/diarization will run on external workers and reconcile
 from durable state on a later deploy (design: [`review/12` §H5](review/12-hardening-and-efficiency.md)).
+The shared guarded HTTP session applies the same bounded retry engine to status responses and
+connect/read transport failures; if that budget is exhausted with a requests transport cause, the
+source is deferred for a later run rather than classified as permanent provider drift.
 The audio pass uses a rolling submission window rather than eager whole-list executor submission; each
 completed episode releases its temporary source cache before the next queued item is admitted. For
 multi-source episodes, segment durations and the render timeline are captured before the individual

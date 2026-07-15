@@ -46,6 +46,11 @@ class TestRetryAfterClamp:
         # If this were False the clamp would be dead code (urllib3 skips get_retry_after).
         assert _RETRY.respect_retry_after_header is True
 
+    def test_transport_retry_buckets_cover_connect_and_read(self):
+        assert _RETRY.connect == 3
+        assert _RETRY.read == 3
+        assert _RETRY.status == 3
+
     def test_clamp_survives_copy(self):
         # urllib3 copies the Retry via new() during the loop; the subclass + cap must persist,
         # or a long Retry-After on a *later* attempt would hang the build.

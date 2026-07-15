@@ -2043,6 +2043,21 @@ def test_audio_lane_provider_fetch_errors_remain_failed(tmp_path, fake_provider)
     assert [r.status for r in results] == ["error"]
 
 
+def test_audio_lane_transport_fetch_errors_defer(tmp_path, fake_provider):
+    """An exhausted requests transport retry is recoverable, not a permanent provider failure."""
+    import requests
+
+    cities = _setup(tmp_path)
+    cause = requests.exceptions.ReadTimeout("read timed out")
+    fake_provider.error = ProviderError("GET https://x failed: read timed out")
+    fake_provider.error.__cause__ = cause
+
+    results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="audio")
+
+    assert [r.status for r in results] == ["skipped"]
+    assert "provider fetch deferred" in results[0].detail
+
+
 def test_build_rejects_unknown_lane(tmp_path, fake_provider):
     cities = _setup(tmp_path)
     with pytest.raises(ValueError, match="unknown lane"):
