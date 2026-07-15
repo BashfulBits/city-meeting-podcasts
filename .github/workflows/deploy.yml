@@ -43,7 +43,7 @@ jobs:
   build-deploy:
     runs-on: ubuntu-latest
     # A stalled render/deploy must not hold the `pages` concurrency slot for hours (CR2-GH-16/H6).
-    timeout-minutes: 30
+    timeout-minutes: 60
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url || steps.deployment2.outputs.page_url || steps.deployment3.outputs.page_url }}
