@@ -134,7 +134,13 @@ def main(argv: list[str] | None = None) -> int:
     serialized = json.dumps(evidence.as_dict(), indent=2, sort_keys=True) + "\n"
     (out / "evidence.json").write_text(serialized)
     (out / "evidence.md").write_text(render_evidence(evidence))
-    outcome = "proposal" if evidence.proposed_yaml else "research-only"
+    outcome = (
+        "needs-more-information"
+        if evidence.needs_more_information
+        else "proposal"
+        if evidence.proposed_yaml
+        else "research-only"
+    )
     print(f"discovery: {request.city_slug} -> {outcome}")
     return 0
 

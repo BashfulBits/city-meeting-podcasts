@@ -87,26 +87,43 @@ def render_evidence(result: DiscoveryResult) -> str:
         f"Mode: `{request.mode}` · confidence: `{classification.confidence}`",
         "",
     ]
-    lines.extend(
-        [
-            _link("City website", result.city_website_url),
-            _link("Meeting/listing page", result.meeting_listing_url),
-            _link("Verified sample meeting", verification.sample_media_url),
-            f"- Video platform: `{classification.video_platform or 'no confident match'}`",
-            f"- Agenda platform: `{classification.agenda_platform or 'no confident match'}`",
-            f"- Verification: {'passed' if verification.applyable else 'research finding only'}",
-        ]
-    )
-    if verification.reason:
-        lines.append(f"- Verification note: {verification.reason}")
-    lines.extend(["", "### Bodies mentioned"])
-    if classification.bodies_mentioned:
-        lines.extend(f"- {body}" for body in classification.bodies_mentioned)
+    if result.needs_more_information:
+        lines.extend(
+            [
+                "### More information needed — discovery paused",
+                f"The retrieved results could not be confirmed as belonging to "
+                f"{request.city_name}, {request.state}. No provider finding or configuration "
+                "proposal was recorded.",
+                "Add the official city website, a meeting/video page, or a corrected city and "
+                "state, then use `/r12 recheck` to resume discovery.",
+                "",
+                "### Unmatched retrieval (not used as city evidence)",
+            ]
+        )
+        for item in result.search_results:
+            lines.append(f"- [{item.title or item.url}]({item.url})")
     else:
-        lines.append("- None found in retrieved evidence.")
-    lines.extend(["", "### Retrieved evidence"])
-    for item in result.search_results:
-        lines.append(f"- [{item.title or item.url}]({item.url})")
+        verification_status = "passed" if verification.applyable else "research finding only"
+        lines.extend(
+            [
+                _link("City website", result.city_website_url),
+                _link("Meeting/listing page", result.meeting_listing_url),
+                _link("Verified sample meeting", verification.sample_media_url),
+                f"- Video platform: `{classification.video_platform or 'no confident match'}`",
+                f"- Agenda platform: `{classification.agenda_platform or 'no confident match'}`",
+                f"- Verification: {verification_status}",
+            ]
+        )
+        if verification.reason:
+            lines.append(f"- Verification note: {verification.reason}")
+        lines.extend(["", "### Bodies mentioned"])
+        if classification.bodies_mentioned:
+            lines.extend(f"- {body}" for body in classification.bodies_mentioned)
+        else:
+            lines.append("- None found in retrieved evidence.")
+        lines.extend(["", "### Retrieved evidence"])
+        for item in result.search_results:
+            lines.append(f"- [{item.title or item.url}]({item.url})")
     if result.proposed_yaml:
         approval = (
             f"`/r12 approve {request.city_slug}`"
@@ -123,7 +140,7 @@ def render_evidence(result: DiscoveryResult) -> str:
                 "`/r12 recheck`, `/r12 batch`.",
             ]
         )
-    else:
+    elif not result.needs_more_information:
         lines.extend(
             [
                 "",
@@ -138,7 +155,13 @@ def render_evidence(result: DiscoveryResult) -> str:
                 "`/r12 clear-disposition`.",
             ]
         )
-    status = "proposed" if verification.applyable else "research-only"
+    status = (
+        "needs-more-information"
+        if result.needs_more_information
+        else "proposed"
+        if verification.applyable
+        else "research-only"
+    )
     lines = _escape_reserved_markers("\n".join(lines)).splitlines()
     lines.extend(
         [

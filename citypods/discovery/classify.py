@@ -73,14 +73,20 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
         "Use a platform key from this allowlist or null: "
         f"{', '.join(sorted(KNOWN_PLATFORMS))}. In auxiliary mode, copy "
         "known_video_provider to "
-        "video_platform unchanged. Return one JSON object with video_platform, agenda_platform, "
+        "video_platform unchanged. Return one JSON object with city_identity "
+        "(confirmed|unconfirmed|mismatch), video_platform, agenda_platform, "
         "candidate_urls, video_source, agenda_source, bodies_mentioned, confidence "
         "(low|medium|high), "
         "and reasoning. source fields must follow these provider schemas: "
         + json.dumps(source_schemas, sort_keys=True)
         + ". A source mapping is optional; omit it rather than guessing any required field. "
         "Every URL "
-        "inside a source mapping must appear exactly in retrieved_results."
+        "inside a source mapping must appear exactly in retrieved_results. For new-city mode, "
+        "city_identity is confirmed only when retrieved evidence identifies the requested city and "
+        "state. Set it to mismatch when results identify another municipality, and to unconfirmed "
+        "when the retrieved evidence cannot establish the requested municipality. When identity is "
+        "mismatch or unconfirmed, set both platforms to null and return no candidate URLs, source "
+        "mappings, or bodies."
     )
     return [
         {"role": "system", "content": instruction},
@@ -160,6 +166,25 @@ def parse_classification(
     if request.mode == "auxiliary":
         video = request.known_provider
     confidence = data.get("confidence")
+    city_identity = data.get("city_identity")
+    if request.mode == "auxiliary":
+        city_identity = "confirmed"
+    elif city_identity not in {"confirmed", "unconfirmed", "mismatch"}:
+        city_identity = "unconfirmed"
+    if request.mode == "new-city" and city_identity != "confirmed":
+        # Foreign or ambiguous retrieval must not become a provider/backlog signal merely because
+        # the model classified the unrelated page accurately.
+        return Classification(
+            video_platform=None,
+            agenda_platform=None,
+            candidate_urls=(),
+            video_source=None,
+            agenda_source=None,
+            bodies_mentioned=(),
+            city_identity=city_identity,
+            confidence="low",
+            reasoning=str(data.get("reasoning", ""))[:500],
+        )
     return Classification(
         video_platform=video,
         agenda_platform=_platform(data.get("agenda_platform")),
@@ -167,6 +192,7 @@ def parse_classification(
         video_source=_source(data.get("video_source"), retrieved_urls=retrieved_urls),
         agenda_source=_source(data.get("agenda_source"), retrieved_urls=retrieved_urls),
         bodies_mentioned=_strings(data.get("bodies_mentioned"), limit=50),
+        city_identity=city_identity,
         confidence=confidence if confidence in {"low", "medium", "high"} else "low",
         reasoning=str(data.get("reasoning", ""))[:500],
     )

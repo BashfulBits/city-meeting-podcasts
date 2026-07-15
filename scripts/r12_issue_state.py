@@ -23,10 +23,12 @@ def _created_at(evidence: dict[str, Any]) -> datetime | None:
 
 
 def state(issue: dict[str, Any], comments: list[dict[str, Any]]) -> dict[str, bool]:
-    """Keep research-only results quiet until 90-day expiry or an explicit recheck."""
+    """Keep completed evidence quiet, and pause ambiguous new-city requests for clarification."""
     labels = {item.get("name") for item in issue.get("labels", []) if isinstance(item, dict)}
     if "r12:recheck" in labels:
         return {"discover": True, "expired": False}
+    if "needs:more-information" in labels:
+        return {"discover": False, "expired": False}
     artifacts: list[dict[str, Any]] = []
     for comment in comments:
         if (comment.get("user") or {}).get("login") == BOT_LOGIN:

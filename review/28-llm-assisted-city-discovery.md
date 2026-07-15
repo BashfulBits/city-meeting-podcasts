@@ -37,7 +37,7 @@ implementing PR is merged. The operational contract is:
 - Research-only provider assignments join the pending-providers tracker through that same review-PR
   path; deferred or assigned cities stay out of weekly auxiliary noise while retaining evidence.
 - Before enabling the Actions, create r12:approved, r12:batched, r12:evidence-ready, r12:expired,
-  r12:recheck, r12:rejected, and needs:provider labels. The labels and Tavily/LLM Action secrets are
+  r12:recheck, r12:rejected, needs:provider, and needs:more-information labels. The labels and Tavily/LLM Action secrets are
   configured. The intake Worker is deployed at
   `https://citypods-city-request-intake.citypods.workers.dev`, backed by the provisioned D1 database,
   GitHub App, Formspark webhook, Discord webhook, Turnstile validation, and Resend sender.
@@ -59,6 +59,16 @@ The email template module includes branded HTML plus complete plaintext variants
 evidence-ready, review, applied, missing-information, research-only, and expiry states. Lifecycle
 notification delivery beyond the initial acknowledgement is enabled through the R12 status callback;
 the future website-design phase may refine the shared visual tokens without changing the plaintext fallback.
+
+### Clarification hold for unconfirmed city identity — 2026-07-15
+
+For a new-city request, evidence must confirm the requested municipality before it can be a proposal
+or a research-only provider finding. If Tavily results identify another city, or cannot establish the
+requested city and state, R12 records no provider gap, adds `needs:more-information`, removes
+`needs:discovery`, and pauses scheduled discovery indefinitely. The issue asks for the official city
+website, a meeting/video page, or a corrected city/state. `/r12 recheck` explicitly clears that hold
+after the requester or maintainer supplies better information. This prevents a misspelling or
+underspecified small town from repeatedly consuming discovery capacity or polluting the provider backlog.
 
 ### Completion checklist — required before R12 is shipped
 
