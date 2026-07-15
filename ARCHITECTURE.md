@@ -131,6 +131,11 @@ from durable state on a later deploy (design: [`review/12` §H5](review/12-harde
 The shared guarded HTTP session applies the same bounded retry engine to status responses and
 connect/read transport failures; if that budget is exhausted with a requests transport cause, the
 source is deferred for a later run rather than classified as permanent provider drift.
+The audio pass uses a rolling submission window rather than eager whole-list executor submission; each
+completed episode releases its temporary source cache before the next queued item is admitted. For
+multi-source episodes, segment durations and the render timeline are captured before the individual
+segment files are deleted after successful local concatenation, so downstream stages depend only on the
+combined render file and persisted timeline metadata.
 Audio planning remains source-atomic for record safety, but source keys that reference the same
 configured city entity are assigned to one shard. Within that process, `AudioArtifactCache` coalesces
 identical `(provider, stable uid, audio recipe)` candidates: one alias encodes or reuses the artifact

@@ -21,6 +21,10 @@ Phase R (Research-Tool Surface)._
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
   requests transport timeout is recorded as deferred work so a temporary endpoint outage does not
   redden the audio lane.
+- **Bounded audio source retention.** The global audio queue now admits work through a rolling
+  submission window and releases each episode's downloaded source files as soon as its audio stages
+  finish. Multi-source segment files are removed only after concatenation has captured durations and
+  timeline metadata, preventing the run from retaining the full eligible backlog on runner disk.
 
 - **Static meeting search (R4).** Render builds now publish deterministic per-source search shards and
   a global `/search/` page using a vendored MiniSearch bundle. Results search durable metadata, chapter

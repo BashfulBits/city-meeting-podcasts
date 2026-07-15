@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -573,6 +573,40 @@ class CityResult:
     detail: str = ""
     has_audio: bool = True
     has_video: bool = False
+
+
+def _run_bounded(
+    pool: ThreadPoolExecutor,
+    fn: Callable[[object], object],
+    items,
+    *,
+    max_pending: int,
+) -> None:
+    """Run *fn* over an iterator with a rolling submission window.
+
+    ``ThreadPoolExecutor.map`` eagerly submits the entire iterable.  That is harmless for
+    cheap bookkeeping, but it obscures backpressure for audio work and makes it too easy for
+    a future implementation to prefetch far beyond what downstream materialization can drain.
+    Keep only a bounded number of futures submitted and refill immediately as each one finishes;
+    the producer never waits for the whole current batch to drain.
+    """
+    iterator = iter(items)
+    pending: set = set()
+
+    def _fill() -> None:
+        while len(pending) < max(1, max_pending):
+            try:
+                item = next(iterator)
+            except StopIteration:
+                return
+            pending.add(pool.submit(fn, item))
+
+    _fill()
+    while pending:
+        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+        for future in done:
+            future.result()
+        _fill()
 
 
 @dataclass
@@ -1275,11 +1309,15 @@ def _run_enrich_global_queue(
             pipeline.accumulate_stats(stats)
 
     # 3) Passes. Submission order = global priority order; the native_work_gate still serializes
-    #    the actual encodes (so the top-priority batch encodes first), and stages self-limit on
-    #    ``stop`` (post-budget items count as backlog), so the maps drain fast once the window is
-    #    spent. source_cache spans both passes (one download per episode).
+    #    the actual encodes. Audio uses a rolling submission window rather than eager whole-list
+    #    map submission, and each item releases its source-cache files when its per-episode stage
+    #    pipeline finishes.
     def _audio_task(item: tuple[str, Episode]):
-        return _run_for(item, audio_stages)
+        try:
+            return _run_for(item, audio_stages)
+        finally:
+            if source_cache is not None:
+                source_cache.release(str(item[1].uid or item[1].guid or ""))
 
     def _transcript_task(item: tuple[str, Episode]) -> None:
         _run_for(item, transcript_stages)
@@ -1301,7 +1339,12 @@ def _run_enrich_global_queue(
         if audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                list(pool.map(_audio_task, candidates))
+                _run_bounded(
+                    pool,
+                    _audio_task,
+                    candidates,
+                    max_pending=max_workers + ctx.audio_queue_lookahead,
+                )
             print("[enrich] audio pass done", flush=True)
             # Persist audio-pass results now, before the decoupled transcript pass — shrinks the
             # window in which a mid-run kill (SIGTERM/OOM/lost-comms) would lose every record update
@@ -1321,7 +1364,7 @@ def _run_enrich_global_queue(
                 f"[enrich] transcript pass: {len(tx)} item(s) with audio (newest-first)", flush=True
             )
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                list(pool.map(_transcript_task, tx))
+                _run_bounded(pool, _transcript_task, tx, max_pending=max_workers)
             print("[enrich] transcript pass done", flush=True)
 
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
@@ -1682,6 +1725,7 @@ def _build_impl(
         silence_min_served_seconds=float(defaults.get("silence_min_served_seconds", 5.0)),
         silence_min_served_fraction=float(defaults.get("silence_min_served_fraction", 0.02)),
         max_encodes_per_source=max_encodes_per_source,
+        audio_queue_lookahead=max(0, int(defaults.get("audio_queue_lookahead", 4))),
         backlog_policy=backlog_policy,
         transcript_quality_routes=transcript_quality_routes,
         source_cache=source_cache,
