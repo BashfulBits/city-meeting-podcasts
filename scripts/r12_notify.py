@@ -69,7 +69,7 @@ def notify(issue: dict, status: str, target_url: str = "") -> list[str]:
                     "issue_url": issue_url,
                     "target_url": target_url,
                 },
-                {},
+                {"user-agent": "citymeetings-r12/1.0"},
             )
         except (OSError, ValueError, urllib.error.HTTPError) as exc:
             errors.append(f"Worker callback failed: {exc}")

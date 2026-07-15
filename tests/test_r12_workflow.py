@@ -18,7 +18,7 @@ from scripts.r12_batch import BatchError, apply_evidence
 from scripts.r12_commands import BOT_LOGIN, CommandError, parse_command
 from scripts.r12_discussion_intake import issue_payload
 from scripts.r12_issue_state import state
-from scripts.r12_notify import parse_origin
+from scripts.r12_notify import notify, parse_origin
 
 
 def _evidence(*, mode: str = "new-city", created_at: str | None = None) -> dict:
@@ -157,3 +157,24 @@ def test_discussion_origin_uses_trusted_appended_marker():
     )
 
     assert parse_origin(payload["body"])["discussion_node_id"] == "D_kwTrusted"
+
+
+def test_worker_callback_uses_named_user_agent(monkeypatch):
+    calls: list[tuple[str, dict[str, str]]] = []
+
+    def fake_json_request(url, payload, headers):
+        calls.append((url, headers))
+        return {}
+
+    monkeypatch.setenv("CITY_REQUEST_STATUS_WEBHOOK_URL", "https://worker.example/status/secret")
+    monkeypatch.setattr("scripts.r12_notify._json_request", fake_json_request)
+
+    assert (
+        notify(
+            {"number": 123, "url": "https://github.com/example/repo/issues/123"}, "research_only"
+        )
+        == []
+    )
+    assert calls == [
+        ("https://worker.example/status/secret", {"user-agent": "citymeetings-r12/1.0"})
+    ]
