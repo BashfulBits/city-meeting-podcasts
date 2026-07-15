@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
+  connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
+  requests transport timeout is recorded as deferred work so a temporary endpoint outage does not
+  redden the audio lane.
+
 - **Static meeting search (R4).** Render builds now publish deterministic per-source search shards and
   a global `/search/` page using a vendored MiniSearch bundle. Results search durable metadata, chapter
   titles, available transcript segments, agenda/backup/minutes text, vote and roster names, and future

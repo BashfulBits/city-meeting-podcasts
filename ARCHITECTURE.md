@@ -128,6 +128,9 @@ uids — the cross-*uid* lost update two shards splitting one source would other
 newest-everywhere-first across all sources) followed by a **decoupled transcript pass**. The transcript
 pass is *dispatch-not-await-ready* — transcription/diarization will run on external workers and reconcile
 from durable state on a later deploy (design: [`review/12` §H5](review/12-hardening-and-efficiency.md)).
+The shared guarded HTTP session applies the same bounded retry engine to status responses and
+connect/read transport failures; if that budget is exhausted with a requests transport cause, the
+source is deferred for a later run rather than classified as permanent provider drift.
 Audio planning remains source-atomic for record safety, but source keys that reference the same
 configured city entity are assigned to one shard. Within that process, `AudioArtifactCache` coalesces
 identical `(provider, stable uid, audio recipe)` candidates: one alias encodes or reuses the artifact

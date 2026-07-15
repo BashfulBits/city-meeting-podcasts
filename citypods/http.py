@@ -73,7 +73,12 @@ class _ClampedRetry(Retry):
 # Retrying it with backoff generalizes the bespoke Granicus retry that used to live in
 # ``providers/granicus.py``.
 _RETRY = _ClampedRetry(
+    # Set transport buckets explicitly: status retries alone do not cover a provider that accepts
+    # a connection and then stalls while reading its response (the Audio 200 failure mode).
     total=3,
+    connect=3,
+    read=3,
+    status=3,
     backoff_factor=0.5,  # 0.5s, 1s, 2s
     status_forcelist=(403, 429, 500, 502, 503, 504),
     allowed_methods=frozenset({"GET", "HEAD"}),

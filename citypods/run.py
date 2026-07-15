@@ -60,7 +60,7 @@ from citypods.ops.workqueue import (
 from citypods.progress import PROGRESS, format_snapshot
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
-from citypods.providers.base import ProviderError
+from citypods.providers.base import ProviderError, is_transient_provider_error
 from citypods.records import (
     assign_uids,
     attach_auxiliary_agenda_links,
@@ -1168,6 +1168,7 @@ def _run_enrich_global_queue(
         rep_city.setdefault(source_key(c), c)
     prepared: dict[str, dict] = {}
     errors: dict[str, str] = {}
+    deferred: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         fut_key = {
             pool.submit(pipeline.fetch_merge, city, key): key for key, city in rep_city.items()
@@ -1183,10 +1184,16 @@ def _run_enrich_global_queue(
                             rep_city[key], key, exc
                         )
                     except ProviderError:
-                        errors[key] = str(exc)
+                        if is_transient_provider_error(exc):
+                            deferred[key] = str(exc)
+                        else:
+                            errors[key] = str(exc)
                         continue
                 else:
-                    errors[key] = str(exc)
+                    if is_transient_provider_error(exc):
+                        deferred[key] = str(exc)
+                    else:
+                        errors[key] = str(exc)
                     continue
             notes: list[str] = [f"{seeded} legacy"] if seeded else []
             prepared[key] = {
@@ -1338,6 +1345,10 @@ def _run_enrich_global_queue(
                 )
             else:
                 results.append(CityResult(c.slug, "error", detail=errors[key]))
+        elif key in deferred:
+            results.append(
+                CityResult(c.slug, "skipped", detail=f"provider fetch deferred: {deferred[key]}")
+            )
         else:
             episodes = prepared.get(key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
