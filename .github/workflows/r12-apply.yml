@@ -1,0 +1,38 @@
+name: R12 merged batch reconciliation
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  reconcile:
+    if: >-
+      ${{
+        github.event.pull_request.merged &&
+        github.event.pull_request.head.ref == 'automation/r12-city-batch'
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark source issues applied
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          issues=$(printf '%s\n' "$PR_BODY" | grep -oE '#[0-9]+' | tr -d '#' | sort -u || true)
+          if [ -z "$issues" ]; then exit 0; fi
+          printf '%s\n' "$issues" | while read -r issue; do
+            gh issue edit "$issue" --add-label add-city:applied --remove-label r12:approved \
+              --remove-label r12:batched
+            title=$(gh issue view "$issue" --json title --jq .title)
+            if printf '%s\n' "$title" | grep -q '^Add city:'; then
+              gh issue close "$issue" --comment \
+                "Applied through merged R12 maintainer-review PR #$PR_NUMBER."
+            else
+              gh issue comment "$issue" --body \
+                "Applied through merged R12 maintainer-review PR #$PR_NUMBER."
+            fi
+          done

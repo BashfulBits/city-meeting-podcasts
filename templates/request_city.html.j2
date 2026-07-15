@@ -1,0 +1,104 @@
+{% extends "base.html.j2" %}
+{% block title %}Request a city · {{ config.site_title }}{% endblock %}
+{% block head %}
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <style>
+    .request-form { display: grid; gap: 1rem; margin-top: 1.5rem; }
+    .request-form label { display: grid; gap: .35rem; font-weight: 600; }
+    .request-form small { color: var(--muted); font-weight: 400; }
+    .request-form input, .request-form select, .request-form textarea {
+      width: 100%; padding: .7rem .8rem; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--card); color: var(--fg); font: inherit;
+    }
+    .request-form textarea { min-height: 7rem; resize: vertical; }
+    .form-status { padding: .8rem; border-radius: 8px; background: var(--hover); }
+    .form-status[hidden] { display: none; }
+  </style>
+{% endblock %}
+{% block content %}
+  <p><a class="muted" href="{{ site }}/">← City directory</a></p>
+  <h1>Request a city</h1>
+  <p class="tagline">Tell us which city's public meetings you would like City Meeting Podcasts to cover.</p>
+
+  <form id="city-request" class="request-form" action="{{ formspark_action }}" method="post">
+    <label>
+      City and state
+      <input name="city_state" type="text" placeholder="Denton, TX" autocomplete="address-level2"
+             pattern=".+,\s*[A-Za-z]{2}" title="Enter a city followed by its two-letter state abbreviation, such as Denton, TX" required>
+      <small>Use the format City, ST.</small>
+    </label>
+    <label>
+      Your email
+      <input name="email" type="email" autocomplete="email" required>
+      <small>Kept private. We will email you a receipt and important status updates.</small>
+    </label>
+    <label>
+      Video or meeting platform <small>(optional)</small>
+      <select name="provider">
+        <option value="Not sure" selected>Not sure</option>
+        <option value="Granicus">Granicus</option>
+        <option value="CivicClerk">CivicClerk</option>
+        <option value="Swagit">Swagit</option>
+        <option value="YouTube">YouTube</option>
+        <option value="Other">Other</option>
+      </select>
+    </label>
+    <label>
+      Public meetings or video page <small>(optional)</small>
+      <input name="source_url" type="url" inputmode="url" placeholder="https://…">
+    </label>
+    <label>
+      Official city website <small>(optional)</small>
+      <input name="city_website" type="url" inputmode="url" placeholder="https://…">
+    </label>
+    <label>
+      Anything else we should know? <small>(optional)</small>
+      <textarea name="notes" maxlength="4000"></textarea>
+    </label>
+
+    <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}"></div>
+    <p class="muted" style="font-size:.85rem;margin:0;">
+      Your request will be researched and tracked in a public GitHub issue. Your email address will
+      remain private and will not appear in GitHub or Discord.
+    </p>
+    <button id="submit-request" class="btn btn-primary" type="submit">Submit city request</button>
+    <div id="form-success" class="form-status" role="status" tabindex="-1" hidden>
+      Request received. Check your email shortly for a link where you can follow its progress.
+    </div>
+    <div id="form-error" class="form-status" role="alert" hidden>
+      We couldn't submit the request. Please check the fields and try again.
+    </div>
+  </form>
+
+  <script>
+    const form = document.getElementById('city-request');
+    const button = document.getElementById('submit-request');
+    const success = document.getElementById('form-success');
+    const error = document.getElementById('form-error');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      success.hidden = true;
+      error.hidden = true;
+      button.disabled = true;
+      const payload = Object.fromEntries(new FormData(form).entries());
+      try {
+        const result = await fetch(form.action, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!result.ok) throw new Error('submission failed');
+        form.reset();
+        if (window.turnstile) window.turnstile.reset();
+        success.hidden = false;
+        success.focus();
+        success.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (_) {
+        if (window.turnstile) window.turnstile.reset();
+        error.hidden = false;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+{% endblock %}

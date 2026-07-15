@@ -100,6 +100,18 @@ def render_search_page(site_config: dict, base_url: str) -> str:
     )
 
 
+def render_city_request_page(site_config: dict, base_url: str) -> str:
+    """Render the public Formspark-backed city request form."""
+    request_config = site_config.get("city_request_form") or {}
+    template = get_env().get_template("request_city.html.j2")
+    return template.render(
+        config=site_config,
+        site=base_url.rstrip("/"),
+        formspark_action=request_config.get("formspark_action", ""),
+        turnstile_site_key=request_config.get("turnstile_site_key", ""),
+    )
+
+
 def render_city_page(
     city: City,
     base_url: str,

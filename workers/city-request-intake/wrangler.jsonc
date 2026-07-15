@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "citypods-city-request-intake",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-14",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "REQUESTS_DB",
+      "database_name": "citypods-city-requests",
+      "database_id": "241e1eb9-9b18-4075-9787-495be9d27dc4",
+    },
+  ],
+  "vars": {
+    "GITHUB_REPOSITORY": "BashfulBits/city-meeting-podcasts",
+    "GITHUB_API_BASE": "https://api.github.com",
+    "PROJECT_URL": "https://www.citymeetings.fyi",
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+  },
+}

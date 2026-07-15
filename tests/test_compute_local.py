@@ -79,6 +79,7 @@ class TestInterface:
             "summarize",
             "tag",
             "soundbite-select",
+            "classify-civic-platforms",
         }
 
     def test_make_compute_defaults_to_local(self):

@@ -354,6 +354,21 @@ def test_render_writes_static_search_outputs(tmp_path, fake_provider):
     assert (tmp_path / "docs" / "assets" / "LICENSES" / "minisearch-7.1.2.txt").exists()
 
 
+def test_render_writes_city_request_page_when_public_form_configured(tmp_path, fake_provider):
+    cities = _setup(tmp_path)
+    with (tmp_path / "site_config.yml").open("a") as config:
+        config.write(
+            "city_request_form:\n"
+            "  formspark_action: https://submit-form.com/public-form-id\n"
+            "  turnstile_site_key: public-site-key\n"
+        )
+    _build(tmp_path, cities)
+    request_page = tmp_path / "docs" / "request-a-city" / "index.html"
+    assert request_page.exists()
+    assert "https://submit-form.com/public-form-id" in request_page.read_text()
+    assert "/request-a-city/" in (tmp_path / "docs" / "index.html").read_text()
+
+
 def test_render_does_not_advertise_an_incomplete_static_search_index(
     tmp_path, fake_provider, monkeypatch
 ):

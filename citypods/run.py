@@ -96,6 +96,7 @@ from citypods.sharding import create_shard_plan, episodes_for_shard, load_shard_
 from citypods.site import (
     render_city_archive_page,
     render_city_page,
+    render_city_request_page,
     render_index,
     render_meeting_page,
     render_redirect_feed,
@@ -1980,6 +1981,18 @@ def _build_impl(
             _write_aliases(output_dir, base_url, all_cities, feed_info)
             _write_cname(output_dir, site_config)
             _prune_stale_dirs(output_dir, all_cities)
+            request_config = site_config.get("city_request_form") or {}
+            request_form_enabled = bool(
+                request_config.get("formspark_action") and request_config.get("turnstile_site_key")
+            )
+            request_dir = output_dir / "request-a-city"
+            if request_form_enabled:
+                request_dir.mkdir(parents=True, exist_ok=True)
+                (request_dir / "index.html").write_text(
+                    render_city_request_page(site_config, base_url)
+                )
+            else:
+                shutil.rmtree(request_dir, ignore_errors=True)
             search_manifest = {"shards": []}
             search_available = False
             if search_enabled:

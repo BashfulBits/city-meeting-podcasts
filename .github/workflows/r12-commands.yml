@@ -1,0 +1,50 @@
+name: R12 maintainer commands
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  issues: write
+
+jobs:
+  command:
+    if: >-
+      ${{ github.event.issue.pull_request == null &&
+        startsWith(github.event.comment.body, '/r12 ') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install command dependencies
+        run: pip install -e . -c constraints/prod.txt
+
+      - name: Validate and record command
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          issue=${{ github.event.issue.number }}
+          gh api "repos/${{ github.repository }}/issues/$issue" > issue.json
+          gh api "repos/${{ github.repository }}/issues/$issue/comments?per_page=100" > comments.json
+          python scripts/r12_commands.py --issue issue.json --comments comments.json \
+            --command "$COMMENT_BODY" --out command.json
+          jq -r '.add_labels[]?' command.json | while read -r label; do
+            gh issue edit "$issue" --add-label "$label"
+          done
+          jq -r '.remove_labels[]?' command.json | while read -r label; do
+            gh issue edit "$issue" --remove-label "$label"
+          done
+          jq -r '.comment // empty' command.json > reply.md
+          if [ -s reply.md ]; then gh issue comment "$issue" --body-file reply.md; fi
+          if [ "$(jq -r '.dispatch_batch // false' command.json)" = true ]; then
+            gh workflow run city-discovery.yml --ref main -f mode=batch
+          fi

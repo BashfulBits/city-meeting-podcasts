@@ -1,7 +1,7 @@
 # review/28 — LLM-Assisted City & Agenda-Source Discovery
 
-**Maturity: L3 (dev-ready) · ROADMAP R12 — number out of table-position on purpose, per the
-no-renumbering convention; sequenced right after R2, before R3 · implementation issues not yet cut**
+**Maturity: L3 (dev-ready; implementation in progress, unmerged) · ROADMAP R12 — number out of
+table-position on purpose, per the no-renumbering convention; sequenced right after R2, before R3**
 
 > **Promoted 2026-07-12 (maintainer request): "push toward L2, research the best answer for each open
 > question."** The L1 sketch left two decisions open: which search-grounding mechanism, and whether this
@@ -18,6 +18,65 @@ no-renumbering convention; sequenced right after R2, before R3 · implementation
 > approval and batching workflow (§10) rather than a direct-to-main path. The maintainer subsequently
 > chose one permission model: approved proposals are bundled into a maintainer-reviewed PR; R12 never
 > commits directly to main.
+
+---
+
+## Implementation handoff — 2026-07-15
+
+The in-progress implementation maps this design to the discovery package, three R12 Actions
+workflows, and the city-request intake Worker. It is deliberately not described as shipped until the
+implementing PR is merged. The operational contract is:
+
+- Discovery runs daily; auxiliary eligibility is evaluated Monday/weekly unless manually dispatched.
+  New-city evidence is posted only on first processing, explicit recheck, or 90-day expiry.
+- Approval binds to the exact bot-authored evidence digest. The auxiliary digest requires a city slug;
+  neither command can write configuration.
+- The scheduled/manual batch recreates one automation branch from fresh main, validates every source
+  artifact, stages exact paths only, and opens or updates one maintainer-review PR. The merged-PR
+  workflow reconciles source issues and closes only completed Add city issues.
+- Research-only provider assignments join the pending-providers tracker through that same review-PR
+  path; deferred or assigned cities stay out of weekly auxiliary noise while retaining evidence.
+- Before enabling the Actions, create r12:approved, r12:batched, r12:evidence-ready, r12:expired,
+  r12:recheck, r12:rejected, and needs:provider labels. The labels and Tavily/LLM Action secrets are
+  configured. The intake Worker is deployed at
+  `https://citypods-city-request-intake.citypods.workers.dev`, backed by the provisioned D1 database,
+  GitHub App, Formspark webhook, Discord webhook, Turnstile validation, and Resend sender.
+- The static `/request-a-city/` page posts to Formspark. Formspark owns the one-time Turnstile token
+  verification, then calls the Worker's unguessable `/formspark/<secret>` path. The Worker acknowledges
+  within Formspark's two-second/no-retry webhook window and completes D1/GitHub/Discord/Resend work via
+  `ctx.waitUntil()`. GitHub API calls carry an explicit `User-Agent`; omitting it produced an edge-level
+  empty `403` during live testing.
+- R12's non-secret LLM route is task-scoped under `city_discovery` in `config/site_config.yml`.
+  Provider API keys remain GitHub Secrets; generic repository Actions variables do not define an
+  accidental model policy for future summary, tagging, or soundbite tasks.
+
+The email template module includes branded HTML plus complete plaintext variants for acknowledgement,
+evidence-ready, review, applied, missing-information, research-only, and expiry states. Lifecycle
+notification delivery beyond the initial acknowledgement is prepared but not enabled until the
+website-design phase supplies final visual tokens and event wiring.
+
+### Completion checklist — required before R12 is shipped
+
+- [x] Tavily retrieval, constrained LLM classification, SSRF-safe live verification, evidence rendering,
+  90-day refresh, coverage eligibility, provider backlog, and maintainer-review PR batching.
+- [x] Deployed Formspark webhook Worker, private D1 contact/dedup store, GitHub App issue creation,
+  Discord notification, initial acknowledgement email, and static `/request-a-city/` form.
+- [ ] Discord intake: a community request must create/link the canonical GitHub issue without exposing
+  requester contact details.
+- [ ] Discord progress callbacks: evidence-ready, research-only, batched, applied, and expiry events
+  must update the originating Discord thread/channel.
+- [ ] GitHub Discussions intake and canonical-issue linking, with the same status callback model.
+- [ ] Lifecycle email delivery: wire the prepared templates to GitHub/PR webhook events and the private
+  D1 requester record; the initial Worker receipt alone is insufficient.
+- [x] Create the R12 GitHub labels.
+- [x] Configure Tavily and LLM Action secrets.
+- [x] Provision and deploy the Worker: Cloudflare account/project, D1 database, Turnstile widget,
+  GitHub App, Formspark form/webhook, Discord webhook, Resend sender domain and DNS records.
+- [x] Run a controlled website submission end to end: Formspark/Turnstile → Worker/D1 → GitHub issue
+  → Discord notification → Resend receipt (test issue #926, closed and private test row removed).
+- [ ] Run the remaining live end-to-end tests: Discord request, Discussion request, verified proposal,
+  batch PR, merge, and all outbound status notifications.
+- [ ] Optional follow-on: broaden the existing add-city provider dropdown using Appendix P.
 
 ---
 
@@ -398,8 +457,8 @@ The initial free path is **Formspark + a small Cloudflare Worker + Discord webho
 
 ```text
 website form
-  → Formspark notification email to maintainer
-  → Formspark webhook
+  → Formspark validates Turnstile and records the submission
+  → Formspark webhook at an unguessable Worker URL
       → Cloudflare Worker
           → private deduplication/contact record
           → GitHub issue with add-city + source:website + needs:discovery
@@ -409,8 +468,9 @@ website form
 
 According to [Formspark pricing](https://formspark.io/pricing/) and its [webhook documentation](https://documentation.formspark.io/integration/webhooks.html),
 the current free account starts with 250 submissions and supports notification emails and webhooks. Its
-webhook requests are not signed, so the Worker must require a secret, validate the payload,
-deduplicate submissions, and apply Turnstile or equivalent abuse controls. The Worker creates issues
+webhook requests are not signed, so the Worker requires an unguessable secret URL segment, validates
+the payload, and deduplicates submissions. Formspark validates the one-time Turnstile token before
+sending the webhook; the Worker must not attempt to redeem that same token again. The Worker creates issues
 directly through a GitHub App installation token; Discord is a notification surface, not the authority
 for repository writes. Resend's free tier is sufficient for low-volume acknowledgements and has a
 3,000-email/month, 100-email/day limit ([Resend pricing](https://resend.com/pricing)). If volume or automation needs grow, the form endpoint can remain
@@ -634,7 +694,7 @@ Agenda PE needs no distinct verifier — Appendix P found it publishes through s
 
 ---
 
-## Proposed GitHub issues (not filed — batch review pending)
+## Implementation slices (issue titles retained for execution tracking)
 
 Titles should describe the work, not use the R12 phase number:
 

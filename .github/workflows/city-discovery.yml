@@ -1,0 +1,280 @@
+name: City discovery
+
+# R12 runs discovery daily rather than on every issue edit: evidence generation can be queued by
+# Tavily/LLM capacity, and bot comments/label changes must not create a feedback loop.
+on:
+  # Temporary same-repository PR smoke coverage while this new workflow is not yet present on main.
+  # GitHub withholds repository secrets from fork PRs; the smoke job is read-only and cannot mutate
+  # issues, pull requests, or repository contents. Remove this trigger/job after the live smoke passes.
+  pull_request:
+    paths:
+      - ".github/workflows/city-discovery.yml"
+      - "citypods/compute/**"
+      - "citypods/discovery/**"
+      - "scripts/city_discovery.py"
+      - "config/site_config.yml"
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      city_slug:
+        description: "Run one existing city only (optional)"
+        required: false
+      issue_number:
+        description: "Run one add-city issue only (optional)"
+        required: false
+      mode:
+        description: "all, new-city, auxiliary, or batch"
+        required: false
+        default: all
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: city-discovery
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[llm]" -c constraints/prod.txt
+
+      - name: Exercise Tavily and configured discovery model without repository mutations
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: |
+          test -n "$TAVILY_API_KEY"
+          test -n "$GEMINI_API_KEY"
+          python scripts/city_discovery.py --mode new-city --city-state "Waco, TX" \
+            --out city-discovery-smoke
+          test -s city-discovery-smoke/evidence.json
+          test -s city-discovery-smoke/evidence.md
+          jq -e '.request.city_slug == "waco-tx" and (.search_results | length > 0)' \
+            city-discovery-smoke/evidence.json
+
+  discover:
+    if: ${{ github.event_name != 'pull_request' && inputs.mode != 'batch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Discover queued new-city requests
+        if: ${{ inputs.mode != 'auxiliary' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
+          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
+          REQUESTED_ISSUE: ${{ inputs.issue_number }}
+        run: |
+          if [ -n "$REQUESTED_ISSUE" ]; then
+            issues="$REQUESTED_ISSUE"
+          else
+            issues=$(gh issue list --label add-city --state open --json number,labels --jq '.[] | select([.labels[].name] | index("add-city:applied") | not) | .number')
+          fi
+          for issue in $issues; do
+            mkdir -p "city-discovery/new-$issue"
+            gh api "repos/${{ github.repository }}/issues/$issue" > "city-discovery/new-$issue/issue.json"
+            jq -r .body "city-discovery/new-$issue/issue.json" > "city-discovery/new-$issue/issue.md"
+            gh api "repos/${{ github.repository }}/issues/$issue/comments?per_page=100" \
+              > "city-discovery/new-$issue/comments.json"
+            python scripts/r12_issue_state.py \
+              --issue "city-discovery/new-$issue/issue.json" \
+              --comments "city-discovery/new-$issue/comments.json" \
+              --out "city-discovery/new-$issue/state.json"
+            if [ "$(jq -r .discover "city-discovery/new-$issue/state.json")" != true ]; then
+              continue
+            fi
+            if [ "$(jq -r .expired "city-discovery/new-$issue/state.json")" = true ]; then
+              gh issue edit "$issue" --add-label r12:expired --add-label needs:discovery \
+                --remove-label r12:approved
+              gh issue comment "$issue" --body \
+                "R12 evidence expired after 90 days; fresh discovery has been queued."
+            fi
+            python scripts/city_discovery.py --mode new-city --issue-number "$issue" \
+              --issue-body "city-discovery/new-$issue/issue.md" --out "city-discovery/new-$issue"
+            gh issue comment "$issue" --body-file "city-discovery/new-$issue/evidence.md"
+            gh issue edit "$issue" --add-label r12:evidence-ready --remove-label r12:recheck \
+              --remove-label r12:expired
+          done
+
+      - name: Discover eligible auxiliary agenda sources
+        if: ${{ inputs.mode != 'new-city' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
+          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          REQUESTED_CITY: ${{ inputs.city_slug }}
+        run: |
+          mkdir -p city-discovery/aux
+          if [ -z "$REQUESTED_CITY" ] && [ "${{ github.event_name }}" = schedule ] \
+            && [ "$(date -u +%u)" != 1 ]; then
+            echo "Auxiliary eligibility runs weekly; use workflow dispatch for a manual run."
+            exit 0
+          fi
+          title_prefix="[city-discovery]"
+          existing=$(gh issue list --state open --search "in:title $title_prefix" \
+            --json number,title --jq --arg prefix "$title_prefix" \
+            '.[] | select(.title | startswith($prefix)) | .number' | head -1)
+          if [ -n "$existing" ]; then
+            gh api "repos/${{ github.repository }}/issues/$existing" > city-discovery/aux/issue.json
+            gh api "repos/${{ github.repository }}/issues/$existing/comments?per_page=100" \
+              > city-discovery/aux/comments.json
+            jq -r .body city-discovery/aux/issue.json > city-discovery/aux/issue-body-prior.md
+            python scripts/r12_aux_state.py --body city-discovery/aux/issue-body-prior.md \
+              --out city-discovery/aux/prior-state.json
+          else
+            printf '{}\n' > city-discovery/aux/prior-state.json
+          fi
+          if [ -n "$REQUESTED_CITY" ]; then
+            cities="$REQUESTED_CITY"
+            cp city-discovery/aux/prior-state.json city-discovery/aux/state.json
+          else
+            python scripts/city_discovery.py --mode auxiliary --list-eligible-aux --pull-state \
+              --prior-aux-state city-discovery/aux/prior-state.json > city-discovery/aux/eligibility.json
+            cities=$(jq -r '.eligible[]' city-discovery/aux/eligibility.json)
+            jq .state city-discovery/aux/eligibility.json > city-discovery/aux/state.json
+          fi
+          if [ -n "$existing" ]; then
+            python scripts/r12_aux_queue.py --cities "$cities" \
+              --issue city-discovery/aux/issue.json --comments city-discovery/aux/comments.json \
+              --out city-discovery/aux/queue.json
+            cities=$(jq -r '.cities[]' city-discovery/aux/queue.json)
+          fi
+          : > city-discovery/aux/issue-body.md
+          python scripts/r12_aux_state.py --render-state city-discovery/aux/state.json \
+            >> city-discovery/aux/issue-body.md
+          printf '\n\n' >> city-discovery/aux/issue-body.md
+          count=0
+          for city in $cities; do
+            python scripts/city_discovery.py --mode auxiliary --city-slug "$city" --out "city-discovery/aux/$city"
+            cat "city-discovery/aux/$city/evidence.md" >> city-discovery/aux/issue-body.md
+            printf '\n' >> city-discovery/aux/issue-body.md
+            count=$((count + 1))
+          done
+          if [ "$count" -eq 0 ]; then exit 0; fi
+          title="[city-discovery] $count candidate(s) pending"
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --title "$title" --body-file city-discovery/aux/issue-body.md
+          else
+            gh issue create --title "$title" --body-file city-discovery/aux/issue-body.md --label needs:discovery
+          fi
+
+  batch:
+    if: >-
+      ${{ github.event_name != 'pull_request' && (inputs.mode == 'batch' || inputs.mode == 'all' || github.event_name == 'schedule') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e . -c constraints/prod.txt
+
+      - name: Assemble approved proposals
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # r12-commands.yml records the city-scoped approval beside the exact evidence marker.
+          # This step intentionally operates only on files extracted from those markers, never on
+          # an LLM re-run or a hand-parsed Markdown diff.
+          python scripts/r12_collect_approved.py --repository "${{ github.repository }}" --out r12-batch
+          git fetch origin main
+          git switch --force-create automation/r12-city-batch origin/main
+          changed=""
+          if [ -s r12-batch/evidence-files.txt ]; then
+            args=""
+            while read -r evidence; do args="$args --evidence $evidence"; done < r12-batch/evidence-files.txt
+            # shellcheck disable=SC2086
+            python scripts/r12_batch.py --repo-root . $args --changed-out r12-batch/changed.json
+            changed=$(jq -r '.[]' r12-batch/changed.json)
+          else
+            printf '[]\n' > r12-batch/changed.json
+          fi
+          if [ -s r12-batch/backlog-records.json ] && [ "$(jq length r12-batch/backlog-records.json)" -gt 0 ]; then
+            python scripts/r12_update_backlog.py --records r12-batch/backlog-records.json
+            changed="$changed"$'\n'"config/discovery/pending-providers.yml"
+          fi
+          if [ -z "$changed" ]; then
+            echo "No current approved proposals."
+            exit 0
+          fi
+          git diff --check
+          printf '%s\n' "$changed" | sed '/^$/d' | sort -u > r12-batch/changed-files.txt
+          git add -- $(tr '\n' ' ' < r12-batch/changed-files.txt)
+          git diff --cached --check
+          git diff --cached --name-only | sort | diff -u r12-batch/changed-files.txt -
+          pytest -q tests/test_config.py tests/test_discovery.py
+          git commit -m "config: batch verified city discovery proposals"
+          git push --force-with-lease origin automation/r12-city-batch
+          jq -r '"R12 batch: every included proposal was revalidated from unexpired evidence.\n\n## Source issues\n" + ([.[].number | "#" + tostring] | unique | join(", "))' \
+            r12-batch/source-issues.json > r12-batch/pr-body.md
+          pr=$(gh pr list --head automation/r12-city-batch --base main --state open --json url --jq '.[0].url')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "Add verified cities and agenda sources" \
+              --body-file r12-batch/pr-body.md
+          else
+            gh pr create --head automation/r12-city-batch --base main \
+              --title "Add verified cities and agenda sources" \
+              --body-file r12-batch/pr-body.md
+          fi
+          jq -r '.[].number' r12-batch/source-issues.json | sort -u | while read -r issue; do
+            gh issue edit "$issue" --add-label r12:batched
+            gh issue comment "$issue" --body "R12 proposal is in maintainer review: $pr"
+          done

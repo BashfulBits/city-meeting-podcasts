@@ -19,11 +19,14 @@ import requests
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult, Task
 from citypods.security import SecurityError, validate_source_url
 
-LLM_TASKS: frozenset[Task] = frozenset({"summarize", "tag", "soundbite-select"})
+LLM_TASKS: frozenset[Task] = frozenset(
+    {"summarize", "tag", "soundbite-select", "classify-civic-platforms"}
+)
 TASK_VERSIONS: dict[Task, str] = {
     "summarize": "1",
     "tag": "1",
     "soundbite-select": "1",
+    "classify-civic-platforms": "1",
 }
 
 # Shared structured prompts are intentionally provider-neutral.  Calling stages may supply a
@@ -33,6 +36,10 @@ TASK_PROMPTS: dict[Task, str] = {
     "tag": "Extract a small list of factual topic tags from the supplied meeting material.",
     "soundbite-select": (
         "Select the strongest bounded soundbite candidates from the supplied material."
+    ),
+    "classify-civic-platforms": (
+        "Classify civic meeting platforms only from the supplied retrieved evidence. "
+        "Never invent a URL or a platform not supported by that evidence. Return strict JSON."
     ),
 }
 
@@ -65,8 +72,10 @@ class LLMBackendConfig:
     def from_env(cls) -> LLMBackendConfig:
         """Build configuration from environment variables without reading provider keys."""
         return cls(
-            model=os.environ.get("LLM_MODEL", cls.model),
-            mode=os.environ.get("LLM_MODE", cls.mode),
+            # GitHub Actions expands an unset repository variable to an empty environment value.
+            # Treat blank like absent so optional workflow vars cannot erase the safe defaults.
+            model=os.environ.get("LLM_MODEL") or cls.model,
+            mode=os.environ.get("LLM_MODE") or cls.mode,
             dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
             dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),

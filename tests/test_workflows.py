@@ -62,6 +62,19 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
     assert "actions/cache@v5" not in workflow_text
 
 
+def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
+    workflow = (WORKFLOWS / "city-discovery.yml").read_text()
+    site_path = Path(__file__).resolve().parents[1] / "config" / "site_config.yml"
+    site = yaml.safe_load(site_path.read_text())
+
+    assert "vars.LLM_MODEL" not in workflow
+    assert "vars.LLM_MODE" not in workflow
+    assert site["city_discovery"] == {
+        "llm_model": "gemini/gemini-3-flash-preview",
+        "llm_mode": "direct",
+    }
+
+
 @pytest.mark.parametrize(
     "workflow,environment,secret_names",
     [
