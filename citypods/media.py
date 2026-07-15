@@ -952,7 +952,8 @@ class SourceCache:
                 stop=self._stop,
                 max_media_bytes=self.max_media_bytes,
             ):
-                self._paths[uid] = dest
+                with self._guard:
+                    self._paths[uid] = dest
                 return dest
             return None
         finally:
@@ -1000,7 +1001,8 @@ class SourceCache:
                 self.memory_floor_bytes,
                 stop=self._stop,
             ):
-                self._paths[uid] = dest
+                with self._guard:
+                    self._paths[uid] = dest
                 return dest
             return None
         finally:
