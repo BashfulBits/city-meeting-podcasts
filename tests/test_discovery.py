@@ -54,6 +54,7 @@ def test_classifier_rejects_source_url_not_in_retrieved_evidence():
                 "message": {
                     "content": (
                         '{"video_platform":"granicus","agenda_platform":null,'
+                        '"city_identity":"confirmed",'
                         '"candidate_urls":["https://example.granicus.com/ViewPublisherRSS.php?view_id=1"],'
                         '"video_source":{"feed_url":"https://evil.example/feed"},'
                         '"bodies_mentioned":[],"confidence":"high","reasoning":"test"}'
@@ -72,6 +73,7 @@ def test_classifier_prompt_includes_provider_source_schemas():
             prompt = job.inputs["messages"][0]["content"]
             assert "minutes_url" in prompt
             assert "granicus_base" in prompt
+            assert "city_identity" in prompt
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -81,6 +83,7 @@ def test_classifier_prompt_includes_provider_source_schemas():
                             "message": {
                                 "content": (
                                     '{"video_platform":"granicus","agenda_platform":null,'
+                                    '"city_identity":"confirmed",'
                                     '"candidate_urls":["https://example.granicus.com/ViewPublisherRSS.php?view_id=1"],'
                                     '"video_source":{"feed_url":"https://example.granicus.com/ViewPublisherRSS.php?view_id=1"},'
                                     '"bodies_mentioned":[],"confidence":"high","reasoning":"test"}'
@@ -95,6 +98,37 @@ def test_classifier_prompt_includes_provider_source_schemas():
     assert result.video_source == {
         "feed_url": "https://example.granicus.com/ViewPublisherRSS.php?view_id=1"
     }
+
+
+def test_classifier_discards_foreign_city_provider_details():
+    response = {
+        "choices": [
+            {
+                "message": {
+                    "content": (
+                        '{"city_identity":"mismatch","video_platform":"civicengage",'
+                        '"agenda_platform":"civicengage",'
+                        '"candidate_urls":["https://example.gov/foreign"],'
+                        '"video_source":{"feed_url":"https://example.gov/foreign"},'
+                        '"bodies_mentioned":["Foreign City Council"],'
+                        '"confidence":"medium","reasoning":"Evidence is for another city."}'
+                    )
+                }
+            }
+        ]
+    }
+    result = parse_classification(
+        response,
+        _request(),
+        [SearchResult("https://example.gov/foreign", "City of Foreign")],
+    )
+
+    assert result.city_identity == "mismatch"
+    assert result.video_platform is None
+    assert result.agenda_platform is None
+    assert result.candidate_urls == ()
+    assert result.video_source is None
+    assert result.bodies_mentioned == ()
 
 
 def test_auxiliary_proposal_needs_agenda_and_primary_video_verification(monkeypatch):
@@ -139,6 +173,7 @@ def test_rendered_evidence_exposes_controls_and_machine_state(monkeypatch):
             video_source={
                 "feed_url": "https://example.granicus.com/ViewPublisherRSS.php?view_id=1"
             },
+            city_identity="confirmed",
         ),
         _results(),
     )
@@ -146,6 +181,29 @@ def test_rendered_evidence_exposes_controls_and_machine_state(monkeypatch):
     assert "/r12 approve" in body
     assert parse_state_marker(body)["status"] == "proposed"
     assert parse_evidence_marker(body)["request"]["city_slug"] == "example-tx"
+
+
+def test_foreign_city_evidence_pauses_for_more_information():
+    result = verify_discovery(
+        _request(),
+        Classification(
+            video_platform=None,
+            agenda_platform=None,
+            candidate_urls=(),
+            bodies_mentioned=(),
+            city_identity="mismatch",
+            reasoning="The results identify a city in another state.",
+        ),
+        [SearchResult("https://foreign.example/meetings", "City of Foreign meetings")],
+    )
+
+    body = render_evidence(result)
+    assert result.needs_more_information
+    assert not result.research_only
+    assert result.proposed_yaml is None
+    assert "More information needed — discovery paused" in body
+    assert "Research finding only" not in body
+    assert parse_state_marker(body)["status"] == "needs-more-information"
 
 
 def test_agenda_covered_city_reenters_after_two_low_coverage_checks():

@@ -73,6 +73,9 @@ class Classification:
     # Tavily evidence; non-URL values are constrained by the provider schema in classify.py.
     video_source: dict[str, Any] | None = None
     agenda_source: dict[str, Any] | None = None
+    # New-city evidence is usable only when the retrieved sources can be tied to the requested
+    # municipality. Existing-city auxiliary discovery has an authoritative configured city.
+    city_identity: Literal["confirmed", "unconfirmed", "mismatch"] = "unconfirmed"
     confidence: Literal["low", "medium", "high"] = "low"
     reasoning: str = ""
 
@@ -111,6 +114,7 @@ class DiscoveryResult:
     city_website_url: str | None = None
     meeting_listing_url: str | None = None
     research_only: bool = False
+    needs_more_information: bool = False
     evidence_created_at: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
 

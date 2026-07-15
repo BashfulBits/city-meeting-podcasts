@@ -91,10 +91,15 @@ jobs:
             python scripts/city_discovery.py --mode new-city --issue-number "$issue" \
               --issue-body "city-discovery/new-$issue/issue.md" --out "city-discovery/new-$issue"
             gh issue comment "$issue" --body-file "city-discovery/new-$issue/evidence.md"
-            gh issue edit "$issue" --add-label r12:evidence-ready --remove-label r12:recheck \
-              --remove-label r12:expired
+            if [ "$(jq -r .needs_more_information "city-discovery/new-$issue/evidence.json")" = true ]; then
+              gh issue edit "$issue" --add-label needs:more-information --remove-label needs:discovery \
+                --remove-label r12:evidence-ready --remove-label r12:recheck --remove-label r12:expired
+            else
+              gh issue edit "$issue" --add-label r12:evidence-ready --remove-label r12:recheck \
+                --remove-label r12:expired --remove-label needs:more-information
+            fi
             gh issue view "$issue" --json number,url,body > "city-discovery/new-$issue/notify.json"
-            notify_status=$(jq -r 'if .research_only then "research_only" else "evidence_ready" end' \
+            notify_status=$(jq -r 'if .needs_more_information then "needs_more_information" elif .research_only then "research_only" else "evidence_ready" end' \
               "city-discovery/new-$issue/evidence.json")
             python scripts/r12_notify.py --issue "city-discovery/new-$issue/notify.json" \
               --status "$notify_status"

@@ -175,7 +175,7 @@ def parse_command(
     if action == "recheck":
         return {
             "add_labels": ["r12:recheck", "needs:discovery"],
-            "remove_labels": ["r12:approved", "r12:expired"],
+            "remove_labels": ["r12:approved", "r12:expired", "needs:more-information"],
             "comment": "R12 `recheck` queued for the next daily discovery run.",
         }
     if action == "clear-disposition":

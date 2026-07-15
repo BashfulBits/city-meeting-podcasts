@@ -92,6 +92,21 @@ def test_expired_evidence_reopens_discovery():
     assert state(issue, comments) == {"discover": True, "expired": True}
 
 
+def test_more_information_hold_skips_scheduled_discovery_until_recheck():
+    issue = {"labels": [{"name": "needs:more-information"}]}
+
+    assert state(issue, []) == {"discover": False, "expired": False}
+    issue["labels"].append({"name": "r12:recheck"})
+    assert state(issue, []) == {"discover": True, "expired": False}
+
+
+def test_recheck_clears_more_information_hold():
+    result = parse_command({"labels": []}, [], "/r12 recheck")
+
+    assert result["add_labels"] == ["r12:recheck", "needs:discovery"]
+    assert "needs:more-information" in result["remove_labels"]
+
+
 def test_auxiliary_batch_preserves_existing_yaml_bytes(tmp_path):
     target = tmp_path / "config" / "feeds" / "example-tx.yml"
     target.parent.mkdir(parents=True)

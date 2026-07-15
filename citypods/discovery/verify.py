@@ -195,6 +195,27 @@ def verify_discovery(
     existing_city: City | None = None,
 ) -> DiscoveryResult:
     """Verify a discovery result and assemble a PR-safe or research-only evidence package."""
+    needs_more_information = (
+        request.mode == "new-city" and classification.city_identity != "confirmed"
+    )
+    if needs_more_information:
+        return DiscoveryResult(
+            request=request,
+            search_results=tuple(results),
+            classification=classification,
+            verification=Verification(
+                None,
+                None,
+                False,
+                False,
+                None,
+                None,
+                "retrieved evidence could not be confirmed for the requested city",
+            ),
+            research_only=False,
+            needs_more_information=True,
+            evidence_created_at=datetime.now(UTC).isoformat(),
+        )
     agenda_platform = _provider_name(classification.agenda_platform)
     video_platform = _provider_name(classification.video_platform)
     city_url = request.city_website or next(
@@ -269,5 +290,6 @@ def verify_discovery(
         city_website_url=city_url,
         meeting_listing_url=listing_url,
         research_only=not verification.applyable,
+        needs_more_information=False,
         evidence_created_at=datetime.now(UTC).isoformat(),
     )

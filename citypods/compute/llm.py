@@ -26,7 +26,7 @@ TASK_VERSIONS: dict[Task, str] = {
     "summarize": "1",
     "tag": "1",
     "soundbite-select": "1",
-    "classify-civic-platforms": "1",
+    "classify-civic-platforms": "2",
 }
 
 # Shared structured prompts are intentionally provider-neutral.  Calling stages may supply a
@@ -39,7 +39,8 @@ TASK_PROMPTS: dict[Task, str] = {
     ),
     "classify-civic-platforms": (
         "Classify civic meeting platforms only from the supplied retrieved evidence. "
-        "Never invent a URL or a platform not supported by that evidence. Return strict JSON."
+        "Never invent a URL or a platform not supported by that evidence, and reject evidence for "
+        "a different municipality. Return strict JSON."
     ),
 }
 
