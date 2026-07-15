@@ -9,6 +9,7 @@ from citypods.discovery.eligibility import AgendaCoverage, auxiliary_eligibility
 from citypods.discovery.models import Classification, DiscoveryRequest, SearchResult
 from citypods.discovery.render import parse_evidence_marker, parse_state_marker, render_evidence
 from citypods.discovery.verify import verify_discovery
+from scripts import city_discovery as city_discovery_script
 
 
 def _request(mode="new-city"):
@@ -45,6 +46,34 @@ def test_discovery_llm_route_is_task_scoped_yaml_not_generic_environment(monkeyp
 
     assert config.model == "gemini/gemini-3-flash-preview"
     assert config.mode == "direct"
+
+
+def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
+    monkeypatch, capsys, tmp_path
+):
+    def fake_pull(_site, _output_dir, *, log):
+        log("state: restored 3 file(s) from durable storage")
+        return tmp_path
+
+    monkeypatch.setattr(city_discovery_script, "pull_canonical_state", fake_pull)
+    monkeypatch.setattr(city_discovery_script, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(city_discovery_script, "load_city_configs", lambda *_: [])
+    monkeypatch.setattr(city_discovery_script, "auxiliary_states", lambda *_: ([], {}))
+
+    result = city_discovery_script._eligible_auxiliary(
+        SimpleNamespace(
+            site_config="config/site_config.yml",
+            output_dir=tmp_path,
+            pull_state=True,
+            config_dir="config",
+            prior_aux_state=None,
+        )
+    )
+
+    captured = capsys.readouterr()
+    assert result == {"eligible": [], "state": {}}
+    assert captured.out == ""
+    assert "state: restored 3 file(s) from durable storage" in captured.err
 
 
 def test_classifier_rejects_source_url_not_in_retrieved_evidence():

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 from citypods.compute.llm import LiteLLMBackend
@@ -90,7 +91,11 @@ def _eligible_auxiliary(args: argparse.Namespace) -> dict[str, object]:
     site = load_site_config(args.site_config)
     state_dir = resolve_state_dir(site, Path(args.output_dir))
     if args.pull_state:
-        state_dir = pull_canonical_state(site, Path(args.output_dir))
+        state_dir = pull_canonical_state(
+            site,
+            Path(args.output_dir),
+            log=lambda message: print(message, file=sys.stderr, flush=True),
+        )
     cities = load_city_configs(args.config_dir, site.get("defaults", {}))
     prior = json.loads(Path(args.prior_aux_state).read_text()) if args.prior_aux_state else {}
     if not isinstance(prior, dict):
