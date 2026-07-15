@@ -5,6 +5,8 @@ on:
     types: [closed]
 
 permissions:
+  contents: read
+  discussions: write
   issues: write
 
 jobs:
@@ -16,11 +18,17 @@ jobs:
       }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
       - name: Mark source issues applied
         env:
           GH_TOKEN: ${{ github.token }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          CITY_REQUEST_STATUS_WEBHOOK_URL: ${{ secrets.CITY_REQUEST_STATUS_WEBHOOK_URL }}
         run: |
           issues=$(printf '%s\n' "$PR_BODY" | grep -oE '#[0-9]+' | tr -d '#' | sort -u || true)
           if [ -z "$issues" ]; then exit 0; fi
@@ -35,4 +43,7 @@ jobs:
               gh issue comment "$issue" --body \
                 "Applied through merged R12 maintainer-review PR #$PR_NUMBER."
             fi
+            gh issue view "$issue" --json number,url,body > notify-issue.json
+            python scripts/r12_notify.py --issue notify-issue.json --status applied \
+              --target-url "$PR_URL"
           done

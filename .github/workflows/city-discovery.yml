@@ -3,16 +3,6 @@ name: City discovery
 # R12 runs discovery daily rather than on every issue edit: evidence generation can be queued by
 # Tavily/LLM capacity, and bot comments/label changes must not create a feedback loop.
 on:
-  # Temporary same-repository PR smoke coverage while this new workflow is not yet present on main.
-  # GitHub withholds repository secrets from fork PRs; the smoke job is read-only and cannot mutate
-  # issues, pull requests, or repository contents. Remove this trigger/job after the live smoke passes.
-  pull_request:
-    paths:
-      - ".github/workflows/city-discovery.yml"
-      - "citypods/compute/**"
-      - "citypods/discovery/**"
-      - "scripts/city_discovery.py"
-      - "config/site_config.yml"
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
@@ -30,6 +20,7 @@ on:
 
 permissions:
   contents: write
+  discussions: write
   issues: write
   pull-requests: write
 
@@ -38,43 +29,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  smoke:
-    if: ${{ github.event_name == 'pull_request' }}
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install
-        run: pip install -e ".[llm]" -c constraints/prod.txt
-
-      - name: Exercise Tavily and configured discovery model without repository mutations
-        env:
-          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-        run: |
-          test -n "$TAVILY_API_KEY"
-          test -n "$GEMINI_API_KEY"
-          python scripts/city_discovery.py --mode new-city --city-state "Waco, TX" \
-            --out city-discovery-smoke
-          test -s city-discovery-smoke/evidence.json
-          test -s city-discovery-smoke/evidence.md
-          jq -e '.request.city_slug == "waco-tx" and (.search_results | length > 0)' \
-            city-discovery-smoke/evidence.json
-
   discover:
-    if: ${{ github.event_name != 'pull_request' && inputs.mode != 'batch' }}
+    if: ${{ inputs.mode != 'batch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -100,6 +56,7 @@ jobs:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
           LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
+          CITY_REQUEST_STATUS_WEBHOOK_URL: ${{ secrets.CITY_REQUEST_STATUS_WEBHOOK_URL }}
           REQUESTED_ISSUE: ${{ inputs.issue_number }}
         run: |
           if [ -n "$REQUESTED_ISSUE" ]; then
@@ -125,12 +82,20 @@ jobs:
                 --remove-label r12:approved
               gh issue comment "$issue" --body \
                 "R12 evidence expired after 90 days; fresh discovery has been queued."
+              gh issue view "$issue" --json number,url,body > "city-discovery/new-$issue/notify.json"
+              python scripts/r12_notify.py --issue "city-discovery/new-$issue/notify.json" \
+                --status evidence_expired
             fi
             python scripts/city_discovery.py --mode new-city --issue-number "$issue" \
               --issue-body "city-discovery/new-$issue/issue.md" --out "city-discovery/new-$issue"
             gh issue comment "$issue" --body-file "city-discovery/new-$issue/evidence.md"
             gh issue edit "$issue" --add-label r12:evidence-ready --remove-label r12:recheck \
               --remove-label r12:expired
+            gh issue view "$issue" --json number,url,body > "city-discovery/new-$issue/notify.json"
+            notify_status=$(jq -r 'if .research_only then "research_only" else "evidence_ready" end' \
+              "city-discovery/new-$issue/evidence.json")
+            python scripts/r12_notify.py --issue "city-discovery/new-$issue/notify.json" \
+              --status "$notify_status"
           done
 
       - name: Discover eligible auxiliary agenda sources
@@ -211,7 +176,7 @@ jobs:
 
   batch:
     if: >-
-      ${{ github.event_name != 'pull_request' && (inputs.mode == 'batch' || inputs.mode == 'all' || github.event_name == 'schedule') }}
+      ${{ inputs.mode == 'batch' || inputs.mode == 'all' || github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -230,6 +195,7 @@ jobs:
       - name: Assemble approved proposals
         env:
           GH_TOKEN: ${{ github.token }}
+          CITY_REQUEST_STATUS_WEBHOOK_URL: ${{ secrets.CITY_REQUEST_STATUS_WEBHOOK_URL }}
         run: |
           # r12-commands.yml records the city-scoped approval beside the exact evidence marker.
           # This step intentionally operates only on files extracted from those markers, never on
@@ -277,4 +243,7 @@ jobs:
           jq -r '.[].number' r12-batch/source-issues.json | sort -u | while read -r issue; do
             gh issue edit "$issue" --add-label r12:batched
             gh issue comment "$issue" --body "R12 proposal is in maintainer review: $pr"
+            gh issue view "$issue" --json number,url,body > r12-batch/notify-issue.json
+            python scripts/r12_notify.py --issue r12-batch/notify-issue.json \
+              --status batched_for_review --target-url "$pr"
           done

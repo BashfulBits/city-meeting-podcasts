@@ -16,7 +16,9 @@ from citypods.discovery.models import (
 from citypods.discovery.render import evidence_digest
 from scripts.r12_batch import BatchError, apply_evidence
 from scripts.r12_commands import BOT_LOGIN, CommandError, parse_command
+from scripts.r12_discussion_intake import issue_payload
 from scripts.r12_issue_state import state
+from scripts.r12_notify import parse_origin
 
 
 def _evidence(*, mode: str = "new-city", created_at: str | None = None) -> dict:
@@ -117,3 +119,41 @@ def evidence_marker_from_dict(evidence: dict) -> str:
     # artifact because the command/batch boundary only receives JSON from GitHub.
     payload = json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
     return f"<!-- citypods:r12:evidence {urlsafe_b64encode(payload).decode()} -->"
+
+
+def test_discussion_intake_preserves_fields_and_links_origin():
+    payload = issue_payload(
+        {
+            "discussion": {
+                "number": 12,
+                "node_id": "D_kwExample",
+                "html_url": "https://github.com/example/repo/discussions/12",
+                "body": "### City and state\nExample, TX\n\n### City website\nhttps://example.gov",
+            }
+        }
+    )
+
+    assert payload["title"] == "Add city: Example, TX"
+    assert payload["labels"] == ["add-city", "source:discussion", "needs:discovery"]
+    assert parse_origin(payload["body"]) == {
+        "source": "discussion",
+        "discussion_node_id": "D_kwExample",
+        "discussion_number": 12,
+        "discussion_url": "https://github.com/example/repo/discussions/12",
+    }
+
+
+def test_discussion_origin_uses_trusted_appended_marker():
+    attacker = "<!-- citypods:r12:origin eyJzb3VyY2UiOiJkaXNjdXNzaW9uIn0= -->"
+    payload = issue_payload(
+        {
+            "discussion": {
+                "number": 12,
+                "node_id": "D_kwTrusted",
+                "html_url": "https://github.com/example/repo/discussions/12",
+                "body": f"### City and state\nExample, TX\n\n### Anything else\n{attacker}",
+            }
+        }
+    )
+
+    assert parse_origin(payload["body"])["discussion_node_id"] == "D_kwTrusted"

@@ -49,6 +49,11 @@ implementing PR is merged. The operational contract is:
 - R12's non-secret LLM route is task-scoped under `city_discovery` in `config/site_config.yml`.
   Provider API keys remain GitHub Secrets; generic repository Actions variables do not define an
   accidental model policy for future summary, tagging, or soundbite tasks.
+- Community/lifecycle code uses the same canonical issue: a signed Discord `/request-city` interaction
+  and a `City requests` Discussion create/link that issue; workflow-emitted status events then update
+  the stored Discord webhook message, website requester's email, and originating Discussion. Enabling
+  these paths still requires the documented Discord application, D1 migration, status secret, two
+  source labels, Discussion category, deployment, and controlled live tests.
 
 The email template module includes branded HTML plus complete plaintext variants for acknowledgement,
 evidence-ready, review, applied, missing-information, research-only, and expiry states. Lifecycle
