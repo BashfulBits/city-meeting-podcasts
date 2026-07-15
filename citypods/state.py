@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 
@@ -45,7 +46,13 @@ def resolve_state_dir(site_config: dict, output_dir: Path) -> Path:
     return path
 
 
-def pull_canonical_state(site_config: dict, output_dir: str | Path, *, base_url: str = "") -> Path:
+def pull_canonical_state(
+    site_config: dict,
+    output_dir: str | Path,
+    *,
+    base_url: str = "",
+    log: Callable[[str], None] | None = None,
+) -> Path:
     """Resolve ``state_dir`` and pull the durable snapshot from the bucket into it.
 
     Shares the "construct storage, then pull" idiom every read path needs (``run.py``'s
@@ -55,15 +62,16 @@ def pull_canonical_state(site_config: dict, output_dir: str | Path, *, base_url:
     optimization elsewhere, never a correctness dependency, so a missing/unreachable bucket
     degrades to "whatever's already on disk" rather than failing the caller outright.
     """
+    emit = log or (lambda message: print(message, flush=True))
     state_dir = resolve_state_dir(site_config, output_dir)
     try:
         storage = make_storage(site_config, base_url, output_dir)
-        restored = pull_state(storage, state_dir)
+        restored = pull_state(storage, state_dir, log=emit)
     except Exception as exc:  # noqa: BLE001 — state unavailable must not abort the caller
-        print(f"state: could not pull canonical state from the bucket ({exc}); using local copy")
+        emit(f"state: could not pull canonical state from the bucket ({exc}); using local copy")
         return state_dir
     if restored:
-        print(f"state: restored {restored} file(s) from durable storage")
+        emit(f"state: restored {restored} file(s) from durable storage")
     return state_dir
 
 
