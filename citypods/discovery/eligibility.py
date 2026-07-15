@@ -74,13 +74,17 @@ def auxiliary_states(
     """Measure and persist coverage state without hardcoding an auxiliary-city list."""
     eligible: list[str] = []
     state: dict[str, dict[str, Any]] = {}
-    seen: set[str] = set()
+    grouped: dict[str, list[City]] = {}
     for city in cities:
-        entity = city.city_entity or city.slug
-        if entity in seen:
-            continue
-        seen.add(entity)
-        coverage = measure_agenda_coverage(records_for_city.get(city.slug, {}))
+        grouped.setdefault(city.city_entity or city.slug, []).append(city)
+    for entity, entity_cities in grouped.items():
+        city = entity_cities[0]
+        records = {
+            f"{feed.slug}:{key}": value
+            for feed in entity_cities
+            for key, value in records_for_city.get(feed.slug, {}).items()
+        }
+        coverage = measure_agenda_coverage(records)
         previous = prior.get(entity) if isinstance(prior.get(entity), dict) else {}
         prior_state = previous.get("status")
         previous_low = int(previous.get("low_coverage_checks", 0) or 0)
@@ -106,5 +110,5 @@ def auxiliary_states(
             },
         }
         if status == "eligible":
-            eligible.append(city.slug)
+            eligible.extend(feed.slug for feed in entity_cities)
     return sorted(eligible), state

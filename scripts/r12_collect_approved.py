@@ -19,6 +19,16 @@ def _gh(*args: str) -> Any:
     return json.loads(result.stdout)
 
 
+def _issue_comments(repository: str, issue_number: int) -> list[dict[str, Any]]:
+    pages = _gh(
+        "api",
+        "--paginate",
+        "--slurp",
+        f"repos/{repository}/issues/{issue_number}/comments?per_page=100",
+    )
+    return [comment for page in pages for comment in page]
+
+
 def _command_markers(comments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     prefix = f"<!-- {COMMAND_MARKER} "
     records: list[dict[str, Any]] = []
@@ -72,7 +82,7 @@ def collect(
         is_digest = str(issue.get("title", "")).startswith("[city-discovery]")
         if "r12:approved" not in labels and not is_digest:
             continue
-        comments = _gh("api", f"repos/{repository}/issues/{issue['number']}/comments?per_page=100")
+        comments = _issue_comments(repository, issue["number"])
         artifacts = _evidence(issue, comments)
         for record in _command_markers(comments):
             digest = record.get("evidence_digest")

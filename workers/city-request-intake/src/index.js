@@ -2,6 +2,8 @@ import { emailTemplate } from "./templates.js";
 
 const MAX_BODY_BYTES = 32 * 1024;
 
+class BodyTooLargeError extends Error {}
+
 function response(status, body) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }
@@ -36,6 +38,26 @@ async function constantTimeSecret(request, env) {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
   const given = parts.length === 2 && parts[0] === "formspark" ? parts[1] : "";
   return constantTimeEqual(given, String(env.FORMSPARK_WEBHOOK_SECRET || ""));
+}
+
+async function readCappedBody(request) {
+  const length = Number(request.headers.get("content-length"));
+  if (Number.isFinite(length) && length > MAX_BODY_BYTES) throw new BodyTooLargeError();
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) { await reader.cancel(); throw new BodyTooLargeError(); }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
 }
 
 function base64Url(bytes) {
@@ -78,7 +100,7 @@ async function githubAppToken(env, fetchImpl) {
   return body.token;
 }
 
-export function issueBody(payload, source = "website") {
+export function issueBody(payload, source = "website", requestMarker = "") {
   return [
     "### City and state", `${payload.city}, ${payload.state}`, "",
     "### Video platform (if known)", payload.provider || "Not sure", "",
@@ -88,13 +110,25 @@ export function issueBody(payload, source = "website") {
     source === "website"
       ? "Submitted through the website. The requester email is stored privately and is not in this issue."
       : "Submitted through Discord. The canonical research and approval record is this GitHub issue.",
+    requestMarker ? `<!-- citypods:r12:intake ${requestMarker} -->` : "",
   ].join("\n");
 }
 
-async function createIssue(payload, env, fetchImpl, source = "website") {
+async function findIssueByMarker(marker, token, env, fetchImpl) {
+  if (!marker) return null;
+  const api = String(env.GITHUB_API_BASE || "https://api.github.com");
+  const query = encodeURIComponent(`repo:${env.GITHUB_REPOSITORY} is:issue in:body "citypods:r12:intake ${marker}"`);
+  const result = await fetchImpl(`${api}/search/issues?q=${query}`, { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "citymeetings-intake/1.0" } });
+  if (!result.ok) throw new Error(`GitHub issue reconciliation failed (${result.status})`);
+  return (await result.json()).items?.[0] || null;
+}
+
+async function createIssue(payload, env, fetchImpl, source = "website", requestMarker = "") {
   const token = await githubAppToken(env, fetchImpl);
   const api = String(env.GITHUB_API_BASE || "https://api.github.com");
-  const body = issueBody(payload, source);
+  const existing = await findIssueByMarker(requestMarker, token, env, fetchImpl);
+  if (existing) return existing;
+  const body = issueBody(payload, source, requestMarker);
   const result = await fetchImpl(`${api}/repos/${env.GITHUB_REPOSITORY}/issues`, {
     method: "POST",
     headers: {
@@ -175,21 +209,25 @@ async function handoffStatus(input, env, fetchImpl) {
   ).bind(issueNumber).first();
   if (!origin) return;
   const key = await sha256(`${kind}|${issueUrl}|${targetUrl}`);
+  async function notifyChannel(column, send) {
+    if (origin[column] === key) return;
+    const pending = `pending:${key}`;
+    const claim = await env.REQUESTS_DB.prepare(
+      `UPDATE request_origins SET ${column} = ?, updated_at = ? WHERE issue_number = ? AND (${column} IS NULL OR ${column} NOT LIKE 'pending:%') AND ${column} != ?`,
+    ).bind(pending, new Date().toISOString(), issueNumber, key).run();
+    if (!claim.meta.changes) return;
+    try {
+      await send();
+      await env.REQUESTS_DB.prepare(`UPDATE request_origins SET ${column} = ?, updated_at = ? WHERE issue_number = ? AND ${column} = ?`).bind(key, new Date().toISOString(), issueNumber, pending).run();
+    } catch (error) {
+      await env.REQUESTS_DB.prepare(`UPDATE request_origins SET ${column} = ?, updated_at = ? WHERE issue_number = ? AND ${column} = ?`).bind(origin[column] || null, new Date().toISOString(), issueNumber, pending).run();
+      throw error;
+    }
+  }
   const updates = [];
-  if (origin.email && env.RESEND_API_KEY && env.MAIL_FROM && origin.email_notification_key !== key) {
-    updates.push(sendLifecycleEmail(origin.email, kind, issueUrl, targetUrl, env, fetchImpl).then(() =>
-      env.REQUESTS_DB.prepare("UPDATE request_origins SET email_notification_key = ?, updated_at = ? WHERE issue_number = ?").bind(key, new Date().toISOString(), issueNumber).run()
-    ));
-  }
-  if (origin.discord_message_id && env.DISCORD_WEBHOOK_URL && origin.discord_notification_key !== key) {
-    updates.push(updateDiscord(issueNumber, origin.discord_message_id, kind, issueUrl, targetUrl, env, fetchImpl).then(() =>
-      env.REQUESTS_DB.prepare("UPDATE request_origins SET discord_notification_key = ?, updated_at = ? WHERE issue_number = ?").bind(key, new Date().toISOString(), issueNumber).run()
-    ));
-  }
-  const results = await Promise.allSettled(updates);
-  for (const result of results) {
-    if (result.status === "rejected") console.error(JSON.stringify({ event: "city_request_status_failed", issue_number: issueNumber, error: result.reason instanceof Error ? result.reason.message : "unknown error" }));
-  }
+  if (origin.email && env.RESEND_API_KEY && env.MAIL_FROM) updates.push(notifyChannel("email_notification_key", () => sendLifecycleEmail(origin.email, kind, issueUrl, targetUrl, env, fetchImpl)));
+  if (origin.discord_message_id && env.DISCORD_WEBHOOK_URL) updates.push(notifyChannel("discord_notification_key", () => updateDiscord(issueNumber, origin.discord_message_id, kind, issueUrl, targetUrl, env, fetchImpl)));
+  await Promise.all(updates);
 }
 
 function hexBytes(value) {
@@ -237,7 +275,8 @@ async function handoffDiscord(interaction, payload, env, fetchImpl) {
 }
 
 async function handleDiscordInteraction(request, env, fetchImpl, ctx) {
-  const rawBody = await request.text();
+  let rawBody;
+  try { rawBody = await readCappedBody(request); } catch (error) { return response(error instanceof BodyTooLargeError ? 413 : 400, { error: "request too large" }); }
   if (!(await verifyDiscordSignature(request, rawBody, env))) return response(401, { error: "invalid Discord signature" });
   let interaction;
   try { interaction = JSON.parse(rawBody); } catch { return response(400, { error: "request must be JSON" }); }
@@ -253,20 +292,24 @@ async function handleDiscordInteraction(request, env, fetchImpl, ctx) {
 }
 
 async function handoffSubmission(payload, env, fetchImpl) {
-  const { email } = payload;
+  let { email } = payload;
   const fingerprint = await sha256(`${payload.city.toLowerCase()}|${payload.state}|${email}|${payload.meetingUrl.toLowerCase()}`);
   const now = new Date().toISOString();
+  let requestMarker = crypto.randomUUID();
   let stage = "deduplicate";
   try {
-    const insert = await env.REQUESTS_DB.prepare("INSERT OR IGNORE INTO city_requests (fingerprint, email, city_name, state, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'pending', ?, ?)").bind(fingerprint, email, payload.city, payload.state, now, now).run();
+    const insert = await env.REQUESTS_DB.prepare("INSERT OR IGNORE INTO city_requests (fingerprint, email, city_name, state, payload_json, request_marker, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)").bind(fingerprint, email, payload.city, payload.state, JSON.stringify(payload), requestMarker, now, now).run();
     if (insert.meta.changes === 0) {
-      const existing = await env.REQUESTS_DB.prepare("SELECT issue_number, status FROM city_requests WHERE fingerprint = ?").bind(fingerprint).first();
-      return { status: 202, body: { duplicate: true, issue_number: existing?.issue_number || null } };
+      const existing = await env.REQUESTS_DB.prepare("SELECT issue_number, status, payload_json, request_marker FROM city_requests WHERE fingerprint = ?").bind(fingerprint).first();
+      if (existing?.issue_number || existing?.status !== "pending" || !existing.payload_json || !existing.request_marker) return { status: 202, body: { duplicate: true, issue_number: existing?.issue_number || null } };
+      payload = JSON.parse(existing.payload_json);
+      email = payload.email;
+      requestMarker = existing.request_marker;
     }
     stage = "create_github_issue";
-    const issue = await createIssue(payload, env, fetchImpl);
+    const issue = await createIssue(payload, env, fetchImpl, "website", requestMarker);
     stage = "record_github_issue";
-    await env.REQUESTS_DB.prepare("UPDATE city_requests SET issue_number = ?, status = 'created', updated_at = ? WHERE fingerprint = ?").bind(issue.number, new Date().toISOString(), fingerprint).run();
+    await env.REQUESTS_DB.prepare("UPDATE city_requests SET issue_number = ?, status = 'created', last_error = NULL, updated_at = ? WHERE fingerprint = ?").bind(issue.number, new Date().toISOString(), fingerprint).run();
     stage = "record_origin";
     await env.REQUESTS_DB.prepare("INSERT OR REPLACE INTO request_origins (issue_number, source, created_at, updated_at) VALUES (?, 'website', ?, ?)").bind(issue.number, now, now).run();
     stage = "notify";
@@ -276,7 +319,7 @@ async function handoffSubmission(payload, env, fetchImpl) {
     }
     return { status: 201, body: { issue_number: issue.number, issue_url: issue.html_url } };
   } catch (error) {
-    await env.REQUESTS_DB.prepare("DELETE FROM city_requests WHERE fingerprint = ? AND status = 'pending'").bind(fingerprint).run();
+    await env.REQUESTS_DB.prepare("UPDATE city_requests SET status = 'pending', last_error = ?, updated_at = ? WHERE fingerprint = ?").bind(error instanceof Error ? error.message.slice(0, 500) : "unknown error", new Date().toISOString(), fingerprint).run();
     console.error(JSON.stringify({
       event: "city_request_handoff_failed",
       stage,
@@ -286,11 +329,16 @@ async function handoffSubmission(payload, env, fetchImpl) {
   }
 }
 
+async function retryPendingSubmissions(env, fetchImpl) {
+  const rows = await env.REQUESTS_DB.prepare("SELECT payload_json FROM city_requests WHERE status = 'pending' ORDER BY updated_at LIMIT 10").all();
+  for (const row of rows.results || []) {
+    try { await handoffSubmission(JSON.parse(row.payload_json), env, fetchImpl); } catch (error) { console.error(JSON.stringify({ event: "city_request_retry_failed", error: error instanceof Error ? error.message : "unknown error" })); }
+  }
+}
+
 export async function handleRequest(request, env, fetchImpl = fetch, ctx = null) {
   if (request.method !== "POST") return response(405, { error: "method not allowed" });
   const path = new URL(request.url).pathname;
-  const length = Number(request.headers.get("content-length"));
-  if (Number.isFinite(length) && length > MAX_BODY_BYTES) return response(413, { error: "request too large" });
   if (path === "/discord/interactions") return handleDiscordInteraction(request, env, fetchImpl, ctx);
   if (path.startsWith("/status/")) {
     const parts = path.split("/").filter(Boolean);
@@ -298,7 +346,7 @@ export async function handleRequest(request, env, fetchImpl = fetch, ctx = null)
     const expected = String(env.STATUS_WEBHOOK_SECRET || "");
     if (!(await constantTimeEqual(given, expected))) return response(401, { error: "unauthorized" });
     let statusInput;
-    try { statusInput = await request.json(); } catch { return response(400, { error: "request must be JSON" }); }
+    try { statusInput = JSON.parse(await readCappedBody(request)); } catch (error) { return response(error instanceof BodyTooLargeError ? 413 : 400, { error: error instanceof BodyTooLargeError ? "request too large" : "request must be JSON" }); }
     const work = handoffStatus(statusInput, env, fetchImpl);
     if (ctx) {
       ctx.waitUntil(work);
@@ -309,7 +357,7 @@ export async function handleRequest(request, env, fetchImpl = fetch, ctx = null)
   }
   if (!(await constantTimeSecret(request, env))) return response(401, { error: "unauthorized" });
   let input;
-  try { input = await request.json(); } catch { return response(400, { error: "request must be JSON" }); }
+  try { input = JSON.parse(await readCappedBody(request)); } catch (error) { return response(error instanceof BodyTooLargeError ? 413 : 400, { error: error instanceof BodyTooLargeError ? "request too large" : "request must be JSON" }); }
   if (!input || typeof input !== "object" || Array.isArray(input)) return response(400, { error: "request must be an object" });
   const cityState = value(input, ["city_state", "city and state", "city"]);
   const parsed = parseCity(cityState);
@@ -328,5 +376,8 @@ export async function handleRequest(request, env, fetchImpl = fetch, ctx = null)
 export default {
   fetch(request, env, ctx) {
     return handleRequest(request, env, fetch, ctx);
+  },
+  scheduled(_event, env, ctx) {
+    ctx.waitUntil(retryPendingSubmissions(env, fetch));
   },
 };

@@ -19,10 +19,7 @@ on:
         default: all
 
 permissions:
-  contents: write
-  discussions: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: city-discovery
@@ -30,6 +27,10 @@ concurrency:
 
 jobs:
   discover:
+    permissions:
+      contents: read
+      discussions: write
+      issues: write
     if: ${{ inputs.mode != 'batch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -62,17 +63,18 @@ jobs:
           if [ -n "$REQUESTED_ISSUE" ]; then
             issues="$REQUESTED_ISSUE"
           else
-            issues=$(gh issue list --label add-city --state open --json number,labels --jq '.[] | select([.labels[].name] | index("add-city:applied") | not) | .number')
+            issues=$(gh issue list --label add-city --state open --limit 1000 --json number,labels --jq '.[] | select([.labels[].name] | index("add-city:applied") | not) | .number')
           fi
           for issue in $issues; do
             mkdir -p "city-discovery/new-$issue"
             gh api "repos/${{ github.repository }}/issues/$issue" > "city-discovery/new-$issue/issue.json"
             jq -r .body "city-discovery/new-$issue/issue.json" > "city-discovery/new-$issue/issue.md"
-            gh api "repos/${{ github.repository }}/issues/$issue/comments?per_page=100" \
+            gh api --paginate --slurp "repos/${{ github.repository }}/issues/$issue/comments?per_page=100" \
               > "city-discovery/new-$issue/comments.json"
+            jq 'add' "city-discovery/new-$issue/comments.json" > "city-discovery/new-$issue/comments-flat.json"
             python scripts/r12_issue_state.py \
               --issue "city-discovery/new-$issue/issue.json" \
-              --comments "city-discovery/new-$issue/comments.json" \
+              --comments "city-discovery/new-$issue/comments-flat.json" \
               --out "city-discovery/new-$issue/state.json"
             if [ "$(jq -r .discover "city-discovery/new-$issue/state.json")" != true ]; then
               continue
@@ -127,13 +129,14 @@ jobs:
             exit 0
           fi
           title_prefix="[city-discovery]"
-          existing=$(gh issue list --state open --search "in:title $title_prefix" \
-            --json number,title --jq --arg prefix "$title_prefix" \
+          existing=$(gh issue list --state open --search "in:title $title_prefix" --limit 1000 \
+            --json number,title | jq -r --arg prefix "$title_prefix" \
             '.[] | select(.title | startswith($prefix)) | .number' | head -1)
           if [ -n "$existing" ]; then
             gh api "repos/${{ github.repository }}/issues/$existing" > city-discovery/aux/issue.json
-            gh api "repos/${{ github.repository }}/issues/$existing/comments?per_page=100" \
+            gh api --paginate --slurp "repos/${{ github.repository }}/issues/$existing/comments?per_page=100" \
               > city-discovery/aux/comments.json
+            jq 'add' city-discovery/aux/comments.json > city-discovery/aux/comments-flat.json
             jq -r .body city-discovery/aux/issue.json > city-discovery/aux/issue-body-prior.md
             python scripts/r12_aux_state.py --body city-discovery/aux/issue-body-prior.md \
               --out city-discovery/aux/prior-state.json
@@ -151,7 +154,7 @@ jobs:
           fi
           if [ -n "$existing" ]; then
             python scripts/r12_aux_queue.py --cities "$cities" \
-              --issue city-discovery/aux/issue.json --comments city-discovery/aux/comments.json \
+              --issue city-discovery/aux/issue.json --comments city-discovery/aux/comments-flat.json \
               --out city-discovery/aux/queue.json
             cities=$(jq -r '.cities[]' city-discovery/aux/queue.json)
           fi
@@ -175,6 +178,11 @@ jobs:
           fi
 
   batch:
+    permissions:
+      contents: write
+      discussions: write
+      issues: write
+      pull-requests: write
     if: >-
       ${{ inputs.mode == 'batch' || inputs.mode == 'all' || github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
@@ -227,9 +235,12 @@ jobs:
           git diff --cached --check
           git diff --cached --name-only | sort | diff -u r12-batch/changed-files.txt -
           pytest -q tests/test_config.py tests/test_discovery.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
           git commit -m "config: batch verified city discovery proposals"
           git push --force-with-lease origin automation/r12-city-batch
-          jq -r '"R12 batch: every included proposal was revalidated from unexpired evidence.\n\n## Source issues\n" + ([.[].number | "#" + tostring] | unique | join(", "))' \
+          jq -r '"R12 batch: every included proposal was revalidated from unexpired evidence.\n\n## Source issues\n" + ([.[].number | "#" + tostring] | unique | join(", ")) + "\n\n<!-- citypods:r12-source-issues=" + ([.[].number | tostring] | unique | join(",")) + " -->"' \
             r12-batch/source-issues.json > r12-batch/pr-body.md
           pr=$(gh pr list --head automation/r12-city-batch --base main --state open --json url --jq '.[0].url')
           if [ -n "$pr" ]; then

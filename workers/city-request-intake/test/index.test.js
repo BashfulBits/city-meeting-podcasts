@@ -29,6 +29,18 @@ test("accepts only the exact Formspark secret URL segment", async () => {
   assert.equal(result.status, 202);
 });
 
+test("rejects an oversized authenticated body while streaming it", async () => {
+  const result = await handleRequest(
+    new Request("https://worker.test/formspark/secret", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "x".repeat(33 * 1024),
+    }),
+    { FORMSPARK_WEBHOOK_SECRET: "secret" },
+  );
+  assert.equal(result.status, 413);
+});
+
 test("website issues preserve the GitHub Issue Form field contract used by discovery", () => {
   const rendered = issueBody({
     city: "Example",
@@ -93,7 +105,7 @@ test("lifecycle status fans out to private email and edits the stored Discord me
   assert.equal(calls.length, 2);
   assert.ok(calls.some((call) => call.url === "https://api.resend.com/emails"));
   assert.ok(calls.some((call) => call.url.endsWith("/messages/message-1")));
-  assert.equal(updates.length, 2);
+  assert.equal(updates.length, 4);
 });
 
 test("accepts a correctly signed Discord PING", async () => {

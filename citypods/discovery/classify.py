@@ -31,9 +31,7 @@ def _evidence(results: list[SearchResult]) -> list[dict[str, str]]:
 def recipe_hash(request: DiscoveryRequest, results: list[SearchResult]) -> str:
     payload = {
         "task_version": TASK_VERSIONS["classify-civic-platforms"],
-        "mode": request.mode,
-        "city_slug": request.city_slug,
-        "results": _evidence(results),
+        "prompt": _prompt(request, results),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 

@@ -26,8 +26,9 @@ Do this with the maintainer when the `citymeetings.fyi` mailbox and form are rea
    `wrangler.jsonc`.
 2. Apply the schema: `npx wrangler d1 migrations apply citypods-city-requests --remote`.
 3. Apply every D1 migration before deploying a newer Worker. Migration `0002_request_origins.sql`
-   stores only canonical issue/origin IDs and per-channel idempotency keys; requester email remains
-   in `city_requests` only.
+   stores only canonical issue/origin IDs and per-channel idempotency keys; `0003` adds the private,
+   recoverable payload and marker used by the 15-minute retry trigger. Requester email remains in
+   `city_requests` only.
 4. Set Worker secrets with `wrangler secret put` (never commit them):
    `FORMSPARK_WEBHOOK_SECRET`, `GITHUB_APP_ID`,
    `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY`, `DISCORD_WEBHOOK_URL`,

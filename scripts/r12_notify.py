@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import json
 import os
 import re
@@ -33,7 +34,11 @@ def parse_origin(body: str) -> dict | None:
     if not matches:
         return None
     # The trusted intake marker is appended after requester-controlled Discussion text.
-    return json.loads(base64.urlsafe_b64decode(matches[-1]).decode())
+    try:
+        value = json.loads(base64.urlsafe_b64decode(matches[-1]).decode())
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _json_request(url: str, payload: dict, headers: dict[str, str]) -> dict:
@@ -79,22 +84,38 @@ def notify(issue: dict, status: str, target_url: str = "") -> list[str]:
             f"<!-- citypods:r12:status {marker} -->"
         )
         try:
-            existing = _json_request(
-                "https://api.github.com/graphql",
-                {
-                    "query": (
-                        "query($discussionId:ID!){node(id:$discussionId){... on Discussion{"
-                        "comments(last:100){nodes{body}}}}}"
-                    ),
-                    "variables": {"discussionId": origin["discussion_node_id"]},
-                },
-                {"authorization": f"Bearer {token}", "user-agent": "citymeetings-r12/1.0"},
-            )
-            comments = (((existing.get("data") or {}).get("node") or {}).get("comments") or {}).get(
-                "nodes", []
-            )
-            if any(marker in str(comment.get("body") or "") for comment in comments):
-                return errors
+            cursor: str | None = None
+            while True:
+                existing = _json_request(
+                    "https://api.github.com/graphql",
+                    {
+                        "query": (
+                            "query($discussionId:ID!,$cursor:String){node(id:$discussionId){"
+                            "... on Discussion{comments(last:100,before:$cursor){nodes{body}"
+                            "pageInfo{hasPreviousPage startCursor}}}}}"
+                        ),
+                        "variables": {
+                            "discussionId": origin["discussion_node_id"],
+                            "cursor": cursor,
+                        },
+                    },
+                    {"authorization": f"Bearer {token}", "user-agent": "citymeetings-r12/1.0"},
+                )
+                if existing.get("errors"):
+                    errors.append("Discussion callback returned GraphQL errors")
+                    return errors
+                comments_data = ((existing.get("data") or {}).get("node") or {}).get(
+                    "comments"
+                ) or {}
+                if any(
+                    marker in str(comment.get("body") or "")
+                    for comment in comments_data.get("nodes", [])
+                ):
+                    return errors
+                page = comments_data.get("pageInfo") or {}
+                if not page.get("hasPreviousPage"):
+                    break
+                cursor = page.get("startCursor")
             result = _json_request(
                 "https://api.github.com/graphql",
                 {

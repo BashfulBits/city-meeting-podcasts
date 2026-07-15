@@ -50,12 +50,23 @@ def _signature_verified(platform: str, url: str) -> bool:
         return False
     try:
         with make_session() as session:
-            response = session.get(url, timeout=DEFAULT_TIMEOUT)
+            response = session.get(url, timeout=DEFAULT_TIMEOUT, stream=True)
     except Exception:  # A failed or blocked candidate is not proposal evidence.
         return False
     if response.status_code >= 400:
+        response.close()
         return False
-    haystack = f"{response.url}\n{response.text[:200_000]}".lower()
+    chunks: list[bytes] = []
+    remaining = 200_000
+    for chunk in response.iter_content(chunk_size=16_384):
+        if not chunk:
+            continue
+        chunks.append(chunk[:remaining])
+        remaining -= len(chunk)
+        if remaining <= 0:
+            break
+    response.close()
+    haystack = f"{response.url}\n{b''.join(chunks).decode(errors='replace')}".lower()
     return any(needle.lower() in haystack for needle in needles)
 
 
@@ -126,8 +137,8 @@ def _new_city_yaml(request: DiscoveryRequest, provider: str, source: dict[str, A
     """Generate safe defaults approved by the maintainer; all values remain PR-reviewable."""
     city_label = f"{request.city_name}, {request.state}"
     entity = {
-        "city_website": request.city_website or "",
-        "meetings_url": request.meeting_url_hint or "",
+        "city_website": "",
+        "meetings_url": "",
         "state": request.state,
     }
     feed = {

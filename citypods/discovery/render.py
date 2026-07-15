@@ -70,6 +70,11 @@ def _link(label: str, url: str | None) -> str:
     return f"- {label}: {url}" if url else f"- {label}: not found"
 
 
+def _escape_reserved_markers(value: str) -> str:
+    """Keep untrusted visible evidence from impersonating R12 control records."""
+    return value.replace("<!-- citypods:r12:", "<!-- citypods:r12&#58;")
+
+
 def render_evidence(result: DiscoveryResult) -> str:
     """Render the complete evidence bundle required before maintainer approval."""
     request = result.request
@@ -126,12 +131,15 @@ def render_evidence(result: DiscoveryResult) -> str:
                 "The result is retained for review, but a complete provider source "
                 "configuration or "
                 "playable-media verification was not available. Maintainer controls: "
-                '`/r12 assign-provider <provider-key>`, `/r12 create-provider <key> name="..."`, '
-                '`/r12 recheck`, `/r12 defer-agenda until=YYYY-MM-DD reason="..."`, '
+                "`/r12 assign-provider <provider-key> <city-slug>`, "
+                '`/r12 create-provider <key> <city-slug> name="..."`, '
+                "`/r12 recheck`, "
+                '`/r12 defer-agenda <city-slug> until=YYYY-MM-DD reason="..."`, '
                 "`/r12 clear-disposition`.",
             ]
         )
     status = "proposed" if verification.applyable else "research-only"
+    lines = _escape_reserved_markers("\n".join(lines)).splitlines()
     lines.extend(
         [
             "",

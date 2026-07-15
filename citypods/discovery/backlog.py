@@ -45,13 +45,11 @@ def assign_provider(
         entry["name"] = name
     cities = entry.setdefault("cities", {})
     city = cities.setdefault(city_slug, {})
-    city.update(
-        {
-            "origin_issue": origin_issue,
-            "evidence_url": evidence_url,
-            "last_checked": checked_at,
-        }
-    )
+    if origin_issue is not None:
+        city.setdefault("origin_issue", origin_issue)
+    if evidence_url is not None:
+        city.setdefault("evidence_url", evidence_url)
+    city["last_checked"] = checked_at
     city.setdefault("discovered_at", checked_at)
     return updated
 

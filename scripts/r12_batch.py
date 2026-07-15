@@ -71,8 +71,17 @@ def apply_evidence(repo_root: Path, evidence: dict, *, now: datetime | None = No
         raise BatchError("proposal is research-only and cannot enter a batch")
     mode = request.get("mode")
     files = _sections(proposal)
+    city_slug = request.get("city_slug")
+    if not isinstance(city_slug, str) or not city_slug:
+        raise BatchError("proposal omitted a valid request city slug")
     changed: list[Path] = []
     if mode == "new-city":
+        expected = {
+            Path("config/cities") / f"{city_slug}.yml",
+            Path("config/feeds") / f"{city_slug}.yml",
+        }
+        if set(files) != expected:
+            raise BatchError("new-city proposal paths must match the requested city slug")
         if any((repo_root / path).exists() for path in files):
             raise BatchError(
                 "new-city target already exists; place it in the separate review queue"
@@ -86,6 +95,16 @@ def apply_evidence(repo_root: Path, evidence: dict, *, now: datetime | None = No
         if len(files) != 1:
             raise BatchError("auxiliary proposal must target exactly one existing config file")
         path, addition = next(iter(files.items()))
+        feed_target = Path("config/feeds") / f"{city_slug}.yml"
+        city_target = Path("config/cities") / f"{city_slug}.yml"
+        if path == feed_target:
+            pass
+        elif path.parent == Path("config/cities") and (repo_root / feed_target).exists():
+            feed = yaml.safe_load((repo_root / feed_target).read_text()) or {}
+            if not isinstance(feed, dict) or feed.get("city") != path.stem:
+                raise BatchError("auxiliary city target is not owned by the requested feed slug")
+        elif path != city_target:
+            raise BatchError("auxiliary proposal path must match the requested city slug")
         target = repo_root / path
         if not target.exists():
             raise BatchError("auxiliary target no longer exists")

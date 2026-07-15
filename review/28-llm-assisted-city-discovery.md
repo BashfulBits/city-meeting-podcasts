@@ -57,8 +57,8 @@ implementing PR is merged. The operational contract is:
 
 The email template module includes branded HTML plus complete plaintext variants for acknowledgement,
 evidence-ready, review, applied, missing-information, research-only, and expiry states. Lifecycle
-notification delivery beyond the initial acknowledgement is prepared but not enabled until the
-website-design phase supplies final visual tokens and event wiring.
+notification delivery beyond the initial acknowledgement is enabled through the R12 status callback;
+the future website-design phase may refine the shared visual tokens without changing the plaintext fallback.
 
 ### Completion checklist — required before R12 is shipped
 

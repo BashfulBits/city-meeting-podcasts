@@ -133,8 +133,8 @@ sync · #20 video enclosures (partial).
 shipped in PR #899 with pacing hardening; R11's core phases are shipped in PRs #906–#908
 (Granicus archive-first discovery, calendar composition/backfill, durable no-video rows, and Swagit
 agenda/minutes links); R2 is shipped in PR #919; R3 is shipped in PR #920; and R4 static search is
-shipped in commits `2f76744` and `60998a0`. R5, R6, R7, R8, and R12 remain design-ready but
-unimplemented. R9 is partially shipped: the policy, pins, Renovate configuration, and checks exist;
+shipped in commits `2f76744` and `60998a0`. R5, R6, R7, and R8 remain design-ready but
+unimplemented; R12 is implemented on an unmerged PR. R9 is partially shipped: the policy, pins, Renovate configuration, and checks exist;
 activating Renovate and the recurring immutable/checksummed FFmpeg update remain the release-gate work.
 R11's broader vendor coverage (including OneMeeting/Agenda PE/CivicClerk cases) remains follow-up
 work as catalog evidence warrants.

@@ -30,7 +30,7 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           CITY_REQUEST_STATUS_WEBHOOK_URL: ${{ secrets.CITY_REQUEST_STATUS_WEBHOOK_URL }}
         run: |
-          issues=$(printf '%s\n' "$PR_BODY" | grep -oE '#[0-9]+' | tr -d '#' | sort -u || true)
+          issues=$(printf '%s\n' "$PR_BODY" | sed -n 's/.*<!-- citypods:r12-source-issues=\([0-9][0-9,]*\) -->.*/\1/p' | tr ',' '\n' | sort -u)
           if [ -z "$issues" ]; then exit 0; fi
           printf '%s\n' "$issues" | while read -r issue; do
             gh issue edit "$issue" --add-label add-city:applied --remove-label r12:approved \

@@ -12,6 +12,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .wrangler/
+workers/city-request-intake/node_modules/
 .coverage
 htmlcov/
 

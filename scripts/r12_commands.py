@@ -102,14 +102,16 @@ def parse_command(
         }
 
     if action == "reject":
-        city_slug = parts[2] if is_auxiliary and len(parts) == 3 else None
+        if is_auxiliary and len(parts) < 3:
+            raise CommandError("auxiliary rejection requires `/r12 reject <city-slug> reason=...`")
+        city_slug = parts[2] if is_auxiliary else None
         evidence = _find_evidence(issue, comments, city_slug)
         payload = {
             "action": "reject",
             "city_slug": evidence["request"]["city_slug"],
             "evidence_digest": evidence_digest(evidence),
             "rejected_at": now,
-            "reason": " ".join(parts[2:]) or "not specified",
+            "reason": " ".join(parts[3:] if is_auxiliary else parts[2:]) or "not specified",
         }
         return {
             "add_labels": ["r12:rejected"],
@@ -123,8 +125,16 @@ def parse_command(
         provider_key = parts[2].lower()
         if not provider_key.replace("-", "").isalnum():
             raise CommandError("provider key may contain only letters, digits, and hyphens")
-        name = next((part[5:] for part in parts[3:] if part.startswith("name=")), None)
-        evidence = _find_evidence(issue, comments, None)
+        if is_auxiliary and len(parts) < 4:
+            raise CommandError(
+                f"auxiliary `{action}` requires `/r12 {action} <provider-key> <city-slug>`"
+            )
+        city_slug = parts[3] if is_auxiliary else None
+        name = next(
+            (part[5:] for part in parts[4 if is_auxiliary else 3 :] if part.startswith("name=")),
+            None,
+        )
+        evidence = _find_evidence(issue, comments, city_slug)
         payload = {
             "action": action,
             "city_slug": evidence["request"]["city_slug"],
@@ -142,16 +152,22 @@ def parse_command(
     if action == "defer-agenda":
         if not is_auxiliary:
             raise CommandError("agenda deferral is available only on the auxiliary digest")
-        until = next((part[6:] for part in parts[2:] if part.startswith("until=")), None)
+        if len(parts) < 3:
+            raise CommandError(
+                "agenda deferral requires `/r12 defer-agenda <city-slug> "
+                "until=YYYY-MM-DD reason=...`"
+            )
+        city_slug = parts[2]
+        until = next((part[6:] for part in parts[3:] if part.startswith("until=")), None)
         if not until:
             raise CommandError('use `/r12 defer-agenda until=YYYY-MM-DD reason="..."`')
-        evidence = _find_evidence(issue, comments, None)
+        evidence = _find_evidence(issue, comments, city_slug)
         payload = {
             "action": action,
             "city_slug": evidence["request"]["city_slug"],
             "evidence_digest": evidence_digest(evidence),
             "until": until,
-            "reason": " ".join(part[7:] for part in parts[2:] if part.startswith("reason=")),
+            "reason": " ".join(part[7:] for part in parts[3:] if part.startswith("reason=")),
             "recorded_at": now,
         }
         return {"comment": "R12 agenda deferral recorded.\n\n" + _command_marker(payload)}

@@ -11,7 +11,9 @@ def discovery_llm_config(site_config: dict) -> LLMBackendConfig:
     """Resolve R12's route from YAML while retaining only secret dispatch fields from env."""
     defaults = LLMBackendConfig()
     environment = LLMBackendConfig.from_env()
-    configured = site_config.get("city_discovery") or {}
+    configured = site_config.get("city_discovery", {})
+    if configured is None:
+        configured = {}
     if not isinstance(configured, dict):
         raise ValueError("city_discovery must be a mapping")
     return replace(
