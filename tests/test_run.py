@@ -929,6 +929,31 @@ def test_enrich_logs_source_stage_and_heartbeat(tmp_path, fake_provider, capsys,
     assert "[enrich] audio pass:" in out and "[enrich] audio pass done" in out
 
 
+def test_bounded_runner_refills_without_eager_submission(monkeypatch):
+    """The audio queue keeps a rolling window instead of submitting the whole backlog."""
+    submitted: list[int] = []
+
+    class _Pool:
+        def submit(self, fn, item):
+            submitted.append(item)
+            return _ImmediateFuture(fn(item))
+
+    class _ImmediateFuture:
+        def __init__(self, value):
+            self.value = value
+
+        def result(self):
+            return self.value
+
+    def _one_done(pending, *, return_when):
+        future = next(iter(pending))
+        return {future}, pending - {future}
+
+    monkeypatch.setattr(run, "wait", _one_done)
+    run._run_bounded(_Pool(), lambda item: item, range(5), max_pending=2)
+    assert submitted == [0, 1, 2, 3, 4]
+
+
 def test_heartbeat_tick_prints_active_work_snapshot(tmp_path, capsys):
     # CR2-TS-10: call _tick() directly (the sibling stall-dump test's established pattern)
     # instead of racing the background thread's own interval_seconds timing.

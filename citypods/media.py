@@ -876,7 +876,9 @@ class SourceCache:
     """Thread-safe per-run cache: episode uid → locally downloaded audio file.
 
     SilencePlanner downloads each source once; AudioStage reads the local copy rather
-    than streaming the same rate-limited source a second time.
+    than streaming the same rate-limited source a second time.  Audio-lane callers should
+    release each episode as soon as its per-episode stage pipeline finishes; the run-level
+    temporary directory remains a final safety net, not the normal retention policy.
 
     Use as a context manager so the TemporaryDirectory is cleaned up after the run:
 
@@ -920,6 +922,26 @@ class SourceCache:
         with self._guard:
             return self._paths.get(uid)
 
+    def release(self, uid: str) -> None:
+        """Release all temporary source files owned by *uid*.
+
+        Multi-source episodes own both the per-segment cache entries (``uid:source-id``)
+        and the combined ``uid`` entry.  Cleanup is deliberately keyed by the episode UID
+        rather than by whatever path a caller happened to receive, so an exceptional path
+        cannot strand segment files in the run-wide cache.
+        """
+        prefix = f"{uid}:"
+        with self._guard:
+            keys = [key for key in self._paths if key == uid or key.startswith(prefix)]
+            paths = {self._paths.pop(key) for key in keys}
+        for path in paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                # The context-manager cleanup remains the final backstop.  A failed unlink
+                # must not turn an otherwise completed audio item into a failed item.
+                pass
+
     def get_or_fetch(self, uid: str, url: str) -> Path | None:
         """Return a local audio copy keyed by *uid*, downloading *url* on first call.
 
@@ -952,7 +974,8 @@ class SourceCache:
                 stop=self._stop,
                 max_media_bytes=self.max_media_bytes,
             ):
-                self._paths[uid] = dest
+                with self._guard:
+                    self._paths[uid] = dest
                 return dest
             return None
         finally:
@@ -1000,7 +1023,17 @@ class SourceCache:
                 self.memory_floor_bytes,
                 stop=self._stop,
             ):
-                self._paths[uid] = dest
+                # Chapter offsets and source lengths are already captured in ``durations``
+                # and the returned render timeline.  The downstream audio stage receives only
+                # ``dest`` and that metadata, so the individual segment files are no longer
+                # part of the contract once concat has succeeded.
+                for path in local_paths:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                with self._guard:
+                    self._paths[uid] = dest
                 return dest
             return None
         finally:

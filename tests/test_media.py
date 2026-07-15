@@ -3029,6 +3029,7 @@ class TestSourceCacheGetOrFetchConcat:
             assert combined.read_bytes() == b"combined"
             assert fetch_calls == [s.ref for s in sources]
             assert concat_calls == [(concat_calls[0][0], [10.0, 20.0])]
+            assert all(not path.exists() for path in concat_calls[0][0])
 
             # A second call for the same uid reuses the cached combined file — no re-download,
             # no re-concat.
@@ -3036,6 +3037,22 @@ class TestSourceCacheGetOrFetchConcat:
             assert again is combined
             assert fetch_calls == [s.ref for s in sources]
             assert len(concat_calls) == 1
+
+            cache.release("ep1")
+            assert not combined.exists()
+
+    def test_release_removes_single_source_cache(self, monkeypatch):
+        def _fake_download(_url, dest, *_a, **_k):
+            dest.write_bytes(b"source")
+            return True
+
+        monkeypatch.setattr("citypods.media._download_audio", _fake_download)
+        with SourceCache() as cache:
+            path = cache.get_or_fetch("ep1", "https://example.com/one.mp4")
+            assert path is not None and path.exists()
+            cache.release("ep1")
+            assert not path.exists()
+            assert cache.get("ep1") is None
 
     def test_returns_none_when_a_segment_duration_is_unknown(self, monkeypatch):
         monkeypatch.setattr(
