@@ -30,6 +30,125 @@ def test_direct_litellm_call_is_normalized():
     assert calls[0]["stream"] is False
 
 
+def test_structured_job_uses_provider_native_strict_json_schema():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return {"choices": [{"message": {"content": '{"value":"ok"}'}}]}
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        supports_response_schema=lambda _model: True,
+    )
+    backend.run_inference(
+        job(
+            content="meeting text",
+            response_schema={
+                "name": "test_output",
+                "schema": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                    "additionalProperties": False,
+                },
+            },
+        )
+    )
+
+    assert calls[0]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "test_output",
+            "schema": {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        },
+    }
+
+
+def test_structured_job_rejects_route_without_json_schema_support():
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=lambda **_: {},
+        supports_response_schema=lambda _model: False,
+    )
+
+    with pytest.raises(LLMBackendError, match="does not support strict JSON Schema"):
+        backend.run_inference(
+            job(
+                content="meeting text",
+                response_schema={"name": "test_output", "schema": {"type": "object"}},
+            )
+        )
+
+
+def test_deepseek_json_mode_is_validated_then_retried_against_task_schema():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        content = '{"value":42}' if len(calls) == 1 else '{"value":"ok"}'
+        return {"choices": [{"message": {"content": content}}]}
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
+    )
+    result = backend.run_inference(
+        job(
+            content="meeting text",
+            response_schema={
+                "name": "test_output",
+                "schema": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                    "additionalProperties": False,
+                },
+            },
+        )
+    )
+
+    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
+    assert len(calls) == 2
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert "did not match the required JSON Schema" in calls[1]["messages"][-1]["content"]
+
+
+def test_deepseek_invalid_schema_reply_fails_after_one_retry():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return {"choices": [{"message": {"content": '{"value":42}'}}]}
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
+    )
+
+    with pytest.raises(LLMBackendError, match="did not match its JSON Schema"):
+        backend.run_inference(
+            job(
+                content="meeting text",
+                response_schema={
+                    "name": "test_output",
+                    "schema": {
+                        "type": "object",
+                        "properties": {"value": {"type": "string"}},
+                        "required": ["value"],
+                        "additionalProperties": False,
+                    },
+                },
+            )
+        )
+    assert len(calls) == 2
+
+
 def test_blank_actions_variables_preserve_direct_gemini_defaults(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "")
     monkeypatch.setenv("LLM_MODE", "")

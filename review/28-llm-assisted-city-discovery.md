@@ -233,7 +233,11 @@ verb itself:
     returns the input's known value unchanged), `agenda_platform` (enum + `null`), `candidate_urls`
     (list, each tied to a specific retrieved search result), `bodies_mentioned` (list of board/commission
     names surfaced in the retrieved results, best-effort), `confidence` (low/medium/high, informational —
-    §6 explains why this never gates anything by itself), `reasoning` (one sentence).
+    §6 explains why this never gates anything by itself), `reasoning` (one sentence). The task declares
+    this once as a JSON Schema. The shared LiteLLM backend uses provider-native strict structured
+    output where available (Gemini/Mistral); DeepSeek's JSON mode receives central local validation
+    and one generic corrective retry because its public chat API does not enforce response schemas.
+    A second invalid response is deferred, never repaired or consumed by task code.
 - `recipe_hash` = hash of `(city_slug, mode, prompt_version, tavily_result_content)` — a re-run against
   unchanged search results is a free cache hit. Not a hard requirement for a first cut (call volume is
   low enough that caching is a nicety) but cheap to include since the mechanism already exists.

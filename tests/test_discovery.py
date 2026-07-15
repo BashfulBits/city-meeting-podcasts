@@ -103,6 +103,7 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert "minutes_url" in prompt
             assert "granicus_base" in prompt
             assert "city_identity" in prompt
+            assert job.inputs["response_schema"]["name"] == "civic_platform_classification"
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -127,6 +128,59 @@ def test_classifier_prompt_includes_provider_source_schemas():
     assert result.video_source == {
         "feed_url": "https://example.granicus.com/ViewPublisherRSS.php?view_id=1"
     }
+
+
+def test_auxiliary_prompt_omits_new_city_identity_contract():
+    class Backend:
+        def run_inference(self, job: InferenceJob):
+            prompt = job.inputs["messages"][0]["content"]
+            assert "city_identity" not in prompt
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": (
+                                    '{"video_platform":"swagit","agenda_platform":null,'
+                                    '"candidate_urls":[],"bodies_mentioned":[],'
+                                    '"confidence":"low","reasoning":"test"}'
+                                )
+                            }
+                        }
+                    ]
+                },
+            )
+
+    assert classify(Backend(), _request("auxiliary"), _results()).city_identity == "confirmed"
+
+
+def test_classifier_declares_strict_schema_once_per_task():
+    class Backend:
+        def __init__(self):
+            self.calls: list[InferenceJob] = []
+
+        def run_inference(self, job: InferenceJob):
+            self.calls.append(job)
+            content = (
+                '{"video_platform":null,"agenda_platform":null,"candidate_urls":[],'
+                '"bodies_mentioned":[],"confidence":"low","reasoning":"test"}'
+            )
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": content}}]},
+            )
+
+    backend = Backend()
+    result = classify(backend, _request("auxiliary"), _results())
+
+    assert result.agenda_platform is None
+    assert len(backend.calls) == 1
+    schema = backend.calls[0].inputs["response_schema"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["confidence"]["enum"] == ["low", "medium", "high"]
 
 
 def test_classifier_discards_foreign_city_provider_details():

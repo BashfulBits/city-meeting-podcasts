@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.31",
     "PyYAML>=6.0",
     "Jinja2>=3.1",
+    "jsonschema>=4.23",             # validate structured LLM replies before task code consumes them
     "Pillow>=10.0",                  # podcast cover-art generation
     "defusedxml>=0.7",               # hardened XML parsing of provider feeds
     "pypdf>=5.0",                     # agenda/minutes PDF text and link extraction

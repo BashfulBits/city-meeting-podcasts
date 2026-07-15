@@ -98,6 +98,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **City discovery now validates all structured output centrally.** LLM tasks declare one JSON
+  Schema. Gemini and Mistral receive native strict-schema requests; DeepSeek receives its valid-JSON
+  mode, followed by shared local schema validation and one corrective retry. A still-invalid reply
+  leaves that city queued while the rest of either discovery batch continues. This changes no stored
+  meeting artifacts or audio/ASR pipeline version.
+
 - **S3-compatible state and coordination reads now survive transient boto failures.** Shared storage
   reads retry transient transport errors, throttling/5xx responses, and the botocore
   `StreamingChecksumBody.strip` parser failure seen in GH#887. Missing objects, credentials,

@@ -22,6 +22,39 @@ class ClassificationError(RuntimeError):
     """The classifier result was malformed or did not complete synchronously."""
 
 
+CLASSIFICATION_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "city_identity": {"type": "string", "enum": ["confirmed", "unconfirmed", "mismatch"]},
+        "video_platform": {"type": ["string", "null"], "enum": [*sorted(KNOWN_PLATFORMS), None]},
+        "agenda_platform": {"type": ["string", "null"], "enum": [*sorted(KNOWN_PLATFORMS), None]},
+        "candidate_urls": {"type": "array", "items": {"type": "string"}},
+        "video_source": {
+            "type": ["object", "null"],
+            "additionalProperties": {"type": "string"},
+        },
+        "agenda_source": {
+            "type": ["object", "null"],
+            "additionalProperties": {"type": "string"},
+        },
+        "bodies_mentioned": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+        "reasoning": {"type": "string"},
+    },
+    "required": [
+        "video_platform",
+        "agenda_platform",
+        "candidate_urls",
+        "video_source",
+        "agenda_source",
+        "bodies_mentioned",
+        "confidence",
+        "reasoning",
+    ],
+    "additionalProperties": False,
+}
+
+
 def _evidence(results: list[SearchResult]) -> list[dict[str, str]]:
     return [
         {"url": row.url, "title": row.title[:300], "content": row.content[:2000]} for row in results
@@ -32,6 +65,7 @@ def recipe_hash(request: DiscoveryRequest, results: list[SearchResult]) -> str:
     payload = {
         "task_version": TASK_VERSIONS["classify-civic-platforms"],
         "prompt": _prompt(request, results),
+        "response_schema": CLASSIFICATION_RESPONSE_SCHEMA,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -66,6 +100,20 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
             "body": "body name stated in retrieved evidence",
         },
     }
+    response_fields = (
+        "video_platform, agenda_platform, candidate_urls, video_source, agenda_source, "
+        "bodies_mentioned, confidence (low|medium|high), and reasoning"
+    )
+    identity_instruction = ""
+    if request.mode == "new-city":
+        response_fields = "city_identity (confirmed|unconfirmed|mismatch), " + response_fields
+        identity_instruction = (
+            " For new-city mode, city_identity is confirmed only when retrieved evidence "
+            "identifies the requested city and state. Set it to mismatch when results identify "
+            "another municipality, and to unconfirmed when the retrieved evidence cannot "
+            "establish the requested municipality. When identity is mismatch or unconfirmed, "
+            "set both platforms to null and return no candidate URLs, source mappings, or bodies."
+        )
     instruction = (
         "Classify civic video and agenda platforms only from retrieved_results. "
         "Do not invent URLs, and only put a URL in candidate_urls when it appears exactly "
@@ -73,20 +121,12 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
         "Use a platform key from this allowlist or null: "
         f"{', '.join(sorted(KNOWN_PLATFORMS))}. In auxiliary mode, copy "
         "known_video_provider to "
-        "video_platform unchanged. Return one JSON object with city_identity "
-        "(confirmed|unconfirmed|mismatch), video_platform, agenda_platform, "
-        "candidate_urls, video_source, agenda_source, bodies_mentioned, confidence "
-        "(low|medium|high), "
-        "and reasoning. source fields must follow these provider schemas: "
+        f"video_platform unchanged. Return one JSON object with {response_fields}. "
+        "source fields must follow these provider schemas: "
         + json.dumps(source_schemas, sort_keys=True)
-        + ". A source mapping is optional; omit it rather than guessing any required field. "
+        + ". A source mapping is optional; use null rather than guessing any required field. "
         "Every URL "
-        "inside a source mapping must appear exactly in retrieved_results. For new-city mode, "
-        "city_identity is confirmed only when retrieved evidence identifies the requested city and "
-        "state. Set it to mismatch when results identify another municipality, and to unconfirmed "
-        "when the retrieved evidence cannot establish the requested municipality. When identity is "
-        "mismatch or unconfirmed, set both platforms to null and return no candidate URLs, source "
-        "mappings, or bodies."
+        "inside a source mapping must appear exactly in retrieved_results." + identity_instruction
     )
     return [
         {"role": "system", "content": instruction},
@@ -201,9 +241,16 @@ def parse_classification(
 def classify(
     backend: Backend, request: DiscoveryRequest, results: list[SearchResult]
 ) -> Classification:
+    """Classify evidence through the backend's strict JSON-Schema output contract."""
     job = InferenceJob(
         task="classify-civic-platforms",
-        inputs={"messages": _prompt(request, results), "response_format": {"type": "json_object"}},
+        inputs={
+            "messages": _prompt(request, results),
+            "response_schema": {
+                "name": "civic_platform_classification",
+                "schema": CLASSIFICATION_RESPONSE_SCHEMA,
+            },
+        },
         recipe_hash=recipe_hash(request, results),
     )
     outcome = backend.run_inference(job)

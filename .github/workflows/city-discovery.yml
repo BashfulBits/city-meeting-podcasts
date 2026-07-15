@@ -88,8 +88,11 @@ jobs:
               python scripts/r12_notify.py --issue "city-discovery/new-$issue/notify.json" \
                 --status evidence_expired
             fi
-            python scripts/city_discovery.py --mode new-city --issue-number "$issue" \
-              --issue-body "city-discovery/new-$issue/issue.md" --out "city-discovery/new-$issue"
+            if ! python scripts/city_discovery.py --mode new-city --issue-number "$issue" \
+              --issue-body "city-discovery/new-$issue/issue.md" --out "city-discovery/new-$issue"; then
+              echo "::warning::Discovery failed for add-city issue #$issue; it remains queued for tomorrow."
+              continue
+            fi
             gh issue comment "$issue" --body-file "city-discovery/new-$issue/evidence.md"
             if [ "$(jq -r .needs_more_information "city-discovery/new-$issue/evidence.json")" = true ]; then
               gh issue edit "$issue" --add-label needs:more-information --remove-label needs:discovery \
@@ -169,7 +172,10 @@ jobs:
           printf '\n\n' >> city-discovery/aux/issue-body.md
           count=0
           for city in $cities; do
-            python scripts/city_discovery.py --mode auxiliary --city-slug "$city" --out "city-discovery/aux/$city"
+            if ! python scripts/city_discovery.py --mode auxiliary --city-slug "$city" --out "city-discovery/aux/$city"; then
+              echo "::warning::Auxiliary discovery failed for $city; it will be retried on a future run."
+              continue
+            fi
             cat "city-discovery/aux/$city/evidence.md" >> city-discovery/aux/issue-body.md
             printf '\n' >> city-discovery/aux/issue-body.md
             count=$((count + 1))
