@@ -236,9 +236,9 @@ jobs:
             gh pr edit "$pr" --title "Add verified cities and agenda sources" \
               --body-file r12-batch/pr-body.md
           else
-            gh pr create --head automation/r12-city-batch --base main \
+            pr=$(gh pr create --head automation/r12-city-batch --base main \
               --title "Add verified cities and agenda sources" \
-              --body-file r12-batch/pr-body.md
+              --body-file r12-batch/pr-body.md)
           fi
           jq -r '.[].number' r12-batch/source-issues.json | sort -u | while read -r issue; do
             gh issue edit "$issue" --add-label r12:batched
