@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Bounded audio source retention.** The global audio queue now admits work through a rolling
+  submission window and releases each episode's downloaded source files as soon as its audio stages
+  finish. Multi-source segment files are removed only after concatenation has captured durations and
+  timeline metadata, preventing the run from retaining the full eligible backlog on runner disk.
+
 - **Static meeting search (R4).** Render builds now publish deterministic per-source search shards and
   a global `/search/` page using a vendored MiniSearch bundle. Results search durable metadata, chapter
   titles, available transcript segments, agenda/backup/minutes text, vote and roster names, and future

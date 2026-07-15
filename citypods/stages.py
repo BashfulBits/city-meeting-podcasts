@@ -296,6 +296,10 @@ class StageContext:
     # Parallel episode processing within one source. Workers are I/O-bound (rate-limited HLS
     # streaming), so this can safely exceed CPU count. Set via site_config max_encodes_per_source.
     max_encodes_per_source: int = 1
+    # Number of additional audio items kept submitted beyond the active worker set. This is a
+    # rolling queue window, not a source-media prefetch count; each audio item releases its raw
+    # source cache before the next item is admitted.
+    audio_queue_lookahead: int = 4
     # Backlog prioritization policy (H5). None (default) ⇒ behavior-preserving order. When set,
     # ``_materialize_set`` reorders the per-source set by the configured comparator keys.
     backlog_policy: BacklogPolicy | None = None
