@@ -11,7 +11,12 @@ from citypods.discovery.classify import (
 )
 from citypods.discovery.config import discovery_llm_config
 from citypods.discovery.eligibility import AgendaCoverage, auxiliary_eligibility
-from citypods.discovery.models import Classification, DiscoveryRequest, SearchResult
+from citypods.discovery.models import (
+    KNOWN_PLATFORMS,
+    Classification,
+    DiscoveryRequest,
+    SearchResult,
+)
 from citypods.discovery.render import parse_evidence_marker, parse_state_marker, render_evidence
 from citypods.discovery.verify import verify_discovery
 from scripts import city_discovery as city_discovery_script
@@ -186,6 +191,7 @@ def test_classifier_declares_one_pydantic_contract_per_task():
     schema = CivicPlatformClassificationResponse.model_json_schema()
     assert schema["additionalProperties"] is False
     assert schema["properties"]["confidence"]["enum"] == ["low", "medium", "high"]
+    assert schema["$defs"]["PlatformName"]["enum"] == sorted(KNOWN_PLATFORMS)
 
 
 def test_classifier_discards_foreign_city_provider_details():

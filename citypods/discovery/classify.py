@@ -6,9 +6,10 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
+from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import TASK_VERSIONS
@@ -23,6 +24,13 @@ from citypods.discovery.models import (
 
 class ClassificationError(RuntimeError):
     """The classifier result was malformed or did not complete synchronously."""
+
+
+PlatformName = Enum(
+    "PlatformName",
+    {platform.replace("-", "_").upper(): platform for platform in sorted(KNOWN_PLATFORMS)},
+    type=str,
+)
 
 
 class PlatformSource(BaseModel):
@@ -48,21 +56,14 @@ class CivicPlatformClassificationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     city_identity: Literal["confirmed", "unconfirmed", "mismatch"]
-    video_platform: str | None
-    agenda_platform: str | None
+    video_platform: PlatformName | None
+    agenda_platform: PlatformName | None
     candidate_urls: list[str]
     video_source: PlatformSource | None
     agenda_source: PlatformSource | None
     bodies_mentioned: list[str]
     confidence: Literal["low", "medium", "high"]
     reasoning: str
-
-    @field_validator("video_platform", "agenda_platform")
-    @classmethod
-    def known_platform_or_null(cls, value: str | None) -> str | None:
-        if value is not None and value not in KNOWN_PLATFORMS:
-            raise ValueError("must be a known civic platform or null")
-        return value
 
 
 STRUCTURED_OUTPUT = "civic-platform-classification"
