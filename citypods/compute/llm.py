@@ -1,14 +1,14 @@
-"""LiteLLM-backed execution for the reserved LLM task verbs.
+"""LiteLLM routing plus Instructor/Pydantic structured outputs for reserved LLM verbs.
 
-The adapter deliberately has two transports: direct LiteLLM completion, and the
-asynchronous R10 dispatch Worker.  Both transports return the same ``JobResult``
-shape; the Worker path returns a ``JobHandle`` until its request is ready.
+Direct calls use Instructor for provider-mode selection, parsing, Pydantic validation, and one
+bounded corrective retry.  The R10 Worker remains an asynchronous transport: it durably stores the
+Pydantic-generated response format, and reconciliation validates the completed reply locally.  A
+future queue-owned corrective retry can be added without changing a task's response contract.
 """
 
 from __future__ import annotations
 
 import importlib
-import json
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -16,9 +16,9 @@ from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import requests
-from jsonschema import Draft202012Validator, SchemaError, ValidationError
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult, Task
+from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 
 LLM_TASKS: frozenset[Task] = frozenset(
@@ -28,11 +28,9 @@ TASK_VERSIONS: dict[Task, str] = {
     "summarize": "1",
     "tag": "1",
     "soundbite-select": "1",
-    "classify-civic-platforms": "5",
+    "classify-civic-platforms": "6",
 }
 
-# Shared structured prompts are intentionally provider-neutral.  Calling stages may supply a
-# complete ``messages`` list when they need a task-specific prompt; these are only defaults.
 TASK_PROMPTS: dict[Task, str] = {
     "summarize": "Summarize the supplied meeting material accurately and concisely.",
     "tag": "Extract a small list of factual topic tags from the supplied meeting material.",
@@ -42,7 +40,7 @@ TASK_PROMPTS: dict[Task, str] = {
     "classify-civic-platforms": (
         "Classify civic meeting platforms only from the supplied retrieved evidence. "
         "Never invent a URL or a platform not supported by that evidence, and reject evidence for "
-        "a different municipality. Return strict JSON."
+        "a different municipality."
     ),
 }
 
@@ -52,11 +50,9 @@ SUPPORTED_MODELS = frozenset(
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
         "mistral/mistral-large-latest",
-        "mistral/mistral-large-3",  # compatibility with earlier Worker configurations
+        "mistral/mistral-large-3",
     }
 )
-
-NATIVE_STRICT_SCHEMA_PROVIDERS = frozenset({"gemini", "mistral"})
 
 
 class LLMBackendError(RuntimeError):
@@ -77,8 +73,6 @@ class LLMBackendConfig:
     def from_env(cls) -> LLMBackendConfig:
         """Build configuration from environment variables without reading provider keys."""
         return cls(
-            # GitHub Actions expands an unset repository variable to an empty environment value.
-            # Treat blank like absent so optional workflow vars cannot erase the safe defaults.
             model=os.environ.get("LLM_MODEL") or cls.model,
             mode=os.environ.get("LLM_MODE") or cls.mode,
             dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
@@ -110,9 +104,8 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     content = job.inputs.get("content", job.inputs.get("text", ""))
     if not isinstance(content, str) or not content.strip():
         raise ValueError("LLM jobs require inputs.messages or non-empty inputs.content/text")
-    prompt = TASK_PROMPTS[job.task]
     return [
-        {"role": "system", "content": prompt},
+        {"role": "system", "content": TASK_PROMPTS[job.task]},
         {"role": "user", "content": content},
     ]
 
@@ -128,7 +121,6 @@ class LiteLLMBackend(Backend):
         *,
         completion: Callable[..., Any] | None = None,
         http_session: requests.Session | None = None,
-        supports_response_schema: Callable[[str], bool] | None = None,
     ) -> None:
         self.config = config or LLMBackendConfig.from_env()
         if self.config.model not in SUPPORTED_MODELS:
@@ -139,7 +131,6 @@ class LiteLLMBackend(Backend):
             raise ValueError("dispatch mode requires LLM_DISPATCH_URL")
         self._completion = completion
         self._session = http_session or requests.Session()
-        self._supports_response_schema = supports_response_schema
 
     def _completion_fn(self) -> Callable[..., Any]:
         """Resolve LiteLLM lazily so users of ASR-only paths need not install the extra."""
@@ -152,74 +143,81 @@ class LiteLLMBackend(Backend):
                 "install the 'llm' extra to use the direct LiteLLM backend"
             ) from exc
 
-    def _schema_supported(self) -> bool:
-        """Ask LiteLLM whether the configured route can enforce a JSON Schema."""
-        if self._supports_response_schema is not None:
-            return self._supports_response_schema(self.config.model)
-        try:
-            supported = importlib.import_module("litellm").supports_response_schema
-        except (ImportError, AttributeError) as exc:
-            raise LLMBackendError(
-                "install a LiteLLM version with structured-output support to use response_schema"
-            ) from exc
-        try:
-            return bool(supported(model=self.config.model))
-        except (TypeError, ValueError) as exc:
-            raise LLMBackendError(
-                "could not determine JSON Schema support for configured LLM"
-            ) from exc
-
     @staticmethod
-    def _schema_spec(job: InferenceJob) -> tuple[str, Mapping[str, Any]] | None:
-        """Return the named task schema, rejecting ambiguous or malformed job inputs."""
-        schema_spec = job.inputs.get("response_schema")
-        explicit_format = job.inputs.get("response_format")
-        if schema_spec is None:
+    def _structured_output(job: InferenceJob) -> str | None:
+        value = job.inputs.get("structured_output")
+        if value is None:
             return None
-        if explicit_format is not None:
-            raise ValueError("LLM jobs may specify response_schema or response_format, not both")
-        if not isinstance(schema_spec, Mapping):
-            raise ValueError("LLM inputs.response_schema must be a mapping")
-        name = schema_spec.get("name")
-        schema = schema_spec.get("schema")
-        if not isinstance(name, str) or not name:
-            raise ValueError("LLM inputs.response_schema.name must be a non-empty string")
-        if not isinstance(schema, Mapping):
-            raise ValueError("LLM inputs.response_schema.schema must be a mapping")
-        try:
-            Draft202012Validator.check_schema(schema)
-        except SchemaError as exc:
-            raise ValueError("LLM inputs.response_schema.schema is not valid JSON Schema") from exc
-        return name, schema
+        if not isinstance(value, str) or not value:
+            raise ValueError("LLM inputs.structured_output must be a non-empty string")
+        return value
 
-    def _response_format(self, job: InferenceJob) -> Mapping[str, Any] | None:
-        """Translate a task-owned schema into LiteLLM's provider-native strict output contract."""
-        schema_spec = self._schema_spec(job)
-        explicit_format = job.inputs.get("response_format")
-        if schema_spec is None:
-            if explicit_format is None:
-                return None
-            if not isinstance(explicit_format, Mapping):
-                raise ValueError("LLM inputs.response_format must be a mapping")
-            return dict(explicit_format)
-        name, schema = schema_spec
-        provider = self.config.model.partition("/")[0]
-        if provider == "deepseek":
-            # DeepSeek's public chat API guarantees valid JSON in json_object mode, but only its
-            # beta tool-call path supports native schema enforcement. Validate/retry below instead.
+    def _response_model(self, job: InferenceJob) -> tuple[str, ResponseModel] | None:
+        name = self._structured_output(job)
+        return (name, response_model(name)) if name else None
+
+    def _instructor_mode(self):
+        """Choose Instructor's provider-neutral structured-output mode for this route."""
+        try:
+            from instructor import Mode
+        except ImportError as exc:
+            raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
+        # DeepSeek public chat supports only valid-JSON mode.  Instructor includes the Pydantic
+        # schema in the prompt and supplies its field-specific validation feedback on a retry.
+        return Mode.JSON if self.config.model.startswith("deepseek/") else Mode.JSON_SCHEMA
+
+    def _provider_options(self, job: InferenceJob) -> dict[str, Any]:
+        options: dict[str, Any] = {"model": self.config.model}
+        for field in ("temperature", "max_tokens", "tools", "tool_choice"):
+            if field in job.inputs:
+                options[field] = job.inputs[field]
+        return options
+
+    def _dispatch_response_format(self, model: ResponseModel) -> Mapping[str, Any]:
+        """Serialize the same Pydantic contract used by Instructor for the R10 queue."""
+        if self.config.model.startswith("deepseek/"):
             return {"type": "json_object"}
-        if provider not in NATIVE_STRICT_SCHEMA_PROVIDERS:
-            raise LLMBackendError(
-                f"configured LLM route does not support strict JSON Schema: {self.config.model}"
-            )
-        if not self._schema_supported():
-            raise LLMBackendError(
-                f"configured LLM route does not support strict JSON Schema: {self.config.model}"
-            )
         return {
             "type": "json_schema",
-            "json_schema": {"name": name, "schema": dict(schema), "strict": True},
+            "json_schema": {"name": model.__name__, "schema": model.model_json_schema()},
         }
+
+    def _payload(self, job: InferenceJob, model: ResponseModel | None = None) -> dict[str, Any]:
+        """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": _messages(job),
+            "stream": False,
+        }
+        if model is not None:
+            payload["response_format"] = self._dispatch_response_format(model)
+        payload.update(self._provider_options(job))
+        return payload
+
+    def _run_structured_direct(self, job: InferenceJob, model: ResponseModel) -> JobResult:
+        """Use Instructor for typed parsing and exactly one validation-feedback retry."""
+        try:
+            import instructor
+            from instructor.core import InstructorRetryException
+        except ImportError as exc:
+            raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
+        try:
+            typed, raw = instructor.from_litellm(
+                self._completion_fn(), mode=self._instructor_mode()
+            ).create_with_completion(
+                response_model=model,
+                messages=_messages(job),
+                max_retries=1,
+                **self._provider_options(job),
+            )
+        except InstructorRetryException as exc:
+            # Do not expose model text or validation feedback in workflow logs.  The caller safely
+            # defers and will obtain fresh evidence on its next scheduled run.
+            raise LLMBackendError("structured LLM response failed Pydantic validation") from exc
+        # Instructor returned a validated object; retain the normalized raw response contract so
+        # existing task parsers and result storage remain provider-neutral.
+        _ = typed
+        return JobResult(task=job.task, recipe_hash=job.recipe_hash, output=_response_mapping(raw))
 
     @staticmethod
     def _structured_content(output: Mapping[str, Any]) -> str:
@@ -230,84 +228,33 @@ class LiteLLMBackend(Backend):
                 return message["content"]
         raise LLMBackendError("structured LLM response did not contain message content")
 
-    def _validate_structured_output(
-        self, output: Mapping[str, Any], schema: Mapping[str, Any] | None
+    def _validate_reconciled(
+        self, output: Mapping[str, Any], structured_output: str | None
     ) -> None:
-        """Validate structured replies locally; provider constraints are never our only guard."""
-        if schema is None:
+        if not structured_output:
             return
         try:
-            value = json.loads(self._structured_content(output))
-            Draft202012Validator(schema).validate(value)
-        except (json.JSONDecodeError, ValidationError, TypeError) as exc:
-            raise LLMBackendError("structured LLM response did not match its JSON Schema") from exc
-
-    @staticmethod
-    def _retry_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-        """Request one schema-preserving retry without exposing malformed model text to logs."""
-        retry = dict(payload)
-        retry["messages"] = [
-            *[dict(message) for message in payload["messages"]],
-            {
-                "role": "user",
-                "content": (
-                    "The prior response did not match the required JSON Schema. "
-                    "Return only a valid JSON value that satisfies the requested schema."
-                ),
-            },
-        ]
-        return retry
-
-    def _payload(self, job: InferenceJob) -> dict[str, Any]:
-        """Build the provider-neutral OpenAI-shaped request sent by either transport."""
-        payload: dict[str, Any] = {
-            "model": self.config.model,
-            "messages": _messages(job),
-            "stream": False,
-        }
-        response_format = self._response_format(job)
-        if response_format is not None:
-            payload["response_format"] = response_format
-        for field in ("temperature", "max_tokens", "tools", "tool_choice"):
-            if field in job.inputs:
-                payload[field] = job.inputs[field]
-        return payload
+            response_model(structured_output).model_validate_json(self._structured_content(output))
+        except (ValueError, TypeError) as exc:
+            raise LLMBackendError(
+                "structured dispatched response failed Pydantic validation"
+            ) from exc
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
         if job.task not in LLM_TASKS:
             raise ValueError(f"LiteLLM backend does not handle task {job.task!r}")
-        payload = self._payload(job)
-        schema_spec = self._schema_spec(job)
-        schema = schema_spec[1] if schema_spec else None
+        structured = self._response_model(job)
         if self.config.mode == "direct":
-            response = self._completion_fn()(**payload)
-            result = JobResult(
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                output=_response_mapping(response),
-            )
-            try:
-                self._validate_structured_output(result.output, schema)
-            except LLMBackendError:
-                response = self._completion_fn()(**self._retry_payload(payload))
-                result = JobResult(
-                    task=job.task,
-                    recipe_hash=job.recipe_hash,
-                    output=_response_mapping(response),
-                )
-                self._validate_structured_output(result.output, schema)
-            return result
-
-        if schema is not None:
-            # The dispatch Worker persists only the OpenAI-shaped request/reference today, not the
-            # task schema or a retry record. Accepting this job would let a process restart bypass
-            # local validation on reconciliation, so structured jobs fail closed until that durable
-            # protocol is extended.
-            raise LLMBackendError(
-                "structured LLM jobs require direct mode until dispatch persists response schemas"
+            if structured:
+                return self._run_structured_direct(job, structured[1])
+            response = self._completion_fn()(**self._payload(job))
+            return JobResult(
+                task=job.task, recipe_hash=job.recipe_hash, output=_response_mapping(response)
             )
 
+        structured_name, model = structured if structured else (None, None)
+        payload = self._payload(job, model)
         headers = {"content-type": "application/json"}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
@@ -328,52 +275,58 @@ class LiteLLMBackend(Backend):
                 ref = body.get("id")
             if not ref:
                 raise LLMBackendError("LLM dispatch response omitted a request reference")
-            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend=self.name, ref=ref)
+            return JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend=self.name,
+                ref=ref,
+                structured_output=structured_name,
+            )
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch request failed") from exc
 
     def reconcile(self, handle: JobHandle) -> JobResult | None:
-        """Return a result when ready, or ``None`` while the Worker request is pending."""
+        """Return a validated result when ready, or ``None`` while the Worker request is pending."""
         if handle.backend != self.name:
             raise ValueError(f"cannot reconcile handle for backend {handle.backend!r}")
-        ref = handle.ref
         base = self.config.dispatch_url.rstrip("/") + "/"
         base_parts = urlsplit(base)
-        if ref.startswith("http"):
-            candidate = ref
+        if handle.ref.startswith("http"):
+            candidate = handle.ref
             candidate_parts = urlsplit(candidate)
             if (candidate_parts.scheme, candidate_parts.netloc) != (
                 base_parts.scheme,
                 base_parts.netloc,
             ):
                 raise LLMBackendError("LLM dispatch location points to an unexpected host")
-        elif ref.startswith("/"):
-            candidate = urljoin(base, ref.lstrip("/"))
+        elif handle.ref.startswith("/"):
+            candidate = urljoin(base, handle.ref.lstrip("/"))
         else:
-            candidate = urljoin(base, f"v1/requests/{ref}")
+            candidate = urljoin(base, f"v1/requests/{handle.ref}")
         try:
             validate_source_url(
-                candidate,
-                allowed_hosts=(base_parts.hostname or "",),
-                resolve=False,
+                candidate, allowed_hosts=(base_parts.hostname or "",), resolve=False
             )
         except SecurityError as exc:
             raise LLMBackendError("LLM dispatch location is not an allowed HTTPS URL") from exc
-        url = candidate
         headers = {}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
         try:
-            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+            response = self._session.get(
+                candidate, headers=headers, timeout=self.config.timeout_seconds
+            )
             if response.status_code == 202:
                 return None
             if response.status_code != 200:
                 raise LLMBackendError(f"LLM dispatch poll returned HTTP {response.status_code}")
-            return JobResult(
-                task=handle.task,
-                recipe_hash=handle.recipe_hash,
-                output=response.json(),
+            result = JobResult(
+                task=handle.task, recipe_hash=handle.recipe_hash, output=response.json()
             )
+            if not isinstance(result.output, Mapping):
+                raise LLMBackendError("LLM dispatch returned a non-object response")
+            self._validate_reconciled(result.output, handle.structured_output)
+            return result
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
 

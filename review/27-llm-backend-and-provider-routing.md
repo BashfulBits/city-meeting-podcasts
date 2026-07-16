@@ -78,7 +78,10 @@ judge, which is fine for exactly one pair but leaves the other pair with no inde
 
 ## §3. Architecture — LiteLLM adapter, our own async dispatch transport beside it
 
-**Decision: adopt LiteLLM as a dependency**, not a hand-rolled per-provider client. Unlike the
+**Decision: adopt LiteLLM plus Instructor/Pydantic for structured output**, not hand-rolled
+per-provider clients or per-task JSON parsing. LiteLLM remains the provider-routing boundary;
+Instructor turns a task-owned Pydantic response model into the appropriate provider request, validates
+the returned object, and provides bounded validation-feedback retries for direct work. Unlike the
 Pagefind-vs-MiniSearch call in `review/13`, this is a pure-Python pip dependency (no new build toolchain)
 that already speaks Gemini, DeepSeek, Mistral, and effectively every other provider likely to matter
 later — "adopt to other providers" (the requirement driving this whole design) becomes near-zero marginal
@@ -88,14 +91,16 @@ dependency-pinning policy like any new dependency.
 - `citypods/compute/llm.py` — new. A `Backend`-conforming adapter (`citypods/compute/base.py`'s
   `Backend` Protocol) that builds one normalized chat request from `job.task`/`job.inputs` and has two
   execution paths:
-  - **direct**: call `litellm.completion(model=..., messages=..., response_format=...)` and map the
-    normalized response to a `JobResult`;
+  - **direct**: call LiteLLM through Instructor with the task's Pydantic response model, then map the
+    validated raw completion to a `JobResult`;
   - **rate-limited**: submit that same normalized request to the R10 Worker and return a `JobHandle`.
-    A later reconcile/poll operation fetches the Worker result and maps it to the same `JobResult` shape.
+    A later reconcile/poll operation fetches the Worker result, validates it against the same Pydantic
+    model, and maps it to the same `JobResult` shape.
     The H13 union return type is intentional: a direct LiteLLM call completes in-band, while the Worker
     route preserves the no-runner-idle queue boundary.
-- LiteLLM owns provider-native wire-format translation, response normalization, and its configured
-  retry/fallback behavior. **It does not own provider selection or this project's durable pacing** —
+- Instructor owns structured-output mode selection, Pydantic validation, and the one bounded direct
+  corrective retry. LiteLLM owns provider-native wire-format translation and response normalization.
+  **Neither owns provider selection or this project's durable pacing** —
   those depend on our budget/tournament state and the explicit rate-limit policy in §5/§9.
 - The R10 endpoint is **OpenAI-shaped asynchronous transport, not a synchronous LiteLLM provider
   endpoint**: `POST /v1/chat/completions` returns `202` + a poll location. Therefore `llm.py` must use
@@ -448,11 +453,14 @@ Worker's `202` response.
 5. **Champion routing config** — which provider is currently dispatched for each task-verb; updated only
    by the weekly-ticket checkbox flow (§6.3), never silently.
 6. **Async dispatch state** — a Worker-backed job stores the provider-qualified `model_id`, request
-   fingerprint, Worker `ref`/poll location, and status (`queued`/`processing`/`completed`/`failed`) as
-   ephemeral coordination state. It is not the canonical LLM artifact and is not a second output schema:
-   reconciliation maps the Worker's completed OpenAI-shaped response into the same `JobResult` used by
-   direct LiteLLM calls, after which the task-specific content-addressed output is written by the normal
-   R2 pipeline path.
+   fingerprint, Pydantic-generated `response_format`, Worker `ref`/poll location, and status
+   (`queued`/`processing`/`completed`/`failed`) as ephemeral coordination state. The `JobHandle` also
+   retains the stable response-contract name, so a restart can validate a completed response locally.
+   It is not the canonical LLM artifact and is not a second output schema: reconciliation maps the
+   Worker's completed OpenAI-shaped response into the same `JobResult` used by direct LiteLLM calls,
+   after which the task-specific content-addressed output is written by the normal R2 pipeline path.
+   Queue-owned corrective re-asks are deferred until the Worker persists an explicit validation-attempt
+   transition; a scheduler may still batch, delay, or route independent cacheable chunk jobs freely.
 
 ---
 

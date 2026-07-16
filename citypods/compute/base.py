@@ -82,6 +82,10 @@ class JobHandle:
     recipe_hash: str
     backend: str
     ref: str
+    # Optional, stable name of a Pydantic response contract.  This is deliberately a string, not
+    # a Python class: queue/state implementations can persist it and later reconciliation can
+    # validate the completed result after a process restart.
+    structured_output: str | None = None
 
 
 def lease_owner_for(handle: JobHandle) -> str:

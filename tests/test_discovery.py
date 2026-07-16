@@ -3,7 +3,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from citypods.compute.base import InferenceJob, JobResult
-from citypods.discovery.classify import classify, parse_classification
+from citypods.discovery.classify import (
+    STRUCTURED_OUTPUT,
+    CivicPlatformClassificationResponse,
+    classify,
+    parse_classification,
+)
 from citypods.discovery.config import discovery_llm_config
 from citypods.discovery.eligibility import AgendaCoverage, auxiliary_eligibility
 from citypods.discovery.models import Classification, DiscoveryRequest, SearchResult
@@ -103,7 +108,7 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert "minutes_url" in prompt
             assert "granicus_base" in prompt
             assert "city_identity" in prompt
-            assert job.inputs["response_schema"]["name"] == "civic_platform_classification"
+            assert job.inputs["structured_output"] == STRUCTURED_OUTPUT
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -156,7 +161,7 @@ def test_auxiliary_prompt_requires_confirmed_city_identity_for_strict_schema():
     assert classify(Backend(), _request("auxiliary"), _results()).city_identity == "confirmed"
 
 
-def test_classifier_declares_strict_schema_once_per_task():
+def test_classifier_declares_one_pydantic_contract_per_task():
     class Backend:
         def __init__(self):
             self.calls: list[InferenceJob] = []
@@ -178,7 +183,7 @@ def test_classifier_declares_strict_schema_once_per_task():
 
     assert result.agenda_platform is None
     assert len(backend.calls) == 1
-    schema = backend.calls[0].inputs["response_schema"]["schema"]
+    schema = CivicPlatformClassificationResponse.model_json_schema()
     assert schema["additionalProperties"] is False
     assert schema["properties"]["confidence"]["enum"] == ["low", "medium", "high"]
 

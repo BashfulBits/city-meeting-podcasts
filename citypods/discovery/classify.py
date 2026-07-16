@@ -6,10 +6,13 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import TASK_VERSIONS
+from citypods.compute.structured import register_response_model
 from citypods.discovery.models import (
     KNOWN_PLATFORMS,
     Classification,
@@ -22,86 +25,48 @@ class ClassificationError(RuntimeError):
     """The classifier result was malformed or did not complete synchronously."""
 
 
-CLASSIFICATION_RESPONSE_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "city_identity": {"type": "string", "enum": ["confirmed", "unconfirmed", "mismatch"]},
-        "video_platform": {"type": ["string", "null"], "enum": [*sorted(KNOWN_PLATFORMS), None]},
-        "agenda_platform": {"type": ["string", "null"], "enum": [*sorted(KNOWN_PLATFORMS), None]},
-        "candidate_urls": {"type": "array", "items": {"type": "string"}},
-        "video_source": {
-            "type": ["object", "null"],
-            "properties": {
-                "feed_url": {"type": ["string", "null"]},
-                "list_url": {"type": ["string", "null"]},
-                "api_base": {"type": ["string", "null"]},
-                "portal_url": {"type": ["string", "null"]},
-                "calendar_url": {"type": ["string", "null"]},
-                "granicus_base": {"type": ["string", "null"]},
-                "backfill_since": {"type": ["string", "null"]},
-                "agenda_url": {"type": ["string", "null"]},
-                "minutes_url": {"type": ["string", "null"]},
-                "body": {"type": ["string", "null"]},
-            },
-            "required": [
-                "feed_url",
-                "list_url",
-                "api_base",
-                "portal_url",
-                "calendar_url",
-                "granicus_base",
-                "backfill_since",
-                "agenda_url",
-                "minutes_url",
-                "body",
-            ],
-            "additionalProperties": False,
-        },
-        "agenda_source": {
-            "type": ["object", "null"],
-            "properties": {
-                "feed_url": {"type": ["string", "null"]},
-                "list_url": {"type": ["string", "null"]},
-                "api_base": {"type": ["string", "null"]},
-                "portal_url": {"type": ["string", "null"]},
-                "calendar_url": {"type": ["string", "null"]},
-                "granicus_base": {"type": ["string", "null"]},
-                "backfill_since": {"type": ["string", "null"]},
-                "agenda_url": {"type": ["string", "null"]},
-                "minutes_url": {"type": ["string", "null"]},
-                "body": {"type": ["string", "null"]},
-            },
-            "required": [
-                "feed_url",
-                "list_url",
-                "api_base",
-                "portal_url",
-                "calendar_url",
-                "granicus_base",
-                "backfill_since",
-                "agenda_url",
-                "minutes_url",
-                "body",
-            ],
-            "additionalProperties": False,
-        },
-        "bodies_mentioned": {"type": "array", "items": {"type": "string"}},
-        "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
-        "reasoning": {"type": "string"},
-    },
-    "required": [
-        "city_identity",
-        "video_platform",
-        "agenda_platform",
-        "candidate_urls",
-        "video_source",
-        "agenda_source",
-        "bodies_mentioned",
-        "confidence",
-        "reasoning",
-    ],
-    "additionalProperties": False,
-}
+class PlatformSource(BaseModel):
+    """Closed, provider-neutral source slots; post-LLM verification supplies their semantics."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    feed_url: str | None
+    list_url: str | None
+    api_base: str | None
+    portal_url: str | None
+    calendar_url: str | None
+    granicus_base: str | None
+    backfill_since: str | None
+    agenda_url: str | None
+    minutes_url: str | None
+    body: str | None
+
+
+class CivicPlatformClassificationResponse(BaseModel):
+    """Pydantic contract used by Instructor and by queued-result reconciliation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    city_identity: Literal["confirmed", "unconfirmed", "mismatch"]
+    video_platform: str | None
+    agenda_platform: str | None
+    candidate_urls: list[str]
+    video_source: PlatformSource | None
+    agenda_source: PlatformSource | None
+    bodies_mentioned: list[str]
+    confidence: Literal["low", "medium", "high"]
+    reasoning: str
+
+    @field_validator("video_platform", "agenda_platform")
+    @classmethod
+    def known_platform_or_null(cls, value: str | None) -> str | None:
+        if value is not None and value not in KNOWN_PLATFORMS:
+            raise ValueError("must be a known civic platform or null")
+        return value
+
+
+STRUCTURED_OUTPUT = "civic-platform-classification"
+register_response_model(STRUCTURED_OUTPUT, CivicPlatformClassificationResponse)
 
 
 def _evidence(results: list[SearchResult]) -> list[dict[str, str]]:
@@ -114,7 +79,7 @@ def recipe_hash(request: DiscoveryRequest, results: list[SearchResult]) -> str:
     payload = {
         "task_version": TASK_VERSIONS["classify-civic-platforms"],
         "prompt": _prompt(request, results),
-        "response_schema": CLASSIFICATION_RESPONSE_SCHEMA,
+        "response_model": CivicPlatformClassificationResponse.model_json_schema(),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -297,15 +262,12 @@ def parse_classification(
 def classify(
     backend: Backend, request: DiscoveryRequest, results: list[SearchResult]
 ) -> Classification:
-    """Classify evidence through the backend's strict JSON-Schema output contract."""
+    """Classify evidence through the backend's Instructor/Pydantic output contract."""
     job = InferenceJob(
         task="classify-civic-platforms",
         inputs={
             "messages": _prompt(request, results),
-            "response_schema": {
-                "name": "civic_platform_classification",
-                "schema": CLASSIFICATION_RESPONSE_SCHEMA,
-            },
+            "structured_output": STRUCTURED_OUTPUT,
         },
         recipe_hash=recipe_hash(request, results),
     )

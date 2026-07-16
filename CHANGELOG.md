@@ -98,12 +98,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
-- **City discovery now validates all structured output centrally.** LLM tasks declare one JSON
-  Schema. Gemini and Mistral receive native strict-schema requests; DeepSeek receives its valid-JSON
-  mode, followed by shared local schema validation and one corrective retry. A still-invalid reply
-  leaves that city queued while the rest of either discovery batch continues. Structured jobs fail
-  closed on the asynchronous dispatch transport until it can durably persist schemas and retries.
-  This changes no stored meeting artifacts or audio/ASR pipeline version.
+- **City discovery now uses Instructor/Pydantic for structured output.** LLM tasks name one typed
+  response contract rather than hand-maintaining JSON Schema dictionaries. Direct Gemini/Mistral and
+  DeepSeek calls use Instructor's provider modes, Pydantic validation, and one corrective retry;
+  DeepSeek remains in JSON-object mode because its public chat route does not enforce a schema. The
+  asynchronous Worker now carries the Pydantic-derived response format and validates a completed result
+  during reconciliation, while a validation re-ask remains safely deferred pending a durable queue
+  transition. This changes no stored meeting artifacts or audio/ASR pipeline version.
 
 - **S3-compatible state and coordination reads now survive transient boto failures.** Shared storage
   reads retry transient transport errors, throttling/5xx responses, and the botocore

@@ -234,12 +234,14 @@ verb itself:
     (list, each tied to a specific retrieved search result), `bodies_mentioned` (list of board/commission
     names surfaced in the retrieved results, best-effort), `confidence` (low/medium/high, informational —
     §6 explains why this never gates anything by itself), `reasoning` (one sentence). The task declares
-    this once as a JSON Schema. The shared LiteLLM backend uses provider-native strict structured
-    output where available (Gemini/Mistral); DeepSeek's JSON mode receives central local validation
-    and one generic corrective retry because its public chat API does not enforce response schemas.
-    A second invalid response is deferred, never repaired or consumed by task code. Structured jobs
-    require the direct LiteLLM transport for now: the asynchronous dispatch Worker fails closed until
-    it persists the schema and retry record alongside each queued request.
+    this once as a Pydantic response model. The shared LiteLLM backend delegates structured calls to
+    Instructor, which derives provider-native schema/JSON mode, validates the typed object, and gives a
+    direct call one corrective retry. DeepSeek's public chat route still receives JSON-object mode rather
+    than a native schema constraint. The R10 Worker durably carries the Pydantic-generated response
+    format; reconciliation validates its completed response against the same named model. A queued
+    validation failure is deferred rather than re-asked until the Worker has a durable validation-retry
+    transition. This preserves cacheable chunk jobs and leaves batching/off-peak scheduling to the
+    dispatch coordinator, not to a task schema.
 - `recipe_hash` = hash of `(city_slug, mode, prompt_version, tavily_result_content)` — a re-run against
   unchanged search results is a free cache hit. Not a hard requirement for a first cut (call volume is
   low enough that caching is a nicety) but cheap to include since the mechanism already exists.
