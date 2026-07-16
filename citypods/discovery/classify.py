@@ -6,10 +6,14 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from typing import Any
+from enum import Enum
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import TASK_VERSIONS
+from citypods.compute.structured import register_response_model
 from citypods.discovery.models import (
     KNOWN_PLATFORMS,
     Classification,
@@ -22,6 +26,54 @@ class ClassificationError(RuntimeError):
     """The classifier result was malformed or did not complete synchronously."""
 
 
+class ClassificationDeferred(ClassificationError):
+    """A queued classification that will be collected by a later scheduled discovery run."""
+
+
+PlatformName = Enum(
+    "PlatformName",
+    {platform.replace("-", "_").upper(): platform for platform in sorted(KNOWN_PLATFORMS)},
+    type=str,
+)
+
+
+class PlatformSource(BaseModel):
+    """Closed, provider-neutral source slots; post-LLM verification supplies their semantics."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    feed_url: str | None
+    list_url: str | None
+    api_base: str | None
+    portal_url: str | None
+    calendar_url: str | None
+    granicus_base: str | None
+    backfill_since: str | None
+    agenda_url: str | None
+    minutes_url: str | None
+    body: str | None
+
+
+class CivicPlatformClassificationResponse(BaseModel):
+    """Pydantic contract used by Instructor and by queued-result reconciliation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    city_identity: Literal["confirmed", "unconfirmed", "mismatch"]
+    video_platform: PlatformName | None
+    agenda_platform: PlatformName | None
+    candidate_urls: list[str]
+    video_source: PlatformSource | None
+    agenda_source: PlatformSource | None
+    bodies_mentioned: list[str]
+    confidence: Literal["low", "medium", "high"]
+    reasoning: str
+
+
+STRUCTURED_OUTPUT = "civic-platform-classification"
+register_response_model(STRUCTURED_OUTPUT, CivicPlatformClassificationResponse)
+
+
 def _evidence(results: list[SearchResult]) -> list[dict[str, str]]:
     return [
         {"url": row.url, "title": row.title[:300], "content": row.content[:2000]} for row in results
@@ -32,6 +84,7 @@ def recipe_hash(request: DiscoveryRequest, results: list[SearchResult]) -> str:
     payload = {
         "task_version": TASK_VERSIONS["classify-civic-platforms"],
         "prompt": _prompt(request, results),
+        "response_model": CivicPlatformClassificationResponse.model_json_schema(),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -66,6 +119,22 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
             "body": "body name stated in retrieved evidence",
         },
     }
+    response_fields = (
+        "city_identity (confirmed|unconfirmed|mismatch), video_platform, agenda_platform, "
+        "candidate_urls, video_source, agenda_source, "
+        "bodies_mentioned, confidence (low|medium|high), and reasoning"
+    )
+    identity_instruction = ""
+    if request.mode == "new-city":
+        identity_instruction = (
+            " For new-city mode, city_identity is confirmed only when retrieved evidence "
+            "identifies the requested city and state. Set it to mismatch when results identify "
+            "another municipality, and to unconfirmed when the retrieved evidence cannot "
+            "establish the requested municipality. When identity is mismatch or unconfirmed, "
+            "set both platforms to null and return no candidate URLs, source mappings, or bodies."
+        )
+    else:
+        identity_instruction = " In auxiliary mode, set city_identity to confirmed."
     instruction = (
         "Classify civic video and agenda platforms only from retrieved_results. "
         "Do not invent URLs, and only put a URL in candidate_urls when it appears exactly "
@@ -73,20 +142,13 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
         "Use a platform key from this allowlist or null: "
         f"{', '.join(sorted(KNOWN_PLATFORMS))}. In auxiliary mode, copy "
         "known_video_provider to "
-        "video_platform unchanged. Return one JSON object with city_identity "
-        "(confirmed|unconfirmed|mismatch), video_platform, agenda_platform, "
-        "candidate_urls, video_source, agenda_source, bodies_mentioned, confidence "
-        "(low|medium|high), "
-        "and reasoning. source fields must follow these provider schemas: "
+        f"video_platform unchanged. Return one JSON object with {response_fields}. "
+        "source fields must follow these provider schemas: "
         + json.dumps(source_schemas, sort_keys=True)
-        + ". A source mapping is optional; omit it rather than guessing any required field. "
+        + ". A source mapping is optional; use null, or include every source key with null for "
+        "unknown values, rather than guessing. "
         "Every URL "
-        "inside a source mapping must appear exactly in retrieved_results. For new-city mode, "
-        "city_identity is confirmed only when retrieved evidence identifies the requested city and "
-        "state. Set it to mismatch when results identify another municipality, and to unconfirmed "
-        "when the retrieved evidence cannot establish the requested municipality. When identity is "
-        "mismatch or unconfirmed, set both platforms to null and return no candidate URLs, source "
-        "mappings, or bodies."
+        "inside a source mapping must appear exactly in retrieved_results." + identity_instruction
     )
     return [
         {"role": "system", "content": instruction},
@@ -148,7 +210,11 @@ def _source(value: Any, *, retrieved_urls: set[str]) -> dict[str, Any] | None:
         return None
     out: dict[str, Any] = {}
     for key, item in value.items():
-        if not isinstance(key, str) or not isinstance(item, (str, int, float, bool)):
+        if not isinstance(key, str):
+            return None
+        if item is None:
+            continue
+        if not isinstance(item, (str, int, float, bool)):
             return None
         if isinstance(item, str) and item.startswith(("http://", "https://")):
             if item not in retrieved_urls:
@@ -201,14 +267,18 @@ def parse_classification(
 def classify(
     backend: Backend, request: DiscoveryRequest, results: list[SearchResult]
 ) -> Classification:
+    """Classify evidence through the backend's Instructor/Pydantic output contract."""
     job = InferenceJob(
         task="classify-civic-platforms",
-        inputs={"messages": _prompt(request, results), "response_format": {"type": "json_object"}},
+        inputs={
+            "messages": _prompt(request, results),
+            "structured_output": STRUCTURED_OUTPUT,
+        },
         recipe_hash=recipe_hash(request, results),
     )
     outcome = backend.run_inference(job)
     if isinstance(outcome, JobHandle):
-        raise ClassificationError("classification is queued; retry it on the next discovery run")
+        raise ClassificationDeferred("classification is queued; retry it on the next discovery run")
     if not isinstance(outcome, JobResult):
         raise ClassificationError("classification backend returned an unsupported result")
     return parse_classification(outcome.output, request, results)

@@ -38,7 +38,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev,wer]" -c constraints/dev.txt
+        run: pip install -e ".[dev,wer,llm]" -c constraints/dev.txt
 
       - name: Cache pinned ffmpeg
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5

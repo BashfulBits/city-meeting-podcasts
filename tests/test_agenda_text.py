@@ -29,9 +29,11 @@ def test_minutes_parser_keeps_explicit_member_votes_and_roster():
 
 
 def test_agenda_minutes_can_target_previous_same_body_only():
-    older = Episode("old", "Older", datetime.now(UTC) - timedelta(days=7), "video", body="Council")
-    newer = Episode("new", "Newer", datetime.now(UTC), "video", body="Council")
-    other = Episode("other", "Other", datetime.now(UTC), "video", body="Planning")
+    # Midday keeps the same-day fixtures on the same calendar date in every CI timezone/run time.
+    newer_at = datetime(2026, 1, 15, 12, tzinfo=UTC)
+    older = Episode("old", "Older", newer_at - timedelta(days=7), "video", body="Council")
+    newer = Episode("new", "Newer", newer_at, "video", body="Council")
+    other = Episode("other", "Other", newer_at, "video", body="Planning")
     assert _previous_same_body(newer, [older, newer, other]) is older
     same_day_a = Episode(
         "same-a", "Earlier", newer.published - timedelta(hours=2), "video", body="Council"

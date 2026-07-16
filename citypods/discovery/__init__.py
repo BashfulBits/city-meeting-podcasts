@@ -5,7 +5,6 @@ keeps retrieval, classification, verification, issue rendering, and proposal ass
 the workflow can expose findings without ever writing a city config directly.
 """
 
-from citypods.discovery.classify import classify
 from citypods.discovery.models import (
     Classification,
     DiscoveryMode,
@@ -15,6 +14,16 @@ from citypods.discovery.models import (
 )
 from citypods.discovery.search import TavilyClient, TavilySearchError
 from citypods.discovery.verify import verify_discovery
+
+
+def __getattr__(name: str):
+    """Load the Pydantic-backed classifier only for callers that request it."""
+    if name == "classify":
+        from citypods.discovery.classify import classify
+
+        return classify
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "Classification",

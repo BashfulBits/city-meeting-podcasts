@@ -2,11 +2,26 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from citypods.compute.base import InferenceJob, JobResult
-from citypods.discovery.classify import classify, parse_classification
+import pytest
+
+from citypods.compute.base import InferenceJob, JobHandle, JobResult
+from citypods.compute.llm import LLMStructuredOutputError
+from citypods.discovery.classify import (
+    STRUCTURED_OUTPUT,
+    CivicPlatformClassificationResponse,
+    ClassificationDeferred,
+    PlatformSource,
+    classify,
+    parse_classification,
+)
 from citypods.discovery.config import discovery_llm_config
 from citypods.discovery.eligibility import AgendaCoverage, auxiliary_eligibility
-from citypods.discovery.models import Classification, DiscoveryRequest, SearchResult
+from citypods.discovery.models import (
+    KNOWN_PLATFORMS,
+    Classification,
+    DiscoveryRequest,
+    SearchResult,
+)
 from citypods.discovery.render import parse_evidence_marker, parse_state_marker, render_evidence
 from citypods.discovery.verify import verify_discovery
 from scripts import city_discovery as city_discovery_script
@@ -29,6 +44,28 @@ def _results():
         SearchResult("https://example.granicus.com/ViewPublisherRSS.php?view_id=1", "Meetings"),
         SearchResult("https://example.gov", "City of Example"),
     ]
+
+
+def _source_payload(**values: str | None) -> dict[str, str | None]:
+    """Return a strict provider-source object with every nullable field present."""
+    return {field: values.get(field) for field in PlatformSource.model_fields}
+
+
+def _classification_content(**overrides: object) -> str:
+    """Serialize one valid classifier payload for mocked backend replies."""
+    payload: dict[str, object] = {
+        "city_identity": "confirmed",
+        "video_platform": None,
+        "agenda_platform": None,
+        "candidate_urls": [],
+        "video_source": None,
+        "agenda_source": None,
+        "bodies_mentioned": [],
+        "confidence": "low",
+        "reasoning": "test",
+    }
+    payload.update(overrides)
+    return CivicPlatformClassificationResponse.model_validate(payload).model_dump_json()
 
 
 def test_discovery_llm_route_is_task_scoped_yaml_not_generic_environment(monkeypatch):
@@ -76,17 +113,53 @@ def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
     assert "state: restored 3 file(s) from durable storage" in captured.err
 
 
+def test_discovery_script_returns_tempfail_for_invalid_structured_output(monkeypatch, capsys):
+    monkeypatch.setattr(city_discovery_script, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(
+        city_discovery_script, "_request_from_args", lambda _args: (_request(), None)
+    )
+    monkeypatch.setattr(
+        city_discovery_script,
+        "TavilyClient",
+        lambda: SimpleNamespace(search=lambda _request: _results()),
+    )
+    monkeypatch.setattr(city_discovery_script, "LiteLLMBackend", lambda *_: None)
+
+    def invalid_response(*_args):
+        raise LLMStructuredOutputError("structured LLM response failed Pydantic validation")
+
+    monkeypatch.setattr(city_discovery_script, "classify", invalid_response)
+
+    assert city_discovery_script.main(["--mode", "new-city"]) == city_discovery_script.DEFERRED_EXIT
+    assert "discovery deferred" in capsys.readouterr().err
+
+
+def test_classifier_marks_queued_dispatch_for_deferred_retry():
+    class Backend:
+        def run_inference(self, job: InferenceJob):
+            return JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="litellm",
+                ref="request-1",
+            )
+
+    with pytest.raises(ClassificationDeferred, match="queued"):
+        classify(Backend(), _request(), _results())
+
+
 def test_classifier_rejects_source_url_not_in_retrieved_evidence():
     response = {
         "choices": [
             {
                 "message": {
-                    "content": (
-                        '{"video_platform":"granicus","agenda_platform":null,'
-                        '"city_identity":"confirmed",'
-                        '"candidate_urls":["https://example.granicus.com/ViewPublisherRSS.php?view_id=1"],'
-                        '"video_source":{"feed_url":"https://evil.example/feed"},'
-                        '"bodies_mentioned":[],"confidence":"high","reasoning":"test"}'
+                    "content": _classification_content(
+                        video_platform="granicus",
+                        candidate_urls=[
+                            "https://example.granicus.com/ViewPublisherRSS.php?view_id=1"
+                        ],
+                        video_source=_source_payload(feed_url="https://evil.example/feed"),
+                        confidence="high",
                     )
                 }
             }
@@ -103,6 +176,7 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert "minutes_url" in prompt
             assert "granicus_base" in prompt
             assert "city_identity" in prompt
+            assert job.inputs["structured_output"] == STRUCTURED_OUTPUT
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -110,12 +184,18 @@ def test_classifier_prompt_includes_provider_source_schemas():
                     "choices": [
                         {
                             "message": {
-                                "content": (
-                                    '{"video_platform":"granicus","agenda_platform":null,'
-                                    '"city_identity":"confirmed",'
-                                    '"candidate_urls":["https://example.granicus.com/ViewPublisherRSS.php?view_id=1"],'
-                                    '"video_source":{"feed_url":"https://example.granicus.com/ViewPublisherRSS.php?view_id=1"},'
-                                    '"bodies_mentioned":[],"confidence":"high","reasoning":"test"}'
+                                "content": _classification_content(
+                                    video_platform="granicus",
+                                    candidate_urls=[
+                                        "https://example.granicus.com/ViewPublisherRSS.php?view_id=1"
+                                    ],
+                                    video_source=_source_payload(
+                                        feed_url=(
+                                            "https://example.granicus.com/"
+                                            "ViewPublisherRSS.php?view_id=1"
+                                        )
+                                    ),
+                                    confidence="high",
                                 )
                             }
                         }
@@ -129,18 +209,63 @@ def test_classifier_prompt_includes_provider_source_schemas():
     }
 
 
+def test_auxiliary_prompt_requires_confirmed_city_identity_for_strict_schema():
+    class Backend:
+        def run_inference(self, job: InferenceJob):
+            prompt = job.inputs["messages"][0]["content"]
+            assert "In auxiliary mode, set city_identity to confirmed" in prompt
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={
+                    "choices": [
+                        {"message": {"content": _classification_content(video_platform="swagit")}}
+                    ]
+                },
+            )
+
+    assert classify(Backend(), _request("auxiliary"), _results()).city_identity == "confirmed"
+
+
+def test_classifier_declares_one_pydantic_contract_per_task():
+    class Backend:
+        def __init__(self):
+            self.calls: list[InferenceJob] = []
+
+        def run_inference(self, job: InferenceJob):
+            self.calls.append(job)
+            content = _classification_content()
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": content}}]},
+            )
+
+    backend = Backend()
+    result = classify(backend, _request("auxiliary"), _results())
+
+    assert result.agenda_platform is None
+    assert len(backend.calls) == 1
+    schema = CivicPlatformClassificationResponse.model_json_schema()
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["confidence"]["enum"] == ["low", "medium", "high"]
+    assert schema["$defs"]["PlatformName"]["enum"] == sorted(KNOWN_PLATFORMS)
+
+
 def test_classifier_discards_foreign_city_provider_details():
     response = {
         "choices": [
             {
                 "message": {
-                    "content": (
-                        '{"city_identity":"mismatch","video_platform":"civicengage",'
-                        '"agenda_platform":"civicengage",'
-                        '"candidate_urls":["https://example.gov/foreign"],'
-                        '"video_source":{"feed_url":"https://example.gov/foreign"},'
-                        '"bodies_mentioned":["Foreign City Council"],'
-                        '"confidence":"medium","reasoning":"Evidence is for another city."}'
+                    "content": _classification_content(
+                        city_identity="mismatch",
+                        video_platform="civicengage",
+                        agenda_platform="civicengage",
+                        candidate_urls=["https://example.gov/foreign"],
+                        video_source=_source_payload(feed_url="https://example.gov/foreign"),
+                        bodies_mentioned=["Foreign City Council"],
+                        confidence="medium",
+                        reasoning="Evidence is for another city.",
                     )
                 }
             }

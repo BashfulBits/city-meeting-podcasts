@@ -5,9 +5,9 @@ fully-resolved pins that make installs reproducible. Policy: [`review/22`](../re
 
 | File | Profile (extras) | Consumed by |
 |---|---|---|
-| `prod.txt` | core + `storage` + `wer` | `deploy.yml`, `audit.yml`, `audio.yml`, `asr-quality-review.yml`, … and the audio-runner image |
+| `prod.txt` | core + `storage` + `wer` + `llm` | `deploy.yml`, `audit.yml`, `audio.yml`, `asr-quality-review.yml`, … and the audio-runner image |
 | `asr.txt`  | core + `storage` + `asr-*` (incl. `asr-align2`) | `asr.yml`, `asr-bench.yml`, `asr-quality-eval.yml`, Modal/Beam worker images |
-| `dev.txt`  | core + `storage` + `dev` + `wer` | `ci.yml` |
+| `dev.txt`  | core + `storage` + `dev` + `wer` + `llm` | `ci.yml` |
 
 `asr-align2` (H15 Layer 2's independent CTC aligner, `torchcodec`) is compiled into `asr.txt`
 rather than its own file: `torch`/`torchaudio` are already a transitive pin there via
@@ -20,7 +20,7 @@ These files are **version-pinned** (exact `==`), not hashed. They are consumed v
 alongside editable `pip install -e .`, and pip's hash-checking mode is incompatible with an
 unhashable editable install — so hashes are intentionally omitted.
 
-- **Everywhere (`-c`):** `pip install -e ".[dev]" -c constraints/dev.txt` — exact versions pinned.
+- **Everywhere (`-c`):** `pip install -e ".[dev,llm]" -c constraints/dev.txt` — exact versions pinned.
 - **Immutable images (follow-up):** hash-verified installs (`--require-hashes -r` of a non-editable
   build, then `pip install --no-deps` for the local package) are a documented future hardening for
   the runner/worker images; not required for version reproducibility.

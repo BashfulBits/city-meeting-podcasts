@@ -233,7 +233,18 @@ verb itself:
     returns the input's known value unchanged), `agenda_platform` (enum + `null`), `candidate_urls`
     (list, each tied to a specific retrieved search result), `bodies_mentioned` (list of board/commission
     names surfaced in the retrieved results, best-effort), `confidence` (low/medium/high, informational —
-    §6 explains why this never gates anything by itself), `reasoning` (one sentence).
+    §6 explains why this never gates anything by itself), `reasoning` (one sentence). The task declares
+    this once as a Pydantic response model. The shared LiteLLM backend delegates structured calls to
+    Instructor, which derives provider-native schema/JSON mode, validates the typed object, and gives a
+    direct call one corrective retry. DeepSeek's public chat route still receives JSON-object mode rather
+    than a native schema constraint. The R10 Worker durably carries the Pydantic-generated response
+    format; reconciliation validates its completed response against the same named model. A queued
+    validation failure is deferred rather than re-asked until the Worker has a durable validation-retry
+    transition. This preserves cacheable chunk jobs and leaves batching/off-peak scheduling to the
+    dispatch coordinator, not to a task schema. The discovery CLI reports only a queued job or malformed
+    structured output as `EX_TEMPFAIL` (75), which leaves that city queued for the next scheduled run;
+    the workflow continues across all cities but reports any other infrastructure or code failure as a
+    failed run after completing the remaining candidates.
 - `recipe_hash` = hash of `(city_slug, mode, prompt_version, tavily_result_content)` — a re-run against
   unchanged search results is a free cache hit. Not a hard requirement for a first cut (call volume is
   low enough that caching is a nicety) but cheap to include since the mechanism already exists.

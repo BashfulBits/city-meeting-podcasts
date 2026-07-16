@@ -22,7 +22,7 @@ You can help right now by:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"        # citypods + boto3 + pytest + ruff
+pip install -e ".[dev,llm]"    # citypods + test tools + LLM structured-output tests
 # ffmpeg is required for audio materialization (apt-get install ffmpeg / brew install ffmpeg)
 
 ruff check . && ruff format --check .

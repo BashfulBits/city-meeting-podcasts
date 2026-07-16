@@ -8,14 +8,18 @@ import re
 import sys
 from pathlib import Path
 
-from citypods.compute.llm import LiteLLMBackend
+from citypods.compute.llm import LiteLLMBackend, LLMStructuredOutputError
 from citypods.config import load_city_configs, load_site_config
-from citypods.discovery import DiscoveryRequest, TavilyClient, classify, verify_discovery
+from citypods.discovery import DiscoveryRequest, TavilyClient, verify_discovery
+from citypods.discovery.classify import ClassificationDeferred, classify
 from citypods.discovery.config import discovery_llm_config
 from citypods.discovery.eligibility import auxiliary_states
 from citypods.discovery.render import render_evidence
 from citypods.records import load_records, source_key
 from citypods.state import pull_canonical_state, resolve_state_dir
+
+# ``EX_TEMPFAIL``: caller should leave the request queued and retry it on the next scheduled run.
+DEFERRED_EXIT = 75
 
 
 def parse_issue_form(body: str) -> dict[str, str]:
@@ -129,11 +133,17 @@ def main(argv: list[str] | None = None) -> int:
     if not args.city_slug and args.mode == "auxiliary":
         raise SystemExit("--city-slug is required unless --list-eligible-aux is used")
 
-    site_config = load_site_config(args.site_config)
-    request, city = _request_from_args(args)
-    results = TavilyClient().search(request)
-    classification = classify(LiteLLMBackend(discovery_llm_config(site_config)), request, results)
-    evidence = verify_discovery(request, classification, results, existing_city=city)
+    try:
+        site_config = load_site_config(args.site_config)
+        request, city = _request_from_args(args)
+        results = TavilyClient().search(request)
+        classification = classify(
+            LiteLLMBackend(discovery_llm_config(site_config)), request, results
+        )
+        evidence = verify_discovery(request, classification, results, existing_city=city)
+    except (ClassificationDeferred, LLMStructuredOutputError) as exc:
+        print(f"discovery deferred: {exc}", file=sys.stderr)
+        return DEFERRED_EXIT
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(evidence.as_dict(), indent=2, sort_keys=True) + "\n"

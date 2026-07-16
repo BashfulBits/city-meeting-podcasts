@@ -65,6 +65,8 @@ jobs:
           else
             issues=$(gh issue list --label add-city --state open --limit 1000 --json number,labels --jq '.[] | select([.labels[].name] | index("add-city:applied") | not) | .number')
           fi
+          DISCOVERY_DEFERRED=75
+          failures=0
           for issue in $issues; do
             mkdir -p "city-discovery/new-$issue"
             gh api "repos/${{ github.repository }}/issues/$issue" > "city-discovery/new-$issue/issue.json"
@@ -88,8 +90,19 @@ jobs:
               python scripts/r12_notify.py --issue "city-discovery/new-$issue/notify.json" \
                 --status evidence_expired
             fi
-            python scripts/city_discovery.py --mode new-city --issue-number "$issue" \
-              --issue-body "city-discovery/new-$issue/issue.md" --out "city-discovery/new-$issue"
+            if python scripts/city_discovery.py --mode new-city --issue-number "$issue" \
+              --issue-body "city-discovery/new-$issue/issue.md" --out "city-discovery/new-$issue"; then
+              :
+            else
+              status=$?
+              if [ "$status" -eq "$DISCOVERY_DEFERRED" ]; then
+                echo "::warning::Discovery deferred for add-city issue #$issue; it remains queued for tomorrow."
+              else
+                echo "::error::Discovery failed for add-city issue #$issue (exit $status)."
+                failures=$((failures + 1))
+              fi
+              continue
+            fi
             gh issue comment "$issue" --body-file "city-discovery/new-$issue/evidence.md"
             if [ "$(jq -r .needs_more_information "city-discovery/new-$issue/evidence.json")" = true ]; then
               gh issue edit "$issue" --add-label needs:more-information --remove-label needs:discovery \
@@ -104,6 +117,10 @@ jobs:
             python scripts/r12_notify.py --issue "city-discovery/new-$issue/notify.json" \
               --status "$notify_status"
           done
+          if [ "$failures" -ne 0 ]; then
+            echo "::error::$failures city discovery request(s) failed unexpectedly."
+            exit 1
+          fi
 
       - name: Discover eligible auxiliary agenda sources
         if: ${{ inputs.mode != 'new-city' }}
@@ -168,18 +185,41 @@ jobs:
             >> city-discovery/aux/issue-body.md
           printf '\n\n' >> city-discovery/aux/issue-body.md
           count=0
+          DISCOVERY_DEFERRED=75
+          failures=0
           for city in $cities; do
-            python scripts/city_discovery.py --mode auxiliary --city-slug "$city" --out "city-discovery/aux/$city"
+            if python scripts/city_discovery.py --mode auxiliary --city-slug "$city" --out "city-discovery/aux/$city"; then
+              :
+            else
+              status=$?
+              if [ "$status" -eq "$DISCOVERY_DEFERRED" ]; then
+                echo "::warning::Auxiliary discovery deferred for $city; it will be retried on a future run."
+              else
+                echo "::error::Auxiliary discovery failed for $city (exit $status)."
+                failures=$((failures + 1))
+              fi
+              continue
+            fi
             cat "city-discovery/aux/$city/evidence.md" >> city-discovery/aux/issue-body.md
             printf '\n' >> city-discovery/aux/issue-body.md
             count=$((count + 1))
           done
-          if [ "$count" -eq 0 ]; then exit 0; fi
+          if [ "$count" -eq 0 ]; then
+            if [ "$failures" -ne 0 ]; then
+              echo "::error::$failures auxiliary discovery request(s) failed unexpectedly."
+              exit 1
+            fi
+            exit 0
+          fi
           title="[city-discovery] $count candidate(s) pending"
           if [ -n "$existing" ]; then
             gh issue edit "$existing" --title "$title" --body-file city-discovery/aux/issue-body.md
           else
             gh issue create --title "$title" --body-file city-discovery/aux/issue-body.md --label needs:discovery
+          fi
+          if [ "$failures" -ne 0 ]; then
+            echo "::error::$failures auxiliary discovery request(s) failed unexpectedly."
+            exit 1
           fi
 
   batch:
