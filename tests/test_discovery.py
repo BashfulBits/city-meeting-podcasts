@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from citypods.compute.base import InferenceJob, JobResult
+import pytest
+
+from citypods.compute.base import InferenceJob, JobHandle, JobResult
+from citypods.compute.llm import LLMStructuredOutputError
 from citypods.discovery.classify import (
     STRUCTURED_OUTPUT,
     CivicPlatformClassificationResponse,
+    ClassificationDeferred,
     classify,
     parse_classification,
 )
@@ -84,6 +88,41 @@ def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
     assert result == {"eligible": [], "state": {}}
     assert captured.out == ""
     assert "state: restored 3 file(s) from durable storage" in captured.err
+
+
+def test_discovery_script_returns_tempfail_for_invalid_structured_output(monkeypatch, capsys):
+    monkeypatch.setattr(city_discovery_script, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(
+        city_discovery_script, "_request_from_args", lambda _args: (_request(), None)
+    )
+    monkeypatch.setattr(
+        city_discovery_script,
+        "TavilyClient",
+        lambda: SimpleNamespace(search=lambda _request: _results()),
+    )
+    monkeypatch.setattr(city_discovery_script, "LiteLLMBackend", lambda *_: None)
+
+    def invalid_response(*_args):
+        raise LLMStructuredOutputError("structured LLM response failed Pydantic validation")
+
+    monkeypatch.setattr(city_discovery_script, "classify", invalid_response)
+
+    assert city_discovery_script.main(["--mode", "new-city"]) == city_discovery_script.DEFERRED_EXIT
+    assert "discovery deferred" in capsys.readouterr().err
+
+
+def test_classifier_marks_queued_dispatch_for_deferred_retry():
+    class Backend:
+        def run_inference(self, job: InferenceJob):
+            return JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="litellm",
+                ref="request-1",
+            )
+
+    with pytest.raises(ClassificationDeferred, match="queued"):
+        classify(Backend(), _request(), _results())
 
 
 def test_classifier_rejects_source_url_not_in_retrieved_evidence():

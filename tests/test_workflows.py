@@ -75,6 +75,15 @@ def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
     }
 
 
+def test_city_discovery_defers_invalid_model_output_but_surfaces_unexpected_failures():
+    workflow = (WORKFLOWS / "city-discovery.yml").read_text()
+
+    assert workflow.count("DISCOVERY_DEFERRED=75") == 2
+    assert workflow.count('if [ "$status" -eq "$DISCOVERY_DEFERRED" ]; then') == 2
+    assert workflow.count("failures=$((failures + 1))") == 2
+    assert workflow.count('if [ "$failures" -ne 0 ]; then') >= 2
+
+
 @pytest.mark.parametrize(
     "workflow,environment,secret_names",
     [

@@ -241,7 +241,10 @@ verb itself:
     format; reconciliation validates its completed response against the same named model. A queued
     validation failure is deferred rather than re-asked until the Worker has a durable validation-retry
     transition. This preserves cacheable chunk jobs and leaves batching/off-peak scheduling to the
-    dispatch coordinator, not to a task schema.
+    dispatch coordinator, not to a task schema. The discovery CLI reports only a queued job or malformed
+    structured output as `EX_TEMPFAIL` (75), which leaves that city queued for the next scheduled run;
+    the workflow continues across all cities but reports any other infrastructure or code failure as a
+    failed run after completing the remaining candidates.
 - `recipe_hash` = hash of `(city_slug, mode, prompt_version, tavily_result_content)` — a re-run against
   unchanged search results is a free cache hit. Not a hard requirement for a first cut (call volume is
   low enough that caching is a nicety) but cheap to include since the mechanism already exists.

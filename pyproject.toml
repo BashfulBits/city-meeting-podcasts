@@ -57,6 +57,7 @@ asr = [
 # asr-quality-review.yml workflow (this extra's only consumer) has no other reason to install.
 wer = ["jiwer>=3.0"]
 llm = [
+    "pydantic>=2.8",                # task-owned structured-output contracts
     "litellm>=1.74",                # provider-neutral model routing
     "instructor[litellm]>=1.15",    # Pydantic structured outputs and bounded validation retries
 ]

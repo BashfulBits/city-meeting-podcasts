@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import traceback
 from types import SimpleNamespace
 
 import pytest
 from pydantic import BaseModel, ConfigDict
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMBackendError
+from citypods.compute.llm import (
+    LiteLLMBackend,
+    LLMBackendConfig,
+    LLMBackendError,
+    LLMStructuredOutputError,
+)
 from citypods.compute.structured import register_response_model
 
 
@@ -90,18 +96,22 @@ def test_deepseek_instructor_json_mode_retries_pydantic_validation_once():
 
 def test_deepseek_invalid_reply_fails_after_one_instructor_retry():
     calls = []
+    private_marker = "untrusted-output-marker"
+    invalid = '{"value":42,"extra":"' + private_marker + '"}'
 
     def completion(**kwargs):
         calls.append(kwargs)
-        return structured_response('{"value":42}')
+        return structured_response(invalid)
 
     backend = LiteLLMBackend(
         LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
     )
 
-    with pytest.raises(LLMBackendError, match="failed Pydantic validation"):
+    with pytest.raises(LLMStructuredOutputError, match="failed Pydantic validation") as raised:
         backend.run_inference(job(content="meeting text", structured_output="test-output"))
     assert len(calls) == 2
+    traceback_text = "".join(traceback.format_exception(raised.type, raised.value, raised.tb))
+    assert private_marker not in traceback_text
 
 
 def test_blank_actions_variables_preserve_direct_gemini_defaults(monkeypatch):
@@ -161,13 +171,55 @@ def test_dispatch_enqueues_pydantic_schema_and_validates_completed_response():
     assert requests[0][2]["headers"]["idempotency-key"] == "recipe-1"
 
 
+def test_dispatch_consumes_completed_idempotent_resubmit():
+    class Response:
+        def __init__(self, status, body, headers=None):
+            self.status_code = status
+            self._body = body
+            self.headers = headers or {}
+
+        def json(self):
+            return self._body
+
+    class Session:
+        def __init__(self):
+            self.posts = 0
+
+        def post(self, *_args, **_kwargs):
+            self.posts += 1
+            if self.posts == 1:
+                return Response(202, {"id": "chatcmpl-1"}, {"location": "/v1/requests/chatcmpl-1"})
+            return Response(200, {"choices": [{"message": {"content": '{"value":"done"}'}}]})
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+    )
+    queued = backend.run_inference(job(content="meeting text", structured_output="test-output"))
+    completed = backend.run_inference(job(content="meeting text", structured_output="test-output"))
+
+    assert isinstance(queued, JobHandle)
+    assert isinstance(completed, JobResult)
+    assert completed.output["choices"][0]["message"]["content"] == '{"value":"done"}'
+
+
 def test_dispatch_rejects_invalid_structured_result():
+    private_marker = "untrusted-dispatch-output-marker"
+
     class Response:
         status_code = 200
         headers = {}
 
         def json(self):
-            return {"choices": [{"message": {"content": '{"value":42}'}}]}
+            return {
+                "choices": [
+                    {"message": {"content": '{"value":42,"extra":"' + private_marker + '"}'}}
+                ]
+            }
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
@@ -177,7 +229,7 @@ def test_dispatch_rejects_invalid_structured_result():
         ),
         http_session=SimpleNamespace(get=lambda *_args, **_kwargs: Response()),
     )
-    with pytest.raises(LLMBackendError, match="failed Pydantic validation"):
+    with pytest.raises(LLMStructuredOutputError, match="failed Pydantic validation") as raised:
         backend.reconcile(
             JobHandle(
                 task="tag",
@@ -187,6 +239,8 @@ def test_dispatch_rejects_invalid_structured_result():
                 structured_output="test-output",
             )
         )
+    traceback_text = "".join(traceback.format_exception(raised.type, raised.value, raised.tb))
+    assert private_marker not in traceback_text
 
 
 def test_dispatch_rejects_malformed_body_and_cross_host_location():

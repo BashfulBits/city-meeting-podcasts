@@ -103,8 +103,10 @@ dependency-pinning policy like any new dependency.
   **Neither owns provider selection or this project's durable pacing** —
   those depend on our budget/tournament state and the explicit rate-limit policy in §5/§9.
 - The R10 endpoint is **OpenAI-shaped asynchronous transport, not a synchronous LiteLLM provider
-  endpoint**: `POST /v1/chat/completions` returns `202` + a poll location. Therefore `llm.py` must use
-  its enqueue/poll protocol rather than passing the Worker URL as `api_base` to a plain
+  endpoint**: an initial `POST /v1/chat/completions` returns `202` + a poll location; an idempotent
+  re-submit may return that request's terminal `200` response. Therefore `llm.py` must use its
+  enqueue/poll protocol (and consume the terminal idempotent response) rather than passing the Worker URL
+  as `api_base` to a plain
   `litellm.completion()` call. This keeps LiteLLM as the provider adapter without pretending an async
   queue is a synchronous completion API.
 - A Worker deployment may point at (a) a provider's own OpenAI-compatible endpoint, such as Mistral's,

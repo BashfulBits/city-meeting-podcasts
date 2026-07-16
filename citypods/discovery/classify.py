@@ -26,6 +26,10 @@ class ClassificationError(RuntimeError):
     """The classifier result was malformed or did not complete synchronously."""
 
 
+class ClassificationDeferred(ClassificationError):
+    """A queued classification that will be collected by a later scheduled discovery run."""
+
+
 PlatformName = Enum(
     "PlatformName",
     {platform.replace("-", "_").upper(): platform for platform in sorted(KNOWN_PLATFORMS)},
@@ -274,7 +278,7 @@ def classify(
     )
     outcome = backend.run_inference(job)
     if isinstance(outcome, JobHandle):
-        raise ClassificationError("classification is queued; retry it on the next discovery run")
+        raise ClassificationDeferred("classification is queued; retry it on the next discovery run")
     if not isinstance(outcome, JobResult):
         raise ClassificationError("classification backend returned an unsupported result")
     return parse_classification(outcome.output, request, results)

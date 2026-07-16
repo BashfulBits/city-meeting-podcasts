@@ -59,6 +59,10 @@ class LLMBackendError(RuntimeError):
     """A safe, provider-agnostic adapter error (provider response bodies are not exposed)."""
 
 
+class LLMStructuredOutputError(LLMBackendError):
+    """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
+
+
 @dataclass(frozen=True)
 class LLMBackendConfig:
     """Runtime routing configuration; secrets are read from the environment, never persisted."""
@@ -210,10 +214,12 @@ class LiteLLMBackend(Backend):
                 max_retries=1,
                 **self._provider_options(job),
             )
-        except InstructorRetryException as exc:
+        except InstructorRetryException:
             # Do not expose model text or validation feedback in workflow logs.  The caller safely
             # defers and will obtain fresh evidence on its next scheduled run.
-            raise LLMBackendError("structured LLM response failed Pydantic validation") from exc
+            raise LLMStructuredOutputError(
+                "structured LLM response failed Pydantic validation"
+            ) from None
         # Instructor returned a validated object; retain the normalized raw response contract so
         # existing task parsers and result storage remain provider-neutral.
         _ = typed
@@ -226,7 +232,7 @@ class LiteLLMBackend(Backend):
             message = choices[0].get("message")
             if isinstance(message, Mapping) and isinstance(message.get("content"), str):
                 return message["content"]
-        raise LLMBackendError("structured LLM response did not contain message content")
+        raise LLMStructuredOutputError("structured LLM response did not contain message content")
 
     def _validate_reconciled(
         self, output: Mapping[str, Any], structured_output: str | None
@@ -235,10 +241,24 @@ class LiteLLMBackend(Backend):
             return
         try:
             response_model(structured_output).model_validate_json(self._structured_content(output))
-        except (ValueError, TypeError) as exc:
-            raise LLMBackendError(
+        except (ValueError, TypeError):
+            raise LLMStructuredOutputError(
                 "structured dispatched response failed Pydantic validation"
-            ) from exc
+            ) from None
+
+    def _completed_dispatch_result(
+        self,
+        *,
+        task: Task,
+        recipe_hash: str,
+        output: Any,
+        structured_output: str | None,
+    ) -> JobResult:
+        """Validate and normalize a terminal Worker response from either POST or poll."""
+        if not isinstance(output, Mapping):
+            raise LLMBackendError("LLM dispatch returned a non-object response")
+        self._validate_reconciled(output, structured_output)
+        return JobResult(task=task, recipe_hash=recipe_hash, output=output)
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
@@ -267,6 +287,16 @@ class LiteLLMBackend(Backend):
                 headers=headers,
                 timeout=self.config.timeout_seconds,
             )
+            if response.status_code == 200:
+                # An idempotent re-submit can observe a completed request after a prior process
+                # returned a handle.  R12 does not persist that handle, so consume the terminal
+                # response here rather than failing its next scheduled discovery attempt.
+                return self._completed_dispatch_result(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    output=response.json(),
+                    structured_output=structured_name,
+                )
             if response.status_code != 202:
                 raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
             body = response.json()
@@ -320,13 +350,12 @@ class LiteLLMBackend(Backend):
                 return None
             if response.status_code != 200:
                 raise LLMBackendError(f"LLM dispatch poll returned HTTP {response.status_code}")
-            result = JobResult(
-                task=handle.task, recipe_hash=handle.recipe_hash, output=response.json()
+            return self._completed_dispatch_result(
+                task=handle.task,
+                recipe_hash=handle.recipe_hash,
+                output=response.json(),
+                structured_output=handle.structured_output,
             )
-            if not isinstance(result.output, Mapping):
-                raise LLMBackendError("LLM dispatch returned a non-object response")
-            self._validate_reconciled(result.output, handle.structured_output)
-            return result
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
 
@@ -336,6 +365,7 @@ class LiteLLMBackend(Backend):
 __all__ = [
     "LLMBackendConfig",
     "LLMBackendError",
+    "LLMStructuredOutputError",
     "LLM_TASKS",
     "LiteLLMBackend",
     "SUPPORTED_MODELS",

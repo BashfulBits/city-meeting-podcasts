@@ -110,7 +110,7 @@ with a pipeline-version bump.)
 ## Local workflow
 
 ```bash
-pip install -e ".[dev]"                 # needs ffmpeg for audio
+pip install -e ".[dev,llm]"             # full suite; needs ffmpeg for audio
 ruff check . && ruff format --check .    # lint the WHOLE repo, not just citypods/
 pytest -q                                # offline; live endpoint tests are opt-in: pytest -m live
 ```

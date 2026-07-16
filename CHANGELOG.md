@@ -104,7 +104,10 @@ Phase R (Research-Tool Surface)._
   DeepSeek remains in JSON-object mode because its public chat route does not enforce a schema. The
   asynchronous Worker now carries the Pydantic-derived response format and validates a completed result
   during reconciliation, while a validation re-ask remains safely deferred pending a durable queue
-  transition. This changes no stored meeting artifacts or audio/ASR pipeline version.
+  transition. An idempotent re-submit now consumes a completed Worker result; malformed structured output
+  defers without exposing completion text in Actions logs, while other per-city failures complete the
+  remaining queue and then fail the workflow visibly. This changes no stored meeting artifacts or audio/ASR
+  pipeline version.
 
 - **S3-compatible state and coordination reads now survive transient boto failures.** Shared storage
   reads retry transient transport errors, throttling/5xx responses, and the botocore
