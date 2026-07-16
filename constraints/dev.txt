@@ -144,6 +144,7 @@ propcache==0.5.2
     #   yarl
 pydantic==2.13.4
     # via
+    #   citypods (pyproject.toml)
     #   instructor
     #   litellm
     #   openai
