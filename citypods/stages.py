@@ -80,7 +80,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
@@ -273,6 +273,12 @@ class StageContext:
     # Modal/Beam dispatch adapters here with no stage change. None ⇒ build an in-process
     # ``LocalBackend`` on the stage's ``asr_mod`` (keeps the default path behavior-preserving).
     compute_backend: object | None = None
+    # Optional R5 structured tag backend.  It is deliberately separate from the ASR backend so a
+    # catalog build can run deterministic tags without installing or configuring the LLM extra.
+    tag_backend: object | None = None
+    taxonomy_path: Path = Path("config/taxonomy.yml")
+    llm_evaluation_state_path: Path | None = None
+    llm_evaluation_config: dict = field(default_factory=dict)
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
     # EBU R128 loudness normalization (#151). Empty string = disabled.
@@ -448,6 +454,248 @@ class EnrichmentStage(Protocol):
     ) -> StageStats:
         """Enrich the ``_materialize_set`` of ``episodes`` in place, within budget."""
         ...
+
+
+class TagsStage:
+    """Populate the versioned taxonomy from agenda titles/transcripts.
+
+    Rules are cheap and always run. Instructor-backed LLM suggestions are dispatched and retained
+    as shadow candidates; the generic calibration policy decides which candidates become visible.
+    A pending dispatch or a stop signal leaves the deterministic result persisted for the next run.
+    """
+
+    name = "tags"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.llm_evaluation import (
+            apply_admission,
+            config_from_mapping,
+            load_state,
+            policy_fingerprint,
+            visible_candidates,
+        )
+        from citypods.tags import (
+            TAG_PROMPT_VERSION,
+            agenda_document_context,
+            chapter_tag_inputs,
+            decorate_llm_candidates,
+            episode_tag_inputs,
+            llm_tag_suggestions,
+            load_taxonomy,
+            merge_tag_sources,
+            rollup_tags,
+            tag_episode,
+            tag_recipe_hash,
+        )
+
+        stats = StageStats(self.name)
+        try:
+            taxonomy = load_taxonomy(ctx.taxonomy_path)
+        except (OSError, ValueError) as exc:
+            stats.errors.append(f"taxonomy unavailable: {exc}")
+            return stats
+
+        evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
+        evaluation_state = (
+            load_state(ctx.llm_evaluation_state_path)
+            if ctx.llm_evaluation_state_path is not None
+            else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+        )
+        admission_policy = policy_fingerprint(evaluation_config, evaluation_state)
+
+        for ep in _materialize_set(episodes, city.max_episodes):
+            titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
+            chapters = chapter_tag_inputs(ep, ctx.storage)
+            llm_route = (
+                f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
+                f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
+                if ctx.tag_backend is not None
+                else ""
+            )
+            llm_enabled = ctx.tag_backend is not None
+            chapter_fingerprint = [
+                {
+                    "chapter_id": item["chapter_id"],
+                    "title": item["title"],
+                    "start": item["start"],
+                    "end": item["end"],
+                    "agenda_text": item.get("agenda_text", ""),
+                    "transcript_text": item.get("transcript_text", ""),
+                    "transcript_segments": item.get("transcript_segments", []),
+                }
+                for item in chapters
+            ]
+            rules_hash = tag_recipe_hash(
+                taxonomy,
+                agenda_item_titles=titles,
+                agenda_text=agenda_text,
+                transcript_text=transcript_text,
+                llm_enabled=False,
+                chapter_inputs=chapter_fingerprint,
+            )
+            llm_recipe = tag_recipe_hash(
+                taxonomy,
+                agenda_item_titles=titles,
+                agenda_text=agenda_text,
+                transcript_text=transcript_text,
+                llm_enabled=llm_enabled,
+                chapter_inputs=chapter_fingerprint,
+                llm_route=llm_route,
+                prompt_version=TAG_PROMPT_VERSION,
+            )
+            projection_hash = tag_recipe_hash(
+                taxonomy,
+                agenda_item_titles=titles,
+                agenda_text=agenda_text,
+                transcript_text=transcript_text,
+                llm_enabled=llm_enabled,
+                chapter_inputs=chapter_fingerprint,
+                llm_route=llm_route,
+                prompt_version=TAG_PROMPT_VERSION,
+                admission_policy=admission_policy,
+            )
+            if ep.tags_spec_hash == projection_hash and (not chapters or ep.chapter_tags):
+                stats.reused += 1
+                continue
+
+            rule_tags = tag_episode(titles + "\n" + agenda_text, transcript_text, taxonomy)
+            chapter_annotations = []
+            for chapter in chapters:
+                chapter_rules = tag_episode(
+                    chapter["title"] + "\n" + chapter.get("agenda_text", ""),
+                    chapter.get("transcript_text", ""),
+                    taxonomy,
+                )
+                for tag in chapter_rules:
+                    for evidence in tag.get("evidence", []):
+                        evidence["chapter_id"] = chapter["chapter_id"]
+                        if evidence.get("where") == "transcript":
+                            evidence["t"] = next(
+                                (
+                                    round(float(segment["start"]), 3)
+                                    for segment in chapter.get("transcript_segments", [])
+                                    if evidence["span"].casefold() in segment["text"].casefold()
+                                ),
+                                None,
+                            )
+                chapter_annotations.append(
+                    {"chapter_id": chapter["chapter_id"], "tags": chapter_rules}
+                )
+            completed_llm_recipe = ep.tags_llm_recipe_hash
+            candidate_tags = (
+                list(ep.llm_tag_candidates)
+                if not llm_enabled or ep.tags_llm_recipe_hash == llm_recipe
+                else []
+            )
+            visible_llm = (
+                visible_candidates(candidate_tags, config=evaluation_config, state=evaluation_state)
+                if llm_enabled and candidate_tags
+                else []
+            )
+            merged_episode = merge_tag_sources(
+                rule_tags,
+                [tag for tag in visible_llm if not tag.get("chapter_id")],
+            )
+            for annotation in chapter_annotations:
+                chapter_visible = [
+                    tag for tag in visible_llm if tag.get("chapter_id") == annotation["chapter_id"]
+                ]
+                annotation["tags"] = merge_tag_sources(annotation["tags"], chapter_visible)
+            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+            final_hash = projection_hash if completed_llm_recipe == llm_recipe else rules_hash
+            if llm_enabled and completed_llm_recipe != llm_recipe:
+                if ctx.stop is not None and ctx.stop():
+                    stats.defer("tag-llm-stop", sample=ep.uid or ep.guid)
+                    candidate_tags = []
+                    completed_llm_recipe = None
+                else:
+                    try:
+                        suggestions, chapter_suggestions, dispatched = llm_tag_suggestions(
+                            ctx.tag_backend,
+                            taxonomy=taxonomy,
+                            agenda_item_titles=titles,
+                            agenda_text=agenda_text,
+                            transcript_text=transcript_text,
+                            recipe_hash=llm_recipe,
+                            chapter_inputs=chapters,
+                            agenda_documents=agenda_document_context(ep),
+                        )
+                        if dispatched:
+                            stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
+                            candidate_tags = []
+                            completed_llm_recipe = None
+                        else:
+                            episode_candidates = decorate_llm_candidates(
+                                suggestions,
+                                episode_uid=ep.uid,
+                                episode_title=ep.title,
+                                provider_model=llm_route,
+                                taxonomy=taxonomy,
+                                recipe_hash=llm_recipe,
+                            )
+                            chapter_candidates: list[dict[str, Any]] = []
+                            for chapter in chapters:
+                                chapter_candidates.extend(
+                                    decorate_llm_candidates(
+                                        chapter_suggestions.get(chapter["chapter_id"], []),
+                                        episode_uid=ep.uid,
+                                        episode_title=ep.title,
+                                        provider_model=llm_route,
+                                        taxonomy=taxonomy,
+                                        recipe_hash=llm_recipe,
+                                    )
+                                )
+                            candidate_tags = episode_candidates + chapter_candidates
+                            completed_llm_recipe = llm_recipe
+                            visible_llm = visible_candidates(
+                                candidate_tags,
+                                config=evaluation_config,
+                                state=evaluation_state,
+                            )
+                            merged_episode = merge_tag_sources(
+                                rule_tags,
+                                [tag for tag in visible_llm if not tag.get("chapter_id")],
+                            )
+                            for annotation in chapter_annotations:
+                                extra = [
+                                    tag
+                                    for tag in visible_llm
+                                    if tag.get("chapter_id") == annotation["chapter_id"]
+                                ]
+                                annotation["tags"] = merge_tag_sources(annotation["tags"], extra)
+                            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+                            final_hash = projection_hash
+                    except Exception as exc:  # noqa: BLE001 — one bad model reply is item-local
+                        stats.errors.append(f"{ep.uid or ep.guid}: LLM tagging failed: {exc}")
+                        candidate_tags = []
+                        completed_llm_recipe = None
+
+            if llm_enabled and completed_llm_recipe == llm_recipe:
+                candidate_tags = [
+                    apply_admission(tag, config=evaluation_config, state=evaluation_state)
+                    for tag in candidate_tags
+                ]
+                final_hash = projection_hash
+
+            if (
+                ep.tags != final_tags
+                or ep.chapter_tags != chapter_annotations
+                or ep.llm_tag_candidates != candidate_tags
+                or ep.tags_llm_recipe_hash != completed_llm_recipe
+                or ep.tags_spec_hash != final_hash
+            ):
+                ep.tags = final_tags
+                ep.chapter_tags = chapter_annotations
+                ep.llm_tag_candidates = candidate_tags
+                ep.tags_llm_recipe_hash = completed_llm_recipe
+                ep.tags_spec_hash = final_hash
+                stats.ran += 1
+            else:
+                stats.reused += 1
+        return stats
 
 
 def _requests_fast_yield_exit(stop: Callable[[], bool] | None) -> bool:
@@ -3471,6 +3719,7 @@ def default_stages() -> list[EnrichmentStage]:
         AgendaTextStage(),
         MinutesTextStage(),
         ProviderTranscriptDiarizeStage(),
+        TagsStage(),
     ]
 
 
@@ -3503,6 +3752,7 @@ def enrich_stages() -> list[EnrichmentStage]:
         AgendaTextStage(),
         MinutesTextStage(),
         ProviderTranscriptDiarizeStage(),
+        TagsStage(),
     ]
 
 
@@ -3530,6 +3780,7 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),
+    "tag": frozenset({"tags"}),
 }
 
 

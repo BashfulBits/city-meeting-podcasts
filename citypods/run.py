@@ -1182,7 +1182,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize"}
+    post_transcript = {"transcript", "diarize", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -1354,10 +1354,11 @@ def _run_enrich_global_queue(
             # Decoupled from the audio pass: only episodes that now have hosted audio. Under a
             # per-episode transcribe plan (review/18 §3.3), also skip any uid this shard does not
             # own — its source is still loaded for render context, but a sibling shard handles it.
+            tags_in_pass = any(stage.name == "tags" for stage in transcript_stages)
             tx = [
                 item
                 for item in candidates
-                if item[1].hosted_audio_url
+                if (item[1].hosted_audio_url or tags_in_pass)
                 and (owned_uids is None or item[1].uid in owned_uids.get(item[0], frozenset()))
             ]
             print(
@@ -1545,6 +1546,20 @@ def _build_impl(
     compute_backend = make_compute(
         site_config, state_dir=state_dir, storage=None if dry_run else storage
     )
+    tag_backend = None
+    tagging_config = site_config.get("tagging") or {}
+    if tagging_config.get("enabled") and not dry_run:
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        tag_backend = LiteLLMBackend(
+            LLMBackendConfig(
+                model=str(tagging_config.get("llm_model", "gemini/gemini-3-flash-preview")),
+                mode=str(tagging_config.get("llm_mode", "direct")),
+                dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
+                dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
+                timeout_seconds=float(tagging_config.get("timeout_seconds", 30.0)),
+            )
+        )
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
@@ -1709,6 +1724,11 @@ def _build_impl(
         max_kbps=max_kbps,
         dry_run=dry_run,
         compute_backend=compute_backend,
+        tag_backend=tag_backend,
+        taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
+        llm_evaluation_state_path=state_dir
+        / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
+        llm_evaluation_config=(tagging_config.get("evaluation") or {}),
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR

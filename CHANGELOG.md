@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Topic taxonomy and calibrated chapter-scoped tagging (R5).** Added a 37-tag Strong Towns/livability
+  taxonomy, deterministic evidence-backed episode/chapter annotations, taxonomy-ordered episode
+  rollups with a no-chapter fallback, chapter-aware meeting/search payloads, and an Instructor/Pydantic
+  structured LLM path running through dispatch. Validated model suggestions are retained as shadow
+  candidates with quoted, source-checked evidence; a reusable sparse calibration matrix and weekly
+  human-review digest control automatic admission. The initial feature/provider fallback is 100%
+  confidence, so unquantified candidates remain hidden. Policy changes reproject stored candidates
+  without re-running vendor jobs. No manual override field or automatic taxonomy web crawl is
+  introduced; annual taxonomy review and future moderated community proposals are documented in
+  `review/14`.
+
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
   requests transport timeout is recorded as deferred work so a temporary endpoint outage does not

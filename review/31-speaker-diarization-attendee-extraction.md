@@ -243,6 +243,11 @@ attribution the identify-then-confirm rule exists to prevent.
   confirmation workflow actually having run for at least one speaker before any page exists — an empty
   roster produces zero pages, not an error.
 
+**R5 integration (added 2026-07-16).** Once chapter-scoped topic annotations exist, speaker pages can
+  offer a topic facet over that speaker's turns and show the relevant agenda item alongside each quote.
+  This is a derived join on speaker-turn timestamps and `chapter_id`, not a new speaker taxonomy or a
+  reason to classify transcripts independently a second time.
+
 ---
 
 ## Sequencing

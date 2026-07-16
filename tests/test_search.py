@@ -117,8 +117,12 @@ def test_static_search_index_contains_sidecars_without_duplicate_flattened_field
     assert "detailed park report" in doc["backup_text"].lower()
     assert "passed unanimously" in doc["minutes_text"].lower()
     assert "Alex Rivera" in doc["roster_text"] and "Parks budget" in doc["votes_text"]
-    assert doc["chapters"] == [{"start": 42.0, "title": "Parks budget"}]
-    assert doc["segments"] == [{"start": 12.5, "text": "The council discussed the parks budget."}]
+    assert doc["chapters"][0]["start"] == 42.0
+    assert doc["chapters"][0]["title"] == "Parks budget"
+    assert doc["chapters"][0]["tags"] == []
+    assert doc["segments"][0]["start"] == 12.5
+    assert doc["segments"][0]["text"] == "The council discussed the parks budget."
+    assert doc["segments"][0]["chapter_id"] is None
     assert {"transcript_text", "chapters_text", "link_labels_text", "tags_text"}.isdisjoint(doc)
     assert "backup-key" in storage.calls
 

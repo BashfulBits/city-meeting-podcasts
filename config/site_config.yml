@@ -17,6 +17,24 @@ city_request_form:
 city_discovery:
   llm_model: "gemini/gemini-3-flash-preview"
   llm_mode: "direct"  # direct | dispatch
+# R5 topic tagging. Rules are always available. Dispatch collects validated LLM candidates in
+# shadow storage; the generic calibration matrix controls visibility. The initial 1.0 fallback is
+# intentionally conservative and can be lowered only after the weekly human-review process has
+# established how a route's confidence scores behave.
+tagging:
+  enabled: true
+  llm_model: "gemini/gemini-3-flash-preview"
+  llm_mode: "dispatch"  # direct | dispatch; dispatch URL/token remain environment-only
+  taxonomy_path: "config/taxonomy.yml"
+  evaluation:
+    state_path: "llm_evaluation.json"
+    fallback_confidence: 1.0
+    required_precision: 0.95
+    minimum_reviews: 30
+    review_batch_size: 20
+    fallbacks:
+      topic-tags:
+        "litellm:gemini/gemini-3-flash-preview": 1.0
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)

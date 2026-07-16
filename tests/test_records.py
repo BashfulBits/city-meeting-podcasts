@@ -1097,6 +1097,11 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "links",
         "chapters",
         "summary",
+        "tags",
+        "chapter_tags",
+        "llm_tag_candidates",
+        "tags_llm_recipe_hash",
+        "tags_spec_hash",
         "transcript_key",
         "hosted_audio_url",
         "audio_key",
@@ -1345,6 +1350,11 @@ def test_protected_blocks_for_lane():
             "provider_transcript",
             "speakers",
             "integrity",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
@@ -1358,6 +1368,11 @@ def test_protected_blocks_for_lane():
             "minutes_text",
             "minutes_votes",
             "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
         }
     )
     assert protected_blocks_for_lane("align") == frozenset(
@@ -1371,12 +1386,37 @@ def test_protected_blocks_for_lane():
             "minutes_text",
             "minutes_votes",
             "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
         }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
         {
             "audio",
             "transcript",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
+        }
+    )
+    assert protected_blocks_for_lane("tag") == frozenset(
+        {
+            "audio",
+            "transcript",
+            "provider_transcript",
+            "speakers",
             "media_availability",
             "integrity",
             "agenda_text",

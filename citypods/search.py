@@ -22,9 +22,10 @@ from citypods.chapters import episode_served_chapters
 from citypods.feeds import episode_resource_links, meeting_page_url
 from citypods.models import City, Episode
 from citypods.records import load_records, record_to_episode, source_key
+from citypods.tags import chapter_id
 
-SEARCH_SCHEMA_VERSION = 2
-SEARCH_CACHE_VERSION = "3"
+SEARCH_SCHEMA_VERSION = 3
+SEARCH_CACHE_VERSION = "4"
 SEARCH_ASSET = "minisearch-7.1.2.js"
 SEARCH_LICENSE = "LICENSES/minisearch-7.1.2.txt"
 SEARCH_FIELDS = (
@@ -161,7 +162,9 @@ def _artifact_key(ep: Episode, kind: str, storage: Any) -> str | None:
     )
 
 
-def _transcript_segments(data: bytes | None) -> list[dict[str, Any]]:
+def _transcript_segments(
+    data: bytes | None, chapters: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     payload = _json_bytes(data)
     if not isinstance(payload, dict):
         return []
@@ -177,7 +180,14 @@ def _transcript_segments(data: bytes | None) -> list[dict[str, Any]]:
         text = _clean(item["text"], min(12_000, _MAX_TRANSCRIPT_TEXT_CHARS - text_chars))
         if not text:
             continue
-        segments.append({"text": text, "start": round(start, 3)})
+        chapter = None
+        for index, candidate in enumerate(chapters or []):
+            if start >= candidate["start"] and (
+                index == len(chapters or []) - 1 or start < (chapters or [])[index + 1]["start"]
+            ):
+                chapter = candidate.get("id")
+                break
+        segments.append({"text": text, "start": round(start, 3), "chapter_id": chapter})
         text_chars += len(text)
         if len(segments) >= _MAX_TRANSCRIPT_SEGMENTS or text_chars >= _MAX_TRANSCRIPT_TEXT_CHARS:
             break
@@ -236,14 +246,31 @@ def _record_to_document(
     body = ep.body or city.source.get("body") or city.podcast_title
     availability, withheld = _availability(ep)
     chapters: list[dict[str, Any]] = []
-    for chapter in episode_served_chapters(ep):
+    chapter_annotations = {
+        annotation.get("chapter_id"): annotation
+        for annotation in ep.chapter_tags
+        if isinstance(annotation, dict)
+    }
+    for index, chapter in enumerate(episode_served_chapters(ep)):
         if not chapter.get("title"):
             continue
         try:
             start = round(float(chapter.get("start", 0)), 3)
         except (TypeError, ValueError):
             start = 0.0
-        chapters.append({"title": _clean(chapter["title"], 2_000), "start": start})
+        cid = chapter_id(ep, chapter, index)
+        chapters.append(
+            {
+                "id": cid,
+                "title": _clean(chapter["title"], 2_000),
+                "start": start,
+                "tags": [
+                    tag.get("id")
+                    for tag in (chapter_annotations.get(cid) or {}).get("tags", [])
+                    if isinstance(tag, dict) and tag.get("id")
+                ],
+            }
+        )
     agenda_data = _read_artifact(
         storage, _artifact_key(ep, "agenda_text", storage), cache=artifact_cache
     )
@@ -277,7 +304,7 @@ def _record_to_document(
         "links": [{"label": label, "url": url} for label, url in episode_resource_links(ep)],
         "tags": tags,
         "chapters": chapters,
-        "segments": _transcript_segments(transcript_data),
+        "segments": _transcript_segments(transcript_data, chapters),
         "agenda_text": agenda_text or None,
         "backup_text": backup_text or None,
         "backup_labels": backup_labels,
@@ -339,6 +366,7 @@ def _search_record_inputs(record: dict[str, Any]) -> dict[str, Any]:
         "description": record.get("description"),
         "links": record.get("links"),
         "tags": record.get("tags"),
+        "chapter_tags": record.get("chapter_tags"),
         "agenda_text_url": agenda.get("url"),
         "agenda_backup_url": backup.get("url"),
         "minutes_text_url": minutes.get("url"),

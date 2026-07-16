@@ -477,6 +477,7 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             e.published.isoformat(),
             e.description,
             e.summary,
+            e.tags,
             e.transcript_hosted_url,
             e.transcript_synced,
             e.transcript_basis,
@@ -507,6 +508,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "published": ep.published.isoformat(),
         "description": ep.description,
         "summary": ep.summary,
+        "tags": ep.tags,
+        "chapter_tags": ep.chapter_tags,
         "links": sorted((ep.links or {}).items()),
         "chapters": episode_served_chapters(ep),
         "chapters_basis": ep.chapters_basis,
@@ -1057,6 +1060,11 @@ def episode_to_record(ep: Episode) -> dict:
         "chapters": ep.chapters,
         "chapters_basis": ep.chapters_basis,
         "summary": ep.summary,
+        "tags": ep.tags or None,
+        "chapter_tags": ep.chapter_tags or None,
+        "llm_tag_candidates": ep.llm_tag_candidates or None,
+        "tags_llm_recipe_hash": ep.tags_llm_recipe_hash,
+        "tags_spec_hash": ep.tags_spec_hash,
         "agenda_text": {
             "url": ep.agenda_text_url,
             "attempts": ep.agenda_text_attempts,
@@ -1314,6 +1322,13 @@ def record_to_episode(rec: dict) -> Episode:
             else {}
         ),
         summary=rec.get("summary") or "",
+        tags=rec.get("tags") if isinstance(rec.get("tags"), list) else [],
+        chapter_tags=rec.get("chapter_tags") if isinstance(rec.get("chapter_tags"), list) else [],
+        llm_tag_candidates=(
+            rec.get("llm_tag_candidates") if isinstance(rec.get("llm_tag_candidates"), list) else []
+        ),
+        tags_llm_recipe_hash=rec.get("tags_llm_recipe_hash"),
+        tags_spec_hash=rec.get("tags_spec_hash"),
         # v2 transcript block (INFRA-8); v1 records with old transcript_url silently dropped.
         **_transcript_fields_from_rec(rec),
         **_speakers_fields_from_rec(rec),
@@ -1373,6 +1388,11 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "minutes_text",
         "minutes_votes",
         "minutes_roster",
+        "tags",
+        "chapter_tags",
+        "llm_tag_candidates",
+        "tags_llm_recipe_hash",
+        "tags_spec_hash",
     }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
@@ -1399,6 +1419,9 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "transcribe": frozenset({"transcript", "provider_transcript"}),
     "align": frozenset({"transcript", "provider_transcript"}),
     "diarize": frozenset({"speakers", "provider_transcript"}),
+    "tag": frozenset(
+        {"tags", "chapter_tags", "llm_tag_candidates", "tags_llm_recipe_hash", "tags_spec_hash"}
+    ),
 }
 
 

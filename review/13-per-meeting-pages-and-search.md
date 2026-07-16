@@ -382,11 +382,11 @@ A **client-side** search over a generated JSON index — no server until proven 
 documents = all retained meetings, including metadata-only unavailable recordings, with fields:
 `title`, `body`, `city`, `date`, `media_availability`, **chapter/agenda-item titles** (own field,
 timestamped — see clarification below), resource **link labels** (not document text — see
-clarification below), **real agenda-document text** (schema reserved, populated once R3 ships — see
-clarification below and § Data model deltas), `tags` (schema reserved, always empty until R5 — see
-§ Data model deltas), and every available **transcript text** segment (tokenized). Results show snippets
+clarification below), **real agenda-document text** (populated when the R3 sidecar exists — see
+clarification below and § Data model deltas), `tags` (the taxonomy-ordered R5 episode projection when
+available, otherwise empty), and every available **transcript text** segment (tokenized). Results show snippets
 with **timestamps** that deep-link into the meeting page (`…/<uid>/#t=<seconds>`, R1). Filters: city,
-body, date range, topic (inert until R5 populates `tags`), and recording availability. A meeting without
+body, date range, topic (using the R5 episode projection when available), and recording availability. A meeting without
 a transcript remains discoverable from its civic metadata and chapter titles; its result does not
 advertise playback or transcript seeking.
 
@@ -412,6 +412,14 @@ advertise playback or transcript seeking.
   that provider's PDF format, in which case a result still falls back to chapter titles the same way it
   does today. The richer Phase-F "what's being proposed" structured/LLM brief is a separate, still-fully
   post-1.0 feature — R3 only extracts raw text, it doesn't synthesize anything.
+
+**R5 chapter-scoped topic annotations (added 2026-07-16).** Search documents carry a stable chapter
+ID and chapter tag list, while transcript segments carry the chapter ID selected by their served-time
+window. A topic result can therefore identify the specific agenda item and jump to its timestamp.
+Episode-level `tags` remains the facet projection for fast filtering; chapter tags supply result
+context and future quote/highlight retrieval. Transcript timing is the reliable association. R5
+consumes explicit R3 `chapter_index` item text when available, but does not guess from flat agenda or
+packet text. This remains additive and preserves the no-transcript/metadata-only fallback.
 
 ### Engine decision — reversed from the L2 sketch, with reasoning
 
@@ -595,9 +603,8 @@ assumption.
    sidecar is unavailable; `backup_labels` is an empty list and roster/vote/description fields are empty
    strings when absent. `segments` contains every available word-level transcript segment, while manifest
    coverage counts make partial availability explicit.
-   `tags` is **always `[]` today** — schema-reserved for R5
-   (topic tags don't exist anywhere in the codebase yet; `review/14` is itself still L2→L3 with no
-   implemented `Tag`/`TagsStage`) — populating it later is an additive field-fill, not a schema change,
+   `tags` is populated by R5 when the tagging stage has run; older/metadata-only records may retain `[]`.
+   Populating it is an additive field-fill, not a schema change,
    so R4 doesn't
    block on R5 and R5 doesn't need to touch R4's index-building code, only the data it reads.
 3. **Availability handling is not a copy of `feeds.py`'s gating** — `feeds.py:184-185` *excludes*
@@ -663,8 +670,8 @@ coverage.
 - A withheld-media fixture episode **appears in the index** (`is_withheld: true`) but its result renders
   no play/seek affordance — the inverse-of-`feeds.py` behavior from § Data model deltas #3 needs its own
   explicit test, since copy-pasting the feeds.py exclusion pattern would be the natural (wrong) instinct.
-- `tags: []` on every document today; a fixture with a populated `tags` field (simulating R5's future
-  output) round-trips without schema changes.
+- R5's taxonomy-ordered `tags` episode projection and chapter tags round-trip without schema changes;
+  older records may retain an empty projection.
 - `agenda_text: null` on a fixture episode without extraction; a fixture with a populated `agenda_text`
   (simulating R3's output) is findable by a phrase present only in the extracted text, not in that
   episode's chapter titles or transcript — proves it's a genuinely additive search source, not just

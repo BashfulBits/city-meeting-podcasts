@@ -142,6 +142,7 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
         "agenda_text",
         "minutes_text",
         "diarize",
+        "tags",
     ]
     assert [s.name for s in stats] == expected
     # chapters is a no-op (FakeProvider has no fetch_chapters); audio hosts; links defaults.
@@ -216,6 +217,7 @@ def test_default_lane_none_runs_every_stage(tmp_path):
         "agenda_text",
         "minutes_text",
         "diarize",
+        "tags",
     ]
 
 
@@ -224,6 +226,7 @@ def test_production_stage_composition_extracts_minutes_before_diarization():
     names = [stage.name for stage in enrich_stages()]
     assert names.index("links") < names.index("agenda_text") < names.index("minutes_text")
     assert names.index("minutes_text") < names.index("diarize")
+    assert names.index("diarize") < names.index("tags")
 
 
 def test_links_stage_defaults_canonical_video_and_is_idempotent(tmp_path):
