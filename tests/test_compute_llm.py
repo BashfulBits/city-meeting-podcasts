@@ -243,6 +243,35 @@ def test_dispatch_rejects_invalid_structured_result():
     assert private_marker not in traceback_text
 
 
+def test_dispatch_unknown_response_contract_remains_a_version_skew_error():
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            return {"choices": []}
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=SimpleNamespace(get=lambda *_args, **_kwargs: Response()),
+    )
+
+    with pytest.raises(ValueError, match="unknown structured-output contract"):
+        backend.reconcile(
+            JobHandle(
+                task="tag",
+                recipe_hash="recipe-1",
+                backend="litellm",
+                ref="request-1",
+                structured_output="missing-output",
+            )
+        )
+
+
 def test_dispatch_rejects_malformed_body_and_cross_host_location():
     class Response:
         status_code = 202

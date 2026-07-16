@@ -202,7 +202,7 @@ class LiteLLMBackend(Backend):
         """Use Instructor for typed parsing and exactly one validation-feedback retry."""
         try:
             import instructor
-            from instructor.core import InstructorRetryException
+            from instructor.core.exceptions import InstructorRetryException
         except ImportError as exc:
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
         try:
@@ -239,8 +239,9 @@ class LiteLLMBackend(Backend):
     ) -> None:
         if not structured_output:
             return
+        model = response_model(structured_output)
         try:
-            response_model(structured_output).model_validate_json(self._structured_content(output))
+            model.model_validate_json(self._structured_content(output))
         except (ValueError, TypeError):
             raise LLMStructuredOutputError(
                 "structured dispatched response failed Pydantic validation"

@@ -10,6 +10,7 @@ from citypods.discovery.classify import (
     STRUCTURED_OUTPUT,
     CivicPlatformClassificationResponse,
     ClassificationDeferred,
+    PlatformSource,
     classify,
     parse_classification,
 )
@@ -43,6 +44,28 @@ def _results():
         SearchResult("https://example.granicus.com/ViewPublisherRSS.php?view_id=1", "Meetings"),
         SearchResult("https://example.gov", "City of Example"),
     ]
+
+
+def _source_payload(**values: str | None) -> dict[str, str | None]:
+    """Return a strict provider-source object with every nullable field present."""
+    return {field: values.get(field) for field in PlatformSource.model_fields}
+
+
+def _classification_content(**overrides: object) -> str:
+    """Serialize one valid classifier payload for mocked backend replies."""
+    payload: dict[str, object] = {
+        "city_identity": "confirmed",
+        "video_platform": None,
+        "agenda_platform": None,
+        "candidate_urls": [],
+        "video_source": None,
+        "agenda_source": None,
+        "bodies_mentioned": [],
+        "confidence": "low",
+        "reasoning": "test",
+    }
+    payload.update(overrides)
+    return CivicPlatformClassificationResponse.model_validate(payload).model_dump_json()
 
 
 def test_discovery_llm_route_is_task_scoped_yaml_not_generic_environment(monkeypatch):
@@ -130,12 +153,13 @@ def test_classifier_rejects_source_url_not_in_retrieved_evidence():
         "choices": [
             {
                 "message": {
-                    "content": (
-                        '{"video_platform":"granicus","agenda_platform":null,'
-                        '"city_identity":"confirmed",'
-                        '"candidate_urls":["https://example.granicus.com/ViewPublisherRSS.php?view_id=1"],'
-                        '"video_source":{"feed_url":"https://evil.example/feed"},'
-                        '"bodies_mentioned":[],"confidence":"high","reasoning":"test"}'
+                    "content": _classification_content(
+                        video_platform="granicus",
+                        candidate_urls=[
+                            "https://example.granicus.com/ViewPublisherRSS.php?view_id=1"
+                        ],
+                        video_source=_source_payload(feed_url="https://evil.example/feed"),
+                        confidence="high",
                     )
                 }
             }
@@ -160,12 +184,18 @@ def test_classifier_prompt_includes_provider_source_schemas():
                     "choices": [
                         {
                             "message": {
-                                "content": (
-                                    '{"video_platform":"granicus","agenda_platform":null,'
-                                    '"city_identity":"confirmed",'
-                                    '"candidate_urls":["https://example.granicus.com/ViewPublisherRSS.php?view_id=1"],'
-                                    '"video_source":{"feed_url":"https://example.granicus.com/ViewPublisherRSS.php?view_id=1"},'
-                                    '"bodies_mentioned":[],"confidence":"high","reasoning":"test"}'
+                                "content": _classification_content(
+                                    video_platform="granicus",
+                                    candidate_urls=[
+                                        "https://example.granicus.com/ViewPublisherRSS.php?view_id=1"
+                                    ],
+                                    video_source=_source_payload(
+                                        feed_url=(
+                                            "https://example.granicus.com/"
+                                            "ViewPublisherRSS.php?view_id=1"
+                                        )
+                                    ),
+                                    confidence="high",
                                 )
                             }
                         }
@@ -189,15 +219,7 @@ def test_auxiliary_prompt_requires_confirmed_city_identity_for_strict_schema():
                 recipe_hash=job.recipe_hash,
                 output={
                     "choices": [
-                        {
-                            "message": {
-                                "content": (
-                                    '{"video_platform":"swagit","agenda_platform":null,'
-                                    '"candidate_urls":[],"bodies_mentioned":[],'
-                                    '"confidence":"low","reasoning":"test"}'
-                                )
-                            }
-                        }
+                        {"message": {"content": _classification_content(video_platform="swagit")}}
                     ]
                 },
             )
@@ -212,10 +234,7 @@ def test_classifier_declares_one_pydantic_contract_per_task():
 
         def run_inference(self, job: InferenceJob):
             self.calls.append(job)
-            content = (
-                '{"video_platform":null,"agenda_platform":null,"candidate_urls":[],'
-                '"bodies_mentioned":[],"confidence":"low","reasoning":"test"}'
-            )
+            content = _classification_content()
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -238,13 +257,15 @@ def test_classifier_discards_foreign_city_provider_details():
         "choices": [
             {
                 "message": {
-                    "content": (
-                        '{"city_identity":"mismatch","video_platform":"civicengage",'
-                        '"agenda_platform":"civicengage",'
-                        '"candidate_urls":["https://example.gov/foreign"],'
-                        '"video_source":{"feed_url":"https://example.gov/foreign"},'
-                        '"bodies_mentioned":["Foreign City Council"],'
-                        '"confidence":"medium","reasoning":"Evidence is for another city."}'
+                    "content": _classification_content(
+                        city_identity="mismatch",
+                        video_platform="civicengage",
+                        agenda_platform="civicengage",
+                        candidate_urls=["https://example.gov/foreign"],
+                        video_source=_source_payload(feed_url="https://example.gov/foreign"),
+                        bodies_mentioned=["Foreign City Council"],
+                        confidence="medium",
+                        reasoning="Evidence is for another city.",
                     )
                 }
             }
