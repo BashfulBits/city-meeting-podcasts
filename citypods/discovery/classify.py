@@ -31,17 +31,66 @@ CLASSIFICATION_RESPONSE_SCHEMA: dict[str, Any] = {
         "candidate_urls": {"type": "array", "items": {"type": "string"}},
         "video_source": {
             "type": ["object", "null"],
-            "additionalProperties": {"type": "string"},
+            "properties": {
+                "feed_url": {"type": ["string", "null"]},
+                "list_url": {"type": ["string", "null"]},
+                "api_base": {"type": ["string", "null"]},
+                "portal_url": {"type": ["string", "null"]},
+                "calendar_url": {"type": ["string", "null"]},
+                "granicus_base": {"type": ["string", "null"]},
+                "backfill_since": {"type": ["string", "null"]},
+                "agenda_url": {"type": ["string", "null"]},
+                "minutes_url": {"type": ["string", "null"]},
+                "body": {"type": ["string", "null"]},
+            },
+            "required": [
+                "feed_url",
+                "list_url",
+                "api_base",
+                "portal_url",
+                "calendar_url",
+                "granicus_base",
+                "backfill_since",
+                "agenda_url",
+                "minutes_url",
+                "body",
+            ],
+            "additionalProperties": False,
         },
         "agenda_source": {
             "type": ["object", "null"],
-            "additionalProperties": {"type": "string"},
+            "properties": {
+                "feed_url": {"type": ["string", "null"]},
+                "list_url": {"type": ["string", "null"]},
+                "api_base": {"type": ["string", "null"]},
+                "portal_url": {"type": ["string", "null"]},
+                "calendar_url": {"type": ["string", "null"]},
+                "granicus_base": {"type": ["string", "null"]},
+                "backfill_since": {"type": ["string", "null"]},
+                "agenda_url": {"type": ["string", "null"]},
+                "minutes_url": {"type": ["string", "null"]},
+                "body": {"type": ["string", "null"]},
+            },
+            "required": [
+                "feed_url",
+                "list_url",
+                "api_base",
+                "portal_url",
+                "calendar_url",
+                "granicus_base",
+                "backfill_since",
+                "agenda_url",
+                "minutes_url",
+                "body",
+            ],
+            "additionalProperties": False,
         },
         "bodies_mentioned": {"type": "array", "items": {"type": "string"}},
         "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
         "reasoning": {"type": "string"},
     },
     "required": [
+        "city_identity",
         "video_platform",
         "agenda_platform",
         "candidate_urls",
@@ -101,12 +150,12 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
         },
     }
     response_fields = (
-        "video_platform, agenda_platform, candidate_urls, video_source, agenda_source, "
+        "city_identity (confirmed|unconfirmed|mismatch), video_platform, agenda_platform, "
+        "candidate_urls, video_source, agenda_source, "
         "bodies_mentioned, confidence (low|medium|high), and reasoning"
     )
     identity_instruction = ""
     if request.mode == "new-city":
-        response_fields = "city_identity (confirmed|unconfirmed|mismatch), " + response_fields
         identity_instruction = (
             " For new-city mode, city_identity is confirmed only when retrieved evidence "
             "identifies the requested city and state. Set it to mismatch when results identify "
@@ -114,6 +163,8 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
             "establish the requested municipality. When identity is mismatch or unconfirmed, "
             "set both platforms to null and return no candidate URLs, source mappings, or bodies."
         )
+    else:
+        identity_instruction = " In auxiliary mode, set city_identity to confirmed."
     instruction = (
         "Classify civic video and agenda platforms only from retrieved_results. "
         "Do not invent URLs, and only put a URL in candidate_urls when it appears exactly "
@@ -124,7 +175,8 @@ def _prompt(request: DiscoveryRequest, results: list[SearchResult]) -> list[dict
         f"video_platform unchanged. Return one JSON object with {response_fields}. "
         "source fields must follow these provider schemas: "
         + json.dumps(source_schemas, sort_keys=True)
-        + ". A source mapping is optional; use null rather than guessing any required field. "
+        + ". A source mapping is optional; use null, or include every source key with null for "
+        "unknown values, rather than guessing. "
         "Every URL "
         "inside a source mapping must appear exactly in retrieved_results." + identity_instruction
     )
@@ -188,7 +240,11 @@ def _source(value: Any, *, retrieved_urls: set[str]) -> dict[str, Any] | None:
         return None
     out: dict[str, Any] = {}
     for key, item in value.items():
-        if not isinstance(key, str) or not isinstance(item, (str, int, float, bool)):
+        if not isinstance(key, str):
+            return None
+        if item is None:
+            continue
+        if not isinstance(item, (str, int, float, bool)):
             return None
         if isinstance(item, str) and item.startswith(("http://", "https://")):
             if item not in retrieved_urls:

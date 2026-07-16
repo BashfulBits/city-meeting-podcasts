@@ -149,6 +149,26 @@ def test_deepseek_invalid_schema_reply_fails_after_one_retry():
     assert len(calls) == 2
 
 
+def test_structured_job_fails_closed_for_dispatch_until_schema_is_durable():
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=SimpleNamespace(),
+        supports_response_schema=lambda _model: True,
+    )
+
+    with pytest.raises(LLMBackendError, match="require direct mode"):
+        backend.run_inference(
+            job(
+                content="meeting text",
+                response_schema={"name": "test_output", "schema": {"type": "object"}},
+            )
+        )
+
+
 def test_blank_actions_variables_preserve_direct_gemini_defaults(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "")
     monkeypatch.setenv("LLM_MODE", "")

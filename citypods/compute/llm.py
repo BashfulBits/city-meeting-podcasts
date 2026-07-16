@@ -140,7 +140,6 @@ class LiteLLMBackend(Backend):
         self._completion = completion
         self._session = http_session or requests.Session()
         self._supports_response_schema = supports_response_schema
-        self._dispatch_schemas: dict[str, Mapping[str, Any]] = {}
 
     def _completion_fn(self) -> Callable[..., Any]:
         """Resolve LiteLLM lazily so users of ASR-only paths need not install the extra."""
@@ -300,6 +299,15 @@ class LiteLLMBackend(Backend):
                 self._validate_structured_output(result.output, schema)
             return result
 
+        if schema is not None:
+            # The dispatch Worker persists only the OpenAI-shaped request/reference today, not the
+            # task schema or a retry record. Accepting this job would let a process restart bypass
+            # local validation on reconciliation, so structured jobs fail closed until that durable
+            # protocol is extended.
+            raise LLMBackendError(
+                "structured LLM jobs require direct mode until dispatch persists response schemas"
+            )
+
         headers = {"content-type": "application/json"}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
@@ -320,8 +328,6 @@ class LiteLLMBackend(Backend):
                 ref = body.get("id")
             if not ref:
                 raise LLMBackendError("LLM dispatch response omitted a request reference")
-            if schema is not None:
-                self._dispatch_schemas[ref] = schema
             return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend=self.name, ref=ref)
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch request failed") from exc
@@ -363,13 +369,11 @@ class LiteLLMBackend(Backend):
                 return None
             if response.status_code != 200:
                 raise LLMBackendError(f"LLM dispatch poll returned HTTP {response.status_code}")
-            result = JobResult(
+            return JobResult(
                 task=handle.task,
                 recipe_hash=handle.recipe_hash,
                 output=response.json(),
             )
-            self._validate_structured_output(result.output, self._dispatch_schemas.pop(ref, None))
-            return result
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
 

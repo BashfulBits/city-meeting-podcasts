@@ -130,11 +130,11 @@ def test_classifier_prompt_includes_provider_source_schemas():
     }
 
 
-def test_auxiliary_prompt_omits_new_city_identity_contract():
+def test_auxiliary_prompt_requires_confirmed_city_identity_for_strict_schema():
     class Backend:
         def run_inference(self, job: InferenceJob):
             prompt = job.inputs["messages"][0]["content"]
-            assert "city_identity" not in prompt
+            assert "In auxiliary mode, set city_identity to confirmed" in prompt
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,

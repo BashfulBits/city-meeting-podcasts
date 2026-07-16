@@ -237,7 +237,9 @@ verb itself:
     this once as a JSON Schema. The shared LiteLLM backend uses provider-native strict structured
     output where available (Gemini/Mistral); DeepSeek's JSON mode receives central local validation
     and one generic corrective retry because its public chat API does not enforce response schemas.
-    A second invalid response is deferred, never repaired or consumed by task code.
+    A second invalid response is deferred, never repaired or consumed by task code. Structured jobs
+    require the direct LiteLLM transport for now: the asynchronous dispatch Worker fails closed until
+    it persists the schema and retry record alongside each queued request.
 - `recipe_hash` = hash of `(city_slug, mode, prompt_version, tavily_result_content)` — a re-run against
   unchanged search results is a free cache hit. Not a hard requirement for a first cut (call volume is
   low enough that caching is a nicety) but cheap to include since the mechanism already exists.
