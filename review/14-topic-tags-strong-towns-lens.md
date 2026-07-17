@@ -48,6 +48,33 @@ official document link and optional section/page locator. Review decisions are i
 [`llm-tag-review-ingest.yml`](../.github/workflows/llm-tag-review-ingest.yml), refresh the matrix, and
 make newly qualified tags visible on the next normal build without another LLM call.
 
+## Post-implementation review hardening (2026-07-17)
+
+A full review of the R5 branch before it merges found and fixed several correctness/integrity gaps:
+`merge_persisted()` now restores the tag fields (it silently dropped them, so every normal run
+re-tagged and re-dispatched every episode); `chapter_id()` now resolves a served chapter's source
+identity by its stamped true position rather than served-list position, which desynced whenever
+`remap()` dropped an earlier chapter; the fallback-confidence admission check now requires the
+candidate to strictly *exceed* an unreviewed fallback (not just meet it), so a model reporting
+exactly `1.0` confidence can no longer bypass calibration; `_transcript_region()` now traces a quote's
+exact contiguous span instead of OR-matching its first/last word, which could produce a bogus,
+episode-spanning evidence timestamp; and the weekly review workflow's `/llm-ingest` comment trigger
+now requires collaborator-or-above `author_association` and a matching issue title (previously any
+public commenter could fabricate a calibration review), its matrix jobs are serialized
+(`max-parallel: 1`) to stop concurrent runs from clobbering each other's recorded decisions, and
+`render_review_body`/`parse_review` no longer let untrusted candidate text (explanation,
+document_locator) forge a checkbox decision or spoof the marker a review is parsed from.
+
+Two related gaps are deliberately left open, tracked for the LLM-scheduling/adapter refactor
+(review/33) landing ahead of this branch: (1) `ingest_review_body()` still trusts the candidate
+JSON embedded in an *edited* review issue verbatim, with no cross-check against a durable,
+feature-owned candidate ledger — closing this needs the generic evaluator to gain a lookup
+capability into feature-specific storage, which belongs in that adapter rework, not bolted on here;
+and (2) `citypods/llm_evaluation.py`'s calibration key and `StageContext`'s `tag_backend`/
+`taxonomy_path`/`llm_evaluation_config` fields are still populated only from R5's `tagging:` config
+block despite being named generically — the module is feature-independent in intent, not yet in
+wiring. Both will be revisited once R5's adapter is migrated onto the new plumbing.
+
 ## The taxonomy (Strong Towns lens)
 
 The initial taxonomy is versioned in [`config/taxonomy.yml`](../config/taxonomy.yml), with compact

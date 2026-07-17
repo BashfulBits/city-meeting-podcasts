@@ -14,6 +14,7 @@ from citypods.tags import (
     tag_episode,
     taxonomy_from_dict,
 )
+from citypods.timeline import Segment, Timeline
 
 
 def test_seed_taxonomy_is_flat_and_contains_the_approved_unique_topics():
@@ -59,6 +60,29 @@ def test_rules_are_explainable_and_preserve_agenda_transcript_location():
     ]
 
 
+def test_exclude_terms_suppress_a_match_found_in_a_different_source():
+    """The exclude check must run against the combined agenda+transcript text, not each source
+    independently -- otherwise an exclude term present only in the agenda (e.g. "school zoning")
+    fails to suppress an include match found only in the transcript."""
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [
+                {
+                    "id": "zoning-reform",
+                    "source_refs": ["example"],
+                    "rules": {"include": ["zoning"], "exclude": ["school zoning"]},
+                }
+            ],
+        }
+    )
+    tags = tag_episode(
+        "School Zoning Boundary Adjustment", "the current zoning code applies here", taxonomy
+    )
+    assert tags == []
+
+
 def test_llm_suggestions_add_without_replacing_rule_provenance():
     rules = [
         {
@@ -87,6 +111,30 @@ def test_llm_suggestions_add_without_replacing_rule_provenance():
     assert [tag["id"] for tag in merged] == ["street-trees", "new-tag"]
     assert merged[0]["source"] == "rule"
     assert merged[0]["explanation"] == "The agenda discusses trees."
+
+
+def test_rollup_keeps_the_highest_llm_confidence_across_scopes():
+    """A tag can be suggested at episode scope and again at chapter scope with a different LLM
+    confidence. The rolled-up episode facet must keep the highest of the two, not whichever
+    occurrence happened to be merged first -- an earlier, lower-confidence occurrence must not
+    permanently shadow a later, better-supported one for the same tag id."""
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    episode_tags = [{"id": "housing", "source": "llm", "confidence": 0.4, "evidence": []}]
+    chapter_annotations = [
+        {
+            "chapter_id": "ch-1",
+            "tags": [{"id": "housing", "source": "llm", "confidence": 0.91, "evidence": []}],
+        }
+    ]
+    rolled = rollup_tags(episode_tags, chapter_annotations, taxonomy)
+    assert rolled[0]["id"] == "housing"
+    assert rolled[0]["confidence"] == 0.91
 
 
 def test_chapter_ids_use_source_data_and_rollup_is_taxonomy_ordered():
@@ -124,6 +172,54 @@ def test_chapter_ids_use_source_data_and_rollup_is_taxonomy_ordered():
         {"chapter_id": inputs[0]["chapter_id"], "tags": [{"id": "trees", "source": "rule"}]},
     ]
     assert [tag["id"] for tag in rollup_tags([], annotations, taxonomy)] == ["housing", "trees"]
+
+
+def test_chapter_id_survives_a_dropped_chapter():
+    """remap() drops any chapter whose start falls in a cut span, so the served list's index no
+    longer lines up with its position in source_chapters. chapter_id() must resolve each served
+    chapter's identity from its true source position (chapters.py's source_index stamp), not
+    from the served-list position — otherwise a later chapter picks up an earlier, dropped
+    chapter's title/start and gets the wrong "stable" id."""
+    ep = Episode(
+        "g1",
+        "Meeting",
+        datetime(2026, 1, 1, tzinfo=UTC),
+        "https://example.test/video",
+        source_chapters=[
+            {"start": 0, "title": "Call to order"},
+            {"start": 450, "title": "Dropped item (falls in a cut span)"},
+            {"start": 700, "title": "Housing plan"},
+        ],
+        timeline=Timeline(
+            version="silence-v1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=300,
+                ),
+                Segment(
+                    served_start=300,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3600,
+                ),
+            ),
+        ),
+    )
+    inputs = chapter_tag_inputs(ep)
+    assert len(inputs) == 2  # the middle chapter was dropped
+    assert inputs[0]["title"] == "Call to order"
+    assert inputs[1]["title"] == "Housing plan"
+    # The served chapter at index 1 must be identified using source_chapters[2] ("Housing
+    # plan"), not source_chapters[1] ("Dropped item") -- the bug this guards against.
+    assert inputs[1]["chapter_id"] == chapter_id(ep, ep.source_chapters[2], 2)
+    assert inputs[1]["chapter_id"] != chapter_id(ep, ep.source_chapters[1], 1)
 
 
 def test_transcript_windows_are_the_reliable_chapter_association():
@@ -223,3 +319,19 @@ def test_llm_evidence_is_a_quoted_region_with_transcript_timing_and_document_lin
         },
     ]
     assert TAG_PROMPT_VERSION == "2"
+
+
+def test_transcript_region_does_not_span_the_whole_episode_on_a_common_word():
+    """The old heuristic OR-matched only the quote's first/last word against each segment, so a
+    common word like "the" could pull in unrelated segments from anywhere in the transcript and
+    yield a bogus, episode-spanning timestamp range. The fix must trace the quote's own
+    contiguous match back to only the segments it actually spans."""
+    from citypods.tags import _transcript_region
+
+    segments = [
+        {"start": 0.0, "end": 2.0, "text": "the meeting is called to order"},
+        {"start": 100.0, "end": 103.0, "text": "the new zoning plan is approved"},
+        {"start": 500.0, "end": 502.0, "text": "the session is adjourned"},
+    ]
+    start, end = _transcript_region("the new zoning plan is approved", segments)
+    assert (start, end) == (100.0, 103.0)

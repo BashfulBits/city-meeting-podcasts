@@ -270,7 +270,7 @@ def render_meeting_page(
             ),
             "source_url": _source_deeplink(city, ep, float(ch.get("start", 0))),
         }
-        for index, ch in enumerate(episode_served_chapters(ep))
+        for index, ch in enumerate(episode_served_chapters(ep, with_source_index=True))
     ]
     report_url = None
     github_repo = (site_config or {}).get("github_repo")

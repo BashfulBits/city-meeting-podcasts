@@ -69,7 +69,18 @@ def _text_values(value: Any) -> list[str]:
     if isinstance(value, dict):
         values: list[str] = []
         for key, item in value.items():
-            if key not in {"evidence", "source_url", "method", "chapter_index"}:
+            # confidence/explanation/source are LLM-tag bookkeeping, not searchable content —
+            # letting them through would leak a raw model sentence and a numeric confidence
+            # score into the public per-episode search field and site-wide tag facet.
+            if key not in {
+                "evidence",
+                "source_url",
+                "method",
+                "chapter_index",
+                "confidence",
+                "explanation",
+                "source",
+            }:
                 values.extend(_text_values(item))
         return values
     if isinstance(value, list | tuple):
@@ -251,7 +262,7 @@ def _record_to_document(
         for annotation in ep.chapter_tags
         if isinstance(annotation, dict)
     }
-    for index, chapter in enumerate(episode_served_chapters(ep)):
+    for index, chapter in enumerate(episode_served_chapters(ep, with_source_index=True)):
         if not chapter.get("title"):
             continue
         try:

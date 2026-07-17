@@ -162,13 +162,16 @@ def tag_episode(
         ("agenda", agenda_item_titles or ""),
         ("transcript", transcript_text or ""),
     )
+    # Exclude terms must suppress a match regardless of which source they appear in — an exclude
+    # found only in the agenda must still block an include match found only in the transcript.
+    combined_text = "\n".join(text for _, text in inputs if text)
     result: list[dict[str, Any]] = []
     for tag in taxonomy.tags:
+        if any(_literal_pattern(pattern).search(combined_text) for pattern in tag.exclude):
+            continue
         evidence: list[TagEvidence] = []
         for where, text in inputs:
             if not text:
-                continue
-            if any(_literal_pattern(pattern).search(text) for pattern in tag.exclude):
                 continue
             evidence.extend(_evidence_for(text, where=where, patterns=tag.include))
         if evidence:
@@ -309,13 +312,24 @@ def _timed_transcript_segments(data: bytes | None, fmt: str | None) -> list[dict
 
 
 def chapter_id(ep: Any, chapter: dict[str, Any], index: int) -> str:
-    """Stable identity based on source chapter data, never remapped served time."""
+    """Stable identity based on source chapter data, never remapped served time.
+
+    ``index`` is the chapter's position in the *served* list, which no longer matches its
+    position in ``ep.source_chapters`` once an earlier chapter has been dropped by
+    :func:`citypods.timeline.remap` (a chapter whose start falls in a cut span). When the
+    served chapter carries a ``source_index`` (stamped by
+    :func:`citypods.chapters.episode_served_chapters`), that true source position is used
+    instead of ``index``.
+    """
+    lookup_index = chapter.get("source_index")
+    if not isinstance(lookup_index, int):
+        lookup_index = index
     source = chapter
     source_chapters = getattr(ep, "source_chapters", None) or []
-    if index < len(source_chapters) and isinstance(source_chapters[index], dict):
-        source = source_chapters[index]
+    if 0 <= lookup_index < len(source_chapters) and isinstance(source_chapters[lookup_index], dict):
+        source = source_chapters[lookup_index]
     payload = {
-        "index": index,
+        "index": lookup_index,
         "start": source.get("start"),
         "title": str(source.get("title") or "").strip(),
     }
@@ -327,7 +341,11 @@ def chapter_id(ep: Any, chapter: dict[str, Any], index: int) -> str:
 
 def chapter_tag_inputs(ep: Any, storage: Any = None) -> list[dict[str, Any]]:
     """Return chapter windows with stable IDs and served-time transcript evidence."""
-    chapters = [chapter for chapter in episode_served_chapters(ep) if isinstance(chapter, dict)]
+    chapters = [
+        chapter
+        for chapter in episode_served_chapters(ep, with_source_index=True)
+        if isinstance(chapter, dict)
+    ]
     transcript_data = _read_storage_bytes(storage, ep.transcript_key)
     segments = sorted(
         _timed_transcript_segments(transcript_data, ep.transcript_format),
@@ -440,26 +458,45 @@ def _contains_text(text: str, quote: str) -> bool:
 def _transcript_region(
     quote: str, segments: list[dict[str, Any]]
 ) -> tuple[float | None, float | None]:
-    """Find a quoted transcript region without trusting model-supplied offsets."""
-    if not segments or not _contains_text(
-        " ".join(str(item.get("text") or "") for item in segments), quote
-    ):
+    """Find a quoted transcript region without trusting model-supplied offsets.
+
+    Locates the quote as a contiguous span in the normalized, joined segment text and traces
+    its exact start/end offsets back to the segments that contain them. This replaces an
+    earlier heuristic that matched any segment containing just the quote's first or last word,
+    which let a common word (e.g. "the") pull in unrelated segments from anywhere in the
+    transcript and produce a bogus, episode-spanning timestamp range.
+    """
+
+    def normalize(value: str) -> str:
+        return re.sub(r"\s+", " ", value).strip().casefold()
+
+    normalized_quote = normalize(quote)
+    if not segments or not normalized_quote:
         return None, None
-    words = re.findall(r"\w+", quote.casefold())
-    first = words[0] if words else ""
-    last = words[-1] if words else first
-    selected = [
-        item
-        for item in segments
-        if first in str(item.get("text") or "").casefold()
-        or last in str(item.get("text") or "").casefold()
-    ]
-    if not selected:
+
+    pieces: list[str] = []
+    owners: list[int] = []
+    for index, item in enumerate(segments):
+        text = normalize(str(item.get("text") or ""))
+        if not text:
+            continue
+        if pieces:
+            pieces.append(" ")
+            owners.append(index)
+        pieces.append(text)
+        owners.extend([index] * len(text))
+    joined = "".join(pieces)
+    match_start = joined.find(normalized_quote)
+    if match_start == -1:
         return None, None
-    start = selected[0].get("start")
-    end = selected[-1].get("end")
+    match_end = min(match_start + len(normalized_quote) - 1, len(owners) - 1)
+
+    start_segment = segments[owners[match_start]]
+    end_segment = segments[owners[match_end]]
+    start = start_segment.get("start")
+    end = end_segment.get("end")
     if end is None:
-        end = start
+        end = end_segment.get("start")
     return start, end
 
 
@@ -474,7 +511,7 @@ def _ensure_llm_contract():
     class Evidence(BaseModel):
         model_config = ConfigDict(extra="forbid")
         where: _Literal["agenda", "transcript"]
-        quote: str = Field(min_length=1, max_length=1200)
+        quote: str = Field(min_length=3, max_length=1200)
         start: float | None = Field(default=None, ge=0.0)
         end: float | None = Field(default=None, ge=0.0)
         document_url: str | None = None
@@ -486,7 +523,7 @@ def _ensure_llm_contract():
         id: str = Field(min_length=1, max_length=100)
         chapter_id: str | None = None
         confidence: float = Field(ge=0.0, le=1.0)
-        explanation: str = Field(default="", max_length=500)
+        explanation: str = Field(min_length=1, max_length=500)
         evidence: list[Evidence] = Field(default_factory=list, max_length=8)
 
     class Response(BaseModel):
@@ -732,6 +769,15 @@ def rollup_tags(
         if value.get("source") == "rule":
             existing["source"] = "rule"
             existing["confidence"] = 1.0
+        elif existing.get("source") != "rule":
+            new_confidence = value.get("confidence")
+            existing_confidence = existing.get("confidence")
+            if isinstance(new_confidence, int | float) and (
+                not isinstance(existing_confidence, int | float)
+                or new_confidence > existing_confidence
+            ):
+                existing["source"] = value.get("source", existing.get("source"))
+                existing["confidence"] = new_confidence
         if value.get("explanation") and not existing.get("explanation"):
             existing["explanation"] = value["explanation"]
 

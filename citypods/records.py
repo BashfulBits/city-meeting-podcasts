@@ -1680,6 +1680,11 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.source_chapters = rec.get("source_chapters") or ep.source_chapters
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
+        ep.tags = rec.get("tags") or ep.tags
+        ep.chapter_tags = rec.get("chapter_tags") or ep.chapter_tags
+        ep.llm_tag_candidates = rec.get("llm_tag_candidates") or ep.llm_tag_candidates
+        ep.tags_llm_recipe_hash = rec.get("tags_llm_recipe_hash", ep.tags_llm_recipe_hash)
+        ep.tags_spec_hash = rec.get("tags_spec_hash", ep.tags_spec_hash)
         persisted_source = record_source_duration_seconds(rec)
         if persisted_source is not None and episode_source_duration_seconds(ep) is None:
             set_source_duration_seconds(ep, persisted_source)

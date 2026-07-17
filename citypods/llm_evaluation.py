@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+
+from citypods.security import SecurityError, validate_source_url
 
 STATE_VERSION = 1
 DEFAULT_STATE_NAME = "llm_evaluation.json"
@@ -156,7 +157,13 @@ def apply_admission(
     value["candidate_id"] = str(candidate.get("candidate_id") or candidate_id(candidate))
     value["admission_threshold"] = threshold
     value["admission_basis"] = basis
-    value["admission"] = "admitted" if confidence >= threshold else "shadow"
+    # A "calibrated" threshold is itself an observed confidence value from real human review, so
+    # meeting it exactly must admit. An unreviewed "fallback" threshold carries no such evidence;
+    # requiring the candidate to strictly exceed it keeps a fallback of 1.0 truly unreachable
+    # (confidence is clamped to <= 1.0), rather than admitting on a model reporting exactly 1.0
+    # with zero real calibration behind it.
+    admitted = confidence > threshold if basis == "fallback" else confidence >= threshold
+    value["admission"] = "admitted" if admitted else "shadow"
     return value
 
 
@@ -318,8 +325,17 @@ def select_review_candidates(
 
 
 def _safe_link(url: str) -> str | None:
-    parsed = urlparse(url)
-    return url if parsed.scheme in {"http", "https"} and parsed.netloc else None
+    """Only render a document link the project's shared SSRF gate would allow fetching.
+
+    ``resolve=False`` is the same offline/fast mode the gate uses at config-load time: this is
+    a render-time decision about a Markdown link label, not a network fetch, so DNS resolution
+    isn't needed here (and would make link rendering depend on network access at all).
+    """
+    try:
+        validate_source_url(url, resolve=False)
+    except SecurityError:
+        return None
+    return url
 
 
 def _quote_block(text: str) -> list[str]:
@@ -362,7 +378,9 @@ def render_review_body(
         "",
         "## LLM explanation",
         "",
-        str(applied.get("explanation") or "_(none supplied)_"),
+        # Untrusted model text, blockquoted for the same reason evidence quotes are: it must
+        # never read as an unquoted "- [x] Correct" line and be mistaken for a real decision.
+        *(_quote_block(applied.get("explanation") or "") or ["_(none supplied)_"]),
         "",
         "## Evidence",
         "",
@@ -402,10 +420,17 @@ _DECISION_RE = re.compile(
 
 
 def parse_review(body: str) -> tuple[dict[str, Any], str]:
-    marker = re.search(re.escape(REVIEW_MARKER) + r"(?P<meta>\{.*?\})\s*-->", body, re.DOTALL)
-    if not marker:
+    # render_review_body() always appends the genuine marker last, after the checkboxes. Untrusted
+    # candidate text rendered earlier (explanation, document_locator) is never grounded against
+    # source material, so it could otherwise be crafted to contain a marker-shaped decoy earlier
+    # in the body; take the LAST match so a decoy earlier in the body can never be mistaken for
+    # the real one.
+    markers = list(
+        re.finditer(re.escape(REVIEW_MARKER) + r"(?P<meta>\{.*?\})\s*-->", body, re.DOTALL)
+    )
+    if not markers:
         raise ValueError("LLM review metadata missing")
-    metadata = json.loads(marker.group("meta"))
+    metadata = json.loads(markers[-1].group("meta"))
     checked = [
         m.group("label").lower()
         for m in _DECISION_RE.finditer(body)
@@ -443,6 +468,22 @@ def ingest_review_body(
 
 
 def policy_fingerprint(config: EvaluationConfig, state: dict[str, Any]) -> str:
+    """Fingerprint only the parts of the matrix that actually change an admission decision.
+
+    ``refresh_matrix`` stamps every row with a fresh ``updated_at`` on every call regardless of
+    whether ``qualified``/``threshold`` changed, so hashing the raw rows would change this
+    fingerprint (and therefore invalidate every episode's cached projection) after every human
+    review is ingested, even when no admission decision moved at all.
+    """
+    stable_rows = [
+        {
+            "key": row.get("key"),
+            "qualified": row.get("qualified"),
+            "threshold": row.get("threshold"),
+        }
+        for row in state.get("matrix", [])
+        if isinstance(row, dict)
+    ]
     return _json_hash(
         {
             "config": {
@@ -451,7 +492,7 @@ def policy_fingerprint(config: EvaluationConfig, state: dict[str, Any]) -> str:
                 "minimum_reviews": config.minimum_reviews,
                 "fallbacks": config.fallbacks or {},
             },
-            "matrix": state.get("matrix", []),
+            "matrix": stable_rows,
         }
     )
 

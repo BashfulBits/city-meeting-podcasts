@@ -590,9 +590,14 @@ class TagsStage:
                 if not llm_enabled or ep.tags_llm_recipe_hash == llm_recipe
                 else []
             )
+            # Visibility is a pure projection of whatever candidates are already on hand, not of
+            # whether *this* run can dispatch a new LLM call: gating it on ``llm_enabled`` would
+            # strip already-admitted candidates from ``ep.tags``/``ep.chapter_tags`` the moment
+            # tagging is disabled or a dry run has no live backend, even though candidate_tags
+            # (preserved above) is untouched.
             visible_llm = (
                 visible_candidates(candidate_tags, config=evaluation_config, state=evaluation_state)
-                if llm_enabled and candidate_tags
+                if candidate_tags
                 else []
             )
             merged_episode = merge_tag_sources(

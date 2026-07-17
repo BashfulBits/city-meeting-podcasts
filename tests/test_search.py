@@ -70,6 +70,22 @@ def _shard(tmp_path, src):
     return json.loads((tmp_path / "docs" / "data" / "search" / f"{src}.json").read_text())
 
 
+def test_text_values_excludes_llm_tag_bookkeeping_fields():
+    """An admitted LLM tag carries confidence/explanation/source alongside its taxonomy id.
+    _text_values flattens tag dicts into the public search index's tags field/facet, so those
+    bookkeeping fields must never leak a raw model sentence or a numeric confidence score into
+    what's shipped to browsers -- only the taxonomy id (and other real content) should surface."""
+    tag = {
+        "id": "housing",
+        "source": "llm",
+        "confidence": 0.83,
+        "explanation": "The council votes to approve rezoning for new housing.",
+        "evidence": [{"where": "transcript", "quote": "rezoning"}],
+    }
+    values = search_mod._text_values([tag])
+    assert values == ["housing"]
+
+
 def test_static_search_index_contains_sidecars_without_duplicate_flattened_fields(tmp_path):
     city = _city()
     ep = _episode(transcript_key="transcript-key")

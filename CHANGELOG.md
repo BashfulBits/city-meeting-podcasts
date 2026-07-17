@@ -26,7 +26,14 @@ Phase R (Research-Tool Surface)._
   confidence, so unquantified candidates remain hidden. Policy changes reproject stored candidates
   without re-running vendor jobs. No manual override field or automatic taxonomy web crawl is
   introduced; annual taxonomy review and future moderated community proposals are documented in
-  `review/14`.
+  `review/14`. A pre-merge review pass then closed a set of correctness/integrity gaps: episode
+  records now correctly restore persisted tag state on every normal run (previously every episode was
+  silently re-tagged and re-dispatched to the LLM each run), chapter identity survives a dropped
+  chapter, exactly-100%-confidence suggestions can no longer bypass calibration, evidence timestamps
+  no longer span the whole episode on a common word, and the weekly review workflow now authenticates
+  its comment-triggered ingestion and serializes its matrix jobs against a shared state race. See
+  `review/14` for the full list and two related gaps intentionally left for the upcoming LLM-adapter
+  refactor (`review/33`).
 
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted

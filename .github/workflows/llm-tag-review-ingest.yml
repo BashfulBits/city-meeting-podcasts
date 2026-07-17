@@ -35,15 +35,20 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number || '' }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
+          EVENT_ISSUE_TITLE: ${{ github.event.issue.title || '' }}
           EVENT_COMMENT_ISSUE_URL: ${{ github.event.comment.issue_url || '' }}
           EVENT_COMMENT_BODY: ${{ github.event.comment.body || '' }}
+          EVENT_COMMENT_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association || '' }}
         run: |
           numbers="[]"
           if [ -n "$ISSUE_NUMBER_INPUT" ]; then
             numbers=$(jq -nc --arg n "$ISSUE_NUMBER_INPUT" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "issues" ] && [ -n "$EVENT_ISSUE_NUMBER" ]; then
             numbers=$(jq -nc --arg n "$EVENT_ISSUE_NUMBER" '[$n | tonumber]')
-          elif [ -n "$EVENT_COMMENT_ISSUE_URL" ] && printf '%s\n' "$EVENT_COMMENT_BODY" | grep -qiE '^/llm-ingest([[:space:]]|$)'; then
+          elif [ -n "$EVENT_COMMENT_ISSUE_URL" ] \
+            && printf '%s\n' "$EVENT_COMMENT_BODY" | grep -qiE '^/llm-ingest([[:space:]]|$)' \
+            && printf '%s\n' "$EVENT_COMMENT_AUTHOR_ASSOCIATION" | grep -qE '^(OWNER|MEMBER|COLLABORATOR)$' \
+            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -q '^R5 LLM tag sample '; then
             n=$(printf '%s' "$EVENT_COMMENT_ISSUE_URL" | awk -F/ '{print $NF}')
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "schedule" ]; then
@@ -61,6 +66,10 @@ jobs:
       issues: write
     strategy:
       fail-fast: false
+      # Each matrix job pull/mutate/pushes the *entire* shared calibration-state snapshot with no
+      # merge on write; running more than one at a time lets the last push silently clobber every
+      # other job's recorded review decision. max-parallel: 1 serializes them.
+      max-parallel: 1
       matrix:
         issue_number: ${{ fromJson(needs.resolve.outputs.numbers) }}
     steps:
