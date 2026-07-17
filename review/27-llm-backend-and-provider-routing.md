@@ -395,10 +395,12 @@ flash→pro upgrade (§2.1)**, using the identical mechanism — the ticket does
 for "switch provider" vs. "switch tier within a provider," since both are just "propose a different
 `model_id`" against the same recipe_hash-driven versioning.
 
-**Weekly "champion stats" GitHub issue, one per task-verb** (or one consolidated issue with a section per
-verb — implementation detail to settle when this is built), following the existing conventions this
-project already uses for recurring automated issues (`review/11` §4 H4 row: one consolidated issue per
-check, a hidden JSON state block in the body for tracking — not an external ledger — matching output),
+**Weekly "champion stats" GitHub issue, one per task-verb** (settled 2026-07-17 — not one consolidated
+issue with a section per verb; each verb's checkbox-decision lifecycle is independent, so a separate issue
+per verb keeps one verb's decision/edit history from being interleaved with another's), following the
+existing conventions this project already uses for recurring automated issues (`review/11` §4 H4 row: one
+consolidated issue per check, a hidden JSON state block in the body for tracking — not an external
+ledger — matching output),
 containing:
 
 1. **Current quality results** — this week's (and recent rolling) win/loss/tie record per pair, for this
