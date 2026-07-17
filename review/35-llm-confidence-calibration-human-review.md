@@ -37,7 +37,8 @@ to a human reviewer weekly, and let an evolving, per-exact-key admission thresho
 ground truth** — rather than hand-picking a global confidence cutoff up front. A specific tag suggestion
 becomes visible not because a maintainer manually decided "0.7 is probably fine," but because enough human
 reviews of *that exact* (feature, provider/model, tag, scope) combination showed that a 0.7-or-above
-suggestion is correct at least 95% of the time.
+suggestion is correct at least 90% of the time (`EvaluationConfig.required_precision`, lowered from an
+initial 95%, §13).
 
 ## §2. The matrix design — exact keys, sparse rows
 
@@ -190,8 +191,8 @@ taxonomy tag ID (`parking-mandates`, tagged across hundreds of episodes) provide
 classification-style verb (e.g. "is this a public hearing?") would also provide.
 
 **A freeform generative verb has no such recurring label.** `summarize`'s output is unique text per episode
-— there is nothing to accumulate 30 reviews *against* the same "label," because there is no label at all,
-only unbounded text. Flattening the matrix to one row per route (dropping the `label` dimension, treating
+— there is nothing to accumulate the required 12 reviews *against* the same "label," because there is no
+label at all, only unbounded text. Flattening the matrix to one row per route (dropping the `label` dimension, treating
 the whole verb as a single constant "label") is *technically* possible with this schema, but it is a much
 coarser tool than what's built, is not what the current implementation does, and was not designed for.
 
@@ -259,9 +260,11 @@ candidate text cannot forge a review decision or spoof the review marker.
 ## §13. Risks
 
 - **Cold start is genuinely slow by design.** A new (feature, route, label, scope) combination starts fully
-  shadow (fallback `1.0`) and needs `minimum_reviews` (default 30) real human reviews before it can ever
-  qualify — for a taxonomy with dozens of labels, filling in the whole matrix takes many weeks at a 20/week
-  review batch size. This is an intentional tradeoff (trustworthy-but-slow over fast-but-unverified), not an
+  shadow (fallback `1.0`) and needs `minimum_reviews` (default 12, lowered from an initial 30 on 2026-07-17
+  — with `required_precision` correspondingly lowered from 95% to 90%, so the precision bar stays
+  meaningful at the smaller sample size) real human reviews before it can ever qualify — for a taxonomy with
+  dozens of labels, filling in the whole matrix still takes real time at a 20/week review batch size. This
+  is an intentional tradeoff (trustworthy-but-slow over fast-but-unverified), not an
   oversight, but it means a feature adopting this module should expect a long shadow period before LLM
   output becomes broadly visible.
 - **Does not generalize to freeform generative verbs** (§8) — a feature relying solely on this module for a

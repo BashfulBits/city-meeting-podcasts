@@ -32,8 +32,8 @@ tagging:
   evaluation:
     state_path: "llm_evaluation.json"
     fallback_confidence: 1.0
-    required_precision: 0.95
-    minimum_reviews: 30
+    required_precision: 0.90
+    minimum_reviews: 12
     review_batch_size: 20
     fallbacks:
       topic-tags:

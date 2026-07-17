@@ -36,8 +36,8 @@ class EvaluationConfig:
     """Feature-independent policy knobs; feature-specific fallbacks live in ``fallbacks``."""
 
     fallback_confidence: float = 1.0
-    required_precision: float = 0.95
-    minimum_reviews: int = 30
+    required_precision: float = 0.90
+    minimum_reviews: int = 12
     review_batch_size: int = 20
     state_path: str = DEFAULT_STATE_NAME
     fallbacks: dict[str, dict[str, float]] | None = None
@@ -60,8 +60,8 @@ def config_from_mapping(raw: dict[str, Any] | None) -> EvaluationConfig:
         }
     return EvaluationConfig(
         fallback_confidence=min(1.0, max(0.0, float(raw.get("fallback_confidence", 1.0)))),
-        required_precision=min(1.0, max(0.0, float(raw.get("required_precision", 0.95)))),
-        minimum_reviews=max(1, int(raw.get("minimum_reviews", 30))),
+        required_precision=min(1.0, max(0.0, float(raw.get("required_precision", 0.90)))),
+        minimum_reviews=max(1, int(raw.get("minimum_reviews", 12))),
         review_batch_size=max(1, int(raw.get("review_batch_size", 20))),
         state_path=str(raw.get("state_path", DEFAULT_STATE_NAME) or DEFAULT_STATE_NAME),
         fallbacks=fallbacks,

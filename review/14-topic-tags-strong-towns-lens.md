@@ -37,7 +37,8 @@ security hardening, and the module's structural limits.
 **R5's concrete instance:** feature `topic-tags`, route `litellm:gemini/gemini-3-flash-preview`, initial
 fallback `1.0` (so ordinary uncalibrated suggestions remain shadow-only), matrix dimensions feature ×
 provider/model route × prompt/schema version × taxonomy version × tag ID × episode/chapter scope, human
-review decisions in `state/llm_evaluation.json`, 95% required precision, 30 minimum reviews per row. The
+review decisions in `state/llm_evaluation.json`, 90% required precision, 12 minimum reviews per row
+(lowered from an initial 95%/30, 2026-07-17). The
 weekly [`llm-tag-review.yml`](../.github/workflows/llm-tag-review.yml) workflow packages the digest and
 actionable child issues (bounded quoted transcript region with derived timestamps, or a bounded
 agenda/document quote with an allowlisted official document link); review decisions are ingested by
