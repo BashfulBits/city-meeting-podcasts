@@ -2,8 +2,10 @@
 
 **Maturity: L3 · authored 2026-07-14 · breakout of [`review/11`](11-technical-design-roadmap.md) Phase R
 · ROADMAP R2 (LLM backend) + R10 (rate-limited dispatch Worker, numbered out of table-position on
-purpose — see ROADMAP's insert note) · §1–§3/§9 (the adapter + Worker) shipped via R2/R10; §6's
-tournament/champion routing remains proposed, issues not yet cut**
+purpose — see ROADMAP's insert note) · §1–§3/§9 (the adapter + Worker) shipped via R2/R10; the former §6
+(quality tournament/champion routing) was broken out into its own doc,
+[`review/34`](34-llm-quality-tournament-champion-routing.md), 2026-07-17 — still proposed, issues not yet
+cut**
 
 > This is the first real adapter for the H13-reserved `tag`/`summarize`/`soundbite-select` compute verbs.
 > R5 (topic tags, LLM-assist path) and R6 (auto-summaries, soundbite selection) are its first feature
@@ -12,21 +14,25 @@ tournament/champion routing remains proposed, issues not yet cut**
 > verified via web research on that date and should be re-checked before implementation, since these
 > figures move.
 
-**2026-07-17 revision note (this pass corrects §3/§5/§5.2/§6/§7/§8/§10/§11 only — verified against R5's
+**2026-07-17 revision note (this pass corrects §3/§5/§5.2/§7/§8/§10/§11 only — verified against R5's
 actual migration, not just re-read):** R2's adapter (`citypods/compute/llm.py`) and R10's Worker shipped
 as this doc describes. What has *also* since shipped, but wasn't anticipated by this doc's original
 text, is R13 (`review/33`) — a policy/scheduler/budget layer between a calling Stage and the adapter that
 this doc's §5/§8 originally sketched as future work under the H14d-ledger/H5-ordering analogy. R13's
 `LLMRequestPolicy`/`select_and_reserve`/`LLMBudget` *are* that ledger and allocation machinery, now real
-code, not a parallel thing to build. The tournament (§6) itself is still unbuilt (confirmed: no
-tournament/champion/Promptfoo code exists anywhere in this repository as of this pass), but everything
-in §6/§7/§8/§10 describing how it would *interface* with the adapter needed correcting to reference the
-adapter that actually exists rather than the one anticipated. A tournament/scorer caller submits its own
-`LLMRequestPolicy` exactly the same way R5/R12 (production consumers) do — `allowed_models` pinned to the
-one exact candidate under test, `allow_paid=True` — per §6.4 below, added this pass. `classify-civic-
-platforms` (added later by R12/review/28, not anticipated by this doc's original verb list) is a
-classification task judged on accuracy, not a generative "which reads better" comparison — out of this
-tournament's scope by design, not an oversight; R12 already gives it its own single-free-route policy.
+code, not a parallel thing to build.
+
+**The former §6 (quality tournament & cost-gated champion routing) was broken out into its own doc,
+[`review/34`](34-llm-quality-tournament-champion-routing.md), later the same day** — it grew a sibling
+design ([`review/35`](35-llm-confidence-calibration-human-review.md), the per-candidate ground-truth
+calibration module used by R5's tagging) that needed its own full write-up, and the two are easiest to
+read and maintain side by side rather than one buried as a subsection here. The tournament itself is
+still unbuilt (confirmed: no tournament/champion/Promptfoo code exists anywhere in this repository as of
+this pass) — see review/34 for the full design, including how it interfaces with R13's shipped adapter.
+`classify-civic-platforms` (added later by R12/review/28, not anticipated by this doc's original verb
+list) is a classification task judged on accuracy, not a generative "which reads better" comparison — out
+of the tournament's scope by design, not an oversight; R12 already gives it its own single-free-route
+policy.
 
 ---
 
@@ -74,9 +80,9 @@ v4-flash isn't a stripped-down model in the way "flash" tiers sometimes are else
 than the naming alone suggests.
 
 **Default DeepSeek to v4-flash; v4-pro is a cost-gated upgrade, evaluated per task-verb — reusing the
-exact champion-routing mechanism from §6, not a new one.** This mirrors the provider-level policy
+exact champion-routing mechanism from `review/34`, not a new one.** This mirrors the provider-level policy
 precisely: v4-flash is the cheap baseline (analogous to Gemini's free tier at the provider level),
-v4-pro must clear the same required win-rate margin (§6.3) to be proposed as the DeepSeek-side tier for
+v4-pro must clear the same required win-rate margin (review/34 §5) to be proposed as the DeepSeek-side tier for
 a given verb — e.g. "may do fine for simpler summarization tasks" on flash, while a verb that needs more
 reasoning capability (potentially `tag`, which has to weigh nuanced taxonomy judgment) might justify the
 upgrade. **No new versioning machinery needed:** `recipe_hash` already folds in `model_id` (§7), so
@@ -86,7 +92,7 @@ gap. **Judging note:** a flash-vs-pro comparison for a given verb still needs a 
 (Gemini or Mistral) per the same self-family-bias rule as the provider-level tournament, since both
 candidates share the DeepSeek family.
 
-**Why three providers, not two:** the round-robin tournament (§6) requires exactly this — with 3 models
+**Why three providers, not two:** the round-robin tournament (review/34) requires exactly this — with 3 models
 and the rule "a judge can never grade its own family," a round robin covers all 3 pairs with zero
 self-judging, by construction. Two providers can't do this (whichever one isn't being compared has to
 judge, which is fine for exactly one pair but leaves the other pair with no independent judge).
@@ -144,7 +150,7 @@ deliberate design decision, not simplify it. The actual extensibility requiremen
 
 - `TASK_VERSIONS: dict[Task, str]` (§7) — one entry per verb.
 - `TASK_PROMPTS: dict[Task, PromptTemplate]` (§4.3) — one entry per verb.
-- The budget ledger (§8) and tournament (§6) already operate generically over "whichever task this job
+- The budget ledger (§8) and tournament (review/34) already operate generically over "whichever task this job
   is," not per-verb code paths.
 
 Adding a new verb (review/11 §3.5 already reserves `embed`, `translate`, `extract`) is: one `Literal`
@@ -250,7 +256,7 @@ shift outputs meaningfully. The standard mitigation is a **structured prompt** (
 Context/Instructions/Output-format sections), which narrows but doesn't eliminate the gap. **Start with
 one shared structured template per task-verb** (`TASK_PROMPTS[task]`), not provider-specific variants —
 matches the "don't invent a new dependency's worth of complexity you don't need yet" instinct already
-established this session, and the tournament (§6) is exactly the mechanism that would reveal *if*
+established this session, and the tournament (review/34) is exactly the mechanism that would reveal *if*
 per-provider prompt tuning is ever actually warranted, so it's better deferred than pre-built.
 
 ---
@@ -280,8 +286,8 @@ Gemini-primary/DeepSeek-secondary falls out of its ranking (free before paid, ch
 - **DeepSeek (secondary):** its own small daily $ budget — implemented, per-route, in the same
   `state/llm_budget.json` ledger (`RouteLedger.cost_used`/`cost_cycle_key`, reusing
   `citypods.compute.budget.cycle_key` directly, per `review/33` §10.1 — not a second ledger). Used for
-  (a) genuine overflow if Gemini's free tier is ever insufficient, and (b) tournament participation (§6).
-- **Mistral:** tournament judge + occasional per-verb champion (§6), not a default production channel —
+  (a) genuine overflow if Gemini's free tier is ever insufficient, and (b) tournament participation (review/34).
+- **Mistral:** tournament judge + occasional per-verb champion (review/34), not a default production channel —
   see the capacity math in §5.1, which shows why. Only reachable when a caller's `LiteLLMBackend`
   instance has `dispatch_url` configured (R13's `_available_transports()`, §3.2) — a tournament caller
   needing to judge/candidate Mistral must construct its backend with `dispatch_url` set, exactly like
@@ -338,7 +344,7 @@ exactly the shape these discounts are built for — so this is close to free sav
   "batching" in DeepSeek's own materials just means "async access already gets you the off-peak rate" —
   the research wasn't fully conclusive on which, and the two have different implementation shapes.
 - **Design hook, not a hard requirement:** DeepSeek-bound dispatch — both tournament/benchmark calls
-  (§6) and any overflow production work (§5) — should **prefer** scheduling into the 16:30–00:30 UTC
+  (review/34) and any overflow production work (§5) — should **prefer** scheduling into the 16:30–00:30 UTC
   window when the work isn't time-sensitive (which almost all of it isn't — tournament runs are weekly,
   overflow dispatch already tolerates "picked up next run"). This is a scheduling *preference* in the
   dispatch coordinator, not a blocking constraint — DeepSeek dispatch outside the window should still
@@ -349,115 +355,18 @@ exactly the shape these discounts are built for — so this is close to free sav
 
 ---
 
-## §6. Quality tournament & cost-gated champion routing
+## §6. Quality tournament & cost-gated champion routing — moved to review/34
 
-### §6.1 Method — pairwise comparison, not absolute scoring
-
-Research is unambiguous: "which is better, A or B" is far more reliable — for both human and LLM judges
-— than "rate this 1–10." Maps directly onto the two dimensions specified: **factual accuracy** (judge
-sees the source transcript/agenda excerpt + both candidates, asked which is more faithful, or whether
-both are equally faithful/unfaithful) and **style/quality** (judge sees both candidates, asked which
-reads better — length, tone, structure).
-
-### §6.2 The round-robin structure
-
-With exactly 3 providers and the rule "a judge never grades its own family," round-robin covers all 3
-pairs with a genuinely independent judge every time, by construction — no configuration needed to avoid
-self-preference bias:
-
-| Contest | Candidates | Judge |
-|---|---|---|
-| 1 | DeepSeek vs. Gemini | Mistral |
-| 2 | DeepSeek vs. Mistral | Gemini |
-| 3 | Gemini vs. Mistral | DeepSeek |
-
-Run per task-verb, on a **weekly cadence** (matching the stated 1–2/week human-time budget and directly
-mirroring H15's own periodic-calibration cadence, `review/11` §4 H15 row — same shape, different subject
-matter). **Tool: Promptfoo** (MIT, SQLite-backed, no new infra service, already supports Gemini/DeepSeek/
-Mistral natively) rather than a hand-rolled comparison harness — fits this project's "no extra
-infrastructure" pattern better than building one from scratch.
-
-**Bias mitigation, from research, applied concretely:** run both orderings (A-then-B and B-then-A) per
-judged pair to cancel position bias; decide tie-handling up front (recommend: ties count as half a win
-each, Elo-style, rather than being dropped — dropping ties silently shrinks the sample and can mask a
-genuinely-close result); validate the automated (Promptfoo/LLM-judge) result against the maintainer's own
-occasional human read (the stated 1–2/week) — if agreement is low, the automated judge isn't trustworthy
-yet for that verb, and champion decisions should lean on the human read until it is.
-
-### §6.3 Cost-gated champion routing — the weekly ticket
-
-**A challenger must clear a required win-rate margin over the current champion to be proposed as a
-switch** — not just win more than half the judged comparisons. (Recommend a concrete default, e.g. >60%
-win rate over a rolling sample, but this should be a tunable config value, not hardcoded.) If no
-challenger clears the threshold for a verb that week, the ticket is FYI-only — no decision is requested,
-avoiding weekly decision fatigue for a "nothing changed" week. **"Challenger" includes the within-DeepSeek
-flash→pro upgrade (§2.1)**, using the identical mechanism — the ticket doesn't need a separate code path
-for "switch provider" vs. "switch tier within a provider," since both are just "propose a different
-`model_id`" against the same recipe_hash-driven versioning.
-
-**Weekly "champion stats" GitHub issue, one per task-verb** (settled 2026-07-17 — not one consolidated
-issue with a section per verb; each verb's checkbox-decision lifecycle is independent, so a separate issue
-per verb keeps one verb's decision/edit history from being interleaved with another's), following the
-existing conventions this project already uses for recurring automated issues (`review/11` §4 H4 row: one
-consolidated issue per check, a hidden JSON state block in the body for tracking — not an external
-ledger — matching output),
-containing:
-
-1. **Current quality results** — this week's (and recent rolling) win/loss/tie record per pair, for this
-   verb.
-2. **Cost implication per month** for each option — current champion vs. each challenger, using the real
-   per-call cost the budget ledger already tracks (§8) — not an estimate, since ledger telemetry exists
-   by the time this runs.
-3. **One-time back-catalog recalculation cost** if switching — this is the exact scenario the deferred
-   cost-estimation approach (§8.2) was designed for: by the time a real challenger exists, real
-   per-call-cost telemetry exists too, so "cost to re-derive verb X across N already-processed episodes"
-   is a simple multiplication from measured averages, not a guess.
-4. **A checkbox decision block** (one checkbox per real option — keep current champion / switch to
-   challenger X, with and without back-catalog upgrade; for DeepSeek specifically, "challenger X" may be
-   "DeepSeek v4-pro" while the current champion is "DeepSeek v4-flash," same mechanism) — modeled on the
-   well-established
-   "Renovate Dependency Dashboard" pattern (checkboxes in a bot-maintained issue that a scheduled Action
-   parses and acts on), adapted to this project's own hidden-JSON-state-in-body convention rather than a
-   new state-tracking mechanism.
-5. **A separate Action, triggered on issue edit**, parses which box (if any) got checked, applies the
-   routing config change (updates which provider is dispatched for that verb) and/or enqueues the
-   back-catalog recalculation job if requested, then **clears the checkboxes** so the next week's ticket
-   starts from a clean decision state.
-
-### §6.4 Interfacing with the shipped adapter (added 2026-07-17, R13/`review/33`)
-
-None of §6.1–§6.3 above needed correcting in *method* — pairwise judging, the round-robin structure, and
-the weekly checkbox ticket are unaffected by what R13 added underneath. What was missing, because R13
-didn't exist yet when this section was written, is the concrete call shape a tournament runner uses.
-Per §3.2/§5:
-
-- **Each judged comparison is its own `InferenceJob`/`LLMRequestPolicy` call**, one per candidate, with
-  `allowed_models=(candidate_model,)` (an exact singleton — never the judge's model, which is a
-  *separate* call with its own singleton) and `allow_paid=True`. This is the identical pattern R5/R12's
-  own production dispatch already uses to pin to one model (`citypods/tags.py::llm_tag_suggestions`,
-  `citypods/discovery/classify.py::classify`) — a tournament caller is not a special case of the
-  interface, just a different caller of the same one.
-- **A tournament run should set a bounded `deadline_at`** (e.g. the remainder of that day's scheduled
-  window) rather than leaving it unset: an unbounded policy is appropriate for R5's patient background
-  tagging, but a weekly tournament run has a real cadence to keep — gate 5's off-peak preference and
-  gate 4's deadline gate (`review/33` §5) both key off this, so a candidate that would otherwise defer
-  for DeepSeek's off-peak window can be told "don't wait past tonight's run."
-- **A candidate contest can still come back as a deferred `JobHandle`** (quota exhausted, a 429, or
-  Mistral genuinely in flight) exactly like any other caller — the tournament runner must tolerate a
-  contest not completing within one invocation and either retry via the same registry lookup next run
-  (`run_inference` called again with the same job) or explicitly `reconcile()` it, the same choice R5
-  faces (`review/14`'s note on this). Because each candidate's `recipe_hash` differs (it folds in
-  `model_id`, §7), concurrent contests for the same episode+verb never collide in the deferred registry
-  or the ledger.
-- **The tournament module needs its own structured-output contract registered wherever it calls
-  `reconcile()`** — including inside the daily sweep, if tournament requests are ever allowed to defer
-  into it (§3.2's callout, mirroring the fix `review/14`'s R13 migration made for `tags.py`'s own
-  contract). A tournament contract that's only ever registered inside the tournament's own weekly-run
-  process, and never in the sweep's process, would silently never benefit from the sweep's daily
-  catch-up — the same failure mode that gap caused for R5 before it was fixed.
-- **Cost telemetry for the weekly ticket's §6.3 item 2 reads `RouteLedger.cost_used`/settled actuals
-  from `state/llm_budget.json`** (`citypods/compute/llm_budget.py`) — this is the "real per-call cost
-  the budget ledger already tracks" §6.3 already says, now naming the actual object.
+**This section moved to its own doc, [`review/34`](34-llm-quality-tournament-champion-routing.md), on
+2026-07-17.** In brief: a weekly, per-task-verb pairwise tournament (Promptfoo, round-robin across the
+three providers, a judge never grades its own family) determines whether a challenger clears a win-rate
+margin over the current production champion; a cost-gated GitHub-issue ticket then lets the maintainer
+approve or decline a routing switch via checkbox. It is still unbuilt — no tournament/champion/Promptfoo
+code exists anywhere in this repository as of this pass. See review/34 for the full method, the concrete
+`LLMRequestPolicy` interface a tournament caller uses against this adapter (its old review/34 §6), and how it
+composes with [`review/35`](35-llm-confidence-calibration-human-review.md)'s separate per-candidate
+ground-truth calibration module (used by R5's tagging, `review/14`) — the two are complementary, not
+overlapping designs.
 
 ---
 
@@ -470,7 +379,7 @@ Matches the existing `ASR_PIPELINE_VERSION`/`TRANSCRIPT_PIPELINE_VERSION` conven
 re-derives only that verb's outputs, never the others. `recipe_hash` folds in `model_id` + `prompt_hash`
 + the task's version constant + relevant input fingerprints, per `review/11`'s already-established
 LLM-verb convention. **The one addition the multi-provider/tournament design requires:** the recipe
-must record *which provider* produced a given output, so a champion-routing switch (§6.3) is a version
+must record *which provider* produced a given output, so a champion-routing switch (review/34 §5) is a version
 bump like any other model change — re-deriving through the same content-addressed mechanism, not a
 special case. **Shipped as of R13 (2026-07-17):** `JobResult.model`/`JobHandle.model`
 (`citypods/compute/base.py`) already carry the actually-resolved model on every result, precisely
@@ -504,7 +413,7 @@ forward-looking cost estimator yet.** Let real numbers accumulate from actual R5
 city" or "cost of a new feature" then becomes a simple multiplication from measured per-call averages
 instead of a guess made before any real data exists. This is literally how H14d's own GPU budget tuning
 came about — built from live telemetry, not upfront estimation (`review/11` §4 H14d row). The weekly
-champion-stats ticket (§6.3) is the first real consumer of this telemetry once it exists.
+champion-stats ticket (review/34 §5) is the first real consumer of this telemetry once it exists.
 
 ---
 
@@ -603,7 +512,7 @@ feature's own data model, still to build — 1 by R5/R6 individually, 2 and 5 by
    per-provider — Gemini/DeepSeek-flash/DeepSeek-pro/Mistral each get their own ledger row), per-cycle,
    soft-cap semantics (§8.1).
 5. **Champion routing config** — which provider is currently dispatched for each task-verb; updated only
-   by the weekly-ticket checkbox flow (§6.3), never silently. **Concretely, as of R13:** this is each
+   by the weekly-ticket checkbox flow (review/34 §5), never silently. **Concretely, as of R13:** this is each
    feature's own `LLMRequestPolicy(allowed_models=(...))` construction site — for R5, `config/
    site_config.yml`'s `tagging.llm_model`, read into the singleton allowlist `citypods/tags.py::
    llm_tag_suggestions` pins to (§3.2, `review/14`). A champion-routing switch updates that config value;
@@ -632,7 +541,7 @@ built:** chapter-boundary chunking (no `citypods/compute/chunking.py` or equival
 `citypods/tags.py`'s actual implementation truncates agenda/transcript text to a fixed character budget
 instead, §4's escalation design is unimplemented); `citypods/ops/workqueue.py` has no LLM-task recency
 extension (R5's `TagsStage` orders episodes via the same `_materialize_set` every other stage uses, not
-a dedicated comparator); and the tournament/champion-routing module + weekly-ticket workflow (§6) itself.
+a dedicated comparator); and the tournament/champion-routing module + weekly-ticket workflow (review/34) itself.
 
 - `citypods/compute/llm.py` — **shipped.** LiteLLM-backed `Backend` adapter plus the Worker enqueue/poll
   transport, `JobHandle` → `JobResult` reconciliation (§3/§9), and (added by R13, not anticipated when
@@ -652,10 +561,12 @@ a dedicated comparator); and the tournament/champion-routing module + weekly-tic
   file/registry; `citypods/compute/llm.py::TASK_PROMPTS` exists as a plain dict today.
 - `citypods/ops/workqueue.py` — **not extended.** Still each feature Stage's own backlog policy, per §5.
 - New tournament/champion-routing module + the weekly-ticket workflow (`.github/workflows/`, matching
-  `availability-digest.yml`'s cadence/structure precedent) + its companion checkbox-parsing Action
-  (§6.3) — **not built**, this doc's actual open item. Depends on `citypods/compute/llm_policy.py`'s
-  `LLMRequestPolicy`/`ROUTES` and `llm.py`'s `LiteLLMBackend` (shipped) per §3.2/§6.4, and needs its own
-  structured-output contract registered wherever it calls `reconcile()` (§6.4's callout).
+  `availability-digest.yml`'s cadence/structure precedent) + its companion checkbox-parsing Action —
+  **not built**; see [`review/34`](34-llm-quality-tournament-champion-routing.md) (this doc's former §6,
+  now its own doc) for the full design. Depends on `citypods/compute/llm_policy.py`'s
+  `LLMRequestPolicy`/`ROUTES` and `llm.py`'s `LiteLLMBackend` (shipped) per §3.2 above and review/34 §6,
+  and needs its own structured-output contract registered wherever it calls `reconcile()` (review/34 §6's
+  callout).
 - `workers/llm-dispatch-proxy/` — **shipped**, new Cloudflare Worker (§9.3).
 
 ---
@@ -730,7 +641,7 @@ mirrored, H15 (shipped) for the periodic-calibration cadence being mirrored, H17
 
 No backfill on first ship — this is new infrastructure with no prior LLM outputs to migrate. Back-catalog
 recalculation only ever happens as an explicit, human-approved action via the weekly champion-stats
-ticket (§6.3) once a real champion switch is decided — never automatic, never silent.
+ticket (review/34 §5) once a real champion switch is decided — never automatic, never silent.
 
 ---
 
@@ -750,8 +661,10 @@ degrades gracefully with no pipeline failure.
 ## Proposed GitHub issues (not filed — batch review pending)
 
 **Status as of 2026-07-17** — issues 1, 2, 5, and 8 shipped (as R10/R13, not filed as separate issues
-against this list, but the work landed); issues 3, 4, 6, 7 remain open and are what's actually left of
-this doc's proposed work.
+against this list, but the work landed); issues 3, 4 remain open and are what's actually left of this
+doc's own proposed work. Issues 6/7 (tournament, champion-stats ticket) moved to
+[`review/34`](34-llm-quality-tournament-champion-routing.md)'s own proposed-issues list along with the
+rest of that design; kept here only as a pointer, not duplicated.
 
 1. ~~R10: `workers/llm-dispatch-proxy/` Cloudflare Worker~~ — **shipped.** OpenAI-shaped asynchronous
    enqueue/poll transport, Cron-paced dispatch, and R2 result handoff.
@@ -767,10 +680,10 @@ this doc's proposed work.
 5. ~~Budget ledger (H14d-style, per-provider, soft-cap)~~ — **shipped** as `citypods/compute/
    llm_budget.py` (§8.1, §10 item 4), per-*route* not just per-provider. No forward cost-estimator yet
    (§8.2) — that part is still correctly deferred, not a gap.
-6. **Open — this doc's actual remaining core item.** Tournament: Promptfoo-based round-robin pairwise
-   comparison, weekly cadence, bias mitigation (order-swap, tie policy, human-calibration check) — see
-   §6.4 for how it interfaces with the now-shipped adapter.
-7. **Open.** Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost,
+6. **Moved to `review/34`.** Tournament: Promptfoo-based round-robin pairwise comparison, weekly cadence,
+   bias mitigation (order-swap, tie policy, human-calibration check) — see review/34 §6 for how it
+   interfaces with the now-shipped adapter, and review/34's own proposed-issues list for tracking.
+7. **Moved to `review/34`.** Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost,
    back-catalog-cost, apply-and-clear) — depends on 6.
 8. ~~DeepSeek off-peak/batch scheduling preference~~ — **the off-peak half shipped** as R13's gate 5
    (`_active_multiplier`/`_next_discount_window_end`, `citypods/compute/llm_scheduler.py`, using exactly

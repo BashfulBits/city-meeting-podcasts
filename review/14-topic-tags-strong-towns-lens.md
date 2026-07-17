@@ -27,26 +27,28 @@
 R5 now enables the LLM path in [`config/site_config.yml`](../config/site_config.yml) with the
 asynchronous dispatch route. A dispatch completion is never treated as a public tag merely because it
 passed JSON/schema validation. The stage stores each validated suggestion in
-`Episode.llm_tag_candidates`, then projects only candidates whose confidence clears the generic
-evaluator in [`citypods/llm_evaluation.py`](../citypods/llm_evaluation.py). The initial fallback for
-`topic-tags` and `litellm:gemini/gemini-3-flash-preview` is `1.0`, so ordinary uncalibrated suggestions
-remain shadow-only.
+`Episode.llm_tag_candidates`, then projects only candidates whose confidence clears the generic evaluator
+in [`citypods/llm_evaluation.py`](../citypods/llm_evaluation.py) — **full design now written up in
+[`review/35`](35-llm-confidence-calibration-human-review.md)**, extracted from this section 2026-07-17
+since the module is feature-independent by design, not R5-specific. What follows here is R5's own
+concrete wiring; see review/35 for the matrix/admission algorithm, state shape, human-review workflow,
+security hardening, and the module's structural limits.
 
-The evaluator is feature-independent. Its exact sparse matrix dimensions are feature, provider/model
-route, prompt/schema version, taxonomy version, label/tag ID, and episode/chapter scope. Human review
-decisions are stored in the durable `state/llm_evaluation.json` ledger. A row qualifies automatically
-when it has the configured minimum review count and its confidence-at-or-above-threshold precision
-meets the configured 95% target. The lowest qualifying confidence becomes that row's admission
-threshold. Rows without a qualified exact entry use the feature/route fallback; changing that fallback
-is an explicit maintainer policy decision that can admit previously unquantified portions of the matrix.
+**R5's concrete instance:** feature `topic-tags`, route `litellm:gemini/gemini-3-flash-preview`, initial
+fallback `1.0` (so ordinary uncalibrated suggestions remain shadow-only), matrix dimensions feature ×
+provider/model route × prompt/schema version × taxonomy version × tag ID × episode/chapter scope, human
+review decisions in `state/llm_evaluation.json`, 95% required precision, 30 minimum reviews per row. The
+weekly [`llm-tag-review.yml`](../.github/workflows/llm-tag-review.yml) workflow packages the digest and
+actionable child issues (bounded quoted transcript region with derived timestamps, or a bounded
+agenda/document quote with an allowlisted official document link); review decisions are ingested by
+[`llm-tag-review-ingest.yml`](../.github/workflows/llm-tag-review-ingest.yml), which refreshes the matrix
+and makes newly qualified tags visible on the next normal build without another LLM call.
 
-The weekly [`llm-tag-review.yml`](../.github/workflows/llm-tag-review.yml) workflow packages a digest and
-actionable child issues. It prioritizes sparse/unqualified rows, confident extremes, and candidates
-near the current threshold. Each child presents the LLM explanation plus clean evidence: a bounded
-quoted transcript region with derived timestamps, or a bounded agenda/document quote with an allowlisted
-official document link and optional section/page locator. Review decisions are ingested automatically by
-[`llm-tag-review-ingest.yml`](../.github/workflows/llm-tag-review-ingest.yml), refresh the matrix, and
-make newly qualified tags visible on the next normal build without another LLM call.
+**This is *not* the same mechanism as the still-unbuilt quality tournament/champion routing
+([`review/34`](34-llm-quality-tournament-champion-routing.md), `review/27` §6's old home) — see review/34
+§7 and review/35 §8 for how the two compose. This module decides whether one candidate is trustworthy at
+its own confidence; the tournament would decide which provider is champion for the `tag` verb at all.
+They were designed to coexist, not substitute for each other.**
 
 ## Post-implementation review hardening (2026-07-17)
 
@@ -65,15 +67,13 @@ public commenter could fabricate a calibration review), its matrix jobs are seri
 `render_review_body`/`parse_review` no longer let untrusted candidate text (explanation,
 document_locator) forge a checkbox decision or spoof the marker a review is parsed from.
 
-One related gap is deliberately left open: `ingest_review_body()` still trusts the candidate JSON
-embedded in an *edited* review issue verbatim, with no cross-check against a durable,
-feature-owned candidate ledger — closing this needs the generic evaluator to gain a lookup
-capability into feature-specific storage, a real design addition, not a bolt-on. `citypods/
-llm_evaluation.py`'s calibration key and `StageContext`'s `tag_backend`/`taxonomy_path`/
-`llm_evaluation_config` fields are also still populated only from R5's `tagging:` config block
-despite being named generically — the module is feature-independent in intent, not yet in wiring.
-Both remain open; neither is what the R13 migration below addresses (that's about model
-selection/scheduling, not calibration-key or `StageContext` generality).
+Two related gaps are deliberately left open, both now written up fully in
+[`review/35`](35-llm-confidence-calibration-human-review.md) rather than described twice: `review/35` §7's
+closing note (`ingest_review_body()` trusting edited-issue JSON verbatim, no durable candidate-ledger
+cross-check) and `review/35` §9 (the module's `StageContext`/CLI/workflow wiring is still R5-specific
+despite the module itself being feature-independent). Neither is what the R13 migration below addresses
+(that's about model selection/scheduling, not calibration-key or `StageContext` generality) — aligning
+this module's callers to R13's current interface is separate, ongoing follow-up work.
 
 ## Migrated onto the R13 LLM-scheduler adapters (2026-07-17)
 
@@ -309,8 +309,10 @@ attributed to a chapter because a wrong association is worse than an episode-lev
   remain separately moderated proposals.
 - `citypods/llm_evaluation.py` — generic evaluator for exact calibration keys, provider/model fallbacks,
   confidence admission, durable human decisions, sparse-matrix selection, and evidence-rich Markdown
-  issue packaging. Future `summarize` and `soundbite-select` features can use the same module without
-  adding feature-specific confidence logic to `Episode` or `TagsStage`.
+  issue packaging. Full design in [`review/35`](35-llm-confidence-calibration-human-review.md). Future
+  `summarize` and `soundbite-select` features *could* use the same module without adding feature-specific
+  confidence logic to `Episode` or `TagsStage` — but only once review/35 §9's wiring gap is closed;
+  today's `StageContext`/CLI/workflow integration is still R5-specific.
 
 ## Implementation paths
 
@@ -440,7 +442,7 @@ drive search, meeting-page, chapter, and future quote/highlight surfaces.
 1. `citypods/tags.py` / `config/taxonomy.yml` — taxonomy loader, deterministic rules, structured
    Instructor/Pydantic suggestions, and bounded source evidence.
 2. `citypods/llm_evaluation.py` — reusable calibration matrix, fallbacks, admission, state, and review
-   issue contract.
+   issue contract. See [`review/35`](35-llm-confidence-calibration-human-review.md) for the full design.
 3. `TagsStage` plus record/lane/search/page integration — visible projection plus shadow candidates.
 4. Weekly `llm-tag-review.yml` / ingest workflow — sparse-matrix human calibration.
 5. Future moderated proposal storage for community/human tag corrections; deliberately not part of R5.

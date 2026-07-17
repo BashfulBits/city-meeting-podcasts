@@ -15,10 +15,14 @@ ROADMAP R6 (bundles #3/GH#155 cards, #2 auto-summaries, #15/GH#156 soundbites) �
 
 **Checked directly rather than assumed:** R2's LiteLLM adapter and R3's bounded document sidecars are
 shipped, and R5's local implementation now supplies the shared chapter IDs, bounded transcript windows,
-topic tags, and reusable LLM calibration policy. **Every LLM-assisted path in this item (Part A approach
-2, Part B approach 2, Part C approach 3) should reuse R5's generic evaluator**: dispatch results remain
-untrusted shadow candidates until the exact feature/model matrix reaches its evidence gate. The non-LLM
-paths remain independently shippable and are still the recommended first user-visible layer.
+topic tags, and reusable LLM calibration policy (full design:
+[`review/35`](35-llm-confidence-calibration-human-review.md)). **Part A approach 2 and Part C approach 3
+(discrete, labelable outputs) should reuse R5's generic evaluator**: dispatch results remain untrusted
+shadow candidates until the exact feature/model matrix reaches its evidence gate. **Part B's freeform
+summaries cannot use this mechanism** (`review/35` §8 — no discrete recurring label to calibrate against);
+its quality assurance, if any, is [`review/34`](34-llm-quality-tournament-champion-routing.md)'s
+still-unbuilt pairwise tournament instead. The non-LLM paths remain independently shippable and are still
+the recommended first user-visible layer.
 
 **One shared piece of new infra, used by two of the three Parts:** `_parse_words_payload`
 (`citypods/transcript_quality.py:924-941`) already parses the word-JSON sidecar
