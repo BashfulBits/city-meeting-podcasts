@@ -49,6 +49,7 @@
     <li style="padding:.45rem 0;border-bottom:1px solid var(--border);display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;">
       <button type="button" class="btn chapter-seek" data-seconds="{{ chapter.start }}" style="margin:0;padding:.2rem .55rem;">{{ chapter.start }}</button>
       <span style="flex:1;">{{ chapter.title }}</span>
+      {% if chapter.tags %}<span class="muted" aria-label="Topics">{{ chapter.tags | join(', ') | replace('-', ' ') }}</span>{% endif %}
       {% if chapter.source_url %}<a class="muted" href="{{ chapter.source_url }}">City archive</a>{% endif %}
     </li>
     {% endfor %}

@@ -148,13 +148,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         evidence = verify_discovery(request, classification, results, existing_city=city)
     except (ClassificationDeferred, LLMBackendError) as exc:
-        # LLMBackendError's whole family (LLMNotEligibleError, LLMStructuredOutputError, a
-        # storage-unavailable scheduler guard, a dispatch/network failure, ...) is, per its own
-        # docstring, "a safe, provider-agnostic adapter error" -- every one of them is exactly the
-        # kind of transient/environmental issue this script already treats as "leave the request
-        # queued and retry it on the next scheduled run," not a reason to crash the whole
-        # discovery pass. A genuine config bug (e.g. an unsupported LLM_MODEL) still raises
-        # ValueError, which is not caught here and fails loudly as before.
+        # LLMBackendError's whole family (LLMStructuredOutputError, a storage-unavailable
+        # scheduler guard, a dispatch/network failure, ...) is, per its own docstring, "a safe,
+        # provider-agnostic adapter error" -- every one of them is exactly the kind of
+        # transient/environmental issue this script already treats as "leave the request queued
+        # and retry it on the next scheduled run," not a reason to crash the whole discovery pass.
+        # (R13 removed the old LLMNotEligibleError in favor of a uniform JobHandle return for
+        # every not-yet-complete outcome -- nothing here still raises it.) A genuine config bug
+        # (e.g. an unsupported LLM_MODEL) still raises ValueError, which is not caught here and
+        # fails loudly as before.
         print(f"discovery deferred: {exc}", file=sys.stderr)
         return DEFERRED_EXIT
     out = Path(args.out)

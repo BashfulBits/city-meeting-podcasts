@@ -609,6 +609,7 @@ class TestStageOrdering:
             "agenda_text",
             "minutes_text",
             "diarize",
+            "tags",
         ]
 
     def test_enrich_stages_order(self):
@@ -623,6 +624,7 @@ class TestStageOrdering:
             "agenda_text",
             "minutes_text",
             "diarize",
+            "tags",
         ]
 
     def test_silence_planner_registered_in_default_stages(self):

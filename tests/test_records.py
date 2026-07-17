@@ -438,6 +438,32 @@ def test_record_store_roundtrip(tmp_path):
     assert raw["schema_version"] >= 1
 
 
+def test_merge_persisted_restores_tag_fields(tmp_path):
+    """merge_persisted() is the path a normal enrich run actually takes (unlike
+    record_to_episode, used only on the fetch-failure fallback and full-archive render), so it
+    must restore R5's tag fields too or TagsStage's recipe-hash cache can never hit and every
+    episode gets silently re-tagged (and re-dispatched to the LLM) on every single run."""
+    ep = _ep("g1")
+    ep.uid = "u1"
+    ep.tags = [{"id": "housing", "source": "rule", "confidence": 1.0, "evidence": []}]
+    ep.chapter_tags = [{"chapter_id": "ch-1", "tags": []}]
+    ep.llm_tag_candidates = [{"id": "housing", "source": "llm", "confidence": 0.7}]
+    ep.tags_llm_recipe_hash = "llm-recipe-1"
+    ep.tags_spec_hash = "spec-1"
+    save_records(tmp_path, "src", {"u1": episode_to_record(ep)})
+
+    loaded = load_records(tmp_path, "src")
+    fresh = _ep("g1-new-guid")
+    fresh.uid = "u1"
+    merge_persisted([fresh], loaded)
+
+    assert fresh.tags == ep.tags
+    assert fresh.chapter_tags == ep.chapter_tags
+    assert fresh.llm_tag_candidates == ep.llm_tag_candidates
+    assert fresh.tags_llm_recipe_hash == "llm-recipe-1"
+    assert fresh.tags_spec_hash == "spec-1"
+
+
 def test_record_to_episode_prefers_canonical_duration_helpers():
     rec = {
         "uid": "u1",
@@ -1097,6 +1123,11 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "links",
         "chapters",
         "summary",
+        "tags",
+        "chapter_tags",
+        "llm_tag_candidates",
+        "tags_llm_recipe_hash",
+        "tags_spec_hash",
         "transcript_key",
         "hosted_audio_url",
         "audio_key",
@@ -1360,6 +1391,11 @@ def test_protected_blocks_for_lane():
             "provider_transcript",
             "speakers",
             "integrity",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
@@ -1373,6 +1409,11 @@ def test_protected_blocks_for_lane():
             "minutes_text",
             "minutes_votes",
             "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
         }
     )
     assert protected_blocks_for_lane("align") == frozenset(
@@ -1386,12 +1427,37 @@ def test_protected_blocks_for_lane():
             "minutes_text",
             "minutes_votes",
             "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
         }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
         {
             "audio",
             "transcript",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
+        }
+    )
+    assert protected_blocks_for_lane("tag") == frozenset(
+        {
+            "audio",
+            "transcript",
+            "provider_transcript",
+            "speakers",
             "media_availability",
             "integrity",
             "agenda_text",

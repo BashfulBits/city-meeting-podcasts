@@ -88,6 +88,19 @@ class Episode:
     source_chapters: list = field(default_factory=list)
     chapters: list = field(default_factory=list)  # [{"start": secs, "title": str}, ...]
     summary: str = ""
+    # Versioned catalog taxonomy output.  ``tags_spec_hash`` prevents an enabled LLM path from
+    # repeating the same inference when its inputs and taxonomy have not changed.
+    tags: list[dict] = field(default_factory=list)
+    # Per-chapter annotations are the source of the chapter-level UI/search detail. ``tags`` is
+    # always recomputed as their taxonomy-ordered union plus any episode-scope annotations.
+    chapter_tags: list[dict] = field(default_factory=list)
+    # Validated LLM tag suggestions, including shadow-only candidates.  This is kept separate
+    # from visible tags so calibration policy changes can re-project admission without recalling
+    # the model.  Future LLM features should use the generic evaluator state rather than adding
+    # feature-specific confidence gates to this model.
+    llm_tag_candidates: list[dict] = field(default_factory=list)
+    tags_llm_recipe_hash: str | None = None
+    tags_spec_hash: str | None = None
 
     # --- content-addressed transcript artifact (INFRA-8, #149) ---------------------
     # Active podcast transcript artifact.  ASR / provider-aligned served-time transcripts live

@@ -70,6 +70,22 @@ def _shard(tmp_path, src):
     return json.loads((tmp_path / "docs" / "data" / "search" / f"{src}.json").read_text())
 
 
+def test_text_values_excludes_llm_tag_bookkeeping_fields():
+    """An admitted LLM tag carries confidence/explanation/source alongside its taxonomy id.
+    _text_values flattens tag dicts into the public search index's tags field/facet, so those
+    bookkeeping fields must never leak a raw model sentence or a numeric confidence score into
+    what's shipped to browsers -- only the taxonomy id (and other real content) should surface."""
+    tag = {
+        "id": "housing",
+        "source": "llm",
+        "confidence": 0.83,
+        "explanation": "The council votes to approve rezoning for new housing.",
+        "evidence": [{"where": "transcript", "quote": "rezoning"}],
+    }
+    values = search_mod._text_values([tag])
+    assert values == ["housing"]
+
+
 def test_static_search_index_contains_sidecars_without_duplicate_flattened_fields(tmp_path):
     city = _city()
     ep = _episode(transcript_key="transcript-key")
@@ -117,8 +133,12 @@ def test_static_search_index_contains_sidecars_without_duplicate_flattened_field
     assert "detailed park report" in doc["backup_text"].lower()
     assert "passed unanimously" in doc["minutes_text"].lower()
     assert "Alex Rivera" in doc["roster_text"] and "Parks budget" in doc["votes_text"]
-    assert doc["chapters"] == [{"start": 42.0, "title": "Parks budget"}]
-    assert doc["segments"] == [{"start": 12.5, "text": "The council discussed the parks budget."}]
+    assert doc["chapters"][0]["start"] == 42.0
+    assert doc["chapters"][0]["title"] == "Parks budget"
+    assert doc["chapters"][0]["tags"] == []
+    assert doc["segments"][0]["start"] == 12.5
+    assert doc["segments"][0]["text"] == "The council discussed the parks budget."
+    assert doc["segments"][0]["chapter_id"] is None
     assert {"transcript_text", "chapters_text", "link_labels_text", "tags_text"}.isdisjoint(doc)
     assert "backup-key" in storage.calls
 

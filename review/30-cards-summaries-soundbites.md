@@ -11,16 +11,18 @@ ROADMAP R6 (bundles #3/GH#155 cards, #2 auto-summaries, #15/GH#156 soundbites) �
 
 ---
 
-## §0. Sequencing reality check — two of this item's own dependencies are designed, not shipped
+## §0. Sequencing reality check — R2/R3/R5 foundations are now available locally
 
-**Checked directly rather than assumed:** neither `citypods/compute/llm.py` (R2's LiteLLM adapter) nor
-`citypods/tags.py`/`TagsStage`/`TASK_PROMPTS`/`TASK_VERSIONS` (R5's tag system) exist anywhere in this
-codebase yet — both R2 and R5 are "L3, issues not yet cut" (design-complete, execution not started), the
-same status R3 was in before this session matured it. **Every LLM-assisted path in this item (Part A
-approach 2, Part B approach 2, Part C approach 3) depends on R2's `Backend` actually being built.** The
-non-LLM paths don't, and can ship independently — which is exactly why each Part below leans "cheap/
-extractive first, LLM-assisted additive," matching the L1 sketch's own instinct, now doubly justified
-since the LLM paths have a genuinely unshipped prerequisite, not just a cost-gating preference.
+**Checked directly rather than assumed:** R2's LiteLLM adapter and R3's bounded document sidecars are
+shipped, and R5's local implementation now supplies the shared chapter IDs, bounded transcript windows,
+topic tags, and reusable LLM calibration policy (full design:
+[`review/35`](35-llm-confidence-calibration-human-review.md)). **Part A approach 2 and Part C approach 3
+(discrete, labelable outputs) should reuse R5's generic evaluator**: dispatch results remain untrusted
+shadow candidates until the exact feature/model matrix reaches its evidence gate. **Part B's freeform
+summaries cannot use this mechanism** (`review/35` §8 — no discrete recurring label to calibrate against);
+its quality assurance, if any, is [`review/34`](34-llm-quality-tournament-champion-routing.md)'s
+still-unbuilt pairwise tournament instead. The non-LLM paths remain independently shippable and are still
+the recommended first user-visible layer.
 
 **One shared piece of new infra, used by two of the three Parts:** `_parse_words_payload`
 (`citypods/transcript_quality.py:924-941`) already parses the word-JSON sidecar
@@ -83,13 +85,21 @@ per-item entries, not one artifact per card, for the same reason: bounded object
     in a span without LLM help is itself a hard selection problem (arguably Part C's own job for a
     *meeting-wide* highlight) — approach 1 stays honestly "extractive" by just showing the real text for
     that time range, not synthesizing a summary of it.
-  - `doc_links` — populated by filtering R3's `agenda_backup` JSON entries (`review/29` §5a) for
-    `chapter_index` matching this card's — **a direct, clean payoff from R3's backup-material work this
-    session**, not new discovery/extraction logic; R3 already attributes backup docs to chapters, this
-    item just joins on that field.
-  - `tags` — `[]` until R5 ships (matches R4's search-index precedent for the same field,
-    `review/13` § Data model deltas #2 — "additive field-fill, not a schema change").
+  - `doc_links` — populated by filtering R3's `agenda_backup` JSON entries (`review/29` §5a) for an
+    explicit `chapter_index` matching this card's, when that structured association exists. Flat
+    packet links remain episode-level context rather than being guessed into a card.
+  - `tags` — the taxonomy-ordered visible episode projection from R5; chapter tags are retained on the
+    matching chapter. R5's unqualified LLM candidates remain shadow data, so this field stays
+    deterministic/rule-based until the generic evaluator admits a calibrated suggestion.
   - `changed_summary` — `null` until approach 2 (LLM-assisted, §A.4) runs for this card.
+
+**R5 integration (added 2026-07-16).** Each card should consume the same stable `chapter_id` and
+chapter-scoped tags as R5. This gives a card topic context without recomputing taxonomy labels, lets
+users filter cards by one topic rather than a union of meeting-level facets, and gives the extractive
+excerpt/highlight path a bounded transcript window. Episode-level tags remain the union projection,
+so cards and search cannot silently disagree about which taxonomy version produced a tag. When R3
+supplies explicit per-item agenda text, cards can show it only for the matching item; flat agenda or
+packet text remains meeting-level context.
 
 - **`ARTIFACT_BLOCKS`** gains `"cards"` — same correctness reasoning as `agenda_text`/`agenda_backup`
   (`review/29` §5): without it, a scoped `transcribe`/`align`/`diarize` lane's whole-record push would
@@ -103,8 +113,8 @@ list[dict]` — one card per `episode_served_chapters(ep)` entry, `end` computed
 `citypods/models.py:74`), `excerpt` via the new `words_in_range()` helper (§0), `doc_links` via the
 `agenda_backup` join described above. A new `CardsStage` (feed-only, no dedicated H6b lane — same
 reasoning as `AgendaTextStage`, `review/29` §7) runs **after** `AgendaTextStage` (needs `agenda_backup`
-populated) and **after** the point tags become available once R5 ships (or with `tags: []` in the
-meantime — additive, not blocking).
+populated) and consumes R5's point tags when available (or an empty tag projection in an older catalog —
+additive, not blocking).
 
 ### A.4 Approach 2 — LLM-assisted, additive
 
@@ -220,8 +230,8 @@ warranted. `SOUNDBITE_PIPELINE_VERSION = "1"`; `ARTIFACT_BLOCKS` gains `"soundbi
   introduces.
 - **Sequencing**: Part A → Part B (B cites A's cards). Part C is independent of A/B and can ship in any
   order relative to them. All three Parts' non-LLM paths depend only on already-shipped infra (chapters,
-  `extract_clip`, R3's `agenda_text`/`agenda_backup` once that ships) — **none of R6 needs to wait on R2
-  or R5 actually shipping code**, only their LLM-assisted halves do.
+  `extract_clip`, R3's `agenda_text`/`agenda_backup` — both shipped, `review/29`) — **none of R6 needs to
+  wait on R2 or R5 actually shipping code**, only their LLM-assisted halves do.
 
 ---
 

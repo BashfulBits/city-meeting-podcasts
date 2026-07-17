@@ -12,6 +12,7 @@ from citypods.feeds import enclosure_url, episode_resource_links, meeting_page_u
 from citypods.models import AgendaRecord, City, Episode
 from citypods.providers import get_provider
 from citypods.render import get_env
+from citypods.tags import chapter_id
 from citypods.timeline import served_to_source
 
 
@@ -256,11 +257,20 @@ def render_meeting_page(
     player_url = enclosure_url(ep, "audio")
     chapters = [
         {
+            "id": chapter_id(ep, ch, index),
             "start": int(ch.get("start", 0)),
             "title": ch.get("title", ""),
+            "tags": next(
+                (
+                    [tag.get("id") for tag in annotation.get("tags") or [] if tag.get("id")]
+                    for annotation in ep.chapter_tags
+                    if annotation.get("chapter_id") == chapter_id(ep, ch, index)
+                ),
+                [],
+            ),
             "source_url": _source_deeplink(city, ep, float(ch.get("start", 0))),
         }
-        for ch in episode_served_chapters(ep)
+        for index, ch in enumerate(episode_served_chapters(ep, with_source_index=True))
     ]
     report_url = None
     github_repo = (site_config or {}).get("github_repo")

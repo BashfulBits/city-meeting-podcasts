@@ -267,12 +267,13 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > **Matured to L3, 2026-07-12: R6 (cards, summaries, soundbites), full design in
 > [`review/30`](review/30-cards-summaries-soundbites.md).** Verified against the live Pri table before
 > starting — R4/R5 are already L3, so R6 was the next item actually needing work, not R7 as first
-> guessed. Also checked directly rather than assumed: neither R2's LLM `Backend` nor R5's tag system has
-> any code yet despite both being "L3" — so every LLM-assisted path across all three Parts is flagged as
+> guessed. Also checked directly rather than assumed: R2's LLM `Backend` is now shipped and R5's tag
+> implementation is in progress; every LLM-assisted path across all three Parts remains flagged as
 > depending on R2 shipping; the non-LLM paths ship independently. **Cards** correct a scoping error in
 > the original sketch (no vote-tally/minutes-parsing code exists anywhere in this codebase — "action,
 > vote" drops out of a first cut) and get a direct payoff from R3's backup-material work this session
-> (per-item doc links joined by `chapter_index`). **Summaries** are inline record fields, not a sidecar
+> (per-item doc links joined by an explicit `chapter_index` when the provider/parser supplies one;
+> flat packet links remain unattributed). **Summaries** are inline record fields, not a sidecar
 > — the first artifact in this stretch of items small enough to justify breaking that pattern — and never
 > touch the feed's own `<description>`. **Soundbites** give `citypods/clips.py`'s already-built,
 > zero-caller `extract_clip` its first real consumer; a longest-chapter heuristic ships free of any new
@@ -334,10 +335,10 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R13** | **Proposed — LLM quota & cost-window scheduler**, L3 design in [`review/33`](review/33-llm-quota-cost-scheduler.md): a stateless selection function (not a new service) above R2/R10; a 4-field request contract with caller model allowlists (scorer fan-out is the caller looping singleton allowlists); Gemini RPD/RPM/TPM quota via a CAS ledger shared with review/27's $ budget ledger (no dedicated Worker); DeepSeek off-peak dispatch preference. Batch capability deferred until a real batch-capable provider is confirmed. |
 | **R3** | **Shipped** (#920, 2026-07-14) — **Agenda text extraction**: agenda/portal text plus bounded backup/packet material, minutes, per-item votes, and member-roster extraction are implemented as content-addressed artifacts; no OCR or LLM synthesis in the first pass. Feeds R4's search index and R5's tag generator |
 | **R4** | **Shipped** (2026-07-14; commits `2f76744` + `60998a0`) — **#6 static client-side transcript/meeting search**, including deterministic cacheable per-source MiniSearch shards, agenda/backup/minutes/vote/roster fields, metadata-only unavailable recordings, and availability filtering |
-| **R5** | **Not started** — **#4 topic tags / Strong Towns lens** remains L3 design in [`review/14`](review/14-topic-tags-strong-towns-lens.md); implementation awaits transparent rules, overrides, and later R2-backed assistance |
-| **R6** | **Not started** — **#3 per-agenda-item cards · #2 auto-summaries · #15 soundbites** remain L3 design in [`review/30`](review/30-cards-summaries-soundbites.md); the extractive/non-LLM path can proceed now that R3 is shipped, while LLM halves depend on R2 |
+| **R5** | **Implemented locally** — **#4 topic tags / Strong Towns lens**: 37-source-backed flat tags, deterministic episode/chapter annotations, taxonomy-ordered episode rollups, chapter-aware meeting/search payloads, and an Instructor/Pydantic additive LLM path running over Gemini's direct transport are implemented from [`review/14`](review/14-topic-tags-strong-towns-lens.md). LLM candidates are retained with bounded evidence but begin under a 100% feature/provider-model fallback, so unquantified suggestions remain shadow-only. A reusable calibration matrix and weekly evidence-rich review workflow admit tags automatically after reaching the 90% precision gate (12 minimum reviews; lowered from 95%/30 on 2026-07-17). R3 agenda text is episode-level unless it supplies an explicit chapter mapping; transcript timing is the reliable item-level signal. Implementation review: [PR #945](https://github.com/BashfulBits/city-meeting-podcasts/pull/945). |
+| **R6** | **Not started** — **#3 per-agenda-item cards · #2 auto-summaries · #15 soundbites** remain L3 design in [`review/30`](review/30-cards-summaries-soundbites.md); R5's stable chapter IDs, bounded transcript windows, and chapter tags now provide the shared context for cards, summaries, quote/highlight selection, and the longest-chapter heuristic. |
 | **R7** | **Not started** — **#7 speaker diarization + #14 attendee extraction + confirmed-speaker pages** remain L3 design in [`review/31`](review/31-speaker-diarization-attendee-extraction.md); this is still a 1.0 gate |
-| **R8** | **Not started** — **#55 front-end design, #50 accessibility, and #16 funding/support** remain L3 design in [`review/32`](review/32-frontend-design-accessibility-funding.md) |
+| **R8** | **Not started** — **#55 front-end design, #50 accessibility, and #16 funding/support** remain L3 design in [`review/32`](review/32-frontend-design-accessibility-funding.md); the eventual UI should expose episode facets plus chapter-level topic hits and transcript seek/highlight context without exposing ingestion architecture. |
 | **R9** | **Partially shipped; final gate remains** — **Automated runtime/dependency maintenance**: constraints, SHA/model pinning, Renovate configuration, and dependency-policy checks are in place. Remaining: activate Renovate, add the monthly immutable/checksummed FFmpeg update PR, and optionally harden image installs with `--require-hashes` |
 
 ## 1.0 milestone (drop the beta tag)

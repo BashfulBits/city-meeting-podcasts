@@ -364,6 +364,7 @@ class TestRemapOrdering:
             "agenda_text",
             "minutes_text",
             "diarize",
+            "tags",
         ]
 
     def test_full_order_enrich(self):
@@ -378,4 +379,5 @@ class TestRemapOrdering:
             "agenda_text",
             "minutes_text",
             "diarize",
+            "tags",
         ]

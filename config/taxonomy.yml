@@ -1,0 +1,288 @@
+version: 1
+reviewed_at: 2026-07-16
+
+# Compact bibliography for the annual taxonomy review.  The design document explains how these
+# references are re-evaluated; keeping identifiers here makes each seed tag's provenance auditable
+# without repeating long URLs in every entry.
+source_refs:
+  st-walkability: https://actionlab.strongtowns.org/hc/en-us/articles/13240394073876-3-ways-to-make-places-more-walkable
+  st-trees: https://www.strongtowns.org/journal/2024/2/15/theres-more-than-one-way-to-save-a-street-tree
+  st-third-places: https://archive.strongtowns.org/journal/2019/2/20/its-the-little-things-19
+  st-incremental: https://archive.strongtowns.org/journal/2024/5/6/how-to-start-strengthening-your-town-with-incremental-development
+  cnu-missing-middle: https://www.cnu.org/our-projects/missing-middle-housing
+  better-block: https://www.betterblock.org/
+  better-block-tactical: https://www.betterblock.org/post/interim-design-tactical-urbanism-a-new-civic-engagement-approach-in-action
+  southern-main-street: https://www.southernurbanism.org/p/storefront-10-first-steps-toward
+  southern-walkability: https://www.southernurbanism.org/p/thirteen-characteristics-of-walkable
+  southern-housing: https://www.southernurbanism.org/p/affordability-tackling-atlantas-housing-452
+  southern-third-places: https://www.southernurbanism.org/p/zoning-wont-save-us
+  dallas-urbanists: https://thisdallaslife.com/
+  lean-code: https://leanurbanism.org/lean-code-tool/
+  ida: https://www.incrementaldevelopment.org/services
+  pps-lqc: https://www.pps.org/article/lighter-quicker-cheaper
+  pps-placemaking: https://www.pps.org/article/what-is-placemaking
+
+tags:
+  - id: zoning-reform
+    label: Zoning reform
+    description: Changes to zoning districts, use permissions, or development standards.
+    group: land-use-housing
+    source_refs: [st-walkability, cnu-missing-middle, dallas-urbanists, lean-code]
+    rules:
+      include: [zoning reform, zoning amendment, zoning code, rezoning, land use code, use district]
+      exclude: [school zoning, school zone]
+  - id: parking-mandates
+    label: Parking mandates
+    description: Minimum parking requirements and their effect on development or public space.
+    group: land-use-housing
+    source_refs: [st-walkability, dallas-urbanists, lean-code]
+    rules:
+      include: [parking minimum, minimum parking, parking requirement, parking mandate, off-street parking]
+      exclude: [parking ticket, parking citation]
+  - id: minimum-lot-size-setbacks
+    label: Lot sizes and setbacks
+    description: Minimum lot area, frontage, building placement, or setback standards.
+    group: land-use-housing
+    source_refs: [cnu-missing-middle, lean-code]
+    rules:
+      include: [minimum lot size, lot size minimum, minimum lot area, setback requirement, building setback, front setback, lot frontage]
+  - id: housing-supply
+    label: Housing supply
+    description: Policies or projects intended to increase the amount or variety of housing.
+    group: land-use-housing
+    source_refs: [cnu-missing-middle, southern-housing, dallas-urbanists]
+    rules:
+      include: [housing supply, housing production, housing needs, residential capacity, homes per acre]
+  - id: missing-middle-housing
+    label: Missing-middle housing
+    description: Small-scale multi-unit housing between detached homes and large apartments.
+    group: land-use-housing
+    source_refs: [cnu-missing-middle, southern-housing, dallas-urbanists]
+    rules:
+      include: [missing middle, duplex, triplex, fourplex, cottage court, courtyard housing, small multifamily]
+  - id: accessory-dwelling-units
+    label: Accessory dwelling units
+    description: ADUs, backyard cottages, garage apartments, and similar secondary homes.
+    group: land-use-housing
+    source_refs: [cnu-missing-middle, dallas-urbanists, lean-code]
+    rules:
+      include: [accessory dwelling, accessory unit, ADU, backyard cottage, garage apartment, granny flat]
+  - id: affordable-housing
+    label: Affordable housing
+    description: Housing affordability, income-restricted homes, or affordability preservation.
+    group: land-use-housing
+    source_refs: [cnu-missing-middle, southern-housing, dallas-urbanists]
+    rules:
+      include: [affordable housing, income restricted, income-restricted, housing affordability, workforce housing, attainable housing]
+  - id: anti-displacement-equity
+    label: Anti-displacement and equity
+    description: Anti-displacement, fair access, tenant stability, or distributional equity.
+    group: land-use-housing
+    source_refs: [southern-housing, southern-third-places, dallas-urbanists]
+    rules:
+      include: [anti-displacement, anti displacement, displacement, tenant protection, equitable development, housing equity, gentrification]
+  - id: infill-redevelopment
+    label: Infill and redevelopment
+    description: Reuse or intensification of already-served land within a city.
+    group: land-use-housing
+    source_refs: [st-incremental, cnu-missing-middle, ida, dallas-urbanists]
+    rules:
+      include: [infill development, infill redevelopment, redevelopment project, vacant lot, underutilized parcel, brownfield redevelopment]
+  - id: incremental-development
+    label: Incremental development
+    description: Small, phased, locally-scaled development anywhere in the city.
+    group: land-use-housing
+    source_refs: [st-incremental, ida, lean-code, dallas-urbanists]
+    rules:
+      include: [incremental development, incremental redevelopment, small developer, small-scale development, gradual development, build small]
+  - id: adaptive-reuse
+    label: Adaptive reuse
+    description: Converting existing buildings to new uses rather than replacing them.
+    group: land-use-housing
+    source_refs: [st-incremental, dallas-urbanists, lean-code]
+    rules:
+      include: [adaptive reuse, reuse existing building, building conversion, convert vacant building, office conversion]
+  - id: form-based-codes
+    label: Form-based codes
+    description: Form-based zoning, regulating physical form and public-realm relationships.
+    group: land-use-housing
+    source_refs: [cnu-missing-middle, dallas-urbanists, lean-code]
+    rules:
+      include: [form-based code, form based code, form-based zoning, transect code, regulating plan]
+  - id: annexation-outward-expansion
+    label: Annexation and outward expansion
+    description: Annexation, greenfield growth, outward expansion, or its fiscal consequences.
+    group: land-use-housing
+    source_refs: [st-incremental, st-walkability, dallas-urbanists]
+    rules:
+      include: [annexation, annexed area, outward expansion, edge growth, greenfield development, urban sprawl]
+  - id: neighborhood-planning
+    label: Neighborhood planning
+    description: Plans, codes, or investments organized around a neighborhood-scale area.
+    group: land-use-housing
+    source_refs: [southern-walkability, southern-third-places, dallas-urbanists]
+    rules:
+      include: [neighborhood plan, neighborhood planning, neighborhood district, neighborhood revitalization, neighborhood strategy]
+  - id: road-widening
+    label: Road widening
+    description: Road expansion, lane additions, or capacity projects that change street geometry.
+    group: mobility
+    source_refs: [st-walkability, dallas-urbanists]
+    rules:
+      include: [road widening, roadway widening, lane widening, add lanes, capacity expansion]
+  - id: street-safety-vision-zero
+    label: Street safety and Vision Zero
+    description: Traffic safety, serious-injury reduction, or Vision Zero programs.
+    group: mobility
+    source_refs: [st-walkability, southern-walkability, dallas-urbanists]
+    rules:
+      include: [vision zero, traffic safety, street safety, safe systems, serious injury, fatality reduction, high injury network]
+  - id: walk-bike-transit-access
+    label: Walk, bike, and transit access
+    description: Walking, cycling, transit access, or multimodal connectivity.
+    group: mobility
+    source_refs: [st-walkability, southern-walkability, dallas-urbanists]
+    rules:
+      include: [walkability, walkable, pedestrian, bicycle, bike lane, transit access, multimodal, active transportation, sidewalk]
+      exclude: [pedestrian ticket]
+  - id: traffic-calming-road-diets
+    label: Traffic calming and road diets
+    description: Street redesigns that slow traffic or reclaim excess roadway space.
+    group: mobility
+    source_refs: [better-block-tactical, southern-walkability, dallas-urbanists]
+    rules:
+      include: [traffic calming, traffic-calming, road diet, lane reduction, curb extension, speed hump, chicane, tactical street]
+  - id: transit-oriented-development
+    label: Transit-oriented development
+    description: Development, zoning, or public investment coordinated with transit.
+    group: mobility
+    source_refs: [cnu-missing-middle, southern-walkability, dallas-urbanists]
+    rules:
+      include: [transit-oriented development, transit oriented development, TOD, transit corridor, station area, transit district]
+  - id: street-trees-green-infrastructure
+    label: Street trees and green infrastructure
+    description: Street trees, canopy, rain gardens, bioswales, and living infrastructure.
+    group: public-realm
+    source_refs: [st-trees, southern-walkability, dallas-urbanists]
+    rules:
+      include: [street tree, street trees, tree canopy, urban canopy, green infrastructure, rain garden, bioswale, shade tree, tree preservation]
+  - id: third-places-public-life
+    label: Third places and public life
+    description: Informal social gathering places and the everyday public life of a community.
+    group: public-realm
+    source_refs: [st-third-places, southern-third-places, pps-placemaking]
+    rules:
+      include: [third place, third places, public life, social capital, gathering place, community space, civic life]
+  - id: main-street
+    label: Main Street and commercial corridors
+    description: Main streets, traditional downtowns, and neighborhood commercial corridors.
+    group: public-realm
+    source_refs: [southern-main-street, st-incremental, pps-placemaking]
+    rules:
+      include: [main street, main-street, commercial corridor, neighborhood commercial, downtown storefront, storefront district]
+  - id: placemaking-public-space
+    label: Placemaking and public space
+    description: Public-space design, programming, and place-led improvement.
+    group: public-realm
+    source_refs: [pps-placemaking, better-block, southern-walkability]
+    rules:
+      include: [placemaking, public space, public-square, public square, plaza, parklet, place-led, place making]
+  - id: tactical-urbanism
+    label: Tactical urbanism
+    description: Temporary, experimental, or lighter-quicker-cheaper public-realm changes.
+    group: public-realm
+    source_refs: [better-block, better-block-tactical, pps-lqc]
+    rules:
+      include: [tactical urbanism, lighter quicker cheaper, pop-up street, temporary installation, pilot project, demonstration project, interim design]
+  - id: historic-preservation
+    label: Historic preservation
+    description: Historic districts, landmark protection, preservation incentives, or reuse of historic fabric.
+    group: public-realm
+    source_refs: [st-incremental, southern-main-street, dallas-urbanists]
+    rules:
+      include: [historic preservation, historical preservation, historic district, historic landmark, landmark designation, preservation commission, historic tax credit]
+  - id: public-art-culture
+    label: Public art and culture
+    description: Public art, cultural facilities, local cultural programming, or creative districts.
+    group: public-realm
+    source_refs: [pps-placemaking, better-block, southern-third-places]
+    rules:
+      include: [public art, arts district, cultural district, cultural facility, cultural programming, mural, creative district, library programming]
+  - id: parks-recreation
+    label: Parks and recreation
+    description: Parks, trails, recreation facilities, and access to everyday outdoor space.
+    group: public-realm
+    source_refs: [southern-walkability, pps-placemaking, dallas-urbanists]
+    rules:
+      include: [park improvement, parks and recreation, recreation center, public park, trail connection, greenway, playground, open space]
+  - id: accessibility-universal-design
+    label: Accessibility and universal design
+    description: ADA access, mobility access, and design usable by people with varied abilities.
+    group: public-realm
+    source_refs: [southern-walkability, dallas-urbanists]
+    rules:
+      include: [ADA access, ADA compliance, accessibility, accessible sidewalk, universal design, curb ramp, mobility access]
+  - id: small-business-permitting
+    label: Small-business permitting
+    description: Permitting, licensing, or code changes that affect small local businesses.
+    group: local-economy
+    source_refs: [st-incremental, lean-code, southern-main-street]
+    rules:
+      include: [small business, small-business, business permitting, business license, storefront permit, local business, permitting reform]
+      exclude: [business park]
+  - id: community-wealth-local-ownership
+    label: Community wealth and local ownership
+    description: Local ownership, community wealth building, cooperatives, and resident benefit.
+    group: local-economy
+    source_refs: [st-incremental, ida, southern-housing]
+    rules:
+      include: [community wealth, local ownership, locally owned, community ownership, cooperative, co-op, resident ownership, community land trust, land trust]
+  - id: home-based-business
+    label: Home-based businesses
+    description: Home occupations, neighborhood-scale enterprise, and work-from-home permissions.
+    group: local-economy
+    source_refs: [lean-code, dallas-urbanists]
+    rules:
+      include: [home-based business, home based business, home occupation, neighborhood business, cottage business, work from home]
+  - id: infrastructure-maintenance-liability
+    label: Infrastructure maintenance and liability
+    description: Maintenance backlogs, lifecycle costs, liabilities, and service obligations.
+    group: infrastructure-finance
+    source_refs: [st-incremental, st-walkability, dallas-urbanists]
+    rules:
+      include: [infrastructure maintenance, maintenance backlog, lifecycle cost, life-cycle cost, infrastructure liability, deferred maintenance, maintenance obligation]
+  - id: stormwater-utility-maintenance
+    label: Stormwater and utility maintenance
+    description: Stormwater systems, drainage, utilities, and their ongoing maintenance.
+    group: infrastructure-finance
+    source_refs: [st-incremental, southern-walkability, dallas-urbanists]
+    rules:
+      include: [stormwater, drainage system, drainage improvement, utility maintenance, sewer capacity, water main, flood mitigation, floodplain management]
+  - id: debt-bonds-tif-subsidies
+    label: Debt, bonds, TIF, and subsidies
+    description: Public debt, bonds, tax increment financing, incentives, and development subsidies.
+    group: infrastructure-finance
+    source_refs: [st-incremental, st-walkability, dallas-urbanists]
+    rules:
+      include: [municipal bond, bond issuance, public debt, tax increment financing, TIF district, development incentive, economic development incentive, subsidy]
+  - id: budget-structural-balance
+    label: Budget and structural balance
+    description: Operating budgets, recurring revenue, fiscal sustainability, and structural balance.
+    group: infrastructure-finance
+    source_refs: [st-incremental, st-walkability, dallas-urbanists]
+    rules:
+      include: [operating budget, balanced budget, structural balance, recurring revenue, fiscal sustainability, budget shortfall, general fund, capital improvement plan]
+  - id: climate-resilience
+    label: Climate resilience
+    description: Heat, flooding, extreme weather, resilience planning, and adaptation.
+    group: infrastructure-finance
+    source_refs: [st-trees, southern-walkability, dallas-urbanists]
+    rules:
+      include: [climate resilience, climate adaptation, extreme heat, heat resilience, resilience plan, flood resilience, extreme weather, disaster mitigation]
+  - id: neighborhood-engagement
+    label: Neighborhood engagement
+    description: Resident participation, neighborhood input, civic engagement, and co-design.
+    group: civic-process
+    source_refs: [better-block-tactical, pps-lqc, southern-third-places, dallas-urbanists]
+    rules:
+      include: [neighborhood engagement, resident input, community engagement, public engagement, resident-led, co-design, participatory planning, community workshop, public meeting]

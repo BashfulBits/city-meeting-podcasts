@@ -142,6 +142,7 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
         "agenda_text",
         "minutes_text",
         "diarize",
+        "tags",
     ]
     assert [s.name for s in stats] == expected
     # chapters is a no-op (FakeProvider has no fetch_chapters); audio hosts; links defaults.
@@ -216,6 +217,7 @@ def test_default_lane_none_runs_every_stage(tmp_path):
         "agenda_text",
         "minutes_text",
         "diarize",
+        "tags",
     ]
 
 
@@ -224,6 +226,7 @@ def test_production_stage_composition_extracts_minutes_before_diarization():
     names = [stage.name for stage in enrich_stages()]
     assert names.index("links") < names.index("agenda_text") < names.index("minutes_text")
     assert names.index("minutes_text") < names.index("diarize")
+    assert names.index("diarize") < names.index("tags")
 
 
 def test_links_stage_defaults_canonical_video_and_is_idempotent(tmp_path):
@@ -385,3 +388,66 @@ def test_chapters_stage_does_not_clobber_existing_transcript(tmp_path):
     p = ChapterProvider([{"start": 1, "title": "x"}], transcript="https://srt/worse")
     ChaptersStage().process(p, _city(), eps, _ctx(tmp_path))
     assert eps[0].links["transcript"] == "https://pdf/better"  # preserved
+
+
+def test_llm_disabled_run_invalidates_stale_candidates_on_taxonomy_change(tmp_path):
+    """When ctx.tag_backend is None (dry run, misconfigured LLM_MODEL, ...) TagsStage used to
+    republish ep.llm_tag_candidates unconditionally -- it must instead validate them against a
+    recipe recomputed from their OWN recorded route/prompt_version (there's no live backend this
+    run to compute a current one), so a taxonomy/transcript/agenda change still invalidates a
+    stale candidate even with no LLM call happening this run."""
+    from citypods.stages import TagsStage
+    from citypods.tags import TAG_PROMPT_VERSION, tag_recipe_hash, taxonomy_from_dict
+
+    old_taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    taxonomy_path = tmp_path / "taxonomy.yml"
+    taxonomy_path.write_text(
+        "version: 2\n"
+        "source_refs: {x: 'https://example.test'}\n"
+        "tags:\n"
+        "  - id: housing\n"
+        "    source_refs: [x]\n"
+        "    rules: {include: [housing]}\n"
+    )
+
+    ep = _ep("g1")
+    recorded_recipe = tag_recipe_hash(
+        old_taxonomy,
+        agenda_item_titles="",
+        agenda_text="",
+        transcript_text="",
+        llm_enabled=True,
+        chapter_inputs=[],
+        llm_route="litellm:gemini/gemini-3-flash-preview",
+        prompt_version=TAG_PROMPT_VERSION,
+    )
+    ep.llm_tag_candidates = [
+        {
+            "id": "housing",
+            "source": "llm",
+            "confidence": 0.9,
+            "feature": "topic-tags",
+            "provider_model": "litellm:gemini/gemini-3-flash-preview",
+            "prompt_version": TAG_PROMPT_VERSION,
+            "taxonomy_version": 1,
+            "scope": "episode",
+            "evidence": [{"where": "agenda", "quote": "housing"}],
+        }
+    ]
+    ep.tags_llm_recipe_hash = recorded_recipe
+    ep.tags_spec_hash = "stale-marker-that-never-matches-a-real-hash"
+
+    ctx = _ctx(tmp_path)
+    ctx.taxonomy_path = taxonomy_path
+    ctx.tag_backend = None  # llm disabled/unavailable this run
+
+    TagsStage().process(None, _city(), [ep], ctx)
+
+    assert [tag["id"] for tag in ep.tags] == []
+    assert ep.llm_tag_candidates == []

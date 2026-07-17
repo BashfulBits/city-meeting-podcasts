@@ -32,7 +32,30 @@ Phase R (Research-Tool Surface)._
   window) let a caller with no retry cadence of its own eventually get a result without rebuilding the
   request. City discovery (the only current caller) requires a free, immediate result — no deadline.
   See [`review/33`](review/33-llm-quota-cost-scheduler.md) §13 for the full revision history. This
-  adds no LLM artifact backfill or pipeline-version bump.
+  adds no LLM artifact backfill or pipeline-version bump. Found while migrating R5 onto these
+  adapters: the sweep never registered any feature's structured-output contract in its own process,
+  so a pending "tag" or "classify-civic-platforms" record could never actually reconcile (it failed
+  silently, per-record, forever, until its 38-day TTL expired) — fixed by registering both known
+  contracts before the sweep reconciles anything.
+
+- **Topic taxonomy and calibrated chapter-scoped tagging (R5).** Added a 37-tag Strong Towns/livability
+  taxonomy, deterministic evidence-backed episode/chapter annotations, taxonomy-ordered episode
+  rollups with a no-chapter fallback, chapter-aware meeting/search payloads, and an Instructor/Pydantic
+  structured LLM path running through dispatch. Validated model suggestions are retained as shadow
+  candidates with quoted, source-checked evidence; a reusable sparse calibration matrix and weekly
+  human-review digest control automatic admission. The initial feature/provider fallback is 100%
+  confidence, so unquantified candidates remain hidden. Policy changes reproject stored candidates
+  without re-running vendor jobs. No manual override field or automatic taxonomy web crawl is
+  introduced; annual taxonomy review and future moderated community proposals are documented in
+  `review/14`. A pre-merge review pass then closed a set of correctness/integrity gaps: episode
+  records now correctly restore persisted tag state on every normal run (previously every episode was
+  silently re-tagged and re-dispatched to the LLM each run), chapter identity survives a dropped
+  chapter, exactly-100%-confidence suggestions can no longer bypass calibration, evidence timestamps
+  no longer span the whole episode on a common word, and the weekly review workflow now authenticates
+  its comment-triggered ingestion and serializes its matrix jobs against a shared state race. See
+  `review/14` for the full list. The LLM dispatch path now runs through R13's
+  `LLMRequestPolicy`/scheduler/budget adapters instead of a static single-model call — see `review/14`
+  and `review/33` for the migration.
 
 - **Audio source-cache failure cleanup.** Failed source downloads and multi-part concatenations now
   remove partial `.mka` outputs immediately, and failed concat attempts release already-downloaded

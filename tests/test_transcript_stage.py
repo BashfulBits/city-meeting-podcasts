@@ -719,6 +719,7 @@ class TestTranscriptStageOrdering:
             "agenda_text",
             "minutes_text",
             "diarize",
+            "tags",
         ]
 
     def test_full_order_enrich(self):
@@ -732,6 +733,7 @@ class TestTranscriptStageOrdering:
             "agenda_text",
             "minutes_text",
             "diarize",
+            "tags",
         ]
 
 

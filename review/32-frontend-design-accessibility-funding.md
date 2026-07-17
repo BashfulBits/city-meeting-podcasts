@@ -81,6 +81,14 @@ number, but the resulting interface must not reveal or require knowledge of the 
 collection. This preserves the lazy-load benefit while keeping the public mental model about governments
 and their meeting bodies rather than ingestion architecture.
 
+**R5 chapter-scoped topics (added 2026-07-16).** The future search/page design should treat an episode
+topic as both a facet and a locatable agenda item: show the episode-level union for browse/filtering,
+then show the matching chapter tag beside its title with a seek action and a transcript highlight
+within that chapter window. Labels should remain human-readable and should not expose taxonomy
+implementation details such as source keys or rule provenance unless a research/debug view explicitly
+asks for it. This preserves the simple catalog → municipality → body hierarchy while making a topic
+result materially more useful than a meeting-level hit.
+
 ### A.2 This doc specifies a process, not a visual identity — deliberately
 
 **Maintainer decision, 2026-07-13: this session produces roadmap/design documents, not the actual visual

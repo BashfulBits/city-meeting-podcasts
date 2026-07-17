@@ -1182,7 +1182,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize"}
+    post_transcript = {"transcript", "diarize", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -1354,18 +1354,38 @@ def _run_enrich_global_queue(
             # Decoupled from the audio pass: only episodes that now have hosted audio. Under a
             # per-episode transcribe plan (review/18 §3.3), also skip any uid this shard does not
             # own — its source is still loaded for render context, but a sibling shard handles it.
-            tx = [
-                item
-                for item in candidates
-                if item[1].hosted_audio_url
-                and (owned_uids is None or item[1].uid in owned_uids.get(item[0], frozenset()))
-            ]
+            owned = lambda item: (  # noqa: E731
+                owned_uids is None or item[1].uid in owned_uids.get(item[0], frozenset())
+            )
+            tx = [item for item in candidates if item[1].hosted_audio_url and owned(item)]
             print(
                 f"[enrich] transcript pass: {len(tx)} item(s) with audio (newest-first)", flush=True
             )
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 _run_bounded(pool, _transcript_task, tx, max_pending=max_workers)
             print("[enrich] transcript pass done", flush=True)
+
+            # Tagging has no audio dependency (it only reads agenda/transcript text), so an
+            # episode that never gets hosted audio still needs its own, narrower pass — running
+            # the full transcript_stages list on it would wrongly let TranscriptStage/
+            # ProviderTranscriptDiarizeStage (which DO require hosted audio) execute too.
+            tags_only_stages = [s for s in transcript_stages if s.name == "tags"]
+            if tags_only_stages:
+                tx_tags_only = [
+                    item for item in candidates if not item[1].hosted_audio_url and owned(item)
+                ]
+                if tx_tags_only:
+                    print(
+                        f"[enrich] tags-only pass: {len(tx_tags_only)} item(s) without audio",
+                        flush=True,
+                    )
+
+                    def _tags_only_task(item: tuple[str, Episode]) -> None:
+                        _run_for(item, tags_only_stages)
+
+                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                        _run_bounded(pool, _tags_only_task, tx_tags_only, max_pending=max_workers)
+                    print("[enrich] tags-only pass done", flush=True)
 
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
     #    repeat of the post-audio-pass persist above; also captures the transcript-pass mutations.
@@ -1545,6 +1565,34 @@ def _build_impl(
     compute_backend = make_compute(
         site_config, state_dir=state_dir, storage=None if dry_run else storage
     )
+    tag_backend = None
+    tagging_config = site_config.get("tagging") or {}
+    if tagging_config.get("enabled") and not dry_run:
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        try:
+            tag_backend = LiteLLMBackend(
+                LLMBackendConfig(
+                    model=str(tagging_config.get("llm_model", "gemini/gemini-3-flash-preview")),
+                    mode=str(tagging_config.get("llm_mode", "direct")),
+                    dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
+                    dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
+                    timeout_seconds=float(tagging_config.get("timeout_seconds", 30.0)),
+                ),
+                # R13's scheduler/budget ledger needs CAS-capable storage (state/llm_budget.json,
+                # state/llm_deferred/); the same storage already used for the whole build. tags.py
+                # only sets job.inputs["llm_policy"] when this is actually CAS-capable, so a local
+                # LocalStorage backend (no R2 configured) keeps tagging on the pre-R13 static path
+                # instead of failing for lack of scheduler storage.
+                storage=storage,
+            )
+        except ValueError as exc:
+            # A misconfigured LLM route (e.g. dispatch mode with no LLM_DISPATCH_URL) must not
+            # take down the whole build: fall back to rule-based tags only, same as any other
+            # "LLM unavailable" outcome.
+            print(
+                f"tagging: LLM backend unavailable ({exc}); rule-based tags only", file=sys.stderr
+            )
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
@@ -1709,6 +1757,11 @@ def _build_impl(
         max_kbps=max_kbps,
         dry_run=dry_run,
         compute_backend=compute_backend,
+        tag_backend=tag_backend,
+        taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
+        llm_evaluation_state_path=state_dir
+        / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
+        llm_evaluation_config=(tagging_config.get("evaluation") or {}),
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
