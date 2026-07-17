@@ -30,6 +30,12 @@ Phase R (Research-Tool Surface)._
   See [`review/33`](review/33-llm-quota-cost-scheduler.md) §13 for the full revision history. This
   adds no LLM artifact backfill or pipeline-version bump.
 
+- **Audio source-cache failure cleanup.** Failed source downloads and multi-part concatenations now
+  remove partial `.mka` outputs immediately, and failed concat attempts release already-downloaded
+  episode parts before falling back to remote rendering. This prevents temporary audio artifacts
+  from accumulating across a shard's rolling queue; successful audio identity and content-addressed
+  outputs are unchanged.
+
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
   requests transport timeout is recorded as deferred work so a temporary endpoint outage does not
