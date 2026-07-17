@@ -10,6 +10,7 @@ billing class so cost discipline can be asserted. It is intentionally **listing-
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 from citypods.storage import CASConflict
 
@@ -70,3 +71,45 @@ class MemCAS:
             self.objs[key] = body
             self._n += 1
             self.etags[key] = f'"seed{self._n}"'
+
+
+class MemStorage(MemCAS):
+    """``MemCAS`` plus the bulk (B2-like) file interface -- for tests needing a storage double
+    that supports both at once, the way production ``RoutingStorage`` dispatches by key prefix to
+    R2 (CAS) or B2 (bulk). `LiteLLMBackend` is the concrete case: it uses CAS for its quota ledger
+    (``state/llm_budget.json``, a coordination prefix) and the bulk interface for its
+    deferred-request registry (``state/llm_deferred/*.json``, not one).
+
+    Unlike ``MemCAS``, ``list_objects`` here is **not** listing-hostile: only R2 coordination
+    state must never be listed (that invariant is what ``MemCAS.list_objects`` itself guards for
+    every CAS-only caller); this fake's bulk surface represents B2, where listing pending records
+    is the normal, expected pattern the deferred-request sweep relies on.
+    """
+
+    def put_file(self, key, local_path, content_type):
+        with self._lock:
+            self.class_a += 1
+            self.objs[key] = Path(local_path).read_bytes()
+            self._bump(key)
+            return "mem://" + key
+
+    def get_file(self, key, local_path):
+        with self._lock:
+            self.class_b += 1
+            if key not in self.objs:
+                return False
+            data = self.objs[key]
+        path = Path(local_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return True
+
+    def list_objects(self, prefix=""):
+        with self._lock:
+            keys = sorted(k for k in self.objs if k.startswith(prefix))
+        for key in keys:
+            yield key, None
+
+    def exists(self, key):
+        with self._lock:
+            return key in self.objs

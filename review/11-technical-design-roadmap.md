@@ -280,6 +280,27 @@ Each: problem + 1–3 candidate approaches + rough tradeoffs. Promote to a break
 
 ### §5.1 Phase R remainder
 
+**LLM quota & cost-window scheduler (Infra — ROADMAP R13). Implemented 2026-07-17** — full design in
+[`review/33`](33-llm-quota-cost-scheduler.md), simplified 2026-07-16 from an initial L2 draft, then
+revised again post-implementation (code review + an interface-unification pass, review/33 §13.2). Adds
+the policy layer above R2's LiteLLM adapter and R10's Mistral transport as a stateless selection function
+(no new persistent service): a 4-field request contract (`allowed_models`/`allow_paid`/`deadline_at`/
+`purpose`), free-model protection, deadline-aware selection, and a CAS-backed quota/cost ledger shared
+with review/27 §8's still-unbuilt $ budget ledger — one object, not two. Gemini's RPM/TPM/RPD quotas
+and midnight-Pacific reset are enforced via that ledger with **no dedicated Gemini Worker**: unlike
+Mistral's ~1–2 RPM limit, Gemini's free tier doesn't need a process that outlives a single Actions run
+(review/33 §7), and a real 429 from any provider now reactively blocks that route until its
+`Retry-After` hint (review/33 §7.1). DeepSeek off-peak dispatch preference ships as a config-driven price
+window, not a blocking constraint. A caller that gets deferred (nothing eligible yet, a real rate limit,
+or a genuine in-flight Mistral dispatch) is picked up later via a portable `JobHandle`/`reconcile()`, a
+B2-backed deferred-request registry, and a once-daily sweep workflow timed to DeepSeek's off-peak window
+(review/33 §10.7) — no caller needs its own retry cadence to eventually get a result. Provider batch
+capability is deferred until a real batch-capable provider is confirmed. The city-onboarding consumer
+(`citypods/discovery/classify.py`) requires a free, immediate result (`allow_paid=False`, no deadline) —
+it acts on the result synchronously and already owns its own daily retry for "not eligible now"; the
+scorer/evaluation consumer forces an explicit paid or free model via a singleton allowlist. R13 must not
+move provider-specific scheduling policy into either Worker.
+
 **LLM backend + Rate-limited LLM dispatch Worker (new, Infra — ROADMAP R2 and R10).** Matured to L3 —
 full design in [`review/27`](27-llm-backend-and-provider-routing.md): a LiteLLM-backed `Backend` adapter
 running three providers (Gemini, DeepSeek, Mistral) under a windowed-recency allocation policy reusing

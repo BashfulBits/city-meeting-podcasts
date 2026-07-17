@@ -57,6 +57,16 @@ jobs:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
           LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           CITY_REQUEST_STATUS_WEBHOOK_URL: ${{ secrets.CITY_REQUEST_STATUS_WEBHOOK_URL }}
           REQUESTED_ISSUE: ${{ inputs.issue_number }}
         run: |
