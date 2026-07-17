@@ -280,6 +280,15 @@ Each: problem + 1–3 candidate approaches + rough tradeoffs. Promote to a break
 
 ### §5.1 Phase R remainder
 
+**LLM quota, cost-window & batch scheduler (new, Infra — ROADMAP R13).** Proposed at L2; full design
+in [`review/33`](33-llm-quota-cost-scheduler.md). Adds the policy layer above R2's LiteLLM adapter and
+R10's Mistral transport: caller model allowlists, free-model protection, deadline-aware selection,
+provider/model quota ledgers, timezone-aware peak pricing, provider batch capability hooks, and a
+second Cloudflare Worker for Gemini's RPM/TPM/RPD quotas with its midnight-Pacific reset. The initial
+city-onboarding consumer permits any configured model, prefers free routes, and has a 24-hour deadline;
+the scorer/evaluation consumer can require an explicit model list, including paid challengers. R13
+must not move provider-specific scheduling policy into either Worker.
+
 **LLM backend + Rate-limited LLM dispatch Worker (new, Infra — ROADMAP R2 and R10).** Matured to L3 —
 full design in [`review/27`](27-llm-backend-and-provider-routing.md): a LiteLLM-backed `Backend` adapter
 running three providers (Gemini, DeepSeek, Mistral) under a windowed-recency allocation policy reusing

@@ -182,6 +182,14 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > R11 owns URL discovery, R3 owns extracting text from what R11 finds. See
 > [`review/15`](review/15-legistar-catalog-provider.md), which absorbs and expands the original item.
 
+> **Added 2026-07-16 (maintainer decision): LLM quota/cost-window/batch scheduling is R13.** This is
+> a policy-layer companion to the shipped R2 adapter and R10 Mistral transport, not a replacement for
+> either. It adds caller model allowlists and model-by-model scorer fan-out, explicit free-only/
+> free-when-feasible/paid-allowed policy, deadline scheduling, provider quota accounting, peak-hour
+> pricing windows, future provider-batch capability, and a separate Gemini quota Worker for
+> RPM/TPM/RPD limits and its midnight-Pacific daily reset.
+> Full proposal: [`review/33`](review/33-llm-quota-cost-scheduler.md).
+
 > **Added 2026-07-12 (maintainer question → item): LLM-assisted city/agenda-source discovery, numbered
 > R12, sequenced right after R2 (before R3).** Same no-renumbering convention as R10/R11. Prompted by
 > asking whether R11's manual per-city discovery checklist (§B.2) — and new-city onboarding generally —
@@ -311,6 +319,7 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 | **R11** | **Core implementation shipped** (#903/#904/#905, 2026-07-13) — **Cross-provider agenda & history network**: Granicus archive-first discovery, verified calendar composition/backfill, durable no-video calendar rows, and first-party Swagit agenda/minutes links are live. Remaining follow-up is broader vendor coverage (including OneMeeting/Agenda PE/CivicClerk cases) as catalog evidence warrants. Feeds R3 and, transitively, R4/R5 |
 | **R2** | **Shipped** (#919, 2026-07-13) — **LLM backend**: LiteLLM owns provider translation and response normalization; direct routes return `JobResult`, while rate-limited routes enqueue through R10 and return `JobHandle` for later reconciliation. Provider choice, cost/budget ledger, prompt management, and the H13 LLM verbs are wired; R5/R6 remain its first feature consumers |
 | **R12** | **Implementation in progress (unmerged)** — **LLM-assisted city/agenda-source discovery**, L3 design in [`review/28`](review/28-llm-assisted-city-discovery.md). The working implementation adds Tavily-grounded classification, SSRF-gated adapter verification, daily new-city evidence/weekly auxiliary eligibility, 90-day refresh, maintainer slash controls, an unsupported-provider tracker, one review-PR batch path, and a D1-backed Formspark/Discord/GitHub/Resend intake Worker. The website path passed a controlled end-to-end test and the live Tavily/LiteLLM Action smoke passed; signed Discord intake, Discussions intake, and idempotent email/Discord/Discussion callbacks are implemented but still require the documented account settings, deployment, and live tests. It is not shipped until the implementation PR merges. |
+| **R13** | **Proposed — LLM quota, cost-window & batch scheduler**, L2 design in [`review/33`](review/33-llm-quota-cost-scheduler.md): policy layer above R2/R10; caller model allowlists and scorer fan-out; free-only/free-when-feasible/paid-allowed selection; Gemini quota Worker for RPD/RPM/TPM and Pacific-midnight reset; deadline-aware peak pricing; and provider-neutral future batch capability. |
 | **R3** | **Shipped** (#920, 2026-07-14) — **Agenda text extraction**: agenda/portal text plus bounded backup/packet material, minutes, per-item votes, and member-roster extraction are implemented as content-addressed artifacts; no OCR or LLM synthesis in the first pass. Feeds R4's search index and R5's tag generator |
 | **R4** | **Shipped** (2026-07-14; commits `2f76744` + `60998a0`) — **#6 static client-side transcript/meeting search**, including deterministic cacheable per-source MiniSearch shards, agenda/backup/minutes/vote/roster fields, metadata-only unavailable recordings, and availability filtering |
 | **R5** | **Not started** — **#4 topic tags / Strong Towns lens** remains L3 design in [`review/14`](review/14-topic-tags-strong-towns-lens.md); implementation awaits transparent rules, overrides, and later R2-backed assistance |
