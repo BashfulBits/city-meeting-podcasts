@@ -280,14 +280,19 @@ Each: problem + 1–3 candidate approaches + rough tradeoffs. Promote to a break
 
 ### §5.1 Phase R remainder
 
-**LLM quota, cost-window & batch scheduler (new, Infra — ROADMAP R13).** Proposed at L2; full design
-in [`review/33`](33-llm-quota-cost-scheduler.md). Adds the policy layer above R2's LiteLLM adapter and
-R10's Mistral transport: caller model allowlists, free-model protection, deadline-aware selection,
-provider/model quota ledgers, timezone-aware peak pricing, provider batch capability hooks, and a
-second Cloudflare Worker for Gemini's RPM/TPM/RPD quotas with its midnight-Pacific reset. The initial
-city-onboarding consumer permits any configured model, prefers free routes, and has a 24-hour deadline;
-the scorer/evaluation consumer can require an explicit model list, including paid challengers. R13
-must not move provider-specific scheduling policy into either Worker.
+**LLM quota & cost-window scheduler (new, Infra — ROADMAP R13).** Matured to L3 — full design in
+[`review/33`](33-llm-quota-cost-scheduler.md), simplified 2026-07-16 from an initial L2 draft. Adds the
+policy layer above R2's LiteLLM adapter and R10's Mistral transport as a stateless selection function
+(no new persistent service): a 4-field request contract (`allowed_models`/`allow_paid`/`deadline_at`/
+`purpose`), free-model protection, deadline-aware selection, and a CAS-backed quota/cost ledger shared
+with review/27 §8's still-unbuilt $ budget ledger — one object, not two. Gemini's RPM/TPM/RPD quotas
+and midnight-Pacific reset are enforced via that ledger with **no dedicated Gemini Worker**: unlike
+Mistral's ~1–2 RPM limit, Gemini's free tier doesn't need a process that outlives a single Actions run
+(review/33 §7). DeepSeek off-peak dispatch preference is in scope for v1 (a config-driven price window,
+not a blocking constraint). Provider batch capability is deferred until a real batch-capable provider
+is confirmed. The initial city-onboarding consumer permits any configured model, prefers free routes,
+and has a 24-hour deadline; the scorer/evaluation consumer forces an explicit paid or free model via a
+singleton allowlist. R13 must not move provider-specific scheduling policy into either Worker.
 
 **LLM backend + Rate-limited LLM dispatch Worker (new, Infra — ROADMAP R2 and R10).** Matured to L3 —
 full design in [`review/27`](27-llm-backend-and-provider-routing.md): a LiteLLM-backed `Backend` adapter
