@@ -39,6 +39,7 @@ from citypods.storage.base import StorageBackend
 #     ``put_cas``. Slot keys are derived (``0..N-1``), never listed.
 COORDINATION_PREFIXES: tuple[str, ...] = (
     "state/compute_budget.json",
+    "state/llm_budget.json",
     "state/asr_worker_telemetry.json",
     "state/transcript_quality_ledger.json",
     "work-leases/",
@@ -58,6 +59,9 @@ _EPHEMERAL_R2_PREFIXES: dict[str, str] = {
     # Free-tier GPU budget ledger: derivable — a lost/expired budget object re-initializes to the
     # period cap; worst case is one over-count window, never lost artifacts.
     "state/compute_budget.json": "GPU budget ledger; re-initializes to the period cap if lost",
+    "state/llm_budget.json": (
+        "LLM quota/cost ledger; re-initializes to zero spend/quota-used if lost"
+    ),
     # Bounded, non-secret worker memory samples for admission tuning; a lost object just restarts
     # sampling. No durable/canonical data.
     "state/asr_worker_telemetry.json": "bounded worker telemetry samples; restarts if lost",

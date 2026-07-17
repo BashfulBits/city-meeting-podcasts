@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -11,9 +12,13 @@ from citypods.compute.llm import (
     LiteLLMBackend,
     LLMBackendConfig,
     LLMBackendError,
+    LLMNotEligibleError,
     LLMStructuredOutputError,
 )
+from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
+from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy
 from citypods.compute.structured import register_response_model
+from tests._cas_fake import MemCAS
 
 
 class ExampleOutput(BaseModel):
@@ -54,6 +59,112 @@ def test_direct_litellm_call_is_normalized():
     assert result.output["choices"][0]["message"]["content"] == "ok"
     assert calls[0]["model"] == "gemini/gemini-3-flash-preview"
     assert calls[0]["stream"] is False
+
+
+def test_policy_route_is_resolved_and_settled_in_cas_ledger():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            model_dump=lambda: {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"total_tokens": 12},
+            }
+        )
+
+    storage = MemCAS()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    result = backend.run_inference(
+        job(
+            content="meeting text",
+            llm_policy=LLMRequestPolicy(
+                allowed_models=("gemini/gemini-3-flash-preview",),
+                purpose="test",
+            ),
+        )
+    )
+
+    assert isinstance(result, JobResult)
+    assert calls[0]["model"] == "gemini/gemini-3-flash-preview"
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 1
+    assert ledger.tokens_minute == 12
+
+
+def test_policy_no_eligible_route_raises_without_reservation():
+    storage = MemCAS()
+    now = datetime.now(UTC)
+
+    def exhaust(budget):
+        model = "gemini/gemini-3-flash-preview"
+        route = ROUTES[model]
+        ledger = budget._ledger(model, now, route=route)
+        ledger.requests_day = route.quota.rpd
+        ledger.requests_day_key = daily_reset_key(now, "America/Los_Angeles")
+
+    mutate_llm_budget(storage, exhaust, now=now)
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=lambda **_: {},
+        storage=storage,
+    )
+
+    with pytest.raises(LLMNotEligibleError):
+        backend.run_inference(
+            job(
+                content="meeting text",
+                llm_policy=LLMRequestPolicy(
+                    allowed_models=("gemini/gemini-3-flash-preview",),
+                ),
+            )
+        )
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert ledger.inflight == {}
+    assert ledger.requests_day == 1500
+
+
+def test_policy_post_network_failure_settles_reservation():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        raise RuntimeError("provider failure")
+
+    storage = MemCAS()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    with pytest.raises(RuntimeError, match="provider failure"):
+        backend.run_inference(
+            job(
+                content="meeting text",
+                llm_policy=LLMRequestPolicy(
+                    allowed_models=("gemini/gemini-3-flash-preview",),
+                ),
+            )
+        )
+
+    assert calls
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 1
+
+
+def test_policy_requires_cas_storage():
+    backend = LiteLLMBackend(LLMBackendConfig(), completion=lambda **_: {})
+    with pytest.raises(LLMBackendError, match="CAS-capable storage"):
+        backend.run_inference(job(content="meeting text", llm_policy=LLMRequestPolicy()))
 
 
 def test_structured_job_uses_instructor_pydantic_json_schema_mode():

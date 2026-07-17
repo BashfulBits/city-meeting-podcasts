@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM quota and cost scheduling (R13).** Added provider-neutral route policy, Gemini RPM/RPD/TPM
+  accounting with Pacific-midnight resets, DeepSeek off-peak preference, exact allowlists, and a
+  CAS-backed `state/llm_budget.json` ledger. Reservations are released only before a provider call
+  and settled for every post-call outcome; city discovery now uses the 24-hour onboarding policy.
+  This adds no LLM artifact backfill or pipeline-version bump.
+
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
   requests transport timeout is recorded as deferred work so a temporary endpoint outage does not

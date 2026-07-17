@@ -123,7 +123,7 @@ def test_discovery_script_returns_tempfail_for_invalid_structured_output(monkeyp
         "TavilyClient",
         lambda: SimpleNamespace(search=lambda _request: _results()),
     )
-    monkeypatch.setattr(city_discovery_script, "LiteLLMBackend", lambda *_: None)
+    monkeypatch.setattr(city_discovery_script, "LiteLLMBackend", lambda *_, **__: None)
 
     def invalid_response(*_args):
         raise LLMStructuredOutputError("structured LLM response failed Pydantic validation")
@@ -177,6 +177,9 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert "granicus_base" in prompt
             assert "city_identity" in prompt
             assert job.inputs["structured_output"] == STRUCTURED_OUTPUT
+            assert job.inputs["llm_policy"].allow_paid is True
+            assert job.inputs["llm_policy"].purpose == "city-onboarding"
+            assert job.inputs["llm_policy"].deadline_at is not None
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,

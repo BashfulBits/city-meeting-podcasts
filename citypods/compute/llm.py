@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -18,6 +19,14 @@ from urllib.parse import urljoin, urlsplit
 import requests
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult, Task
+from citypods.compute.llm_budget import release_route_reservation, settle_route_reservation
+from citypods.compute.llm_policy import (
+    DEFAULT_OUTPUT_TOKEN_MARGIN,
+    ROUTES,
+    LLMRequestPolicy,
+    estimate_tokens,
+)
+from citypods.compute.llm_scheduler import select_and_reserve
 from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 
@@ -63,6 +72,10 @@ class LLMStructuredOutputError(LLMBackendError):
     """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
 
 
+class LLMNotEligibleError(LLMBackendError):
+    """No configured route is eligible; the caller can retry on its next scheduled run."""
+
+
 @dataclass(frozen=True)
 class LLMBackendConfig:
     """Runtime routing configuration; secrets are read from the environment, never persisted."""
@@ -98,6 +111,19 @@ def _response_mapping(response: Any) -> dict[str, Any]:
     raise LLMBackendError("LLM provider returned an unsupported response shape")
 
 
+def _usage_tokens(output: Mapping[str, Any]) -> int | None:
+    usage = output.get("usage")
+    if not isinstance(usage, Mapping):
+        return None
+    total = usage.get("total_tokens")
+    try:
+        if total is None:
+            total = int(usage.get("prompt_tokens", 0)) + int(usage.get("completion_tokens", 0))
+        return int(total)
+    except (TypeError, ValueError):
+        return None
+
+
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     """Return caller-supplied messages or construct the task's default structured prompt."""
     supplied = job.inputs.get("messages")
@@ -125,6 +151,7 @@ class LiteLLMBackend(Backend):
         *,
         completion: Callable[..., Any] | None = None,
         http_session: requests.Session | None = None,
+        storage=None,
     ) -> None:
         self.config = config or LLMBackendConfig.from_env()
         if self.config.model not in SUPPORTED_MODELS:
@@ -135,6 +162,7 @@ class LiteLLMBackend(Backend):
             raise ValueError("dispatch mode requires LLM_DISPATCH_URL")
         self._completion = completion
         self._session = http_session or requests.Session()
+        self.storage = storage
 
     def _completion_fn(self) -> Callable[..., Any]:
         """Resolve LiteLLM lazily so users of ASR-only paths need not install the extra."""
@@ -160,7 +188,7 @@ class LiteLLMBackend(Backend):
         name = self._structured_output(job)
         return (name, response_model(name)) if name else None
 
-    def _instructor_mode(self):
+    def _instructor_mode(self, resolved_model: str):
         """Choose Instructor's provider-neutral structured-output mode for this route."""
         try:
             from instructor import Mode
@@ -168,37 +196,52 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
         # DeepSeek public chat supports only valid-JSON mode.  Instructor includes the Pydantic
         # schema in the prompt and supplies its field-specific validation feedback on a retry.
-        return Mode.JSON if self.config.model.startswith("deepseek/") else Mode.JSON_SCHEMA
+        return Mode.JSON if resolved_model.startswith("deepseek/") else Mode.JSON_SCHEMA
 
-    def _provider_options(self, job: InferenceJob) -> dict[str, Any]:
-        options: dict[str, Any] = {"model": self.config.model}
+    def _provider_options(self, job: InferenceJob, resolved_model: str) -> dict[str, Any]:
+        options: dict[str, Any] = {"model": resolved_model}
         for field in ("temperature", "max_tokens", "tools", "tool_choice"):
             if field in job.inputs:
                 options[field] = job.inputs[field]
         return options
 
-    def _dispatch_response_format(self, model: ResponseModel) -> Mapping[str, Any]:
+    def _dispatch_response_format(
+        self, model: ResponseModel, resolved_model: str
+    ) -> Mapping[str, Any]:
         """Serialize the same Pydantic contract used by Instructor for the R10 queue."""
-        if self.config.model.startswith("deepseek/"):
+        if resolved_model.startswith("deepseek/"):
             return {"type": "json_object"}
         return {
             "type": "json_schema",
             "json_schema": {"name": model.__name__, "schema": model.model_json_schema()},
         }
 
-    def _payload(self, job: InferenceJob, model: ResponseModel | None = None) -> dict[str, Any]:
+    def _payload(
+        self,
+        job: InferenceJob,
+        model: ResponseModel | None = None,
+        *,
+        resolved_model: str,
+    ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
         payload: dict[str, Any] = {
-            "model": self.config.model,
+            "model": resolved_model,
             "messages": _messages(job),
             "stream": False,
         }
         if model is not None:
-            payload["response_format"] = self._dispatch_response_format(model)
-        payload.update(self._provider_options(job))
+            payload["response_format"] = self._dispatch_response_format(model, resolved_model)
+        payload.update(self._provider_options(job, resolved_model))
         return payload
 
-    def _run_structured_direct(self, job: InferenceJob, model: ResponseModel) -> JobResult:
+    def _run_structured_direct(
+        self,
+        job: InferenceJob,
+        model: ResponseModel,
+        *,
+        resolved_model: str,
+        completion: Callable[..., Any] | None = None,
+    ) -> JobResult:
         """Use Instructor for typed parsing and exactly one validation-feedback retry."""
         try:
             import instructor
@@ -207,12 +250,13 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
         try:
             typed, raw = instructor.from_litellm(
-                self._completion_fn(), mode=self._instructor_mode()
+                completion if completion is not None else self._completion_fn(),
+                mode=self._instructor_mode(resolved_model),
             ).create_with_completion(
                 response_model=model,
                 messages=_messages(job),
                 max_retries=1,
-                **self._provider_options(job),
+                **self._provider_options(job, resolved_model),
             )
         except InstructorRetryException:
             # Do not expose model text or validation feedback in workflow logs.  The caller safely
@@ -265,17 +309,140 @@ class LiteLLMBackend(Backend):
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
         if job.task not in LLM_TASKS:
             raise ValueError(f"LiteLLM backend does not handle task {job.task!r}")
+        policy = job.inputs.get("llm_policy")
         structured = self._response_model(job)
+        if policy is None:
+            return self._run_without_policy(job, structured)
+        if not isinstance(policy, LLMRequestPolicy):
+            raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
+        if self.storage is None or not getattr(self.storage, "cas_capable", False):
+            raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
+
+        messages = _messages(job)
+        owner = f"{job.recipe_hash}:{uuid.uuid4().hex}"
+        selection = select_and_reserve(
+            self.storage,
+            owner,
+            policy,
+            routes=ROUTES,
+            backend_mode=self.config.mode,
+            estimated_tokens=estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN,
+        )
+        if selection.model is None or selection.route is None:
+            raise LLMNotEligibleError(selection.reason)
+        resolved_model = selection.model
+        attempted = False
+        try:
+            if self.config.mode == "direct":
+                if structured:
+                    completion_fn = self._completion_fn()
+
+                    def guarded_completion(**kwargs):
+                        nonlocal attempted
+                        attempted = True
+                        return completion_fn(**kwargs)
+
+                    result = self._run_structured_direct(
+                        job,
+                        structured[1],
+                        resolved_model=resolved_model,
+                        completion=guarded_completion,
+                    )
+                else:
+                    payload = self._payload(job, resolved_model=resolved_model)
+                    completion_fn = self._completion_fn()
+                    attempted = True
+                    response = completion_fn(**payload)
+                    result = JobResult(
+                        task=job.task,
+                        recipe_hash=job.recipe_hash,
+                        output=_response_mapping(response),
+                    )
+            else:
+                structured_name, model = structured if structured else (None, None)
+                payload = self._payload(job, model, resolved_model=resolved_model)
+                headers = {"content-type": "application/json"}
+                if self.config.dispatch_auth_token:
+                    headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
+                if job.recipe_hash:
+                    headers["idempotency-key"] = job.recipe_hash
+                attempted = True
+                response = self._session.post(
+                    urljoin(self.config.dispatch_url.rstrip("/") + "/", "v1/chat/completions"),
+                    json=payload,
+                    headers=headers,
+                    timeout=self.config.timeout_seconds,
+                )
+                if response.status_code == 200:
+                    result = self._completed_dispatch_result(
+                        task=job.task,
+                        recipe_hash=job.recipe_hash,
+                        output=response.json(),
+                        structured_output=structured_name,
+                    )
+                elif response.status_code == 202:
+                    body = response.json()
+                    ref = response.headers.get("location")
+                    if not ref and isinstance(body, Mapping):
+                        ref = body.get("id")
+                    if not ref:
+                        raise LLMBackendError("LLM dispatch response omitted a request reference")
+                    result = JobHandle(
+                        task=job.task,
+                        recipe_hash=job.recipe_hash,
+                        backend=self.name,
+                        ref=ref,
+                        structured_output=structured_name,
+                    )
+                else:
+                    raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
+        except requests.RequestException as exc:
+            if attempted:
+                settle_route_reservation(self.storage, owner, resolved_model)
+            else:
+                release_route_reservation(self.storage, owner, resolved_model)
+            raise LLMBackendError("LLM request failed") from exc
+        except BaseException:
+            if attempted:
+                settle_route_reservation(self.storage, owner, resolved_model)
+            else:
+                release_route_reservation(self.storage, owner, resolved_model)
+            raise
+
+        actual_tokens = None
+        actual_cost = None
+        if isinstance(result, JobResult):
+            actual_tokens = _usage_tokens(result.output)
+            if actual_tokens is not None:
+                actual_cost = actual_tokens * (
+                    selection.route.pricing.input_per_token
+                    + selection.route.pricing.output_per_token
+                )
+        settle_route_reservation(
+            self.storage,
+            owner,
+            resolved_model,
+            actual_tokens=actual_tokens,
+            actual_cost=actual_cost,
+        )
+        return result
+
+    def _run_without_policy(
+        self, job: InferenceJob, structured: tuple[str, ResponseModel] | None
+    ) -> JobResult | JobHandle:
+        """Preserve the pre-R13 path exactly for callers without scheduler metadata."""
         if self.config.mode == "direct":
             if structured:
-                return self._run_structured_direct(job, structured[1])
-            response = self._completion_fn()(**self._payload(job))
+                return self._run_structured_direct(
+                    job, structured[1], resolved_model=self.config.model
+                )
+            response = self._completion_fn()(**self._payload(job, resolved_model=self.config.model))
             return JobResult(
                 task=job.task, recipe_hash=job.recipe_hash, output=_response_mapping(response)
             )
 
         structured_name, model = structured if structured else (None, None)
-        payload = self._payload(job, model)
+        payload = self._payload(job, model, resolved_model=self.config.model)
         headers = {"content-type": "application/json"}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
@@ -366,6 +533,7 @@ class LiteLLMBackend(Backend):
 __all__ = [
     "LLMBackendConfig",
     "LLMBackendError",
+    "LLMNotEligibleError",
     "LLMStructuredOutputError",
     "LLM_TASKS",
     "LiteLLMBackend",

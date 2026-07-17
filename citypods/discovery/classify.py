@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import TASK_VERSIONS
+from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.discovery.models import (
     KNOWN_PLATFORMS,
@@ -273,6 +275,11 @@ def classify(
         inputs={
             "messages": _prompt(request, results),
             "structured_output": STRUCTURED_OUTPUT,
+            "llm_policy": LLMRequestPolicy(
+                allow_paid=True,
+                deadline_at=datetime.now(UTC) + timedelta(hours=24),
+                purpose="city-onboarding",
+            ),
         },
         recipe_hash=recipe_hash(request, results),
     )
