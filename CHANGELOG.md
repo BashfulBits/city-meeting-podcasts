@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Audio source-cache failure cleanup.** Failed source downloads and multi-part concatenations now
+  remove partial `.mka` outputs immediately, and failed concat attempts release already-downloaded
+  episode parts before falling back to remote rendering. This prevents temporary audio artifacts
+  from accumulating across a shard's rolling queue; successful audio identity and content-addressed
+  outputs are unchanged.
+
 - **Topic taxonomy and calibrated chapter-scoped tagging (R5).** Added a 37-tag Strong Towns/livability
   taxonomy, deterministic evidence-backed episode/chapter annotations, taxonomy-ordered episode
   rollups with a no-chapter fallback, chapter-aware meeting/search payloads, and an Instructor/Pydantic
