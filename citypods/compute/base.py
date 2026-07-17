@@ -62,11 +62,19 @@ class JobResult:
 
     ``output`` is the task-specific artifact — e.g. an :class:`citypods.asr.TranscriptArtifacts`
     (segment VTT + word-JSON sidecar) for ``transcribe``/``align``.
+
+    ``model`` (R13, additive/optional — every existing construction call site is unaffected) is
+    the resolved model string for an LLM backend, or ``None`` for backends where "model" has no
+    meaning (e.g. the ASR ``local`` adapter). It exists because a caller using policy-driven model
+    auto-selection computes ``InferenceJob.recipe_hash`` *before* the backend has chosen a model, so
+    the hash alone cannot identify which model produced a given result; a caller that needs to
+    content-address its own stored artifact by model must fold this field in itself.
     """
 
     task: Task
     recipe_hash: str
     output: Any
+    model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +94,12 @@ class JobHandle:
     # a Python class: queue/state implementations can persist it and later reconciliation can
     # validate the completed result after a process restart.
     structured_output: str | None = None
+    # ``model`` / ``owner`` (R13, additive/optional): the resolved LLM model and its quota/cost
+    # ledger reservation owner, present only for a policy-tracked async dispatch. A later
+    # ``reconcile()`` uses ``owner`` to settle that reservation to actual usage once the Worker's
+    # terminal response is available; both are ``None`` for every non-LLM dispatch backend.
+    model: str | None = None
+    owner: str | None = None
 
 
 def lease_owner_for(handle: JobHandle) -> str:

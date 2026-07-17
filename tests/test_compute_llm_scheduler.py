@@ -39,6 +39,27 @@ def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
     assert any(model == "gemini/gemini-3-flash-preview" for model, _ in result.rejected)
 
 
+def test_ranking_prefers_free_route_over_a_simultaneously_eligible_paid_route():
+    """Distinct from the exhausted-Gemini scenarios above: here Gemini has full quota *and*
+    DeepSeek is inside its own off-peak window (so it's cheap and immediately eligible too) --
+    ranking (§5 gate 6) must still pick the free route over an equally-eligible paid one."""
+    inside_deepseek_window = datetime(2026, 7, 16, 18, tzinfo=UTC)
+    result = select_route(
+        LLMRequestPolicy(allow_paid=True),
+        routes=ROUTES,
+        ledger=LLMBudget(),
+        backend_mode="direct",
+        estimated_tokens=1024,
+        now=inside_deepseek_window,
+    )
+    assert result.model == "gemini/gemini-3-flash-preview"
+    assert any(
+        model in {"deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"}
+        and reason == "lower-ranked eligible route"
+        for model, reason in result.rejected
+    )
+
+
 def test_free_route_is_not_replaced_by_paid_route_when_off_peak_wait_is_safe():
     result = select_route(
         LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=24)),

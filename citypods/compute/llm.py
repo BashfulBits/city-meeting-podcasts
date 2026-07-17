@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import importlib
 import os
-import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, cast
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -81,17 +80,24 @@ class LLMBackendConfig:
     """Runtime routing configuration; secrets are read from the environment, never persisted."""
 
     model: str = "gemini/gemini-3-flash-preview"
-    mode: str = "direct"  # ``direct`` or ``dispatch``
+    mode: Literal["direct", "dispatch"] = "direct"
     dispatch_url: str | None = None
     dispatch_auth_token: str | None = None
     timeout_seconds: float = 30.0
 
     @classmethod
     def from_env(cls) -> LLMBackendConfig:
-        """Build configuration from environment variables without reading provider keys."""
+        """Build configuration from environment variables without reading provider keys.
+
+        ``LLM_MODE`` is read as a plain string and passed through unvalidated here — an invalid
+        value (anything but ``"direct"``/``"dispatch"``) surfaces as a clear ``ValueError`` from
+        ``LiteLLMBackend.__init__``'s existing runtime check, which is the right place to reject
+        it. The ``Literal`` annotation on ``mode`` documents the two valid values; it does not
+        (and must not) silently coerce an invalid environment value into one of them.
+        """
         return cls(
             model=os.environ.get("LLM_MODEL") or cls.model,
-            mode=os.environ.get("LLM_MODE") or cls.mode,
+            mode=cast("Literal['direct', 'dispatch']", os.environ.get("LLM_MODE") or cls.mode),
             dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
             dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
@@ -267,7 +273,12 @@ class LiteLLMBackend(Backend):
         # Instructor returned a validated object; retain the normalized raw response contract so
         # existing task parsers and result storage remain provider-neutral.
         _ = typed
-        return JobResult(task=job.task, recipe_hash=job.recipe_hash, output=_response_mapping(raw))
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            output=_response_mapping(raw),
+            model=resolved_model,
+        )
 
     @staticmethod
     def _structured_content(output: Mapping[str, Any]) -> str:
@@ -298,12 +309,13 @@ class LiteLLMBackend(Backend):
         recipe_hash: str,
         output: Any,
         structured_output: str | None,
+        model: str | None = None,
     ) -> JobResult:
         """Validate and normalize a terminal Worker response from either POST or poll."""
         if not isinstance(output, Mapping):
             raise LLMBackendError("LLM dispatch returned a non-object response")
         self._validate_reconciled(output, structured_output)
-        return JobResult(task=task, recipe_hash=recipe_hash, output=output)
+        return JobResult(task=task, recipe_hash=recipe_hash, output=output, model=model)
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
@@ -319,7 +331,11 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
 
         messages = _messages(job)
-        owner = f"{job.recipe_hash}:{uuid.uuid4().hex}"
+        # Deterministic, not random: a caller retrying the *same* logical dispatch (same
+        # recipe_hash) before its first reservation settles must reserve idempotently, not
+        # double-count quota for one real provider call. `LLMBudget.reserve` treats a
+        # still-inflight owner as a no-op for exactly this reason.
+        owner = job.recipe_hash
         selection = select_and_reserve(
             self.storage,
             owner,
@@ -331,7 +347,18 @@ class LiteLLMBackend(Backend):
         if selection.model is None or selection.route is None:
             raise LLMNotEligibleError(selection.reason)
         resolved_model = selection.model
+        route = selection.route
         attempted = False
+
+        def _cleanup() -> None:
+            if attempted:
+                # The call reached the provider (or the Worker's queue) regardless of outcome, so
+                # its rate-limit slot is genuinely spent -- settle (keep it charged), never
+                # release. See review/33 §10.2.
+                settle_route_reservation(self.storage, owner, resolved_model, route=route)
+            else:
+                release_route_reservation(self.storage, owner, resolved_model, route=route)
+
         try:
             if self.config.mode == "direct":
                 if structured:
@@ -357,6 +384,7 @@ class LiteLLMBackend(Backend):
                         task=job.task,
                         recipe_hash=job.recipe_hash,
                         output=_response_mapping(response),
+                        model=resolved_model,
                     )
             else:
                 structured_name, model = structured if structured else (None, None)
@@ -379,6 +407,7 @@ class LiteLLMBackend(Backend):
                         recipe_hash=job.recipe_hash,
                         output=response.json(),
                         structured_output=structured_name,
+                        model=resolved_model,
                     )
                 elif response.status_code == 202:
                     body = response.json()
@@ -387,41 +416,41 @@ class LiteLLMBackend(Backend):
                         ref = body.get("id")
                     if not ref:
                         raise LLMBackendError("LLM dispatch response omitted a request reference")
-                    result = JobHandle(
+                    # Deliberately not settled here: the reservation stays inflight until
+                    # `reconcile()` observes the Worker's terminal response and can settle it to
+                    # actual usage (see `reconcile()`). A job whose handle is never reconciled
+                    # leaves a stale inflight entry -- harmless today since no configured route
+                    # declares `concurrency` (nothing checks `inflight_count`), but a real reap
+                    # mechanism (mirroring H17's lease reap) would be needed before that changes.
+                    return JobHandle(
                         task=job.task,
                         recipe_hash=job.recipe_hash,
                         backend=self.name,
                         ref=ref,
                         structured_output=structured_name,
+                        model=resolved_model,
+                        owner=owner,
                     )
                 else:
                     raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
         except requests.RequestException as exc:
-            if attempted:
-                settle_route_reservation(self.storage, owner, resolved_model)
-            else:
-                release_route_reservation(self.storage, owner, resolved_model)
+            _cleanup()
             raise LLMBackendError("LLM request failed") from exc
         except BaseException:
-            if attempted:
-                settle_route_reservation(self.storage, owner, resolved_model)
-            else:
-                release_route_reservation(self.storage, owner, resolved_model)
+            _cleanup()
             raise
 
-        actual_tokens = None
+        actual_tokens = _usage_tokens(result.output)
         actual_cost = None
-        if isinstance(result, JobResult):
-            actual_tokens = _usage_tokens(result.output)
-            if actual_tokens is not None:
-                actual_cost = actual_tokens * (
-                    selection.route.pricing.input_per_token
-                    + selection.route.pricing.output_per_token
-                )
+        if actual_tokens is not None:
+            actual_cost = actual_tokens * (
+                route.pricing.input_per_token + route.pricing.output_per_token
+            )
         settle_route_reservation(
             self.storage,
             owner,
             resolved_model,
+            route=route,
             actual_tokens=actual_tokens,
             actual_cost=actual_cost,
         )
@@ -430,7 +459,9 @@ class LiteLLMBackend(Backend):
     def _run_without_policy(
         self, job: InferenceJob, structured: tuple[str, ResponseModel] | None
     ) -> JobResult | JobHandle:
-        """Preserve the pre-R13 path exactly for callers without scheduler metadata."""
+        """Preserve the pre-R13 request/response path exactly for callers without scheduler
+        metadata (the returned ``model`` field is new, additive, and asserted by no pre-R13
+        test)."""
         if self.config.mode == "direct":
             if structured:
                 return self._run_structured_direct(
@@ -438,7 +469,10 @@ class LiteLLMBackend(Backend):
                 )
             response = self._completion_fn()(**self._payload(job, resolved_model=self.config.model))
             return JobResult(
-                task=job.task, recipe_hash=job.recipe_hash, output=_response_mapping(response)
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output=_response_mapping(response),
+                model=self.config.model,
             )
 
         structured_name, model = structured if structured else (None, None)
@@ -464,6 +498,7 @@ class LiteLLMBackend(Backend):
                     recipe_hash=job.recipe_hash,
                     output=response.json(),
                     structured_output=structured_name,
+                    model=self.config.model,
                 )
             if response.status_code != 202:
                 raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
@@ -479,6 +514,7 @@ class LiteLLMBackend(Backend):
                 backend=self.name,
                 ref=ref,
                 structured_output=structured_name,
+                model=self.config.model,
             )
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch request failed") from exc
@@ -518,14 +554,39 @@ class LiteLLMBackend(Backend):
                 return None
             if response.status_code != 200:
                 raise LLMBackendError(f"LLM dispatch poll returned HTTP {response.status_code}")
-            return self._completed_dispatch_result(
+            result = self._completed_dispatch_result(
                 task=handle.task,
                 recipe_hash=handle.recipe_hash,
                 output=response.json(),
                 structured_output=handle.structured_output,
+                model=handle.model,
             )
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
+
+        # A policy-tracked handle (§10.2/§10 in review/33) left its reservation inflight at
+        # dispatch time specifically so it could be settled to *actual* usage here, once the
+        # Worker's terminal response is available, instead of staying frozen at the estimate for
+        # the job's entire lifetime. A handle from `_run_without_policy` has no `owner` and is a
+        # no-op here, unchanged from the pre-R13 behavior.
+        if handle.owner is not None and handle.model is not None and self.storage is not None:
+            route = ROUTES.get(handle.model)
+            if route is not None and getattr(self.storage, "cas_capable", False):
+                actual_tokens = _usage_tokens(result.output)
+                actual_cost = None
+                if actual_tokens is not None:
+                    actual_cost = actual_tokens * (
+                        route.pricing.input_per_token + route.pricing.output_per_token
+                    )
+                settle_route_reservation(
+                    self.storage,
+                    handle.owner,
+                    handle.model,
+                    route=route,
+                    actual_tokens=actual_tokens,
+                    actual_cost=actual_cost,
+                )
+        return result
 
     poll = reconcile
 

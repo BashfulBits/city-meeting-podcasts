@@ -12,6 +12,7 @@ from citypods.compute.llm_budget import (
     settle_route_reservation,
 )
 from citypods.compute.llm_policy import LLMRoute, PricingPolicy, QuotaPolicy
+from citypods.storage import CASConflict
 from tests._cas_fake import MemCAS
 
 NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
@@ -36,7 +37,7 @@ def test_reserve_settle_and_release_round_trip():
         cost=0.2,
         now=NOW,
     )
-    budget.settle("owner-1", ROUTE.model, actual_tokens=10, actual_cost=0.1)
+    budget.settle("owner-1", ROUTE.model, route=ROUTE, now=NOW, actual_tokens=10, actual_cost=0.1)
     ledger = budget.routes[ROUTE.model]
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
@@ -52,9 +53,73 @@ def test_reserve_settle_and_release_round_trip():
         cost=0.2,
         now=NOW,
     )
-    budget.release("owner-2", ROUTE.model)
+    budget.release("owner-2", ROUTE.model, route=ROUTE, now=NOW)
     assert ledger.requests_minute == 1
     assert ledger.tokens_minute == 10
+    assert ledger.cost_used == pytest.approx(0.1)
+
+
+def test_reserve_is_idempotent_for_a_still_inflight_owner():
+    """A caller retrying the same logical dispatch under the same owner (R13's deterministic
+    ``recipe_hash``-derived owner) before the first reservation settles must not be double-counted
+    -- the provider-facing request was not actually sent twice."""
+    budget = LLMBudget()
+    budget.reserve("owner-1", ROUTE.model, route=ROUTE, requests=1, tokens=20, cost=0.2, now=NOW)
+    budget.reserve("owner-1", ROUTE.model, route=ROUTE, requests=1, tokens=20, cost=0.2, now=NOW)
+    ledger = budget.routes[ROUTE.model]
+    assert ledger.requests_minute == 1
+    assert ledger.tokens_minute == 20
+    assert ledger.cost_used == pytest.approx(0.2)
+    assert ledger.inflight_count == 1
+
+
+def test_settle_across_a_minute_boundary_does_not_corrupt_the_new_bucket():
+    """Regression test: settling a reservation after its per-minute window has already rolled
+    over must not apply a stale delta to the *new* bucket (previously this could drive
+    ``tokens_minute`` negative and silently loosen the TPM cap for the rest of that minute)."""
+    budget = LLMBudget()
+    reserved_at = datetime(2026, 7, 16, 12, 0, 30, tzinfo=UTC)
+    settled_at = datetime(2026, 7, 16, 12, 1, 5, tzinfo=UTC)  # crossed into the next minute
+
+    budget.reserve(
+        "owner-1", ROUTE.model, route=ROUTE, requests=1, tokens=90, cost=0.5, now=reserved_at
+    )
+    # A concurrent request lands in the *new* minute before the first one settles.
+    budget.reserve(
+        "owner-2", ROUTE.model, route=ROUTE, requests=1, tokens=5, cost=0.1, now=settled_at
+    )
+    ledger = budget.routes[ROUTE.model]
+    assert ledger.tokens_minute == 5  # only owner-2's reservation is in the current window
+
+    budget.settle(
+        "owner-1", ROUTE.model, route=ROUTE, now=settled_at, actual_tokens=10, actual_cost=0.05
+    )
+    # owner-1's token usage belongs to the *old* (already-rolled) per-minute bucket and must not
+    # touch the new one at all -- neither corrupting it toward negative nor double-counting.
+    assert ledger.tokens_minute == 5
+    # cost_used is scoped to the monthly cycle key, not the per-minute one, so a correction that
+    # only crosses a minute boundary (not a cycle boundary) correctly still applies: owner-2's 0.1
+    # reservation plus owner-1's corrected actual (0.5 reserved -> 0.05 actual).
+    assert ledger.cost_used == pytest.approx(0.1 + 0.05)
+    assert "owner-1" not in ledger.inflight
+
+
+def test_release_across_a_minute_boundary_does_not_touch_the_new_bucket():
+    budget = LLMBudget()
+    reserved_at = datetime(2026, 7, 16, 12, 0, 30, tzinfo=UTC)
+    released_at = datetime(2026, 7, 16, 12, 1, 5, tzinfo=UTC)
+
+    budget.reserve(
+        "owner-1", ROUTE.model, route=ROUTE, requests=1, tokens=90, cost=0.5, now=reserved_at
+    )
+    budget.reserve(
+        "owner-2", ROUTE.model, route=ROUTE, requests=1, tokens=5, cost=0.1, now=released_at
+    )
+    ledger = budget.routes[ROUTE.model]
+
+    budget.release("owner-1", ROUTE.model, route=ROUTE, now=released_at)
+    assert ledger.requests_minute == 1  # only owner-2's request remains in the current window
+    assert ledger.tokens_minute == 5
     assert ledger.cost_used == pytest.approx(0.1)
 
 
@@ -69,6 +134,23 @@ def test_none_quota_dimensions_are_untracked():
     budget = LLMBudget()
     budget.routes[route.model] = RouteLedger(requests_minute=999, tokens_minute=999)
     assert budget.available(route.model, route=route, requests=1, tokens=1_000_000, cost=0, now=NOW)
+
+
+def test_requests_day_is_never_incremented_for_a_route_without_rpd():
+    """A route that doesn't declare ``rpd`` must not grow an unbounded, never-reset counter."""
+    route = LLMRoute(
+        model="no-rpd/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    for i in range(5):
+        budget.reserve(
+            f"owner-{i}", route.model, route=route, requests=1, tokens=1, cost=0, now=NOW
+        )
+    assert budget.routes[route.model].requests_day == 0
 
 
 def test_gemini_daily_key_uses_pacific_midnight_across_dst():
@@ -98,12 +180,12 @@ def test_cas_settle_and_release_helpers_persist_one_terminal_transition():
         now=NOW,
     )
     settle_route_reservation(
-        storage, "owner", ROUTE.model, actual_tokens=10, actual_cost=0.1, now=NOW
+        storage, "owner", ROUTE.model, route=ROUTE, actual_tokens=10, actual_cost=0.1, now=NOW
     )
     budget, _ = load_llm_budget_cas(storage)
     assert budget.routes[ROUTE.model].inflight == {}
     settle_route_reservation(
-        storage, "owner", ROUTE.model, actual_tokens=10, actual_cost=0.1, now=NOW
+        storage, "owner", ROUTE.model, route=ROUTE, actual_tokens=10, actual_cost=0.1, now=NOW
     )
     budget, _ = load_llm_budget_cas(storage)
     assert budget.routes[ROUTE.model].cost_used == pytest.approx(0.1)
@@ -121,6 +203,37 @@ def test_cas_settle_and_release_helpers_persist_one_terminal_transition():
         ),
         now=NOW,
     )
-    release_route_reservation(storage, "owner-2", ROUTE.model, now=NOW)
+    release_route_reservation(storage, "owner-2", ROUTE.model, route=ROUTE, now=NOW)
     budget, _ = load_llm_budget_cas(storage)
     assert budget.routes[ROUTE.model].cost_used == pytest.approx(0.1)
+
+
+def test_mutate_llm_budget_retries_after_a_cas_conflict():
+    """Proves two concurrent shards serialize through CAS rather than one silently clobbering the
+    other's reservation -- the same guarantee `compute/budget.py`'s `mutate_budget` gives, applied
+    to the LLM ledger's own reserve path."""
+
+    class ConflictOnce(MemCAS):
+        def __init__(self) -> None:
+            super().__init__()
+            self.conflicted = False
+
+        def put_cas(self, *args, **kwargs):
+            if not self.conflicted:
+                self.conflicted = True
+                raise CASConflict("injected")
+            return super().put_cas(*args, **kwargs)
+
+    storage = ConflictOnce()
+    mutate_llm_budget(
+        storage,
+        lambda budget: budget.reserve(
+            "owner", ROUTE.model, route=ROUTE, requests=1, tokens=20, cost=0.2, now=NOW
+        ),
+        now=NOW,
+        sleep=lambda _: None,
+    )
+    assert storage.conflicted is True
+    budget, _ = load_llm_budget_cas(storage)
+    assert budget.routes[ROUTE.model].requests_minute == 1
+    assert budget.routes[ROUTE.model].cost_used == pytest.approx(0.2)

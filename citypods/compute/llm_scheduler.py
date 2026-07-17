@@ -15,6 +15,7 @@ from citypods.compute.llm_budget import (
     LLMBudget,
     load_llm_budget_cas,
     minute_key,
+    serialize_llm_budget,
 )
 from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, LLMRoute
 
@@ -202,16 +203,10 @@ def select_and_reserve(
         last_selection = selection
         if selection.route is None:
             return selection
+        # No availability recheck here: `select_route` already confirmed `ledger.available(...)`
+        # for this exact candidate against this same unmutated `ledger` snapshot when it built
+        # `candidates` (§5 gate 3) -- a second check here would always pass and never fires.
         cost = _estimated_cost(selection.route, estimated_tokens, now)
-        if not ledger.available(
-            selection.model,
-            route=selection.route,
-            requests=1,
-            tokens=estimated_tokens,
-            cost=cost,
-            now=now,
-        ):
-            continue
         ledger.reserve(
             owner,
             selection.model,
@@ -222,7 +217,7 @@ def select_and_reserve(
             now=now,
         )
         try:
-            body = json_bytes(ledger)
+            body = serialize_llm_budget(ledger)
             if etag is None:
                 storage.put_cas(LLM_BUDGET_STATE_KEY, body, "application/json", if_none_match="*")
             else:
@@ -231,12 +226,6 @@ def select_and_reserve(
         except CASConflict:
             sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
     return SelectionResult(None, None, last_selection.reason, last_selection.rejected)
-
-
-def json_bytes(ledger: LLMBudget) -> bytes:
-    import json
-
-    return (json.dumps(ledger.to_dict(), indent=2, sort_keys=True) + "\n").encode()
 
 
 __all__ = ["SelectionResult", "select_and_reserve", "select_route"]

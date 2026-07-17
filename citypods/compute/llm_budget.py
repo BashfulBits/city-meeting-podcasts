@@ -20,6 +20,13 @@ class LLMReservation:
     cost: float
     requests: int
     tokens: int
+    # The window keys the ledger was rolled to at reserve time. ``settle``/``release`` compare
+    # these against the *current* keys before correcting a running counter: a rollover between
+    # reserve and settle/release already zeroed that counter, so re-applying a delta computed
+    # against the old reservation would corrupt an unrelated window (and can drive it negative).
+    minute_key: str = ""
+    day_key: str = ""
+    cost_cycle_key: str = ""
 
 
 @dataclass
@@ -92,43 +99,58 @@ class LLMBudget:
         cost: float,
         now: datetime,
     ) -> None:
+        """Reserve capacity for ``owner``. Idempotent: a caller that retries the same logical
+        dispatch under the same owner (e.g. ``owner`` derived from a stable ``recipe_hash``, per
+        R13) before its first reservation settles must not have that retry double-counted against
+        quota — the provider-facing request has not actually been sent twice."""
         led = self._ledger(model, now, route=route)
+        if owner in led.inflight:
+            return
         led.cost_used += cost
         led.requests_minute += requests
-        led.requests_day += requests
         led.tokens_minute += tokens
-        led.inflight[owner] = LLMReservation(cost=cost, requests=requests, tokens=tokens)
+        if route.quota.rpd is not None:
+            led.requests_day += requests
+        led.inflight[owner] = LLMReservation(
+            cost=cost,
+            requests=requests,
+            tokens=tokens,
+            minute_key=led.requests_minute_key,
+            day_key=led.requests_day_key,
+            cost_cycle_key=led.cost_cycle_key,
+        )
 
     def settle(
         self,
         owner: str,
         model: str,
         *,
+        route: LLMRoute,
+        now: datetime,
         actual_tokens: int | None = None,
         actual_cost: float | None = None,
     ) -> None:
-        led = self.routes.get(model)
-        if led is None:
-            return
+        led = self._ledger(model, now, route=route)
         reservation = led.inflight.pop(owner, None)
         if reservation is None:
             return
-        if actual_tokens is not None:
-            led.tokens_minute += actual_tokens - reservation.tokens
-        if actual_cost is not None:
-            led.cost_used += actual_cost - reservation.cost
+        if actual_tokens is not None and led.requests_minute_key == reservation.minute_key:
+            led.tokens_minute = max(0, led.tokens_minute + actual_tokens - reservation.tokens)
+        if actual_cost is not None and led.cost_cycle_key == reservation.cost_cycle_key:
+            led.cost_used = max(0.0, led.cost_used + actual_cost - reservation.cost)
 
-    def release(self, owner: str, model: str) -> None:
-        led = self.routes.get(model)
-        if led is None:
-            return
+    def release(self, owner: str, model: str, *, route: LLMRoute, now: datetime) -> None:
+        led = self._ledger(model, now, route=route)
         reservation = led.inflight.pop(owner, None)
         if reservation is None:
             return
-        led.cost_used = max(0.0, led.cost_used - reservation.cost)
-        led.requests_minute = max(0, led.requests_minute - reservation.requests)
-        led.requests_day = max(0, led.requests_day - reservation.requests)
-        led.tokens_minute = max(0, led.tokens_minute - reservation.tokens)
+        if led.cost_cycle_key == reservation.cost_cycle_key:
+            led.cost_used = max(0.0, led.cost_used - reservation.cost)
+        if led.requests_minute_key == reservation.minute_key:
+            led.requests_minute = max(0, led.requests_minute - reservation.requests)
+            led.tokens_minute = max(0, led.tokens_minute - reservation.tokens)
+        if route.quota.rpd is not None and led.requests_day_key == reservation.day_key:
+            led.requests_day = max(0, led.requests_day - reservation.requests)
 
     def to_dict(self) -> dict:
         return {
@@ -146,6 +168,9 @@ class LLMBudget:
                             "cost": reservation.cost,
                             "requests": reservation.requests,
                             "tokens": reservation.tokens,
+                            "minute_key": reservation.minute_key,
+                            "day_key": reservation.day_key,
+                            "cost_cycle_key": reservation.cost_cycle_key,
                         }
                         for owner, reservation in ledger.inflight.items()
                     },
@@ -167,6 +192,9 @@ class LLMBudget:
                         cost=float(value.get("cost", 0.0)),
                         requests=int(value.get("requests", 0)),
                         tokens=int(value.get("tokens", 0)),
+                        minute_key=str(value.get("minute_key") or ""),
+                        day_key=str(value.get("day_key") or ""),
+                        cost_cycle_key=str(value.get("cost_cycle_key") or ""),
                     )
             routes[str(model)] = RouteLedger(
                 cost_used=float(raw.get("cost_used", 0.0)),
@@ -189,7 +217,10 @@ def daily_reset_key(now: datetime, tz_name: str) -> str:
     return now.astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
 
 
-def _serialize(budget: LLMBudget) -> bytes:
+def serialize_llm_budget(budget: LLMBudget) -> bytes:
+    """The one canonical on-disk encoding for :class:`LLMBudget` — callers outside this module
+    (the scheduler's ``select_and_reserve`` CAS loop) must use this rather than re-encoding
+    ``to_dict()`` themselves, so the two can never silently drift out of sync."""
     return (json.dumps(budget.to_dict(), indent=2, sort_keys=True) + "\n").encode()
 
 
@@ -228,14 +259,14 @@ def mutate_llm_budget(
             if etag is None:
                 storage.put_cas(
                     LLM_BUDGET_STATE_KEY,
-                    _serialize(budget),
+                    serialize_llm_budget(budget),
                     "application/json",
                     if_none_match="*",
                 )
             else:
                 storage.put_cas(
                     LLM_BUDGET_STATE_KEY,
-                    _serialize(budget),
+                    serialize_llm_budget(budget),
                     "application/json",
                     if_match=etag,
                 )
@@ -247,34 +278,64 @@ def mutate_llm_budget(
     raise last
 
 
-def settle_route_reservation(storage, owner: str, model: str, **kwargs) -> LLMBudget:
-    retry = {
-        key: value
-        for key, value in kwargs.items()
-        if key in {"now", "max_attempts", "base_sleep", "max_sleep", "sleep", "rng"}
-    }
+def settle_route_reservation(
+    storage,
+    owner: str,
+    model: str,
+    *,
+    route: LLMRoute,
+    now: datetime | None = None,
+    actual_tokens: int | None = None,
+    actual_cost: float | None = None,
+    max_attempts: int = 8,
+    base_sleep: float = 0.05,
+    max_sleep: float = 1.0,
+    sleep=time.sleep,
+    rng: random.Random | None = None,
+) -> LLMBudget:
+    settle_at = now or datetime.now(UTC)
     return mutate_llm_budget(
         storage,
         lambda budget: budget.settle(
             owner,
             model,
-            actual_tokens=kwargs.get("actual_tokens"),
-            actual_cost=kwargs.get("actual_cost"),
+            route=route,
+            now=settle_at,
+            actual_tokens=actual_tokens,
+            actual_cost=actual_cost,
         ),
-        **retry,
+        now=settle_at,
+        max_attempts=max_attempts,
+        base_sleep=base_sleep,
+        max_sleep=max_sleep,
+        sleep=sleep,
+        rng=rng,
     )
 
 
-def release_route_reservation(storage, owner: str, model: str, **kwargs) -> LLMBudget:
-    retry = {
-        key: value
-        for key, value in kwargs.items()
-        if key in {"now", "max_attempts", "base_sleep", "max_sleep", "sleep", "rng"}
-    }
+def release_route_reservation(
+    storage,
+    owner: str,
+    model: str,
+    *,
+    route: LLMRoute,
+    now: datetime | None = None,
+    max_attempts: int = 8,
+    base_sleep: float = 0.05,
+    max_sleep: float = 1.0,
+    sleep=time.sleep,
+    rng: random.Random | None = None,
+) -> LLMBudget:
+    release_at = now or datetime.now(UTC)
     return mutate_llm_budget(
         storage,
-        lambda budget: budget.release(owner, model),
-        **retry,
+        lambda budget: budget.release(owner, model, route=route, now=release_at),
+        now=release_at,
+        max_attempts=max_attempts,
+        base_sleep=base_sleep,
+        max_sleep=max_sleep,
+        sleep=sleep,
+        rng=rng,
     )
 
 
@@ -288,5 +349,6 @@ __all__ = [
     "minute_key",
     "mutate_llm_budget",
     "release_route_reservation",
+    "serialize_llm_budget",
     "settle_route_reservation",
 ]

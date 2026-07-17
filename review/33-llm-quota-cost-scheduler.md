@@ -183,9 +183,16 @@ non-winning route was excluded (§11.5).
    drop the route **for this call only** — it is not rejected forever, just not selected right now
    (§6). This is the only gate that can remove an otherwise-eligible route purely to save money, and
    it never fires once waiting would miss the deadline.
-6. **Ranking.** Sort what's left by `(not free, current_effective_cost, predicted_completion,
-   configured priority)` ascending and take the first. `current_effective_cost` applies any *active*
-   peak-window multiplier for that route right now.
+6. **Ranking.** Sort what's left by `(not free, current_effective_cost, predicted_completion, model
+   name)` ascending and take the first. `current_effective_cost` applies any *active* peak-window
+   multiplier for that route right now. **Reconciled 2026-07-17:** the original wording here said
+   "configured priority," but `LLMRoute` (§4) never actually gained a `priority` field — every
+   candidate that reaches ranking has `predicted_completion == now` (only immediately-available
+   routes get this far), so the first three sort keys are frequently tied, and the implementation's
+   final tiebreak is the model name string, purely for determinism (so ties don't depend on dict
+   iteration order). This is correct and sufficient for the current five-route table, where ties are
+   arbitrary anyway. Add a real `priority` field only if a future route genuinely needs one to win
+   deliberately over an equally-ranked alternative — nothing in v1's route table needs that yet.
 
 If nothing survives gate 0–5, the function returns no route and the caller (§6) treats this exactly
 like quota exhaustion: not eligible this call, retried on the Stage's own next scheduled run.
