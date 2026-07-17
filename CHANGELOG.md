@@ -17,6 +17,10 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Beam deploy CLI maintenance.** Updated the reproducibly pinned GitHub Actions `beam-client`
+  install from `0.2.198` to Beam's required minimum `0.2.202`; no worker runtime or pipeline
+  output changes are introduced.
+
 - **LLM quota and cost scheduling (R13).** Added provider-neutral route policy, Gemini RPM/RPD/TPM
   accounting with Pacific-midnight resets, DeepSeek off-peak preference, exact allowlists, and a
   CAS-backed `state/llm_budget.json` ledger. Reservations are released only before a provider call
