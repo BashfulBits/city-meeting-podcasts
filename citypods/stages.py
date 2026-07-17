@@ -594,11 +594,36 @@ class TagsStage:
                     {"chapter_id": chapter["chapter_id"], "tags": chapter_rules}
                 )
             completed_llm_recipe = ep.tags_llm_recipe_hash
-            candidate_tags = (
-                list(ep.llm_tag_candidates)
-                if not llm_enabled or ep.tags_llm_recipe_hash == llm_recipe
-                else []
-            )
+            if llm_enabled:
+                candidate_tags = (
+                    list(ep.llm_tag_candidates) if completed_llm_recipe == llm_recipe else []
+                )
+            elif ep.llm_tag_candidates:
+                # llm disabled/unavailable this run (dry run, misconfigured LLM_MODEL, ...) must
+                # still validate persisted candidates against current inputs, not republish them
+                # unconditionally: a taxonomy/transcript/agenda change should invalidate them even
+                # though there's no live backend this run to confirm that via llm_recipe (which is
+                # a materially different hash shape when llm_enabled=False). Recompute the recipe
+                # the candidates were actually generated under, using THEIR OWN recorded route/
+                # prompt_version rather than this run's (there may be none) -- if every other input
+                # is unchanged, this reproduces completed_llm_recipe exactly; if not, it correctly
+                # diverges and the stale candidates are dropped.
+                cached = ep.llm_tag_candidates[0]
+                cached_recipe = tag_recipe_hash(
+                    taxonomy,
+                    agenda_item_titles=titles,
+                    agenda_text=agenda_text,
+                    transcript_text=transcript_text,
+                    llm_enabled=True,
+                    chapter_inputs=chapter_fingerprint,
+                    llm_route=str(cached.get("provider_model") or ""),
+                    prompt_version=str(cached.get("prompt_version") or TAG_PROMPT_VERSION),
+                )
+                candidate_tags = (
+                    list(ep.llm_tag_candidates) if completed_llm_recipe == cached_recipe else []
+                )
+            else:
+                candidate_tags = []
             # Visibility is a pure projection of whatever candidates are already on hand, not of
             # whether *this* run can dispatch a new LLM call: gating it on ``llm_enabled`` would
             # strip already-admitted candidates from ``ep.tags``/``ep.chapter_tags`` the moment
