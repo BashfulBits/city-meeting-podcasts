@@ -277,8 +277,6 @@ class StageContext:
     # catalog build can run deterministic tags without installing or configuring the LLM extra.
     tag_backend: object | None = None
     taxonomy_path: Path = Path("config/taxonomy.yml")
-    llm_evaluation_state_path: Path | None = None
-    llm_evaluation_config: dict = field(default_factory=dict)
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
     # EBU R128 loudness normalization (#151). Empty string = disabled.
@@ -459,9 +457,12 @@ class EnrichmentStage(Protocol):
 class TagsStage:
     """Populate the versioned taxonomy from agenda titles/transcripts.
 
-    Rules are cheap and always run. Instructor-backed LLM suggestions are dispatched and retained
-    as shadow candidates; the generic calibration policy decides which candidates become visible.
-    A pending dispatch or a stop signal leaves the deterministic result persisted for the next run.
+    Rules are cheap and always run. Instructor-backed LLM suggestions are dispatched and, once
+    validated, merged directly alongside rule tags — pinned to the one model configured for this
+    route (R13's `LLMRequestPolicy`), so provider/model quality assurance is a future review/27
+    tournament/champion-routing concern, not a per-candidate confidence gate this stage applies
+    itself. A pending dispatch or a stop signal leaves the deterministic result persisted for the
+    next run.
     """
 
     name = "tags"
@@ -470,13 +471,6 @@ class TagsStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        from citypods.llm_evaluation import (
-            apply_admission,
-            config_from_mapping,
-            load_state,
-            policy_fingerprint,
-            visible_candidates,
-        )
         from citypods.tags import (
             TAG_PROMPT_VERSION,
             agenda_document_context,
@@ -497,14 +491,6 @@ class TagsStage:
         except (OSError, ValueError) as exc:
             stats.errors.append(f"taxonomy unavailable: {exc}")
             return stats
-
-        evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
-        evaluation_state = (
-            load_state(ctx.llm_evaluation_state_path)
-            if ctx.llm_evaluation_state_path is not None
-            else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-        )
-        admission_policy = policy_fingerprint(evaluation_config, evaluation_state)
 
         for ep in _materialize_set(episodes, city.max_episodes):
             titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
@@ -546,18 +532,7 @@ class TagsStage:
                 llm_route=llm_route,
                 prompt_version=TAG_PROMPT_VERSION,
             )
-            projection_hash = tag_recipe_hash(
-                taxonomy,
-                agenda_item_titles=titles,
-                agenda_text=agenda_text,
-                transcript_text=transcript_text,
-                llm_enabled=llm_enabled,
-                chapter_inputs=chapter_fingerprint,
-                llm_route=llm_route,
-                prompt_version=TAG_PROMPT_VERSION,
-                admission_policy=admission_policy,
-            )
-            if ep.tags_spec_hash == projection_hash and (not chapters or ep.chapter_tags):
+            if ep.tags_spec_hash == llm_recipe and (not chapters or ep.chapter_tags):
                 stats.reused += 1
                 continue
 
@@ -590,27 +565,26 @@ class TagsStage:
                 if not llm_enabled or ep.tags_llm_recipe_hash == llm_recipe
                 else []
             )
-            # Visibility is a pure projection of whatever candidates are already on hand, not of
-            # whether *this* run can dispatch a new LLM call: gating it on ``llm_enabled`` would
-            # strip already-admitted candidates from ``ep.tags``/``ep.chapter_tags`` the moment
-            # tagging is disabled or a dry run has no live backend, even though candidate_tags
-            # (preserved above) is untouched.
-            visible_llm = (
-                visible_candidates(candidate_tags, config=evaluation_config, state=evaluation_state)
-                if candidate_tags
-                else []
-            )
+            # candidate_tags is merged in directly, not gated on a confidence threshold: this
+            # feature pins to exactly one model (R13's `LLMRequestPolicy(allowed_models=...)`),
+            # so per-candidate calibration has no separate route to fragment across. Provider/
+            # model quality assurance is review/27's future tournament/champion-routing concern,
+            # applied by changing which model this route pins to, not by this stage.
             merged_episode = merge_tag_sources(
                 rule_tags,
-                [tag for tag in visible_llm if not tag.get("chapter_id")],
+                [tag for tag in candidate_tags if not tag.get("chapter_id")],
             )
             for annotation in chapter_annotations:
-                chapter_visible = [
-                    tag for tag in visible_llm if tag.get("chapter_id") == annotation["chapter_id"]
+                chapter_candidates_existing = [
+                    tag
+                    for tag in candidate_tags
+                    if tag.get("chapter_id") == annotation["chapter_id"]
                 ]
-                annotation["tags"] = merge_tag_sources(annotation["tags"], chapter_visible)
+                annotation["tags"] = merge_tag_sources(
+                    annotation["tags"], chapter_candidates_existing
+                )
             final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
-            final_hash = projection_hash if completed_llm_recipe == llm_recipe else rules_hash
+            final_hash = llm_recipe if completed_llm_recipe == llm_recipe else rules_hash
             if llm_enabled and completed_llm_recipe != llm_recipe:
                 if ctx.stop is not None and ctx.stop():
                     stats.defer("tag-llm-stop", sample=ep.uid or ep.guid)
@@ -643,9 +617,8 @@ class TagsStage:
                             # exactly the configured route, so the two only diverge if that
                             # pinning is ever loosened) over the precomputed llm_route, which is
                             # only known before dispatch and can't reflect a per-call selection.
-                            # Same "<backend name>:<model>" shape as llm_route so calibration
-                            # matrix keys and config/site_config.yml's fallback route strings
-                            # keep matching either way.
+                            # Same "<backend name>:<model>" shape as llm_route so this candidate's
+                            # provenance stays consistent either way.
                             candidate_provider_model = (
                                 f"{getattr(ctx.tag_backend, 'name', 'litellm')}:{resolved_model}"
                                 if resolved_model
@@ -673,35 +646,23 @@ class TagsStage:
                                 )
                             candidate_tags = episode_candidates + chapter_candidates
                             completed_llm_recipe = llm_recipe
-                            visible_llm = visible_candidates(
-                                candidate_tags,
-                                config=evaluation_config,
-                                state=evaluation_state,
-                            )
                             merged_episode = merge_tag_sources(
                                 rule_tags,
-                                [tag for tag in visible_llm if not tag.get("chapter_id")],
+                                [tag for tag in candidate_tags if not tag.get("chapter_id")],
                             )
                             for annotation in chapter_annotations:
                                 extra = [
                                     tag
-                                    for tag in visible_llm
+                                    for tag in candidate_tags
                                     if tag.get("chapter_id") == annotation["chapter_id"]
                                 ]
                                 annotation["tags"] = merge_tag_sources(annotation["tags"], extra)
                             final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
-                            final_hash = projection_hash
+                            final_hash = llm_recipe
                     except Exception as exc:  # noqa: BLE001 — one bad model reply is item-local
                         stats.errors.append(f"{ep.uid or ep.guid}: LLM tagging failed: {exc}")
                         candidate_tags = []
                         completed_llm_recipe = None
-
-            if llm_enabled and completed_llm_recipe == llm_recipe:
-                candidate_tags = [
-                    apply_admission(tag, config=evaluation_config, state=evaluation_state)
-                    for tag in candidate_tags
-                ]
-                final_hash = projection_hash
 
             if (
                 ep.tags != final_tags

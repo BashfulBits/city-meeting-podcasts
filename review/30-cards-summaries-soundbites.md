@@ -15,10 +15,15 @@ ROADMAP R6 (bundles #3/GH#155 cards, #2 auto-summaries, #15/GH#156 soundbites) �
 
 **Checked directly rather than assumed:** R2's LiteLLM adapter and R3's bounded document sidecars are
 shipped, and R5's local implementation now supplies the shared chapter IDs, bounded transcript windows,
-topic tags, and reusable LLM calibration policy. **Every LLM-assisted path in this item (Part A approach
-2, Part B approach 2, Part C approach 3) should reuse R5's generic evaluator**: dispatch results remain
-untrusted shadow candidates until the exact feature/model matrix reaches its evidence gate. The non-LLM
-paths remain independently shippable and are still the recommended first user-visible layer.
+and topic tags. **Updated 2026-07-17:** R5 originally also built a reusable per-candidate confidence-
+calibration policy, but that was removed in favor of [`review/27`](27-llm-backend-and-provider-routing.md)
+§6's tournament/champion-routing design (`review/14`'s 2026-07-17 section) — provider/model quality
+assurance for **every** LLM-assisted path in this item (Part A approach 2, Part B approach 2, Part C
+approach 3) is now review/27's scope, not a per-feature evaluator each of these paths would otherwise
+need to wire up separately. Each path's own dispatch result is schema-validated and evidence-grounded,
+then exposed directly, the same pattern R5 ships (`review/14`); review/27 §6.4 defines the interface for
+whichever of these verbs a future tournament run compares. The non-LLM paths remain independently
+shippable and are still the recommended first user-visible layer.
 
 **One shared piece of new infra, used by two of the three Parts:** `_parse_words_payload`
 (`citypods/transcript_quality.py:924-941`) already parses the word-JSON sidecar
@@ -85,8 +90,8 @@ per-item entries, not one artifact per card, for the same reason: bounded object
     explicit `chapter_index` matching this card's, when that structured association exists. Flat
     packet links remain episode-level context rather than being guessed into a card.
   - `tags` — the taxonomy-ordered visible episode projection from R5; chapter tags are retained on the
-    matching chapter. R5's unqualified LLM candidates remain shadow data, so this field stays
-    deterministic/rule-based until the generic evaluator admits a calibrated suggestion.
+    matching chapter. This includes R5's directly-visible LLM candidates, not just rule tags (`review/14`'s
+    2026-07-17 section) — there is no separate shadow/admitted split to wait on.
   - `changed_summary` — `null` until approach 2 (LLM-assisted, §A.4) runs for this card.
 
 **R5 integration (added 2026-07-16).** Each card should consume the same stable `chapter_id` and

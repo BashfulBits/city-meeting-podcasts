@@ -272,12 +272,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     tq.add_argument("transcript_quality_args", nargs=argparse.REMAINDER)
 
-    le = sub.add_parser(
-        "llm-evaluation",
-        help="generic LLM confidence calibration: package or ingest human review",
-    )
-    le.add_argument("llm_evaluation_args", nargs=argparse.REMAINDER)
-
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
@@ -318,10 +312,6 @@ def main(argv: list[str] | None = None) -> int:
             return _compute_run_internal_worker(args)
     if args.command == "transcript-quality":
         return _transcript_quality(args)
-    if args.command == "llm-evaluation":
-        from scripts import llm_tag_review
-
-        return llm_tag_review.main(args.llm_evaluation_args)
 
     return 0
 

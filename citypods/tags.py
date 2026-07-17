@@ -196,7 +196,6 @@ def tag_recipe_hash(
     chapter_inputs: list[dict[str, Any]] | None = None,
     llm_route: str = "",
     prompt_version: str = TAG_PROMPT_VERSION,
-    admission_policy: str = "",
 ) -> str:
     payload = {
         "taxonomy": taxonomy.version,
@@ -204,7 +203,6 @@ def tag_recipe_hash(
         "llm": llm_enabled,
         "llm_route": llm_route if llm_enabled else "",
         "prompt_version": prompt_version if llm_enabled else "",
-        "admission_policy": admission_policy if llm_enabled else "",
         "agenda_item_titles": agenda_item_titles,
         "agenda_text": agenda_text,
         "transcript": transcript_text,
@@ -726,24 +724,27 @@ def decorate_llm_candidates(
     recipe_hash: str,
     prompt_version: str = TAG_PROMPT_VERSION,
 ) -> list[dict[str, Any]]:
-    """Attach generic evaluator dimensions to validated feature-specific suggestions."""
-    from citypods.llm_evaluation import candidate_id
+    """Attach provenance to validated feature-specific suggestions.
 
+    These dimensions (provider/model route, prompt/taxonomy version, recipe hash) are what a
+    future review/27 tournament/champion-routing caller would key a quality comparison on; this
+    feature stops at recording them; it does not itself gate visibility on them.
+    """
     result: list[dict[str, Any]] = []
     for candidate in candidates:
-        value = {
-            **candidate,
-            "feature": TAG_FEATURE,
-            "provider_model": provider_model,
-            "prompt_version": prompt_version,
-            "taxonomy_version": taxonomy.version,
-            "recipe_hash": recipe_hash,
-            "episode_uid": episode_uid,
-            "episode_title": episode_title,
-            "scope": "chapter" if candidate.get("chapter_id") else "episode",
-        }
-        value["candidate_id"] = candidate_id(value)
-        result.append(value)
+        result.append(
+            {
+                **candidate,
+                "feature": TAG_FEATURE,
+                "provider_model": provider_model,
+                "prompt_version": prompt_version,
+                "taxonomy_version": taxonomy.version,
+                "recipe_hash": recipe_hash,
+                "episode_uid": episode_uid,
+                "episode_title": episode_title,
+                "scope": "chapter" if candidate.get("chapter_id") else "episode",
+            }
+        )
     return result
 
 
