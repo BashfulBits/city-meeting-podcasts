@@ -37,6 +37,7 @@ jobs:
           ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number || '' }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
           EVENT_ISSUE_TITLE: ${{ github.event.issue.title || '' }}
+          EVENT_ISSUE_STATE: ${{ github.event.issue.state || '' }}
           EVENT_ISSUE_LABELS: ${{ toJson(github.event.issue.labels.*.name) }}
           EVENT_COMMENT_ISSUE_URL: ${{ github.event.comment.issue_url || '' }}
           EVENT_COMMENT_BODY: ${{ github.event.comment.body || '' }}
@@ -47,13 +48,23 @@ jobs:
           # not the title: a title string is guessable/settable by anyone who can open an issue on
           # a public repo, so title-only matching (the pre-fix behavior) let an unauthenticated
           # public issue get ingested as a genuine calibration decision by the scheduled sweep.
+          #
+          # EVENT_ISSUE_STATE gates both event-driven paths below: the ingest step closes an issue
+          # right after its first accepted decision, and record_review() overwrites by candidate_id
+          # with no immutability check, so a later re-edit or /llm-ingest comment on an
+          # already-closed issue would otherwise silently replace that recorded decision. A
+          # correction is intentionally still allowed for as long as the issue stays open (matches
+          # the scheduled sweep's own long-standing `--state open` filter below); once closed, the
+          # decision is final.
           numbers="[]"
           if [ -n "$ISSUE_NUMBER_INPUT" ]; then
             numbers=$(jq -nc --arg n "$ISSUE_NUMBER_INPUT" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "issues" ] && [ -n "$EVENT_ISSUE_NUMBER" ] \
+            && [ "$EVENT_ISSUE_STATE" = "open" ] \
             && printf '%s\n' "$EVENT_ISSUE_LABELS" | jq -e 'index("llm-calibration-review")' >/dev/null; then
             numbers=$(jq -nc --arg n "$EVENT_ISSUE_NUMBER" '[$n | tonumber]')
           elif [ -n "$EVENT_COMMENT_ISSUE_URL" ] \
+            && [ "$EVENT_ISSUE_STATE" = "open" ] \
             && printf '%s\n' "$EVENT_COMMENT_BODY" | grep -qiE '^/llm-ingest([[:space:]]|$)' \
             && printf '%s\n' "$EVENT_COMMENT_AUTHOR_ASSOCIATION" | grep -qE '^(OWNER|MEMBER|COLLABORATOR)$' \
             && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -q '^R5 LLM tag sample ' \
