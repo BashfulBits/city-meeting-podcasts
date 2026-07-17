@@ -105,9 +105,15 @@ def select_route(
     ledger: LLMBudget,
     backend_mode: Literal["direct", "dispatch"],
     estimated_tokens: int,
+    requests: int = 1,
     now: datetime,
 ) -> SelectionResult:
-    """Select one eligible route from a read-only ledger snapshot."""
+    """Select one eligible route from a read-only ledger snapshot.
+
+    ``requests``/``estimated_tokens`` should already reflect the *worst-case* number of provider
+    attempts a single logical dispatch can make -- e.g. 2 for a structured call, since Instructor's
+    corrective retry can send a second request (see ``llm.py``'s ``run_inference``) -- not just 1.
+    """
     rejected: list[tuple[str, str]] = []
     candidates: list[tuple[LLMRoute, float, datetime]] = []
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
@@ -126,7 +132,7 @@ def select_route(
         if not ledger.available(
             model,
             route=route,
-            requests=1,
+            requests=requests,
             tokens=estimated_tokens,
             cost=cost,
             now=now,
@@ -177,6 +183,7 @@ def select_and_reserve(
     routes: Mapping[str, LLMRoute] = ROUTES,
     backend_mode: Literal["direct", "dispatch"],
     estimated_tokens: int,
+    requests: int = 1,
     now: datetime | None = None,
     max_attempts: int = 8,
     base_sleep: float = 0.05,
@@ -184,21 +191,39 @@ def select_and_reserve(
     sleep=time.sleep,
     rng: random.Random | None = None,
 ) -> SelectionResult:
-    """Select and reserve a route atomically, reselecting after CAS conflicts."""
+    """Select and reserve a route atomically, reselecting after CAS conflicts.
+
+    ``now``: when the caller doesn't pin an explicit value, each attempt asks for the current
+    time again rather than reusing one resolved before the retry loop started -- a conflict means
+    a sibling committed first, possibly advancing the ledger's window in the process, and a stale
+    timestamp would make ``_ledger()`` roll that window backward. An explicitly supplied ``now``
+    is honored unchanged on every attempt, for deterministic tests.
+    """
     from citypods.storage import CASConflict
 
-    now = now or datetime.now(UTC)
     rng = rng or random
     last_selection = SelectionResult(None, None, "CAS reservation attempts exhausted")
     for attempt in range(max_attempts):
+        attempt_now = now if now is not None else datetime.now(UTC)
         ledger, etag = load_llm_budget_cas(storage)
+        existing_model = ledger.find_inflight_owner(owner)
+        if existing_model is not None and existing_model in routes:
+            # This owner already has a reservation in flight -- a retry before the first attempt
+            # settled. Reuse that same route rather than reselecting: a dispatch-mode retry's
+            # idempotency key still resolves to the original request regardless of what a fresh
+            # selection pass would pick this time (e.g. Gemini's quota freeing up between
+            # attempts must not attach the reservation to the wrong model).
+            return SelectionResult(
+                existing_model, routes[existing_model], "reusing in-flight reservation", ()
+            )
         selection = select_route(
             policy,
             routes=routes,
             ledger=ledger,
             backend_mode=backend_mode,
             estimated_tokens=estimated_tokens,
-            now=now,
+            requests=requests,
+            now=attempt_now,
         )
         last_selection = selection
         if selection.route is None:
@@ -206,15 +231,15 @@ def select_and_reserve(
         # No availability recheck here: `select_route` already confirmed `ledger.available(...)`
         # for this exact candidate against this same unmutated `ledger` snapshot when it built
         # `candidates` (§5 gate 3) -- a second check here would always pass and never fires.
-        cost = _estimated_cost(selection.route, estimated_tokens, now)
+        cost = _estimated_cost(selection.route, estimated_tokens, attempt_now)
         ledger.reserve(
             owner,
             selection.model,
             route=selection.route,
-            requests=1,
+            requests=requests,
             tokens=estimated_tokens,
             cost=cost,
-            now=now,
+            now=attempt_now,
         )
         try:
             body = serialize_llm_budget(ledger)

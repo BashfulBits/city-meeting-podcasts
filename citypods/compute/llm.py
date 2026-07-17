@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, cast
@@ -118,16 +119,51 @@ def _response_mapping(response: Any) -> dict[str, Any]:
 
 
 def _usage_tokens(output: Mapping[str, Any]) -> int | None:
+    """Actual token usage from a response, or ``None`` when it can't be trusted.
+
+    Missing/malformed usage data must settle as "unknown," never as zero -- ``settle()`` treats
+    ``actual_tokens=None`` as "keep the reservation's estimate charged." A response with
+    ``usage={}`` estimating to 0 would instead erase the whole reservation despite having no real
+    usage figure, and a malformed negative total would corrupt an unrelated window's count.
+    """
     usage = output.get("usage")
     if not isinstance(usage, Mapping):
         return None
     total = usage.get("total_tokens")
     try:
         if total is None:
+            if "prompt_tokens" not in usage and "completion_tokens" not in usage:
+                return None
             total = int(usage.get("prompt_tokens", 0)) + int(usage.get("completion_tokens", 0))
-        return int(total)
+        value = int(total)
+        return value if value >= 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def _priced_actual(
+    output: Mapping[str, Any], *, input_per_token: float, output_per_token: float
+) -> tuple[int | None, float | None]:
+    """Actual ``(tokens, cost)`` for a completed response, pricing prompt and completion tokens
+    at their own rates rather than charging the combined rate to every token (which over- or
+    under-charges whenever input and output prices differ, as they do for every paid route here).
+    Falls back to the combined-rate approximation only when the response doesn't break the split
+    out (some total but no prompt/completion pair)."""
+    actual_tokens = _usage_tokens(output)
+    if actual_tokens is None:
+        return None, None
+    usage = output.get("usage")
+    prompt = usage.get("prompt_tokens") if isinstance(usage, Mapping) else None
+    completion = usage.get("completion_tokens") if isinstance(usage, Mapping) else None
+    try:
+        if prompt is not None and completion is not None:
+            prompt_n, completion_n = int(prompt), int(completion)
+            if prompt_n >= 0 and completion_n >= 0:
+                cost = prompt_n * input_per_token + completion_n * output_per_token
+                return actual_tokens, cost
+    except (TypeError, ValueError):
+        pass
+    return actual_tokens, actual_tokens * (input_per_token + output_per_token)
 
 
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
@@ -331,18 +367,35 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
 
         messages = _messages(job)
-        # Deterministic, not random: a caller retrying the *same* logical dispatch (same
-        # recipe_hash) before its first reservation settles must reserve idempotently, not
-        # double-count quota for one real provider call. `LLMBudget.reserve` treats a
-        # still-inflight owner as a no-op for exactly this reason.
-        owner = job.recipe_hash
+        # Owner uniqueness depends on transport, not a single rule for both:
+        # - dispatch: the Worker dedupes on `idempotency-key: job.recipe_hash` (below), so a
+        #   retry before this reservation settles is the *same* underlying provider request --
+        #   owner must be that same deterministic recipe_hash, or it would double-reserve quota
+        #   for a call the Worker itself never repeats. That guarantee requires a real recipe_hash
+        #   (an empty one would let unrelated jobs collide under the same owner).
+        # - direct: there is no server-side dedup at all. A retry or a concurrent call genuinely
+        #   sends a second real request, so it must reserve its own, independent slot -- a unique
+        #   owner per invocation, same as before R13.
+        if self.config.mode == "dispatch":
+            if not job.recipe_hash:
+                raise LLMBackendError("dispatch-mode LLM jobs require a non-empty recipe_hash")
+            owner = job.recipe_hash
+        else:
+            owner = f"{job.recipe_hash}:{uuid.uuid4().hex}"
+        # Instructor's `max_retries=1` (see `_run_structured_direct`) can send up to two real
+        # provider requests for one logical dispatch. Reserve the worst case up front so RPM/RPD/
+        # TPM can never be breached even when both attempts happen; settling afterwards to the
+        # single terminal response's actual usage only ever releases back what wasn't needed.
+        max_provider_attempts = 2 if structured else 1
+        per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
         selection = select_and_reserve(
             self.storage,
             owner,
             policy,
             routes=ROUTES,
             backend_mode=self.config.mode,
-            estimated_tokens=estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN,
+            estimated_tokens=per_attempt_tokens * max_provider_attempts,
+            requests=max_provider_attempts,
         )
         if selection.model is None or selection.route is None:
             raise LLMNotEligibleError(selection.reason)
@@ -430,6 +483,8 @@ class LiteLLMBackend(Backend):
                         structured_output=structured_name,
                         model=resolved_model,
                         owner=owner,
+                        input_per_token=route.pricing.input_per_token,
+                        output_per_token=route.pricing.output_per_token,
                     )
                 else:
                     raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
@@ -440,12 +495,11 @@ class LiteLLMBackend(Backend):
             _cleanup()
             raise
 
-        actual_tokens = _usage_tokens(result.output)
-        actual_cost = None
-        if actual_tokens is not None:
-            actual_cost = actual_tokens * (
-                route.pricing.input_per_token + route.pricing.output_per_token
-            )
+        actual_tokens, actual_cost = _priced_actual(
+            result.output,
+            input_per_token=route.pricing.input_per_token,
+            output_per_token=route.pricing.output_per_token,
+        )
         settle_route_reservation(
             self.storage,
             owner,
@@ -572,12 +626,18 @@ class LiteLLMBackend(Backend):
         if handle.owner is not None and handle.model is not None and self.storage is not None:
             route = ROUTES.get(handle.model)
             if route is not None and getattr(self.storage, "cas_capable", False):
-                actual_tokens = _usage_tokens(result.output)
-                actual_cost = None
-                if actual_tokens is not None:
-                    actual_cost = actual_tokens * (
-                        route.pricing.input_per_token + route.pricing.output_per_token
+                # Price against the rate captured on the handle at reservation time, not
+                # whatever `ROUTES` says right now -- config can change between a dispatch and
+                # its eventual reconciliation. Fall back to an uncosted token-only settlement for
+                # a handle that predates this field rather than guessing a rate.
+                if handle.input_per_token is not None and handle.output_per_token is not None:
+                    actual_tokens, actual_cost = _priced_actual(
+                        result.output,
+                        input_per_token=handle.input_per_token,
+                        output_per_token=handle.output_per_token,
                     )
+                else:
+                    actual_tokens, actual_cost = _usage_tokens(result.output), None
                 settle_route_reservation(
                     self.storage,
                     handle.owner,

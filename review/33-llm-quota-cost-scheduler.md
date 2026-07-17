@@ -194,8 +194,9 @@ non-winning route was excluded (§11.5).
    arbitrary anyway. Add a real `priority` field only if a future route genuinely needs one to win
    deliberately over an equally-ranked alternative — nothing in v1's route table needs that yet.
 
-If nothing survives gate 0–5, the function returns no route and the caller (§6) treats this exactly
-like quota exhaustion: not eligible this call, retried on the Stage's own next scheduled run.
+Gate 6 never rejects a route — it only orders whatever gates 0–5 left. If gates 0–5 leave nothing,
+the function returns no route (ranking never runs) and the caller (§6) treats this exactly like
+quota exhaustion: not eligible this call, retried on the Stage's own next scheduled run.
 
 The initial city-onboarding consumer submits:
 

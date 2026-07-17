@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -168,7 +169,7 @@ def test_cas_settle_and_release_helpers_persist_one_terminal_transition():
     storage = MemCAS()
     mutate_llm_budget(
         storage,
-        lambda budget: budget.reserve(
+        lambda budget, _now: budget.reserve(
             "owner",
             ROUTE.model,
             route=ROUTE,
@@ -192,7 +193,7 @@ def test_cas_settle_and_release_helpers_persist_one_terminal_transition():
 
     mutate_llm_budget(
         storage,
-        lambda budget: budget.reserve(
+        lambda budget, _now: budget.reserve(
             "owner-2",
             ROUTE.model,
             route=ROUTE,
@@ -227,7 +228,7 @@ def test_mutate_llm_budget_retries_after_a_cas_conflict():
     storage = ConflictOnce()
     mutate_llm_budget(
         storage,
-        lambda budget: budget.reserve(
+        lambda budget, _now: budget.reserve(
             "owner", ROUTE.model, route=ROUTE, requests=1, tokens=20, cost=0.2, now=NOW
         ),
         now=NOW,
@@ -237,3 +238,74 @@ def test_mutate_llm_budget_retries_after_a_cas_conflict():
     budget, _ = load_llm_budget_cas(storage)
     assert budget.routes[ROUTE.model].requests_minute == 1
     assert budget.routes[ROUTE.model].cost_used == pytest.approx(0.2)
+
+
+def test_mutate_llm_budget_refreshes_now_per_attempt_when_not_pinned(monkeypatch):
+    """Regression test for the stale-timestamp bug: `now` used to be resolved once before the
+    retry loop and reused on every attempt, even though real wall-clock time (and potentially a
+    sibling writer's ledger window) had moved on by the time a conflict forced a retry. With
+    `now=None` (the caller not pinning a fixed time), each attempt must ask for the current time
+    again -- proven here by a fake clock returning a different value on each of two calls."""
+    clock_values = iter([NOW, NOW + timedelta(minutes=1, seconds=5)])
+    monkeypatch.setattr(
+        "citypods.compute.llm_budget.datetime",
+        SimpleNamespace(now=lambda tz=None: next(clock_values)),
+    )
+
+    class ConflictOnce(MemCAS):
+        def __init__(self) -> None:
+            super().__init__()
+            self.conflicted = False
+
+        def put_cas(self, *args, **kwargs):
+            if not self.conflicted:
+                self.conflicted = True
+                raise CASConflict("injected")
+            return super().put_cas(*args, **kwargs)
+
+    storage = ConflictOnce()
+    observed: list[datetime] = []
+    mutate_llm_budget(
+        storage,
+        lambda budget, attempt_now: observed.append(attempt_now),
+        now=None,
+        sleep=lambda _: None,
+    )
+    assert observed == [NOW, NOW + timedelta(minutes=1, seconds=5)]
+
+
+def test_mutate_llm_budget_pinned_now_does_not_refresh_across_retries():
+    """The opposite of the previous test: an explicitly supplied `now` (as every deterministic
+    test in this file, and every caller in llm.py, already does) must NOT be refreshed -- it's
+    honored unchanged on every attempt."""
+
+    class ConflictOnce(MemCAS):
+        def __init__(self) -> None:
+            super().__init__()
+            self.conflicted = False
+
+        def put_cas(self, *args, **kwargs):
+            if not self.conflicted:
+                self.conflicted = True
+                raise CASConflict("injected")
+            return super().put_cas(*args, **kwargs)
+
+    storage = ConflictOnce()
+    observed: list[datetime] = []
+    mutate_llm_budget(
+        storage,
+        lambda budget, attempt_now: observed.append(attempt_now),
+        now=NOW,
+        sleep=lambda _: None,
+    )
+    assert observed == [NOW, NOW]
+
+
+def test_find_inflight_owner():
+    budget = LLMBudget()
+    assert budget.find_inflight_owner("owner-1") is None
+    budget.reserve("owner-1", ROUTE.model, route=ROUTE, requests=1, tokens=1, cost=0.0, now=NOW)
+    assert budget.find_inflight_owner("owner-1") == ROUTE.model
+    assert budget.find_inflight_owner("owner-2") is None
+    budget.settle("owner-1", ROUTE.model, route=ROUTE, now=NOW)
+    assert budget.find_inflight_owner("owner-1") is None

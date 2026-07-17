@@ -100,6 +100,13 @@ class JobHandle:
     # terminal response is available; both are ``None`` for every non-LLM dispatch backend.
     model: str | None = None
     owner: str | None = None
+    # ``input_per_token`` / ``output_per_token`` (R13, additive/optional): the route's per-token
+    # $ rates *at reservation time*, snapshotted onto the handle so a later ``reconcile()`` prices
+    # actual usage against the rate the reservation was actually made under, not whatever
+    # ``ROUTES`` happens to say at poll time (config can change between a dispatch and its
+    # eventual reconciliation, however rare that drift is in practice).
+    input_per_token: float | None = None
+    output_per_token: float | None = None
 
 
 def lease_owner_for(handle: JobHandle) -> str:

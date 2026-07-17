@@ -14,6 +14,8 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMNotEligibleError,
     LLMStructuredOutputError,
+    _priced_actual,
+    _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
 from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy
@@ -102,7 +104,7 @@ def test_policy_no_eligible_route_raises_without_reservation():
     storage = MemCAS()
     now = datetime.now(UTC)
 
-    def exhaust(budget):
+    def exhaust(budget, _now):
         model = "gemini/gemini-3-flash-preview"
         route = ROUTES[model]
         ledger = budget._ledger(model, now, route=route)
@@ -165,6 +167,166 @@ def test_policy_requires_cas_storage():
     backend = LiteLLMBackend(LLMBackendConfig(), completion=lambda **_: {})
     with pytest.raises(LLMBackendError, match="CAS-capable storage"):
         backend.run_inference(job(content="meeting text", llm_policy=LLMRequestPolicy()))
+
+
+def test_usage_tokens_returns_none_not_zero_for_missing_or_invalid_usage():
+    assert _usage_tokens({}) is None
+    assert _usage_tokens({"usage": {}}) is None
+    assert _usage_tokens({"usage": {"total_tokens": -5}}) is None
+    assert _usage_tokens({"usage": {"total_tokens": 12}}) == 12
+    assert _usage_tokens({"usage": {"prompt_tokens": 8, "completion_tokens": 4}}) == 12
+
+
+def test_priced_actual_prices_prompt_and_completion_tokens_separately():
+    output = {"usage": {"total_tokens": 100, "prompt_tokens": 80, "completion_tokens": 20}}
+    tokens, cost = _priced_actual(output, input_per_token=0.14e-6, output_per_token=0.28e-6)
+    assert tokens == 100
+    assert cost == pytest.approx(80 * 0.14e-6 + 20 * 0.28e-6)
+    # A naive combined-rate charge against every token would have given a different (larger,
+    # here, since output is pricier) number -- the split must actually change the result.
+    assert cost != pytest.approx(100 * (0.14e-6 + 0.28e-6))
+
+
+def test_priced_actual_falls_back_to_combined_rate_without_a_split():
+    output = {"usage": {"total_tokens": 100}}
+    tokens, cost = _priced_actual(output, input_per_token=0.14e-6, output_per_token=0.28e-6)
+    assert tokens == 100
+    assert cost == pytest.approx(100 * (0.14e-6 + 0.28e-6))
+
+
+def test_structured_policy_call_reserves_worst_case_two_requests():
+    """Instructor's `max_retries=1` can send up to two provider requests for one logical
+    dispatch; the ledger must reserve that worst case up front even when only one attempt
+    actually happens, so RPM/RPD/TPM can never be breached by an unlucky retry."""
+
+    def completion(**kwargs):
+        return structured_response('{"value":"ok"}')
+
+    storage = MemCAS()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    backend.run_inference(
+        job(
+            content="meeting text",
+            structured_output="test-output",
+            llm_policy=LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
+        )
+    )
+
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert ledger.inflight == {}
+    # The reservation's `requests=2` sticks even after settlement -- only tokens/cost are
+    # corrected to actual, request counts are never walked back down (review/33 §10.2).
+    assert ledger.requests_minute == 2
+
+
+def test_direct_mode_two_calls_with_same_recipe_hash_reserve_independently():
+    """Direct transport has no server-side dedup -- two calls sharing a recipe_hash are two real
+    provider requests and must each reserve their own slot, unlike a dispatch-mode retry."""
+    storage = MemCAS()
+
+    def completion(**kwargs):
+        return SimpleNamespace(model_dump=lambda: {"choices": [{"message": {"content": "ok"}}]})
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    policy = LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",))
+    backend.run_inference(job(content="meeting text", llm_policy=policy))
+    backend.run_inference(job(content="meeting text", llm_policy=policy))
+
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 2
+
+
+def test_dispatch_mode_requires_non_empty_recipe_hash():
+    storage = MemCAS()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        storage=storage,
+    )
+    empty_hash_job = InferenceJob(
+        task="tag",
+        inputs={"content": "meeting text", "llm_policy": LLMRequestPolicy()},
+        recipe_hash="",
+    )
+    with pytest.raises(LLMBackendError, match="non-empty recipe_hash"):
+        backend.run_inference(empty_hash_job)
+    budget, _ = load_llm_budget_cas(storage)
+    assert budget.routes == {}
+
+
+def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
+    """A JobHandle captures the route's pricing at reservation time; a later reconcile() must use
+    those captured rates, not whatever ROUTES says at poll time (Mistral is $0 in ROUTES today,
+    so if reconcile() used live config instead of the handle, cost_used would stay zero here)."""
+    storage = MemCAS()
+    route = ROUTES["mistral/mistral-large-latest"]
+    now = datetime.now(UTC)
+    mutate_llm_budget(
+        storage,
+        lambda budget, attempt_now: budget.reserve(
+            "owner-1", route.model, route=route, requests=1, tokens=100, cost=0.0, now=attempt_now
+        ),
+        now=now,
+    )
+
+    class Response:
+        def __init__(self, status, body):
+            self.status_code = status
+            self._body = body
+
+        def json(self):
+            return self._body
+
+    class Session:
+        def get(self, url, **kwargs):
+            return Response(
+                200,
+                {
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {"total_tokens": 100, "prompt_tokens": 80, "completion_tokens": 20},
+                },
+            )
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+        storage=storage,
+    )
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="recipe-1",
+        backend=backend.name,
+        ref="/v1/requests/chatcmpl-1",
+        model=route.model,
+        owner="owner-1",
+        input_per_token=0.14e-6,
+        output_per_token=0.28e-6,
+    )
+    result = backend.reconcile(handle)
+
+    assert result.output["choices"][0]["message"]["content"] == "ok"
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes[route.model]
+    assert ledger.inflight == {}
+    assert ledger.cost_used == pytest.approx(80 * 0.14e-6 + 20 * 0.28e-6)
 
 
 def test_structured_job_uses_instructor_pydantic_json_schema_mode():

@@ -88,6 +88,16 @@ class LLMBudget:
             and (pricing.cost_cap is None or led.cost_used + cost <= pricing.cost_cap)
         )
 
+    def find_inflight_owner(self, owner: str) -> str | None:
+        """The model ``owner`` currently has a reservation under, if any. A dispatch-mode retry
+        under the same (deterministic, recipe_hash-derived) owner must resolve to the *same*
+        model it originally reserved -- the Worker's own idempotency-key dedup still resolves to
+        that original request regardless of what a fresh selection pass would pick this time."""
+        for model, ledger in self.routes.items():
+            if owner in ledger.inflight:
+                return model
+        return None
+
     def reserve(
         self,
         owner: str,
@@ -247,14 +257,25 @@ def mutate_llm_budget(
     sleep=time.sleep,
     rng: random.Random | None = None,
 ) -> LLMBudget:
+    """Atomic read-modify-write via CAS. ``mutate`` is ``Callable[[LLMBudget, datetime], None]``:
+    it receives an **attempt-local** timestamp, not a value fixed before the retry loop starts.
+
+    A conflict means a sibling writer committed first — possibly advancing the ledger's
+    minute/day/cost-cycle window in the process. Reusing a timestamp computed before that retry
+    would make ``_ledger()`` see an *older* window key than the one already on the freshly-loaded
+    ledger and roll it backward, zeroing counts the winning writer had already correctly recorded.
+    So when the caller didn't pin an explicit ``now`` (i.e. it's absent, not merely falsy-at-call-
+    time), each attempt gets a fresh ``datetime.now(UTC)`` reflecting real elapsed backoff time.
+    An explicitly supplied ``now`` is honored unchanged on every attempt, for deterministic tests.
+    """
     from citypods.storage import CASConflict
 
-    now = now or datetime.now(UTC)
     rng = rng or random
     last: CASConflict | None = None
     for attempt in range(max_attempts):
+        attempt_now = now if now is not None else datetime.now(UTC)
         budget, etag = load_llm_budget_cas(storage)
-        mutate(budget)
+        mutate(budget, attempt_now)
         try:
             if etag is None:
                 storage.put_cas(
@@ -293,18 +314,17 @@ def settle_route_reservation(
     sleep=time.sleep,
     rng: random.Random | None = None,
 ) -> LLMBudget:
-    settle_at = now or datetime.now(UTC)
     return mutate_llm_budget(
         storage,
-        lambda budget: budget.settle(
+        lambda budget, attempt_now: budget.settle(
             owner,
             model,
             route=route,
-            now=settle_at,
+            now=attempt_now,
             actual_tokens=actual_tokens,
             actual_cost=actual_cost,
         ),
-        now=settle_at,
+        now=now,
         max_attempts=max_attempts,
         base_sleep=base_sleep,
         max_sleep=max_sleep,
@@ -326,11 +346,10 @@ def release_route_reservation(
     sleep=time.sleep,
     rng: random.Random | None = None,
 ) -> LLMBudget:
-    release_at = now or datetime.now(UTC)
     return mutate_llm_budget(
         storage,
-        lambda budget: budget.release(owner, model, route=route, now=release_at),
-        now=release_at,
+        lambda budget, attempt_now: budget.release(owner, model, route=route, now=attempt_now),
+        now=now,
         max_attempts=max_attempts,
         base_sleep=base_sleep,
         max_sleep=max_sleep,

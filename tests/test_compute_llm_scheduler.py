@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from citypods.compute.llm_budget import LLMBudget, load_llm_budget_cas
+from citypods.compute.llm_budget import LLMBudget, load_llm_budget_cas, mutate_llm_budget
 from citypods.compute.llm_policy import (
     ROUTES,
     LLMRequestPolicy,
@@ -156,3 +156,68 @@ def test_select_and_reserve_retries_after_one_cas_conflict():
     assert result.model == route.model
     budget, _ = load_llm_budget_cas(storage)
     assert budget.routes[route.model].inflight_count == 1
+
+
+def test_select_and_reserve_honors_a_requests_worst_case():
+    route = LLMRoute(
+        model="test/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=2),
+        pricing=PricingPolicy(),
+    )
+    storage = MemCAS()
+    select_and_reserve(
+        storage,
+        "owner",
+        LLMRequestPolicy(),
+        routes={route.model: route},
+        backend_mode="direct",
+        estimated_tokens=10,
+        requests=2,
+        now=NOW,
+    )
+    budget, _ = load_llm_budget_cas(storage)
+    assert budget.routes[route.model].requests_minute == 2
+
+
+def test_select_and_reserve_reuses_route_for_an_already_inflight_owner():
+    """A dispatch-mode retry under the same (deterministic) owner must resolve to the model it
+    originally reserved -- even if a fresh selection pass, run against updated ledger state,
+    would now pick a different one (e.g. a previously-exhausted free route recovering)."""
+    gemini = ROUTES["gemini/gemini-3-flash-preview"]
+    deepseek = ROUTES["deepseek/deepseek-v4-flash"]
+    routes = {gemini.model: gemini, deepseek.model: deepseek}
+    storage = MemCAS()
+    # Seed an existing in-flight reservation for "owner" under DeepSeek, simulating a prior
+    # attempt that hasn't settled yet -- as if Gemini had been exhausted when it first ran.
+    mutate_llm_budget(
+        storage,
+        lambda budget, attempt_now: budget.reserve(
+            "owner",
+            deepseek.model,
+            route=deepseek,
+            requests=1,
+            tokens=10,
+            cost=0.0,
+            now=attempt_now,
+        ),
+        now=NOW,
+    )
+    # A fresh selection pass would now pick Gemini (empty ledger, free, no allowlist
+    # restriction) -- but the retry must still resolve to DeepSeek, the route "owner" is already
+    # reserved under.
+    result = select_and_reserve(
+        storage,
+        "owner",
+        LLMRequestPolicy(allow_paid=True),
+        routes=routes,
+        backend_mode="direct",
+        estimated_tokens=10,
+        now=datetime(2026, 7, 16, 18, tzinfo=UTC),  # inside DeepSeek's off-peak window too
+    )
+    assert result.model == deepseek.model
+    budget, _ = load_llm_budget_cas(storage)
+    # No new reservation was created -- still exactly the one seeded above.
+    assert budget.routes[deepseek.model].inflight_count == 1
+    assert gemini.model not in budget.routes or budget.routes[gemini.model].inflight_count == 0
