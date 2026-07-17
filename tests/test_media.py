@@ -153,7 +153,7 @@ class FakeAdmission:
         return self.admitted
 
 
-def test_hls_episode_is_hosted(tmp_path):
+def test_hls_episode_is_hosted(tmp_path, capsys):
     eps = [_ep("g1")]
     ff = FakeFfmpeg()
     city = _city()
@@ -165,6 +165,12 @@ def test_hls_episode_is_hosted(tmp_path):
     assert eps[0].audio_key == key and eps[0].audio_spec_hash == spec
     assert ff.calls == ["https://src/manifest.m3u8"]
     assert (tmp_path / "audio" / key).exists()
+    out = capsys.readouterr().out
+    assert "audio encode resolve done" in out
+    assert "audio encode render start" in out
+    assert "audio encode render done" in out
+    assert "audio encode probe done" in out
+    assert "audio encode upload done" in out
 
 
 def test_encode_args_copies_or_reencodes_by_cap():

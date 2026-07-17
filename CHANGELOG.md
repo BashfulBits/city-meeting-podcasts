@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Audio encode phase diagnostics.** Audio materialization now logs bounded phase markers and
+  elapsed time for media resolution, source-cache fetch, rendering, duration probing, and storage
+  upload, without logging signed media URLs. This makes long-running or cancelled audio items
+  diagnosable without changing artifact output or retry behavior.
+
 - **Beam deploy CLI maintenance.** Updated the reproducibly pinned GitHub Actions `beam-client`
   install from `0.2.198` to Beam's required minimum `0.2.202`; no worker runtime or pipeline
   output changes are introduced.
