@@ -2945,6 +2945,17 @@ def materialize_audio(
             flush=True,
         )
         source_urls: list[str] = []
+        phase_started = time.perf_counter()
+
+        def _phase_log(phase: str, event: str, **fields: object) -> None:
+            detail = " ".join(f"{key}={value}" for key, value in fields.items())
+            suffix = f" {detail}" if detail else ""
+            print(
+                f"[enrich] audio encode {phase} {event} slug={city.slug} "
+                f"provider={city.provider} source={src_key} uid={label}{suffix}",
+                flush=True,
+            )
+
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / "audio.m4a"
@@ -2961,6 +2972,13 @@ def materialize_audio(
                         source_urls.extend(
                             src.ref for src in ep.sources if src.ref not in source_urls
                         )
+                _phase_log(
+                    "resolve",
+                    "done",
+                    sources=len(source_urls),
+                    multi_source=multi_source,
+                    seconds=f"{time.perf_counter() - phase_started:.1f}",
+                )
                 # For single-source episodes, use a locally cached copy when available so the
                 # encode pass reads from disk rather than re-streaming the rate-limited source.
                 # Multi-source concat episodes: download + concat each segment into one local
@@ -2971,10 +2989,26 @@ def materialize_audio(
                 # this render's input changes. See _concat_render_timeline for which encoder
                 # path that single file actually takes.
                 if source_cache is not None and ep.uid and not multi_source:
+                    cache_started = time.perf_counter()
+                    _phase_log("source-cache", "start", mode="single-source")
                     local = source_cache.get_or_fetch(ep.uid, source_url)
+                    _phase_log(
+                        "source-cache",
+                        "done",
+                        result="hit" if local is not None else "miss",
+                        seconds=f"{time.perf_counter() - cache_started:.1f}",
+                    )
                     by_id = _sources_by_id(ep, str(local) if local is not None else source_url)
                 elif source_cache is not None and ep.uid and multi_source:
+                    cache_started = time.perf_counter()
+                    _phase_log("source-cache", "start", mode="multi-source", parts=len(ep.sources))
                     combined = source_cache.get_or_fetch_concat(ep.uid, ep.sources)
+                    _phase_log(
+                        "source-cache",
+                        "done",
+                        result="hit" if combined is not None else "miss",
+                        seconds=f"{time.perf_counter() - cache_started:.1f}",
+                    )
                     if combined is not None:
                         render_timeline, by_id = _concat_render_timeline(ep.sources, combined)
                         render_sources = ()
@@ -3001,6 +3035,12 @@ def materialize_audio(
                 # new profile is disabled; production passes the new keyword explicitly.
                 if processing_profile:
                     render_options["processing_profile"] = processing_profile
+                render_started = time.perf_counter()
+                _phase_log(
+                    "render",
+                    "start",
+                    cached_input=any(not url.startswith("http") for url in by_id.values()),
+                )
                 ffmpeg.extract_audio(
                     render_timeline,
                     by_id,
@@ -3009,11 +3049,20 @@ def materialize_audio(
                     sources=render_sources,
                     **render_options,
                 )
+                _phase_log("render", "done", seconds=f"{time.perf_counter() - render_started:.1f}")
+                probe_started = time.perf_counter()
+                _phase_log("probe", "start")
                 probed: float | None = None
                 try:
                     probed = _probe_served_duration_secs(dest, ffmpeg_binary)
                 except Exception:  # noqa: BLE001
                     pass
+                _phase_log(
+                    "probe",
+                    "done",
+                    duration=probed if probed is not None else "unknown",
+                    seconds=f"{time.perf_counter() - probe_started:.1f}",
+                )
                 try:
                     size = dest.stat().st_size
                 except OSError:
@@ -3022,7 +3071,10 @@ def materialize_audio(
                 # throttled fetch yields a truncated stub that "encodes" fine (e.g. a 258-byte
                 # Swagit container). Raise → #120 backoff + retry (now with the per-host cap).
                 _guard_against_truncated_audio(ep, probed, size_bytes=size)
+                upload_started = time.perf_counter()
+                _phase_log("upload", "start", bytes=size, key=key)
                 url = storage.put_file(key, dest, CONTENT_TYPE)
+                _phase_log("upload", "done", seconds=f"{time.perf_counter() - upload_started:.1f}")
                 ep.audio_bytes = size
             # Commit the encode result atomically: the artifact pointer AND the probed served
             # duration are written only after a successful upload. Setting audio_duration_served
