@@ -230,8 +230,8 @@ warranted. `SOUNDBITE_PIPELINE_VERSION = "1"`; `ARTIFACT_BLOCKS` gains `"soundbi
   introduces.
 - **Sequencing**: Part A → Part B (B cites A's cards). Part C is independent of A/B and can ship in any
   order relative to them. All three Parts' non-LLM paths depend only on already-shipped infra (chapters,
-  `extract_clip`, R3's `agenda_text`/`agenda_backup` once that ships) — **none of R6 needs to wait on R2
-  or R5 actually shipping code**, only their LLM-assisted halves do.
+  `extract_clip`, R3's `agenda_text`/`agenda_backup` — both shipped, `review/29`) — **none of R6 needs to
+  wait on R2 or R5 actually shipping code**, only their LLM-assisted halves do.
 
 ---
 

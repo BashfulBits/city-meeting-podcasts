@@ -29,6 +29,9 @@ STATE_VERSION = 1
 DEFAULT_STATE_NAME = "llm_evaluation.json"
 REVIEW_MARKER = "<!-- citypods:llm-review "
 REVIEW_DECISIONS = ("correct", "incorrect", "ambiguous")
+# Shared between render_review_body() and parse_review() -- see parse_review()'s docstring-level
+# comment for why this exact line is the security-relevant scan boundary.
+_CHECKBOX_HEADER = "Choose exactly one:"
 
 
 @dataclass(frozen=True)
@@ -79,15 +82,20 @@ def _json_hash(value: Any) -> str:
 
 
 def load_state(path: str | Path) -> dict[str, Any]:
+    """Load the durable calibration state, defaulting to empty only when the file is genuinely
+    absent. A file that exists but can't be read/parsed, or isn't a JSON object, fails closed
+    (raises) instead of silently returning an empty snapshot -- the caller that persists state
+    back (``save_state``) would otherwise clobber real review history with an empty file merely
+    because a read hit a transient error or corruption once."""
     path = Path(path)
     if not path.exists():
         return {"version": STATE_VERSION, "reviews": {}, "matrix": [], "trend": []}
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"version": STATE_VERSION, "reviews": {}, "matrix": [], "trend": []}
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"invalid LLM evaluation state file: {path}") from exc
     if not isinstance(value, dict):
-        return {"version": STATE_VERSION, "reviews": {}, "matrix": [], "trend": []}
+        raise ValueError(f"invalid LLM evaluation state file: {path}")
     value.setdefault("version", STATE_VERSION)
     value.setdefault("reviews", {})
     value.setdefault("matrix", [])
@@ -402,7 +410,7 @@ def render_review_body(
         lines.append("")
     lines.extend(
         [
-            "Choose exactly one:",
+            _CHECKBOX_HEADER,
             "- [ ] Correct",
             "- [ ] Incorrect",
             "- [ ] Ambiguous",
@@ -431,9 +439,22 @@ def parse_review(body: str) -> tuple[dict[str, Any], str]:
     if not markers:
         raise ValueError("LLM review metadata missing")
     metadata = json.loads(markers[-1].group("meta"))
+    # _DECISION_RE must not scan the whole body: render_review_body() renders untrusted candidate
+    # text (explanation, evidence quotes, document_locator) *before* the real checkbox block, with
+    # no guarantee those fields are newline-free. A crafted field containing an embedded newline
+    # could otherwise inject a fake, syntactically valid "- [x] Correct" line that this regex would
+    # accept as a genuine human decision. render_review_body() emits exactly one literal
+    # ``_CHECKBOX_HEADER`` line, immediately followed by the three real checkboxes and then the
+    # genuine trailing marker -- nothing renders after it, so scanning only from its LAST
+    # occurrence onward (the same "take the last one" reasoning as the marker above) means an
+    # earlier decoy header/checkbox block injected via untrusted text can never be mistaken for the
+    # real one.
+    header_at = body.rfind(_CHECKBOX_HEADER)
+    if header_at == -1:
+        raise ValueError("choose exactly one LLM review decision")
     checked = [
         m.group("label").lower()
-        for m in _DECISION_RE.finditer(body)
+        for m in _DECISION_RE.finditer(body[header_at:])
         if m.group("checked").lower() == "x"
     ]
     if len(checked) != 1:

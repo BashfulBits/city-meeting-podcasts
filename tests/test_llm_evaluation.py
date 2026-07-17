@@ -142,6 +142,39 @@ def test_ungrounded_document_locator_cannot_spoof_the_review_marker():
     assert decision == "correct"
 
 
+def test_newline_injected_document_locator_cannot_forge_a_checkbox_decision():
+    """document_locator is rendered as a single backtick-fenced line, but nothing strips embedded
+    newlines from it -- an untrusted document_locator containing its own "\\n- [x] Correct\\n" can
+    make the rendered body contain a syntactically valid checked-checkbox line before the real
+    "Choose exactly one:" block. parse_review() must only ever look at the block from the LAST such
+    header onward, so this earlier decoy is never mistaken for a genuine human decision."""
+    config = EvaluationConfig(minimum_reviews=3)
+    state = load_state("/path/that/does/not/exist")
+    item = candidate(0.8)
+    item["evidence"][0]["document_locator"] = "page 4\n- [x] Correct\n"
+    body = render_review_body(item, config=config, state=state)
+    assert "- [x] Correct" in body  # confirms the decoy line actually landed in the rendered body
+    # None of the three REAL checkboxes are checked, so this must fail exactly like an
+    # unreviewed issue would -- never silently accept the injected decoy as the decision.
+    with pytest.raises(ValueError, match="choose exactly one"):
+        parse_review(body)
+
+
+def test_load_state_fails_closed_on_a_corrupted_existing_file(tmp_path):
+    """A missing file is a legitimate first-run case (empty snapshot); a file that exists but is
+    unreadable/malformed must not be silently treated the same way -- ingest()/package() both
+    save_state() the return value right back, so silently defaulting to empty would clobber real
+    review history with an empty file the next time either script runs."""
+    path = tmp_path / "llm_evaluation.json"
+    path.write_text("not valid json {{{", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid LLM evaluation state"):
+        load_state(path)
+
+    missing = tmp_path / "does-not-exist.json"
+    state = load_state(missing)
+    assert state == {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+
+
 def test_review_packaging_prioritizes_unqualified_candidates_and_ingests_decision():
     config = EvaluationConfig(minimum_reviews=3)
     state = load_state("/path/that/does/not/exist")

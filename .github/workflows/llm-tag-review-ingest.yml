@@ -15,7 +15,8 @@ on:
         default: ""
 
 concurrency:
-  group: llm-tag-review-ingest
+  # Shared with llm-tag-review.yml -- see that file's comment.
+  group: llm-evaluation-state
   cancel-in-progress: false
 
 permissions: {}
@@ -36,24 +37,32 @@ jobs:
           ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number || '' }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
           EVENT_ISSUE_TITLE: ${{ github.event.issue.title || '' }}
+          EVENT_ISSUE_LABELS: ${{ toJson(github.event.issue.labels.*.name) }}
           EVENT_COMMENT_ISSUE_URL: ${{ github.event.comment.issue_url || '' }}
           EVENT_COMMENT_BODY: ${{ github.event.comment.body || '' }}
           EVENT_COMMENT_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association || '' }}
         run: |
+          # The dedicated label -- applied only by llm-tag-review.yml's own GITHUB_TOKEN, which
+          # requires triage-or-above permission to replicate by hand -- is the trust boundary here,
+          # not the title: a title string is guessable/settable by anyone who can open an issue on
+          # a public repo, so title-only matching (the pre-fix behavior) let an unauthenticated
+          # public issue get ingested as a genuine calibration decision by the scheduled sweep.
           numbers="[]"
           if [ -n "$ISSUE_NUMBER_INPUT" ]; then
             numbers=$(jq -nc --arg n "$ISSUE_NUMBER_INPUT" '[$n | tonumber]')
-          elif [ "$EVENT_NAME" = "issues" ] && [ -n "$EVENT_ISSUE_NUMBER" ]; then
+          elif [ "$EVENT_NAME" = "issues" ] && [ -n "$EVENT_ISSUE_NUMBER" ] \
+            && printf '%s\n' "$EVENT_ISSUE_LABELS" | jq -e 'index("llm-calibration-review")' >/dev/null; then
             numbers=$(jq -nc --arg n "$EVENT_ISSUE_NUMBER" '[$n | tonumber]')
           elif [ -n "$EVENT_COMMENT_ISSUE_URL" ] \
             && printf '%s\n' "$EVENT_COMMENT_BODY" | grep -qiE '^/llm-ingest([[:space:]]|$)' \
             && printf '%s\n' "$EVENT_COMMENT_AUTHOR_ASSOCIATION" | grep -qE '^(OWNER|MEMBER|COLLABORATOR)$' \
-            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -q '^R5 LLM tag sample '; then
+            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -q '^R5 LLM tag sample ' \
+            && printf '%s\n' "$EVENT_ISSUE_LABELS" | jq -e 'index("llm-calibration-review")' >/dev/null; then
             n=$(printf '%s' "$EVENT_COMMENT_ISSUE_URL" | awk -F/ '{print $NF}')
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "schedule" ]; then
-            numbers=$(gh issue list --state open --search 'in:title "R5 LLM tag sample "' \
-              --json number --jq '[.[].number]')
+            numbers=$(gh issue list --state open --label llm-calibration-review \
+              --search 'in:title "R5 LLM tag sample "' --json number --jq '[.[].number]')
           fi
           echo "numbers=$numbers" >> "$GITHUB_OUTPUT"
 
@@ -134,4 +143,3 @@ jobs:
         run: |
           gh issue comment "$ISSUE_NUMBER" --body "$COMMENT"
           gh issue close "$ISSUE_NUMBER"
-

@@ -24,9 +24,10 @@
 
 ## Implemented rollout and calibration behavior (2026-07-16)
 
-R5 now enables the LLM path in [`config/site_config.yml`](../config/site_config.yml) with the
-asynchronous dispatch route. A dispatch completion is never treated as a public tag merely because it
-passed JSON/schema validation. The stage stores each validated suggestion in
+R5 now enables the LLM path in [`config/site_config.yml`](../config/site_config.yml), over Gemini's
+direct transport (`tagging.llm_mode: direct` — see the R13-migration section below for why; there is no
+working `LLM_DISPATCH_URL` for this route). A completed suggestion is never treated as a public tag
+merely because it passed JSON/schema validation. The stage stores each validated suggestion in
 `Episode.llm_tag_candidates`, then projects only candidates whose confidence clears the generic evaluator
 in [`citypods/llm_evaluation.py`](../citypods/llm_evaluation.py) — **full design now written up in
 [`review/35`](35-llm-confidence-calibration-human-review.md)**, extracted from this section 2026-07-17
@@ -372,10 +373,16 @@ the normal enrich phase and tags every retained episode over the following sched
 first pass for episodes without a transcript yet, full pass once transcripts exist), the same gradual
 pattern H12's version-aware re-transcribe already established — not a special-cased bulk job.
 
-LLM jobs follow the same gradual schedule in dispatch mode. Results are stored as shadow candidates;
-policy changes update the cheap visible projection through `tags_spec_hash` and do not invalidate the
-LLM input recipe or incur a second vendor request. The weekly review state is durable and independent
-of the episode record lane, so human decisions survive concurrent source-scoped builds.
+LLM jobs follow the same gradual schedule. Results are stored as shadow candidates. **Precisely, since
+`tag_recipe_hash()` computes two different hashes for two different gates:** the *dispatch* gate
+(`llm_recipe`, used for `ep.tags_llm_recipe_hash`) never includes the admission policy, so a policy
+change alone never re-triggers a vendor call — cached candidates are reused as-is. The *cache-skip* gate
+(`tags_spec_hash`, `tag_recipe_hash()`'s `admission_policy` parameter) *does* include it, so a policy
+change invalidates that hash and every episode's rule-tagging/re-projection step reruns on the next
+build (cheap — no vendor call, just re-deriving rule tags and re-merging cached candidates through the
+new threshold) rather than being skipped via the usual `ep.tags_spec_hash == projection_hash` check. The
+weekly review state is durable and independent of the episode record lane, so human decisions survive
+concurrent source-scoped builds.
 
 ## Tests
 

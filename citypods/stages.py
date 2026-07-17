@@ -499,11 +499,20 @@ class TagsStage:
             return stats
 
         evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
-        evaluation_state = (
-            load_state(ctx.llm_evaluation_state_path)
-            if ctx.llm_evaluation_state_path is not None
-            else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-        )
+        try:
+            evaluation_state = (
+                load_state(ctx.llm_evaluation_state_path)
+                if ctx.llm_evaluation_state_path is not None
+                else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+            )
+        except ValueError as exc:
+            # load_state() fails closed on a corrupted (not merely missing) state file rather than
+            # silently resetting it -- that protects against this stage's caller later clobbering
+            # real review history via save_state(), but this stage itself only ever *reads* the
+            # file, so degrading tagging for this run (retried next run once the file is fixed) is
+            # the right response here, not crashing the whole city's enrich pass.
+            stats.errors.append(f"LLM evaluation state unavailable: {exc}")
+            return stats
         admission_policy = policy_fingerprint(evaluation_config, evaluation_state)
 
         for ep in _materialize_set(episodes, city.max_episodes):

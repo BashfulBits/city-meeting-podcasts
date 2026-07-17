@@ -222,6 +222,66 @@ def test_chapter_id_survives_a_dropped_chapter():
     assert inputs[1]["chapter_id"] != chapter_id(ep, ep.source_chapters[1], 1)
 
 
+def test_agenda_text_survives_a_dropped_chapter():
+    """Same desync test_chapter_id_survives_a_dropped_chapter guards against, but for
+    agenda_item_context()'s lookup: that dict is keyed by SOURCE chapter_index (R3's manifest),
+    not served-list position, so the agenda-text lookup in chapter_tag_inputs() needs the same
+    source_index resolution chapter_id() already has -- otherwise the surviving chapter after
+    "Housing plan" gets the dropped "Dropped item" chapter's agenda text instead of its own."""
+
+    class Storage:
+        def exists(self, key):
+            return key == "agenda-backup-key"
+
+        def get_file(self, key, path):
+            path.write_text(
+                '{"items": ['
+                '{"chapter_index": 0, "item_text": "Call to order text"},'
+                '{"chapter_index": 1, "item_text": "WRONG: dropped item text"},'
+                '{"chapter_index": 2, "item_text": "Housing plan text"}'
+                "]}"
+            )
+            return True
+
+    ep = Episode(
+        "g1",
+        "Meeting",
+        datetime(2026, 1, 1, tzinfo=UTC),
+        "https://example.test/video",
+        source_chapters=[
+            {"start": 0, "title": "Call to order"},
+            {"start": 450, "title": "Dropped item (falls in a cut span)"},
+            {"start": 700, "title": "Housing plan"},
+        ],
+        links={"agenda_backup_artifact_key": "agenda-backup-key"},
+        timeline=Timeline(
+            version="silence-v1",
+            segments=(
+                Segment(
+                    served_start=0,
+                    served_end=300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=0,
+                    source_end=300,
+                ),
+                Segment(
+                    served_start=300,
+                    served_end=3300,
+                    kind="source",
+                    source_id="s0",
+                    source_start=600,
+                    source_end=3600,
+                ),
+            ),
+        ),
+    )
+    inputs = chapter_tag_inputs(ep, Storage())
+    assert len(inputs) == 2  # the middle chapter was dropped
+    assert inputs[0]["agenda_text"] == "Call to order text"
+    assert inputs[1]["agenda_text"] == "Housing plan text"
+
+
 def test_transcript_windows_are_the_reliable_chapter_association():
     class Storage:
         def exists(self, key):

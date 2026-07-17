@@ -194,7 +194,7 @@ def _transcript_segments(
         chapter = None
         for index, candidate in enumerate(chapters or []):
             if start >= candidate["start"] and (
-                index == len(chapters or []) - 1 or start < (chapters or [])[index + 1]["start"]
+                index == len(chapters) - 1 or start < chapters[index + 1]["start"]
             ):
                 chapter = candidate.get("id")
                 break

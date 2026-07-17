@@ -371,13 +371,21 @@ def chapter_tag_inputs(ep: Any, storage: Any = None) -> list[dict[str, Any]]:
             for segment in segments
             if segment["start"] >= start and (next_start is None or segment["start"] < next_start)
         ]
+        # agenda_item_context() is keyed by source chapter_index (from R3's manifest), not served
+        # position -- the same source_index vs. served-position desync chapter_id() already guards
+        # against below. Without this, a remap() that dropped an earlier chapter would attach a
+        # surviving chapter's agenda evidence/tags to whatever chapter now lands at its old served
+        # index instead of its own.
+        agenda_index = chapter.get("source_index")
+        if not isinstance(agenda_index, int):
+            agenda_index = index
         result.append(
             {
                 "chapter_id": chapter_id(ep, chapter, index),
                 "title": str(chapter.get("title") or ""),
                 "start": start,
                 "end": next_start,
-                "agenda_text": agenda_items.get(index, ""),
+                "agenda_text": agenda_items.get(agenda_index, ""),
                 "transcript_text": "\n".join(segment["text"] for segment in local),
                 "transcript_segments": local,
             }
