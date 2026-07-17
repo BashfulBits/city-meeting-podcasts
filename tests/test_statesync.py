@@ -20,6 +20,7 @@ from citypods.records import (
 )
 from citypods.statesync import (
     STATE_PREFIX,
+    TransientStateSyncError,
     fetch_remote_records,
     pull_state,
     push_asr_runtime_log_merged,
@@ -587,6 +588,23 @@ def test_push_records_merged_skips_unreadable_remote_rather_than_clobber(tmp_pat
     assert pushed == 0
     remote_file = bucket.root / STATE_PREFIX / "sources" / sk / "episodes.json"
     assert json.loads(remote_file.read_text())["episodes"]["u1"]["audio"]["url"] == "NEW"
+
+
+def test_push_records_merged_can_requeue_on_unreadable_remote(tmp_path):
+    bucket = _UnreadableBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(bucket, sk, {"u1": {"uid": "u1"}})
+    save_records(state_dir, sk, {"u1": {"uid": "u1"}})
+
+    with pytest.raises(TransientStateSyncError, match="unreadable"):
+        push_records_merged(
+            bucket,
+            state_dir,
+            [sk],
+            protected_blocks=frozenset({"audio"}),
+            raise_on_transient=True,
+        )
 
 
 def _runtime_log(samples):

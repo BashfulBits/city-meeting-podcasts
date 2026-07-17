@@ -100,7 +100,7 @@ from citypods.stages import (
     _reset_asr_timeout_backoff,
 )
 from citypods.state import resolve_state_dir
-from citypods.statesync import pull_state, push_records_merged
+from citypods.statesync import TransientStateSyncError, pull_state, push_records_merged
 from citypods.storage import make_storage
 
 SUPPORTED_WORK_CLASSES = frozenset({"transcript-asr"})
@@ -281,6 +281,17 @@ class CompletedClaim:
 
 class ClaimDeferred(RuntimeError):
     """A claimed item should return to the queue/backoff path, not settle terminally failed."""
+
+
+def _is_deterministic_media_decode_error(exc: BaseException) -> bool:
+    """Identify decoder failures that should be quarantined until audio changes."""
+    name = type(exc).__name__
+    message = str(exc).lower()
+    return (isinstance(exc, IndexError) and message == "tuple index out of range") or name in {
+        "DecoderNotFoundError",
+        "InvalidDataError",
+        "StreamNotFoundError",
+    }
 
 
 def _int_env(name: str, default: int) -> int:
@@ -665,10 +676,51 @@ class ExternalTranscribeWorker:
                 return self._run_with_renewal(item, tracker, owner=owner)
             except ClaimDeferred:
                 raise
-            except Exception as exc:  # noqa: BLE001
+            except TransientStateSyncError as exc:
+                print(
+                    f"[{self.config.backend}-worker] deferred "
+                    f"{item.source_key}/{item.episode_uid}: transient state sync: {exc}",
+                    flush=True,
+                )
+                raise ClaimDeferred("transient-state-sync") from exc
+            except Exception as exc:
+                if _is_deterministic_media_decode_error(exc):
+                    self._quarantine_media_decode(item, exc)
+                    raise ClaimDeferred("media-decode") from exc
                 last = exc
+                continue
         assert last is not None
         raise last
+
+    def _quarantine_media_decode(self, item: WorkItem, exc: BaseException) -> None:
+        """Persist a decoder quarantine, keyed to the current hosted-audio identity."""
+        try:
+            _city, ep, records = self._episode_for(item)
+            identity = ep.audio_key or ep.hosted_audio_url
+            if not identity:
+                return
+            ep.transcript_media_error = "decode"
+            ep.transcript_media_error_last_attempt = datetime.now(UTC).isoformat()
+            ep.transcript_media_error_audio_identity = identity
+            self._push_owned_transcript_record(item, ep, records, ref_uid=ep.uid or ep.guid)
+            print(
+                f"[{self.config.backend}-worker] quarantined "
+                f"{item.source_key}/{item.episode_uid} reason=media-decode "
+                f"error={type(exc).__name__}: {redact_subprocess_text(str(exc))}",
+                flush=True,
+            )
+        except Exception as persist_exc:  # noqa: BLE001 - preserve the original item outcome
+            print(
+                f"[{self.config.backend}-worker] warning: failed to persist media quarantine "
+                f"for {item.source_key}/{item.episode_uid}: {persist_exc}",
+                flush=True,
+            )
+
+    @staticmethod
+    def _clear_media_decode_quarantine(ep: Episode) -> None:
+        ep.transcript_media_error = None
+        ep.transcript_media_error_last_attempt = None
+        ep.transcript_media_error_audio_identity = None
 
     def _admit_claim(
         self,
@@ -688,6 +740,10 @@ class ExternalTranscribeWorker:
         backoff_until = metadata.get("timeout_backoff_until")
         if backoff_until is not None and datetime.now(UTC) < backoff_until:
             return False, f"timeout-backoff until={backoff_until.isoformat()}"
+        media_error = metadata.get("transcript_media_error")
+        media_identity = metadata.get("transcript_media_error_audio_identity")
+        if media_error and media_identity and media_identity == metadata.get("audio_identity"):
+            return False, f"media-decode-quarantine error={media_error}"
         return True, None
 
     def _after_claim(self, claim: CompletedClaim) -> None:
@@ -760,6 +816,13 @@ class ExternalTranscribeWorker:
                         flush=True,
                     )
                 continue
+            print(
+                f"[{self.config.backend}-worker] claim-start "
+                f"{item.source_key}/{item.episode_uid} "
+                f"duration_h={float(metadata.get('duration_hours') or 0.0):.3f} "
+                f"estimate_s={estimated_runtime_seconds:.1f}",
+                flush=True,
+            )
             if budget_policy is not None:
                 estimate = estimated_runtime_seconds * self._estimated_dollars_per_runtime_second(
                     budget_policy
@@ -860,6 +923,13 @@ class ExternalTranscribeWorker:
                     started_at=started_at,
                     elapsed_seconds=actual,
                     owner=claim_owner,
+                )
+                print(
+                    f"[{self.config.backend}-worker] claim-finish "
+                    f"{item.source_key}/{item.episode_uid} outcome={outcome} "
+                    f"duration_h={float(metadata.get('duration_hours') or 0.0):.3f} "
+                    f"estimate_s={estimated_runtime_seconds:.1f} actual_s={actual:.1f}",
+                    flush=True,
                 )
         return summary, settled_claims
 
@@ -1071,6 +1141,9 @@ class ExternalTranscribeWorker:
                 "model": None,
                 "compute_type": None,
                 "timeout_backoff_until": None,
+                "audio_identity": None,
+                "transcript_media_error": None,
+                "transcript_media_error_audio_identity": None,
             }
         hours, _source = episode_duration_hours(ep)
         return {
@@ -1081,6 +1154,12 @@ class ExternalTranscribeWorker:
             # ``_admit_claim`` can gate on it without a second ``_episode_for``/``load_records``
             # round trip for the same item.
             "timeout_backoff_until": transcript_timeout_backoff_until(ep),
+            "audio_identity": getattr(ep, "audio_key", None)
+            or getattr(ep, "hosted_audio_url", None),
+            "transcript_media_error": getattr(ep, "transcript_media_error", None),
+            "transcript_media_error_audio_identity": getattr(
+                ep, "transcript_media_error_audio_identity", None
+            ),
         }
 
     def _model(self, city: City, tracker: ResourceTracker | None = None):
@@ -1155,6 +1234,7 @@ class ExternalTranscribeWorker:
             [item.source_key],
             protected_blocks=protected_blocks_for_lane("transcribe"),
             owned_uids={item.source_key: frozenset({item.episode_uid})},
+            raise_on_transient=True,
         )
         if pushed != 1:
             raise RuntimeError(
@@ -1189,6 +1269,7 @@ class ExternalTranscribeWorker:
             )
             _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
             _reset_asr_timeout_backoff(ep)
+            self._clear_media_decode_quarantine(ep)
         else:
             with tempfile.TemporaryDirectory() as td:
                 audio_path = Path(td) / "audio.m4a"
@@ -1222,6 +1303,7 @@ class ExternalTranscribeWorker:
                 ep.transcript_basis = "served"
                 ep.transcript_synced = True
                 _reset_asr_timeout_backoff(ep)
+                self._clear_media_decode_quarantine(ep)
                 _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
                 tracker.record("after-artifact-upload")
 
@@ -1372,7 +1454,20 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
         )
 
     def _run_with_retry(self, item: WorkItem, tracker: ResourceTracker, *, owner: str) -> bool:
-        return self._run_with_renewal(item, tracker, owner=owner)
+        try:
+            return self._run_with_renewal(item, tracker, owner=owner)
+        except TransientStateSyncError as exc:
+            print(
+                f"[{self.config.backend}-worker] deferred "
+                f"{item.source_key}/{item.episode_uid}: transient state sync: {exc}",
+                flush=True,
+            )
+            raise ClaimDeferred("transient-state-sync") from exc
+        except Exception as exc:
+            if _is_deterministic_media_decode_error(exc):
+                self._quarantine_media_decode(item, exc)
+                raise ClaimDeferred("media-decode") from exc
+            raise
 
     def _transcribe_fresh(
         self,

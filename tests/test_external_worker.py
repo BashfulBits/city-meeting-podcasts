@@ -683,6 +683,41 @@ def test_admit_claim_allows_item_with_no_recorded_backoff(tmp_path):
     assert (admitted, reason) == (True, None)
 
 
+def test_admit_claim_quarantines_same_audio_after_decode_failure(tmp_path):
+    worker = _loop_worker(tmp_path, ["a"])
+
+    admitted, reason = worker._admit_claim(
+        _queued("a"),
+        metadata={
+            "duration_hours": 1.0,
+            "audio_identity": "audio-key",
+            "transcript_media_error": "decode",
+            "transcript_media_error_audio_identity": "audio-key",
+        },
+        estimated_runtime_seconds=60.0,
+    )
+
+    assert admitted is False
+    assert "media-decode-quarantine" in str(reason)
+
+
+def test_admit_claim_retries_when_audio_identity_changed(tmp_path):
+    worker = _loop_worker(tmp_path, ["a"])
+
+    admitted, reason = worker._admit_claim(
+        _queued("a"),
+        metadata={
+            "duration_hours": 1.0,
+            "audio_identity": "new-audio-key",
+            "transcript_media_error": "decode",
+            "transcript_media_error_audio_identity": "old-audio-key",
+        },
+        estimated_runtime_seconds=60.0,
+    )
+
+    assert (admitted, reason) == (True, None)
+
+
 def test_internal_worker_admit_claim_inherits_backoff_check(tmp_path):
     """``InternalTranscribeWorker._admit_claim`` must chain to the shared base-class backoff gate,
     not just its own local-duration/backstop checks — otherwise the GitHub worker (the one that
@@ -972,7 +1007,9 @@ def _patch_transcribe_item(monkeypatch, worker, *, exists):
 
     push_calls: list[dict] = []
 
-    def _fake_push(storage, state_dir, sources, *, protected_blocks, owned_uids):
+    def _fake_push(
+        storage, state_dir, sources, *, protected_blocks, owned_uids, raise_on_transient=False
+    ):
         push_calls.append({"sources": sources, "owned_uids": owned_uids})
         return 1
 

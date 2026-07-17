@@ -116,6 +116,12 @@ class Episode:
     # repeatedly consuming the full item timeout. Reset after successful local inference.
     transcript_timeout_attempts: int = 0
     transcript_timeout_last_attempt: str | None = None
+    # Deterministic media-decode failures are quarantined against the current hosted-audio
+    # identity so a malformed recording does not consume every ASR run. A changed audio key or
+    # URL clears the quarantine naturally on the next admission attempt.
+    transcript_media_error: str | None = None
+    transcript_media_error_last_attempt: str | None = None
+    transcript_media_error_audio_identity: str | None = None
 
     # City/provider supplied transcript document registry (PR1 schema).  Shape is intentionally
     # record-compatible and implementation-neutral until the follow-up stages consume it:

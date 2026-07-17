@@ -36,6 +36,13 @@ Phase R (Research-Tool Surface)._
   from accumulating across a shard's rolling queue; successful audio identity and content-addressed
   outputs are unchanged.
 
+- **ASR worker failure handling.** Transient remote-record read failures now requeue the owned
+  transcript claim instead of marking it terminally failed. Deterministic audio decoder failures
+  are durably quarantined against the current hosted-audio identity and retried only after that
+  identity changes. ASR claim logs now include duration, runtime estimate, outcome, and actual
+  elapsed time for per-item diagnosis. Existing records and successful artifacts are unchanged;
+  the new quarantine fields are additive and do not invalidate stored transcripts.
+
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
   requests transport timeout is recorded as deferred work so a temporary endpoint outage does not

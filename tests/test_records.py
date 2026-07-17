@@ -1244,6 +1244,21 @@ def test_timeout_backoff_persists_without_a_transcript_artifact():
     assert back.transcript_timeout_last_attempt == "2026-06-20T12:00:00+00:00"
 
 
+def test_media_decode_quarantine_persists_without_a_transcript_artifact():
+    ep = _ep("g-media-decode")
+    ep.uid = "u-media-decode"
+    ep.transcript_media_error = "decode"
+    ep.transcript_media_error_last_attempt = "2026-07-17T12:00:00+00:00"
+    ep.transcript_media_error_audio_identity = "audio-key-v1"
+
+    rec = episode_to_record(ep)
+    back = record_to_episode(rec)
+    assert back.transcript_key is None
+    assert back.transcript_media_error == "decode"
+    assert back.transcript_media_error_last_attempt == "2026-07-17T12:00:00+00:00"
+    assert back.transcript_media_error_audio_identity == "audio-key-v1"
+
+
 def test_timeout_backoff_accepts_legacy_naive_timestamp_as_utc():
     ep = _ep("g-timeout-naive")
     ep.transcript_timeout_attempts = 1

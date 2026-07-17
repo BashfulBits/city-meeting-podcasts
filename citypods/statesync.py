@@ -27,6 +27,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 STATE_PREFIX = "state"
+
+
+class TransientStateSyncError(RuntimeError):
+    """A transient state read failure that should requeue its owning work item."""
+
+
 # JSON-typed; everything we persist is text. Kept conservative so a stray binary never syncs.
 _SUFFIXES = {".json", ".jsonl"}
 
@@ -166,6 +172,7 @@ def push_records_merged(
     protected_blocks,
     owned_uids: dict[str, frozenset[str]] | None = None,
     log=None,
+    raise_on_transient: bool = False,
 ) -> int:
     """Foreign-block-preserving scoped push of owned ``sources/<key>/episodes.json`` files.
 
@@ -207,9 +214,13 @@ def push_records_merged(
         try:
             remote = fetch_remote_records(storage, sk)
         except Exception as exc:  # noqa: BLE001 — any backend listing error → fail safe (skip)
+            if raise_on_transient:
+                raise TransientStateSyncError(f"remote read failed for source {sk}: {exc}") from exc
             emit(f"state: WARNING remote read failed for source {sk}: {exc}; skipping push")
             continue
         if remote is None:
+            if raise_on_transient:
+                raise TransientStateSyncError(f"remote record for source {sk} unreadable")
             emit(f"state: WARNING remote record for source {sk} unreadable; skipping push")
             continue
         local = load_records(state_dir, sk)
