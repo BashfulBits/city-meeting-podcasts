@@ -34,24 +34,24 @@ Phase R (Research-Tool Surface)._
   silently, per-record, forever, until its 38-day TTL expired) — fixed by registering both known
   contracts before the sweep reconciles anything.
 
-- **Topic taxonomy and directly-visible chapter-scoped tagging (R5).** Added a 37-tag Strong
-  Towns/livability taxonomy, deterministic evidence-backed episode/chapter annotations,
-  taxonomy-ordered episode rollups with a no-chapter fallback, chapter-aware meeting/search
-  payloads, and an Instructor/Pydantic structured LLM path pinned to one configured model via R13's
-  `LLMRequestPolicy`/scheduler/budget adapters. Validated, evidence-grounded model suggestions are
-  retained with quoted, source-checked evidence and merged directly alongside rule tags — schema
-  validation and evidence-grounding are the only per-candidate checks. No manual override field or
-  automatic taxonomy web crawl is introduced; annual taxonomy review and future moderated community
-  proposals are documented in `review/14`. A pre-merge review pass closed a set of correctness/
-  integrity gaps: episode records now correctly restore persisted tag state on every normal run
-  (previously every episode was silently re-tagged and re-dispatched to the LLM each run), chapter
-  identity survives a dropped chapter, and evidence timestamps no longer span the whole episode on
-  a common word. See `review/14` for the full list. **A bespoke per-candidate confidence-calibration
-  matrix and weekly human-review GitHub-issue workflow were built for this feature, then removed**
-  before merge: they duplicated the quality-assurance role `review/27`'s tournament/champion-routing
-  design already owns at the provider/model level, so R5 ships without a second, tag-specific
-  quality gate — see `review/14`'s 2026-07-17 section and `review/27` §6 for the design this now
-  bolts onto once built.
+- **Topic taxonomy and calibrated chapter-scoped tagging (R5).** Added a 37-tag Strong Towns/livability
+  taxonomy, deterministic evidence-backed episode/chapter annotations, taxonomy-ordered episode
+  rollups with a no-chapter fallback, chapter-aware meeting/search payloads, and an Instructor/Pydantic
+  structured LLM path running through dispatch. Validated model suggestions are retained as shadow
+  candidates with quoted, source-checked evidence; a reusable sparse calibration matrix and weekly
+  human-review digest control automatic admission. The initial feature/provider fallback is 100%
+  confidence, so unquantified candidates remain hidden. Policy changes reproject stored candidates
+  without re-running vendor jobs. No manual override field or automatic taxonomy web crawl is
+  introduced; annual taxonomy review and future moderated community proposals are documented in
+  `review/14`. A pre-merge review pass then closed a set of correctness/integrity gaps: episode
+  records now correctly restore persisted tag state on every normal run (previously every episode was
+  silently re-tagged and re-dispatched to the LLM each run), chapter identity survives a dropped
+  chapter, exactly-100%-confidence suggestions can no longer bypass calibration, evidence timestamps
+  no longer span the whole episode on a common word, and the weekly review workflow now authenticates
+  its comment-triggered ingestion and serializes its matrix jobs against a shared state race. See
+  `review/14` for the full list. The LLM dispatch path now runs through R13's
+  `LLMRequestPolicy`/scheduler/budget adapters instead of a static single-model call — see `review/14`
+  and `review/33` for the migration.
 
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted

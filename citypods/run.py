@@ -1759,6 +1759,9 @@ def _build_impl(
         compute_backend=compute_backend,
         tag_backend=tag_backend,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
+        llm_evaluation_state_path=state_dir
+        / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
+        llm_evaluation_config=(tagging_config.get("evaluation") or {}),
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR

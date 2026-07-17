@@ -1,8 +1,6 @@
 # review/14 — Topic Tags & Strong Towns Lens (Phase R)
 
-**Maturity: Implemented locally · shadow dispatch rollout 2026-07-16 · matured 2026-07-14, grounded against current `main` ·
-bespoke calibration matrix + weekly human-review workflow removed 2026-07-17 in favor of
-[`review/27`](27-llm-backend-and-provider-routing.md) §6 · breakout of
+**Maturity: Implemented locally · shadow dispatch rollout 2026-07-16 · matured 2026-07-14, grounded against current `main` · breakout of
 [`review/11`](11-technical-design-roadmap.md) Phase R (#4) · ROADMAP R5 · no PR yet**
 
 > Topic tags turn the catalog from "meetings you can listen to" into "meetings you can *track by issue*."
@@ -21,62 +19,61 @@ bespoke calibration matrix + weekly human-review workflow removed 2026-07-17 in 
 3. **AI is additive and untrusted** (SECURITY.md). LLM classification is layered on *after* transcripts
    are stable, and only ever **adds** validated candidates with a **confidence + explanation**; it never
    edits official data (titles, dates, votes, links, transcript text) and never silently removes a
-   human/rule tag. Candidates are schema-validated and evidence-grounded, then merged directly
-   alongside rule tags — see the 2026-07-17 section below for why this no longer routes through a
-   bespoke per-candidate calibration gate.
+   human/rule tag. Candidates are collected in dispatch mode as shadow data until the reusable LLM
+   calibration policy admits them.
 
-## LLM candidates are exposed directly, not gated by a bespoke calibration matrix (2026-07-17)
+## Implemented rollout and calibration behavior (2026-07-16)
 
-R5 originally shipped a generic per-candidate confidence-calibration matrix
-(`citypods/llm_evaluation.py`) plus a weekly human-review GitHub-issue workflow
-(`llm-tag-review.yml` / `llm-tag-review-ingest.yml`) to decide which LLM tag suggestions were
-trustworthy enough to expose. **That mechanism has been removed.** It duplicated what
-[`review/27`](27-llm-backend-and-provider-routing.md) §6 already designs at the right altitude — a
-quality tournament + cost-gated champion routing that decides, per task-verb, which *model* is
-trustworthy enough to be the production route — rather than a bespoke, tag-specific confidence
-threshold requiring its own ongoing human-review queue. Building both would leave two independent,
-overlapping quality-assurance mechanisms answering the same underlying question ("is this model's
-output good enough to show").
+R5 now enables the LLM path in [`config/site_config.yml`](../config/site_config.yml) with the
+asynchronous dispatch route. A dispatch completion is never treated as a public tag merely because it
+passed JSON/schema validation. The stage stores each validated suggestion in
+`Episode.llm_tag_candidates`, then projects only candidates whose confidence clears the generic
+evaluator in [`citypods/llm_evaluation.py`](../citypods/llm_evaluation.py). The initial fallback for
+`topic-tags` and `litellm:gemini/gemini-3-flash-preview` is `1.0`, so ordinary uncalibrated suggestions
+remain shadow-only.
 
-R5's actual current behavior: `llm_tag_suggestions()` dispatches a single `InferenceJob` pinned to
-exactly one model (`config/site_config.yml`'s `tagging.llm_model`, via R13's
-`LLMRequestPolicy(allowed_models=(...))`, `review/33`). A JSON/schema-validated, evidence-grounded
-suggestion is stored in `Episode.llm_tag_candidates` **and** merged directly into `Episode.tags`/
-`chapter_tags` alongside rule tags — no separate admission step. Confidence and explanation are
-retained as **provenance metadata** (useful to a human reviewer or a future review/27 tournament
-run), not as a live gate.
+The evaluator is feature-independent. Its exact sparse matrix dimensions are feature, provider/model
+route, prompt/schema version, taxonomy version, label/tag ID, and episode/chapter scope. Human review
+decisions are stored in the durable `state/llm_evaluation.json` ledger. A row qualifies automatically
+when it has the configured minimum review count and its confidence-at-or-above-threshold precision
+meets the configured 95% target. The lowest qualifying confidence becomes that row's admission
+threshold. Rows without a qualified exact entry use the feature/route fallback; changing that fallback
+is an explicit maintainer policy decision that can admit previously unquantified portions of the matrix.
 
-This is a real, accepted tradeoff, not a deferred TODO: until review/27's tournament ships, this
-feature's only quality control on a *specific* candidate is (a) Instructor/Pydantic schema
-validation and (b) the evidence-grounding check (a quoted span must actually appear in the supplied
-source). A model can still produce a schema-valid, evidence-grounded, but semantically wrong tag —
-that risk is accepted here and addressed at the *provider* level once review/27 ships (its §6.3
-champion-routing switch changes which model this route pins to), not by reintroducing a
-per-candidate gate in this module. See Risks below for the concrete consequence.
-
-**Ready to bolt onto review/27.** This module's only remaining responsibility is producing
-well-formed, evidence-grounded candidates decorated with provenance (`provider_model`,
-`prompt_version`, `taxonomy_version`, `recipe_hash`, `scope`) — exactly the dimensions review/27
-§6.4 already expects a tournament caller to key a comparison on. Adding the tournament later needs
-no change to `tags.py`/`TagsStage`'s call shape: a new module runs its own comparison contests
-(review/27 §6.4) and, on a champion-routing decision, updates `config/site_config.yml`'s
-`tagging.llm_model` — the single existing seam this stage already reads.
+The weekly [`llm-tag-review.yml`](../.github/workflows/llm-tag-review.yml) workflow packages a digest and
+actionable child issues. It prioritizes sparse/unqualified rows, confident extremes, and candidates
+near the current threshold. Each child presents the LLM explanation plus clean evidence: a bounded
+quoted transcript region with derived timestamps, or a bounded agenda/document quote with an allowlisted
+official document link and optional section/page locator. Review decisions are ingested automatically by
+[`llm-tag-review-ingest.yml`](../.github/workflows/llm-tag-review-ingest.yml), refresh the matrix, and
+make newly qualified tags visible on the next normal build without another LLM call.
 
 ## Post-implementation review hardening (2026-07-17)
 
-A full review of the R5 branch before it merges found and fixed several correctness/integrity gaps
-that remain true of the current implementation: `merge_persisted()` now restores the tag fields (it
-silently dropped them, so every normal run re-tagged and re-dispatched every episode); `chapter_id()`
-now resolves a served chapter's source identity by its stamped true position rather than served-list
-position, which desynced whenever `remap()` dropped an earlier chapter; and `_transcript_region()`
-now traces a quote's exact contiguous span instead of OR-matching its first/last word, which could
-produce a bogus, episode-spanning evidence timestamp.
+A full review of the R5 branch before it merges found and fixed several correctness/integrity gaps:
+`merge_persisted()` now restores the tag fields (it silently dropped them, so every normal run
+re-tagged and re-dispatched every episode); `chapter_id()` now resolves a served chapter's source
+identity by its stamped true position rather than served-list position, which desynced whenever
+`remap()` dropped an earlier chapter; the fallback-confidence admission check now requires the
+candidate to strictly *exceed* an unreviewed fallback (not just meet it), so a model reporting
+exactly `1.0` confidence can no longer bypass calibration; `_transcript_region()` now traces a quote's
+exact contiguous span instead of OR-matching its first/last word, which could produce a bogus,
+episode-spanning evidence timestamp; and the weekly review workflow's `/llm-ingest` comment trigger
+now requires collaborator-or-above `author_association` and a matching issue title (previously any
+public commenter could fabricate a calibration review), its matrix jobs are serialized
+(`max-parallel: 1`) to stop concurrent runs from clobbering each other's recorded decisions, and
+`render_review_body`/`parse_review` no longer let untrusted candidate text (explanation,
+document_locator) forge a checkbox decision or spoof the marker a review is parsed from.
 
-The remaining gaps this pass found and fixed — the fallback-confidence admission check, and the
-weekly review workflow's comment-trigger authentication/serialization/forgery fixes — are now moot:
-they lived entirely inside `citypods/llm_evaluation.py` and the two review workflows, all removed in
-the section above. Removing that subsystem removes those gaps along with it, rather than leaving
-them as dead-code liabilities.
+One related gap is deliberately left open: `ingest_review_body()` still trusts the candidate JSON
+embedded in an *edited* review issue verbatim, with no cross-check against a durable,
+feature-owned candidate ledger — closing this needs the generic evaluator to gain a lookup
+capability into feature-specific storage, a real design addition, not a bolt-on. `citypods/
+llm_evaluation.py`'s calibration key and `StageContext`'s `tag_backend`/`taxonomy_path`/
+`llm_evaluation_config` fields are also still populated only from R5's `tagging:` config block
+despite being named generically — the module is feature-independent in intent, not yet in wiring.
+Both remain open; neither is what the R13 migration below addresses (that's about model
+selection/scheduling, not calibration-key or `StageContext` generality).
 
 ## Migrated onto the R13 LLM-scheduler adapters (2026-07-17)
 
@@ -92,20 +89,19 @@ them ever loosen:
 
 - **`allowed_models` stays pinned to exactly the one model `config/site_config.yml`'s
   `tagging.llm_model` configures**, rather than left open to the scheduler's full eligible pool.
-  This mirrors review/27's own production/tournament split (§6.4): production always runs the
-  current *champion* model for a verb, one call per episode; comparing multiple models against
-  each other is the tournament's job, run separately and on its own weekly cadence, never as part
-  of this stage's per-episode dispatch. Letting the scheduler roam across models here would blur
-  that split for no benefit — nothing in this stage acts on more than one candidate per episode
-  anyway. Pinning still gains real value from R13: CAS-safe quota accounting across concurrent
-  shards (no more silent Gemini RPM/RPD overspend) and a uniform deferred `JobHandle` (retried on
-  `TagsStage`'s own next scheduled run) instead of a raw provider error whenever quota is exhausted.
+  R5's calibration matrix is keyed per exact `provider_model` route, with one fallback entry
+  configured for that one route; letting the scheduler roam across models (e.g. falling over to
+  paid DeepSeek) would fragment calibration effort across separately-unreviewed routes instead of
+  deepening review of the one route R5 was designed around. Pinning still gains real value from
+  R13: CAS-safe quota accounting across concurrent shards (no more silent Gemini RPM/RPD overspend)
+  and a uniform deferred `JobHandle` (retried on `TagsStage`'s own next scheduled run) instead of a
+  raw provider error whenever quota is exhausted.
 - **`allow_paid=False`, no `deadline_at`.** Matches R5's existing design intent (LLM tags are
-  additive and exposed directly once validated, deterministic rule tags always cover the gap
-  regardless, and there's no urgency) — the same reasoning city discovery's own R13 migration
-  landed on for the same reasons (review/33 §5, LLM-SCHED-9). A `deadline_at` would only matter for
-  Gemini's off-peak-preference gate, which never fires for a route with no pricing windows (Gemini
-  has none) — so it would be a no-op even set, and omitting it keeps the policy legible.
+  additive/shadow-until-calibrated, deterministic rule tags always cover the gap, and there's no
+  urgency) — the same reasoning city discovery's own R13 migration landed on for the same reasons
+  (review/33 §5, LLM-SCHED-9). A `deadline_at` would only matter for Gemini's off-peak-preference
+  gate, which never fires for a route with no pricing windows (Gemini has none) — so it would be a
+  no-op even set, and omitting it keeps the policy legible.
 
 `llm_tag_suggestions()` now returns a 4-tuple (`tags, chapter_tags, dispatched, resolved_model`);
 `TagsStage` uses `resolved_model` (falling back to the precomputed `llm_route` if unset) as
@@ -243,13 +239,11 @@ attributed to a chapter because a wrong association is worse than an episode-lev
    used for `provider_transcript`/`integrity` nearby. `record_to_episode` (`records.py:926-1019`): add
    `tags=rec.get("tags") or [],` beside `summary=rec.get("summary") or "",` (`:988`), plus the
    `chapter_tags` annotation block and `tags_spec_hash`.
-4. **LLM candidate provenance** — `Episode.llm_tag_candidates` stores each validated LLM suggestion
-   with its provenance (`provider_model`, `prompt_version`, `taxonomy_version`, `recipe_hash`,
-   `scope`), confidence, explanation, and bounded evidence quote — the same suggestions merged
-   directly into the visible `tags`/`chapter_tags` projection, not a separate shadow layer awaiting
-   admission (see the 2026-07-17 section above). `tags_llm_recipe_hash` records a completed empty
-   result as well as a non-empty result, so a taxonomy/prompt change reprojects candidates without
-   recalling the model.
+4. **Shadow candidates** — `Episode.llm_tag_candidates` stores validated LLM suggestions separately
+   from visible tags, including the generic evaluator dimensions, confidence, explanation, bounded
+   evidence quote, admission basis/status, and input recipe hash. `tags_llm_recipe_hash` records a
+   completed empty result as well as a non-empty result, so a policy change reprojects candidates
+   without recalling the model.
 5. **Cross-lane write isolation** — `citypods/records.py:1013-1019`'s own module comment is a literal
    how-to written for exactly this extension (it was left for "the next lane," which is this one): add
    `"tags"` to `ARTIFACT_BLOCKS` (`:1021-1023`) and `"tag": frozenset({"tags"})` to `_LANE_OWNED_BLOCKS`
@@ -309,17 +303,20 @@ attributed to a chapter because a wrong association is worse than an episode-lev
   from a *prior* run (not this run's transcript work, which is fine — the pipeline's existing
   eventual-consistency model already has this shape everywhere, e.g. diarization picking up ASR output
   from a previous run). No special-casing needed in `run.py:933-940`.
-- **Provider/model quality assurance is review/27's scope, not this module's.** `TagsStage` always
-  exposes the currently-pinned model's validated output directly; a future review/27 tournament
-  changes *which* model is pinned (via a champion-routing config update), not how this stage
-  projects tags. Future crowd-sourced human edits remain a separate, deliberately out-of-scope,
-  moderated-proposal workflow (§ Data model deltas #8).
+- **Human review is calibration scope, not manual tagging**: the weekly workflow reviews individual
+  LLM candidates with source evidence and records correctness decisions. Reviewers never edit canonical
+  tags directly; the resulting matrix changes automatic admission policy. Future crowd-sourced edits
+  remain separately moderated proposals.
+- `citypods/llm_evaluation.py` — generic evaluator for exact calibration keys, provider/model fallbacks,
+  confidence admission, durable human decisions, sparse-matrix selection, and evidence-rich Markdown
+  issue packaging. Future `summarize` and `soundbite-select` features can use the same module without
+  adding feature-specific confidence logic to `Episode` or `TagsStage`.
 
 ## Implementation paths
 
 1. **Rules-only (ship first, ~$0).** Keyword/phrase rules over agenda titles + transcript, with guard
    terms. Transparent, cheap, good recall on agenda titles; moderate precision on transcript prose.
-2. **+ LLM-assist (implemented, dispatch + direct visibility).** After rules, an LLM pass proposes
+2. **+ LLM-assist (implemented, dispatch + calibrated visibility).** After rules, an LLM pass proposes
    additional tags with confidence, explanation, and bounded source evidence. The result is untrusted,
    additive, cached by its input recipe, and clearly labeled. **Not greenfield —
    the `tag` task verb is already reserved** in the H13 compute-backend interface's `Task` `Literal`
@@ -344,14 +341,13 @@ attributed to a chapter because a wrong association is worse than an episode-lev
    change re-derives cleanly.
    The implementation calls the shipped R2 adapter through the existing `tag` verb. Dispatch handles
    remain deferred safely; the recipe hash is resubmitted idempotently until a terminal result is
-   available. Completed results are stored as candidates and merged directly into the visible
-   projection — there is no separate admission step (see the 2026-07-17 section above).
+   available. Completed results are stored as shadow candidates first, then admitted automatically only
+   when the generic calibration matrix or its configured feature/route fallback allows them.
 3. **Embedding/zero-shot classifier.** A local embedding model scores each taxonomy entry per meeting —
    no API cost, more infra. Consider only if (2)'s API cost or (1)'s precision proves limiting.
 
-**Lean: (1) plus the additive LLM layer.** Rules remain the always-visible baseline; the LLM layer
-adds directly-visible, evidence-grounded suggestions from a single pinned model, with schema
-validation and evidence-grounding as the only per-candidate check.
+**Lean: (1) plus the calibrated additive layer.** Rules remain the always-visible baseline; dispatch
+LLM work can accumulate without making unquantified model output public.
 
 ## Surfaces that consume tags
 
@@ -373,9 +369,10 @@ the normal enrich phase and tags every retained episode over the following sched
 first pass for episodes without a transcript yet, full pass once transcripts exist), the same gradual
 pattern H12's version-aware re-transcribe already established — not a special-cased bulk job.
 
-LLM jobs follow the same gradual schedule. Results are stored as candidates and merged into the
-visible projection through `tags_spec_hash`; a taxonomy or prompt-version change re-derives cleanly
-without incurring a second vendor request for unrelated fields.
+LLM jobs follow the same gradual schedule in dispatch mode. Results are stored as shadow candidates;
+policy changes update the cheap visible projection through `tags_spec_hash` and do not invalidate the
+LLM input recipe or incur a second vendor request. The weekly review state is durable and independent
+of the episode record lane, so human decisions survive concurrent source-scoped builds.
 
 ## Tests
 
@@ -391,10 +388,12 @@ without incurring a second vendor request for unrelated fields.
   source-time chapter IDs, and preserve a deterministic taxonomy-ordered episode union.
 - A no-chapter fixture produces a virtual episode-scope annotation and a valid episode tag projection;
   it never fabricates a chapter.
-- LLM path is mocked (no network in CI) and only **adds** tags with confidence/explanation, merged
-  directly into the visible projection; asserts a `recipe_hash` change (prompt/model/chapter input)
-  is detectable and re-derives, including chapter suggestions in one bounded request. Evidence tests
-  require bounded quotes, derived transcript timing, and allowlisted agenda-document links.
+- LLM path is mocked (no network in CI) and only **adds** tags with confidence/explanation; asserts a
+  `recipe_hash` change (prompt/model/chapter input) is detectable and re-derives, including chapter
+  suggestions in one bounded request. Evidence tests require bounded quotes, derived transcript timing,
+  and allowlisted agenda-document links.
+- `tests/test_llm_evaluation.py` covers the 1.0 fallback, sparse exact matrix qualification, automatic
+  admission after human review, and evidence-rich issue parsing/rendering.
 - `feed_content_hash` changes when, and only when, `tags` changes (mirrors R1's per-field hash test
   pattern).
 - `TagsStage` correctly registers under the `"tag"` lane in `LANE_STAGES` and is excluded from
@@ -411,13 +410,9 @@ without incurring a second vendor request for unrelated fields.
   expectations against this input until Phase F's real document extraction exists.
 - **Agenda association can be wrong if inferred.** R5 uses explicit R3 chapter mappings only; flat
   agenda/packet text remains episode-level context. Transcript timing is the safe fallback.
-- **No per-candidate confidence gate (2026-07-17).** A syntactically valid, evidence-grounded
-  suggestion can still be semantically wrong, and this module no longer runs any per-candidate
-  calibration or human-review queue to catch that — it was removed in favor of review/27's
-  tournament/champion-routing, which polices quality at the *provider* level (deciding which model
-  is worth pinning to at all), not per-tag. Until review/27 ships, this is a real accepted gap, not
-  a residual one: a bad suggestion from the currently-pinned model is exposed directly. Rule tags
-  remain the trusted, always-on baseline regardless.
+- **Model confidence is not calibration.** A syntactically valid, grounded suggestion can still be
+  semantically wrong. The feature/route fallback starts at 1.0, exact rows require human verification,
+  and the weekly digest prioritizes sparse rows and threshold-boundary candidates.
 - **`TagsStage` in the `audio_stages` bucket of the H5 global queue is confirmed safe, not confirmed
   cheap** — running an agenda-only tag pass on every episode on every run (even ones that already have
   final tags) adds a real, if small, per-episode cost; the value-diff skip check (§ Module/stage plan)
@@ -427,30 +422,25 @@ without incurring a second vendor request for unrelated fields.
 ## Sequencing & dependencies
 
 Depends on transcripts (shipped), R2's LLM backend (shipped), and R3's bounded agenda/document sidecars
-(shipped). Per-meeting pages and search (review/13, R1/R4) consume the visible projection. Review/27's
-future tournament/champion-routing module is intentionally a shared dependency for future R6 summaries
-and soundbite selection to reuse for provider/model quality assurance, not a tag-specific side path —
-see review/27 §6.4 for the interface any such caller uses. R5 precedes topic feeds/watchlists and R6's
-"what changed" cards, which use chapter IDs, evidence windows, and topic chips.
+(shipped). Per-meeting pages and search (review/13, R1/R4) consume the visible projection. The generic
+evaluator is intentionally a shared dependency for future R6 summaries and soundbite selection, not a
+tag-specific side path. R5 precedes topic feeds/watchlists and R6's "what changed" cards, which use
+chapter IDs, evidence windows, and calibrated topic chips.
 
 ## Acceptance
 
 Meetings carry transparent, evidence-backed topic tags from agenda-item titles/transcripts; episodes
-without a transcript still receive deterministic agenda-only tags; LLM results are retained as
-candidates with bounded evidence and merged directly into the visible projection — schema validation
-and evidence-grounding are the only per-candidate checks, with provider/model quality assurance
-deferred to review/27's future tournament/champion-routing; no manual tag overrides exist; and tags
+without a transcript still receive deterministic agenda-only tags; dispatch LLM results are retained as
+shadow candidates with bounded evidence; the generic calibration matrix and 1.0 feature/route fallback
+control visibility; human review changes admission automatically without manual tag overrides; and tags
 drive search, meeting-page, chapter, and future quote/highlight surfaces.
 
 ## Implementation worklist (local, no PR yet)
 
 1. `citypods/tags.py` / `config/taxonomy.yml` — taxonomy loader, deterministic rules, structured
    Instructor/Pydantic suggestions, and bounded source evidence.
-2. ~~`citypods/llm_evaluation.py` — reusable calibration matrix, fallbacks, admission, state, and
-   review issue contract.~~ **Removed 2026-07-17** — replaced by review/27 §6's tournament/
-   champion-routing design; see the dated section above.
-3. `TagsStage` plus record/lane/search/page integration — direct visible projection plus retained
-   candidate provenance.
-4. ~~Weekly `llm-tag-review.yml` / ingest workflow — sparse-matrix human calibration.~~ **Removed
-   2026-07-17** — same reason as item 2.
+2. `citypods/llm_evaluation.py` — reusable calibration matrix, fallbacks, admission, state, and review
+   issue contract.
+3. `TagsStage` plus record/lane/search/page integration — visible projection plus shadow candidates.
+4. Weekly `llm-tag-review.yml` / ingest workflow — sparse-matrix human calibration.
 5. Future moderated proposal storage for community/human tag corrections; deliberately not part of R5.
