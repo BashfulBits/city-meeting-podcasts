@@ -24,7 +24,10 @@ city_discovery:
 tagging:
   enabled: true
   llm_model: "gemini/gemini-3-flash-preview"
-  llm_mode: "dispatch"  # direct | dispatch; dispatch URL/token remain environment-only
+  # direct | dispatch. Gemini's transport under R13's scheduler is "direct" (review/33 §7 — its
+  # free tier doesn't need the Mistral Worker's async pacing); "dispatch" is for a route that
+  # actually needs LLM_DISPATCH_URL configured (environment-only), which this route does not.
+  llm_mode: "direct"
   taxonomy_path: "config/taxonomy.yml"
   evaluation:
     state_path: "llm_evaluation.json"

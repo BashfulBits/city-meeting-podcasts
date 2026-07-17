@@ -12,6 +12,19 @@ def _handle(recipe_hash: str) -> JobHandle:
     )
 
 
+def test_sweep_registers_topic_tags_contract_before_reconciling():
+    """The sweep runs as its own process, separate from whatever Stage originally submitted a
+    pending "tag" job -- citypods.compute.structured's registry is a plain in-memory dict, so
+    response_model("topic-tags") only resolves if something in *this* process registered it.
+    Without _register_known_contracts(), every pending "tag" record would fail to reconcile
+    forever (caught per-record, logged, never actually completed) until its 38-day TTL expired."""
+    from citypods.compute.structured import response_model
+
+    llm_deferred_sweep._register_known_contracts()
+
+    assert response_model("topic-tags") is not None
+
+
 def test_sweep_reports_zero_when_storage_is_unavailable(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: None)

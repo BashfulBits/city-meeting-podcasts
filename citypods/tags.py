@@ -500,8 +500,17 @@ def _transcript_region(
     return start, end
 
 
-def _ensure_llm_contract():
-    """Register the optional Pydantic contract only when the LLM path is enabled."""
+def ensure_llm_contract():
+    """Register the "topic-tags" structured-output contract, lazily (the optional Pydantic import
+    stays out of the module's top-level cost) and idempotently (safe to call repeatedly).
+
+    Public — not just an internal helper for :func:`llm_tag_suggestions` — because anything that
+    calls :func:`citypods.compute.llm.LiteLLMBackend.reconcile` on a deferred "tag" job handle
+    (e.g. ``scripts/llm_deferred_sweep.py``) needs this contract registered in *its own* process
+    first, or ``response_model("topic-tags")`` raises. Discovery's contract registers as an
+    import-time side effect instead (`citypods/discovery/classify.py`); this one does not, so it
+    needs its own explicit call site wherever reconciliation can happen outside `tags.py` itself.
+    """
     from typing import Literal as _Literal
 
     from pydantic import BaseModel, ConfigDict, Field
@@ -532,11 +541,11 @@ def _ensure_llm_contract():
 
     # The module-level cache is intentionally attached to the function so the optional Pydantic
     # import remains lazy and the shared registry still rejects accidental duplicate contracts.
-    model = getattr(_ensure_llm_contract, "model", None)
+    model = getattr(ensure_llm_contract, "model", None)
     if model is None:
         model = Response
         register_response_model(LLM_CONTRACT, model)
-        _ensure_llm_contract.model = model
+        ensure_llm_contract.model = model
     return model
 
 
@@ -550,10 +559,12 @@ def llm_tag_suggestions(
     recipe_hash: str,
     chapter_inputs: list[dict[str, Any]] | None = None,
     agenda_documents: list[dict[str, str]] | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool]:
-    """Run and validate additive suggestions; return episode tags, chapter tags, dispatched."""
-    model = _ensure_llm_contract()
+) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool, str | None]:
+    """Run and validate additive suggestions; return episode tags, chapter tags, dispatched, and
+    the resolved model that produced them (``None`` when dispatched/unresolved)."""
+    model = ensure_llm_contract()
     from citypods.compute.base import InferenceJob, JobHandle, JobResult
+    from citypods.compute.llm_policy import LLMRequestPolicy
 
     allowed = taxonomy.by_id
     material = {
@@ -598,15 +609,34 @@ def llm_tag_suggestions(
         },
         {"role": "user", "content": json.dumps(material, ensure_ascii=False)},
     ]
+    inputs: dict[str, Any] = {"messages": messages, "structured_output": LLM_CONTRACT}
+    backend_storage = getattr(backend, "storage", None)
+    backend_model = getattr(getattr(backend, "config", None), "model", None)
+    if backend_model and getattr(backend_storage, "cas_capable", False):
+        # Pin the scheduler to exactly the one model R5 is calibrated against
+        # (config/site_config.yml's tagging.llm_model): the calibration matrix and fallback
+        # config are keyed to one exact provider/model route, and letting the scheduler roam
+        # across models would fragment calibration across separately-unreviewed routes instead of
+        # deepening review of the one route R5 was designed around. Still gains real value from
+        # the R13 scheduler even pinned: CAS-safe quota accounting across concurrent shards and a
+        # clean deferral (a JobHandle, retried on this stage's own next scheduled run) instead of
+        # a raw provider error. Omitted entirely when the backend's storage isn't CAS-capable
+        # (e.g. local dev/dry runs with no R2 configured), so tagging keeps working there exactly
+        # as it did before R13 rather than failing for lack of scheduler storage.
+        inputs["llm_policy"] = LLMRequestPolicy(
+            allowed_models=(backend_model,),
+            allow_paid=False,
+            purpose=TAG_FEATURE,
+        )
     outcome = backend.run_inference(
         InferenceJob(
             task="tag",
-            inputs={"messages": messages, "structured_output": LLM_CONTRACT},
+            inputs=inputs,
             recipe_hash=recipe_hash,
         )
     )
     if isinstance(outcome, JobHandle):
-        return [], {}, True
+        return [], {}, True, None
     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
         raise ValueError("LLM tag backend returned an invalid result")
     choices = outcome.output.get("choices")
@@ -683,7 +713,7 @@ def llm_tag_suggestions(
             suggestions.append(value)
         else:
             chapter_suggestions.setdefault(suggestion.chapter_id, []).append(value)
-    return suggestions, chapter_suggestions, False
+    return suggestions, chapter_suggestions, False, outcome.model
 
 
 def decorate_llm_candidates(
@@ -804,6 +834,7 @@ __all__ = [
     "chapter_tag_inputs",
     "decorate_llm_candidates",
     "agenda_document_context",
+    "ensure_llm_contract",
     "load_taxonomy",
     "merge_tag_sources",
     "rollup_tags",

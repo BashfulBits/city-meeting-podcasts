@@ -297,7 +297,7 @@ def test_llm_evidence_is_a_quoted_region_with_transcript_timing_and_document_lin
             }
         ],
     )
-    tags, chapter_tags, dispatched = llm_tag_suggestions(
+    tags, chapter_tags, dispatched, _resolved_model = llm_tag_suggestions(
         Backend(),
         taxonomy=taxonomy,
         agenda_item_titles=episode,

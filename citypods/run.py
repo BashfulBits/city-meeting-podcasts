@@ -1578,7 +1578,13 @@ def _build_impl(
                     dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
                     dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
                     timeout_seconds=float(tagging_config.get("timeout_seconds", 30.0)),
-                )
+                ),
+                # R13's scheduler/budget ledger needs CAS-capable storage (state/llm_budget.json,
+                # state/llm_deferred/); the same storage already used for the whole build. tags.py
+                # only sets job.inputs["llm_policy"] when this is actually CAS-capable, so a local
+                # LocalStorage backend (no R2 configured) keeps tagging on the pre-R13 static path
+                # instead of failing for lack of scheduler storage.
+                storage=storage,
             )
         except ValueError as exc:
             # A misconfigured LLM route (e.g. dispatch mode with no LLM_DISPATCH_URL) must not

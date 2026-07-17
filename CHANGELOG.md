@@ -28,7 +28,11 @@ Phase R (Research-Tool Surface)._
   window) let a caller with no retry cadence of its own eventually get a result without rebuilding the
   request. City discovery (the only current caller) requires a free, immediate result — no deadline.
   See [`review/33`](review/33-llm-quota-cost-scheduler.md) §13 for the full revision history. This
-  adds no LLM artifact backfill or pipeline-version bump.
+  adds no LLM artifact backfill or pipeline-version bump. Found while migrating R5 onto these
+  adapters: the sweep never registered any feature's structured-output contract in its own process,
+  so a pending "tag" or "classify-civic-platforms" record could never actually reconcile (it failed
+  silently, per-record, forever, until its 38-day TTL expired) — fixed by registering both known
+  contracts before the sweep reconciles anything.
 
 - **Topic taxonomy and calibrated chapter-scoped tagging (R5).** Added a 37-tag Strong Towns/livability
   taxonomy, deterministic evidence-backed episode/chapter annotations, taxonomy-ordered episode

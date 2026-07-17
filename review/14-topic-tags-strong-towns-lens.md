@@ -65,15 +65,64 @@ public commenter could fabricate a calibration review), its matrix jobs are seri
 `render_review_body`/`parse_review` no longer let untrusted candidate text (explanation,
 document_locator) forge a checkbox decision or spoof the marker a review is parsed from.
 
-Two related gaps are deliberately left open, tracked for the LLM-scheduling/adapter refactor
-(review/33) landing ahead of this branch: (1) `ingest_review_body()` still trusts the candidate
-JSON embedded in an *edited* review issue verbatim, with no cross-check against a durable,
+One related gap is deliberately left open: `ingest_review_body()` still trusts the candidate JSON
+embedded in an *edited* review issue verbatim, with no cross-check against a durable,
 feature-owned candidate ledger — closing this needs the generic evaluator to gain a lookup
-capability into feature-specific storage, which belongs in that adapter rework, not bolted on here;
-and (2) `citypods/llm_evaluation.py`'s calibration key and `StageContext`'s `tag_backend`/
-`taxonomy_path`/`llm_evaluation_config` fields are still populated only from R5's `tagging:` config
-block despite being named generically — the module is feature-independent in intent, not yet in
-wiring. Both will be revisited once R5's adapter is migrated onto the new plumbing.
+capability into feature-specific storage, a real design addition, not a bolt-on. `citypods/
+llm_evaluation.py`'s calibration key and `StageContext`'s `tag_backend`/`taxonomy_path`/
+`llm_evaluation_config` fields are also still populated only from R5's `tagging:` config block
+despite being named generically — the module is feature-independent in intent, not yet in wiring.
+Both remain open; neither is what the R13 migration below addresses (that's about model
+selection/scheduling, not calibration-key or `StageContext` generality).
+
+## Migrated onto the R13 LLM-scheduler adapters (2026-07-17)
+
+R5's LLM dispatch now goes through `citypods/compute/llm_policy.py`/`llm_scheduler.py`/
+`llm_budget.py` (review/33, R13) instead of a static single-model call. `llm_tag_suggestions()`
+attaches an `LLMRequestPolicy(allowed_models=(<configured model>,), allow_paid=False,
+purpose="topic-tags")` to the job whenever `ctx.tag_backend`'s storage is CAS-capable (R2
+configured); otherwise it omits the policy entirely and the backend takes its pre-R13 static path
+unchanged, so local dev/dry runs keep working without R2 credentials.
+
+Two deliberate choices, both revisitable without a design change if the constraints that motivated
+them ever loosen:
+
+- **`allowed_models` stays pinned to exactly the one model `config/site_config.yml`'s
+  `tagging.llm_model` configures**, rather than left open to the scheduler's full eligible pool.
+  R5's calibration matrix is keyed per exact `provider_model` route, with one fallback entry
+  configured for that one route; letting the scheduler roam across models (e.g. falling over to
+  paid DeepSeek) would fragment calibration effort across separately-unreviewed routes instead of
+  deepening review of the one route R5 was designed around. Pinning still gains real value from
+  R13: CAS-safe quota accounting across concurrent shards (no more silent Gemini RPM/RPD overspend)
+  and a uniform deferred `JobHandle` (retried on `TagsStage`'s own next scheduled run) instead of a
+  raw provider error whenever quota is exhausted.
+- **`allow_paid=False`, no `deadline_at`.** Matches R5's existing design intent (LLM tags are
+  additive/shadow-until-calibrated, deterministic rule tags always cover the gap, and there's no
+  urgency) — the same reasoning city discovery's own R13 migration landed on for the same reasons
+  (review/33 §5, LLM-SCHED-9). A `deadline_at` would only matter for Gemini's off-peak-preference
+  gate, which never fires for a route with no pricing windows (Gemini has none) — so it would be a
+  no-op even set, and omitting it keeps the policy legible.
+
+`llm_tag_suggestions()` now returns a 4-tuple (`tags, chapter_tags, dispatched, resolved_model`);
+`TagsStage` uses `resolved_model` (falling back to the precomputed `llm_route` if unset) as
+`decorate_llm_candidates()`'s `provider_model`, rather than assuming the backend's statically
+configured model always matches what the scheduler actually picked — correct today only because
+of the pinning above, but no longer a silent assumption if that pinning is ever loosened later.
+`config/site_config.yml`'s `tagging.llm_mode` changed from `dispatch` to `direct`: R13's scheduler
+gates transport eligibility on `dispatch_url` presence, not `mode`, and Gemini's route is
+`transport="direct"` (review/33 §7 — its free tier doesn't need the Mistral Worker's async
+pacing); `dispatch` mode was never actually wired to a working `LLM_DISPATCH_URL` for this route,
+which is what crashed the build before the fix earlier in this section.
+
+**A real gap found and fixed in R13 itself, not R5-specific:** `scripts/llm_deferred_sweep.py`
+constructed its `LiteLLMBackend` but never registered *any* feature's structured-output contract,
+so `reconcile()` on a pending "tag" (or "classify-civic-platforms") record would always fail with
+`unknown structured-output contract` — caught per-record, logged, but the record would never
+actually complete, only eventually TTL-expire after 38 days. Fixed by exposing `citypods.tags.
+ensure_llm_contract()` (renamed from `_ensure_llm_contract`, now a public, idempotent entry point)
+and having the sweep call it — plus importing `citypods.discovery.classify` for its existing
+import-time registration — before reconciling anything, each guarded by `except ImportError` so
+the sweep still runs for whichever features' optional extras happen to be installed.
 
 ## The taxonomy (Strong Towns lens)
 

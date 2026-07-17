@@ -25,6 +25,32 @@ from citypods.config import load_site_config
 from citypods.storage import make_storage
 
 
+def _register_known_contracts() -> None:
+    """Register every feature's structured-output contract this process might need to validate.
+
+    A pending record's ``structured_output`` name is only resolvable if something in *this*
+    process registered it (``citypods.compute.structured.response_model`` is a plain in-memory
+    registry, populated per-process) -- and reconciling a deferred/dispatched job is exactly what
+    this sweep exists to do. Each feature's own call site (`llm_tag_suggestions`, `classify`)
+    already registers its contract when the *feature* runs, but the sweep is a separate process
+    that never calls either, so without this it can only ever fail to reconcile a structured
+    "tag" or "classify-civic-platforms" record -- not crash (each failure is caught and logged
+    per-record below), but never actually complete it either. Wrapped in try/except ImportError
+    per feature so the sweep still runs for whichever features' optional extras (pydantic and
+    friends) happen to be installed, rather than requiring every feature's dependencies at once.
+    """
+    try:
+        from citypods.tags import ensure_llm_contract
+
+        ensure_llm_contract()
+    except ImportError:
+        pass
+    try:
+        import citypods.discovery.classify  # noqa: F401 -- registers on import, side effect only
+    except ImportError:
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site-config", default="config/site_config.yml")
@@ -46,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     # (see citypods/compute/llm.py), since the sweep services a mixed bag of records regardless of
     # which route originally claimed them.
     backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
+    _register_known_contracts()
 
     pending = list_pending_deferred(storage)
     completed = 0

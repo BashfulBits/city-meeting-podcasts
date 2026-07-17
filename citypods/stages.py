@@ -618,7 +618,12 @@ class TagsStage:
                     completed_llm_recipe = None
                 else:
                     try:
-                        suggestions, chapter_suggestions, dispatched = llm_tag_suggestions(
+                        (
+                            suggestions,
+                            chapter_suggestions,
+                            dispatched,
+                            resolved_model,
+                        ) = llm_tag_suggestions(
                             ctx.tag_backend,
                             taxonomy=taxonomy,
                             agenda_item_titles=titles,
@@ -633,11 +638,24 @@ class TagsStage:
                             candidate_tags = []
                             completed_llm_recipe = None
                         else:
+                            # Prefer the scheduler's actually-resolved model (a defensive read,
+                            # not a load-bearing one: the policy above pins allowed_models to
+                            # exactly the configured route, so the two only diverge if that
+                            # pinning is ever loosened) over the precomputed llm_route, which is
+                            # only known before dispatch and can't reflect a per-call selection.
+                            # Same "<backend name>:<model>" shape as llm_route so calibration
+                            # matrix keys and config/site_config.yml's fallback route strings
+                            # keep matching either way.
+                            candidate_provider_model = (
+                                f"{getattr(ctx.tag_backend, 'name', 'litellm')}:{resolved_model}"
+                                if resolved_model
+                                else llm_route
+                            )
                             episode_candidates = decorate_llm_candidates(
                                 suggestions,
                                 episode_uid=ep.uid,
                                 episode_title=ep.title,
-                                provider_model=llm_route,
+                                provider_model=candidate_provider_model,
                                 taxonomy=taxonomy,
                                 recipe_hash=llm_recipe,
                             )
@@ -648,7 +666,7 @@ class TagsStage:
                                         chapter_suggestions.get(chapter["chapter_id"], []),
                                         episode_uid=ep.uid,
                                         episode_title=ep.title,
-                                        provider_model=llm_route,
+                                        provider_model=candidate_provider_model,
                                         taxonomy=taxonomy,
                                         recipe_hash=llm_recipe,
                                     )
