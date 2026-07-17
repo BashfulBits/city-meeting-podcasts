@@ -14,6 +14,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMStructuredOutputError,
     _priced_actual,
+    _retry_after_seconds,
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
@@ -269,6 +270,17 @@ def test_usage_tokens_returns_none_not_zero_for_missing_or_invalid_usage():
     assert _usage_tokens({"usage": {"total_tokens": -5}}) is None
     assert _usage_tokens({"usage": {"total_tokens": 12}}) == 12
     assert _usage_tokens({"usage": {"prompt_tokens": 8, "completion_tokens": 4}}) == 12
+
+
+def test_retry_after_seconds_rejects_non_finite_and_non_positive_values():
+    """`nan`/`inf` would raise inside the caller's `timedelta(seconds=...)`, and a negative or
+    zero value would immediately unblock the route -- all three must fall back to the default
+    backoff (`None`) rather than propagating or defeating the block."""
+    for bad in ("nan", "inf", "-inf", "-5", "0"):
+        response = SimpleNamespace(headers={"retry-after": bad})
+        assert _retry_after_seconds(response) is None
+    response = SimpleNamespace(headers={"retry-after": "30"})
+    assert _retry_after_seconds(response) == 30.0
 
 
 def test_priced_actual_prices_prompt_and_completion_tokens_separately():

@@ -205,3 +205,92 @@ def test_prune_expired_deferred_also_cleans_up_completed_records():
     deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1))
     assert deleted == 1
     assert look_up_deferred(storage, "recipe-1") is None
+
+
+def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle():
+    """A genuine Mistral dispatch handle (no `deferred_request`) that's still `pending` past its
+    38-day TTL means the Worker never produced a terminal response -- its ledger reservation would
+    otherwise sit in `inflight` forever (a window rollover never clears it, only settle/release
+    does), so pruning the registry record must also release the reservation it represents."""
+    from citypods.compute.llm_budget import load_llm_budget_cas, mutate_llm_budget
+    from citypods.compute.llm_policy import ROUTES
+
+    storage = MemStorage()
+    route = ROUTES["mistral/mistral-large-latest"]
+    mutate_llm_budget(
+        storage,
+        lambda budget, attempt_now: budget.reserve(
+            "owner-1", route.model, route=route, requests=1, tokens=10, cost=0.0, now=attempt_now
+        ),
+        now=NOW,
+    )
+    budget, _ = load_llm_budget_cas(storage)
+    assert "owner-1" in budget.routes[route.model].inflight
+
+    dispatch_handle = JobHandle(
+        task="tag",
+        recipe_hash="recipe-1",
+        backend="litellm",
+        ref="/v1/requests/chatcmpl-1",
+        model=route.model,
+        owner="owner-1",
+        input_per_token=0.0,
+        output_per_token=0.0,
+    )
+    write_deferred(storage, "recipe-1", dispatch_handle, now=NOW)
+
+    deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1))
+    assert deleted == 1
+    assert look_up_deferred(storage, "recipe-1") is None
+
+    budget, _ = load_llm_budget_cas(storage)
+    assert "owner-1" not in budget.routes[route.model].inflight
+
+
+def test_look_up_deferred_tolerates_a_malformed_record_instead_of_raising():
+    """A corrupt record (missing a required field, e.g. from a partial write or a future schema
+    change) must not raise -- it must be treated as absent, the same as a missing key, so one bad
+    record can't take down a caller iterating the whole registry (the sweep)."""
+    storage = MemStorage()
+    _write_raw(storage, "recipe-1", {"status": "pending"})  # missing task/recipe_hash
+    _write_raw(storage, "recipe-2", {"status": "completed"})  # missing task/recipe_hash
+    _write_raw(storage, "recipe-3", {"status": "pending", "task": "tag", "recipe_hash": "recipe-3"})
+
+    assert look_up_deferred(storage, "recipe-1") is None
+    assert look_up_deferred(storage, "recipe-2") is None
+    assert isinstance(look_up_deferred(storage, "recipe-3"), JobHandle)
+
+
+def test_list_pending_deferred_skips_malformed_records_rather_than_aborting():
+    storage = MemStorage()
+    _write_raw(storage, "bad-1", {"status": "pending", "policy": "not-a-mapping"})
+    write_deferred(
+        storage,
+        "good-1",
+        JobHandle(
+            task="tag",
+            recipe_hash="good-1",
+            backend="litellm",
+            ref="deferred:good-1",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},), policy=LLMRequestPolicy()
+            ),
+        ),
+        now=NOW,
+    )
+
+    pending = list_pending_deferred(storage)
+    assert {handle.recipe_hash for handle in pending} == {"good-1"}
+
+
+def _write_raw(storage: MemStorage, recipe_hash: str, record: dict) -> None:
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from citypods.compute.llm_deferred import deferred_key
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "record.json"
+        path.write_text(json.dumps(record))
+        storage.put_file(deferred_key(recipe_hash), path, "application/json")

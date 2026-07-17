@@ -15,6 +15,7 @@ transport or reason produced it.
 from __future__ import annotations
 
 import importlib
+import math
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -187,7 +188,9 @@ def _is_rate_limited(exc: BaseException) -> bool:
 def _retry_after_seconds(source: Any) -> float | None:
     """Best-effort ``Retry-After`` extraction from a raised exception (checked via its wrapped
     ``response`` attribute) or a real ``requests.Response`` (checked directly). Returns ``None``
-    on anything unparseable so the caller falls back to a fixed default rather than guessing."""
+    on anything unparseable -- or non-finite, or non-positive, since ``nan``/``inf`` would raise
+    inside the caller's ``timedelta(seconds=...)`` and a negative value would immediately unblock
+    the route -- so the caller falls back to a fixed default rather than guessing."""
     headers = getattr(source, "headers", None)
     if headers is None:
         response = getattr(source, "response", None)
@@ -198,9 +201,12 @@ def _retry_after_seconds(source: Any) -> float | None:
     if value is None:
         return None
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(parsed) or parsed <= 0:
+        return None
+    return parsed
 
 
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:

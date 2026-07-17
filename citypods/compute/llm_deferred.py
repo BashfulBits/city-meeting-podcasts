@@ -90,34 +90,40 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
 
 
 def _decode_record(data: Any) -> JobResult | JobHandle | None:
+    """``None`` for anything that isn't a well-formed record -- a missing required field or an
+    unparseable policy must not raise, since one corrupt record must not abort a caller iterating
+    the whole registry (``list_pending_deferred``, the sweep)."""
     if not isinstance(data, Mapping):
         return None
     status = data.get("status")
-    if status == "completed":
-        return JobResult(
-            task=data["task"],
-            recipe_hash=data["recipe_hash"],
-            output=data.get("output"),
-            model=data.get("model"),
-        )
-    if status == "pending":
-        deferred = None
-        if "messages" in data and "policy" in data:
-            deferred = DeferredLLMRequest(
-                messages=tuple(data["messages"]), policy=_deserialize_policy(data["policy"])
+    try:
+        if status == "completed":
+            return JobResult(
+                task=data["task"],
+                recipe_hash=data["recipe_hash"],
+                output=data.get("output"),
+                model=data.get("model"),
             )
-        return JobHandle(
-            task=data["task"],
-            recipe_hash=data["recipe_hash"],
-            backend=data.get("backend", ""),
-            ref=data.get("ref", ""),
-            structured_output=data.get("structured_output"),
-            model=data.get("model"),
-            owner=data.get("owner"),
-            input_per_token=data.get("input_per_token"),
-            output_per_token=data.get("output_per_token"),
-            deferred_request=deferred,
-        )
+        if status == "pending":
+            deferred = None
+            if "messages" in data and "policy" in data:
+                deferred = DeferredLLMRequest(
+                    messages=tuple(data["messages"]), policy=_deserialize_policy(data["policy"])
+                )
+            return JobHandle(
+                task=data["task"],
+                recipe_hash=data["recipe_hash"],
+                backend=data.get("backend", ""),
+                ref=data.get("ref", ""),
+                structured_output=data.get("structured_output"),
+                model=data.get("model"),
+                owner=data.get("owner"),
+                input_per_token=data.get("input_per_token"),
+                output_per_token=data.get("output_per_token"),
+                deferred_request=deferred,
+            )
+    except (LookupError, TypeError, ValueError):
+        return None
     return None
 
 
@@ -221,9 +227,35 @@ def prune_expired_deferred(
                 except (TypeError, ValueError):
                     pass
         if now > expires_at:
+            _release_abandoned_reservation(storage, data, now=now)
             storage.delete(key)
             deleted += 1
     return deleted
+
+
+def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: datetime) -> None:
+    """Best-effort: a still-``pending`` genuine dispatch handle (no ``deferred_request`` -- an
+    actual in-flight Mistral submission, not a deferred-direct retry candidate) being pruned past
+    its TTL means the Worker never produced a terminal response in 38+ days. Its ledger
+    reservation (``llm_budget.py``) would otherwise sit in ``inflight`` forever, since a window
+    rollover never clears it -- only an explicit settle/release does. Never raises: an unreleased
+    reservation is a latent quota-accounting nit, not a reason to abort pruning."""
+    if data.get("status") != "pending" or "policy" in data:
+        return
+    model = data.get("model")
+    owner = data.get("owner")
+    if not model or not owner:
+        return
+    try:
+        from citypods.compute.llm_budget import release_route_reservation
+        from citypods.compute.llm_policy import ROUTES
+
+        route = ROUTES.get(model)
+        if route is None:
+            return
+        release_route_reservation(storage, owner, model, route=route, now=now)
+    except Exception:  # noqa: BLE001 -- best-effort cleanup must never block pruning
+        pass
 
 
 __all__ = [
