@@ -2697,6 +2697,38 @@ def test_download_audio_cmd_sends_browser_user_agent(monkeypatch):
     assert "-movflags" not in cmd
 
 
+def test_download_audio_removes_partial_destination_on_failure(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    dest = tmp_path / "partial.mka"
+
+    def _fail(cmd, **_kw):
+        Path(cmd[-1]).write_bytes(b"partial")
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fail)
+
+    assert media._download_audio("https://example.com/audio.mp4", dest) is False
+    assert not dest.exists()
+
+
+def test_concat_local_sources_removes_partial_destination_on_failure(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    source = tmp_path / "source.mka"
+    source.write_bytes(b"source")
+    dest = tmp_path / "combined.mka"
+
+    def _fail(cmd, **_kw):
+        Path(cmd[-1]).write_bytes(b"partial")
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fail)
+
+    assert media._concat_local_sources([source], [10.0], dest) is False
+    assert not dest.exists()
+
+
 def test_download_audio_max_seconds_truncates_else_omits_t(monkeypatch):
     import citypods.media as media
 
@@ -3082,17 +3114,23 @@ class TestSourceCacheGetOrFetchConcat:
             assert cache.get_or_fetch_concat("ep1", sources) is None
             # Both segments were attempted (no short-circuit before the failing one's fetch).
             assert calls == [s.ref for s in sources]
+            assert list(Path(cache._tmpdir.name).iterdir()) == []
 
     def test_returns_none_when_concat_itself_fails(self, monkeypatch, tmp_path):
         def _fake_download(url, dest, *_a, **_k):
             dest.write_bytes(b"stub")
             return True
 
+        def _failed_concat(_paths, _durations, dest, *_a, **_k):
+            dest.write_bytes(b"partial")
+            return False
+
         monkeypatch.setattr("citypods.media._download_audio", _fake_download)
-        monkeypatch.setattr("citypods.media._concat_local_sources", lambda *a, **k: False)
+        monkeypatch.setattr("citypods.media._concat_local_sources", _failed_concat)
         sources = [_source("s0", "https://example.com/seg0.mp4", 10.0)]
         with SourceCache() as cache:
             assert cache.get_or_fetch_concat("ep1", sources) is None
+            assert list(Path(cache._tmpdir.name).iterdir()) == []
 
 
 class TestConcatRenderTimeline:

@@ -764,6 +764,7 @@ def _download_audio(
         "matroska",
         str(dest),
     ]
+    succeeded = False
     try:
         _run_ffmpeg_guarded(
             cmd,
@@ -775,11 +776,21 @@ def _download_audio(
             stop=stop,
             log=log,
         )
-        return dest.exists() and dest.stat().st_size > 0
+        succeeded = dest.exists() and dest.stat().st_size > 0
+        return succeeded
     except RateLimitedMediaFetchError:
         raise
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
         return False
+    finally:
+        # A failed ffmpeg write leaves a partial destination behind. It is not added to
+        # SourceCache._paths, so the episode-level release cannot find it later. Remove it at
+        # the failure boundary before the caller falls back to a remote render.
+        if not succeeded:
+            try:
+                dest.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _preflight_remote_source(url: str, max_media_bytes: int | None) -> None:
@@ -859,6 +870,7 @@ def _concat_local_sources(
         "matroska",
         str(dest),
     ]
+    succeeded = False
     try:
         _run_ffmpeg_guarded(
             cmd,
@@ -867,9 +879,18 @@ def _concat_local_sources(
             memory_floor_bytes=memory_floor_bytes,
             stop=stop,
         )
-        return dest.exists() and dest.stat().st_size > 0
+        succeeded = dest.exists() and dest.stat().st_size > 0
+        return succeeded
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
         return False
+    finally:
+        # As with source-cache fetches, a failed concat can leave a large partial .mka that is not
+        # represented in SourceCache._paths. It must not survive until the whole run ends.
+        if not succeeded:
+            try:
+                dest.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 class SourceCache:
@@ -1001,8 +1022,10 @@ class SourceCache:
             while not lock.acquire(timeout=1.0):
                 if self._stop():
                     raise StopRequested(f"source cache wait for uid={uid!r} stopped")
+        succeeded = False
         try:
             if uid in self._paths:
+                succeeded = True
                 return self._paths[uid]
             if any(src.duration is None for src in sources):
                 return None
@@ -1034,10 +1057,20 @@ class SourceCache:
                         pass
                 with self._guard:
                     self._paths[uid] = dest
+                succeeded = True
                 return dest
+            try:
+                dest.unlink(missing_ok=True)
+            except OSError:
+                pass
             return None
         finally:
             lock.release()
+            if not succeeded:
+                # A failed segment fetch or concat no longer has a useful local render path. Drop
+                # all successfully cached parts now, before the caller falls back to remote URLs;
+                # the episode task's final release remains an idempotent backstop.
+                self.release(uid)
 
 
 class FfmpegRunner(Protocol):
