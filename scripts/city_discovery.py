@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from citypods.compute.llm import LiteLLMBackend, LLMStructuredOutputError
+from citypods.compute.llm import LiteLLMBackend, LLMBackendError
 from citypods.config import load_city_configs, load_site_config
 from citypods.discovery import DiscoveryRequest, TavilyClient, verify_discovery
 from citypods.discovery.classify import ClassificationDeferred, classify
@@ -17,6 +17,7 @@ from citypods.discovery.eligibility import auxiliary_states
 from citypods.discovery.render import render_evidence
 from citypods.records import load_records, source_key
 from citypods.state import pull_canonical_state, resolve_state_dir
+from citypods.storage import make_storage
 
 # ``EX_TEMPFAIL``: caller should leave the request queued and retry it on the next scheduled run.
 DEFERRED_EXIT = 75
@@ -138,10 +139,22 @@ def main(argv: list[str] | None = None) -> int:
         request, city = _request_from_args(args)
         results = TavilyClient().search(request)
         classification = classify(
-            LiteLLMBackend(discovery_llm_config(site_config)), request, results
+            LiteLLMBackend(
+                discovery_llm_config(site_config),
+                storage=make_storage(site_config, "", Path(args.output_dir)),
+            ),
+            request,
+            results,
         )
         evidence = verify_discovery(request, classification, results, existing_city=city)
-    except (ClassificationDeferred, LLMStructuredOutputError) as exc:
+    except (ClassificationDeferred, LLMBackendError) as exc:
+        # LLMBackendError's whole family (LLMNotEligibleError, LLMStructuredOutputError, a
+        # storage-unavailable scheduler guard, a dispatch/network failure, ...) is, per its own
+        # docstring, "a safe, provider-agnostic adapter error" -- every one of them is exactly the
+        # kind of transient/environmental issue this script already treats as "leave the request
+        # queued and retry it on the next scheduled run," not a reason to crash the whole
+        # discovery pass. A genuine config bug (e.g. an unsupported LLM_MODEL) still raises
+        # ValueError, which is not caught here and fails loudly as before.
         print(f"discovery deferred: {exc}", file=sys.stderr)
         return DEFERRED_EXIT
     out = Path(args.out)

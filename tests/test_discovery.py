@@ -123,12 +123,33 @@ def test_discovery_script_returns_tempfail_for_invalid_structured_output(monkeyp
         "TavilyClient",
         lambda: SimpleNamespace(search=lambda _request: _results()),
     )
-    monkeypatch.setattr(city_discovery_script, "LiteLLMBackend", lambda *_: None)
+    monkeypatch.setattr(city_discovery_script, "LiteLLMBackend", lambda *_, **__: None)
 
     def invalid_response(*_args):
         raise LLMStructuredOutputError("structured LLM response failed Pydantic validation")
 
     monkeypatch.setattr(city_discovery_script, "classify", invalid_response)
+
+    assert city_discovery_script.main(["--mode", "new-city"]) == city_discovery_script.DEFERRED_EXIT
+    assert "discovery deferred" in capsys.readouterr().err
+
+
+def test_discovery_script_defers_rather_than_crashes_without_cas_storage(monkeypatch, capsys):
+    """Regression test: classify() always attaches an llm_policy now, so a real LiteLLMBackend
+    without CAS-capable storage (e.g. B2/R2 creds absent, as in a local/manual run) must raise
+    something this script's except clause catches -- not crash the whole discovery pass. Uses the
+    real LiteLLMBackend/classify path (only Tavily and storage are faked) so it actually exercises
+    the code that previously slipped past the except clause's LLMBackendError subclass list."""
+    monkeypatch.setattr(city_discovery_script, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(
+        city_discovery_script, "_request_from_args", lambda _args: (_request(), None)
+    )
+    monkeypatch.setattr(
+        city_discovery_script,
+        "TavilyClient",
+        lambda: SimpleNamespace(search=lambda _request: _results()),
+    )
+    monkeypatch.setattr(city_discovery_script, "make_storage", lambda *_args, **_kwargs: None)
 
     assert city_discovery_script.main(["--mode", "new-city"]) == city_discovery_script.DEFERRED_EXIT
     assert "discovery deferred" in capsys.readouterr().err
@@ -177,6 +198,11 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert "granicus_base" in prompt
             assert "city_identity" in prompt
             assert job.inputs["structured_output"] == STRUCTURED_OUTPUT
+            # City discovery acts on the result immediately, so it only ever asks for a free
+            # route -- no paid fallback, no deadline to wait out (see classify()'s docstring).
+            assert job.inputs["llm_policy"].allow_paid is False
+            assert job.inputs["llm_policy"].purpose == "city-onboarding"
+            assert job.inputs["llm_policy"].deadline_at is None
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,

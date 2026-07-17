@@ -62,11 +62,19 @@ class JobResult:
 
     ``output`` is the task-specific artifact — e.g. an :class:`citypods.asr.TranscriptArtifacts`
     (segment VTT + word-JSON sidecar) for ``transcribe``/``align``.
+
+    ``model`` (R13, additive/optional — every existing construction call site is unaffected) is
+    the resolved model string for an LLM backend, or ``None`` for backends where "model" has no
+    meaning (e.g. the ASR ``local`` adapter). It exists because a caller using policy-driven model
+    auto-selection computes ``InferenceJob.recipe_hash`` *before* the backend has chosen a model, so
+    the hash alone cannot identify which model produced a given result; a caller that needs to
+    content-address its own stored artifact by model must fold this field in itself.
     """
 
     task: Task
     recipe_hash: str
     output: Any
+    model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +94,26 @@ class JobHandle:
     # a Python class: queue/state implementations can persist it and later reconciliation can
     # validate the completed result after a process restart.
     structured_output: str | None = None
+    # ``model`` / ``owner`` (R13, additive/optional): the resolved LLM model and its quota/cost
+    # ledger reservation owner, present only for a policy-tracked async dispatch. A later
+    # ``reconcile()`` uses ``owner`` to settle that reservation to actual usage once the Worker's
+    # terminal response is available; both are ``None`` for every non-LLM dispatch backend.
+    model: str | None = None
+    owner: str | None = None
+    # ``input_per_token`` / ``output_per_token`` (R13, additive/optional): the route's per-token
+    # $ rates *at reservation time*, snapshotted onto the handle so a later ``reconcile()`` prices
+    # actual usage against the rate the reservation was actually made under, not whatever
+    # ``ROUTES`` happens to say at poll time (config can change between a dispatch and its
+    # eventual reconciliation, however rare that drift is in practice).
+    input_per_token: float | None = None
+    output_per_token: float | None = None
+    # ``deferred_request`` (R13, additive/optional): opaque to this generic contract by design --
+    # it is never read or written here, only carried. A backend that produces a handle representing
+    # "not eligible yet, but here's everything needed to retry, no remote submission happened" (the
+    # LiteLLM backend's `LLMRequestPolicy.defer_as_handle`) stores its own request-shaped payload
+    # here (a `citypods.compute.llm_policy.DeferredLLMRequest`) and reads it back in its own
+    # ``reconcile()``. ``None`` for every real dispatch-Worker handle (Modal/Beam/Mistral).
+    deferred_request: object | None = None
 
 
 def lease_owner_for(handle: JobHandle) -> str:

@@ -17,6 +17,19 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM quota and cost scheduling (R13).** Added provider-neutral route policy, Gemini RPM/RPD/TPM
+  accounting with Pacific-midnight resets, DeepSeek off-peak preference, exact allowlists, and a
+  CAS-backed `state/llm_budget.json` ledger. Reservations are released only before a provider call
+  and settled for every post-call outcome. A real provider 429 now reactively blocks that route until
+  its `Retry-After` hint. A caller that can't complete synchronously (nothing eligible yet, a real
+  rate limit, or a genuine in-flight Mistral dispatch) gets the same portable `JobHandle` back either
+  way, completed later via `reconcile()`; a new B2-backed deferred-request registry
+  (`state/llm_deferred/`) and a once-daily `llm-deferred-sweep` workflow (timed to DeepSeek's off-peak
+  window) let a caller with no retry cadence of its own eventually get a result without rebuilding the
+  request. City discovery (the only current caller) requires a free, immediate result — no deadline.
+  See [`review/33`](review/33-llm-quota-cost-scheduler.md) §13 for the full revision history. This
+  adds no LLM artifact backfill or pipeline-version bump.
+
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
   requests transport timeout is recorded as deferred work so a temporary endpoint outage does not
