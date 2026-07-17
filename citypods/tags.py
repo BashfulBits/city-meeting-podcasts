@@ -615,14 +615,18 @@ def llm_tag_suggestions(
     if backend_model and getattr(backend_storage, "cas_capable", False):
         # Pin the scheduler to exactly the one model R5 is calibrated against
         # (config/site_config.yml's tagging.llm_model): the calibration matrix and fallback
-        # config are keyed to one exact provider/model route, and letting the scheduler roam
-        # across models would fragment calibration across separately-unreviewed routes instead of
-        # deepening review of the one route R5 was designed around. Still gains real value from
-        # the R13 scheduler even pinned: CAS-safe quota accounting across concurrent shards and a
-        # clean deferral (a JobHandle, retried on this stage's own next scheduled run) instead of
-        # a raw provider error. Omitted entirely when the backend's storage isn't CAS-capable
-        # (e.g. local dev/dry runs with no R2 configured), so tagging keeps working there exactly
-        # as it did before R13 rather than failing for lack of scheduler storage.
+        # config (review/35) are keyed to one exact provider/model route, and letting the
+        # scheduler roam across models would fragment calibration across separately-unreviewed
+        # routes instead of deepening review of the one route R5 was designed around. This also
+        # matches review/34 §7's production/tournament split -- production always runs the
+        # current champion for a verb, one call per episode; comparing multiple models is the
+        # (separate, still-unbuilt) tournament's job, never this per-episode dispatch. Still gains
+        # real value from the R13 scheduler even pinned: CAS-safe quota accounting across
+        # concurrent shards and a clean deferral (a JobHandle, retried on this stage's own next
+        # scheduled run) instead of a raw provider error. Omitted entirely when the backend's
+        # storage isn't CAS-capable (e.g. local dev/dry runs with no R2 configured), so tagging
+        # keeps working there exactly as it did before R13 rather than failing for lack of
+        # scheduler storage.
         inputs["llm_policy"] = LLMRequestPolicy(
             allowed_models=(backend_model,),
             allow_paid=False,
