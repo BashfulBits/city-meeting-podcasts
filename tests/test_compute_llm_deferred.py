@@ -1,0 +1,207 @@
+from datetime import UTC, datetime, timedelta
+
+from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm_deferred import (
+    DEFAULT_TTL_DAYS,
+    DEFERRED_PREFIX,
+    deferred_key,
+    list_pending_deferred,
+    look_up_deferred,
+    prune_expired_deferred,
+    write_deferred,
+)
+from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+from tests._cas_fake import MemStorage
+
+NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
+
+
+def test_deferred_key_is_scoped_under_the_prefix():
+    assert deferred_key("recipe-1") == f"{DEFERRED_PREFIX}recipe-1.json"
+
+
+def test_write_and_look_up_a_pending_handle_round_trips():
+    storage = MemStorage()
+    policy = LLMRequestPolicy(
+        allowed_models=("deepseek/deepseek-v4-flash",),
+        allow_paid=True,
+        deadline_at=datetime(2026, 7, 20, tzinfo=UTC),
+        purpose="test",
+    )
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="recipe-1",
+        backend="litellm",
+        ref="deferred:recipe-1",
+        structured_output="test-output",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "hi"},), policy=policy
+        ),
+    )
+    write_deferred(storage, "recipe-1", handle)
+
+    found = look_up_deferred(storage, "recipe-1")
+    assert isinstance(found, JobHandle)
+    assert found.recipe_hash == "recipe-1"
+    assert found.structured_output == "test-output"
+    assert found.deferred_request is not None
+    assert found.deferred_request.messages == ({"role": "user", "content": "hi"},)
+    assert found.deferred_request.policy == policy
+
+
+def test_write_and_look_up_a_completed_result_round_trips():
+    storage = MemStorage()
+    result = JobResult(
+        task="tag",
+        recipe_hash="recipe-1",
+        output={"choices": []},
+        model="gemini/gemini-3-flash-preview",
+    )
+    write_deferred(storage, "recipe-1", result)
+
+    found = look_up_deferred(storage, "recipe-1")
+    assert isinstance(found, JobResult)
+    assert found.output == {"choices": []}
+    assert found.model == "gemini/gemini-3-flash-preview"
+
+
+def test_look_up_missing_recipe_hash_returns_none():
+    storage = MemStorage()
+    assert look_up_deferred(storage, "never-written") is None
+
+
+def test_a_completed_record_is_never_downgraded_back_to_pending():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={"done": True}, model="m"),
+    )
+    stale_handle = JobHandle(
+        task="tag",
+        recipe_hash="recipe-1",
+        backend="litellm",
+        ref="deferred:recipe-1",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "hi"},), policy=LLMRequestPolicy()
+        ),
+    )
+    write_deferred(storage, "recipe-1", stale_handle)
+
+    found = look_up_deferred(storage, "recipe-1")
+    assert isinstance(found, JobResult)
+    assert found.output == {"done": True}
+
+
+def test_list_pending_deferred_returns_only_pending_records():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "completed-1",
+        JobResult(task="tag", recipe_hash="completed-1", output={}, model="m"),
+    )
+    pending_handle = JobHandle(
+        task="tag",
+        recipe_hash="pending-1",
+        backend="litellm",
+        ref="deferred:pending-1",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "hi"},),
+            policy=LLMRequestPolicy(deadline_at=datetime.now(UTC) + timedelta(days=3)),
+        ),
+    )
+    write_deferred(storage, "pending-1", pending_handle)
+    dispatch_handle = JobHandle(
+        task="tag",
+        recipe_hash="pending-2",
+        backend="litellm",
+        ref="/v1/requests/chatcmpl-1",
+        model="mistral/mistral-large-latest",
+        owner="pending-2",
+        input_per_token=0.0,
+        output_per_token=0.0,
+    )
+    write_deferred(storage, "pending-2", dispatch_handle)
+
+    pending = {handle.recipe_hash: handle for handle in list_pending_deferred(storage)}
+    assert set(pending) == {"pending-1", "pending-2"}
+    assert pending["pending-1"].deferred_request is not None
+    # A genuine in-flight dispatch handle has no deferred_request -- reconcile() must route it
+    # through the real URL-polling path, not re-run selection.
+    assert pending["pending-2"].deferred_request is None
+    assert pending["pending-2"].model == "mistral/mistral-large-latest"
+    assert pending["pending-2"].owner == "pending-2"
+
+
+def _pending_handle(recipe_hash: str, *, deadline_at: datetime | None = None) -> JobHandle:
+    return JobHandle(
+        task="tag",
+        recipe_hash=recipe_hash,
+        backend="litellm",
+        ref=f"deferred:{recipe_hash}",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "hi"},),
+            policy=LLMRequestPolicy(deadline_at=deadline_at),
+        ),
+    )
+
+
+def test_write_deferred_preserves_created_at_across_redefers():
+    """Observed indirectly through TTL behavior: if a re-defer incorrectly reset `created_at` to
+    the second write's time, the record would survive an extra 5 days past the default TTL."""
+    storage = MemStorage()
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW)
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW + timedelta(days=5))
+
+    # 39 days after the *original* write, but only 34 days after the re-defer.
+    deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1))
+    assert deleted == 1
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
+def test_prune_expired_deferred_leaves_fresh_records_alone():
+    storage = MemStorage()
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW)
+    deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=1))
+    assert deleted == 0
+    assert look_up_deferred(storage, "recipe-1") is not None
+
+
+def test_prune_expired_deferred_deletes_past_the_default_ttl():
+    storage = MemStorage()
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW)
+    deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1))
+    assert deleted == 1
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
+def test_prune_expired_deferred_never_deletes_before_a_longer_caller_deadline():
+    """A caller waiting out something like a monthly cost cap may set a deadline longer than the
+    default TTL -- that must win, or the request silently vanishes before it can ever complete."""
+    storage = MemStorage()
+    long_deadline = NOW + timedelta(days=60)
+    write_deferred(
+        storage, "recipe-1", _pending_handle("recipe-1", deadline_at=long_deadline), now=NOW
+    )
+
+    # Past the default 38-day TTL, but not yet past the caller's own 60-day deadline.
+    deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1))
+    assert deleted == 0
+    assert look_up_deferred(storage, "recipe-1") is not None
+
+    deleted = prune_expired_deferred(storage, now=long_deadline + timedelta(days=1))
+    assert deleted == 1
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
+def test_prune_expired_deferred_also_cleans_up_completed_records():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m"),
+        now=NOW,
+    )
+    deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1))
+    assert deleted == 1
+    assert look_up_deferred(storage, "recipe-1") is None

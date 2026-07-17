@@ -13,6 +13,8 @@ from citypods.storage import CASConflict
 from tests._cas_fake import MemCAS
 
 NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
+DIRECT = frozenset({"direct"})
+BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch"})
 
 
 def _gemini_exhausted() -> LLMBudget:
@@ -28,7 +30,7 @@ def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
         LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=1)),
         routes=ROUTES,
         ledger=_gemini_exhausted(),
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
@@ -48,7 +50,7 @@ def test_ranking_prefers_free_route_over_a_simultaneously_eligible_paid_route():
         LLMRequestPolicy(allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=1024,
         now=inside_deepseek_window,
     )
@@ -65,7 +67,7 @@ def test_free_route_is_not_replaced_by_paid_route_when_off_peak_wait_is_safe():
         LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=24)),
         routes=ROUTES,
         ledger=_gemini_exhausted(),
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
@@ -79,7 +81,7 @@ def test_allowlist_can_force_one_paid_evaluation_model():
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=1024,
         now=datetime(2026, 7, 16, 18, tzinfo=UTC),
     )
@@ -92,7 +94,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
@@ -103,7 +105,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=1024,
         now=datetime(2026, 7, 16, 18, tzinfo=UTC),
     )
@@ -115,11 +117,39 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         ),
         routes=ROUTES,
         ledger=LLMBudget(),
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
     assert urgent.model == model
+
+
+def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
+    result = select_route(
+        LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",), allow_paid=True),
+        routes=ROUTES,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model is None
+    assert ("mistral/mistral-large-latest", "transport gate") in result.rejected
+
+
+def test_a_caller_reaching_both_transports_can_select_either():
+    """The sweep (and any caller configured with a dispatch Worker) can reach both -- this is
+    what lets a single backend instance service pending records regardless of which provider
+    originally claimed them."""
+    result = select_route(
+        LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",), allow_paid=True),
+        routes=ROUTES,
+        ledger=LLMBudget(),
+        available_transports=BOTH_TRANSPORTS,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model == "mistral/mistral-large-latest"
 
 
 def test_select_and_reserve_retries_after_one_cas_conflict():
@@ -144,16 +174,17 @@ def test_select_and_reserve_retries_after_one_cas_conflict():
     storage = ConflictOnce()
     result = select_and_reserve(
         storage,
-        "owner",
+        "recipe-1",
         LLMRequestPolicy(),
         routes={route.model: route},
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=10,
         now=NOW,
         sleep=lambda _: None,
     )
 
     assert result.model == route.model
+    assert result.owner is not None and result.owner.startswith("recipe-1:")
     budget, _ = load_llm_budget_cas(storage)
     assert budget.routes[route.model].inflight_count == 1
 
@@ -169,10 +200,10 @@ def test_select_and_reserve_honors_a_requests_worst_case():
     storage = MemCAS()
     select_and_reserve(
         storage,
-        "owner",
+        "recipe-1",
         LLMRequestPolicy(),
         routes={route.model: route},
-        backend_mode="direct",
+        available_transports=DIRECT,
         estimated_tokens=10,
         requests=2,
         now=NOW,
@@ -181,22 +212,57 @@ def test_select_and_reserve_honors_a_requests_worst_case():
     assert budget.routes[route.model].requests_minute == 2
 
 
-def test_select_and_reserve_reuses_route_for_an_already_inflight_owner():
-    """A dispatch-mode retry under the same (deterministic) owner must resolve to the model it
-    originally reserved -- even if a fresh selection pass, run against updated ledger state,
-    would now pick a different one (e.g. a previously-exhausted free route recovering)."""
-    gemini = ROUTES["gemini/gemini-3-flash-preview"]
-    deepseek = ROUTES["deepseek/deepseek-v4-flash"]
-    routes = {gemini.model: gemini, deepseek.model: deepseek}
+def test_select_and_reserve_owner_is_unique_per_direct_attempt():
+    """Direct transport has no server-side dedup -- two calls sharing a recipe_hash must reserve
+    independently, not collapse into one owner."""
+    route = LLMRoute(
+        model="test/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=5),
+        pricing=PricingPolicy(),
+    )
     storage = MemCAS()
-    # Seed an existing in-flight reservation for "owner" under DeepSeek, simulating a prior
-    # attempt that hasn't settled yet -- as if Gemini had been exhausted when it first ran.
+    first = select_and_reserve(
+        storage,
+        "recipe-1",
+        LLMRequestPolicy(),
+        routes={route.model: route},
+        available_transports=DIRECT,
+        estimated_tokens=10,
+        now=NOW,
+    )
+    second = select_and_reserve(
+        storage,
+        "recipe-1",
+        LLMRequestPolicy(),
+        routes={route.model: route},
+        available_transports=DIRECT,
+        estimated_tokens=10,
+        now=NOW,
+    )
+    assert first.owner != second.owner
+    budget, _ = load_llm_budget_cas(storage)
+    assert budget.routes[route.model].requests_minute == 2
+
+
+def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner():
+    """A dispatch-mode retry -- reserved deterministically under `recipe_hash` itself -- must
+    resolve to the model it originally reserved, even if a fresh selection pass, run against
+    updated ledger state, would now pick differently (e.g. a previously-exhausted free route
+    recovering)."""
+    gemini = ROUTES["gemini/gemini-3-flash-preview"]
+    mistral = ROUTES["mistral/mistral-large-latest"]
+    routes = {gemini.model: gemini, mistral.model: mistral}
+    storage = MemCAS()
+    # Seed an existing in-flight dispatch reservation for "recipe-1" (the deterministic dispatch
+    # owner), simulating a prior attempt that got a 202 and hasn't settled yet.
     mutate_llm_budget(
         storage,
         lambda budget, attempt_now: budget.reserve(
-            "owner",
-            deepseek.model,
-            route=deepseek,
+            "recipe-1",
+            mistral.model,
+            route=mistral,
             requests=1,
             tokens=10,
             cost=0.0,
@@ -205,19 +271,20 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_owner():
         now=NOW,
     )
     # A fresh selection pass would now pick Gemini (empty ledger, free, no allowlist
-    # restriction) -- but the retry must still resolve to DeepSeek, the route "owner" is already
-    # reserved under.
+    # restriction) -- but the retry must still resolve to Mistral, the route "recipe-1" is
+    # already reserved under.
     result = select_and_reserve(
         storage,
-        "owner",
+        "recipe-1",
         LLMRequestPolicy(allow_paid=True),
         routes=routes,
-        backend_mode="direct",
+        available_transports=BOTH_TRANSPORTS,
         estimated_tokens=10,
-        now=datetime(2026, 7, 16, 18, tzinfo=UTC),  # inside DeepSeek's off-peak window too
+        now=NOW,
     )
-    assert result.model == deepseek.model
+    assert result.model == mistral.model
+    assert result.owner == "recipe-1"
     budget, _ = load_llm_budget_cas(storage)
     # No new reservation was created -- still exactly the one seeded above.
-    assert budget.routes[deepseek.model].inflight_count == 1
+    assert budget.routes[mistral.model].inflight_count == 1
     assert gemini.model not in budget.routes or budget.routes[gemini.model].inflight_count == 0

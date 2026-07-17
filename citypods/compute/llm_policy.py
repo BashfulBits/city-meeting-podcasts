@@ -20,6 +20,23 @@ class LLMRequestPolicy:
 
 
 @dataclass(frozen=True)
+class DeferredLLMRequest:
+    """The portable capsule stored on a deferred `JobHandle`: everything `LiteLLMBackend.
+    reconcile()` needs to retry the request without the caller reconstructing it.
+
+    Every policy-bearing call that can't complete synchronously returns a `JobHandle` -- uniformly,
+    whether that's because nothing is eligible right now (this capsule; re-runs the same gates
+    fresh on each `reconcile()`) or because a route is genuinely in flight at an external Worker
+    (no capsule; `JobHandle.deferred_request is None` for that case). The caller never needs to
+    know which. `messages` mirrors what `InferenceJob.inputs["messages"]` would have held; `policy`
+    is the exact policy the request was originally submitted with.
+    """
+
+    messages: tuple[Mapping[str, Any], ...]
+    policy: LLMRequestPolicy
+
+
+@dataclass(frozen=True)
 class PeakWindow:
     tz: str
     start: time
@@ -115,6 +132,7 @@ def estimate_tokens(messages: list[Mapping[str, Any]]) -> int:
 
 __all__ = [
     "DEFAULT_OUTPUT_TOKEN_MARGIN",
+    "DeferredLLMRequest",
     "LLMRequestPolicy",
     "LLMRoute",
     "PeakWindow",

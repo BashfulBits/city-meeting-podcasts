@@ -1,0 +1,61 @@
+name: LLM deferred sweep
+
+# R13's deferred-request registry (citypods/compute/llm_deferred.py) holds two kinds of pending
+# record, indistinguishable to this workflow: a deferred-direct LLM request whose off-peak/quota
+# preference hasn't cleared yet, and a genuinely in-flight Mistral dispatch. This job calls
+# reconcile() on every pending record and persists whatever completes; it also prunes registry
+# records past their TTL.
+#
+# Scheduled once daily, one hour after DeepSeek's 16:30 UTC off-peak window opens (review/27 §5.3),
+# not on a tighter cron -- nothing configured today needs a finer-grained wake-up than that, and a
+# once-daily run comfortably lands inside an ~8-hour-wide window even with GitHub's own cron jitter.
+# If a future route's discount/quota window can't be reasonably caught this way, add another cron
+# entry timed to that window rather than tightening this one for everything.
+
+on:
+  schedule:
+    - cron: "30 17 * * *" # 17:30 UTC, 1h after DeepSeek's off-peak window opens
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-deferred-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Reconcile pending deferred/dispatched LLM requests
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
+          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: python scripts/llm_deferred_sweep.py

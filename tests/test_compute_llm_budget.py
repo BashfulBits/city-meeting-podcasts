@@ -309,3 +309,30 @@ def test_find_inflight_owner():
     assert budget.find_inflight_owner("owner-2") is None
     budget.settle("owner-1", ROUTE.model, route=ROUTE, now=NOW)
     assert budget.find_inflight_owner("owner-1") is None
+
+
+def test_block_overrides_proactive_availability_until_the_given_time():
+    """A real 429 from the provider overrides our own RPM/RPD/TPM estimate, which might be wrong
+    (shared quota, an unmodeled monthly pool) -- available() must respect it regardless of what
+    the counters say."""
+    budget = LLMBudget()
+    assert budget.available(ROUTE.model, route=ROUTE, requests=1, tokens=1, cost=0.0, now=NOW)
+    until = NOW + timedelta(minutes=5)
+    budget.block(ROUTE.model, until, route=ROUTE, now=NOW)
+    assert not budget.available(
+        ROUTE.model, route=ROUTE, requests=1, tokens=1, cost=0.0, now=NOW + timedelta(minutes=4)
+    )
+    assert budget.available(
+        ROUTE.model, route=ROUTE, requests=1, tokens=1, cost=0.0, now=NOW + timedelta(minutes=5)
+    )
+
+
+def test_block_never_moves_an_existing_block_earlier():
+    budget = LLMBudget()
+    far = NOW + timedelta(hours=1)
+    near = NOW + timedelta(minutes=1)
+    budget.block(ROUTE.model, far, route=ROUTE, now=NOW)
+    budget.block(ROUTE.model, near, route=ROUTE, now=NOW)
+    assert not budget.available(
+        ROUTE.model, route=ROUTE, requests=1, tokens=1, cost=0.0, now=NOW + timedelta(minutes=30)
+    )

@@ -6,7 +6,6 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
@@ -269,17 +268,22 @@ def parse_classification(
 def classify(
     backend: Backend, request: DiscoveryRequest, results: list[SearchResult]
 ) -> Classification:
-    """Classify evidence through the backend's Instructor/Pydantic output contract."""
+    """Classify evidence through the backend's Instructor/Pydantic output contract.
+
+    City discovery acts on the result immediately (continuing an issue-comment cycle) rather than
+    tolerating a later async completion, so this asks only for a *free* route -- `allow_paid=False`
+    -- with no `deadline_at`: there is nothing to wait out or fall back to paid for. If nothing
+    free is eligible right now (today that's just Gemini; a future free+direct route would also
+    qualify with no code change here), `run_inference` returns a `JobHandle` the same as it would
+    for a genuinely in-flight dispatch -- this defers the *whole* discovery cycle to the next
+    scheduled run, exactly as it already did before R13.
+    """
     job = InferenceJob(
         task="classify-civic-platforms",
         inputs={
             "messages": _prompt(request, results),
             "structured_output": STRUCTURED_OUTPUT,
-            "llm_policy": LLMRequestPolicy(
-                allow_paid=True,
-                deadline_at=datetime.now(UTC) + timedelta(hours=24),
-                purpose="city-onboarding",
-            ),
+            "llm_policy": LLMRequestPolicy(allow_paid=False, purpose="city-onboarding"),
         },
         recipe_hash=recipe_hash(request, results),
     )

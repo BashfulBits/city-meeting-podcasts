@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Mapping
+import uuid
+from collections.abc import Mapping, Set
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
 from zoneinfo import ZoneInfo
 
 from citypods.compute.llm_budget import (
@@ -26,6 +26,11 @@ class SelectionResult:
     route: LLMRoute | None
     reason: str
     rejected: tuple[tuple[str, str], ...] = ()
+    # The ledger reservation owner this selection reserved under (or is reusing), or `None` when
+    # nothing was selected. Callers settle/release against this, not a value they precomputed --
+    # owner uniqueness depends on the *selected* route's transport (see `select_and_reserve`),
+    # which isn't known until selection completes.
+    owner: str | None = None
 
 
 def _window_bounds(window, now: datetime) -> tuple[datetime, datetime] | None:
@@ -87,6 +92,8 @@ def _next_quota_reset(route: LLMRoute, ledger, now: datetime) -> datetime:
         local = now.astimezone(zone)
         tomorrow = local.date() + timedelta(days=1)
         resets.append(datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC))
+    if ledger.blocked_until:
+        resets.append(datetime.fromisoformat(ledger.blocked_until))
     return min(resets, default=now)
 
 
@@ -98,17 +105,38 @@ def _estimated_cost(route: LLMRoute, estimated_tokens: int, now: datetime) -> fl
     )
 
 
+def _owner_for(recipe_hash: str, route: LLMRoute) -> str:
+    """Owner uniqueness depends on the *selected* route's transport, not a single rule for both:
+    - `mistral-dispatch`: the Worker dedupes on `idempotency-key: recipe_hash`, so a retry before
+      this reservation settles is the *same* underlying provider request -- owner must be that
+      same deterministic recipe_hash, or it would double-reserve quota for a call the Worker
+      itself never repeats.
+    - `direct`: there is no server-side dedup at all. Every attempt -- the first, a concurrent
+      call, or a later `reconcile()` retry of a deferred handle -- is a genuinely new request and
+      must reserve its own independent slot.
+    """
+    if route.transport == "mistral-dispatch":
+        return recipe_hash
+    return f"{recipe_hash}:{uuid.uuid4().hex}"
+
+
 def select_route(
     policy: LLMRequestPolicy,
     *,
     routes: Mapping[str, LLMRoute],
     ledger: LLMBudget,
-    backend_mode: Literal["direct", "dispatch"],
+    available_transports: Set[str],
     estimated_tokens: int,
     requests: int = 1,
     now: datetime,
 ) -> SelectionResult:
     """Select one eligible route from a read-only ledger snapshot.
+
+    ``available_transports`` is the set of transports *this backend instance* can physically
+    reach right now (e.g. ``{"direct"}``, or ``{"direct", "mistral-dispatch"}`` when a dispatch
+    Worker is configured) -- not a single fixed mode. A caller able to reach both transports (the
+    deferred-request sweep, in particular) needs the scheduler to pick freely among every eligible
+    route regardless of which transport backs it.
 
     ``requests``/``estimated_tokens`` should already reflect the *worst-case* number of provider
     attempts a single logical dispatch can make -- e.g. 2 for a structured call, since Instructor's
@@ -119,7 +147,7 @@ def select_route(
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
 
     for model, route in sorted(routes.items()):
-        if route.transport != ("direct" if backend_mode == "direct" else "mistral-dispatch"):
+        if route.transport not in available_transports:
             rejected.append((model, "transport gate"))
             continue
         if allowed is not None and model not in allowed:
@@ -177,11 +205,11 @@ def select_route(
 
 def select_and_reserve(
     storage,
-    owner: str,
+    recipe_hash: str,
     policy: LLMRequestPolicy,
     *,
     routes: Mapping[str, LLMRoute] = ROUTES,
-    backend_mode: Literal["direct", "dispatch"],
+    available_transports: Set[str],
     estimated_tokens: int,
     requests: int = 1,
     now: datetime | None = None,
@@ -192,6 +220,10 @@ def select_and_reserve(
     rng: random.Random | None = None,
 ) -> SelectionResult:
     """Select and reserve a route atomically, reselecting after CAS conflicts.
+
+    ``recipe_hash`` identifies the logical request, not a specific ledger owner -- the actual
+    reservation owner is derived per attempt from the *selected* route's transport (see
+    `_owner_for`), since that isn't known until selection completes.
 
     ``now``: when the caller doesn't pin an explicit value, each attempt asks for the current
     time again rather than reusing one resolved before the retry loop started -- a conflict means
@@ -206,21 +238,24 @@ def select_and_reserve(
     for attempt in range(max_attempts):
         attempt_now = now if now is not None else datetime.now(UTC)
         ledger, etag = load_llm_budget_cas(storage)
-        existing_model = ledger.find_inflight_owner(owner)
+        # A dispatch-mode retry reserves deterministically under `recipe_hash` itself (see
+        # `_owner_for`); if that's still inflight from an earlier attempt that hasn't settled,
+        # reuse the same route rather than reselecting -- the Worker's idempotency key still
+        # resolves to the original request regardless of what a fresh pass would pick now.
+        existing_model = ledger.find_inflight_owner(recipe_hash)
         if existing_model is not None and existing_model in routes:
-            # This owner already has a reservation in flight -- a retry before the first attempt
-            # settled. Reuse that same route rather than reselecting: a dispatch-mode retry's
-            # idempotency key still resolves to the original request regardless of what a fresh
-            # selection pass would pick this time (e.g. Gemini's quota freeing up between
-            # attempts must not attach the reservation to the wrong model).
             return SelectionResult(
-                existing_model, routes[existing_model], "reusing in-flight reservation", ()
+                existing_model,
+                routes[existing_model],
+                "reusing in-flight reservation",
+                (),
+                owner=recipe_hash,
             )
         selection = select_route(
             policy,
             routes=routes,
             ledger=ledger,
-            backend_mode=backend_mode,
+            available_transports=available_transports,
             estimated_tokens=estimated_tokens,
             requests=requests,
             now=attempt_now,
@@ -228,6 +263,7 @@ def select_and_reserve(
         last_selection = selection
         if selection.route is None:
             return selection
+        owner = _owner_for(recipe_hash, selection.route)
         # No availability recheck here: `select_route` already confirmed `ledger.available(...)`
         # for this exact candidate against this same unmutated `ledger` snapshot when it built
         # `candidates` (§5 gate 3) -- a second check here would always pass and never fires.
@@ -247,7 +283,9 @@ def select_and_reserve(
                 storage.put_cas(LLM_BUDGET_STATE_KEY, body, "application/json", if_none_match="*")
             else:
                 storage.put_cas(LLM_BUDGET_STATE_KEY, body, "application/json", if_match=etag)
-            return selection
+            return SelectionResult(
+                selection.model, selection.route, selection.reason, selection.rejected, owner=owner
+            )
         except CASConflict:
             sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
     return SelectionResult(None, None, last_selection.reason, last_selection.rejected)

@@ -193,6 +193,14 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > still-unbuilt $ budget ledger, not a separate one. Provider-neutral batch capability is deferred
 > until a real batch-capable provider is confirmed (review/33 §9).
 > Full proposal: [`review/33`](review/33-llm-quota-cost-scheduler.md).
+>
+> **Update 2026-07-17: R13 implemented**, plus one interface change found necessary during the build —
+> a caller no longer distinguishes "nothing eligible yet" from "genuinely in flight at the Mistral
+> Worker": both return the same portable `JobHandle`, completed later via `reconcile()`, a B2-backed
+> deferred-request registry, and a once-daily sweep workflow timed to DeepSeek's off-peak window
+> (review/33 §10.7). A real provider 429 now also reactively blocks that route (review/33 §7.1). City
+> discovery (the only current caller) requires a free, immediate result — no deadline needed, since it
+> acts on results synchronously and already retries daily on its own. Full changelog: review/33 §13.
 
 > **Added 2026-07-12 (maintainer question → item): LLM-assisted city/agenda-source discovery, numbered
 > R12, sequenced right after R2 (before R3).** Same no-renumbering convention as R10/R11. Prompted by

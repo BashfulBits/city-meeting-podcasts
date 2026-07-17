@@ -107,6 +107,13 @@ class JobHandle:
     # eventual reconciliation, however rare that drift is in practice).
     input_per_token: float | None = None
     output_per_token: float | None = None
+    # ``deferred_request`` (R13, additive/optional): opaque to this generic contract by design --
+    # it is never read or written here, only carried. A backend that produces a handle representing
+    # "not eligible yet, but here's everything needed to retry, no remote submission happened" (the
+    # LiteLLM backend's `LLMRequestPolicy.defer_as_handle`) stores its own request-shaped payload
+    # here (a `citypods.compute.llm_policy.DeferredLLMRequest`) and reads it back in its own
+    # ``reconcile()``. ``None`` for every real dispatch-Worker handle (Modal/Beam/Mistral).
+    deferred_request: object | None = None
 
 
 def lease_owner_for(handle: JobHandle) -> str:

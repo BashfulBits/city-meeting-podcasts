@@ -39,6 +39,12 @@ class RouteLedger:
     requests_day_key: str = ""
     tokens_minute: int = 0
     inflight: dict[str, LLMReservation] = field(default_factory=dict)
+    # ISO datetime, UTC; "" means not blocked. Set by a real provider 429/rate-limit response
+    # (`LLMBudget.block`), independent of and in addition to our own proactive RPM/RPD/TPM
+    # estimate -- our counters can be wrong (shared quota, an unmodeled monthly pool), and a live
+    # signal from the provider overrides them regardless of what we predicted. Never reset by
+    # `_ledger()`'s window rollovers; only `block()` changes it.
+    blocked_until: str = ""
 
     @property
     def inflight_count(self) -> int:
@@ -78,6 +84,8 @@ class LLMBudget:
         now: datetime,
     ) -> bool:
         led = self._ledger(model, now, route=route)
+        if led.blocked_until and now.astimezone(UTC) < datetime.fromisoformat(led.blocked_until):
+            return False
         quota = route.quota
         pricing = route.pricing
         return (
@@ -87,6 +95,16 @@ class LLMBudget:
             and (quota.concurrency is None or led.inflight_count < quota.concurrency)
             and (pricing.cost_cap is None or led.cost_used + cost <= pricing.cost_cap)
         )
+
+    def block(self, model: str, until: datetime, *, route: LLMRoute, now: datetime) -> None:
+        """Reactively mark ``model`` unavailable until ``until`` -- called after a real 429/
+        rate-limit response, overriding our own proactive estimate rather than retrying into the
+        same error. Never moves an existing block *earlier* (the longer of the two wins), since a
+        second 429 arriving after the first block was already set is itself new information."""
+        led = self._ledger(model, now, route=route)
+        current = datetime.fromisoformat(led.blocked_until) if led.blocked_until else None
+        if current is None or until > current:
+            led.blocked_until = until.astimezone(UTC).isoformat()
 
     def find_inflight_owner(self, owner: str) -> str | None:
         """The model ``owner`` currently has a reservation under, if any. A dispatch-mode retry
@@ -173,6 +191,7 @@ class LLMBudget:
                     "requests_day": ledger.requests_day,
                     "requests_day_key": ledger.requests_day_key,
                     "tokens_minute": ledger.tokens_minute,
+                    "blocked_until": ledger.blocked_until,
                     "inflight": {
                         owner: {
                             "cost": reservation.cost,
@@ -214,6 +233,7 @@ class LLMBudget:
                 requests_day=int(raw.get("requests_day", 0)),
                 requests_day_key=str(raw.get("requests_day_key") or ""),
                 tokens_minute=int(raw.get("tokens_minute", 0)),
+                blocked_until=str(raw.get("blocked_until") or ""),
                 inflight=inflight,
             )
         return cls(routes=routes)
@@ -358,11 +378,37 @@ def release_route_reservation(
     )
 
 
+def block_route_until(
+    storage,
+    model: str,
+    until: datetime,
+    *,
+    route: LLMRoute,
+    now: datetime | None = None,
+    max_attempts: int = 8,
+    base_sleep: float = 0.05,
+    max_sleep: float = 1.0,
+    sleep=time.sleep,
+    rng: random.Random | None = None,
+) -> LLMBudget:
+    return mutate_llm_budget(
+        storage,
+        lambda budget, attempt_now: budget.block(model, until, route=route, now=attempt_now),
+        now=now,
+        max_attempts=max_attempts,
+        base_sleep=base_sleep,
+        max_sleep=max_sleep,
+        sleep=sleep,
+        rng=rng,
+    )
+
+
 __all__ = [
     "LLM_BUDGET_STATE_KEY",
     "LLMBudget",
     "LLMReservation",
     "RouteLedger",
+    "block_route_until",
     "daily_reset_key",
     "load_llm_budget_cas",
     "minute_key",

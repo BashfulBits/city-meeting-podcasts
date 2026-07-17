@@ -198,9 +198,11 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert "granicus_base" in prompt
             assert "city_identity" in prompt
             assert job.inputs["structured_output"] == STRUCTURED_OUTPUT
-            assert job.inputs["llm_policy"].allow_paid is True
+            # City discovery acts on the result immediately, so it only ever asks for a free
+            # route -- no paid fallback, no deadline to wait out (see classify()'s docstring).
+            assert job.inputs["llm_policy"].allow_paid is False
             assert job.inputs["llm_policy"].purpose == "city-onboarding"
-            assert job.inputs["llm_policy"].deadline_at is not None
+            assert job.inputs["llm_policy"].deadline_at is None
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,

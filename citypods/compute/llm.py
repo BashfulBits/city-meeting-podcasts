@@ -4,25 +4,37 @@ Direct calls use Instructor for provider-mode selection, parsing, Pydantic valid
 bounded corrective retry.  The R10 Worker remains an asynchronous transport: it durably stores the
 Pydantic-generated response format, and reconciliation validates the completed reply locally.  A
 future queue-owned corrective retry can be added without changing a task's response contract.
+
+Every policy-bearing call that can't complete synchronously -- nothing eligible right now, a real
+429 from the provider, or a genuinely in-flight dispatch to the R10 Worker -- returns the same
+``JobHandle`` shape and is completed the same way: hold it (or don't -- see ``llm_deferred.py``)
+and call ``reconcile()``/``run_inference()`` again later. The caller never needs to know which
+transport or reason produced it.
 """
 
 from __future__ import annotations
 
 import importlib
 import os
-import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 from urllib.parse import urljoin, urlsplit
 
 import requests
 
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult, Task
-from citypods.compute.llm_budget import release_route_reservation, settle_route_reservation
+from citypods.compute.llm_budget import (
+    block_route_until,
+    release_route_reservation,
+    settle_route_reservation,
+)
+from citypods.compute.llm_deferred import look_up_deferred, write_deferred
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
     ROUTES,
+    DeferredLLMRequest,
     LLMRequestPolicy,
     estimate_tokens,
 )
@@ -63,6 +75,9 @@ SUPPORTED_MODELS = frozenset(
     }
 )
 
+# Fallback backoff when a 429 carries no parseable Retry-After hint.
+_DEFAULT_BLOCK_SECONDS = 60.0
+
 
 class LLMBackendError(RuntimeError):
     """A safe, provider-agnostic adapter error (provider response bodies are not exposed)."""
@@ -70,10 +85,6 @@ class LLMBackendError(RuntimeError):
 
 class LLMStructuredOutputError(LLMBackendError):
     """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
-
-
-class LLMNotEligibleError(LLMBackendError):
-    """No configured route is eligible; the caller can retry on its next scheduled run."""
 
 
 @dataclass(frozen=True)
@@ -166,6 +177,32 @@ def _priced_actual(
     return actual_tokens, actual_tokens * (input_per_token + output_per_token)
 
 
+def _is_rate_limited(exc: BaseException) -> bool:
+    """Duck-typed 429 detection: LiteLLM wraps provider errors in OpenAI-shaped exception classes
+    that expose ``status_code``, but the exact class varies by provider/version, so this checks
+    the attribute rather than importing a specific type."""
+    return getattr(exc, "status_code", None) == 429
+
+
+def _retry_after_seconds(source: Any) -> float | None:
+    """Best-effort ``Retry-After`` extraction from a raised exception (checked via its wrapped
+    ``response`` attribute) or a real ``requests.Response`` (checked directly). Returns ``None``
+    on anything unparseable so the caller falls back to a fixed default rather than guessing."""
+    headers = getattr(source, "headers", None)
+    if headers is None:
+        response = getattr(source, "response", None)
+        headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+    value = headers.get("retry-after") if hasattr(headers, "get") else None
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     """Return caller-supplied messages or construct the task's default structured prompt."""
     supplied = job.inputs.get("messages")
@@ -205,6 +242,20 @@ class LiteLLMBackend(Backend):
         self._completion = completion
         self._session = http_session or requests.Session()
         self.storage = storage
+
+    def _available_transports(self) -> frozenset[str]:
+        """Which transports a policy-bearing call from *this instance* can reach right now.
+
+        Independent of ``self.config.mode``, which only governs the legacy static-model path
+        (``_run_without_policy``): ``direct`` needs nothing beyond a provider API key (already in
+        env), so it's always reachable; ``mistral-dispatch`` needs a configured dispatch Worker.
+        A backend built with both configured (as the deferred-request sweep's is) can select
+        freely across every route regardless of which transport backs it.
+        """
+        transports = {"direct"}
+        if self.config.dispatch_url:
+            transports.add("mistral-dispatch")
+        return frozenset(transports)
 
     def _completion_fn(self) -> Callable[..., Any]:
         """Resolve LiteLLM lazily so users of ASR-only paths need not install the extra."""
@@ -353,6 +404,25 @@ class LiteLLMBackend(Backend):
         self._validate_reconciled(output, structured_output)
         return JobResult(task=task, recipe_hash=recipe_hash, output=output, model=model)
 
+    def _deferred_handle(
+        self,
+        job: InferenceJob,
+        structured: tuple[str, ResponseModel] | None,
+        messages: list[dict[str, Any]],
+        policy: LLMRequestPolicy,
+    ) -> JobHandle:
+        """A portable "not done yet" handle -- either nothing is eligible right now, or a real
+        429 just forced a backoff. Identical shape either way; ``reconcile()`` re-runs the same
+        gates fresh regardless of which produced it."""
+        return JobHandle(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            backend=self.name,
+            ref=f"deferred:{job.recipe_hash}",
+            structured_output=(structured[0] if structured else None),
+            deferred_request=DeferredLLMRequest(messages=tuple(messages), policy=policy),
+        )
+
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
         if job.task not in LLM_TASKS:
@@ -365,23 +435,37 @@ class LiteLLMBackend(Backend):
             raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
         if self.storage is None or not getattr(self.storage, "cas_capable", False):
             raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
+        if not job.recipe_hash:
+            raise LLMBackendError("policy-bearing LLM jobs require a non-empty recipe_hash")
+
+        # Someone -- a prior call for this exact recipe_hash, or the deferred-request sweep --
+        # may already have an answer (or a still-pending record) waiting. Calling `run_inference`
+        # again with the same job is a complete, valid way to check: no need to hold or reconcile
+        # a handle explicitly.
+        existing = look_up_deferred(self.storage, job.recipe_hash)
+        if existing is not None:
+            return existing
 
         messages = _messages(job)
-        # Owner uniqueness depends on transport, not a single rule for both:
-        # - dispatch: the Worker dedupes on `idempotency-key: job.recipe_hash` (below), so a
-        #   retry before this reservation settles is the *same* underlying provider request --
-        #   owner must be that same deterministic recipe_hash, or it would double-reserve quota
-        #   for a call the Worker itself never repeats. That guarantee requires a real recipe_hash
-        #   (an empty one would let unrelated jobs collide under the same owner).
-        # - direct: there is no server-side dedup at all. A retry or a concurrent call genuinely
-        #   sends a second real request, so it must reserve its own, independent slot -- a unique
-        #   owner per invocation, same as before R13.
-        if self.config.mode == "dispatch":
-            if not job.recipe_hash:
-                raise LLMBackendError("dispatch-mode LLM jobs require a non-empty recipe_hash")
-            owner = job.recipe_hash
-        else:
-            owner = f"{job.recipe_hash}:{uuid.uuid4().hex}"
+        result = self._run_policy_job(job, policy, structured, messages)
+        # Cache the outcome either way: a completed result means a *later* call with the same
+        # recipe_hash never has to pay for a real provider call again; a deferred handle means
+        # the sweep (or a later call) can pick up exactly where this one left off.
+        write_deferred(self.storage, job.recipe_hash, result)
+        return result
+
+    def _run_policy_job(
+        self,
+        job: InferenceJob,
+        policy: LLMRequestPolicy,
+        structured: tuple[str, ResponseModel] | None,
+        messages: list[dict[str, Any]],
+    ) -> JobResult | JobHandle:
+        """The full select-reserve-attempt-settle flow for a policy-bearing job. Shared by
+        `run_inference` (first attempt) and `_reconcile_deferred` (retrying a deferred handle) --
+        a retry re-evaluates every gate fresh, exactly like a first attempt, rather than polling
+        something already submitted."""
+        available_transports = self._available_transports()
         # Instructor's `max_retries=1` (see `_run_structured_direct`) can send up to two real
         # provider requests for one logical dispatch. Reserve the worst case up front so RPM/RPD/
         # TPM can never be breached even when both attempts happen; settling afterwards to the
@@ -390,17 +474,19 @@ class LiteLLMBackend(Backend):
         per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
         selection = select_and_reserve(
             self.storage,
-            owner,
+            job.recipe_hash,
             policy,
             routes=ROUTES,
-            backend_mode=self.config.mode,
+            available_transports=available_transports,
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
             requests=max_provider_attempts,
         )
         if selection.model is None or selection.route is None:
-            raise LLMNotEligibleError(selection.reason)
+            return self._deferred_handle(job, structured, messages, policy)
         resolved_model = selection.model
         route = selection.route
+        owner = selection.owner
+        assert owner is not None  # always set when a route was selected
         attempted = False
 
         def _cleanup() -> None:
@@ -412,8 +498,14 @@ class LiteLLMBackend(Backend):
             else:
                 release_route_reservation(self.storage, owner, resolved_model, route=route)
 
+        def _rate_limited(retry_after: float | None) -> JobHandle:
+            until = datetime.now(UTC) + timedelta(seconds=retry_after or _DEFAULT_BLOCK_SECONDS)
+            block_route_until(self.storage, resolved_model, until, route=route)
+            settle_route_reservation(self.storage, owner, resolved_model, route=route)
+            return self._deferred_handle(job, structured, messages, policy)
+
         try:
-            if self.config.mode == "direct":
+            if route.transport == "direct":
                 if structured:
                     completion_fn = self._completion_fn()
 
@@ -445,8 +537,7 @@ class LiteLLMBackend(Backend):
                 headers = {"content-type": "application/json"}
                 if self.config.dispatch_auth_token:
                     headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
-                if job.recipe_hash:
-                    headers["idempotency-key"] = job.recipe_hash
+                headers["idempotency-key"] = job.recipe_hash
                 attempted = True
                 response = self._session.post(
                     urljoin(self.config.dispatch_url.rstrip("/") + "/", "v1/chat/completions"),
@@ -486,12 +577,16 @@ class LiteLLMBackend(Backend):
                         input_per_token=route.pricing.input_per_token,
                         output_per_token=route.pricing.output_per_token,
                     )
+                elif response.status_code == 429:
+                    return _rate_limited(_retry_after_seconds(response))
                 else:
                     raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
         except requests.RequestException as exc:
             _cleanup()
             raise LLMBackendError("LLM request failed") from exc
-        except BaseException:
+        except BaseException as exc:
+            if _is_rate_limited(exc):
+                return _rate_limited(_retry_after_seconds(exc))
             _cleanup()
             raise
 
@@ -509,6 +604,23 @@ class LiteLLMBackend(Backend):
             actual_cost=actual_cost,
         )
         return result
+
+    def _reconcile_deferred(self, handle: JobHandle) -> JobResult | None:
+        """Retry a deferred handle: re-run the same gates fresh, complete if eligible now, or
+        return another deferred handle (persisted back to the registry either way)."""
+        if self.storage is None or not getattr(self.storage, "cas_capable", False):
+            raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
+        deferred = handle.deferred_request
+        assert deferred is not None
+        messages = [dict(message) for message in deferred.messages]
+        inputs: dict[str, Any] = {"messages": messages}
+        if handle.structured_output:
+            inputs["structured_output"] = handle.structured_output
+        job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
+        structured = self._response_model(job)
+        result = self._run_policy_job(job, deferred.policy, structured, messages)
+        write_deferred(self.storage, handle.recipe_hash, result)
+        return None if isinstance(result, JobHandle) else result
 
     def _run_without_policy(
         self, job: InferenceJob, structured: tuple[str, ResponseModel] | None
@@ -574,9 +686,13 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM dispatch request failed") from exc
 
     def reconcile(self, handle: JobHandle) -> JobResult | None:
-        """Return a validated result when ready, or ``None`` while the Worker request is pending."""
+        """Return a validated result when ready, or ``None`` while still pending -- uniformly for
+        a deferred-direct handle (re-runs selection) or a genuine Worker dispatch (polls it)."""
         if handle.backend != self.name:
             raise ValueError(f"cannot reconcile handle for backend {handle.backend!r}")
+        if handle.deferred_request is not None:
+            return self._reconcile_deferred(handle)
+
         base = self.config.dispatch_url.rstrip("/") + "/"
         base_parts = urlsplit(base)
         if handle.ref.startswith("http"):
@@ -646,6 +762,7 @@ class LiteLLMBackend(Backend):
                     actual_tokens=actual_tokens,
                     actual_cost=actual_cost,
                 )
+                write_deferred(self.storage, handle.recipe_hash, result)
         return result
 
     poll = reconcile
@@ -654,7 +771,6 @@ class LiteLLMBackend(Backend):
 __all__ = [
     "LLMBackendConfig",
     "LLMBackendError",
-    "LLMNotEligibleError",
     "LLMStructuredOutputError",
     "LLM_TASKS",
     "LiteLLMBackend",
