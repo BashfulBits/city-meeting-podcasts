@@ -1354,8 +1354,8 @@ def _run_enrich_global_queue(
             # Decoupled from the audio pass: only episodes that now have hosted audio. Under a
             # per-episode transcribe plan (review/18 §3.3), also skip any uid this shard does not
             # own — its source is still loaded for render context, but a sibling shard handles it.
-            owned = lambda item: owned_uids is None or item[1].uid in owned_uids.get(  # noqa: E731
-                item[0], frozenset()
+            owned = lambda item: (  # noqa: E731
+                owned_uids is None or item[1].uid in owned_uids.get(item[0], frozenset())
             )
             tx = [item for item in candidates if item[1].hosted_audio_url and owned(item)]
             print(
