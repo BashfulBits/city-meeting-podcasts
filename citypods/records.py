@@ -1098,6 +1098,9 @@ def episode_to_record(ep: Episode) -> dict:
             "pipeline_version": ep.transcript_pipeline_version,
             "timeout_attempts": ep.transcript_timeout_attempts,
             "timeout_last_attempt": ep.transcript_timeout_last_attempt,
+            "media_error": ep.transcript_media_error,
+            "media_error_last_attempt": ep.transcript_media_error_last_attempt,
+            "media_error_audio_identity": ep.transcript_media_error_audio_identity,
         }
         # A word-JSON sidecar is independently useful to search/clips/diarization.  Do not drop
         # its pointer merely because a producer did not set the feed-facing transcript key.
@@ -1106,6 +1109,7 @@ def episode_to_record(ep: Episode) -> dict:
             or ep.transcript_words_key
             or ep.transcript_words_url
             or ep.transcript_timeout_attempts
+            or ep.transcript_media_error
         )
         else None,
         # Provider/city-supplied source transcript registry.  Separate from the active
@@ -1178,6 +1182,9 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_pipeline_version": t.get("pipeline_version"),
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
+        "transcript_media_error": t.get("media_error"),
+        "transcript_media_error_last_attempt": t.get("media_error_last_attempt"),
+        "transcript_media_error_audio_identity": t.get("media_error_audio_identity"),
     }
 
 
@@ -1610,6 +1617,13 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.transcript_timeout_attempts = transcript_fields.get("transcript_timeout_attempts", 0)
         ep.transcript_timeout_last_attempt = transcript_fields.get(
             "transcript_timeout_last_attempt"
+        )
+        ep.transcript_media_error = transcript_fields.get("transcript_media_error")
+        ep.transcript_media_error_last_attempt = transcript_fields.get(
+            "transcript_media_error_last_attempt"
+        )
+        ep.transcript_media_error_audio_identity = transcript_fields.get(
+            "transcript_media_error_audio_identity"
         )
         provider_transcript = rec.get("provider_transcript")
         ep.provider_transcript = (
