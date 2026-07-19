@@ -78,6 +78,19 @@ from citypods.timeline import Segment, SourceMedia, Timeline, edl_duration, time
 
 CONTENT_TYPE = "audio/mp4"
 
+
+class _Unset:
+    """Sentinel distinguishing "argument not passed" from an explicit ``None`` (CodeRabbit review,
+    2026-07-19). ``SourceCache.concat_timeout_seconds`` needs three distinct states — inherit the
+    parent ``timeout_seconds`` budget, an explicit positive cap, or explicitly uncapped — and a
+    plain ``None`` default can't tell "caller didn't pass this" apart from "caller passed None to
+    mean uncapped"."""
+
+    __slots__ = ()
+
+
+_UNSET = _Unset()
+
 # Truncation guard (issue #39). A throttled/rate-limited provider can return a short response that
 # ffmpeg ``-c:a copy`` copies and exits 0 on — hosting a ~5-second clip of a multi-hour meeting that
 # passes a naive "file size > 0" check (the H6b sharding regression: every sharded fetch "succeeded"
@@ -113,6 +126,24 @@ _STALL_TIMEOUT_US = 120_000_000  # ffmpeg aborts after 120s with zero I/O progre
 # site_config.yml; 0/blank disables the preflight guard entirely.
 DEFAULT_SOURCE_MEDIA_MAX_BYTES = 54_000_000_000
 _PROBE_TIMEOUT_S = 120.0  # ffprobe reads only stream headers; 2 min is generous
+
+# Bounds `_validate_segment_decodes` (audio-workflow review, 2026-07-19): a full-file decode of a
+# single already-local concat segment. Observed real segments (minutes to a couple hours of audio)
+# decode in well under a minute even when fully corrupt (``-xerror`` aborts on the first bad
+# packet); 5 min is generous headroom without waiting anywhere near the network-fetch budget.
+_SEGMENT_DECODE_VALIDATION_TIMEOUT_S = 300.0
+
+# Default wall-clock cap for ``_concat_local_sources`` (audio-workflow review, 2026-07-19),
+# independent of ``audio_encode_timeout_minutes``/``SourceCache.timeout_seconds`` (up to 6h,
+# calibrated for *network* fetches of a single huge meeting). The local concat step has no network
+# I/O — every input is already on disk with a known duration — so real production runs complete it
+# in seconds to a couple of minutes; even a legitimately enormous multi-segment meeting (~5h of
+# audio) measured well under 5 minutes single-process. 20 min is generous headroom while still
+# leaving real margin under the GitHub Actions hosted-runner hard ceiling (6h, unconfigurable) for
+# whatever else the shard is doing. A hang here now fails fast into the normal #120 backoff instead
+# of silently consuming the whole job budget.
+DEFAULT_AUDIO_CONCAT_TIMEOUT_SECONDS = 1200.0
+
 # How often the guard wakes to poll the child + sample memory. Kept short so reported ``seconds``
 # reflects the child's *real* runtime: at 5s a fast/throttled fetch that exits in 0.3s was logged as
 # "done seconds=5.0", which masked the H6b truncation regression (every fetch looked like ~5s). The
@@ -234,6 +265,21 @@ class RateLimitedMediaFetchError(ProviderError):
     """
 
     code = "rate_limited"
+
+
+class CorruptSourceSegmentError(ProviderError):
+    """A multi-source concat segment failed decode validation (audio-workflow review, 2026-07-19).
+
+    ``get_or_fetch`` fetches each segment with ``-c:a copy`` — a stream copy that never decodes a
+    frame, so a malformed/corrupted upstream bitstream sails through invisibly. The concat
+    filtergraph (:func:`_concat_local_sources`) is the first thing that actually decodes every
+    segment, and a sufficiently corrupt input has been observed to stall it for hours (real
+    incident: a 2009 Austin archive segment with a mangled AAC stream wedged an audio shard for
+    its full ~6h job budget on every run until GitHub's hard timeout force-killed it). Validating
+    each segment right after download turns that into a fast, diagnosable backoff instead.
+    """
+
+    code = "corrupt-segment"
 
 
 def record_materialize_failure(
@@ -513,6 +559,7 @@ def _run_ffmpeg_guarded(
                 popen=popen,
                 child_rss=child_rss,
                 classify_rate_limit=False,
+                stop=stop,
             )
             _record_direct_fetch_outcome(transport_telemetry, rate_limit_urls, outcome="success")
             return result
@@ -548,6 +595,7 @@ def _run_ffmpeg_guarded(
                     child_rss=child_rss,
                     rate_limit_urls=rate_limit_urls,
                     transport_telemetry=transport_telemetry,
+                    stop=stop,
                 )
                 worker_ok = True
             except subprocess.TimeoutExpired as fallback_exc:
@@ -586,10 +634,22 @@ def _run_ffmpeg_popen_monitored(
     rate_limit_urls: Sequence[str] = (),
     transport_telemetry: ProviderTransportTelemetry | None = None,
     classify_rate_limit: bool = True,
+    stop: Callable[[], bool] | None = None,
 ) -> tuple[bytes, bytes]:
     """Popen + poll/sample loop for :func:`_run_ffmpeg_guarded` (memory-floor path). The caller
     holds the per-host rate-limit slot — and the distributed provider lease — for the whole
-    monitored run."""
+    monitored run.
+
+    ``stop``, if given, is polled on the same cadence as the timeout/memory checks (audio-workflow
+    review, 2026-07-19): previously this loop only watched its own ``timeout`` (up to 6h) and the
+    memory floor, so a thread already inside a monitored ffmpeg call was blind to the run's
+    wall-clock budget expiring — while every *not-yet-started* fetch deferred cleanly via
+    ``StopRequested``, an in-flight one kept polling toward its own far-longer deadline instead of
+    yielding with everything else. Raises :class:`~citypods.http.StopRequested` (terminating the
+    child first) once ``stop()`` returns true, so this episode is retried fresh next run instead of
+    either burning the rest of the job's budget or landing in the backoff path meant for genuine
+    encode failures.
+    """
     started = time.monotonic()
     proc = popen(  # noqa: S603 - command is assembled by this module from validated URLs/paths.
         cmd,
@@ -647,6 +707,21 @@ def _run_ffmpeg_popen_monitored(
             return stdout, stderr
 
         elapsed = time.monotonic() - started
+        if stop is not None and stop():
+            proc.terminate()
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+            _log_ffmpeg_event(
+                log,
+                f"[enrich] ffmpeg {phase} stopped pid={proc.pid} seconds={elapsed:.1f} "
+                f"peak_rss={_format_optional_bytes(peak_child_rss)} "
+                f"min_mem_avail={_format_optional_bytes(min_mem_available)} samples={samples}",
+            )
+            raise StopRequested(f"ffmpeg {phase} stopped: run wall-clock budget expired")
+
         if timeout is not None and elapsed >= timeout:
             proc.terminate()
             try:
@@ -817,6 +892,44 @@ def _preflight_remote_source(url: str, max_media_bytes: int | None) -> None:
         )
 
 
+def _validate_segment_decodes(
+    path: Path,
+    ffmpeg_binary: str = "ffmpeg",
+    memory_floor_bytes: int | None = None,
+    stop: Callable[[], bool] | None = None,
+) -> bool:
+    """Decode *path*'s audio stream end-to-end to catch corruption a stream-copy fetch can't see.
+
+    ``get_or_fetch``/``_download_audio`` fetch with ``-c:a copy`` (no decode), so a malformed
+    upstream bitstream reaches the local cache undetected. ``-xerror`` makes ffmpeg abort on the
+    very first decode error instead of grinding through the whole (possibly hours-long) file, so a
+    bad segment fails in about as long as it takes to open it. Local-file-only (no ``-rw_timeout``
+    needed); bounded by :data:`_SEGMENT_DECODE_VALIDATION_TIMEOUT_S` as a backstop against a
+    genuinely stuck decoder rather than a merely corrupt one.
+
+    Runs through :func:`_run_ffmpeg_guarded` (CodeRabbit review, 2026-07-19) rather than a bare
+    ``subprocess.run`` so a wedged decoder gets the same memory-floor termination and run-level
+    ``stop()`` preemption as every other ffmpeg call in this module, instead of only being bounded
+    by its own fixed timeout. A :class:`~citypods.http.StopRequested` raised by ``stop()`` firing
+    propagates (the run ran out of time, not a corrupt segment) rather than being read as a
+    validation failure.
+    """
+    cmd = [ffmpeg_binary, "-v", "error", "-xerror", "-i", str(path), "-vn", "-f", "null", "-"]
+    try:
+        _run_ffmpeg_guarded(
+            cmd,
+            phase="segment-validate",
+            timeout=_SEGMENT_DECODE_VALIDATION_TIMEOUT_S,
+            memory_floor_bytes=memory_floor_bytes,
+            stop=stop,
+        )
+    except StopRequested:
+        raise
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
+        return False
+    return True
+
+
 def _concat_local_sources(
     paths: list[Path],
     durations: list[float],
@@ -915,6 +1028,7 @@ class SourceCache:
         transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
         max_media_bytes: int | None = None,
+        concat_timeout_seconds: float | None | _Unset = _UNSET,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
         self._paths: dict[str, Path] = {}
@@ -927,6 +1041,20 @@ class SourceCache:
         # Media-specific size ceiling (issue #497), separate from any HTTP response cap — see
         # ``config.source_media_max_bytes``. None/0 disables the preflight guard.
         self.max_media_bytes = max_media_bytes
+        # Bounds the *local* concat decode+re-encode (``_concat_local_sources``) separately from
+        # ``timeout_seconds`` (sized for a network fetch of one huge meeting, up to 6h). The local
+        # concat has no network I/O and real runs finish in seconds-to-minutes, so it gets its own
+        # much shorter cap (audio-workflow review, 2026-07-19) rather than inheriting a budget that
+        # can silently outlast the whole job. Three distinct states (CodeRabbit review, 2026-07-19):
+        # not passed at all -> inherit ``timeout_seconds`` (a caller unaware of this parameter keeps
+        # the old permissive behavior); explicit ``None`` -> genuinely uncapped (mirrors
+        # ``audio_concat_timeout_minutes: 0`` in site_config.yml — "0 = no cap" must not silently
+        # become "= timeout_seconds"); explicit float -> that cap.
+        self.concat_timeout_seconds = (
+            timeout_seconds
+            if isinstance(concat_timeout_seconds, _Unset)
+            else concat_timeout_seconds
+        )
         # Shared run-budget predicate (set once for the whole run); lets a caller queued behind
         # another thread's fetch of the same uid yield once the budget expires instead of waiting
         # out that fetch's full timeout.
@@ -1011,8 +1139,14 @@ class SourceCache:
         between segments — instead of holding one slot for an entire multi-input
         ``filter_complex`` subprocess (review/11 "Per-segment source caching for multi-source
         concat episodes"). Returns ``None`` (caller falls back to the live multi-input render)
-        if any segment fails to download, a segment's duration is unknown, or the concat itself
-        fails.
+        if any segment fails to download or a segment's duration is unknown.
+
+        Each downloaded segment is then decode-validated (audio-workflow review, 2026-07-19)
+        before being handed to the concat filtergraph: raises :class:`CorruptSourceSegmentError`
+        (a fast, diagnosable failure landing in the normal #120 backoff) rather than letting a
+        corrupted segment reach ``_concat_local_sources``, where it can stall for hours. A concat
+        failure for any other reason still returns ``None`` — falling back to the live multi-input
+        render is safe there since nothing about the *inputs* is known to be broken.
         """
         with self._guard:
             lock = self._locks[uid]
@@ -1034,6 +1168,13 @@ class SourceCache:
                 local = self.get_or_fetch(f"{uid}:{src.id}", src.ref)
                 if local is None:
                     return None
+                if not _validate_segment_decodes(
+                    local, self.ffmpeg_binary, self.memory_floor_bytes, self._stop
+                ):
+                    raise CorruptSourceSegmentError(
+                        f"segment {src.id} ({_redact_url(src.ref)}) failed decode "
+                        "validation — malformed/corrupted audio stream"
+                    )
                 local_paths.append(local)
             dest = Path(self._tmpdir.name) / f"{hashlib.md5(uid.encode()).hexdigest()}-concat.mka"
             durations = [src.duration for src in sources]
@@ -1042,7 +1183,7 @@ class SourceCache:
                 durations,  # type: ignore[arg-type]
                 dest,
                 self.ffmpeg_binary,
-                self.timeout_seconds,
+                self.concat_timeout_seconds,
                 self.memory_floor_bytes,
                 stop=self._stop,
             ):

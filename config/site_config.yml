@@ -169,14 +169,38 @@ defaults:
   # preserved; with no prior timeline the episode is stamped identity (untrimmed) instead.
   silence_min_served_seconds: 5.0
   silence_min_served_fraction: 0.02
-  # Hard cap per probe+encode; a stalled source can't pin a worker (which stop() can't preempt)
-  # past this. 0 = no cap. Recalibrated 2026-07-02 (issue #497) from 45min: a very conservative
-  # 12h longest-meeting ceiling (well above the asr_backstop_minutes=350min/5h50m the ASR pipeline
-  # already assumes, and a real production Audio run log floor of ~5.2h) at a conservative 20 Mbps
-  # floor throughput for the new 54 GB source_media_max_bytes cap below: 54e9*8/20e6 = 21,600s ≈
-  # 360min. The independent 120s stall detector (-rw_timeout) is the first line of defense for a
-  # truly hung connection; this is the backstop for a degraded-but-still-progressing one.
+  # Hard cap per probe+encode of a *network* fetch. 0 = no cap. Recalibrated 2026-07-02 (issue #497)
+  # from 45min: a very conservative 12h longest-meeting ceiling (well above the
+  # asr_backstop_minutes=350min/5h50m the ASR pipeline already assumes, and a real production Audio
+  # run log floor of ~5.2h) at a conservative 20 Mbps floor throughput for the new 54 GB
+  # source_media_max_bytes cap below: 54e9*8/20e6 = 21,600s ≈ 360min. The independent 120s stall
+  # detector (-rw_timeout) is the first line of defense for a truly hung connection; this is the
+  # backstop for a degraded-but-still-progressing one. Since the audio-workflow review (2026-07-19),
+  # a run-in-progress ffmpeg child also gets terminated as soon as the run's wall-clock stop()
+  # budget expires — it no longer has to poll out this whole timeout once the run is out of time.
+  #
+  # NOTE: GitHub-hosted runners hard-cap total job execution at 360 minutes, unconfigurable upward
+  # (self-hosted runners have no such limit). Since this value already equals that ceiling, a
+  # network fetch that genuinely needs the *entire* budget has zero margin against setup time and
+  # whatever else the shard already processed this run — GitHub's kill can still win the race and
+  # produce an undiagnosable "cancelled" job instead of a clean, backed-off encode error. Lowering
+  # this to reclaim margin is a deliberate product tradeoff against real very-long meetings and is
+  # not changed here; see audio_concat_timeout_minutes below for the one piece of this that *was*
+  # safe to tighten unilaterally (a local, non-network step with a well-understood real-world cost).
   audio_encode_timeout_minutes: 360
+  # Hard cap on the *local* multi-segment concat decode+re-encode (audio-workflow review,
+  # 2026-07-19) — independent of audio_encode_timeout_minutes above, which is sized for a network
+  # fetch of a single huge meeting. This step has no network I/O: every segment is already
+  # downloaded with a known duration, so real production concats (including multi-hour meetings)
+  # complete in seconds to a couple of minutes. Root cause of the incident that added this: one
+  # corrupted upstream Swagit archive segment (malformed AAC) stalled ffmpeg's decoder inside this
+  # step for hours on every run, silently consuming an entire audio shard's job budget until
+  # GitHub's hard 6h ceiling force-killed it — the 360min network-fetch timeout above could never
+  # fire first because it starts its clock after setup and every earlier episode in the run. Each
+  # segment is now also decode-validated before reaching this step (citypods/media.py
+  # CorruptSourceSegmentError), so this cap is a backstop for a still-unknown stall cause, not the
+  # primary guard. 20min is generous headroom over the observed real-world cost. 0 = no cap.
+  audio_concat_timeout_minutes: 20
   # Media-specific size ceiling for direct ffmpeg source fetches (issue #497): ffmpeg reads media
   # URLs directly via libavformat, bypassing every HTTP-layer byte cap (MAX_RESPONSE_BYTES is 64
   # MiB, sized for feed/JSON/HTML, not hours of audio/video). Before ffmpeg starts, a HEAD/ranged-

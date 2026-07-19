@@ -41,6 +41,7 @@ from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.h16_identity import H16IdentityTracker
 from citypods.http import HOST_LIMITER
 from citypods.media import (
+    DEFAULT_AUDIO_CONCAT_TIMEOUT_SECONDS,
     DEFAULT_SOURCE_MEDIA_MAX_BYTES,
     CommandFfmpeg,
     FfmpegRunner,
@@ -1675,6 +1676,16 @@ def _build_impl(
     # first line of defense for a truly hung connection; this is the belt-and-suspenders backstop
     # for a degraded-but-still-progressing one.
     encode_timeout_min = float(defaults.get("audio_encode_timeout_minutes", 360))
+    # Bounds the *local* multi-segment concat decode+re-encode separately from the network-fetch
+    # timeout above (audio-workflow review, 2026-07-19): that step has no network I/O — every input
+    # is already downloaded with a known duration — so real runs finish in seconds to a couple of
+    # minutes even for a multi-hour meeting. Inheriting the full network-fetch budget let one
+    # pathological concat (a corrupted upstream segment stalling ffmpeg's decoder) silently consume
+    # an entire shard's job budget every run before GitHub's hard 6h ceiling force-killed it. See
+    # ``DEFAULT_AUDIO_CONCAT_TIMEOUT_SECONDS`` in citypods/media.py for the calibration.
+    concat_timeout_min = float(
+        defaults.get("audio_concat_timeout_minutes", DEFAULT_AUDIO_CONCAT_TIMEOUT_SECONDS / 60)
+    )
     # Media-specific size ceiling (issue #497) for direct ffmpeg source fetches — separate from any
     # HTTP response cap. 0/blank disables the preflight guard.
     media_max_bytes_raw = defaults.get("source_media_max_bytes", DEFAULT_SOURCE_MEDIA_MAX_BYTES)
@@ -1730,6 +1741,7 @@ def _build_impl(
             transport_telemetry=_transport_telemetry,
             stop=stop,
             max_media_bytes=getattr(ffmpeg, "max_media_bytes", media_max_bytes),
+            concat_timeout_seconds=(concat_timeout_min * 60) if concat_timeout_min > 0 else None,
         )
         if not dry_run
         else None

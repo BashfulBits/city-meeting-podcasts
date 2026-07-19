@@ -135,7 +135,14 @@ The audio pass uses a rolling submission window rather than eager whole-list exe
 completed episode releases its temporary source cache before the next queued item is admitted. For
 multi-source episodes, segment durations and the render timeline are captured before the individual
 segment files are deleted after successful local concatenation, so downstream stages depend only on the
-combined render file and persisted timeline metadata.
+combined render file and persisted timeline metadata. Each segment is fetched with a stream copy
+(`-c:a copy`, no decode) and then decode-validated (`ffmpeg -xerror`) before reaching the concat
+filtergraph (audio-workflow review, 2026-07-19) — a malformed upstream bitstream previously passed the
+copy fetch undetected and stalled the filtergraph's decoder for hours on every run; a segment that fails
+validation now raises `CorruptSourceSegmentError` into the normal #120 backoff instead. The local concat
+step also has its own short `audio_concat_timeout_minutes` cap (default 20min), independent of
+`audio_encode_timeout_minutes` (up to 6h, sized for a *network* fetch) — real concats measure seconds to
+a couple of minutes even for multi-hour meetings.
 Audio planning remains source-atomic for record safety, but source keys that reference the same
 configured city entity are assigned to one shard. Within that process, `AudioArtifactCache` coalesces
 identical `(provider, stable uid, audio recipe)` candidates: one alias encodes or reuses the artifact
@@ -380,9 +387,14 @@ Hard-won facts that bite anyone adding/debugging providers:
   before the wait acquires its slot/lease/lock — so a worker idle past the run's wall-clock budget
   yields immediately instead of blocking out a full queue/lease cycle. `CommandFfmpeg` and
   `SourceCache` bind `stop` once at construction; `_encode_one`, `SwagitConcatPlanner`, and
-  `SilencePlanner` treat `StopRequested` as a non-failure budget defer (retried next run). The
-  ffmpeg subprocess call itself remains out of scope — `stop()` can't preempt a thread parked in
-  `subprocess.run`, only `audio_encode_timeout_minutes` bounds that.
+  `SilencePlanner` treat `StopRequested` as a non-failure budget defer (retried next run). An
+  already-running ffmpeg child on the memory-floor/monitored path (`_run_ffmpeg_popen_monitored`,
+  the path production always uses since `audio_ffmpeg_memory_floor_mb` is configured) now also
+  honors `stop()` on the same poll cadence as its own timeout and memory-floor checks (audio-
+  workflow review, 2026-07-19) — terminating the child and raising `StopRequested` rather than
+  polling out its full `timeout` regardless of the run budget. The non-memory-floor `subprocess.run`
+  shortcut (only reached when the memory floor is disabled, effectively tests-only in production)
+  remains genuinely unpreemptible; only its own `timeout=` bounds that path.
 - **Granicus transport telemetry is recorded per tenant (no rate-limit circuit breaker).** Native
   archive paths identify their tenant (`archive-video.granicus.com/<tenant>/…`); tenant subdomains and
   the Granicus-owned Swagit media host receive stable tenant keys under the shared `granicus.com`
