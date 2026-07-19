@@ -102,6 +102,11 @@ Phase R (Research-Tool Surface)._
   elapsed time for per-item diagnosis. Existing records and successful artifacts are unchanged;
   the new quarantine fields are additive and do not invalidate stored transcripts.
 
+- **Withheld recordings no longer enter the ASR queue.** The shared transcription-work planner now
+  excludes `media_availability`-withheld episodes, matching `AudioStage`'s gate. This prevents
+  legacy hosted artifacts for confirmed empty, missing, or invalid recordings from being sent to
+  Whisper; it changes queue admission only and does not invalidate existing transcripts.
+
 - **Provider transport retry hardening.** The shared HTTP retry engine now explicitly retries
   connect and response-read failures in addition to its existing 403/429/5xx policy. An exhausted
   requests transport timeout is recorded as deferred work so a temporary endpoint outage does not
