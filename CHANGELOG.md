@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Local-source concat now honors `audio_ffmpeg_threads`.** `_concat_local_sources` (the
+  `filter_complex` decode/concat of already-downloaded multi-source segments, driven by
+  `SourceCache.get_or_fetch_concat`) built its ffmpeg command with no thread-pinning flags, unlike
+  every other ffmpeg invocation in `media.py`, which goes through `CommandFfmpeg`'s
+  `-threads`/`-filter_threads`/`-filter_complex_threads` helpers. It now takes the same thread pin
+  (wired from `run.py`'s existing `ffmpeg_threads`), keeping it inside the documented
+  one-core-per-lane discipline instead of falling back to ffmpeg's auto-detected thread count on a
+  shared runner. No artifact-identity or output change.
+
 - **Audio concat stall fixes (root-caused via the phase diagnostics below).** Found and fixed the
   cause of a recurring `audio` shard hang: a real 2009 Austin archive segment with a malformed AAC
   stream sailed through the stream-copy segment fetch undetected and then stalled ffmpeg's decoder

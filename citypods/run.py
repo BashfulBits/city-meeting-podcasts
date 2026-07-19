@@ -1741,6 +1741,7 @@ def _build_impl(
             transport_telemetry=_transport_telemetry,
             stop=stop,
             max_media_bytes=getattr(ffmpeg, "max_media_bytes", media_max_bytes),
+            threads=getattr(ffmpeg, "threads", ffmpeg_threads),
             concat_timeout_seconds=(concat_timeout_min * 60) if concat_timeout_min > 0 else None,
         )
         if not dry_run

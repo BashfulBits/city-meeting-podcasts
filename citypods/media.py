@@ -892,6 +892,19 @@ def _preflight_remote_source(url: str, max_media_bytes: int | None) -> None:
         )
 
 
+def _ffmpeg_thread_args(codec_args: list[str], threads: int | None) -> list[str]:
+    if threads is None or "aac" not in codec_args:
+        return []
+    return ["-threads", str(threads)]
+
+
+def _ffmpeg_filter_thread_args(threads: int | None) -> list[str]:
+    if threads is None:
+        return []
+    n = str(threads)
+    return ["-filter_threads", n, "-filter_complex_threads", n]
+
+
 def _validate_segment_decodes(
     path: Path,
     ffmpeg_binary: str = "ffmpeg",
@@ -938,6 +951,7 @@ def _concat_local_sources(
     timeout: float | None = None,
     memory_floor_bytes: int | None = None,
     stop: Callable[[], bool] | None = None,
+    threads: int | None = None,
 ) -> bool:
     """Decode and concatenate already-downloaded local segment files into one local file.
 
@@ -966,19 +980,21 @@ def _concat_local_sources(
     inputs: list[str] = []
     for p in paths:
         inputs += ["-i", str(p)]
+    codec_args = ["-c:a", "flac"]
     cmd = [
         ffmpeg_binary,
         "-y",
         "-loglevel",
         "error",
         *inputs,
+        *_ffmpeg_filter_thread_args(threads),
         "-filter_complex",
         filter_str,
         "-map",
         out_label,
         "-vn",
-        "-c:a",
-        "flac",
+        *codec_args,
+        *_ffmpeg_thread_args(codec_args, threads),
         "-f",
         "matroska",
         str(dest),
@@ -1028,6 +1044,7 @@ class SourceCache:
         transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
         max_media_bytes: int | None = None,
+        threads: int | None = None,
         concat_timeout_seconds: float | None | _Unset = _UNSET,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
@@ -1038,6 +1055,11 @@ class SourceCache:
         self.timeout_seconds = timeout_seconds
         self.memory_floor_bytes = memory_floor_bytes
         self.transport_telemetry = transport_telemetry
+        # Same per-encode thread pin as CommandFfmpeg (audio_ffmpeg_threads); keeps the local
+        # concat decode inside the same one-core-per-lane resource discipline as the sibling
+        # audio-encode/ASR lanes on a shared runner instead of falling back to ffmpeg's
+        # auto-detected thread count.
+        self.threads = threads
         # Media-specific size ceiling (issue #497), separate from any HTTP response cap — see
         # ``config.source_media_max_bytes``. None/0 disables the preflight guard.
         self.max_media_bytes = max_media_bytes
@@ -1186,6 +1208,7 @@ class SourceCache:
                 self.concat_timeout_seconds,
                 self.memory_floor_bytes,
                 stop=self._stop,
+                threads=self.threads,
             ):
                 # Chapter offsets and source lengths are already captured in ``durations``
                 # and the returned render timeline.  The downstream audio stage receives only
@@ -1811,15 +1834,10 @@ class CommandFfmpeg:
             )
 
     def _thread_args(self, codec_args: list[str]) -> list[str]:
-        if self.threads is None or "aac" not in codec_args:
-            return []
-        return ["-threads", str(self.threads)]
+        return _ffmpeg_thread_args(codec_args, self.threads)
 
     def _filter_thread_args(self) -> list[str]:
-        if self.threads is None:
-            return []
-        n = str(self.threads)
-        return ["-filter_threads", n, "-filter_complex_threads", n]
+        return _ffmpeg_filter_thread_args(self.threads)
 
     # ------------------------------------------------------------------
     # Filter path: atrim + concat + optional loudnorm
