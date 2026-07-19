@@ -53,6 +53,14 @@ jobs:
   audio:
     needs: wait-for-contracts
     runs-on: ubuntu-latest
+    # Explicit for documentation (audio-workflow review, 2026-07-19): GitHub-hosted runners already
+    # hard-cap job execution at 360 minutes with or without this line, unconfigurable upward — a
+    # stalled shard was previously killed by that silent platform default rather than any timeout
+    # this repo controls, which is exactly why the internal audio_encode_timeout_minutes budget
+    # (config/site_config.yml, also 360min) could never fire first and produce a clean, diagnosable
+    # failure instead of a bare "cancelled" job. See audio_concat_timeout_minutes in that file for
+    # the one internal timeout actually tightened as a result.
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:

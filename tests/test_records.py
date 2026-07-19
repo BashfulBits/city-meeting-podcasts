@@ -871,6 +871,16 @@ def test_pending_transcribe_items_matches_aggregate_and_excludes_non_pending(tmp
     no_audio = _ep("noaud")
     no_audio.uid = "u-noaud"  # not transcribable this run → never pending
 
+    from citypods.availability import MediaAvailability
+
+    withheld = _ep("empty")
+    withheld.uid = "u-empty"
+    withheld.audio_key = "audio/src/u-empty.m4a"
+    withheld.audio_spec_hash = "spec"
+    withheld.hosted_audio_url = "https://cdn/u-empty.m4a"
+    withheld.audio_duration_served = 2 * 3600.0
+    withheld.media_availability = MediaAvailability(state="confirmed_empty")
+
     save_records(
         tmp_path,
         "src",
@@ -879,13 +889,14 @@ def test_pending_transcribe_items_matches_aggregate_and_excludes_non_pending(tmp
             "u-pend": episode_to_record(pending),
             "u-big": episode_to_record(oversized),
             "u-noaud": episode_to_record(no_audio),
+            "u-empty": episode_to_record(withheld),
         },
     )
     kwargs = dict(asr_enabled=True, asr_pipeline_version="3", local_max_duration_hours=4)
     items = pending_transcribe_items(tmp_path, "src", **kwargs)
     estimate = estimate_transcribe_shard_work(tmp_path, "src", **kwargs)
 
-    assert {uid for uid, _ in items} == {"u-pend", "u-big"}  # synced + no-audio excluded
+    assert {uid for uid, _ in items} == {"u-pend", "u-big"}  # synced, no-audio, withheld excluded
     assert sum(w for _, w in items) == estimate.shard_weight()
     weights = dict(items)
     assert weights["u-pend"] == 3600.0  # local: recording-duration proxy
