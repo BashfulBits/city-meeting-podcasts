@@ -3256,6 +3256,35 @@ class TestSourceCacheGetOrFetchConcat:
             assert cache.get_or_fetch_concat("ep1", sources) is not None
         assert seen_timeouts == [2700]
 
+    @pytest.mark.parametrize("configured_minutes", [0, -1])
+    def test_explicit_concat_timeout_none_disables_the_cap(self, monkeypatch, configured_minutes):
+        """CodeRabbit review (2026-07-19): ``audio_concat_timeout_minutes <= 0`` (site_config.yml's
+        documented "0 = no cap") maps to ``concat_timeout_seconds=None`` passed *explicitly* —
+        this must disable the cap, not silently fall back to ``timeout_seconds`` the way "caller
+        never passed this parameter at all" does. Mirrors ``citypods/run.py``'s
+        ``concat_timeout_seconds=(concat_timeout_min * 60) if concat_timeout_min > 0 else None``
+        for a zero/negative configured value."""
+        seen_timeouts: list[float | None] = []
+
+        def _fake_download(url, dest, *_a, **_k):
+            dest.write_bytes(b"stub")
+            return True
+
+        def _fake_concat(_paths, _durations, dest, _ffmpeg_binary=None, timeout=None, *_a, **_k):
+            seen_timeouts.append(timeout)
+            dest.write_bytes(b"combined")
+            return True
+
+        monkeypatch.setattr("citypods.media._download_audio", _fake_download)
+        monkeypatch.setattr("citypods.media._concat_local_sources", _fake_concat)
+        monkeypatch.setattr("citypods.media._validate_segment_decodes", lambda *a, **k: True)
+
+        configured_seconds = (configured_minutes * 60) if configured_minutes > 0 else None
+        sources = [_source("s0", "https://example.com/seg0.mp4", 10.0)]
+        with SourceCache(timeout_seconds=21600, concat_timeout_seconds=configured_seconds) as cache:
+            assert cache.get_or_fetch_concat("ep1", sources) is not None
+        assert seen_timeouts == [None]
+
     def test_raises_corrupt_source_segment_error_for_a_bad_segment(self, monkeypatch):
         """The real incident this guards against (audio-workflow review, 2026-07-19): a
         stream-copy fetch (``-c:a copy``) never decodes a frame, so a malformed upstream
@@ -3377,6 +3406,79 @@ class TestConcatLocalSourcesRealFfmpeg:
             timeout=30,
         )
         assert float(probe.stdout.strip()) == pytest.approx(sum(durations), abs=0.05)
+
+
+class TestValidateSegmentDecodesUsesTheSharedGuard:
+    """CodeRabbit review (2026-07-19): ``_validate_segment_decodes`` must run through
+    ``_run_ffmpeg_guarded`` — not a bare ``subprocess.run`` — so a wedged decoder gets the same
+    memory-floor termination and run-level ``stop()`` preemption as every other ffmpeg call in the
+    concat path, rather than only being bounded by its own fixed timeout."""
+
+    def test_passes_memory_floor_and_stop_through_to_the_guarded_run(self, monkeypatch, tmp_path):
+        import citypods.media as media
+
+        calls: list[dict] = []
+
+        def _fake_guarded(cmd, **kwargs):
+            calls.append(kwargs)
+            return b"", b""
+
+        monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fake_guarded)
+        stop = lambda: False  # noqa: E731
+
+        assert (
+            media._validate_segment_decodes(
+                tmp_path / "seg.mka", "ffmpeg", memory_floor_bytes=1536, stop=stop
+            )
+            is True
+        )
+        assert len(calls) == 1
+        assert calls[0]["phase"] == "segment-validate"
+        assert calls[0]["memory_floor_bytes"] == 1536
+        assert calls[0]["stop"] is stop
+        assert calls[0]["timeout"] == media._SEGMENT_DECODE_VALIDATION_TIMEOUT_S
+
+    def test_propagates_stop_requested_rather_than_reporting_corrupt(self, monkeypatch, tmp_path):
+        """A ``StopRequested`` mid-validation means the run ran out of time, not that the segment
+        is corrupt — it must reach the caller as a graceful defer (``get_or_fetch_concat``'s
+        ``except``-free propagation into ``materialize_audio``'s ``except StopRequested``), never
+        get read as ``False`` and turned into a ``CorruptSourceSegmentError`` backoff."""
+        import citypods.media as media
+
+        def _fake_guarded(cmd, **kwargs):
+            raise StopRequested("run wall-clock budget expired")
+
+        monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fake_guarded)
+
+        with pytest.raises(StopRequested):
+            media._validate_segment_decodes(tmp_path / "seg.mka", "ffmpeg")
+
+    def test_get_or_fetch_concat_threads_memory_floor_and_stop_into_validation(self, monkeypatch):
+        """End-to-end through ``SourceCache.get_or_fetch_concat``: the cache's own
+        ``memory_floor_bytes``/``stop`` reach ``_validate_segment_decodes``, not just defaults."""
+        seen: list[tuple] = []
+
+        def _fake_download(url, dest, *_a, **_k):
+            dest.write_bytes(b"stub")
+            return True
+
+        def _fake_validate(path, ffmpeg_binary, memory_floor_bytes, stop):
+            seen.append((memory_floor_bytes, stop))
+            return True
+
+        def _fake_concat(_paths, _durations, dest, *_a, **_k):
+            dest.write_bytes(b"combined")
+            return True
+
+        monkeypatch.setattr("citypods.media._download_audio", _fake_download)
+        monkeypatch.setattr("citypods.media._validate_segment_decodes", _fake_validate)
+        monkeypatch.setattr("citypods.media._concat_local_sources", _fake_concat)
+
+        stop = lambda: False  # noqa: E731
+        sources = [_source("s0", "https://example.com/seg0.mp4", 10.0)]
+        with SourceCache(memory_floor_bytes=1536, stop=stop) as cache:
+            assert cache.get_or_fetch_concat("ep1", sources) is not None
+        assert seen == [(1536, stop)]
 
 
 class TestValidateSegmentDecodesRealFfmpeg:

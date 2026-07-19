@@ -78,6 +78,19 @@ from citypods.timeline import Segment, SourceMedia, Timeline, edl_duration, time
 
 CONTENT_TYPE = "audio/mp4"
 
+
+class _Unset:
+    """Sentinel distinguishing "argument not passed" from an explicit ``None`` (CodeRabbit review,
+    2026-07-19). ``SourceCache.concat_timeout_seconds`` needs three distinct states — inherit the
+    parent ``timeout_seconds`` budget, an explicit positive cap, or explicitly uncapped — and a
+    plain ``None`` default can't tell "caller didn't pass this" apart from "caller passed None to
+    mean uncapped"."""
+
+    __slots__ = ()
+
+
+_UNSET = _Unset()
+
 # Truncation guard (issue #39). A throttled/rate-limited provider can return a short response that
 # ffmpeg ``-c:a copy`` copies and exits 0 on — hosting a ~5-second clip of a multi-hour meeting that
 # passes a naive "file size > 0" check (the H6b sharding regression: every sharded fetch "succeeded"
@@ -879,7 +892,12 @@ def _preflight_remote_source(url: str, max_media_bytes: int | None) -> None:
         )
 
 
-def _validate_segment_decodes(path: Path, ffmpeg_binary: str = "ffmpeg") -> bool:
+def _validate_segment_decodes(
+    path: Path,
+    ffmpeg_binary: str = "ffmpeg",
+    memory_floor_bytes: int | None = None,
+    stop: Callable[[], bool] | None = None,
+) -> bool:
     """Decode *path*'s audio stream end-to-end to catch corruption a stream-copy fetch can't see.
 
     ``get_or_fetch``/``_download_audio`` fetch with ``-c:a copy`` (no decode), so a malformed
@@ -888,15 +906,25 @@ def _validate_segment_decodes(path: Path, ffmpeg_binary: str = "ffmpeg") -> bool
     bad segment fails in about as long as it takes to open it. Local-file-only (no ``-rw_timeout``
     needed); bounded by :data:`_SEGMENT_DECODE_VALIDATION_TIMEOUT_S` as a backstop against a
     genuinely stuck decoder rather than a merely corrupt one.
+
+    Runs through :func:`_run_ffmpeg_guarded` (CodeRabbit review, 2026-07-19) rather than a bare
+    ``subprocess.run`` so a wedged decoder gets the same memory-floor termination and run-level
+    ``stop()`` preemption as every other ffmpeg call in this module, instead of only being bounded
+    by its own fixed timeout. A :class:`~citypods.http.StopRequested` raised by ``stop()`` firing
+    propagates (the run ran out of time, not a corrupt segment) rather than being read as a
+    validation failure.
     """
     cmd = [ffmpeg_binary, "-v", "error", "-xerror", "-i", str(path), "-vn", "-f", "null", "-"]
     try:
-        subprocess.run(
+        _run_ffmpeg_guarded(
             cmd,
-            check=True,
-            capture_output=True,
+            phase="segment-validate",
             timeout=_SEGMENT_DECODE_VALIDATION_TIMEOUT_S,
+            memory_floor_bytes=memory_floor_bytes,
+            stop=stop,
         )
+    except StopRequested:
+        raise
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
         return False
     return True
@@ -1000,7 +1028,7 @@ class SourceCache:
         transport_telemetry: ProviderTransportTelemetry | None = None,
         stop: Callable[[], bool] | None = None,
         max_media_bytes: int | None = None,
-        concat_timeout_seconds: float | None = None,
+        concat_timeout_seconds: float | None | _Unset = _UNSET,
     ):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="citypods_src_")
         self._paths: dict[str, Path] = {}
@@ -1017,10 +1045,15 @@ class SourceCache:
         # ``timeout_seconds`` (sized for a network fetch of one huge meeting, up to 6h). The local
         # concat has no network I/O and real runs finish in seconds-to-minutes, so it gets its own
         # much shorter cap (audio-workflow review, 2026-07-19) rather than inheriting a budget that
-        # can silently outlast the whole job. Defaults to ``timeout_seconds`` when unset so a caller
-        # that doesn't pass this explicitly keeps the old (permissive) behavior.
+        # can silently outlast the whole job. Three distinct states (CodeRabbit review, 2026-07-19):
+        # not passed at all -> inherit ``timeout_seconds`` (a caller unaware of this parameter keeps
+        # the old permissive behavior); explicit ``None`` -> genuinely uncapped (mirrors
+        # ``audio_concat_timeout_minutes: 0`` in site_config.yml — "0 = no cap" must not silently
+        # become "= timeout_seconds"); explicit float -> that cap.
         self.concat_timeout_seconds = (
-            concat_timeout_seconds if concat_timeout_seconds is not None else timeout_seconds
+            timeout_seconds
+            if isinstance(concat_timeout_seconds, _Unset)
+            else concat_timeout_seconds
         )
         # Shared run-budget predicate (set once for the whole run); lets a caller queued behind
         # another thread's fetch of the same uid yield once the budget expires instead of waiting
@@ -1135,7 +1168,9 @@ class SourceCache:
                 local = self.get_or_fetch(f"{uid}:{src.id}", src.ref)
                 if local is None:
                     return None
-                if not _validate_segment_decodes(local, self.ffmpeg_binary):
+                if not _validate_segment_decodes(
+                    local, self.ffmpeg_binary, self.memory_floor_bytes, self._stop
+                ):
                     raise CorruptSourceSegmentError(
                         f"segment {src.id} ({_redact_url(src.ref)}) failed decode "
                         "validation — malformed/corrupted audio stream"

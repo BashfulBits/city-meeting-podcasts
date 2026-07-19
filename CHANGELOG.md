@@ -25,7 +25,9 @@ Phase R (Research-Tool Surface)._
   job, not a clean encode error). Each concat segment is now decode-validated (`ffmpeg -xerror`)
   immediately after download; a corrupted segment now fails fast into the normal #120 backoff as
   `CorruptSourceSegmentError` (code `corrupt-segment`) instead of ever reaching the filtergraph.
-  The local concat step also gets its own much shorter timeout
+  The validation call itself runs through the same guarded ffmpeg path (memory-floor termination +
+  `stop()` preemption) as every other ffmpeg invocation, rather than a bare unguarded subprocess
+  call. The local concat step also gets its own much shorter timeout
   (`audio_concat_timeout_minutes`, default 20min) independent of the network-fetch budget
   (`audio_encode_timeout_minutes`, up to 6h) — real concats measured seconds-to-minutes even for
   multi-hour meetings, so inheriting the network budget gave a pathological concat far more silent
@@ -36,7 +38,11 @@ Phase R (Research-Tool Surface)._
   its own much longer per-operation timeout instead. `.github/workflows/audio.yml`'s `audio` job
   now sets `timeout-minutes: 360` explicitly (GitHub's existing hosted-runner default, made
   visible rather than implicit) so the relationship to the internal timeouts above is documented
-  in-repo. No artifact output or pipeline-version change.
+  in-repo. `SourceCache.concat_timeout_seconds` now distinguishes "caller didn't pass this
+  parameter" (inherits the parent network-fetch budget, unchanged) from an explicit `None`
+  (genuinely uncapped, matching `audio_concat_timeout_minutes: 0`'s documented "0 = no cap") — a
+  configured zero/negative value previously fell back to the parent budget instead of disabling
+  the cap. No artifact output or pipeline-version change.
 
 - **Audio encode phase diagnostics.** Audio materialization now logs bounded phase markers and
   elapsed time for media resolution, source-cache fetch, rendering, duration probing, and storage
