@@ -894,9 +894,10 @@ def _iter_transcribe_routes(
     (:func:`estimate_transcribe_shard_work`) and the per-episode plan
     (:func:`pending_transcribe_items`), so both agree on exactly which uids are pending and why.
 
-    Skips (yields nothing for) records that are not transcribable this run: no hosted audio yet, a
-    failed materialization (the audio lane re-encodes it), or a transcript already synced at the
-    current ASR pipeline version. ``inflight`` is yielded but represents no new shard work.
+    Skips (yields nothing for) records that are not transcribable this run: no hosted audio yet,
+    availability-withheld media, a failed materialization (the audio lane re-encodes it), or a
+    transcript already synced at the current ASR pipeline version. ``inflight`` is yielded but
+    represents no new shard work.
     """
     if not asr_enabled:
         return
@@ -904,6 +905,11 @@ def _iter_transcribe_routes(
     for uid, rec in load_records(state_dir, src_key).items():
         ep = record_to_episode(rec)
         if not (ep.audio_key and ep.audio_spec_hash and ep.hosted_audio_url):
+            continue
+        # ``AudioStage`` withholds confirmed empty/missing/invalid recordings from feeds and
+        # media-affecting work. A legacy hosted object may still exist, but it is not a valid ASR
+        # input (for example, a subtitle-only M4A produced for an empty recording).
+        if ep.media_availability is not None and ep.media_availability.is_withheld():
             continue
         # Audio that failed to materialize isn't transcribable this run — the transcribe stage
         # skips it and the audio lane re-encodes it. Counting it here would re-inflate the shard
