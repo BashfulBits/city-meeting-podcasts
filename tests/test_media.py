@@ -2735,6 +2735,54 @@ def test_concat_local_sources_removes_partial_destination_on_failure(monkeypatch
     assert not dest.exists()
 
 
+def test_concat_local_sources_pins_filter_threads_when_threads_set(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    source = tmp_path / "source.mka"
+    source.write_bytes(b"source")
+    dest = tmp_path / "combined.mka"
+
+    cmds: list[list[str]] = []
+
+    def _fake_run(cmd, **_kw):
+        cmds.append(cmd)
+        Path(cmd[-1]).write_bytes(b"combined")
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fake_run)
+
+    assert media._concat_local_sources([source], [10.0], dest, threads=3)
+    cmd = cmds[0]
+    assert "-filter_threads" in cmd
+    assert cmd[cmd.index("-filter_threads") + 1] == "3"
+    assert "-filter_complex_threads" in cmd
+    assert cmd[cmd.index("-filter_complex_threads") + 1] == "3"
+    # The concat output is flac, not aac, so -threads (aac-only, per CommandFfmpeg._thread_args)
+    # never applies here — only the filter-graph thread flags do.
+    assert "-threads" not in cmd
+
+
+def test_concat_local_sources_omits_thread_args_when_threads_unset(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    source = tmp_path / "source.mka"
+    source.write_bytes(b"source")
+    dest = tmp_path / "combined.mka"
+
+    cmds: list[list[str]] = []
+
+    def _fake_run(cmd, **_kw):
+        cmds.append(cmd)
+        Path(cmd[-1]).write_bytes(b"combined")
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _fake_run)
+
+    assert media._concat_local_sources([source], [10.0], dest)
+    cmd = cmds[0]
+    assert "-filter_threads" not in cmd
+    assert "-filter_complex_threads" not in cmd
+    assert "-threads" not in cmd
+
+
 def test_download_audio_max_seconds_truncates_else_omits_t(monkeypatch):
     import citypods.media as media
 
@@ -3078,6 +3126,29 @@ class TestSourceCacheGetOrFetchConcat:
 
             cache.release("ep1")
             assert not combined.exists()
+
+    def test_passes_its_threads_setting_through_to_concat(self, monkeypatch):
+        def _fake_download(url, dest, *_a, **_k):
+            dest.write_bytes(b"stub")
+            return True
+
+        concat_kwargs: list[dict] = []
+
+        def _fake_concat(paths, durations, dest, *_a, **kwargs):
+            concat_kwargs.append(kwargs)
+            dest.write_bytes(b"combined")
+            return True
+
+        monkeypatch.setattr("citypods.media._download_audio", _fake_download)
+        monkeypatch.setattr("citypods.media._concat_local_sources", _fake_concat)
+
+        sources = [
+            _source("s0", "https://example.com/seg0.mp4", 10.0),
+            _source("s1", "https://example.com/seg1.mp4", 20.0),
+        ]
+        with SourceCache(threads=3) as cache:
+            assert cache.get_or_fetch_concat("ep1", sources) is not None
+        assert concat_kwargs == [{"stop": None, "threads": 3}]
 
     def test_release_removes_single_source_cache(self, monkeypatch):
         def _fake_download(_url, dest, *_a, **_k):
