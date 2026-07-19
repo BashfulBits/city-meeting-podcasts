@@ -1,5 +1,19 @@
 # review/30 — Per-Agenda-Item Cards, Auto-Summaries, and Soundbites
 
+**Maturity: DEPRECATED, 2026-07-19 — superseded by
+[`review/36`](36-llm-first-cards-summaries-soundbites.md). Kept for history only; do not implement from
+this document.**
+
+> **Why deprecated:** this document's non-LLM "approach 1" designs (a raw literal transcript excerpt for
+> cards; "pick the longest chapter" for soundbite selection) turned out not to be grounded in anything —
+> neither ranked by any salience signal nor validated against real prior art. A follow-up research pass
+> found substantially better options (real datasets, published classifiers, and a much simpler LLM-only
+> path that composes directly with R5's existing calibration matrix). `review/36` replaces this document
+> entirely, restructured to ship the LLM-only approach first and treat the researched non-LLM scaffolding
+> as an explicitly deferred fallback rather than the default plan.
+
+---
+
 **Maturity: L3 (dev-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
 ROADMAP R6 (bundles #3/GH#155 cards, #2 auto-summaries, #15/GH#156 soundbites) · issues not yet cut**
 
