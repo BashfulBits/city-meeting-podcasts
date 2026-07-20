@@ -1,0 +1,39 @@
+name: LLM structured-output compatibility probe
+
+# Diagnostic only: a fixed harmless prompt, four one-attempt calls, no catalog state or storage.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Gemini model to probe"
+        required: true
+        default: gemini-3.1-flash-lite
+        type: choice
+        options:
+          - gemini-3.1-flash-lite
+          - gemini-3-flash-preview
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-compat-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[llm]" -c constraints/prod.txt
+      - name: Probe fixed-prompt structured-output compatibility
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m citypods.llm_compat_probe --model "${{ inputs.model }}"
