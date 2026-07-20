@@ -1372,6 +1372,34 @@ class TestReconcileCrossSourceAudio:
         assert findings == []
         assert touched == set()
 
+    def test_aggregate_suppressed_observation_is_not_a_cross_source_peer(self):
+        # A city-wide aggregate preserves overlap as an archival observation so it can be
+        # omitted from the public projection.  It is a snapshot of the dedicated feed, not
+        # another canonical source that audit reconciliation should attempt to converge.
+        records_by_source = {
+            "aggregate": {
+                "uid1": {
+                    "audio": self._audio(spec_hash="old", encode_time=None),
+                    "integrity": {"aggregate_suppressed": True},
+                }
+            },
+            "dedicated": {
+                "uid1": {
+                    "audio": self._audio(spec_hash="current"),
+                    "integrity": None,
+                }
+            },
+        }
+        entity_of_source = {"aggregate": "city1", "dedicated": "city1"}
+
+        findings, touched = reconcile_cross_source_audio(
+            records_by_source, entity_of_source, {}, mutate=True
+        )
+
+        assert findings == []
+        assert touched == set()
+        assert records_by_source["aggregate"]["uid1"]["audio"]["spec_hash"] == "old"
+
     def test_entityless_sources_are_never_grouped(self):
         records_by_source = {
             "srcA": {"uid1": {"audio": self._audio(spec_hash="a"), "integrity": None}},

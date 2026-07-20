@@ -1506,7 +1506,14 @@ def reconcile_cross_source_audio(
             continue
         uid_sources: dict[str, list[str]] = {}
         for src_key in src_keys:
-            for uid in records_by_source.get(src_key, {}):
+            for uid, record in records_by_source.get(src_key, {}).items():
+                # City-wide aggregate feeds retain a complete observation archive, but mark
+                # rows already represented by a dedicated feed as suppressed.  Those rows are
+                # deliberately stale snapshots of the canonical record, not independent
+                # source-key peers: comparing them here produces a false cross-source
+                # divergence every time the canonical record subsequently changes.
+                if (record.get("integrity") or {}).get("aggregate_suppressed"):
+                    continue
                 uid_sources.setdefault(uid, []).append(src_key)
 
         for uid, present_in in uid_sources.items():
