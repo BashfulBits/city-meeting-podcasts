@@ -23,7 +23,9 @@
     "MAX_REQUEST_BYTES": "524288",
     "MAX_RESPONSE_BYTES": "2097152",
     "MAX_QUEUE_SCAN": "1000",
-    "MAX_ATTEMPTS": "5",
+    // A dispatch request is one model attempt. Retries would make the caller's CAS-backed
+    // 20-attempt/day cap undercount real Mistral API calls during the cautious rollout.
+    "MAX_ATTEMPTS": "1",
     "PROCESSING_TIMEOUT_SECONDS": "900",
     "RETRY_BASE_SECONDS": "60",
     "RETRY_MAX_SECONDS": "3600"

@@ -76,10 +76,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     e.add_argument(
         "--lane",
-        choices=["audio", "transcribe", "align"],
+        choices=["audio", "transcribe", "align", "tag"],
         help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
-        "only; 'align' runs forced-alignment only. Default runs the full enrich (audio + "
-        "transcript). The sharded workflows pin one lane so the two ASR models never co-load.",
+        "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only. "
+        "Default runs the full enrich (audio + transcript). The sharded workflows pin one lane "
+        "so the two ASR models never co-load.",
     )
     e.add_argument(
         "--shard-plan",

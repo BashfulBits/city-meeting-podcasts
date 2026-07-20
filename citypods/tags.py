@@ -567,6 +567,9 @@ def llm_tag_suggestions(
     recipe_hash: str,
     chapter_inputs: list[dict[str, Any]] | None = None,
     agenda_documents: list[dict[str, str]] | None = None,
+    allow_paid: bool = False,
+    purpose: str = TAG_FEATURE,
+    deadline_at: Any | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool, str | None]:
     """Run and validate additive suggestions; return episode tags, chapter tags, dispatched, and
     the resolved model that produced them (``None`` when dispatched/unresolved)."""
@@ -637,8 +640,9 @@ def llm_tag_suggestions(
         # scheduler storage.
         inputs["llm_policy"] = LLMRequestPolicy(
             allowed_models=(backend_model,),
-            allow_paid=False,
-            purpose=TAG_FEATURE,
+            allow_paid=allow_paid,
+            purpose=purpose,
+            deadline_at=deadline_at,
         )
     outcome = backend.run_inference(
         InferenceJob(

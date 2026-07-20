@@ -17,6 +17,28 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Initial three-model tag tournament is enabled.** The weekly runner compares the same bounded
+  real-meeting tag input through Gemini Flash-Lite, DeepSeek V4 Flash, and Mistral Large Latest;
+  every provider pair is judged by the third provider in both display orders. Results are durable
+  in `state/llm_tournament.json`; incomplete/deferred contests resume idempotently. It records
+  quality information only and never changes the R5 production route automatically.
+
+- **R5 topic-tag production is now scheduled conservatively.** A dedicated daily `tag.yml` lane
+  runs `enrich --lane tag`, creating the persisted LLM candidates that the calibration workflow
+  scores. The initial default is `gemini/gemini-3.1-flash-lite`, rather than Gemini 3 Flash
+  Preview. Its route, Mistral Large Latest, and DeepSeek V4 Flash are limited to 20 actual
+  provider attempts per reset day; DeepSeek has an additional $0.10/day CAS-backed spend cap.
+  The Mistral dispatch Worker now permits only one upstream attempt per queued request, so its
+  retry loop cannot turn a single ledger reservation into multiple API calls. Existing stored
+  artifacts are not invalidated: only tag candidates without the new model-specific recipe run.
+
+- **Human-scoring batches now use native GitHub sub-issues.** R5 LLM-tag calibration and H15
+  transcript-quality review publishers attach each candidate/sample issue to its digest parent through
+  GitHub's parent/sub-issue relationship, rather than relying on a `Parent issue: #…` body convention.
+  This makes hierarchy and progress visible in Issues and Projects; both completion finalizers now query
+  the native relationship directly, and R5 starts a fresh digest after a completed batch to remain below
+  GitHub's 100-sub-issue limit. Existing review artifacts and scoring state are unchanged.
+
 - **Local-source concat now honors `audio_ffmpeg_threads`.** `_concat_local_sources` (the
   `filter_complex` decode/concat of already-downloaded multi-source segments, driven by
   `SourceCache.get_or_fetch_concat`) built its ffmpeg command with no thread-pinning flags, unlike

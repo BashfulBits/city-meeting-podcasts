@@ -150,17 +150,12 @@ jobs:
           parents=$(gh issue list --state open \
             --search 'in:title "H15 transcript quality review"' --json number,title \
             --jq '[.[] | select(.title == "H15 transcript quality review")] | .[].number')
-          # --limit 1000: gh paginates transparently, and an exact count matters here — a lower
-          # limit could silently undercount open children and close a parent prematurely.
-          children_json=$(gh issue list --state open --json number,title,body --limit 1000)
           for parent in $parents; do
-            # Regex-anchored, not `contains`: a plain substring match on "Parent issue: #5" would
-            # also match "Parent issue: #50"/"#500", undercounting #5's true open-children count
-            # (a false negative that just delays auto-close, not a premature one — but still wrong).
-            open_children=$(printf '%s' "$children_json" \
-              | jq -r --arg parent "$parent" \
-                  '[.[] | select((.title | startswith("H15 sample "))
-                    and (.body | test("Parent issue: #" + $parent + "(\\D|$)")))] | length')
+            # The native relation avoids both title/body spoofing and the previous pagination cap.
+            # A review batch is at most 10 children today, but query the relation itself so a future
+            # batch-size increase cannot make us close the parent while a child is still open.
+            open_children=$(gh issue view "$parent" --repo "$GH_REPO" --json subIssues \
+              --jq '[.subIssues[] | select(.state == "OPEN")] | length')
             if [ "$open_children" -eq 0 ]; then
               gh issue comment "$parent" --body "All child H15 review issues in this batch are resolved — closing."
               gh issue close "$parent"

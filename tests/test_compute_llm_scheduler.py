@@ -19,9 +19,11 @@ BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch"})
 
 def _gemini_exhausted() -> LLMBudget:
     budget = LLMBudget()
-    route = ROUTES["gemini/gemini-3-flash-preview"]
-    ledger = budget._ledger(route.model, NOW, route=route)
-    ledger.requests_day = route.quota.rpd
+    for model, route in ROUTES.items():
+        if not route.free or route.transport != "direct" or route.quota.rpd is None:
+            continue
+        ledger = budget._ledger(model, NOW, route=route)
+        ledger.requests_day = route.quota.rpd
     return budget
 
 

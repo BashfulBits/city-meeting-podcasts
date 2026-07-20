@@ -69,6 +69,7 @@ TASK_PROMPTS: dict[Task, str] = {
 SUPPORTED_MODELS = frozenset(
     {
         "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3.1-flash-lite",
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
         "mistral/mistral-large-latest",

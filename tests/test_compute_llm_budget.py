@@ -60,6 +60,22 @@ def test_reserve_settle_and_release_round_trip():
     assert ledger.cost_used == pytest.approx(0.1)
 
 
+def test_daily_cost_cap_rolls_over_and_never_exceeds_its_limit():
+    route = LLMRoute(
+        model="paid/daily-capped",
+        transport="direct",
+        free=False,
+        quota=QuotaPolicy(rpd=20),
+        pricing=PricingPolicy(daily_cost_cap=0.10),
+    )
+    budget = LLMBudget()
+    assert budget.available(route.model, route=route, requests=1, tokens=1, cost=0.10, now=NOW)
+    budget.reserve("owner", route.model, route=route, requests=1, tokens=1, cost=0.10, now=NOW)
+    assert not budget.available(route.model, route=route, requests=1, tokens=1, cost=0.001, now=NOW)
+    tomorrow = NOW + timedelta(days=1)
+    assert budget.available(route.model, route=route, requests=1, tokens=1, cost=0.10, now=tomorrow)
+
+
 def test_reserve_is_idempotent_for_a_still_inflight_owner():
     """A caller retrying the same logical dispatch under the same owner (R13's deterministic
     ``recipe_hash``-derived owner) before the first reservation settles must not be double-counted

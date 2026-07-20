@@ -80,6 +80,18 @@ jobs:
             parent="$existing"
             gh issue edit "$parent" --body-file llm-review/parent.md
           fi
+          # Native sub-issues (rather than a body-text convention) make the review batch
+          # visible in GitHub's issue hierarchy and Project progress fields.  Keep this
+          # idempotent because the same unreviewed candidate is re-packaged weekly.
+          native_children=$(gh issue view "$parent" --json subIssues --jq '[.subIssues[].number]')
+          attach_child() {
+            child="$1"
+            if ! jq -e --argjson child "$child" 'index($child) != null' \
+              <<<"$native_children" >/dev/null; then
+              gh issue edit "$parent" --add-sub-issue "$child"
+              native_children=$(jq --argjson child "$child" '. + [$child]' <<<"$native_children")
+            fi
+          }
           jq -c '.children[]?' llm-review/review-batch.json | while read -r row; do
             candidate_id=$(printf '%s' "$row" | jq -r '.candidate_id')
             body_file=$(printf '%s' "$row" | jq -r '.body_file')
@@ -87,11 +99,13 @@ jobs:
             existing_child=$(gh issue list --state open --label llm-calibration-review \
               --search "in:title $title" --json number,title \
               | jq -r --arg title "$title" '[.[] | select(.title == $title)] | .[0].number // empty')
-            printf '\n\nParent issue: #%s\n' "$parent" >> "$body_file"
             if [ -n "$existing_child" ]; then
+              child="$existing_child"
               gh issue edit "$existing_child" --body-file "$body_file"
             else
-              gh issue create --title "$title" --label llm-calibration-review \
-                --body-file "$body_file" >/dev/null
+              child_url=$(gh issue create --title "$title" --label llm-calibration-review \
+                --body-file "$body_file")
+              child=$(printf '%s' "$child_url" | awk -F/ '{print $NF}')
             fi
+            attach_child "$child"
           done

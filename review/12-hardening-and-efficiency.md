@@ -1537,8 +1537,9 @@ capped-deque pattern from PR #324):
   (a genuinely bad-caption episode raising `AlignmentQualityError` — exactly the case H15 exists to
   detect — is recorded as an `evaluation_error` event and skipped, not allowed to abort the batch and
   lose every other sample's work in that run).
-- A separate weekly **packaging** workflow (`asr-quality-review.yml`) opens/updates the GitHub review
-  issues from whatever close-call samples accumulated.
+- A separate weekly **packaging** workflow (`asr-quality-review.yml`) opens/updates a native GitHub
+parent/sub-issue review batch from whatever close-call samples accumulated; its finalizer queries that
+native relationship before closing a cleared parent.
 - A near-real-time **decision ingester** workflow (`asr-quality-ingest.yml`) reacts to issue edits and
   comments, records exactly-one-primary task-box decisions, comments with the stored result, and closes
   the child issue. The low-frequency cron safety net **scans every open `H15 sample *` issue** (via a

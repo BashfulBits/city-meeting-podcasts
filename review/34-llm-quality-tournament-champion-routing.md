@@ -2,8 +2,18 @@
 
 **Maturity: L3 (dev-ready) · breakout of [`review/27`](27-llm-backend-and-provider-routing.md) §6, generalized
 across verbs and given its own doc 2026-07-17 · depends on R13 (shipped, [`review/33`](33-llm-quota-cost-scheduler.md))
-· sibling design to [`review/35`](35-llm-confidence-calibration-human-review.md) · issues not yet cut · no code
-exists yet**
+· sibling design to [`review/35`](35-llm-confidence-calibration-human-review.md) · initial tag runner
+implemented locally 2026-07-20; champion-ticket automation remains follow-up**
+
+> **Initial-production rollout decision (maintainer-confirmed 2026-07-20):** retain the original
+> three-provider design, but use `gemini/gemini-3.1-flash-lite` as the Gemini contestant and R5
+> default, with `deepseek/deepseek-v4-flash` and `mistral/mistral-large-latest`. This deliberately
+> replaces the earlier Gemini 3 Flash Preview assumption because its lower practical free-tier
+> allowance is unsuitable for the cautious start. Each route is limited to 20 actual provider
+> attempts per reset day; DeepSeek also has a $0.10/day hard cap. The Mistral Worker allows one
+> upstream attempt per enqueue, making the scheduler's cap an actual-call cap rather than merely
+> a request cap. This is a bounded rollout deviation from the original weekly-only cadence, not a
+> promotion of automatic champion routing: all switching remains human-approved.
 
 > This is the **"A vs. B?" half** of this project's two-part LLM quality-assurance design. Its sibling,
 > [`review/35`](35-llm-confidence-calibration-human-review.md), answers **"is this one candidate, at its own
@@ -36,9 +46,9 @@ from having more than one viable provider:
    for an entire verb is a materially bigger blast radius than one bad tag suggestion.
 
 This doc designs both: a weekly pairwise tournament (§2–§4) and a cost-gated champion-routing ticket (§5) that
-consumes the tournament's results. Neither exists in code yet, anywhere in this repository — confirmed via
-`git log --all -S` across every function/class name in this design, and a manual `grep` sweep of every remote
-branch's code (not just docs), as of this doc's authoring pass.
+consumes the tournament's results. The initial `tag` runner now lives in `citypods/tournament.py` and is invoked
+by `llm-tournament.yml`: it records durable comparison decisions but deliberately does not alter production
+routing. The weekly GitHub champion-ticket and checkbox application flow remain the next implementation slice.
 
 ## §2. Method — pairwise comparison, not absolute scoring
 
