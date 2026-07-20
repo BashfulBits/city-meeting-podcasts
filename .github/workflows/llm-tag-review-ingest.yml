@@ -154,3 +154,30 @@ jobs:
         run: |
           gh issue comment "$ISSUE_NUMBER" --body "$COMMENT"
           gh issue close "$ISSUE_NUMBER"
+
+  finalize:
+    # Run once after the serialized child ingests so a completed native batch is closed before
+    # the next weekly publisher creates a new parent. GitHub permits at most 100 sub-issues per
+    # parent; retaining a single forever-open digest would eventually exhaust that limit.
+    needs: [resolve, ingest]
+    if: always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close cleared native review batches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          parents=$(gh issue list --state open --label llm-calibration-review \
+            --search 'in:title "R5 LLM tag calibration digest"' --json number,title \
+            --jq '[.[] | select(.title == "R5 LLM tag calibration digest")] | .[].number')
+          for parent in $parents; do
+            open_children=$(gh issue view "$parent" --repo "$GH_REPO" --json subIssues \
+              --jq '[.subIssues[] | select(.state == "OPEN")] | length')
+            if [ "$open_children" -eq 0 ]; then
+              gh issue comment "$parent" --body "All native LLM calibration review sub-issues in this batch are resolved — closing."
+              gh issue close "$parent"
+            fi
+          done

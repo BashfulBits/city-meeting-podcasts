@@ -148,7 +148,8 @@ then a stable tiebreak — and the top `review_batch_size` (default 20) are sele
 
 **Digest + child issues** (`render_digest()`/`render_review_body()`, `:500`/`:345`): a weekly parent issue
 shows the full sparse matrix (reviewed count, precision, threshold, qualified/sparse status per row) plus a
-checklist of this week's selected review candidates; each selected candidate gets its own child issue with
+checklist of this week's selected review candidates; each selected candidate gets its own **native GitHub
+sub-issue** with
 the model's explanation (blockquoted — see §7), bounded evidence (quoted transcript span with derived
 timestamp, or an allowlisted document link/locator), and a three-way checkbox (`Correct` / `Incorrect` /
 `Ambiguous`).
@@ -156,6 +157,8 @@ timestamp, or an allowlisted document link/locator), and a three-way checkbox (`
 **Ingest** (`ingest_review_body()`/`parse_review()`, `:444`/`:422`): a scheduled/comment-triggered workflow
 parses a checked box plus the embedded metadata marker back into a `record_review()` call, then re-runs
 `refresh_matrix()` so newly-qualified rows take effect on the next normal build — no second LLM call needed.
+Once every native child in a batch is resolved, the ingest workflow closes its parent; the next weekly
+digest opens a fresh parent, keeping each batch bounded below GitHub's 100-sub-issue limit.
 
 **Wired today as** `.github/workflows/llm-tag-review.yml` (weekly digest packaging + issue open/update) and
 `llm-tag-review-ingest.yml` (scheduled + comment-triggered ingestion), both R5-specific in name and trigger

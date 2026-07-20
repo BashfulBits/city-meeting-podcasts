@@ -339,13 +339,11 @@ def test_asr_quality_ingest_schedule_fallback_scans_open_children():
         if step.get("name") == "Close parent issues when their batch is clear"
     )
     assert close_parent["env"]["GH_REPO"] == "${{ github.repository }}"
-    assert "Parent issue: #" in close_parent["run"]
-    assert 'startswith("H15 sample ")' in close_parent["run"]
-    # Regex-anchored parent match, not a bare substring: `contains("Parent issue: #5")` would
-    # also match "#50"/"#500" and undercount a parent's true open-children count.
-    assert "test(" in close_parent["run"]
-    assert "contains($parent)" not in close_parent["run"]
-    assert "--limit 1000" in close_parent["run"]
+    # Native GitHub hierarchy, rather than the retired body-text convention. The query comes
+    # directly from each parent, so issue numbers such as #5/#50 cannot collide.
+    assert "--json subIssues" in close_parent["run"]
+    assert ".subIssues[]" in close_parent["run"]
+    assert "Parent issue: #" not in close_parent["run"]
 
 
 def test_audio_lane_needs_no_whisper():

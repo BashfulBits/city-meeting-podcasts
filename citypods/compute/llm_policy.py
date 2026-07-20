@@ -50,6 +50,9 @@ class PricingPolicy:
     output_per_token: float = 0.0
     windows: tuple[PeakWindow, ...] = ()
     cost_cap: float | None = None
+    # A hard calendar-day spending ceiling. Unlike ``cost_cap`` (the existing billing-cycle
+    # guard), this is for cautiously enabling a paid route in a recurring experiment.
+    daily_cost_cap: float | None = None
 
 
 @dataclass(frozen=True)
@@ -85,15 +88,25 @@ ROUTES: dict[str, LLMRoute] = {
         ),
         pricing=PricingPolicy(),
     ),
+    "gemini/gemini-3.1-flash-lite": LLMRoute(
+        model="gemini/gemini-3.1-flash-lite",
+        transport="direct",
+        free=True,
+        # Deliberately far below the provider allowance: this is the explicit initial R5 /
+        # tournament safety ceiling, counted as real provider attempts by the scheduler.
+        quota=QuotaPolicy(rpm=10, rpd=20, tpm=250_000, reset_timezone="America/Los_Angeles"),
+        pricing=PricingPolicy(),
+    ),
     "deepseek/deepseek-v4-flash": LLMRoute(
         model="deepseek/deepseek-v4-flash",
         transport="direct",
         free=False,
-        quota=QuotaPolicy(),
+        quota=QuotaPolicy(rpd=20, reset_timezone="UTC"),
         pricing=PricingPolicy(
             input_per_token=0.14e-6,
             output_per_token=0.28e-6,
             windows=(_DEEPSEEK_WINDOW,),
+            daily_cost_cap=0.10,
         ),
     ),
     "deepseek/deepseek-v4-pro": LLMRoute(
@@ -111,7 +124,7 @@ ROUTES: dict[str, LLMRoute] = {
         model="mistral/mistral-large-latest",
         transport="mistral-dispatch",
         free=True,
-        quota=QuotaPolicy(rpm=2),
+        quota=QuotaPolicy(rpm=2, rpd=20),
         pricing=PricingPolicy(),
     ),
     "mistral/mistral-large-3": LLMRoute(

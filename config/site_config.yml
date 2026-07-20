@@ -23,7 +23,7 @@ city_discovery:
 # established how a route's confidence scores behave.
 tagging:
   enabled: true
-  llm_model: "gemini/gemini-3-flash-preview"
+  llm_model: "gemini/gemini-3.1-flash-lite"
   # direct | dispatch. Gemini's transport under R13's scheduler is "direct" (review/33 §7 — its
   # free tier doesn't need the Mistral Worker's async pacing); "dispatch" is for a route that
   # actually needs LLM_DISPATCH_URL configured (environment-only), which this route does not.
@@ -37,7 +37,7 @@ tagging:
     review_batch_size: 20
     fallbacks:
       topic-tags:
-        "litellm:gemini/gemini-3-flash-preview": 1.0
+        "litellm:gemini/gemini-3.1-flash-lite": 1.0
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)

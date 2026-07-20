@@ -27,12 +27,15 @@ class LLMReservation:
     minute_key: str = ""
     day_key: str = ""
     cost_cycle_key: str = ""
+    cost_day_key: str = ""
 
 
 @dataclass
 class RouteLedger:
     cost_used: float = 0.0
     cost_cycle_key: str = ""
+    cost_day_used: float = 0.0
+    cost_day_key: str = ""
     requests_minute: int = 0
     requests_minute_key: str = ""
     requests_day: int = 0
@@ -71,6 +74,13 @@ class LLMBudget:
         if led.cost_cycle_key != ck:
             led.cost_used = 0.0
             led.cost_cycle_key = ck
+        # Price ceilings are normally monthly, but cautious paid experiments can opt into a
+        # stricter per-day cap using the route's own quota reset timezone.
+        if route.pricing.daily_cost_cap is not None:
+            cost_day_key = daily_reset_key(now, route.quota.reset_timezone)
+            if led.cost_day_key != cost_day_key:
+                led.cost_day_used = 0.0
+                led.cost_day_key = cost_day_key
         return led
 
     def available(
@@ -94,6 +104,9 @@ class LLMBudget:
             and (quota.tpm is None or led.tokens_minute + tokens <= quota.tpm)
             and (quota.concurrency is None or led.inflight_count < quota.concurrency)
             and (pricing.cost_cap is None or led.cost_used + cost <= pricing.cost_cap)
+            and (
+                pricing.daily_cost_cap is None or led.cost_day_used + cost <= pricing.daily_cost_cap
+            )
         )
 
     def block(self, model: str, until: datetime, *, route: LLMRoute, now: datetime) -> None:
@@ -135,6 +148,8 @@ class LLMBudget:
         if owner in led.inflight:
             return
         led.cost_used += cost
+        if route.pricing.daily_cost_cap is not None:
+            led.cost_day_used += cost
         led.requests_minute += requests
         led.tokens_minute += tokens
         if route.quota.rpd is not None:
@@ -146,6 +161,7 @@ class LLMBudget:
             minute_key=led.requests_minute_key,
             day_key=led.requests_day_key,
             cost_cycle_key=led.cost_cycle_key,
+            cost_day_key=led.cost_day_key,
         )
 
     def settle(
@@ -166,6 +182,12 @@ class LLMBudget:
             led.tokens_minute = max(0, led.tokens_minute + actual_tokens - reservation.tokens)
         if actual_cost is not None and led.cost_cycle_key == reservation.cost_cycle_key:
             led.cost_used = max(0.0, led.cost_used + actual_cost - reservation.cost)
+        if (
+            actual_cost is not None
+            and route.pricing.daily_cost_cap is not None
+            and led.cost_day_key == reservation.cost_day_key
+        ):
+            led.cost_day_used = max(0.0, led.cost_day_used + actual_cost - reservation.cost)
 
     def release(self, owner: str, model: str, *, route: LLMRoute, now: datetime) -> None:
         led = self._ledger(model, now, route=route)
@@ -174,6 +196,11 @@ class LLMBudget:
             return
         if led.cost_cycle_key == reservation.cost_cycle_key:
             led.cost_used = max(0.0, led.cost_used - reservation.cost)
+        if (
+            route.pricing.daily_cost_cap is not None
+            and led.cost_day_key == reservation.cost_day_key
+        ):
+            led.cost_day_used = max(0.0, led.cost_day_used - reservation.cost)
         if led.requests_minute_key == reservation.minute_key:
             led.requests_minute = max(0, led.requests_minute - reservation.requests)
             led.tokens_minute = max(0, led.tokens_minute - reservation.tokens)
@@ -186,6 +213,8 @@ class LLMBudget:
                 model: {
                     "cost_used": ledger.cost_used,
                     "cost_cycle_key": ledger.cost_cycle_key,
+                    "cost_day_used": ledger.cost_day_used,
+                    "cost_day_key": ledger.cost_day_key,
                     "requests_minute": ledger.requests_minute,
                     "requests_minute_key": ledger.requests_minute_key,
                     "requests_day": ledger.requests_day,
@@ -200,6 +229,7 @@ class LLMBudget:
                             "minute_key": reservation.minute_key,
                             "day_key": reservation.day_key,
                             "cost_cycle_key": reservation.cost_cycle_key,
+                            "cost_day_key": reservation.cost_day_key,
                         }
                         for owner, reservation in ledger.inflight.items()
                     },
@@ -224,10 +254,13 @@ class LLMBudget:
                         minute_key=str(value.get("minute_key") or ""),
                         day_key=str(value.get("day_key") or ""),
                         cost_cycle_key=str(value.get("cost_cycle_key") or ""),
+                        cost_day_key=str(value.get("cost_day_key") or ""),
                     )
             routes[str(model)] = RouteLedger(
                 cost_used=float(raw.get("cost_used", 0.0)),
                 cost_cycle_key=str(raw.get("cost_cycle_key") or ""),
+                cost_day_used=float(raw.get("cost_day_used", 0.0)),
+                cost_day_key=str(raw.get("cost_day_key") or ""),
                 requests_minute=int(raw.get("requests_minute", 0)),
                 requests_minute_key=str(raw.get("requests_minute_key") or ""),
                 requests_day=int(raw.get("requests_day", 0)),
