@@ -250,6 +250,28 @@ class TestBudget:
         assert b.backends["modal"].used_gpu_seconds == 0
         assert b.backends["modal"].inflight == {}
 
+    def test_current_ledger_resets_stale_cycle_without_reserving(self):
+        # Diagnostics (the ASR worker report) load a Budget straight off storage and never call
+        # available/reserve/settle, so a rarely-touched backend's stale total would otherwise be
+        # printed as-is. current_ledger applies the same reset check without granting anything.
+        b = Budget(month="2026-07")
+        b.reserve("modal:1", "modal", 90, cycle="2026-06-01")
+
+        led = b.current_ledger("modal", cycle="2026-07-01")
+
+        assert led.used_units == 0
+        assert led.inflight == {}
+        assert b.backends["modal"].used_units == 0
+
+    def test_current_ledger_leaves_matching_cycle_untouched(self):
+        b = Budget(month="2026-07")
+        b.reserve("modal:1", "modal", 90, cycle="2026-07-01")
+
+        led = b.current_ledger("modal", cycle="2026-07-01")
+
+        assert led.used_units == 90
+        assert led.inflight == {"modal:1": 90}
+
     def test_cycle_key_migrates_legacy_month_key_without_reset(self):
         b = Budget(month="2026-07")
         b.reserve("modal:1", "modal", 90)

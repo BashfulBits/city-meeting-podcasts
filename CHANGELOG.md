@@ -197,6 +197,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **ASR worker report no longer prints stale compute-budget totals.** `asr-worker-report` loaded
+  the Modal/Beam dollar ledger straight off storage and printed it as-is, but the per-backend
+  stale-cycle reset only ever fired as a side effect of a real dispatch attempt
+  (`Budget.available`/`reserve`/`settle`/`release`) — something the report never calls. A backend
+  dispatched only rarely (Modal's even-day, 4h+-only schedule in particular) could go a long time
+  between touches, so the report kept reprinting whatever total was left over from its last touch,
+  mislabeled as the current cycle — observed as Modal showing `$17810.2` used against a `$24`
+  budget. `Budget` gains a public `current_ledger()` read path that applies the same reset check
+  without granting a reservation; the report now calls it (and `roll_month()`) for Modal/Beam
+  before serializing, so it always reflects the current cycle. Also fixed Beam's
+  `rollover_day_of_month` (was `1`, matching Modal; Beam's free credits actually reset on the
+  18th), which was compounding the same staleness for Beam specifically.
+
 - **City discovery now uses Instructor/Pydantic for structured output.** LLM tasks name one typed
   response contract rather than hand-maintaining JSON Schema dictionaries. Direct Gemini/Mistral and
   DeepSeek calls use Instructor's provider modes, Pydantic validation, and one corrective retry;

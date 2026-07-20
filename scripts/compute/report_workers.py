@@ -9,8 +9,14 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from citypods.compute.budget import load_budget, load_budget_cas, storage_supports_cas
-from citypods.compute.policy import backend_policy
+from citypods.compute.budget import (
+    Budget,
+    cycle_key,
+    load_budget,
+    load_budget_cas,
+    storage_supports_cas,
+)
+from citypods.compute.policy import BackendPolicy, backend_policy
 from citypods.compute.worker_telemetry import load_worker_telemetry, telemetry_report
 from citypods.config import load_city_configs, load_site_config
 from citypods.ops.work_leases import read_lease
@@ -223,6 +229,24 @@ def write_asr_backoff_report(out_dir: Path, hits: list[dict], *, threshold: int)
         )
 
 
+def _refresh_backend_cycles(
+    budget: Budget, policies: dict[str, BackendPolicy], *, now: datetime
+) -> None:
+    """Force each dollar-cycle backend's ledger through the same stale-cycle reset check
+    ``available``/``reserve``/``settle`` apply on every real dispatch (``Budget.current_ledger``),
+    so this report shows current-cycle figures instead of whatever total was left over from that
+    backend's last touch — see ``current_ledger``'s docstring for why that can go stale (Modal's
+    even-day/4h+-only schedule in particular). Only refreshes backends already present in the
+    ledger; never conjures an empty entry for one that has genuinely never been touched."""
+    for name, policy in policies.items():
+        if name not in budget.backends:
+            continue
+        budget.current_ledger(
+            name,
+            cycle=cycle_key(now, rollover_day_of_month=policy.budget.rollover_day_of_month),
+        )
+
+
 def build_report(
     *, site_config_path: str, output_dir: str, base_url: str | None = None, recent: int = 0
 ) -> dict:
@@ -289,6 +313,9 @@ def build_report(
         else:
             budget = load_budget(resolve_state_dir(site_config, output))
             worker_telemetry = telemetry_report({})
+        now = datetime.now(UTC)
+        budget.roll_month(now)
+        _refresh_backend_cycles(budget, {"modal": modal_policy, "beam": beam_policy}, now=now)
         return {
             "work": counts,
             "transcript_asr_pending": len(pending),

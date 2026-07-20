@@ -150,6 +150,19 @@ class Budget:
         led.cycle_key = target_cycle
         return led
 
+    def current_ledger(self, backend: str, *, cycle: str | None = None) -> BackendLedger:
+        """Public read path for *backend*'s ledger, applying the same stale-cycle reset check
+        ``available``/``reserve``/``settle``/``release`` apply on every real dispatch.
+
+        Diagnostics (the ASR worker report) load a ``Budget`` straight off storage and — unlike
+        dispatch — never call those methods, so they'd otherwise print whatever total was left
+        over from the last time this backend was actually touched, mislabeled as the current
+        cycle. A backend dispatched only rarely (e.g. Modal's even-day-only, 4h+-only schedule)
+        can go a long time between touches, so that stale total can be wildly larger than its real
+        current-cycle spend. Calling this first makes the reported figures match what the next
+        real dispatch attempt would see."""
+        return self._ledger(backend, cycle=cycle)
+
     def roll_month(self, now: datetime | None = None) -> bool:
         """Advance the schema's month marker when the UTC month rolls over.
 
