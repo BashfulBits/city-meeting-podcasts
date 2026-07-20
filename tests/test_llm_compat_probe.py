@@ -91,6 +91,7 @@ def test_run_executes_the_named_paths(monkeypatch):
     monkeypatch.setattr(llm_compat_probe, "ensure_llm_contract", lambda: _Contract())
     monkeypatch.setattr(llm_compat_probe, "_native", lambda *_: {"ok": True})
     monkeypatch.setattr(llm_compat_probe, "_litellm", lambda *_: {"ok": True})
+    monkeypatch.setattr(llm_compat_probe, "_litellm_backend_fix", lambda *_: {"ok": True})
     assert [row["check"] for row in llm_compat_probe.run("gemini-test")] == [
         "native-simple-schema",
         "native-r5-schema",
@@ -106,6 +107,7 @@ def test_run_executes_the_named_paths(monkeypatch):
         "native-r5-schema-minus-refs",
         "litellm-json-object",
         "litellm-json-schema",
+        "litellm-backend-gemini-fix",
     ]
 
 
@@ -223,6 +225,7 @@ def test_run_wires_stripped_schemas_into_the_subtractive_checks(monkeypatch):
     }
     monkeypatch.setattr(llm_compat_probe, "ensure_llm_contract", lambda: _Contract(schema))
     monkeypatch.setattr(llm_compat_probe, "_litellm", lambda *_: {"ok": True})
+    monkeypatch.setattr(llm_compat_probe, "_litellm_backend_fix", lambda *_: {"ok": True})
 
     captured: list[dict] = []
 

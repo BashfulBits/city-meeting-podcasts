@@ -6,7 +6,11 @@ and bisects which specific JSON Schema construct in the R5 tag contract a native
 failure is actually caused by -- first additively (synthetic minimal schemas, each adding one
 construct: refs, array-of-refs, anyOf-nullable typing, default values, additionalProperties:
 false), then subtractively (the real contract's schema with one construct category stripped
-at a time: defaults, additionalProperties, size/range constraints, enums, or $ref/$defs).
+at a time: defaults, additionalProperties, size/range constraints, enums, or $ref/$defs). The
+bisection identified size/range constraints (minLength/maxLength/minimum/maximum/minItems/
+maxItems) as the actual cause; the final check exercises the production fix for that finding
+(citypods.compute.llm._gemini_schema_safe_model, via LiteLLMBackend._run_structured_direct)
+against the live API directly, rather than only against the unit tests' fake completion.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from typing import Any
 
 import requests
 
+from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 from citypods.tags import ensure_llm_contract
 
@@ -195,6 +200,23 @@ def _litellm(model: str, mode: str) -> dict[str, Any]:
     return {"ok": True}
 
 
+def _litellm_backend_fix(model: str) -> dict[str, Any]:
+    """Exercise the actual production fix path -- LiteLLMBackend._run_structured_direct(),
+    which applies _gemini_schema_safe_model() for a Gemini route -- rather than reimplementing
+    the Instructor call the way `_litellm()` above does. This is the exact method
+    llm_tag_suggestions() calls in production; a green result here is evidence the real fix
+    works against the live API, not just evidence the unit tests' fake completion function
+    accepts what we send it."""
+    contract = ensure_llm_contract()
+    backend = LiteLLMBackend(LLMBackendConfig(model=f"gemini/{model}"))
+    job = InferenceJob(task="tag", inputs={"content": PROMPT}, recipe_hash="probe")
+    try:
+        backend._run_structured_direct(job, contract, resolved_model=f"gemini/{model}")
+    except Exception as exc:  # one fixed-prompt probe must report, not abort the matrix
+        return _safe_error(exc=exc)
+    return {"ok": True}
+
+
 def run(model: str) -> list[dict[str, Any]]:
     """Run one-attempt checks and return JSON-safe, non-sensitive summaries."""
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -241,6 +263,7 @@ def run(model: str) -> list[dict[str, Any]]:
         ),
         ("litellm-json-object", lambda: _litellm(model, "json")),
         ("litellm-json-schema", lambda: _litellm(model, "json-schema")),
+        ("litellm-backend-gemini-fix", lambda: _litellm_backend_fix(model)),
     ]
     results = []
     for name, check in checks:
