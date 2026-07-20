@@ -40,6 +40,52 @@ def test_safe_error_excludes_request_material():
     assert secret not in str(value)
 
 
+def test_safe_error_captures_field_violation_details():
+    """`message` alone is often just the generic "Request contains an invalid argument." --
+    the field-violation detail naming the actually-rejected schema path lives in `details` and
+    was previously discarded entirely."""
+
+    class Response:
+        status_code = 400
+
+        @staticmethod
+        def json():
+            return {
+                "error": {
+                    "status": "INVALID_ARGUMENT",
+                    "message": "invalid argument",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.BadRequest",
+                            "fieldViolations": [
+                                {
+                                    "field": "generation_config.response_json_schema",
+                                    "description": "schema too deeply nested",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            }
+
+    value = llm_compat_probe._safe_error(response=Response())
+    assert "provider_details" in value
+    assert "response_json_schema" in value["provider_details"]
+    assert "schema too deeply nested" in value["provider_details"]
+
+
+def test_safe_error_caps_oversized_details():
+    class Response:
+        status_code = 400
+
+        @staticmethod
+        def json():
+            return {"error": {"details": [{"description": "x" * 5000}]}}
+
+    value = llm_compat_probe._safe_error(response=Response())
+    assert len(value["provider_details"]) == 2000
+
+
 def test_run_executes_the_named_paths(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "not-a-real-key")
     monkeypatch.setattr(llm_compat_probe, "ensure_llm_contract", lambda: _Contract())

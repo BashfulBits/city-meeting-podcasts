@@ -90,6 +90,14 @@ def _safe_error(
         result["provider_code"] = error.get("status")
         # Gemini's short API error message is safe for this fixed prompt. Cap it defensively.
         result["provider_message"] = str(error.get("message") or "")[:300]
+        details = error.get("details")
+        if details:
+            # A validation failure's `details` (typically a google.rpc.BadRequest with
+            # per-field fieldViolations) is what actually names the rejected schema path --
+            # `message` alone is often just the generic "Request contains an invalid argument."
+            # Safe for this fixed synthetic prompt/schema, which never carries meeting content;
+            # capped defensively like provider_message since it's still provider-controlled.
+            result["provider_details"] = json.dumps(details, sort_keys=True)[:2000]
     if exc is not None:
         result["exception_type"] = type(exc).__name__
         result["exception_status"] = getattr(exc, "status_code", None)
