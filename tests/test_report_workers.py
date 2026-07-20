@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+from citypods.compute.budget import Budget
+from citypods.compute.policy import backend_policy
 from citypods.models import City, Episode
 from citypods.records import episode_to_record, save_records
 from scripts.compute import report_workers as rw
@@ -134,3 +136,55 @@ def test_write_asr_backoff_report_clean_sweep_has_no_issue_body(tmp_path):
 
     assert (out_dir / "has_asr_timeout_backoff").read_text() == "false"
     assert not (out_dir / "issue-body.md").exists()
+
+
+def _site_config_with_backend(name: str, *, rollover_day_of_month: int) -> dict:
+    return {
+        "defaults": {
+            "compute_backends": {
+                name: {"budget": {"rollover_day_of_month": rollover_day_of_month}},
+            }
+        }
+    }
+
+
+def test_refresh_backend_cycles_resets_a_backend_stale_since_a_prior_cycle():
+    # Modal dispatches only on even days for 4h+ meetings, so it can go a long time between real
+    # dispatch attempts — the only place its ledger's stale-cycle reset normally fires. Without
+    # this refresh the report would print June's leftover total mislabeled as July's.
+    now = datetime(2026, 7, 20, tzinfo=UTC)
+    modal_policy = backend_policy(
+        _site_config_with_backend("modal", rollover_day_of_month=1), "modal"
+    )
+    budget = Budget(month="2026-07")
+    budget.reserve("modal:1", "modal", 90, cycle="2026-06-01")
+
+    rw._refresh_backend_cycles(budget, {"modal": modal_policy}, now=now)
+
+    assert budget.backends["modal"].used_units == 0
+    assert budget.backends["modal"].cycle_key == "2026-07-01"
+
+
+def test_refresh_backend_cycles_leaves_a_current_cycle_backend_untouched():
+    now = datetime(2026, 7, 20, tzinfo=UTC)
+    beam_policy = backend_policy(
+        _site_config_with_backend("beam", rollover_day_of_month=18), "beam"
+    )
+    budget = Budget(month="2026-07")
+    budget.reserve("beam:1", "beam", 42, cycle="2026-07-18")
+
+    rw._refresh_backend_cycles(budget, {"beam": beam_policy}, now=now)
+
+    assert budget.backends["beam"].used_units == 42
+
+
+def test_refresh_backend_cycles_skips_backend_with_no_ledger_entry():
+    now = datetime(2026, 7, 20, tzinfo=UTC)
+    modal_policy = backend_policy(
+        _site_config_with_backend("modal", rollover_day_of_month=1), "modal"
+    )
+    budget = Budget(month="2026-07")
+
+    rw._refresh_backend_cycles(budget, {"modal": modal_policy}, now=now)
+
+    assert "modal" not in budget.backends

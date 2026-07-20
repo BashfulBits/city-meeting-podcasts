@@ -351,7 +351,7 @@ defaults:
       budget:
         monthly_dollars: 24.0           # conservatively below free credit to absorb CPU/RAM billing
         reserve_dollars: 0.7
-        rollover_day_of_month: 1
+        rollover_day_of_month: 18       # confirmed against Beam's actual free-credit reset date
         estimated_dollars_per_runtime_second: 0.000192
         unit_label: dollar
       dispatch:
