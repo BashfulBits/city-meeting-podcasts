@@ -225,6 +225,32 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Direct Gemini structured-output calls no longer 400 on the R5 tag contract, and the LLM
+  tournament no longer crashes when one does.** `citypods/llm_compat_probe.py`'s new diagnostic
+  runs (the `llm-safe-diagnostic` event, then an additive bisection, then a subtractive
+  bisection that strips one JSON Schema construct at a time from the real contract's own
+  schema) isolated the actual cause: Gemini's native schema-constrained mode rejects only the
+  `minLength`/`maxLength`/`minimum`/`maximum`/`minItems`/`maxItems` keywords Pydantic emits for
+  `Field(min_length=..., max_length=..., ge=..., le=...)` constraints — `$defs`/`$ref` (even
+  through the contract's real two-level `Suggestion`/`Evidence` reference chain), `anyOf` for
+  `Optional` fields, default values, `additionalProperties: false`, and `enum` are all fine on
+  their own and in combination. Direct Gemini calls keep Instructor's native `JSON_SCHEMA` mode;
+  the request schema Instructor derives is now built from a same-named subclass of the response
+  contract whose `model_json_schema()` strips just that keyword family before the request is
+  sent, so Gemini keeps enforcing everything else server-side. Local Pydantic validation of the
+  actual reply is unaffected — the real contract's fields and constraints are unchanged, so a
+  reply that violates one of those bounds still fails validation and still gets Instructor's one
+  corrective retry, exactly as before; only Gemini's copy of the *request* schema lost
+  server-side enforcement of this one keyword family it was already silently rejecting outright.
+  Separately, `citypods/tournament.py`'s `run()` previously let any `LLMBackendError` (a
+  malformed reply, a scheduler guard, ...) from either a contestant or a judge call propagate
+  uncaught, crashing the whole scheduled run instead of skipping just the affected episode for a
+  later attempt — the same `LLMBackendError`-catching pattern `scripts/city_discovery.py`
+  already uses. The probe's own `_native()` check also now catches a request-level failure (e.g.
+  a read timeout) instead of letting it abort the rest of the diagnostic matrix, and its
+  `_safe_error()` now captures the provider's `error.details` field-violation payload when one
+  is present.
+
 - **ASR worker report no longer prints stale compute-budget totals.** `asr-worker-report` loaded
   the Modal/Beam dollar ledger straight off storage and printed it as-is, but the per-backend
   stale-cycle reset only ever fired as a side effect of a real dispatch attempt

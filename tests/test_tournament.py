@@ -1,3 +1,7 @@
+from types import SimpleNamespace
+
+from citypods import tournament
+from citypods.compute.llm import LLMStructuredOutputError
 from citypods.tournament import (
     R5_FLASH_MODEL,
     contest_plan,
@@ -44,3 +48,44 @@ def test_judge_prompt_omits_candidate_provenance():
     assert judge_candidates(
         [{"id": "housing", "confidence": 0.9, "provider_model": R5_FLASH_MODEL, "recipe_hash": "x"}]
     ) == [{"id": "housing", "confidence": 0.9}]
+
+
+def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
+    """A provider/schema failure for one model must not crash the whole tournament -- the
+    episode is left undone for a later scheduled run instead, matching this runner's own
+    "durable... incomplete/deferred contests resume idempotently" design (and the pattern
+    scripts/city_discovery.py already uses for the same LLMBackendError family)."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tournament, "load_site_config", lambda *_a: {"defaults": {}, "tagging": {}})
+    monkeypatch.setattr(
+        tournament, "make_storage", lambda *_a, **_k: SimpleNamespace(cas_capable=True)
+    )
+    monkeypatch.setattr(tournament, "pull_state", lambda *_a, **_k: 0)
+    monkeypatch.setattr(tournament, "push_state", lambda *_a, **_k: 0)
+    monkeypatch.setattr(tournament, "load_taxonomy", lambda *_a, **_k: SimpleNamespace(tags=()))
+    monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
+    monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
+    episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
+    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
+    monkeypatch.setattr(
+        tournament, "episode_tag_inputs", lambda *_a, **_k: ("titles", "agenda", "transcript")
+    )
+    monkeypatch.setattr(tournament, "chapter_tag_inputs", lambda *_a, **_k: [])
+
+    def failing_llm_tag_suggestions(*_args, **_kwargs):
+        raise LLMStructuredOutputError("structured LLM response failed Pydantic validation")
+
+    monkeypatch.setattr(tournament, "llm_tag_suggestions", failing_llm_tag_suggestions)
+
+    exit_code = tournament.run(
+        site_config_path="config/site_config.yml",
+        config_dir="config",
+        output_dir=str(tmp_path),
+        samples=1,
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "skipping 'ep-1'" in out
+    assert "completed 0 sample(s)" in out
