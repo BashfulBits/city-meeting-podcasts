@@ -3,7 +3,13 @@ name: LLM tag tournament
 on:
   schedule:
     - cron: "30 17 * * 1" # weekly, inside DeepSeek's off-peak window
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      safe_diagnostics:
+        description: "Emit non-sensitive structured-output diagnostics"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -27,6 +33,7 @@ jobs:
       - run: pip install -e ".[storage,llm]" -c constraints/prod.txt
       - name: Run two bounded tag samples
         env:
+          LLM_SAFE_DIAGNOSTICS: ${{ inputs.safe_diagnostics && '1' || '0' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}

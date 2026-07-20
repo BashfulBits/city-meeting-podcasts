@@ -15,6 +15,7 @@ from citypods.compute.llm import (
     LLMStructuredOutputError,
     _priced_actual,
     _retry_after_seconds,
+    _safe_structured_failure_diagnostic,
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
@@ -43,6 +44,25 @@ def structured_response(content: str):
         choices=[choice],
         model_dump=lambda: {"choices": [{"message": {"content": content}}]},
     )
+
+
+def test_safe_structured_failure_diagnostic_has_no_prompt_or_provider_text():
+    secret_prompt = "meeting material that must never reach diagnostics"
+    provider_error = SimpleNamespace(status_code=400)
+    failure = SimpleNamespace(
+        n_attempts=1, failed_attempts=[SimpleNamespace(exception=provider_error)]
+    )
+    result = _safe_structured_failure_diagnostic(
+        failure,
+        job(content=secret_prompt),
+        ExampleOutput,
+        "gemini/gemini-3.1-flash-lite",
+    )
+    rendered = str(result)
+    assert result["provider_status"] == 400
+    assert result["input_characters"] >= len(secret_prompt)
+    assert secret_prompt not in rendered
+    assert "BadRequest" not in rendered
 
 
 def test_direct_litellm_call_is_normalized():

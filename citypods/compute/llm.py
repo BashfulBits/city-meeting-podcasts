@@ -15,8 +15,10 @@ transport or reason produced it.
 from __future__ import annotations
 
 import importlib
+import json
 import math
 import os
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -79,6 +81,7 @@ SUPPORTED_MODELS = frozenset(
 
 # Fallback backoff when a 429 carries no parseable Retry-After hint.
 _DEFAULT_BLOCK_SECONDS = 60.0
+_SAFE_DIAGNOSTICS_ENV = "LLM_SAFE_DIAGNOSTICS"
 
 
 class LLMBackendError(RuntimeError):
@@ -87,6 +90,35 @@ class LLMBackendError(RuntimeError):
 
 class LLMStructuredOutputError(LLMBackendError):
     """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
+
+
+def _safe_structured_failure_diagnostic(
+    exc: BaseException, job: InferenceJob, model: ResponseModel, resolved_model: str
+) -> dict[str, Any]:
+    """Return non-sensitive metadata for an opt-in structured-output failure log.
+
+    Never include messages, headers, credentials, response bodies, or provider exception text:
+    any of those can contain meeting material. The schema summary is intentionally boolean/count
+    only, enough to distinguish a provider-schema rejection from an ordinary malformed reply.
+    """
+    schema = model.model_json_schema()
+    raw = json.dumps(schema, sort_keys=True)
+    attempts = getattr(exc, "failed_attempts", ()) or ()
+    last = attempts[-1].exception if attempts else exc
+    return {
+        "event": "llm_structured_output_failure",
+        "model": resolved_model,
+        "task": job.task,
+        "instructor_attempts": int(getattr(exc, "n_attempts", 0) or 0),
+        "provider_exception_type": type(last).__name__,
+        "provider_status": getattr(last, "status_code", None),
+        "input_characters": sum(len(str(message.get("content", ""))) for message in _messages(job)),
+        "schema_characters": len(raw),
+        "schema_has_defs": '"$defs"' in raw,
+        "schema_has_refs": '"$ref"' in raw,
+        "schema_has_any_of": '"anyOf"' in raw,
+        "schema_has_defaults": '"default"' in raw,
+    }
 
 
 @dataclass(frozen=True)
@@ -358,7 +390,16 @@ class LiteLLMBackend(Backend):
                 max_retries=1,
                 **self._provider_options(job, resolved_model),
             )
-        except InstructorRetryException:
+        except InstructorRetryException as exc:
+            if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
+                print(
+                    "llm-safe-diagnostic: "
+                    + json.dumps(
+                        _safe_structured_failure_diagnostic(exc, job, model, resolved_model),
+                        sort_keys=True,
+                    ),
+                    file=sys.stderr,
+                )
             # Do not expose model text or validation feedback in workflow logs.  The caller safely
             # defers and will obtain fresh evidence on its next scheduled run.
             raise LLMStructuredOutputError(
