@@ -2,9 +2,11 @@
 
 This intentionally uses a fixed prompt and never opens storage, records, or the LLM budget
 ledger. It distinguishes Gemini's native schema API from the LiteLLM/Instructor adapter path,
-and bisects which specific JSON Schema construct in the R5 tag contract (schema references,
-array-of-refs, anyOf-nullable typing, default values, or additionalProperties: false) a
-native-schema failure is actually caused by.
+and bisects which specific JSON Schema construct in the R5 tag contract a native-schema
+failure is actually caused by -- first additively (synthetic minimal schemas, each adding one
+construct: refs, array-of-refs, anyOf-nullable typing, default values, additionalProperties:
+false), then subtractively (the real contract's schema with one construct category stripped
+at a time: defaults, additionalProperties, size/range constraints, enums, or $ref/$defs).
 """
 
 from __future__ import annotations
@@ -74,6 +76,45 @@ ADDITIONAL_PROPERTIES_FALSE_SCHEMA = {
     "required": ["note"],
     "additionalProperties": False,
 }
+
+# Constraint keywords Pydantic's Field(min_length=..., max_length=..., ge=..., le=...) emits,
+# never isolated by the additive checks above and never tried against a synthetic schema, only
+# ever present (untested) in the real R5 contract's Evidence/Suggestion fields.
+_CONSTRAINT_KEYS = frozenset(
+    {"minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems"}
+)
+
+
+def _strip_keys(node: Any, keys: frozenset[str]) -> Any:
+    """Deep copy of node with every occurrence of the given object keys removed."""
+    if isinstance(node, dict):
+        return {key: _strip_keys(value, keys) for key, value in node.items() if key not in keys}
+    if isinstance(node, list):
+        return [_strip_keys(item, keys) for item in node]
+    return node
+
+
+def _inline_refs(node: Any, defs: dict[str, Any]) -> Any:
+    """Deep copy of node with every "$ref": "#/$defs/X" replaced by defs["X"], resolved
+    recursively so a $ref inside another $ref's own content (the real contract's two-level
+    Response -> Suggestion -> Evidence chain) is fully flattened, not just one level deep."""
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/$defs/"):
+            return _inline_refs(defs[ref.removeprefix("#/$defs/")], defs)
+        return {key: _inline_refs(value, defs) for key, value in node.items() if key != "$ref"}
+    if isinstance(node, list):
+        return [_inline_refs(item, defs) for item in node]
+    return node
+
+
+def _schema_without_refs(schema: dict[str, Any]) -> dict[str, Any]:
+    """The real R5 schema with $ref/$defs fully inlined -- unlike REFS_SCHEMA/ARRAY_OF_REFS_SCHEMA
+    above, this exercises the actual two-level nested reference chain, not a one-level synthetic
+    reproduction of it."""
+    inlined = _inline_refs(schema, schema.get("$defs", {}))
+    inlined.pop("$defs", None)
+    return inlined
 
 
 def _safe_error(
@@ -170,6 +211,33 @@ def run(model: str) -> list[dict[str, Any]]:
         (
             "native-additional-properties-false-only",
             lambda: _native(model, ADDITIONAL_PROPERTIES_FALSE_SCHEMA, api_key),
+        ),
+        # Additive bisection (synthetic minimal schemas, each adding one construct) ran out of
+        # leads: every construct above passes alone, yet the real combined schema still 400s
+        # with no further detail from the provider. These instead take the real schema and strip
+        # exactly one construct category at a time, so whichever strip makes it pass names the
+        # actual culprit directly rather than hoping a synthetic reproduction captures it.
+        (
+            "native-r5-schema-minus-defaults",
+            lambda: _native(model, _strip_keys(tag_schema, frozenset({"default"})), api_key),
+        ),
+        (
+            "native-r5-schema-minus-additional-properties",
+            lambda: _native(
+                model, _strip_keys(tag_schema, frozenset({"additionalProperties"})), api_key
+            ),
+        ),
+        (
+            "native-r5-schema-minus-constraints",
+            lambda: _native(model, _strip_keys(tag_schema, _CONSTRAINT_KEYS), api_key),
+        ),
+        (
+            "native-r5-schema-minus-enum",
+            lambda: _native(model, _strip_keys(tag_schema, frozenset({"enum"})), api_key),
+        ),
+        (
+            "native-r5-schema-minus-refs",
+            lambda: _native(model, _schema_without_refs(tag_schema), api_key),
         ),
         ("litellm-json-object", lambda: _litellm(model, "json")),
         ("litellm-json-schema", lambda: _litellm(model, "json-schema")),

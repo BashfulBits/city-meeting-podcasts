@@ -99,6 +99,11 @@ def test_run_executes_the_named_paths(monkeypatch):
         "native-default-only",
         "native-array-of-refs-only",
         "native-additional-properties-false-only",
+        "native-r5-schema-minus-defaults",
+        "native-r5-schema-minus-additional-properties",
+        "native-r5-schema-minus-constraints",
+        "native-r5-schema-minus-enum",
+        "native-r5-schema-minus-refs",
         "litellm-json-object",
         "litellm-json-schema",
     ]
@@ -140,7 +145,118 @@ def test_bisection_schemas_isolate_one_construct_family_each():
     }
 
 
+def test_strip_keys_removes_matching_keys_at_every_depth():
+    schema = {
+        "type": "object",
+        "default": {},
+        "properties": {
+            "a": {"type": "string", "default": "x", "minLength": 1},
+            "b": {"type": "array", "items": {"type": "integer", "default": 0}},
+        },
+    }
+    stripped = llm_compat_probe._strip_keys(schema, frozenset({"default"}))
+    assert stripped == {
+        "type": "object",
+        "properties": {
+            "a": {"type": "string", "minLength": 1},
+            "b": {"type": "array", "items": {"type": "integer"}},
+        },
+    }
+    assert schema["default"] == {}, "must not mutate the caller's schema"
+
+
+def test_schema_without_refs_inlines_two_level_nested_chain():
+    """The real contract nests $ref inside $ref (Response -> Suggestion -> Evidence), unlike
+    the shallow one-level REFS_SCHEMA/ARRAY_OF_REFS_SCHEMA reproductions above -- this must
+    flatten both levels, not just the outer one."""
+    schema = {
+        "$defs": {
+            "Evidence": {"type": "object", "properties": {"quote": {"type": "string"}}},
+            "Suggestion": {
+                "type": "object",
+                "properties": {
+                    "evidence": {"type": "array", "items": {"$ref": "#/$defs/Evidence"}}
+                },
+            },
+        },
+        "type": "object",
+        "properties": {"tags": {"type": "array", "items": {"$ref": "#/$defs/Suggestion"}}},
+    }
+    inlined = llm_compat_probe._schema_without_refs(schema)
+    assert "$defs" not in inlined
+    assert inlined == {
+        "type": "object",
+        "properties": {
+            "tags": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "evidence": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {"quote": {"type": "string"}},
+                            },
+                        }
+                    },
+                },
+            }
+        },
+    }
+
+
+def test_run_wires_stripped_schemas_into_the_subtractive_checks(monkeypatch):
+    """A typo in run()'s per-check lambda (wrong key set, or probing tag_schema unmodified)
+    would silently turn a subtractive check into a duplicate of native-r5-schema -- this drives
+    the real run() and inspects what it actually handed to _native() for each check, by name,
+    rather than re-deriving the expected schemas separately from run()'s own implementation."""
+    monkeypatch.setenv("GEMINI_API_KEY", "not-a-real-key")
+    schema = {
+        "$defs": {"Inner": {"type": "object", "properties": {"note": {"type": "string"}}}},
+        "type": "object",
+        "properties": {
+            "tags": {"type": "array", "items": {"$ref": "#/$defs/Inner"}},
+            "count": {"type": "integer", "default": 0},
+        },
+        "additionalProperties": False,
+    }
+    monkeypatch.setattr(llm_compat_probe, "ensure_llm_contract", lambda: _Contract(schema))
+    monkeypatch.setattr(llm_compat_probe, "_litellm", lambda *_: {"ok": True})
+
+    captured: list[dict] = []
+
+    def fake_native(_model, passed_schema, _api_key):
+        captured.append(passed_schema)
+        return {"ok": True}
+
+    monkeypatch.setattr(llm_compat_probe, "_native", fake_native)
+
+    names = [row["check"] for row in llm_compat_probe.run("gemini-test")]
+    native_names = [name for name in names if name.startswith("native-")]
+    schema_by_check = dict(zip(native_names, captured, strict=True))
+
+    minus_defaults = schema_by_check["native-r5-schema-minus-defaults"]
+    assert "default" not in json.dumps(minus_defaults)
+    assert minus_defaults["properties"]["count"] == {"type": "integer"}
+
+    minus_additional_properties = schema_by_check["native-r5-schema-minus-additional-properties"]
+    assert "additionalProperties" not in minus_additional_properties
+
+    minus_refs = schema_by_check["native-r5-schema-minus-refs"]
+    assert "$defs" not in minus_refs
+    assert minus_refs["properties"]["tags"]["items"] == {
+        "type": "object",
+        "properties": {"note": {"type": "string"}},
+    }
+
+    # The plain native-r5-schema check must still receive the untouched schema.
+    assert schema_by_check["native-r5-schema"] == schema
+
+
 class _Contract:
-    @staticmethod
-    def model_json_schema():
-        return {"type": "object"}
+    def __init__(self, schema: dict | None = None):
+        self._schema = schema if schema is not None else {"type": "object"}
+
+    def model_json_schema(self):
+        return self._schema
