@@ -1470,7 +1470,7 @@ def _build_impl(
     empty feed, not an error."""
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
-    if lane is not None and lane not in ("audio", "transcribe", "align"):
+    if lane is not None and lane not in ("audio", "transcribe", "align", "tag"):
         raise ValueError(f"unknown lane {lane!r}")
     if shard_plan_path is not None and shard is None:
         raise ValueError("shard_plan_path requires shard=(K, N)")
@@ -1885,13 +1885,13 @@ def _build_impl(
         ) as _hb:
             # Pre-load only the ASR model the active lane will use, so a transcribe shard never
             # pulls in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio
-            # lane loads nothing. ``lane=None`` (combined enrich) keeps the faster-whisper preload
-            # as before.
+            # and tag lanes load nothing -- neither runs TranscriptStage (LANE_STAGES).
+            # ``lane=None`` (combined enrich) keeps the faster-whisper preload as before.
             if (
                 time_bounded
                 and not dry_run
                 and storage is not None
-                and lane != "audio"
+                and lane not in ("audio", "tag")
                 and not getattr(compute_backend, "isolates_inference", False)
             ):
                 _try_preload_asr_model(defaults, lane=lane)
