@@ -121,6 +121,55 @@ def _safe_structured_failure_diagnostic(
     }
 
 
+# Gemini's native schema-constrained structured output (responseJsonSchema) rejects these size/
+# range keywords -- confirmed against the live API by citypods/llm_compat_probe.py's subtractive
+# bisection: stripping exactly this key set was the only one (of defaults, additionalProperties,
+# these constraints, enum, and a fully inlined $ref/$defs chain) that turned the R5 tag
+# contract's real schema from a 400 into a 200. Every other construct Pydantic emits for a
+# nested-model contract -- $defs/$ref, anyOf-nullable typing, default values,
+# additionalProperties: false -- is fine.
+_GEMINI_UNSUPPORTED_SCHEMA_KEYS = frozenset(
+    {"minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems"}
+)
+
+
+def _strip_schema_keys(node: Any, keys: frozenset[str]) -> Any:
+    """Deep copy of a JSON Schema node with every occurrence of the given object keys removed."""
+    if isinstance(node, dict):
+        return {
+            key: _strip_schema_keys(value, keys) for key, value in node.items() if key not in keys
+        }
+    if isinstance(node, list):
+        return [_strip_schema_keys(item, keys) for item in node]
+    return node
+
+
+def _gemini_schema_safe_model(model: ResponseModel) -> ResponseModel:
+    """A same-named subclass of `model` whose model_json_schema() drops the keywords Gemini's
+    native mode rejects -- Instructor derives the request schema by calling this classmethod,
+    with no supported hook to hand it an already-built schema instead, so this is the narrowest
+    way to relax only what Gemini's request needs while still routing through Instructor.
+
+    Response *validation* is unaffected: `model`'s fields and their min_length/max_length/ge/le
+    constraints are inherited unchanged, so a reply that violates them still fails Pydantic
+    validation locally (and still triggers Instructor's one corrective retry) exactly as before.
+    Only Gemini's copy of the *request* schema loses server-side enforcement of this one keyword
+    family. Built fresh per call rather than cached: it's one cheap class-creation call per
+    structured Gemini request, not a hot path where that matters.
+    """
+    base_schema = model.model_json_schema.__func__
+
+    def _relaxed_schema(cls: type, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        schema = base_schema(cls, *args, **kwargs)
+        return _strip_schema_keys(schema, _GEMINI_UNSUPPORTED_SCHEMA_KEYS)
+
+    return type(
+        model.__name__,
+        (model,),
+        {"model_json_schema": classmethod(_relaxed_schema), "__module__": model.__module__},
+    )
+
+
 @dataclass(frozen=True)
 class LLMBackendConfig:
     """Runtime routing configuration; secrets are read from the environment, never persisted."""
@@ -326,17 +375,15 @@ class LiteLLMBackend(Backend):
             from instructor import Mode
         except ImportError as exc:
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
-        # DeepSeek public chat supports only valid-JSON mode.  Gemini's native schema-constrained
-        # mode rejects the Pydantic-generated schema this backend actually sends for
-        # nested-model contracts like the R5 tag response: $defs/$ref for the nested Suggestion/
-        # Evidence models, anyOf for Optional fields, and list/None defaults all provoke a live
-        # 400 INVALID_ARGUMENT (confirmed against the real API by
-        # citypods/llm_compat_probe.py's native-r5-schema/litellm-json-schema checks and by the
-        # llm-safe-diagnostic emitted from a failed tournament run). Instructor includes the
-        # Pydantic schema in the prompt instead and supplies its own field-specific validation
-        # feedback on a retry, exactly like the DeepSeek fallback.
-        no_native_schema = resolved_model.startswith(("deepseek/", "gemini/"))
-        return Mode.JSON if no_native_schema else Mode.JSON_SCHEMA
+        # DeepSeek public chat supports only valid-JSON mode.  Instructor includes the Pydantic
+        # schema in the prompt and supplies its field-specific validation feedback on a retry.
+        # Gemini keeps native JSON_SCHEMA mode -- see _gemini_schema_safe_model() for why its
+        # request schema needs one targeted adjustment first.
+        return Mode.JSON if resolved_model.startswith("deepseek/") else Mode.JSON_SCHEMA
+
+    def _structured_output_model(self, model: ResponseModel, resolved_model: str) -> ResponseModel:
+        """The Pydantic contract Instructor should build a request schema from for this route."""
+        return _gemini_schema_safe_model(model) if resolved_model.startswith("gemini/") else model
 
     def _provider_options(self, job: InferenceJob, resolved_model: str) -> dict[str, Any]:
         options: dict[str, Any] = {"model": resolved_model}
@@ -393,7 +440,7 @@ class LiteLLMBackend(Backend):
                 completion if completion is not None else self._completion_fn(),
                 mode=self._instructor_mode(resolved_model),
             ).create_with_completion(
-                response_model=model,
+                response_model=self._structured_output_model(model, resolved_model),
                 messages=_messages(job),
                 max_retries=1,
                 **self._provider_options(job, resolved_model),

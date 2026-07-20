@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import traceback
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import (
@@ -13,9 +14,11 @@ from citypods.compute.llm import (
     LLMBackendConfig,
     LLMBackendError,
     LLMStructuredOutputError,
+    _gemini_schema_safe_model,
     _priced_actual,
     _retry_after_seconds,
     _safe_structured_failure_diagnostic,
+    _strip_schema_keys,
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
@@ -31,6 +34,17 @@ class ExampleOutput(BaseModel):
 
 
 register_response_model("test-output", ExampleOutput)
+
+
+class ConstrainedOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: str = Field(min_length=1, max_length=10)
+    count: int = Field(ge=0, le=100)
+    tags: list[str] = Field(default_factory=list, max_length=5)
+
+
+register_response_model("constrained-output", ConstrainedOutput)
 
 
 def job(task="tag", **inputs):
@@ -463,10 +477,11 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
     assert ledger.cost_used == pytest.approx(80 * 0.14e-6 + 20 * 0.28e-6)
 
 
-def test_structured_job_uses_instructor_json_mode_for_gemini():
-    """Gemini's native schema-constrained mode 400s on this backend's Pydantic-generated
-    schema for nested-model contracts (confirmed against the live API), so direct Gemini calls
-    use the same prompt-embedded JSON mode as DeepSeek instead of Instructor's JSON_SCHEMA mode."""
+def test_structured_job_uses_instructor_json_schema_mode_for_gemini():
+    """Gemini keeps Instructor's native JSON_SCHEMA mode (unlike DeepSeek's prompt-embedded
+    JSON mode below) -- citypods/llm_compat_probe.py's subtractive bisection against the live
+    API found the actual native-mode rejection is narrower than "the whole schema," so only the
+    offending keywords need to drop out; see the constraint-stripping test below."""
     calls = []
 
     def completion(**kwargs):
@@ -479,7 +494,77 @@ def test_structured_job_uses_instructor_json_mode_for_gemini():
     result = backend.run_inference(job(content="meeting text", structured_output="test-output"))
 
     assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
-    assert calls[0]["response_format"] == {"type": "json_object"}
+    sent = calls[0]["response_format"]
+    assert sent["type"] == "json_schema"
+    assert sent["json_schema"]["name"] == "ExampleOutput"
+    assert sent["json_schema"]["schema"] == ExampleOutput.model_json_schema()
+
+
+def test_gemini_structured_request_relaxes_constraint_keywords_only():
+    """Gemini's native schema mode 400s specifically on minLength/maxLength/minimum/maximum/
+    minItems/maxItems (confirmed against the live API via citypods/llm_compat_probe.py's
+    subtractive bisection: stripping exactly this key set was the only strip, of defaults,
+    additionalProperties, these constraints, enum, and $ref/$defs, that turned a 400 into a
+    200). The request schema Instructor builds for Gemini must drop only those keys and keep
+    everything else -- the contract's actual name, required list, and default-factory-driven
+    optionality all still round-trip."""
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response('{"value":"ok","count":1,"tags":[]}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), completion=completion
+    )
+    result = backend.run_inference(
+        job(content="meeting text", structured_output="constrained-output")
+    )
+
+    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok","count":1,"tags":[]}'
+    sent = calls[0]["response_format"]
+    assert sent["type"] == "json_schema"
+    assert sent["json_schema"]["name"] == "ConstrainedOutput"
+
+    sent_schema = sent["json_schema"]["schema"]
+    sent_schema_text = json.dumps(sent_schema)
+    for key in ("minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems"):
+        assert key not in sent_schema_text
+    assert sent_schema["required"] == ["value", "count"]
+
+    # The real contract is untouched and still enforces the same bounds locally once a reply is
+    # parsed -- only Gemini's copy of the request schema lost server-side enforcement of them.
+    full_schema = ConstrainedOutput.model_json_schema()
+    assert full_schema["properties"]["value"]["minLength"] == 1
+    assert full_schema["properties"]["count"]["maximum"] == 100
+
+
+def test_strip_schema_keys_removes_matching_keys_at_every_depth():
+    schema = {
+        "type": "object",
+        "properties": {
+            "a": {"type": "string", "minLength": 1},
+            "b": {"type": "array", "items": {"type": "integer", "maximum": 5}},
+        },
+    }
+    stripped = _strip_schema_keys(schema, frozenset({"minLength", "maximum"}))
+    assert stripped == {
+        "type": "object",
+        "properties": {
+            "a": {"type": "string"},
+            "b": {"type": "array", "items": {"type": "integer"}},
+        },
+    }
+    assert schema["properties"]["a"]["minLength"] == 1, "must not mutate the caller's schema"
+
+
+def test_gemini_schema_safe_model_preserves_name_and_leaves_original_untouched():
+    Relaxed = _gemini_schema_safe_model(ConstrainedOutput)
+
+    assert Relaxed.__name__ == "ConstrainedOutput"
+    assert issubclass(Relaxed, ConstrainedOutput)
+    assert "minLength" not in json.dumps(Relaxed.model_json_schema())
+    assert ConstrainedOutput.model_json_schema()["properties"]["value"]["minLength"] == 1
 
 
 def test_deepseek_instructor_json_mode_retries_pydantic_validation_once():
