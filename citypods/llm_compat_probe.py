@@ -1,7 +1,9 @@
 """Manual, non-sensitive Gemini structured-output compatibility probe.
 
 This intentionally uses a fixed prompt and never opens storage, records, or the LLM budget
-ledger. It distinguishes Gemini's native schema API from the LiteLLM/Instructor adapter path.
+ledger. It distinguishes Gemini's native schema API from the LiteLLM/Instructor adapter path,
+and bisects which specific JSON Schema construct in the R5 tag contract (schema references,
+anyOf-nullable typing, or default values) a native-schema failure is actually caused by.
 """
 
 from __future__ import annotations
@@ -21,6 +23,33 @@ SIMPLE_SCHEMA = {
     "type": "object",
     "properties": {"tag": {"type": "string"}},
     "required": ["tag"],
+}
+
+# The R5 tag contract's native-r5-schema check above only reports a generic 400 with no detail
+# on which part of the schema Gemini actually rejected. Pydantic's model_json_schema() combines
+# three constructs for a nested-model contract like this one: $defs/$ref for the nested
+# Suggestion/Evidence models, anyOf for Optional fields, and default values for fields with
+# defaults. Each schema below isolates exactly one of those three against an otherwise-minimal
+# schema, so a per-check pass/fail bisects the actual culprit instead of guessing.
+REFS_SCHEMA = {
+    "$defs": {
+        "Inner": {
+            "type": "object",
+            "properties": {"note": {"type": "string"}},
+            "required": ["note"],
+        }
+    },
+    "type": "object",
+    "properties": {"inner": {"$ref": "#/$defs/Inner"}},
+    "required": ["inner"],
+}
+ANY_OF_NULLABLE_SCHEMA = {
+    "type": "object",
+    "properties": {"note": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+}
+DEFAULT_VALUE_SCHEMA = {
+    "type": "object",
+    "properties": {"count": {"type": "integer", "default": 0}},
 }
 
 
@@ -95,7 +124,7 @@ def _litellm(model: str, mode: str) -> dict[str, Any]:
 
 
 def run(model: str) -> list[dict[str, Any]]:
-    """Run four one-attempt checks and return JSON-safe, non-sensitive summaries."""
+    """Run one-attempt checks and return JSON-safe, non-sensitive summaries."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is required")
@@ -103,6 +132,9 @@ def run(model: str) -> list[dict[str, Any]]:
     checks = [
         ("native-simple-schema", lambda: _native(model, SIMPLE_SCHEMA, api_key)),
         ("native-r5-schema", lambda: _native(model, tag_schema, api_key)),
+        ("native-refs-only", lambda: _native(model, REFS_SCHEMA, api_key)),
+        ("native-anyof-nullable-only", lambda: _native(model, ANY_OF_NULLABLE_SCHEMA, api_key)),
+        ("native-default-only", lambda: _native(model, DEFAULT_VALUE_SCHEMA, api_key)),
         ("litellm-json-object", lambda: _litellm(model, "json")),
         ("litellm-json-schema", lambda: _litellm(model, "json-schema")),
     ]

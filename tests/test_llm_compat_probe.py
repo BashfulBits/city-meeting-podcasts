@@ -1,3 +1,5 @@
+import json
+
 import requests
 
 from citypods import llm_compat_probe
@@ -38,7 +40,7 @@ def test_safe_error_excludes_request_material():
     assert secret not in str(value)
 
 
-def test_run_executes_the_four_named_paths(monkeypatch):
+def test_run_executes_the_named_paths(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "not-a-real-key")
     monkeypatch.setattr(llm_compat_probe, "ensure_llm_contract", lambda: _Contract())
     monkeypatch.setattr(llm_compat_probe, "_native", lambda *_: {"ok": True})
@@ -46,9 +48,32 @@ def test_run_executes_the_four_named_paths(monkeypatch):
     assert [row["check"] for row in llm_compat_probe.run("gemini-test")] == [
         "native-simple-schema",
         "native-r5-schema",
+        "native-refs-only",
+        "native-anyof-nullable-only",
+        "native-default-only",
         "litellm-json-object",
         "litellm-json-schema",
     ]
+
+
+def test_bisection_schemas_isolate_exactly_one_construct_each():
+    """Each bisection schema must add exactly one of the three constructs the failing
+    native-r5-schema check combines, or a pass/fail on it wouldn't actually isolate anything."""
+    for schema in (
+        llm_compat_probe.REFS_SCHEMA,
+        llm_compat_probe.ANY_OF_NULLABLE_SCHEMA,
+        llm_compat_probe.DEFAULT_VALUE_SCHEMA,
+    ):
+        raw = json.dumps(schema)
+        flags = {
+            "$ref": '"$ref"' in raw,
+            "anyOf": '"anyOf"' in raw,
+            "default": '"default"' in raw,
+        }
+        assert sum(flags.values()) == 1, flags
+
+    assert llm_compat_probe.REFS_SCHEMA["properties"]["inner"] == {"$ref": "#/$defs/Inner"}
+    assert '"$defs"' in json.dumps(llm_compat_probe.REFS_SCHEMA)
 
 
 class _Contract:
