@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMBackendError
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.config import load_city_configs, load_site_config
@@ -160,6 +160,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             "transcript": transcript[:24000],
         }
         outputs: dict[str, Any] = {}
+        contest_failed = False
         for model in MODELS:
             if model == "gemini/gemini-3.1-flash-lite":
                 persisted = persisted_r5_flash_output(record)
@@ -167,22 +168,34 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     outputs[model] = persisted
                     continue
             recipe = _digest({"v": 1, "uid": ep.uid, "model": model, "source": source})
-            answer, _, pending, _ = llm_tag_suggestions(
-                _backend(model, storage),
-                taxonomy=taxonomy,
-                agenda_item_titles=titles,
-                agenda_text=agenda,
-                transcript_text=transcript,
-                chapter_inputs=chapters,
-                recipe_hash=recipe,
-                allow_paid=True,
-                purpose="tournament:tag",
-                deadline_at=deadline,
-            )
+            try:
+                answer, _, pending, _ = llm_tag_suggestions(
+                    _backend(model, storage),
+                    taxonomy=taxonomy,
+                    agenda_item_titles=titles,
+                    agenda_text=agenda,
+                    transcript_text=transcript,
+                    chapter_inputs=chapters,
+                    recipe_hash=recipe,
+                    allow_paid=True,
+                    purpose="tournament:tag",
+                    deadline_at=deadline,
+                )
+            except LLMBackendError as exc:
+                # Per its own docstring, LLMBackendError's whole family (a malformed reply the
+                # provider produced, a scheduler/storage guard, ...) is a safe, provider-agnostic
+                # adapter error -- exactly the kind of transient/per-episode issue this bounded,
+                # durable runner is meant to skip and pick up on a later scheduled run, not a
+                # reason to crash the whole tournament (see scripts/city_discovery.py for the
+                # same pattern). A genuine config bug still raises unhandled, failing loudly.
+                print(f"llm-tournament: skipping {ep.uid!r} ({model}): {exc}")
+                contest_failed = True
+                break
             if pending:
+                contest_failed = True
                 break
             outputs[model] = answer
-        if len(outputs) != len(MODELS):
+        if contest_failed or len(outputs) != len(MODELS):
             continue
         decisions = []
         judge_pending = False
@@ -216,7 +229,12 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                         ),
                     },
                 )
-                result = _backend(judge, storage).run_inference(job)
+                try:
+                    result = _backend(judge, storage).run_inference(job)
+                except LLMBackendError as exc:
+                    print(f"llm-tournament: skipping {ep.uid!r} judge {judge}: {exc}")
+                    judge_pending = True
+                    break
                 if isinstance(result, JobHandle):
                     judge_pending = True
                     break

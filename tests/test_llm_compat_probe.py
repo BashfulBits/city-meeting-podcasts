@@ -1,4 +1,21 @@
+import requests
+
 from citypods import llm_compat_probe
+
+
+def test_native_check_reports_request_exception_instead_of_crashing(monkeypatch):
+    """A network-level failure (e.g. a read timeout) must produce a reportable result like any
+    other check, not an unhandled exception that aborts the rest of the probe matrix -- this is
+    the same guarantee `_litellm()` already documents for its own failures."""
+
+    def raise_timeout(*_args, **_kwargs):
+        raise requests.exceptions.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(llm_compat_probe.requests, "post", raise_timeout)
+
+    result = llm_compat_probe._native("gemini-test", {"type": "object"}, "not-a-real-key")
+
+    assert result == {"ok": False, "exception_type": "ReadTimeout", "exception_status": None}
 
 
 def test_safe_error_excludes_request_material():

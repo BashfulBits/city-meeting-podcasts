@@ -326,9 +326,17 @@ class LiteLLMBackend(Backend):
             from instructor import Mode
         except ImportError as exc:
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
-        # DeepSeek public chat supports only valid-JSON mode.  Instructor includes the Pydantic
-        # schema in the prompt and supplies its field-specific validation feedback on a retry.
-        return Mode.JSON if resolved_model.startswith("deepseek/") else Mode.JSON_SCHEMA
+        # DeepSeek public chat supports only valid-JSON mode.  Gemini's native schema-constrained
+        # mode rejects the Pydantic-generated schema this backend actually sends for
+        # nested-model contracts like the R5 tag response: $defs/$ref for the nested Suggestion/
+        # Evidence models, anyOf for Optional fields, and list/None defaults all provoke a live
+        # 400 INVALID_ARGUMENT (confirmed against the real API by
+        # citypods/llm_compat_probe.py's native-r5-schema/litellm-json-schema checks and by the
+        # llm-safe-diagnostic emitted from a failed tournament run). Instructor includes the
+        # Pydantic schema in the prompt instead and supplies its own field-specific validation
+        # feedback on a retry, exactly like the DeepSeek fallback.
+        no_native_schema = resolved_model.startswith(("deepseek/", "gemini/"))
+        return Mode.JSON if no_native_schema else Mode.JSON_SCHEMA
 
     def _provider_options(self, job: InferenceJob, resolved_model: str) -> dict[str, Any]:
         options: dict[str, Any] = {"model": resolved_model}

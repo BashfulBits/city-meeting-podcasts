@@ -53,12 +53,16 @@ def _native(model: str, schema: dict[str, Any], api_key: str) -> dict[str, Any]:
             "maxOutputTokens": 128,
         },
     }
-    response = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        params={"key": api_key},
-        json=payload,
-        timeout=30,
-    )
+    try:
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            params={"key": api_key},
+            json=payload,
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        # One fixed-prompt probe must report, not abort the matrix.
+        return _safe_error(exc=exc)
     if not response.ok:
         return _safe_error(response=response)
     return {"ok": True, "status": response.status_code}

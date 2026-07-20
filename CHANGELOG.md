@@ -225,6 +225,22 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Direct Gemini structured-output calls no longer 400 on the R5 tag contract, and the LLM
+  tournament no longer crashes when one does.** `citypods/llm_compat_probe.py`'s new diagnostic
+  runs (and the `llm-safe-diagnostic` event added alongside it) confirmed Gemini's native
+  schema-constrained mode rejects this backend's Pydantic-generated schema for nested-model
+  contracts like the R5 tag response — `$defs`/`$ref` for the nested `Suggestion`/`Evidence`
+  models, `anyOf` for `Optional` fields, and list/`None` defaults all provoke a live `400
+  INVALID_ARGUMENT`, while the same contract via plain JSON mode succeeds. Direct Gemini calls
+  now use Instructor's prompt-embedded JSON mode instead of its native `JSON_SCHEMA` mode,
+  exactly like the existing DeepSeek fallback. Separately, `citypods/tournament.py`'s `run()`
+  previously let any `LLMBackendError` (a malformed reply, a scheduler guard, ...) from either a
+  contestant or a judge call propagate uncaught, crashing the whole scheduled run instead of
+  skipping just the affected episode for a later attempt — the same `LLMBackendError`-catching
+  pattern `scripts/city_discovery.py` already uses. The probe's own `_native()` check also now
+  catches a request-level failure (e.g. a read timeout) instead of letting it abort the rest of
+  the diagnostic matrix.
+
 - **ASR worker report no longer prints stale compute-budget totals.** `asr-worker-report` loaded
   the Modal/Beam dollar ledger straight off storage and printed it as-is, but the per-backend
   stale-cycle reset only ever fired as a side effect of a real dispatch attempt

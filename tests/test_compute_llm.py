@@ -463,7 +463,10 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
     assert ledger.cost_used == pytest.approx(80 * 0.14e-6 + 20 * 0.28e-6)
 
 
-def test_structured_job_uses_instructor_pydantic_json_schema_mode():
+def test_structured_job_uses_instructor_json_mode_for_gemini():
+    """Gemini's native schema-constrained mode 400s on this backend's Pydantic-generated
+    schema for nested-model contracts (confirmed against the live API), so direct Gemini calls
+    use the same prompt-embedded JSON mode as DeepSeek instead of Instructor's JSON_SCHEMA mode."""
     calls = []
 
     def completion(**kwargs):
@@ -476,10 +479,7 @@ def test_structured_job_uses_instructor_pydantic_json_schema_mode():
     result = backend.run_inference(job(content="meeting text", structured_output="test-output"))
 
     assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
-    assert calls[0]["response_format"] == {
-        "type": "json_schema",
-        "json_schema": {"name": "ExampleOutput", "schema": ExampleOutput.model_json_schema()},
-    }
+    assert calls[0]["response_format"] == {"type": "json_object"}
 
 
 def test_deepseek_instructor_json_mode_retries_pydantic_validation_once():
