@@ -3,7 +3,8 @@
 This intentionally uses a fixed prompt and never opens storage, records, or the LLM budget
 ledger. It distinguishes Gemini's native schema API from the LiteLLM/Instructor adapter path,
 and bisects which specific JSON Schema construct in the R5 tag contract (schema references,
-anyOf-nullable typing, or default values) a native-schema failure is actually caused by.
+array-of-refs, anyOf-nullable typing, default values, or additionalProperties: false) a
+native-schema failure is actually caused by.
 """
 
 from __future__ import annotations
@@ -27,10 +28,14 @@ SIMPLE_SCHEMA = {
 
 # The R5 tag contract's native-r5-schema check above only reports a generic 400 with no detail
 # on which part of the schema Gemini actually rejected. Pydantic's model_json_schema() combines
-# three constructs for a nested-model contract like this one: $defs/$ref for the nested
-# Suggestion/Evidence models, anyOf for Optional fields, and default values for fields with
-# defaults. Each schema below isolates exactly one of those three against an otherwise-minimal
-# schema, so a per-check pass/fail bisects the actual culprit instead of guessing.
+# several constructs for a nested-model contract like this one: $defs/$ref for the nested
+# Suggestion/Evidence models (including $ref used inside an array's items, since both are
+# list[...] fields), anyOf for Optional fields, default values for fields with defaults, and
+# additionalProperties: false from every model's ConfigDict(extra="forbid"). Each schema below
+# isolates one of those constructs against an otherwise-minimal schema, so a per-check pass/fail
+# bisects the actual culprit instead of guessing. A first round (refs/anyOf/default, each as a
+# plain object property) all passed individually against gemini-3.1-flash-lite even though the
+# combined R5 schema still 400s -- these two add the constructs that round didn't cover.
 REFS_SCHEMA = {
     "$defs": {
         "Inner": {
@@ -50,6 +55,24 @@ ANY_OF_NULLABLE_SCHEMA = {
 DEFAULT_VALUE_SCHEMA = {
     "type": "object",
     "properties": {"count": {"type": "integer", "default": 0}},
+}
+ARRAY_OF_REFS_SCHEMA = {
+    "$defs": {
+        "Inner": {
+            "type": "object",
+            "properties": {"note": {"type": "string"}},
+            "required": ["note"],
+        }
+    },
+    "type": "object",
+    "properties": {"items": {"type": "array", "items": {"$ref": "#/$defs/Inner"}}},
+    "required": ["items"],
+}
+ADDITIONAL_PROPERTIES_FALSE_SCHEMA = {
+    "type": "object",
+    "properties": {"note": {"type": "string"}},
+    "required": ["note"],
+    "additionalProperties": False,
 }
 
 
@@ -135,6 +158,11 @@ def run(model: str) -> list[dict[str, Any]]:
         ("native-refs-only", lambda: _native(model, REFS_SCHEMA, api_key)),
         ("native-anyof-nullable-only", lambda: _native(model, ANY_OF_NULLABLE_SCHEMA, api_key)),
         ("native-default-only", lambda: _native(model, DEFAULT_VALUE_SCHEMA, api_key)),
+        ("native-array-of-refs-only", lambda: _native(model, ARRAY_OF_REFS_SCHEMA, api_key)),
+        (
+            "native-additional-properties-false-only",
+            lambda: _native(model, ADDITIONAL_PROPERTIES_FALSE_SCHEMA, api_key),
+        ),
         ("litellm-json-object", lambda: _litellm(model, "json")),
         ("litellm-json-schema", lambda: _litellm(model, "json-schema")),
     ]

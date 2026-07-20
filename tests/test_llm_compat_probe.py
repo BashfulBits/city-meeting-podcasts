@@ -51,29 +51,47 @@ def test_run_executes_the_named_paths(monkeypatch):
         "native-refs-only",
         "native-anyof-nullable-only",
         "native-default-only",
+        "native-array-of-refs-only",
+        "native-additional-properties-false-only",
         "litellm-json-object",
         "litellm-json-schema",
     ]
 
 
-def test_bisection_schemas_isolate_exactly_one_construct_each():
-    """Each bisection schema must add exactly one of the three constructs the failing
-    native-r5-schema check combines, or a pass/fail on it wouldn't actually isolate anything."""
-    for schema in (
-        llm_compat_probe.REFS_SCHEMA,
-        llm_compat_probe.ANY_OF_NULLABLE_SCHEMA,
-        llm_compat_probe.DEFAULT_VALUE_SCHEMA,
-    ):
-        raw = json.dumps(schema)
-        flags = {
-            "$ref": '"$ref"' in raw,
-            "anyOf": '"anyOf"' in raw,
-            "default": '"default"' in raw,
-        }
-        assert sum(flags.values()) == 1, flags
+_CONSTRUCT_MARKERS = {
+    "$defs": '"$defs"',
+    "$ref": '"$ref"',
+    "anyOf": '"anyOf"',
+    "default": '"default"',
+    "additionalProperties": '"additionalProperties"',
+}
+
+
+def _present_constructs(schema: dict) -> set[str]:
+    raw = json.dumps(schema)
+    return {name for name, marker in _CONSTRUCT_MARKERS.items() if marker in raw}
+
+
+def test_bisection_schemas_isolate_one_construct_family_each():
+    """Each bisection schema must add only its own target construct(s) to an otherwise-minimal
+    schema, or a pass/fail on it wouldn't actually isolate anything from the R5 tag contract's
+    combined native-r5-schema failure. $defs/$ref are one inseparable family (a $ref always
+    needs a $defs entry to point at); REFS_SCHEMA and ARRAY_OF_REFS_SCHEMA differ only in
+    whether the $ref sits directly on a property or inside an array's items, matching how the
+    real contract's list[Suggestion]/list[Evidence] fields use it."""
+    assert _present_constructs(llm_compat_probe.REFS_SCHEMA) == {"$defs", "$ref"}
+    assert _present_constructs(llm_compat_probe.ARRAY_OF_REFS_SCHEMA) == {"$defs", "$ref"}
+    assert _present_constructs(llm_compat_probe.ANY_OF_NULLABLE_SCHEMA) == {"anyOf"}
+    assert _present_constructs(llm_compat_probe.DEFAULT_VALUE_SCHEMA) == {"default"}
+    assert _present_constructs(llm_compat_probe.ADDITIONAL_PROPERTIES_FALSE_SCHEMA) == {
+        "additionalProperties"
+    }
 
     assert llm_compat_probe.REFS_SCHEMA["properties"]["inner"] == {"$ref": "#/$defs/Inner"}
-    assert '"$defs"' in json.dumps(llm_compat_probe.REFS_SCHEMA)
+    assert llm_compat_probe.ARRAY_OF_REFS_SCHEMA["properties"]["items"] == {
+        "type": "array",
+        "items": {"$ref": "#/$defs/Inner"},
+    }
 
 
 class _Contract:
