@@ -215,7 +215,7 @@ every integration point around it is still R5-specific, despite the module's own
   second feature would need its own equivalent `StageContext` fields and its own config-reading code,
   duplicating this wiring rather than sharing it.
 - The `citypods llm-evaluation` CLI subcommand (`citypods/cli.py`) dispatches unconditionally to
-  `scripts/llm_tag_review.py` — a **tag-specific** packaging script (its digest/issue titles literally say
+  `citypods/llm_tag_review.py` — a **tag-specific** packaging module (its digest/issue titles literally say
   "R5 LLM tag calibration" / "R5 LLM tag sample `<id>`"). A second feature could not reuse this CLI entry
   point or these workflows without either forking them or generalizing the title/routing logic first.
 - `.github/workflows/llm-tag-review.yml`/`llm-tag-review-ingest.yml` are themselves R5-named and R5-scoped
@@ -243,7 +243,7 @@ value, for the matrix key to stay meaningful.
 ## §11. Module / file plan
 
 - `citypods/llm_evaluation.py` — implemented, feature-independent (§1–§7).
-- `scripts/llm_tag_review.py` — implemented, but R5-specific (§9) — the concrete thing a generalization pass
+- `citypods/llm_tag_review.py` — implemented, but R5-specific (§9) — the concrete thing a generalization pass
   would need to either parameterize or replace with a per-feature equivalent.
 - `.github/workflows/llm-tag-review.yml` / `llm-tag-review-ingest.yml` — implemented, R5-named (§9).
 - `citypods/cli.py`'s `llm-evaluation` subcommand — implemented, hardwired to the R5 script (§9).
