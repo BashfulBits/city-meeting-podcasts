@@ -2069,6 +2069,19 @@ def test_build_rejects_unknown_lane(tmp_path, fake_provider):
         _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="bogus")
 
 
+def test_tag_lane_is_accepted(tmp_path, fake_provider):
+    """`--lane tag` is what the daily tag.yml workflow runs (`enrich --lane tag`, no --source/
+    --shard). It was already fully wired into the CLI's --lane choices, LANE_STAGES, and
+    _LANE_OWNED_BLOCKS, but _build_impl's own whitelist still only accepted audio/transcribe/
+    align, so every scheduled run failed immediately with "unknown lane 'tag'" before TagsStage
+    ever ran."""
+    cities = _setup(tmp_path)
+
+    results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="tag")
+
+    assert [r.status for r in results] == ["built"]
+
+
 # --- H5 PR3: global two-pass enrich queue ----------------------------------------------
 
 _NOW = datetime(2026, 6, 12, tzinfo=UTC)

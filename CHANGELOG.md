@@ -225,6 +225,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
+  "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
+  the CLI's `--lane` choices, `LANE_STAGES` (which stages a lane runs), and
+  `_LANE_OWNED_BLOCKS`/`protected_blocks_for_lane` (cross-lane write isolation) — except
+  `citypods/run.py`'s `_build_impl()`, which still validated `lane` against only
+  `("audio", "transcribe", "align")` and rejected everything else, including `"tag"`, before
+  `TagsStage` ever ran. Also stopped the tag lane from needlessly pre-loading the multi-GB
+  Whisper ASR model on every run — it never runs `TranscriptStage` (per `LANE_STAGES`), so it
+  never needed one; the pre-load condition previously only excluded the `audio` lane.
+
 - **Direct Gemini structured-output calls no longer 400 on the R5 tag contract, and the LLM
   tournament no longer crashes when one does.** `citypods/llm_compat_probe.py`'s new diagnostic
   runs (the `llm-safe-diagnostic` event, then an additive bisection, then a subtractive
