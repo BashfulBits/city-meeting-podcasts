@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 
 from citypods.llm_evaluation import (
@@ -31,6 +34,24 @@ def candidate(confidence: float, *, label: str = "housing", episode: str = "ep-1
         "explanation": "The meeting discusses the topic.",
         "evidence": [{"where": "transcript", "quote": "housing supply", "start": 1, "end": 3}],
     }
+
+
+def test_llm_evaluation_cli_is_importable_outside_checkout(tmp_path):
+    """The console command must not depend on the un-packaged ``scripts/`` directory."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            ("from citypods.cli import main; main(['llm-evaluation', 'package', '--help'])"),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--out-dir OUT_DIR" in result.stdout
 
 
 def test_unqualified_route_uses_one_hundred_percent_fallback():

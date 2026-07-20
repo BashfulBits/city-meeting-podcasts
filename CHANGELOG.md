@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM calibration review CLI is now packaged.** The scheduled tag-review workflow previously failed
+  before processing candidates because the `citypods llm-evaluation` console command imported its R5
+  adapter from the un-packaged top-level `scripts/` directory. The adapter now lives in `citypods/`,
+  so the installed command works from a clean GitHub Actions environment; a regression test executes
+  the CLI from outside the checkout under isolated Python imports.
+
 - **Local-source concat now honors `audio_ffmpeg_threads`.** `_concat_local_sources` (the
   `filter_complex` decode/concat of already-downloaded multi-source segments, driven by
   `SourceCache.get_or_fetch_concat`) built its ffmpeg command with no thread-pinning flags, unlike
