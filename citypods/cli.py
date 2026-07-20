@@ -320,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "transcript-quality":
         return _transcript_quality(args)
     if args.command == "llm-evaluation":
-        from scripts import llm_tag_review
+        from citypods import llm_tag_review
 
         return llm_tag_review.main(args.llm_evaluation_args)
 

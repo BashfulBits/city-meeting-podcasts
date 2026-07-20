@@ -70,6 +70,12 @@ def persisted_r5_flash_output(record: dict[str, Any]) -> list[dict[str, Any]] | 
     return None
 
 
+def judge_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep tag substance while withholding route/recipe provenance from a blind judge."""
+    fields = ("id", "chapter_id", "source", "confidence", "explanation", "evidence")
+    return [{field: item[field] for field in fields if field in item} for item in candidates]
+
+
 def _digest(value: Any) -> str:
     body = json.dumps(value, sort_keys=True, ensure_ascii=False).encode()
     return hashlib.sha256(body).hexdigest()
@@ -179,12 +185,13 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         if len(outputs) != len(MODELS):
             continue
         decisions = []
+        judge_pending = False
         for left, right, judge in CONTESTS:
             for first, second in ((left, right), (right, left)):
                 prompt = {
                     "source": source,
-                    "candidate_a": outputs[first],
-                    "candidate_b": outputs[second],
+                    "candidate_a": judge_candidates(outputs[first]),
+                    "candidate_b": judge_candidates(outputs[second]),
                 }
                 _judge_model()
                 job = InferenceJob(
@@ -211,6 +218,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 )
                 result = _backend(judge, storage).run_inference(job)
                 if isinstance(result, JobHandle):
+                    judge_pending = True
                     break
                 decision = _judge_model().model_validate_json(_content(result))
                 decisions.append(
@@ -223,13 +231,16 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                         "rationale": decision.rationale,
                     }
                 )
-            if len(decisions) % 2:
+            if judge_pending:
                 break
-        if len(decisions) != 6:
+        if judge_pending or len(decisions) != 6:
             continue
         state["results"].append(
             {"episode_uid": ep.uid, "at": datetime.now(UTC).isoformat(), "decisions": decisions}
         )
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+        push_state(storage, state_dir)
         completed += 1
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")

@@ -1,8 +1,8 @@
 """Package and ingest the weekly R5 LLM-tag calibration review.
 
-The script is intentionally a thin feature adapter around ``citypods.llm_evaluation``. The
-evaluator owns the calibration matrix and issue evidence contract; this script only discovers R5
-candidates from episode records and supplies the GitHub workflow's files.
+This feature adapter discovers R5 candidates from episode records and supplies the GitHub
+workflow's files; :mod:`citypods.llm_evaluation` owns the calibration matrix and issue-evidence
+contract.
 """
 
 from __future__ import annotations
