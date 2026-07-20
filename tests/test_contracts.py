@@ -64,6 +64,9 @@ class _FakeProvider:
     def resolve_media_url(self, episode, source):
         return "https://cdn.example/a.mp4?AWSAccessKeyId=AKIA&Signature=topsecret&Expires=1"
 
+    def fetch_view_counts(self, source):
+        return []  # Uncapped archive-backed providers have no cap data to report.
+
 
 def test_check_city_media_check_redacts_presigned_query(monkeypatch):
     monkeypatch.setattr("citypods.contracts.get_provider", lambda name: _FakeProvider())
@@ -72,6 +75,17 @@ def test_check_city_media_check_redacts_presigned_query(monkeypatch):
     media = next(r for r in results if r.endpoint == "media")
     assert "topsecret" not in media.detail
     assert media.detail == "https://cdn.example/a.mp4?<redacted>"
+
+
+def test_check_city_accepts_empty_view_counts_for_uncapped_provider(monkeypatch):
+    monkeypatch.setattr("citypods.contracts.get_provider", lambda name: _FakeProvider())
+    monkeypatch.setattr("shutil.which", lambda _name: None)  # skip the media-fetch sub-check
+
+    results = check_city("fake-city", "fake", {})
+
+    view_counts = next(r for r in results if r.endpoint == "view_counts")
+    assert view_counts.ok is True
+    assert view_counts.detail == "[]"
 
 
 def test_check_city_unregistered_provider_returns_a_result_not_raises():

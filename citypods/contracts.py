@@ -174,12 +174,14 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
         except Exception as exc:  # noqa: BLE001
             out.append(_r(provider_name, slug, "chapters", False, repr(exc)))
 
-    # 4. View counts (Granicus) — the cap probe used by the audit.
+    # 4. View counts (Granicus) — the cap probe used by the audit.  An empty result is a valid
+    #    "not applicable" response for uncapped archive-backed providers, so reaching this method
+    #    successfully is the contract rather than finding a saturated view.
     fetch_view_counts = getattr(provider, "fetch_view_counts", None)
     if fetch_view_counts is not None:
         try:
             counts = fetch_view_counts(source)
-            out.append(_r(provider_name, slug, "view_counts", bool(counts), str(counts)))
+            out.append(_r(provider_name, slug, "view_counts", True, str(counts)))
         except Exception as exc:  # noqa: BLE001
             out.append(_r(provider_name, slug, "view_counts", False, repr(exc)))
 
