@@ -43,8 +43,9 @@ jobs:
   gc:
     runs-on: ubuntu-latest
     # Credentials are scoped per step (never at job level), so checkout/setup-python/pip — which need
-    # none of them — can't see B2/R2/Cloudflare secrets or GH_TOKEN. Storage steps get B2+R2 (make_storage
-    # builds the routing backend from them; apply_bucket_lifecycle.py targets each backend directly);
+    # none of them — can't see B2/R2/Cloudflare secrets or GH_TOKEN. The lifecycle step gets B2 and
+    # its dedicated, least-privilege R2 lifecycle token; the GC step gets B2+R2 (make_storage builds
+    # the routing backend from them);
     # gh-shelling steps get GH_TOKEN. Matches validate-control-plane.yml's step-scoped secret pattern.
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -69,10 +70,8 @@ jobs:
         continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_R2_LIFECYCLE_API_TOKEN: ${{ secrets.CLOUDFLARE_R2_LIFECYCLE_API_TOKEN }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
