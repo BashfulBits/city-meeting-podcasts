@@ -574,8 +574,9 @@ Phase R (Research-Tool Surface)._
   validator's R2 scratch prefixes (`work-leases/__validate__/`, `provider-leases/validate-`) after 1
   day — the infrastructure fix for CR-SC-15, since a killed runner can't run the validator's
   best-effort cleanup — through Cloudflare's dedicated R2 lifecycle API credential rather than the
-  normal object-access key — and configures a bounded B2 version-retention window (`defaults.b2_retention_days`,
-  default 30d) so a mistaken delete stays restorable. A hard guardrail refuses any R2 rule broader than
+  normal object-access key — and configures B2's noncurrent-version retention window
+  (`defaults.b2_retention_days`, default 30d) so a mistaken delete stays restorable without expiring
+  live current objects. A hard guardrail refuses any R2 rule broader than
   a scratch prefix (an over-broad `work-leases/` rule would expire live leases). (2) **Double-confirmed
   auto-apply orphan GC** (`gc_audio.py --auto-confirm`): a scheduled run now deletes the provably-safe
   subset without a human — orphans seen unreferenced across ≥2 runs past `defaults.orphan_quarantine_days`

@@ -56,7 +56,7 @@ def test_guardrail_rejects_bucket_wide_prefix():
 def test_b2_retention_rule_keeps_noncurrent_versions():
     rules = reclaim.build_b2_retention_rules(retention_days=30)
     assert rules[0]["NoncurrentVersionExpiration"]["NoncurrentDays"] == 30
-    assert rules[0]["Expiration"]["ExpiredObjectDeleteMarker"] is True
+    assert "Expiration" not in rules[0]
 
 
 def test_merge_managed_rules_preserves_unmanaged_and_replaces_managed():
@@ -353,6 +353,46 @@ def test_r2_lifecycle_rules_use_cloudflare_age_seconds_and_keep_unmanaged_rules(
     )
     assert merged[0]["id"] == "unmanaged"
     assert all(rule in merged for rule in desired)
+
+
+def test_b2_reconciliation_adopts_only_the_legacy_bucketwide_retention_rule():
+    apply_bucket_lifecycle = _load_script("apply_bucket_lifecycle")
+    legacy = {
+        "ID": "fdec5e20-e8ef-4083-801e-1e676833cd34",
+        "Filter": {"Prefix": ""},
+        "Status": "Enabled",
+        "NoncurrentVersionExpiration": {"NoncurrentDays": 7},
+    }
+    unrelated = {
+        "ID": "user-retention",
+        "Filter": {"Prefix": "legal/"},
+        "Status": "Enabled",
+        "NoncurrentVersionExpiration": {"NoncurrentDays": 365},
+    }
+    desired = reclaim.build_b2_retention_rules(retention_days=30)
+    merged = apply_bucket_lifecycle._merge_b2_retention_rules([legacy, unrelated], desired)
+    assert legacy not in merged
+    assert unrelated in merged
+    assert merged[-1] == desired[0]
+
+    backend = _FakeLifecycleBackend()
+    backend._rules = [legacy, unrelated]
+    assert apply_bucket_lifecycle._reconcile_b2(backend, desired, apply=True) is True
+    assert backend._rules == [unrelated, desired[0]]
+    assert apply_bucket_lifecycle._reconcile_b2(backend, desired, apply=True) is True
+    assert backend.puts == 1
+
+
+def test_b2_legacy_rule_detection_rejects_null_noncurrent_expiration():
+    apply_bucket_lifecycle = _load_script("apply_bucket_lifecycle")
+    assert not apply_bucket_lifecycle._is_legacy_b2_version_retention(
+        {
+            "ID": "broken-rule",
+            "Filter": {"Prefix": ""},
+            "Status": "Enabled",
+            "NoncurrentVersionExpiration": None,
+        }
+    )
 
 
 # ── gc_audio: report body reflects auto-reaped counts ────────────────────────────────
