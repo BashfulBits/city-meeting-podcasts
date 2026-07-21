@@ -206,11 +206,13 @@ def _is_legacy_b2_version_retention(rule: dict) -> bool:
     allowed_keys = {"ID", "Filter", "Prefix", "Status", "NoncurrentVersionExpiration"}
     filter_ = rule.get("Filter")
     prefix = filter_.get("Prefix") if isinstance(filter_, dict) else rule.get("Prefix")
+    noncurrent = rule.get("NoncurrentVersionExpiration")
     return (
         set(rule).issubset(allowed_keys)
         and rule.get("Status") == "Enabled"
         and prefix == ""
-        and isinstance(rule.get("NoncurrentVersionExpiration", {}).get("NoncurrentDays"), int)
+        and isinstance(noncurrent, dict)
+        and isinstance(noncurrent.get("NoncurrentDays"), int)
     )
 
 

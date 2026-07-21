@@ -383,6 +383,18 @@ def test_b2_reconciliation_adopts_only_the_legacy_bucketwide_retention_rule():
     assert backend.puts == 1
 
 
+def test_b2_legacy_rule_detection_rejects_null_noncurrent_expiration():
+    apply_bucket_lifecycle = _load_script("apply_bucket_lifecycle")
+    assert not apply_bucket_lifecycle._is_legacy_b2_version_retention(
+        {
+            "ID": "broken-rule",
+            "Filter": {"Prefix": ""},
+            "Status": "Enabled",
+            "NoncurrentVersionExpiration": None,
+        }
+    )
+
+
 # ── gc_audio: report body reflects auto-reaped counts ────────────────────────────────
 
 
