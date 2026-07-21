@@ -582,6 +582,7 @@ def _run_bounded(
     items,
     *,
     max_pending: int,
+    on_progress: Callable[[], None] | None = None,
 ) -> None:
     """Run *fn* over an iterator with a rolling submission window.
 
@@ -590,6 +591,11 @@ def _run_bounded(
     a future implementation to prefetch far beyond what downstream materialization can drain.
     Keep only a bounded number of futures submitted and refill immediately as each one finishes;
     the producer never waits for the whole current batch to drain.
+
+    ``on_progress``, if given, runs after each drain cycle -- always from this function's own
+    (calling) thread, never concurrently with itself or with a still-running ``fn`` submission.
+    Used for periodic mid-pass checkpointing on passes with no natural end-of-phase persist
+    boundary (see the `tag` lane's checkpoint push in ``_run_enrich_global_queue``).
     """
     iterator = iter(items)
     pending: set = set()
@@ -607,6 +613,8 @@ def _run_bounded(
         done, pending = wait(pending, return_when=FIRST_COMPLETED)
         for future in done:
             future.result()
+        if on_progress is not None:
+            on_progress()
         _fill()
 
 
@@ -1147,6 +1155,7 @@ def _run_enrich_global_queue(
     max_workers: int,
     policy,
     owned_uids: dict[str, frozenset[str]] | None = None,
+    mid_run_checkpoint: Callable[[], None] | None = None,
 ) -> list[CityResult]:
     """H5 PR3 — global two-pass enrich for the time-bounded heavy phase.
 
@@ -1164,6 +1173,13 @@ def _run_enrich_global_queue(
 
     Records persist after the passes; content-addressed audio means a graceful ``stop`` (or a kill)
     never loses an encode — the object stays in storage and is re-credited next run.
+
+    ``mid_run_checkpoint``, if given, is called periodically (every ``_CHECKPOINT_INTERVAL_SECONDS``
+    of wall clock) during the transcript/tags-only passes, right after a local ``_persist_all()`` --
+    the caller's chance to also push those newly-persisted records to durable storage. It exists for
+    a lane whose only pass is transcript/tags-shaped (no audio pass, so no free mid-run persist
+    boundary): without it, a run killed mid-pass loses every item completed since the *previous*
+    run's end-of-run push, not just the in-flight ones.
     """
     ctx = pipeline.ctx
     # H6b lanes: the sharded workflows run one work class per job so the two ASR models never
@@ -1347,6 +1363,29 @@ def _run_enrich_global_queue(
                 notes=st["notes"],
             )
 
+    # The audio pass gets a free mid-run persist boundary (it always finishes before the
+    # decoupled transcript pass even starts -- the `_persist_all()` call right above this
+    # function). A lane whose ONLY pass is the transcript/tags one (`tag`, `diarize`) has no such
+    # boundary: without this, a mid-run kill during a long transcript/tags-only pass loses every
+    # completed item back to whatever the previous run last persisted, not just the in-flight
+    # ones -- exactly what happened to a scheduled `tag` run that was hard-cancelled by GitHub's
+    # job timeout with nothing durably written despite processing real LLM candidates.
+    # ``mid_run_checkpoint`` (local `_persist_all()` here, then the caller's durable remote push)
+    # is opt-in per call site -- `None` for every lane except `tag` today -- and runs from
+    # `_run_bounded`'s own calling thread between drain cycles, never concurrently with itself.
+    _CHECKPOINT_INTERVAL_SECONDS = 180.0
+    _last_checkpoint = {"t": time.monotonic()}
+
+    def _checkpoint_if_due() -> None:
+        if mid_run_checkpoint is None:
+            return
+        now = time.monotonic()
+        if now - _last_checkpoint["t"] < _CHECKPOINT_INTERVAL_SECONDS:
+            return
+        _last_checkpoint["t"] = now
+        _persist_all()
+        mid_run_checkpoint()
+
     with source_cache or _nullcontext():
         if audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
@@ -1374,7 +1413,13 @@ def _run_enrich_global_queue(
                 f"[enrich] transcript pass: {len(tx)} item(s) with audio (newest-first)", flush=True
             )
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                _run_bounded(pool, _transcript_task, tx, max_pending=max_workers)
+                _run_bounded(
+                    pool,
+                    _transcript_task,
+                    tx,
+                    max_pending=max_workers,
+                    on_progress=_checkpoint_if_due,
+                )
             print("[enrich] transcript pass done", flush=True)
 
             # Tagging has no audio dependency (it only reads agenda/transcript text), so an
@@ -1396,7 +1441,13 @@ def _run_enrich_global_queue(
                         _run_for(item, tags_only_stages)
 
                     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                        _run_bounded(pool, _tags_only_task, tx_tags_only, max_pending=max_workers)
+                        _run_bounded(
+                            pool,
+                            _tags_only_task,
+                            tx_tags_only,
+                            max_pending=max_workers,
+                            on_progress=_checkpoint_if_due,
+                        )
                     print("[enrich] tags-only pass done", flush=True)
 
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
@@ -1928,6 +1979,37 @@ def _build_impl(
                 _try_preload_asr_model(defaults, lane=lane)
 
             if phase == "enrich":
+                # A lane with no audio pass (`tag` today) has no free mid-run persist boundary --
+                # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. This mirrors the
+                # scoped/unscoped end-of-run push below (records only; no calendar/run_events/
+                # asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint protects and
+                # a periodic sweep of remote-only objects has no place running mid-pass). A failed
+                # checkpoint push must not abort the run: the end-of-run push still gets a chance,
+                # and losing one checkpoint only widens the loss window, it doesn't lose more than
+                # today's all-or-nothing behavior would have anyway.
+                def _tag_lane_checkpoint_push() -> None:
+                    try:
+                        if scoped:
+                            owned = sorted({source_key(c) for c in cities})
+                            pushed = push_records_merged(
+                                storage,
+                                state_dir,
+                                owned,
+                                protected_blocks=protected_blocks_for_lane(lane),
+                                owned_uids=shard_owned_uids,
+                                log=lambda msg: print(msg, flush=True),
+                            )
+                        else:
+                            pushed = push_state(storage, state_dir)
+                        if pushed:
+                            print(
+                                f"state: tag lane checkpoint pushed {pushed} file(s) to durable "
+                                "storage",
+                                flush=True,
+                            )
+                    except Exception as exc:  # noqa: BLE001 — see comment above
+                        print(f"state: tag lane checkpoint push failed: {exc}", flush=True)
+
                 # H5 PR3: the heavy production phase uses the global two-pass queue for true
                 # newest-everywhere-first prioritization across all sources (the per-source pool
                 # below can only order within a source). Renderless by definition.
@@ -1938,6 +2020,11 @@ def _build_impl(
                     max_workers=max_workers,
                     policy=backlog_policy,
                     owned_uids=shard_owned_uids,
+                    mid_run_checkpoint=(
+                        _tag_lane_checkpoint_push
+                        if lane == "tag" and persist_records and not dry_run and storage is not None
+                        else None
+                    ),
                 )
             else:
                 # all/render: the per-city pool. Light cross-source ordering (H5 PR2) submits

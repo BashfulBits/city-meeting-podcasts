@@ -245,7 +245,17 @@ Phase R (Research-Tool Surface)._
   `run_time_budget_minutes` default (240m, sized for the 4h audio/ASR cron) never tripped inside
   this lane's much shorter job. New episode field `tags_input_fingerprint` is additive and
   lane-owned by `tag` (`_LANE_OWNED_BLOCKS`); nothing about existing `tags`/`tags_spec_hash`
-  semantics changes.
+  semantics changes. **A hard kill can still happen for other reasons, though** (infra outage,
+  an unexpectedly large new backlog), and previously that meant losing the *entire* run's tag
+  work — the only persist call for this lane's pass sat at the very end, and even that was only a
+  local write; the durable bucket push happens once, later still, at the very end of the whole
+  build. `_run_bounded()` now takes an optional `on_progress` hook, and the `tag` lane wires one
+  up (`mid_run_checkpoint` in `_run_enrich_global_queue()`) that locally persists and pushes
+  completed records to durable storage (the same foreign-block-preserving `push_records_merged`/
+  `push_state` the end-of-run push already uses) every 3 minutes of wall clock during the
+  transcript/tags-only passes. A checkpoint push failure is logged and swallowed rather than
+  aborting the run — the end-of-run push still gets a chance. Other lanes are unaffected
+  (`mid_run_checkpoint` defaults to `None`).
 
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
