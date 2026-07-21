@@ -89,17 +89,19 @@ def build_r2_scratch_rules(*, ttl_days: int = R2_SCRATCH_TTL_DAYS) -> list[dict]
 
 
 def build_b2_retention_rules(*, retention_days: int = B2_RETENTION_DAYS_DEFAULT) -> list[dict]:
-    """S3 lifecycle rule keeping deleted/overwritten versions ``retention_days`` before purge, and
-    cleaning up expired delete markers. Bucket-wide (``Prefix: ""``) because every real object needs
-    the recovery window. NOTE: B2's S3 endpoint may ignore this shape and require its native
-    ``daysFromHidingToDeleting`` rule — the apply script reads the config back to verify."""
+    """S3 lifecycle rule keeping deleted/overwritten versions ``retention_days`` before purge.
+
+    Bucket-wide (``Prefix: ""``) because every real object needs the recovery window. Do **not** add
+    ``ExpiredObjectDeleteMarker`` here: Backblaze requires it to be paired with an ordinary
+    ``Expiration.Days`` rule for the same prefix, which would hide every current production object.
+    B2 removes orphan delete markers itself, so the safe noncurrent-version action is sufficient.
+    """
     return [
         {
             "ID": "reclaim-b2-version-retention",
             "Filter": {"Prefix": ""},
             "Status": "Enabled",
             "NoncurrentVersionExpiration": {"NoncurrentDays": int(retention_days)},
-            "Expiration": {"ExpiredObjectDeleteMarker": True},
         }
     ]
 

@@ -8,7 +8,8 @@ Two backstops, one idempotent entry point:
     that never reaches ``validate_control_plane.py``'s best-effort cleanup can't leak scratch.
     This is the infrastructure fix CR-SC-15 asked for.
   * **B2 version retention** — keep deleted/overwritten object *versions* for a bounded window
-    (``defaults.b2_retention_days``, default 30) before purge, and clean up expired delete markers.
+    (``defaults.b2_retention_days``, default 30) before purge. B2 removes orphan delete markers
+    itself; pairing that behavior with an S3 expiration rule would hide live production objects.
     This is the recoverable-delete window the resurrection watchdog relies on: a mistakenly-reaped
     audio/transcript object can be restored from its prior version until the window closes.
 
@@ -200,6 +201,63 @@ def _r2_leg(*, apply: bool) -> bool:
     )
 
 
+def _is_legacy_b2_version_retention(rule: dict) -> bool:
+    """Recognize the former bucket-wide B2 retention rule, without taking over unrelated rules."""
+    allowed_keys = {"ID", "Filter", "Prefix", "Status", "NoncurrentVersionExpiration"}
+    filter_ = rule.get("Filter")
+    prefix = filter_.get("Prefix") if isinstance(filter_, dict) else rule.get("Prefix")
+    return (
+        set(rule).issubset(allowed_keys)
+        and rule.get("Status") == "Enabled"
+        and prefix == ""
+        and isinstance(rule.get("NoncurrentVersionExpiration", {}).get("NoncurrentDays"), int)
+    )
+
+
+def _merge_b2_retention_rules(existing: list[dict], managed: list[dict]) -> list[dict]:
+    """Replace our managed rule and the earlier equivalent bucket-wide B2 rule.
+
+    B2 rejects overlapping-prefix rules. The pre-existing random-ID rule is the same policy this
+    script is responsible for, so adopting it makes the configured recovery window match the value
+    recorded in the reclaim log rather than leaving a hidden, stricter seven-day rule in force.
+    """
+    return [
+        rule
+        for rule in existing
+        if not str(rule.get("ID", "")).startswith(reclaim.MANAGED_RULE_ID_PREFIX)
+        and not _is_legacy_b2_version_retention(rule)
+    ] + list(managed)
+
+
+def _reconcile_b2(storage, desired: list[dict], *, apply: bool) -> bool:
+    current = storage.get_lifecycle_rules()
+    print(f"\n[b2] current lifecycle rules ({len(current)}):")
+    print(json.dumps(current, indent=2, default=str))
+
+    final = _merge_b2_retention_rules(current, desired)
+    if final == current:
+        print("[b2] already up to date — no change.")
+        return True
+
+    print("\n[b2] desired managed rules:")
+    print(json.dumps(desired, indent=2, default=str))
+    if not apply:
+        print("[b2] DRY-RUN — not writing (pass --apply to write).")
+        return True
+
+    storage.put_lifecycle_rules(final)
+    readback = _managed(storage.get_lifecycle_rules())
+    ok = all(rule in readback for rule in desired)
+    if ok:
+        print(f"[b2] applied and verified {len(desired)} managed rule(s).")
+    else:
+        print(
+            "::error title=lifecycle::[b2] PUT did not take effect — read-back is missing managed "
+            f"rules. Read-back managed rules: {json.dumps(readback, default=str)}"
+        )
+    return ok
+
+
 def _b2_leg(*, apply: bool, retention_days: int) -> bool:
     from citypods.storage.s3 import b2_from_env
 
@@ -208,7 +266,7 @@ def _b2_leg(*, apply: bool, retention_days: int) -> bool:
         print("[b2] B2 env absent — skipping B2 version-retention leg.")
         return True
     rules = reclaim.build_b2_retention_rules(retention_days=retention_days)
-    return _reconcile(storage, rules, label="b2", apply=apply)
+    return _reconcile_b2(storage, rules, apply=apply)
 
 
 def main(argv: list[str] | None = None) -> int:
