@@ -338,6 +338,23 @@ def test_apply_lifecycle_dry_run_never_writes():
     assert backend.puts == 0
 
 
+def test_r2_lifecycle_rules_use_cloudflare_age_seconds_and_keep_unmanaged_rules():
+    apply_bucket_lifecycle = _load_script("apply_bucket_lifecycle")
+    desired = [
+        apply_bucket_lifecycle._r2_rest_rule(rule) for rule in reclaim.build_r2_scratch_rules()
+    ]
+    assert {rule["conditions"]["prefix"] for rule in desired} == set(reclaim.R2_SCRATCH_PREFIXES)
+    assert all(
+        rule["deleteObjectsTransition"]["condition"] == {"type": "Age", "maxAge": 86400}
+        for rule in desired
+    )
+    merged = apply_bucket_lifecycle._merge_r2_rest_rules(
+        [{"id": "unmanaged", "conditions": {"prefix": "logs/"}}], desired
+    )
+    assert merged[0]["id"] == "unmanaged"
+    assert all(rule in merged for rule in desired)
+
+
 # ── gc_audio: report body reflects auto-reaped counts ────────────────────────────────
 
 
