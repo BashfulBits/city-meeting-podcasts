@@ -1260,7 +1260,18 @@ def _run_enrich_global_queue(
                 f"[enrich] cross-feed reconciled slug={state['city'].slug} duplicates={reconciled}",
                 flush=True,
             )
-    if transcript_stages:
+    # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
+    # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
+    # ProviderTranscriptDiarizeStage (works purely off an already-aligned transcript's text) nor
+    # TagsStage (works purely off agenda/transcript text) reads it. Gating this on
+    # `transcript_stages` rather than on membership of "transcript" specifically meant every
+    # `tag`-lane run paid the full per-episode ffprobe/heal pass (a storage round trip via
+    # probe_hosted_audio_duration_seconds) across the *entire* backlog before it could even build
+    # its candidate queue -- for a lane with no audio dependency at all. A dedicated,
+    # explicitly-bounded backfill already exists for stale durations
+    # (`.github/workflows/duration-normalize.yml` / `scripts/normalize_durations.py`); this inline
+    # pass only needs to run when the lane about to dispatch is the one that reads the result.
+    if any(s.name == "transcript" for s in transcript_stages):
 
         def _normalize_prepared(item: tuple[str, dict]) -> None:
             key, st = item
@@ -1646,6 +1657,26 @@ def _build_impl(
                 f"budget: {lane} start cutoff {start_cutoff_min:.0f}m, "
                 f"backstop {backstop_min:.0f}m (+ yield before new starts if superseded)"
             )
+        elif lane == "tag":
+            # The tag lane's own workflow (tag.yml) runs on a daily cron with a 25-minute *job*
+            # timeout, not the 4h-scale cron the generic `run_time_budget_minutes` window is sized
+            # for (== that lane's own cron interval, minus a tail -- see the comment above). Reusing
+            # the generic 240m default here would leave `stop()` never tripping before GitHub's own
+            # hard timeout kills the job -- which is exactly what happened (an untuned deadline gave
+            # this lane none of the "wrap up and persist" grace the audio/ASR lanes get; the job was
+            # SIGTERM'd mid-pass with nothing written). `tag_run_time_budget_minutes` gives it a
+            # deadline actually inside its own job's timeout, so a run that's still going too long
+            # stops dispatching new LLM calls and reaches the end-of-pass persist with margin to
+            # spare before GitHub cancels the job outright.
+            tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 18))
+            tag_deadline_secs = tag_window_min * 60 * safety
+            deadline = (time.monotonic() + tag_deadline_secs) if tag_window_min > 0 else None
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            if tag_window_min > 0:
+                print(
+                    f"budget: tag wall-clock window {tag_window_min:.0f}m × {safety} "
+                    "(+ yield if superseded)"
+                )
         else:
             deadline = (time.monotonic() + window_min * 60 * safety) if window_min > 0 else None
             stop = StopSignal(

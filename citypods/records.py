@@ -1071,6 +1071,7 @@ def episode_to_record(ep: Episode) -> dict:
         "llm_tag_candidates": ep.llm_tag_candidates or None,
         "tags_llm_recipe_hash": ep.tags_llm_recipe_hash,
         "tags_spec_hash": ep.tags_spec_hash,
+        "tags_input_fingerprint": ep.tags_input_fingerprint,
         "agenda_text": {
             "url": ep.agenda_text_url,
             "attempts": ep.agenda_text_attempts,
@@ -1342,6 +1343,7 @@ def record_to_episode(rec: dict) -> Episode:
         ),
         tags_llm_recipe_hash=rec.get("tags_llm_recipe_hash"),
         tags_spec_hash=rec.get("tags_spec_hash"),
+        tags_input_fingerprint=rec.get("tags_input_fingerprint"),
         # v2 transcript block (INFRA-8); v1 records with old transcript_url silently dropped.
         **_transcript_fields_from_rec(rec),
         **_speakers_fields_from_rec(rec),
@@ -1406,6 +1408,7 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "llm_tag_candidates",
         "tags_llm_recipe_hash",
         "tags_spec_hash",
+        "tags_input_fingerprint",
     }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
@@ -1433,7 +1436,14 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "align": frozenset({"transcript", "provider_transcript"}),
     "diarize": frozenset({"speakers", "provider_transcript"}),
     "tag": frozenset(
-        {"tags", "chapter_tags", "llm_tag_candidates", "tags_llm_recipe_hash", "tags_spec_hash"}
+        {
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
+            "tags_input_fingerprint",
+        }
     ),
 }
 
@@ -1705,6 +1715,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.llm_tag_candidates = rec.get("llm_tag_candidates") or ep.llm_tag_candidates
         ep.tags_llm_recipe_hash = rec.get("tags_llm_recipe_hash", ep.tags_llm_recipe_hash)
         ep.tags_spec_hash = rec.get("tags_spec_hash", ep.tags_spec_hash)
+        ep.tags_input_fingerprint = rec.get("tags_input_fingerprint", ep.tags_input_fingerprint)
         persisted_source = record_source_duration_seconds(rec)
         if persisted_source is not None and episode_source_duration_seconds(ep) is None:
             set_source_duration_seconds(ep, persisted_source)

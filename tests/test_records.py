@@ -450,6 +450,7 @@ def test_merge_persisted_restores_tag_fields(tmp_path):
     ep.llm_tag_candidates = [{"id": "housing", "source": "llm", "confidence": 0.7}]
     ep.tags_llm_recipe_hash = "llm-recipe-1"
     ep.tags_spec_hash = "spec-1"
+    ep.tags_input_fingerprint = "fingerprint-1"
     save_records(tmp_path, "src", {"u1": episode_to_record(ep)})
 
     loaded = load_records(tmp_path, "src")
@@ -462,6 +463,7 @@ def test_merge_persisted_restores_tag_fields(tmp_path):
     assert fresh.llm_tag_candidates == ep.llm_tag_candidates
     assert fresh.tags_llm_recipe_hash == "llm-recipe-1"
     assert fresh.tags_spec_hash == "spec-1"
+    assert fresh.tags_input_fingerprint == "fingerprint-1"
 
 
 def test_record_to_episode_prefers_canonical_duration_helpers():
@@ -1407,6 +1409,7 @@ def test_protected_blocks_for_lane():
             "llm_tag_candidates",
             "tags_llm_recipe_hash",
             "tags_spec_hash",
+            "tags_input_fingerprint",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
@@ -1425,6 +1428,7 @@ def test_protected_blocks_for_lane():
             "llm_tag_candidates",
             "tags_llm_recipe_hash",
             "tags_spec_hash",
+            "tags_input_fingerprint",
         }
     )
     assert protected_blocks_for_lane("align") == frozenset(
@@ -1443,6 +1447,7 @@ def test_protected_blocks_for_lane():
             "llm_tag_candidates",
             "tags_llm_recipe_hash",
             "tags_spec_hash",
+            "tags_input_fingerprint",
         }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
@@ -1461,6 +1466,7 @@ def test_protected_blocks_for_lane():
             "llm_tag_candidates",
             "tags_llm_recipe_hash",
             "tags_spec_hash",
+            "tags_input_fingerprint",
         }
     )
     assert protected_blocks_for_lane("tag") == frozenset(
