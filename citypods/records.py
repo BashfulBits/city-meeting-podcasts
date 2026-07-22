@@ -193,7 +193,13 @@ def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
 
 def source_key(city: City) -> str:
     """Stable id for a city's media source, ignoring the per-board ``body`` filter, so the
-    combined feed and every per-board feed of one city share one record store + audio object."""
+    combined feed and every per-board feed of one city share one record store + audio object.
+
+    ``source_id`` is the provider-migration seam: once pinned to the pre-migration key it keeps
+    the append-only namespace stable while provider/source transport configuration changes.
+    """
+    if city.source_id:
+        return city.source_id
     src = {k: v for k, v in city.source.items() if k != "body"}
     raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
@@ -289,6 +295,27 @@ def assign_uids(city: City, episodes: list[AgendaSource]) -> None:
     for (_, date), eps in buckets.items():
         for seq, ep in enumerate(sorted(eps, key=lambda e: e.published)):
             ep.uid = _uid(author, ep.body, date, seq)
+
+    # Provider migrations occasionally rename a body, shift a meeting date, or reorder same-day
+    # sessions.  A reviewed config mapping may bind that replacement-provider GUID to the prior
+    # stable UID.  Fail closed if an override would collapse two fetched rows.
+    for ep in episodes:
+        provider_guid = getattr(ep, "guid", None)
+        override = city.uid_overrides.get(provider_guid) if provider_guid else None
+        if override:
+            ep.uid = override
+    by_uid: dict[str, str] = {}
+    for ep in episodes:
+        if not ep.uid:
+            continue
+        provider_guid = getattr(ep, "guid", None) or getattr(ep, "video_guid", None) or ep.uid
+        prior_guid = by_uid.get(ep.uid)
+        if prior_guid is not None and prior_guid != provider_guid:
+            raise ValueError(
+                f"{city.slug}: provider episodes {prior_guid!r} and {provider_guid!r} resolve to "
+                f"the same stable UID {ep.uid!r}"
+            )
+        by_uid[ep.uid] = provider_guid
 
 
 def _fill_missing_links(target: dict, source: Mapping[str, object] | None) -> None:

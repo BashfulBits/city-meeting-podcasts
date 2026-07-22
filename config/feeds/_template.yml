@@ -10,6 +10,19 @@ source:
   feed_url: https://example.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
   # Optional: filter a mixed feed to one board/commission (see `citypods bodies <slug>`).
   # body: "City Council"
+# Provider migration only: pin this to the feed's existing computed source key before changing
+# provider/source so the append-only archive stays in one namespace. See review/37.
+# source_id: 0123456789ab
+# If replacement history changed body/date/order, map its provider GUID to the reviewed old UID.
+# uid_overrides:
+#   replacement-provider-guid: 0123456789abcdef
+# Human feed lifecycle (omitted = active). paused requires recheck_after; dormant keeps polling;
+# retired preserves the archive but stops provider polling. See review/37.
+# lifecycle:
+#   status: paused
+#   recheck_after: 2026-09-15
+#   reason: "Documented recess"
+#   evidence_url: https://example.gov/meetings
 podcast_title: "Example City Council Meetings"
 podcast_author: "City of Example, TX"
 podcast_email: clerk@example.gov
