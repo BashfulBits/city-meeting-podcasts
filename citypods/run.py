@@ -1980,27 +1980,33 @@ def _build_impl(
 
             if phase == "enrich":
                 # A lane with no audio pass (`tag` today) has no free mid-run persist boundary --
-                # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. This mirrors the
-                # scoped/unscoped end-of-run push below (records only; no calendar/run_events/
-                # asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint protects and
-                # a periodic sweep of remote-only objects has no place running mid-pass). A failed
-                # checkpoint push must not abort the run: the end-of-run push still gets a chance,
-                # and losing one checkpoint only widens the loss window, it doesn't lose more than
-                # today's all-or-nothing behavior would have anyway.
+                # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. Always route
+                # through the foreign-block-preserving merged push (records only; no calendar/
+                # run_events/asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint
+                # protects and a periodic sweep of remote-only objects has no place running
+                # mid-pass), regardless of `scoped`: `tag.yml` runs unsharded (no --source/--shard),
+                # so `scoped` is always False here, and it is isolated from `audio.yml`/`asr.yml`
+                # only by its own concurrency group -- those lanes' workflows are free to run at the
+                # same wall-clock time. The plain whole-snapshot `push_state()` the *unscoped*
+                # end-of-run push below uses would clobber whatever those concurrent runs wrote
+                # since this run started. `push_records_merged` re-reads the freshest remote and
+                # preserves the blocks this lane doesn't own either way, so it is never less safe
+                # than `push_state()` even for a genuinely full/unsharded run -- just correct for
+                # the common case where this "unscoped" run still shares state with sibling lanes.
+                # A failed checkpoint push must not abort the run: the end-of-run push still gets a
+                # chance, and losing one checkpoint only widens the loss window, it doesn't lose
+                # more than today's all-or-nothing behavior would have anyway.
                 def _tag_lane_checkpoint_push() -> None:
                     try:
-                        if scoped:
-                            owned = sorted({source_key(c) for c in cities})
-                            pushed = push_records_merged(
-                                storage,
-                                state_dir,
-                                owned,
-                                protected_blocks=protected_blocks_for_lane(lane),
-                                owned_uids=shard_owned_uids,
-                                log=lambda msg: print(msg, flush=True),
-                            )
-                        else:
-                            pushed = push_state(storage, state_dir)
+                        owned = sorted({source_key(c) for c in cities})
+                        pushed = push_records_merged(
+                            storage,
+                            state_dir,
+                            owned,
+                            protected_blocks=protected_blocks_for_lane(lane),
+                            owned_uids=shard_owned_uids,
+                            log=lambda msg: print(msg, flush=True),
+                        )
                         if pushed:
                             print(
                                 f"state: tag lane checkpoint pushed {pushed} file(s) to durable "
