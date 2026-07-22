@@ -4,6 +4,10 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Mobility Committee"
+lifecycle:
+  status: paused
+  recheck_after: 2026-09-30
+  reason: "May and June meetings cancelled"
 podcast_title: "Denton: Mobility Committee"
 podcast_author: "City of Denton, TX"
 podcast_email: ""
