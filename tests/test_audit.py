@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from citypods.audit import (
     WARN,
     ArchiveDiff,
     Finding,
     aggregate_view_cap_findings,
+    audit_all,
     audit_city,
     check_dead_audio_aggregate,
     check_deferred_audio_aggregate,
+    check_dormant_resumed,
     check_empty,
     check_enclosures,
     check_meetings_url,
@@ -22,7 +24,7 @@ from citypods.audit import (
     compute_archive_diff,
     count_audio_failures,
 )
-from citypods.models import Episode
+from citypods.models import Episode, FeedLifecycle
 
 NOW = datetime(2026, 5, 30, tzinfo=UTC)
 
@@ -547,6 +549,60 @@ def test_audit_city_superseded_lifecycle_still_allows_other_checks():
     checks = {f.check for f in findings}
     assert "stale" not in checks
     assert "view-cap" in checks
+
+
+def test_audit_city_review37_lifecycle_suppresses_stale():
+    eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
+    cases = (
+        FeedLifecycle(status="paused", recheck_after=date(2026, 8, 1), reason="recess"),
+        FeedLifecycle(status="dormant", reason="irregular"),
+        FeedLifecycle(status="retired", reason="dissolved"),
+    )
+    for lifecycle in cases:
+        city = _city()
+        city.lifecycle = lifecycle
+        findings = audit_city(city, provider=_FakeProvider(eps), now=NOW)
+        assert not any(f.check == "stale" for f in findings)
+
+
+def test_audit_all_retired_feed_never_resolves_provider(monkeypatch, tmp_path):
+    city = _city()
+    city.lifecycle = FeedLifecycle(status="retired", reason="body dissolved")
+
+    def fail_provider_lookup(_name):
+        raise AssertionError("retired feed must not resolve or fetch its provider")
+
+    monkeypatch.setattr("citypods.providers.get_provider", fail_provider_lookup)
+
+    assert audit_all([city], site_config={}, output_dir=tmp_path, now=NOW) == []
+
+
+def test_audit_city_expired_pause_resumes_stale_check():
+    city = _city()
+    city.lifecycle = FeedLifecycle(
+        status="paused", recheck_after=NOW.date() - timedelta(days=1), reason="recheck"
+    )
+    eps = [_ep(60), _ep(67), _ep(74), _ep(81), _ep(88)]
+
+    findings = audit_city(city, provider=_FakeProvider(eps), now=NOW)
+
+    assert any(f.check == "stale" for f in findings)
+
+
+def test_dormant_resumed_only_flags_recent_publication():
+    assert check_dormant_resumed("x", [_ep(5)], NOW).check == "dormant-resumed"
+    assert check_dormant_resumed("x", [_ep(45)], NOW) is None
+
+
+def test_audit_city_dormant_resumed_is_separate_from_stale():
+    city = _city()
+    city.lifecycle = FeedLifecycle(status="dormant", reason="irregular")
+
+    findings = audit_city(city, provider=_FakeProvider([_ep(5)]), now=NOW)
+
+    checks = {finding.check for finding in findings}
+    assert "dormant-resumed" in checks
+    assert "stale" not in checks
 
 
 # ---------------------------------------------------------------------------

@@ -706,11 +706,13 @@ def _process_city(
     ``pipeline.enrich``, but ``docs/`` is left untouched. When ``no_refresh`` is set (render phase
     only), the city is rendered purely from the record store with no provider connection at all (PR
     preview). Returns the result and the new render-cache entry (or None to leave it unchanged)."""
-    if request_delay and not no_refresh:
+    if request_delay and not no_refresh and city.lifecycle.polls_provider():
         time.sleep(request_delay)
 
-    if no_refresh:
+    if no_refresh or not city.lifecycle.polls_provider():
         # PR preview: render from the last-known archive, no provider fetch (immune to outages).
+        # Retired feeds use the same path in every phase: preserve public history while making
+        # the lifecycle promise that their upstream provider is never polled.
         episodes = pipeline.render_from_records(city)
     else:
         try:
@@ -2019,9 +2021,11 @@ def _build_impl(
                 # H5 PR3: the heavy production phase uses the global two-pass queue for true
                 # newest-everywhere-first prioritization across all sources (the per-source pool
                 # below can only order within a source). Renderless by definition.
+                polling_cities = [c for c in cities if c.lifecycle.polls_provider()]
+                retired_cities = [c for c in cities if not c.lifecycle.polls_provider()]
                 results = _run_enrich_global_queue(
                     pipeline,
-                    cities,
+                    polling_cities,
                     source_cache=source_cache,
                     max_workers=max_workers,
                     policy=backlog_policy,
@@ -2031,6 +2035,10 @@ def _build_impl(
                         if lane == "tag" and persist_records and not dry_run and storage is not None
                         else None
                     ),
+                )
+                results.extend(
+                    CityResult(c.slug, "skipped", detail="retired lifecycle")
+                    for c in retired_cities
                 )
             else:
                 # all/render: the per-city pool. Light cross-source ordering (H5 PR2) submits

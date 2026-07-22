@@ -7,13 +7,38 @@ only on these models and never on a concrete provider's wire format.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
 from citypods.timeline import SourceMedia, Timeline
 
 if TYPE_CHECKING:
     from citypods.availability import MediaAvailability
+
+
+@dataclass(frozen=True)
+class FeedLifecycle:
+    """Operator-reviewed polling/staleness policy for one public feed.
+
+    Omitted config is represented by the default ``active`` instance.  Date-shape validation
+    belongs at config load; these helpers centralize the runtime policy so polling and audits
+    cannot drift into subtly different interpretations of an expired pause.
+    """
+
+    status: Literal["active", "paused", "dormant", "retired"] = "active"
+    recheck_after: date | None = None
+    reason: str = ""
+    evidence_url: str | None = None
+
+    def polls_provider(self) -> bool:
+        return self.status != "retired"
+
+    def checks_staleness(self, on: date) -> bool:
+        if self.status == "active":
+            return True
+        if self.status == "paused":
+            return self.recheck_after is not None and on >= self.recheck_after
+        return False
 
 
 @dataclass(frozen=True)
@@ -270,6 +295,13 @@ class City:
     podcast_author: str
     podcast_email: str
     podcast_description: str
+    # Stable logical record namespace.  When omitted, records.source_key retains the legacy
+    # provider+source hash.  A provider migration pins this to the pre-migration source key.
+    source_id: str | None = None
+    # Reviewed migration escape hatch: replacement-provider GUID -> existing stable UID.
+    # Empty for ordinary feeds; applied centrally by records.assign_uids after default identity.
+    uid_overrides: dict[str, str] = field(default_factory=dict)
+    lifecycle: FeedLifecycle = field(default_factory=FeedLifecycle)
     # Optional verified calendar/agenda companion.  It enriches primary-provider
     # episodes, can backfill explicitly linked recordings, and owns a separate
     # durable calendar-metadata store; it never turns no-video rows into episodes.

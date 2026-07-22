@@ -9,7 +9,7 @@ import sys
 
 from citypods.bodies import is_excluded
 from citypods.config import filter_city_configs, load_city_configs, load_site_config
-from citypods.providers import get_provider
+from citypods.providers import ProviderError, get_provider
 from citypods.run import build, install_signal_handlers, interrupt_requested
 
 
@@ -105,6 +105,18 @@ def main(argv: list[str] | None = None) -> int:
     h.add_argument("--enclosures", action="store_true", help="also HEAD-probe enclosures (slow)")
     h.add_argument("--site-config", default="config/site_config.yml")
     h.add_argument("--config-dir", default="config")
+
+    ms = sub.add_parser(
+        "migrate-source-report",
+        help="fetch a candidate provider config and compare it read-only with its durable archive",
+    )
+    ms.add_argument("--city", required=True, help="exact feed slug whose candidate config to check")
+    ms.add_argument("--cutover", required=True, metavar="YYYY-MM-DD")
+    ms.add_argument("--site-config", default="config/site_config.yml")
+    ms.add_argument("--config-dir", default="config")
+    ms.add_argument("--output-dir", default="docs")
+    ms.add_argument("--state-dir", help="override the resolved local state directory")
+    ms.add_argument("--json", action="store_true", help="emit the complete report as JSON")
 
     r = sub.add_parser("report", help="resource cost/time projection report + admin page")
     r.add_argument("--markdown", action="store_true", help="print a Markdown summary to stdout")
@@ -286,6 +298,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "doctor":
         return _doctor(args)
+
+    if args.command == "migrate-source-report":
+        return _migrate_source_report(args)
 
     if args.command == "report":
         return _report(args)
@@ -515,6 +530,78 @@ def _doctor(args) -> int:
     errors = sum(f.severity == "error" for f in findings)
     print(f"\n{len(findings)} finding(s): {errors} error(s), {len(findings) - errors} warning(s)")
     return 1 if errors else 0
+
+
+def _migrate_source_report(args) -> int:
+    """Read-only provider cutover report; nonzero means the migration is not safe to merge."""
+    from datetime import date
+    from pathlib import Path
+
+    from citypods.migration import compare_provider_migration
+    from citypods.records import assign_uids, load_records, source_key
+    from citypods.state import resolve_state_dir
+
+    try:
+        cutover = date.fromisoformat(args.cutover)
+    except ValueError:
+        print("error: --cutover must be YYYY-MM-DD", file=sys.stderr)
+        return 2
+
+    site_config = load_site_config(args.site_config)
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+    city = next((item for item in cities if item.slug == args.city), None)
+    if city is None:
+        print(f"error: no feed with exact slug {args.city!r}", file=sys.stderr)
+        return 2
+    if not city.source_id:
+        print(
+            "error: candidate config must pin source_id to the existing record namespace",
+            file=sys.stderr,
+        )
+        return 2
+
+    state_dir = (
+        Path(args.state_dir)
+        if args.state_dir
+        else resolve_state_dir(site_config, Path(args.output_dir))
+    )
+    archive = load_records(state_dir, source_key(city))
+    if not archive:
+        print(
+            f"error: no archive found for source_id {city.source_id!r} under {state_dir}",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        episodes = get_provider(city.provider).fetch_episodes(city.source)
+        assign_uids(city, episodes)
+        report = compare_provider_migration(city, episodes, archive, cutover=cutover)
+    except (ProviderError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        verdict = "READY" if report.ready else "BLOCKED"
+        print(f"provider migration {verdict}: {report.slug} ({report.mode})")
+        print(
+            f"archive={report.archive_count} candidate={report.candidate_count} "
+            f"projected={report.projected_count} matched={len(report.matched_history)} "
+            f"new={len(report.new_episodes)} ambiguous={len(report.ambiguous_history)} "
+            f"overrides={len(report.overrides_applied)}"
+        )
+        for item in report.ambiguous_history:
+            print(
+                f"  ambiguous pre-cutover: guid={item.guid} uid={item.uid} "
+                f"published={item.published} title={item.title!r}"
+            )
+        for message in report.invalid_overrides:
+            print(f"  invalid override: {message}")
+        for uid, guids in sorted(report.duplicate_uids.items()):
+            print(f"  duplicate uid: {uid} <- {', '.join(guids)}")
+    return 0 if report.ready else 2
 
 
 def _rebuild_audio(args) -> int:

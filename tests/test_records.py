@@ -70,6 +70,36 @@ def test_uid_is_stable_across_provider_migration():
     assert e1.uid == e2.uid  # subscribers don't re-download on migration
 
 
+def test_source_id_keeps_record_namespace_stable_across_provider_migration():
+    granicus = _city(provider="granicus", source={"feed_url": "G"})
+    old_key = source_key(granicus)
+    granicus.source_id = old_key
+    swagit = _city(provider="swagit", source={"list_url": "S"})
+    swagit.source_id = old_key
+
+    assert source_key(granicus) == old_key
+    assert source_key(swagit) == old_key
+
+
+def test_assign_uids_applies_reviewed_provider_guid_override():
+    city = _city()
+    city.uid_overrides = {"new-provider-guid": "0123456789abcdef"}
+    ep = _ep("new-provider-guid")
+
+    assign_uids(city, [ep])
+
+    assert ep.uid == "0123456789abcdef"
+
+
+def test_assign_uids_rejects_override_collision():
+    city = _city()
+    city.uid_overrides = {"a": "0123456789abcdef", "b": "0123456789abcdef"}
+    episodes = [_ep("a"), _ep("b")]
+
+    with pytest.raises(ValueError, match="same stable UID"):
+        assign_uids(city, episodes)
+
+
 def test_uid_disambiguates_same_day_sessions():
     morning = _ep("a", when=datetime(2026, 5, 19, 9, 0, tzinfo=UTC))
     evening = _ep("b", when=datetime(2026, 5, 19, 18, 0, tzinfo=UTC))

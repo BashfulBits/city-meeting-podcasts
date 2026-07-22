@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 
 import yaml
 
-from citypods.models import City
+from citypods.models import City, FeedLifecycle
 from citypods.ops.workqueue import BacklogPolicy
 from citypods.providers import get_provider
-from citypods.security import validate_city_sources
+from citypods.security import validate_city_sources, validate_source_url
 
 # Keys that must be present AND non-empty.
 REQUIRED_CITY_KEYS = (
@@ -31,6 +32,9 @@ PRESENT_BUT_MAY_BE_BLANK = ("podcast_email",)
 # fallible config author (a "../.."-laden or absolute-path slug is not a realistic operator
 # input, but the guarantee should not depend on every author getting it right by hand).
 _SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+_SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_EPISODE_UID_RE = re.compile(r"^[0-9a-f]{16}$")
+_LIFECYCLE_STATUSES = frozenset({"active", "paused", "dormant", "retired"})
 
 
 def _validate_slug_format(slug: str, *, source_file: Path, kind: str) -> None:
@@ -48,6 +52,100 @@ def _validate_asr_workers(asr_workers: int, *, source_file: Path) -> int:
     if asr_workers < 1:
         raise ValueError(f"{source_file.name}: asr_workers must be >= 1, got {asr_workers}")
     return asr_workers
+
+
+def _parse_source_id(raw: object, *, source_file: Path) -> str | None:
+    if raw is None:
+        return None
+    source_id = str(raw)
+    if not _SOURCE_ID_RE.fullmatch(source_id):
+        raise ValueError(
+            f"{source_file.name}: source_id {source_id!r} must be 1-64 lowercase "
+            "alphanumeric/hyphen characters and may not start with a hyphen"
+        )
+    return source_id
+
+
+def _parse_uid_overrides(raw: object, *, source_file: Path) -> dict[str, str]:
+    """Validate reviewed replacement-provider GUID -> stable UID migration joins."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{source_file.name}: uid_overrides must be a mapping")
+    overrides: dict[str, str] = {}
+    targets: dict[str, str] = {}
+    for raw_guid, raw_uid in raw.items():
+        guid = str(raw_guid).strip()
+        uid = str(raw_uid).strip()
+        if not guid or len(guid) > 256 or any(ch in guid for ch in "\r\n"):
+            raise ValueError(f"{source_file.name}: uid_overrides contains an invalid provider GUID")
+        if not _EPISODE_UID_RE.fullmatch(uid):
+            raise ValueError(
+                f"{source_file.name}: uid_overrides[{guid!r}] must be a 16-character "
+                "lowercase hexadecimal stable UID"
+            )
+        prior_guid = targets.get(uid)
+        if prior_guid is not None and prior_guid != guid:
+            raise ValueError(
+                f"{source_file.name}: uid_overrides maps both {prior_guid!r} and {guid!r} "
+                f"to stable UID {uid!r}"
+            )
+        overrides[guid] = uid
+        targets[uid] = guid
+    return overrides
+
+
+def _parse_lifecycle(raw: object, *, source_file: Path) -> FeedLifecycle:
+    if raw is None:
+        return FeedLifecycle()
+    if not isinstance(raw, dict):
+        raise ValueError(f"{source_file.name}: lifecycle must be a mapping")
+
+    unknown = set(raw) - {"status", "recheck_after", "reason", "evidence_url"}
+    if unknown:
+        raise ValueError(
+            f"{source_file.name}: lifecycle has unknown keys: {', '.join(sorted(unknown))}"
+        )
+    status = str(raw.get("status") or "")
+    if status not in _LIFECYCLE_STATUSES:
+        raise ValueError(
+            f"{source_file.name}: lifecycle.status must be one of "
+            f"{', '.join(sorted(_LIFECYCLE_STATUSES))}, got {status!r}"
+        )
+
+    reason = str(raw.get("reason") or "").strip()
+    recheck_raw = raw.get("recheck_after")
+    recheck_after: date | None = None
+    if recheck_raw is not None:
+        try:
+            recheck_after = date.fromisoformat(str(recheck_raw))
+        except ValueError as exc:
+            raise ValueError(
+                f"{source_file.name}: lifecycle.recheck_after must be YYYY-MM-DD"
+            ) from exc
+
+    if status == "paused" and recheck_after is None:
+        raise ValueError(f"{source_file.name}: paused lifecycle requires recheck_after")
+    if status != "paused" and recheck_after is not None:
+        raise ValueError(
+            f"{source_file.name}: lifecycle.recheck_after is allowed only for paused feeds"
+        )
+    if status != "active" and not reason:
+        raise ValueError(f"{source_file.name}: non-active lifecycle requires a reason")
+    if status == "active" and reason:
+        raise ValueError(f"{source_file.name}: active lifecycle may not carry a reason")
+
+    evidence_raw = raw.get("evidence_url")
+    evidence_url = str(evidence_raw).strip() if evidence_raw is not None else None
+    if evidence_url:
+        validate_source_url(evidence_url, resolve=False)
+
+    return FeedLifecycle(
+        status=status,
+        recheck_after=recheck_after,
+        reason=reason,
+        evidence_url=evidence_url or None,
+    )
 
 
 def load_site_config(path: str | Path) -> dict:
@@ -99,6 +197,9 @@ def _build_city(
     _validate_slug_format(raw["slug"], source_file=source_file, kind="slug")
     for alias in raw.get("aliases") or []:
         _validate_slug_format(str(alias), source_file=source_file, kind="alias")
+    source_id = _parse_source_id(raw.get("source_id"), source_file=source_file)
+    uid_overrides = _parse_uid_overrides(raw.get("uid_overrides"), source_file=source_file)
+    lifecycle = _parse_lifecycle(raw.get("lifecycle"), source_file=source_file)
 
     # Merge entity fields (city_website, meetings_url, state, colors) as base layer; explicit
     # feed-level values override them.
@@ -147,6 +248,9 @@ def _build_city(
         | set(PRESENT_BUT_MAY_BE_BLANK)
         | {
             "city",
+            "source_id",
+            "uid_overrides",
+            "lifecycle",
             "aux_provider",
             "aux_source",
             "state",
@@ -176,6 +280,9 @@ def _build_city(
         podcast_author=raw["podcast_author"],
         podcast_email=raw["podcast_email"],
         podcast_description=raw["podcast_description"],
+        source_id=source_id,
+        uid_overrides=uid_overrides,
+        lifecycle=lifecycle,
         aux_provider=aux_provider_name,
         aux_source=dict(aux_source) if isinstance(aux_source, dict) else None,
         city_entity=entity_slug,
@@ -218,6 +325,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
     entities = load_entity_configs(config_dir / "cities")
     cities: list[City] = []
     seen_slugs: set[str] = set()
+    seen_source_ids: dict[str, tuple[str | None, str, dict, str]] = {}
     files: dict[str, str] = {}  # slug -> source filename, for clearer collision errors
     for path in sorted(feeds_dir.glob("*.yml")):
         if path.name.startswith("_"):
@@ -229,6 +337,17 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
         if city.slug in seen_slugs:
             raise ValueError(f"{path.name}: duplicate slug {city.slug!r}")
         seen_slugs.add(city.slug)
+        if city.source_id:
+            identity_source = {k: v for k, v in city.source.items() if k != "body"}
+            identity = (city.city_entity, city.provider, identity_source, path.name)
+            prior = seen_source_ids.get(city.source_id)
+            if prior is not None and prior[:3] != identity[:3]:
+                raise ValueError(
+                    f"{path.name}: source_id {city.source_id!r} conflicts with {prior[3]!r}; "
+                    "shared source_id values must have the same city, provider, and source "
+                    "configuration apart from body"
+                )
+            seen_source_ids[city.source_id] = identity
         files[city.slug] = path.name
         cities.append(city)
 

@@ -224,11 +224,33 @@ def check_staleness(
     return None
 
 
-def _lifecycle_status(city: City) -> str:
-    """Return the feed's operator-verified lifecycle status, if any.
+def check_dormant_resumed(
+    slug: str,
+    episodes: list[Episode],
+    now: datetime,
+    *,
+    recent_days: float = 30.0,
+) -> Finding | None:
+    """Ask for review when a dormant feed has resumed recent publishing."""
+    if not episodes:
+        return None
+    newest = max(episode.published for episode in episodes)
+    age_days = (now - newest).total_seconds() / 86400
+    if age_days <= recent_days:
+        return Finding(
+            slug,
+            "dormant-resumed",
+            WARN,
+            f"dormant feed published {max(age_days, 0):.0f}d ago; review whether to reactivate",
+        )
+    return None
 
-    Unknown/malformed values collapse to ``"active"`` so the audit stays fail-open unless the
-    operator explicitly marks a feed inactive/superseded in YAML.
+
+def _legacy_lifecycle_status(city: City) -> str:
+    """Return the legacy ``audit.lifecycle`` status, if any.
+
+    This compatibility read predates review/37's validated top-level lifecycle. Keep it during
+    rollout so an older inactive/superseded config does not unexpectedly re-file alerts.
     """
     audit_cfg = city.extra.get("audit")
     if not isinstance(audit_cfg, dict):
@@ -1313,18 +1335,22 @@ def audit_city(
     episodes = filter_by_body(episodes, body)
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
-    lifecycle_status = _lifecycle_status(city)
-    suppress_lifecycle_checks = lifecycle_status in {"inactive", "superseded"}
+    legacy_lifecycle_status = _legacy_lifecycle_status(city)
+    suppress_legacy_lifecycle_checks = legacy_lifecycle_status in {"inactive", "superseded"}
 
     findings: list[Finding] = []
+    if city.lifecycle.status == "dormant":
+        resumed = check_dormant_resumed(city.slug, episodes, now)
+        if resumed:
+            findings.append(resumed)
     empty = None
-    if not suppress_lifecycle_checks:
+    if not suppress_legacy_lifecycle_checks:
         empty = check_empty(city.slug, episodes, min_meetings, diff=diff)
     if empty:
         findings.append(empty)
     if not empty or empty.severity != ERROR:  # skip further checks on a totally empty feed
         stale = None
-        if not suppress_lifecycle_checks:
+        if not suppress_legacy_lifecycle_checks and city.lifecycle.checks_staleness(now.date()):
             stale = check_staleness(city.slug, episodes, now, archive_newest=archive_newest)
         if stale:
             findings.append(stale)
@@ -1707,6 +1733,15 @@ def audit_all(
     entity_of_source: dict[str, str | None] = {}
     status_by_source_uid: dict[tuple[str, str], str] = {}
     for city in cities:
+        src_key = source_key(city)
+        records = load_records(state_dir, src_key)
+        entity_of_source[src_key] = city.city_entity
+        records_by_source[src_key] = records
+        if not city.lifecycle.polls_provider():
+            # Retired is archive-preserving and non-polling. Do not instantiate/call its
+            # provider or turn historical backlog state into a fresh operational finding.
+            continue
+
         provider = get_provider(city.provider)
         view_cap_contexts[city.slug] = (city.provider, city.city_entity or city.slug)
 
@@ -1723,9 +1758,6 @@ def audit_all(
                 view_counts = provider.fetch_view_counts(city.source)
             except ProviderError:
                 view_counts = None  # an unreachable source is caught by audit_city's fetch
-        src_key = source_key(city)
-        records = load_records(state_dir, src_key)
-        entity_of_source[src_key] = city.city_entity
         failures_by_source.setdefault(src_key, count_audio_failures(records))
         slug_by_source.setdefault(src_key, city.slug)
         # Per-body feeds share one record store (issue #120's dedup shape); only scan a given
@@ -1801,6 +1833,8 @@ def audit_all(
         probe = _net_probe()
         seen_urls: dict[str, str] = {}  # url → representative slug (shortest)
         for city in cities:
+            if not city.lifecycle.polls_provider():
+                continue
             url = city.meetings_url or city.city_website
             if not url:
                 continue

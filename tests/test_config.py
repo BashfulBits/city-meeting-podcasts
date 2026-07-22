@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import textwrap
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,97 @@ def test_loads_valid_city(tmp_path):
     assert c.slug == "foo-tx"
     assert c.podcast_email == ""  # blank email allowed through
     assert c.max_episodes == 50  # inherited default
+    assert c.source_id is None
+    assert c.lifecycle.status == "active"
+
+
+def test_source_id_is_loaded_and_path_safe(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "source_id: 4ea6c4b78abc\n")
+    assert load_city_configs(tmp_path, DEFAULTS)[0].source_id == "4ea6c4b78abc"
+
+
+def test_uid_overrides_are_loaded(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "uid_overrides:\n  replacement-42: 0123456789abcdef\n")
+    assert load_city_configs(tmp_path, DEFAULTS)[0].uid_overrides == {
+        "replacement-42": "0123456789abcdef"
+    }
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "uid_overrides: nope\n",
+        "uid_overrides:\n  replacement-42: not-a-uid\n",
+        (
+            "uid_overrides:\n  replacement-42: 0123456789abcdef\n"
+            "  replacement-43: 0123456789abcdef\n"
+        ),
+    ],
+)
+def test_invalid_uid_overrides_raise(tmp_path, block):
+    _write(tmp_path, "foo-tx.yml", VALID + block)
+    with pytest.raises(ValueError, match="uid_overrides"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+@pytest.mark.parametrize("source_id", ["../escape", "Upper", "has_under", "-leading", ""])
+def test_invalid_source_id_raises(tmp_path, source_id):
+    _write(tmp_path, "foo-tx.yml", VALID + f"source_id: {source_id!r}\n")
+    with pytest.raises(ValueError, match="source_id"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_conflicting_source_id_reuse_raises(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "source_id: shared-source\n")
+    other = VALID.replace("slug: foo-tx", "slug: bar-tx").replace("view_id=2", "view_id=9")
+    _write(tmp_path, "bar-tx.yml", other + "source_id: shared-source\n")
+    with pytest.raises(ValueError, match="source_id.*conflicts"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+@pytest.mark.parametrize(
+    "block,status,checks_before,checks_after",
+    [
+        ("", "active", True, True),
+        (
+            "lifecycle:\n  status: paused\n  recheck_after: 2026-09-15\n  reason: recess\n",
+            "paused",
+            False,
+            True,
+        ),
+        ("lifecycle:\n  status: dormant\n  reason: irregular body\n", "dormant", False, False),
+        ("lifecycle:\n  status: retired\n  reason: dissolved\n", "retired", False, False),
+    ],
+)
+def test_lifecycle_policy(tmp_path, block, status, checks_before, checks_after):
+    _write(tmp_path, "foo-tx.yml", VALID + block)
+    lifecycle = load_city_configs(tmp_path, DEFAULTS)[0].lifecycle
+    assert lifecycle.status == status
+    assert lifecycle.polls_provider() is (status != "retired")
+    assert lifecycle.checks_staleness(date(2026, 9, 14)) is checks_before
+    assert lifecycle.checks_staleness(date(2026, 9, 15)) is checks_after
+
+
+@pytest.mark.parametrize(
+    "block,match",
+    [
+        ("lifecycle:\n  status: paused\n  reason: recess\n", "requires recheck_after"),
+        (
+            "lifecycle:\n  status: dormant\n  recheck_after: 2026-09-15\n  reason: x\n",
+            "allowed only for paused",
+        ),
+        ("lifecycle:\n  status: retired\n", "requires a reason"),
+        ("lifecycle:\n  status: unknown\n", "lifecycle.status"),
+        (
+            "lifecycle:\n  status: dormant\n  reason: x\n  evidence_url: http://bad.test\n",
+            "https only",
+        ),
+    ],
+)
+def test_invalid_lifecycle_raises(tmp_path, block, match):
+    _write(tmp_path, "foo-tx.yml", VALID + block)
+    with pytest.raises((ValueError, Exception), match=match):
+        load_city_configs(tmp_path, DEFAULTS)
 
 
 def test_blank_email_allowed_but_key_required(tmp_path):
