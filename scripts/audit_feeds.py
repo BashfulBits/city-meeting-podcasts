@@ -748,6 +748,31 @@ def _cohort_title(now: datetime, *, total: int, open_count: int) -> str:
     return f"{TITLE_PREFIX} stale review cohort {now:%Y-%m-%d}: {open_count} open / {total} total"
 
 
+def _lifecycle_command_guidance() -> str:
+    return "\n".join(
+        [
+            "## Maintainer lifecycle commands",
+            "",
+            "Comment on the affected child issue with exactly one command:",
+            "",
+            "```text",
+            '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]',
+            '/stale dormant --reason "..." [--evidence URL]',
+            '/stale retire --reason "..." [--evidence URL]',
+            "```",
+            "",
+            "Only repository collaborators may invoke these commands. An accepted command creates "
+            "or updates a validated lifecycle YAML review PR; it does not directly change the "
+            "feed or close the incident. Merging that PR is the human approval, and a later audit "
+            "closes the child after observing the committed disposition.",
+            "",
+            "For a broken filter, source repair, or provider migration, open a manual PR from the "
+            "child's **applicable feed YAML** link instead. If the feed publishes again without a "
+            "config change, the audit closes the child automatically after a conclusive check.",
+        ]
+    )
+
+
 def _render_cohort_body(*, total: int, open_count: int) -> str:
     generated = "\n".join(
         [
@@ -759,6 +784,8 @@ def _render_cohort_body(*, total: int, open_count: int) -> str:
             "",
             "Each native sub-issue represents one feed incident. Resolve it through observed "
             "recovery, a linked source repair/migration PR, or a merged lifecycle YAML PR.",
+            "",
+            _lifecycle_command_guidance(),
             _GENERATED_END,
         ]
     )
@@ -843,9 +870,7 @@ def _render_incident_body(
         generated.extend(f"- {url}" for url in prior_urls)
     generated += [
         "",
-        "Repair or migrate the source with a manual PR from the feed-YAML link above. "
-        "Maintainers may also use `/stale pause`, `/stale dormant`, or `/stale retire`; "
-        "those commands create reviewable YAML PRs and do not directly change lifecycle state.",
+        _lifecycle_command_guidance(),
         "",
         f"<!-- citypods:stale-state\n{state}\n-->",
         _GENERATED_END,
