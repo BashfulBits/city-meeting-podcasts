@@ -653,6 +653,7 @@ def test_stale_cohort_documents_exact_resolution_commands_and_approval_flow():
     assert '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]' in body
     assert '/stale dormant --reason "..." [--evidence URL]' in body
     assert '/stale retire --reason "..." [--evidence URL]' in body
+    assert "Only repository collaborators may invoke these commands" in body
     assert "creates or updates a validated lifecycle YAML review PR" in body
     assert "Merging that PR is the human approval" in body
     assert "applicable feed YAML" in body
@@ -660,12 +661,21 @@ def test_stale_cohort_documents_exact_resolution_commands_and_approval_flow():
 
 
 def test_stale_child_documents_exact_resolution_commands():
-    body = _stale_child()["body"]
+    context = _FeedContext(
+        city="cityA",
+        feed_config_url="https://github.com/test/repo/blob/main/config/feeds/cityA.yml",
+    )
+    body = _stale_child(context=context)["body"]
 
     assert '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]' in body
     assert '/stale dormant --reason "..." [--evidence URL]' in body
     assert '/stale retire --reason "..." [--evidence URL]' in body
+    assert "Only repository collaborators may invoke these commands" in body
+    assert "creates or updates a validated lifecycle YAML review PR" in body
     assert "Merging that PR is the human approval" in body
+    assert "applicable feed YAML" in body
+    assert "config/feeds/cityA.yml" in body
+    assert "closes the child automatically" in body
 
 
 def test_stale_cohort_refreshes_guidance_and_preserves_maintainer_notes():
