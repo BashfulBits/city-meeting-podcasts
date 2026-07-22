@@ -304,6 +304,23 @@ Phase R (Research-Tool Surface)._
   aborting the run — the end-of-run push still gets a chance. Other lanes are unaffected
   (`mid_run_checkpoint` defaults to `None`).
 
+- **The `tag.yml` workflow kept hard-timing out even after the fix above landed, because the
+  cheap `tag_input_fingerprint()` pre-check could never fire for the pre-existing backlog.**
+  `TagsStage` had a second, older reuse check below the new pre-check —
+  `ep.tags_spec_hash == projection_hash` — that already required the storage fetch and full hash
+  recompute the pre-check exists to skip, and it `continue`d without ever writing
+  `tags_input_fingerprint`. Every episode resolved before that field existed (i.e. the entire
+  backlog, the first time the pre-check shipped) has `tags_spec_hash` set but
+  `tags_input_fingerprint` permanently `None`, so it can never satisfy the pre-check and instead
+  falls through to this older branch — paying the full storage-fetch-and-hash cost again on
+  *every* run, forever, not just once. A live run confirmed it: the transcript pass never even
+  finished walking the ~13k with-audio candidates before `stop: wall-clock window spent` fired.
+  Fixed by backfilling `ep.tags_input_fingerprint` in this branch too before continuing — exactly
+  the same terminal-state condition the bottom-of-loop `fingerprint_after` assignment already
+  covers, just reached without a `tags`/`tags_spec_hash` diff to persist alongside it. Only the
+  run that first sees a given legacy episode still pays the storage cost; every run after that
+  hits the cheap pre-check like the rest of the backlog.
+
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
   the CLI's `--lane` choices, `LANE_STAGES` (which stages a lane runs), and
