@@ -451,3 +451,66 @@ def test_llm_disabled_run_invalidates_stale_candidates_on_taxonomy_change(tmp_pa
 
     assert [tag["id"] for tag in ep.tags] == []
     assert ep.llm_tag_candidates == []
+
+
+def test_tags_stage_skips_storage_on_unchanged_episode(tmp_path):
+    """A tag-lane run that finds nothing changed must not re-fetch/re-hash agenda+transcript
+    text just to re-derive "nothing changed" -- that per-episode storage round trip, paid on
+    every run for the *entire* backlog regardless of whether anything actually changed, is what
+    stalled a real scheduled tag run for ~10 minutes without making an LLM call (investigated on
+    the BashfulBits/city-meeting-podcasts `tag` workflow). ``tag_input_fingerprint`` lets an
+    unchanged episode short-circuit before any storage access at all."""
+    from citypods.stages import TagsStage
+
+    ep = _ep("g1")
+    ep.links = {"agenda_text_artifact_key": "documents/x-tx/uid-g1/agenda_text-abc123"}
+    ep.transcript_key = "transcripts/x-tx/uid-g1-asr-deadbeef.txt"
+    ep.transcript_format = "txt"
+
+    ctx = _ctx(tmp_path)
+    ctx.storage.put_file(
+        ep.links["agenda_text_artifact_key"],
+        _write_temp(tmp_path, "agenda.txt", b"Agenda item: housing plan"),
+        "text/plain",
+    )
+    ctx.storage.put_file(
+        ep.transcript_key,
+        _write_temp(tmp_path, "transcript.txt", b"discussion of the housing plan"),
+        "text/plain",
+    )
+    ctx.tag_backend = None  # rules-only: no live LLM needed to reach a terminal, cacheable state
+
+    first = TagsStage().process(None, _city(), [ep], ctx)
+    assert first.ran == 1
+    assert ep.tags_input_fingerprint is not None
+    assert ep.tags_spec_hash is not None
+
+    class _CountingStorage:
+        """Wraps the same backing store but fails the test if TagsStage still reads through it."""
+
+        def __init__(self, inner):
+            self._inner = inner
+            self.reads = 0
+
+        def exists(self, key):
+            self.reads += 1
+            return self._inner.exists(key)
+
+        def get_file(self, key, local_path):
+            self.reads += 1
+            return self._inner.get_file(key, local_path)
+
+    counting = _CountingStorage(ctx.storage)
+    ctx.storage = counting
+
+    second = TagsStage().process(None, _city(), [ep], ctx)
+    assert second.reused == 1
+    assert second.ran == 0
+    assert counting.reads == 0
+
+
+def _write_temp(tmp_path, name, content: bytes):
+    path = tmp_path / "_uploads" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path

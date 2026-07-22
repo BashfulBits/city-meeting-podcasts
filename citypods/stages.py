@@ -470,6 +470,7 @@ class TagsStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
+        from citypods.chapters import episode_served_chapters
         from citypods.llm_evaluation import (
             apply_admission,
             config_from_mapping,
@@ -488,6 +489,7 @@ class TagsStage:
             merge_tag_sources,
             rollup_tags,
             tag_episode,
+            tag_input_fingerprint,
             tag_recipe_hash,
         )
 
@@ -516,8 +518,6 @@ class TagsStage:
         admission_policy = policy_fingerprint(evaluation_config, evaluation_state)
 
         for ep in _materialize_set(episodes, city.max_episodes):
-            titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
-            chapters = chapter_tag_inputs(ep, ctx.storage)
             llm_route = (
                 f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
                 f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
@@ -525,6 +525,33 @@ class TagsStage:
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
+            cheap_fingerprint = tag_input_fingerprint(
+                ep,
+                taxonomy,
+                llm_enabled=llm_enabled,
+                llm_route=llm_route,
+                prompt_version=TAG_PROMPT_VERSION,
+                admission_policy=admission_policy,
+            )
+            # Fast pre-check: if nothing this episode's tagging actually depends on has moved since
+            # the last run that fully resolved it (content-addressed artifact keys, chapter
+            # boundaries, taxonomy/tagger/LLM config, admission policy -- see
+            # tag_input_fingerprint), the full recipe hash below would recompute to exactly the
+            # same value. Skip the storage fetch (agenda/transcript text) and the SHA-hash
+            # bookkeeping entirely rather than paying for both on every run just to re-derive
+            # "nothing changed" for the whole backlog.
+            has_chapters = bool(episode_served_chapters(ep))
+            if (
+                ep.tags_input_fingerprint is not None
+                and ep.tags_input_fingerprint == cheap_fingerprint
+                and ep.tags_spec_hash is not None
+                and (not has_chapters or ep.chapter_tags)
+            ):
+                stats.reused += 1
+                continue
+
+            titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
+            chapters = chapter_tag_inputs(ep, ctx.storage)
             chapter_fingerprint = [
                 {
                     "chapter_id": item["chapter_id"],
@@ -737,18 +764,26 @@ class TagsStage:
                 ]
                 final_hash = projection_hash
 
+            # Only a terminal result for THIS run's inputs (LLM resolved or disabled -- exactly the
+            # existing `tags_spec_hash == projection_hash` reuse condition above) is safe to mark
+            # reusable via the cheap fingerprint next run. Leaving it unset (None) whenever an LLM
+            # dispatch is still outstanding (deferred/quota-stopped/errored) means next run's
+            # pre-check misses and retries the dispatch instead of wrongly caching "nothing to do".
+            fingerprint_after = cheap_fingerprint if final_hash == projection_hash else None
             if (
                 ep.tags != final_tags
                 or ep.chapter_tags != chapter_annotations
                 or ep.llm_tag_candidates != candidate_tags
                 or ep.tags_llm_recipe_hash != completed_llm_recipe
                 or ep.tags_spec_hash != final_hash
+                or ep.tags_input_fingerprint != fingerprint_after
             ):
                 ep.tags = final_tags
                 ep.chapter_tags = chapter_annotations
                 ep.llm_tag_candidates = candidate_tags
                 ep.tags_llm_recipe_hash = completed_llm_recipe
                 ep.tags_spec_hash = final_hash
+                ep.tags_input_fingerprint = fingerprint_after
                 stats.ran += 1
             else:
                 stats.reused += 1

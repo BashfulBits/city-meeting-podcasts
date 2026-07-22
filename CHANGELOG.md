@@ -225,6 +225,38 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **The daily `tag.yml` workflow no longer reliably burns its full 25-minute job timeout and gets
+  hard-cancelled with nothing persisted.** A scheduled run was observed spending ~14 of its 25
+  minutes in a per-episode audio-duration ffprobe/heal pass
+  (`_normalize_episode_durations_for_dispatch`) across the *entire* backlog before it could even
+  build its candidate queue, even though the `tag` lane never runs `TranscriptStage` and has no
+  audio dependency at all — `_run_enrich_global_queue()` gated that pass on `transcript_stages`
+  being non-empty, and the `tag` lane's own `TagsStage` counts as one. The remaining time went
+  into `TagsStage` re-fetching and re-hashing each episode's full agenda/transcript text just to
+  discover most of the backlog hadn't changed since the last run. Both are fixed: the
+  duration-normalization pass is now gated on an actual `TranscriptStage` being present, and
+  `TagsStage` first computes a cheap, storage-I/O-free `tag_input_fingerprint()` (built from the
+  content-addressed agenda/transcript artifact keys and chapter boundaries already on the
+  episode, rather than their decoded text) — an unchanged episode short-circuits before any
+  storage fetch or SHA-hash bookkeeping at all. The `tag` lane also gets its own
+  `tag_run_time_budget_minutes` (default 18m, well inside the job's 25-minute `timeout-minutes`)
+  wired into `ctx.stop()`, so a run that is still slow for some other reason yields and persists
+  whatever it finished instead of being SIGTERM'd by GitHub with nothing written — the generic
+  `run_time_budget_minutes` default (240m, sized for the 4h audio/ASR cron) never tripped inside
+  this lane's much shorter job. New episode field `tags_input_fingerprint` is additive and
+  lane-owned by `tag` (`_LANE_OWNED_BLOCKS`); nothing about existing `tags`/`tags_spec_hash`
+  semantics changes. **A hard kill can still happen for other reasons, though** (infra outage,
+  an unexpectedly large new backlog), and previously that meant losing the *entire* run's tag
+  work — the only persist call for this lane's pass sat at the very end, and even that was only a
+  local write; the durable bucket push happens once, later still, at the very end of the whole
+  build. `_run_bounded()` now takes an optional `on_progress` hook, and the `tag` lane wires one
+  up (`mid_run_checkpoint` in `_run_enrich_global_queue()`) that locally persists and pushes
+  completed records to durable storage (the same foreign-block-preserving `push_records_merged`/
+  `push_state` the end-of-run push already uses) every 3 minutes of wall clock during the
+  transcript/tags-only passes. A checkpoint push failure is logged and swallowed rather than
+  aborting the run — the end-of-run push still gets a chance. Other lanes are unaffected
+  (`mid_run_checkpoint` defaults to `None`).
+
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
   the CLI's `--lane` choices, `LANE_STAGES` (which stages a lane runs), and

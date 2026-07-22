@@ -954,6 +954,39 @@ def test_bounded_runner_refills_without_eager_submission(monkeypatch):
     assert submitted == [0, 1, 2, 3, 4]
 
 
+def test_bounded_runner_calls_on_progress_once_per_drain_cycle(monkeypatch):
+    """`on_progress` (the tag lane's mid-run checkpoint hook) must fire from the runner's own
+    thread after every drain cycle -- never skipped, never concurrent with itself -- so a
+    periodic durable-storage push actually happens during a long-running pass instead of only at
+    the very end."""
+    calls: list[int] = []
+
+    class _Pool:
+        def submit(self, fn, item):
+            return _ImmediateFuture(fn(item))
+
+    class _ImmediateFuture:
+        def __init__(self, value):
+            self.value = value
+
+        def result(self):
+            return self.value
+
+    def _one_done(pending, *, return_when):
+        future = next(iter(pending))
+        return {future}, pending - {future}
+
+    monkeypatch.setattr(run, "wait", _one_done)
+    run._run_bounded(
+        _Pool(),
+        lambda item: item,
+        range(5),
+        max_pending=2,
+        on_progress=lambda: calls.append(1),
+    )
+    assert len(calls) == 5
+
+
 def test_heartbeat_tick_prints_active_work_snapshot(tmp_path, capsys):
     # CR2-TS-10: call _tick() directly (the sibling stall-dump test's established pattern)
     # instead of racing the background thread's own interval_seconds timing.
@@ -1197,6 +1230,79 @@ def test_global_queue_persists_after_audio_pass_and_again_after_transcript(tmp_p
     run._run_enrich_global_queue(_Pipeline(), [city], source_cache=None, max_workers=1, policy=None)
 
     assert events == ["audio:uid-e1", "persist", "transcript:uid-e1", "persist"]
+
+
+def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(
+    tmp_path, monkeypatch
+):
+    """The `tag` lane runs only a tags-only pass (no audio pass, so no free mid-run persist
+    boundary -- see the previous test). `mid_run_checkpoint` must fire periodically during that
+    pass once enough wall-clock time has elapsed, calling a local persist first, so a run that's
+    hard-killed mid-pass for some other reason doesn't still lose the *entire* run's tag work back
+    to whatever the previous run last pushed."""
+    city = City(
+        slug="c",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="C",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    episodes = [_ep("e1"), _ep("e2"), _ep("e3")]  # none hosted -> all land in the tags-only pass
+    events: list[str] = []
+
+    class _TagsStage:
+        name = "tags"
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.stages = [_TagsStage()]
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    def _run_stages(_p, _c, batch, stages, _ctx, *, quiet):
+        events.append(f"{stages[0].name}:{batch[0].uid}")
+        return [StageStats(stages[0].name, ran=1)]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+
+    # Advances 100s per call: the checkpoint's own baseline read consumes the first tick, then
+    # the interval (180s) is crossed on the SECOND check (t=200) but not the first (t=100) or
+    # third (t=300 - 200 = 100 < 180) -- so the checkpoint must fire exactly once, after the
+    # second item, not on every drain cycle and not only at the very end.
+    ticks = iter(range(0, 1000, 100))
+    monkeypatch.setattr(run.time, "monotonic", lambda: next(ticks))
+
+    checkpoint_calls: list[int] = []
+    run._run_enrich_global_queue(
+        _Pipeline(),
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: checkpoint_calls.append(1),
+    )
+
+    assert len(checkpoint_calls) == 1
+    assert events == [
+        "tags:uid-e1",
+        "tags:uid-e2",
+        "persist",  # the mid-run checkpoint's local persist, ahead of the caller's durable push
+        "tags:uid-e3",
+        "persist",  # the unconditional end-of-pass persist every run gets
+    ]
 
 
 def test_global_queue_runs_document_stages_once_per_complete_source(tmp_path, monkeypatch):
@@ -1958,6 +2064,7 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
             "llm_tag_candidates",
             "tags_llm_recipe_hash",
             "tags_spec_hash",
+            "tags_input_fingerprint",
         }
     )
     # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).

@@ -215,6 +215,63 @@ def tag_recipe_hash(
     ).hexdigest()[:16]
 
 
+def tag_input_fingerprint(
+    ep: Any,
+    taxonomy: Taxonomy,
+    *,
+    llm_enabled: bool,
+    llm_route: str = "",
+    prompt_version: str = TAG_PROMPT_VERSION,
+    admission_policy: str = "",
+) -> str:
+    """Cheap, storage-I/O-free stand-in for what :func:`tag_recipe_hash` would eventually hash.
+
+    ``agenda_text``/``transcript_text`` (episode- and chapter-scoped) are pure functions of the
+    *content-addressed* artifact keys (``agenda_text_artifact_key``, ``agenda_backup_artifact_key``,
+    ``ep.transcript_key``) plus the served chapter boundaries -- all already sitting on ``ep`` in
+    memory. Content addressing guarantees a given key always resolves to the same bytes, so hashing
+    these keys is exactly as sensitive to a real input change as hashing the decoded text they point
+    at, without paying a storage round trip (fetch + ffprobe/parse) for every candidate episode on
+    every run just to find out most of them haven't changed.
+
+    This is a fast pre-check gate only (``TagsStage``): a match means "the real recipe hash would
+    come out the same as last time, skip re-deriving it," never a substitute for the real
+    ``tag_recipe_hash`` value that ``tags_spec_hash``/``tags_llm_recipe_hash`` are actually keyed
+    on.
+    """
+    links = ep.links or {}
+    chapters = [
+        chapter
+        for chapter in episode_served_chapters(ep, with_source_index=True)
+        if isinstance(chapter, dict)
+    ]
+    chapter_fingerprint = [
+        {
+            "chapter_id": chapter_id(ep, chapter, index),
+            "title": str(chapter.get("title") or ""),
+            "start": chapter.get("start"),
+            "source_index": chapter.get("source_index"),
+        }
+        for index, chapter in enumerate(chapters)
+    ]
+    payload = {
+        "taxonomy": taxonomy.version,
+        "tagger": TAGGER_VERSION,
+        "llm": llm_enabled,
+        "llm_route": llm_route if llm_enabled else "",
+        "prompt_version": prompt_version if llm_enabled else "",
+        "admission_policy": admission_policy if llm_enabled else "",
+        "agenda_text_artifact_key": links.get("agenda_text_artifact_key"),
+        "agenda_backup_artifact_key": links.get("agenda_backup_artifact_key"),
+        "transcript_key": ep.transcript_key,
+        "transcript_format": ep.transcript_format,
+        "chapters": chapter_fingerprint,
+    }
+    return hashlib.sha1(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str).encode()
+    ).hexdigest()[:16]
+
+
 def _read_storage_bytes(storage: Any, key: str | None) -> bytes | None:
     if not key or storage is None or not hasattr(storage, "exists") or not storage.exists(key):
         return None

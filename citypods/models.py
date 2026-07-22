@@ -101,6 +101,12 @@ class Episode:
     llm_tag_candidates: list[dict] = field(default_factory=list)
     tags_llm_recipe_hash: str | None = None
     tags_spec_hash: str | None = None
+    # Cheap (I/O-free) stand-in for the inputs `tag_recipe_hash` hashes -- content-addressed
+    # artifact keys + chapter boundaries instead of the decoded agenda/transcript text they point
+    # at. Set only when tagging reaches a terminal state (LLM resolved or disabled) for the current
+    # inputs, so TagsStage can skip the storage fetch + full recipe hash on an unchanged episode
+    # instead of proving nothing changed by re-reading and re-hashing its text every run.
+    tags_input_fingerprint: str | None = None
 
     # --- content-addressed transcript artifact (INFRA-8, #149) ---------------------
     # Active podcast transcript artifact.  ASR / provider-aligned served-time transcripts live

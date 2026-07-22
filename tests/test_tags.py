@@ -12,6 +12,7 @@ from citypods.tags import (
     merge_tag_sources,
     rollup_tags,
     tag_episode,
+    tag_input_fingerprint,
     taxonomy_from_dict,
 )
 from citypods.timeline import Segment, Timeline
@@ -395,3 +396,103 @@ def test_transcript_region_does_not_span_the_whole_episode_on_a_common_word():
     ]
     start, end = _transcript_region("the new zoning plan is approved", segments)
     assert (start, end) == (100.0, 103.0)
+
+
+def _fp_episode():
+    return Episode(
+        "g1",
+        "Meeting",
+        datetime(2026, 1, 1, tzinfo=UTC),
+        "https://example.test/video",
+        links={"agenda_text_artifact_key": "documents/x/1/agenda_text-aaa"},
+        transcript_key="transcripts/x/1-asr-bbb.vtt",
+        transcript_format="vtt",
+    )
+
+
+def _fp_taxonomy():
+    return taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+
+
+def test_tag_input_fingerprint_is_stable_for_unrelated_field_changes():
+    """The fingerprint must depend only on tagging inputs (content-addressed keys, chapter
+    boundaries, taxonomy/tagger/LLM config, admission policy) -- not on anything else about the
+    episode -- so an unrelated field changing (e.g. a fresh provider title on every fetch) doesn't
+    force a needless re-tag."""
+    ep = _fp_episode()
+    taxonomy = _fp_taxonomy()
+    before = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    ep.title = "A different title entirely"
+    ep.body = "different body text"
+    after = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    assert before == after
+
+
+def test_tag_input_fingerprint_changes_with_agenda_artifact_key():
+    ep = _fp_episode()
+    taxonomy = _fp_taxonomy()
+    before = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    ep.links = {"agenda_text_artifact_key": "documents/x/1/agenda_text-different"}
+    after = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    assert before != after
+
+
+def test_tag_input_fingerprint_changes_with_transcript_key():
+    ep = _fp_episode()
+    taxonomy = _fp_taxonomy()
+    before = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    ep.transcript_key = "transcripts/x/1-asr-different.vtt"
+    after = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    assert before != after
+
+
+def test_tag_input_fingerprint_changes_with_chapter_boundaries():
+    ep = _fp_episode()
+    ep.source_chapters = [{"start": 10, "title": "Tree ordinance"}]
+    ep.chapters = [{"start": 10, "title": "Tree ordinance"}]
+    taxonomy = _fp_taxonomy()
+    before = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    ep.source_chapters = [{"start": 20, "title": "Tree ordinance"}]
+    ep.chapters = [{"start": 20, "title": "Tree ordinance"}]
+    after = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    assert before != after
+
+
+def test_tag_input_fingerprint_changes_with_taxonomy_version():
+    ep = _fp_episode()
+    before = tag_input_fingerprint(ep, _fp_taxonomy(), llm_enabled=False)
+    bumped = taxonomy_from_dict(
+        {
+            "version": 2,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    after = tag_input_fingerprint(ep, bumped, llm_enabled=False)
+    assert before != after
+
+
+def test_tag_input_fingerprint_changes_with_llm_config():
+    ep = _fp_episode()
+    taxonomy = _fp_taxonomy()
+    disabled = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    enabled = tag_input_fingerprint(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:gemini/gemini-3-flash-preview"
+    )
+    other_route = tag_input_fingerprint(
+        ep, taxonomy, llm_enabled=True, llm_route="litellm:gemini/other-model"
+    )
+    other_admission = tag_input_fingerprint(
+        ep,
+        taxonomy,
+        llm_enabled=True,
+        llm_route="litellm:gemini/gemini-3-flash-preview",
+        admission_policy="policy-2",
+    )
+    assert len({disabled, enabled, other_route, other_admission}) == 4
