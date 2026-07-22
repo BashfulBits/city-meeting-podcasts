@@ -321,6 +321,28 @@ Phase R (Research-Tool Surface)._
   run that first sees a given legacy episode still pays the storage cost; every run after that
   hits the cheap pre-check like the rest of the backlog.
 
+- **The `tag.yml` timeout is finally root-caused: durable-state restore, not per-episode tagging,
+  was eating the budget.** Both fixes above optimized the per-episode tagging loop — work that only
+  begins *after* build start-up. A run with all of them still burned the full 25 minutes and was
+  hard-cancelled. The job logs showed why: **~11 minutes of silence at the very start**, before the
+  first line of output, restoring the durable state snapshot from the bucket. `pull_state()`
+  downloaded every one of ~3,500 small state objects (`state/sources/<src>/episodes.json` and
+  sidecars) **serially** — one latency-bound round trip each — and this runs *before* the
+  wall-clock `stop()` window even opens. At ~44% of the `tag` lane's 25-minute job spent before any
+  tagging, and with the graceful-yield deadline anchored *after* the restore, a slow restore
+  (11 min vs the prior run's 9) slid that deadline past GitHub's hard job timeout and the run was
+  cancelled outright with no candidates produced. The 4h audio/ASR lanes pay the same restore cost
+  but hide it inside a 240-minute budget (and warm an `actions/cache` state blob the `tag` lane
+  never had). Fixed at the source: `pull_state()` now fans the per-object downloads across a bounded
+  thread pool (`_PULL_STATE_MAX_WORKERS`), overlapping their latency and collapsing the ~11-minute
+  restore to well under a minute — every lane benefits, the short-budget `tag` lane most. The
+  listing, CAS-managed-key skip, and per-key transient-error fail-soft (`is_transient_storage_error`
+  keeps its existing local copy and continues; a real error still propagates) are all preserved. As
+  belt-and-suspenders, the `tag` lane's graceful-yield deadline is now anchored to a wall-clock mark
+  captured *before* the restore (`enrich_phase_start`) and clamped at `>= 0`, so start-up time
+  counts against the window and a slow start can never again outlast the hard cap — it yields and
+  persists (via the existing mid-run checkpoints) instead of being SIGKILLed.
+
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
   the CLI's `--lane` choices, `LANE_STAGES` (which stages a lane runs), and

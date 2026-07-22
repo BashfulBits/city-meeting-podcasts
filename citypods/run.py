@@ -1661,6 +1661,14 @@ def _build_impl(
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
+    # Wall-clock mark for the *heavy-phase start*, captured before the durable-state restore below.
+    # The `tag` lane's graceful-yield deadline is anchored to this (not to a `monotonic()` read
+    # taken after the restore) so that time spent restoring counts against its short job budget:
+    # otherwise a slow restore pushes that deadline out past GitHub's hard job timeout and the run
+    # is cancelled with nothing produced, instead of yielding and persisting first. See the `tag`
+    # branch of the time-bounded budget setup below.
+    enrich_phase_start = time.monotonic()
+
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
     # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
     if not dry_run and not state_snapshot_restored:
@@ -1721,9 +1729,19 @@ def _build_impl(
             # deadline actually inside its own job's timeout, so a run that's still going too long
             # stops dispatching new LLM calls and reaches the end-of-pass persist with margin to
             # spare before GitHub cancels the job outright.
+            #
+            # Anchor to `enrich_phase_start` (captured before the durable-state restore), NOT to a
+            # fresh `monotonic()` read here: the restore and backend setup run *before* this point,
+            # so a `monotonic()` read here would start the window only after that startup cost and
+            # let a slow start slide the deadline past the 25-minute job cap (observed: an ~11-min
+            # serial state restore did exactly this and the job was hard-cancelled). Counting
+            # startup against the window guarantees the graceful yield always fires first. Clamp at
+            # >= 0 so a startup that already overran the whole window yields immediately rather than
+            # computing a deadline in the past that reads as "never stop".
             tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 18))
             tag_deadline_secs = tag_window_min * 60 * safety
-            deadline = (time.monotonic() + tag_deadline_secs) if tag_window_min > 0 else None
+            remaining_secs = max(0.0, tag_deadline_secs - (time.monotonic() - enrich_phase_start))
+            deadline = (time.monotonic() + remaining_secs) if tag_window_min > 0 else None
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
             if tag_window_min > 0:
                 print(
