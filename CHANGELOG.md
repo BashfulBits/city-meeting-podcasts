@@ -17,6 +17,18 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Stale feeds now have a complete lifecycle instead of one permanent warning table (H4,
+  GH#970–#975).** Optional stable `source_id` and reviewed UID overrides preserve the append-only
+  archive and provider-independent episode identity across both historical-copy and forward-only
+  provider cutovers. Feed YAML supports `active`, finite `paused`, polling `dormant`, and non-polling
+  archive-preserving `retired` states. Stale and dormant-resumed findings reconcile as capped native
+  per-feed sub-issues; collaborator-authorized `/stale pause|dormant|retire` comments create validated,
+  deterministic lifecycle PRs, while manual source repair/migration starts from the child issue's YAML
+  link. The dry-run-first, resumable rollout converted all 11 rows of legacy GH#774 to native children
+  #979–#989, preserving exact `first_seen` timestamps and changing the parent marker only after every
+  child was attached. No pipeline version changed, so existing audio, transcript, feed, and artifact
+  state is not invalidated or backfilled.
+
 - **Initial three-model tag tournament is enabled.** The weekly runner compares the same bounded
   real-meeting tag input through Gemini Flash-Lite, DeepSeek V4 Flash, and Mistral Large Latest;
   every provider pair is judged by the third provider in both display orders. Results are durable
