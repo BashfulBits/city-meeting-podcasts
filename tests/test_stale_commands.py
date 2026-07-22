@@ -224,3 +224,21 @@ def test_cli_rejection_emits_safe_issue_feedback(tmp_path):
     assert result["ok"] is False
     assert result["issue_number"] == 123
     assert "only repository collaborators" in result["comment"]
+
+
+def test_cli_yaml_parser_failure_still_emits_rejection_feedback(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "config" / "site_config.yml").write_text("defaults: [\n")
+    event_path = tmp_path / "event.json"
+    out = tmp_path / "result.json"
+    event_path.write_text(
+        json.dumps(_event('/stale dormant --reason "irregular meeting schedule"'))
+    )
+
+    code = _mod.main(["--event", str(event_path), "--repo-root", str(repo), "--out", str(out)])
+
+    assert code == 2
+    result = json.loads(out.read_text())
+    assert result["ok"] is False
+    assert result["issue_number"] == 123
+    assert "command rejected" in result["comment"]

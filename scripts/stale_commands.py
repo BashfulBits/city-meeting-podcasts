@@ -276,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(event, dict):
             raise CommandError("the event payload must be a JSON object")
         result = process_event(event, repo_root=Path(args.repo_root).resolve())
-    except (CommandError, json.JSONDecodeError, OSError, ValueError) as exc:
+    except (CommandError, json.JSONDecodeError, OSError, ValueError, yaml.YAMLError) as exc:
         _write_result(
             out,
             {
