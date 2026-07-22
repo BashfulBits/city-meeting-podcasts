@@ -748,29 +748,47 @@ def _cohort_title(now: datetime, *, total: int, open_count: int) -> str:
     return f"{TITLE_PREFIX} stale review cohort {now:%Y-%m-%d}: {open_count} open / {total} total"
 
 
-def _lifecycle_command_guidance() -> str:
-    return "\n".join(
-        [
-            "## Maintainer lifecycle commands",
-            "",
-            "Comment on the affected child issue with exactly one command:",
-            "",
-            "```text",
+def _lifecycle_command_guidance(check: str | None = None) -> str:
+    commands = (
+        ['/stale activate --reason "..." [--evidence URL]']
+        if check == "dormant-resumed"
+        else [
             '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]',
             '/stale dormant --reason "..." [--evidence URL]',
             '/stale retire --reason "..." [--evidence URL]',
-            "```",
+        ]
+    )
+    if check is None:
+        commands.append('/stale activate --reason "..." [--evidence URL]  # dormant-resumed only')
+    lines = [
+        "## Maintainer lifecycle commands",
+        "",
+        "Comment on the affected child issue with exactly one command:",
+        "",
+        "```text",
+        *commands,
+        "```",
+        "",
+        "Only users with repository write, maintain, or admin permission may invoke these "
+        "commands. An accepted command creates or updates a validated lifecycle YAML review PR; "
+        "it does not directly change the feed or close the incident. Merging that PR is the human "
+        "approval, and a later audit closes the child after observing the committed disposition.",
+    ]
+    if check == "dormant-resumed":
+        lines += [
             "",
-            "Only repository collaborators may invoke these commands. An accepted command creates "
-            "or updates a validated lifecycle YAML review PR; it does not directly change the "
-            "feed or close the incident. Merging that PR is the human approval, and a later audit "
-            "closes the child after observing the committed disposition.",
+            "`/stale activate` removes the dormant lifecycle block so the feed returns to normal "
+            "freshness monitoring. If no action is taken and publishing stops again, this "
+            "low-noise resumption incident may close after the recent-publication window expires.",
+        ]
+    else:
+        lines += [
             "",
             "For a broken filter, source repair, or provider migration, open a manual PR from the "
             "child's **applicable feed YAML** link instead. If the feed publishes again without a "
             "config change, the audit closes the child automatically after a conclusive check.",
         ]
-    )
+    return "\n".join(lines)
 
 
 def _render_cohort_body(*, total: int, open_count: int) -> str:
@@ -803,6 +821,7 @@ def _render_incident_body(
     prior_state: dict,
     prior_incidents: list[dict],
     now: datetime,
+    provider_responded: bool = True,
 ) -> str:
     first_seen = prior_state.get("first_seen") or now.isoformat()
     evidence_changed = any(
@@ -845,6 +864,7 @@ def _render_incident_body(
         f"- **Last material observation:** {last_observed[:10]}",
         f"- **Severity:** `{row.severity}`",
         f"- **Finding count:** {row.count}",
+        f"- **Provider source responded:** {'yes' if provider_responded else 'no'}",
         f"- **Evidence:** {row.example}",
         "",
         _guidance_for(check),
@@ -870,7 +890,7 @@ def _render_incident_body(
         generated.extend(f"- {url}" for url in prior_urls)
     generated += [
         "",
-        _lifecycle_command_guidance(),
+        _lifecycle_command_guidance(check),
         "",
         f"<!-- citypods:stale-state\n{state}\n-->",
         _GENERATED_END,
@@ -1218,6 +1238,10 @@ def _reconcile_stale_incidents(
     findings_by_slug: dict[str, list[Finding]] = {}
     for finding in findings:
         findings_by_slug.setdefault(finding.slug, []).append(finding)
+
+    def _provider_responded(slug: str) -> bool:
+        return not any(finding.check == "unreachable" for finding in findings_by_slug.get(slug, []))
+
     created = updated = closed = 0
 
     # Recovery or a committed lifecycle disposition removes the finding. Unlike meetings-url
@@ -1257,8 +1281,35 @@ def _reconcile_stale_incidents(
         del catalog.open_children[key]
         closed += 1
 
-    # Refresh material evidence on existing incidents without touching maintainer notes.
-    for key, row in wanted.items():
+    # Refresh material evidence on existing incidents without touching maintainer notes. Preserve
+    # the prior stale evidence during an inconclusive provider fetch so the child can explicitly
+    # report that the source did not respond instead of disappearing or looking healthy.
+    refresh_rows = dict(wanted)
+    for key, issue in catalog.open_children.items():
+        if key in refresh_rows or key[0] in suppressed_checks:
+            continue
+        if audited_slugs is not None and key[1] not in audited_slugs:
+            continue
+        slug_findings = findings_by_slug.get(key[1], [])
+        if not any(
+            finding.check == "unreachable"
+            or (finding.check == "empty" and finding.severity == ERROR)
+            for finding in slug_findings
+        ):
+            continue
+        prior_state = _parse_stale_state(issue.get("body") or "")
+        if not all(
+            prior_state.get(field) is not None for field in ("count", "severity", "example")
+        ):
+            continue
+        refresh_rows[key] = _FeedRow(
+            slug=key[1],
+            count=int(prior_state["count"]),
+            severity=str(prior_state["severity"]),
+            example=str(prior_state["example"]),
+        )
+
+    for key, row in refresh_rows.items():
         issue = catalog.open_children.get(key)
         if issue is None:
             continue
@@ -1279,6 +1330,7 @@ def _reconcile_stale_incidents(
             prior_state=prior_state,
             prior_incidents=prior_incidents,
             now=now,
+            provider_responded=_provider_responded(key[1]),
         )
         start = fresh.index(_GENERATED_START)
         end = fresh.index(_GENERATED_END) + len(_GENERATED_END)
@@ -1367,6 +1419,7 @@ def _reconcile_stale_incidents(
             prior_state={},
             prior_incidents=prior_incidents,
             now=now,
+            provider_responded=_provider_responded(key[1]),
         )
         title = _incident_title(key[0], key[1], incident_id)
         if dry_run:

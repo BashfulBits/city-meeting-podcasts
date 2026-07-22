@@ -42,10 +42,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_PATH: ${{ github.event_path }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          REPOSITORY: ${{ github.repository }}
         run: |
+          if ! gh api "repos/$REPOSITORY/collaborators/$ACTOR/permission" > actor-permission.json; then
+            echo '{"permission":"none"}' > actor-permission.json
+          fi
           set +e
           python scripts/stale_commands.py --event "$EVENT_PATH" --repo-root . \
-            --out stale-command.json
+            --permission actor-permission.json --out stale-command.json
           code=$?
           set -e
           if [ "$code" -ne 0 ]; then

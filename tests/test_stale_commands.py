@@ -25,6 +25,7 @@ parse_command = _mod.parse_command
 process_event = _mod.process_event
 
 TODAY = date(2026, 7, 22)
+WRITE_PERMISSION = {"permission": "write", "role_name": "write"}
 VALID_FEED = """\
 slug: sample-tx
 provider: granicus
@@ -45,6 +46,7 @@ def _event(
     body: str | None = None,
     labels: list[str] | None = None,
     state: str = "open",
+    check: str = "stale",
 ):
     return {
         "issue": {
@@ -52,7 +54,7 @@ def _event(
             "state": state,
             "body": body
             or (
-                "<!-- citypods:stale-incident:v1 check=stale slug=sample-tx "
+                f"<!-- citypods:stale-incident:v1 check={check} slug=sample-tx "
                 "incident=20260722-1 parent=100 -->"
             ),
             "labels": [{"name": name} for name in (labels or ["signal:feed-health"])],
@@ -88,7 +90,9 @@ def test_parse_pause_requires_future_date_and_preserves_quoted_reason():
     )
 
 
-@pytest.mark.parametrize("action,status", [("dormant", "dormant"), ("retire", "retired")])
+@pytest.mark.parametrize(
+    "action,status", [("activate", "active"), ("dormant", "dormant"), ("retire", "retired")]
+)
 def test_parse_indefinite_lifecycle_actions(action, status):
     command = parse_command(f'/stale {action} --reason "irregular body"', today=TODAY)
     assert command.status == status
@@ -122,12 +126,13 @@ def test_parse_rejects_unsafe_evidence_url():
         )
 
 
-@pytest.mark.parametrize("association", ["NONE", "CONTRIBUTOR", "FIRST_TIMER"])
-def test_process_event_rejects_non_collaborators(tmp_path, association):
-    with pytest.raises(CommandError, match="only repository collaborators"):
+@pytest.mark.parametrize("permission", ["none", "read", "triage"])
+def test_process_event_rejects_actors_without_write_permission(tmp_path, permission):
+    with pytest.raises(ValueError, match="repository write"):
         process_event(
-            _event('/stale dormant --reason "x"', association=association),
+            _event('/stale dormant --reason "x"'),
             repo_root=_repo(tmp_path),
+            permission={"permission": permission, "role_name": permission},
             today=TODAY,
         )
 
@@ -138,12 +143,14 @@ def test_process_event_requires_trusted_generated_issue_marker(tmp_path):
         process_event(
             _event('/stale dormant --reason "x"', labels=["type:operations"]),
             repo_root=repo,
+            permission=WRITE_PERMISSION,
             today=TODAY,
         )
     with pytest.raises(CommandError, match="no valid stale-incident marker"):
         process_event(
             _event('/stale dormant --reason "x"', body="ordinary issue"),
             repo_root=repo,
+            permission=WRITE_PERMISSION,
             today=TODAY,
         )
 
@@ -186,6 +193,20 @@ def test_apply_lifecycle_replaces_existing_block_and_is_idempotent(tmp_path):
     assert path.read_text().count("lifecycle:") == 1
 
 
+def test_activate_removes_dormant_lifecycle_block(tmp_path):
+    path = tmp_path / "feed.yml"
+    path.write_text(
+        VALID_FEED.replace(
+            "podcast_title:",
+            "lifecycle:\n  status: dormant\n  reason: irregular body\npodcast_title:",
+        )
+    )
+
+    assert apply_lifecycle(path, StaleCommand("active", "regular meetings resumed")) is True
+    assert "lifecycle:" not in path.read_text()
+    assert yaml.safe_load(path.read_text())["podcast_title"] == "Sample Council"
+
+
 def test_process_event_edits_exact_feed_and_emits_idempotent_pr_plan(tmp_path):
     repo = _repo(tmp_path)
 
@@ -195,6 +216,7 @@ def test_process_event_edits_exact_feed_and_emits_idempotent_pr_plan(tmp_path):
             "--evidence https://example.gov/calendar"
         ),
         repo_root=repo,
+        permission=WRITE_PERMISSION,
         today=TODAY,
     )
 
@@ -212,30 +234,90 @@ def test_process_event_edits_exact_feed_and_emits_idempotent_pr_plan(tmp_path):
     }
 
 
+def test_dormant_resumed_activate_emits_pr_that_removes_lifecycle(tmp_path):
+    repo = _repo(
+        tmp_path,
+        VALID_FEED.replace(
+            "podcast_title:",
+            "lifecycle:\n  status: dormant\n  reason: irregular body\npodcast_title:",
+        ),
+    )
+
+    result = process_event(
+        _event(
+            '/stale activate --reason "regular meetings resumed"',
+            check="dormant-resumed",
+        ),
+        repo_root=repo,
+        permission=WRITE_PERMISSION,
+        today=TODAY,
+    )
+
+    assert result["status"] == "active"
+    assert "lifecycle:" not in (repo / result["config_path"]).read_text()
+    assert "Requested lifecycle: `active`" in result["pr_body"]
+
+
+def test_activate_is_rejected_on_an_ordinary_stale_incident(tmp_path):
+    with pytest.raises(CommandError, match="dormant-resumed"):
+        process_event(
+            _event('/stale activate --reason "not applicable"'),
+            repo_root=_repo(tmp_path),
+            permission=WRITE_PERMISSION,
+            today=TODAY,
+        )
+
+
 def test_cli_rejection_emits_safe_issue_feedback(tmp_path):
     event_path = tmp_path / "event.json"
+    permission_path = tmp_path / "permission.json"
     out = tmp_path / "result.json"
     event_path.write_text(json.dumps(_event("/stale retire", association="CONTRIBUTOR")))
+    permission_path.write_text(json.dumps({"permission": "read", "role_name": "read"}))
 
-    code = _mod.main(["--event", str(event_path), "--repo-root", str(tmp_path), "--out", str(out)])
+    code = _mod.main(
+        [
+            "--event",
+            str(event_path),
+            "--permission",
+            str(permission_path),
+            "--repo-root",
+            str(tmp_path),
+            "--out",
+            str(out),
+        ]
+    )
 
     assert code == 2
     result = json.loads(out.read_text())
     assert result["ok"] is False
     assert result["issue_number"] == 123
-    assert "only repository collaborators" in result["comment"]
+    assert "repository write" in result["comment"]
 
 
 def test_cli_yaml_parser_failure_still_emits_rejection_feedback(tmp_path):
     repo = _repo(tmp_path)
     (repo / "config" / "site_config.yml").write_text("defaults: [\n")
     event_path = tmp_path / "event.json"
+    permission_path = tmp_path / "permission.json"
     out = tmp_path / "result.json"
     event_path.write_text(
         json.dumps(_event('/stale dormant --reason "irregular meeting schedule"'))
     )
+    permission_path.write_text(json.dumps(WRITE_PERMISSION))
 
-    code = _mod.main(["--event", str(event_path), "--repo-root", str(repo), "--out", str(out)])
+    code = _mod.main(
+        [
+            "--event",
+            str(event_path),
+            "--permission",
+            str(permission_path),
+            "--repo-root",
+            str(repo),
+            "--out",
+            str(out),
+        ]
+    )
 
     assert code == 2
     result = json.loads(out.read_text())
