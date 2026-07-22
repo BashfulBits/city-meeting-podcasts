@@ -509,6 +509,71 @@ def test_tags_stage_skips_storage_on_unchanged_episode(tmp_path):
     assert counting.reads == 0
 
 
+def test_tags_stage_backfills_fingerprint_for_pre_existing_resolved_episode(tmp_path):
+    """An episode fully resolved by TagsStage *before* ``tags_input_fingerprint`` existed has
+    ``tags_spec_hash`` set but ``tags_input_fingerprint`` is (and forever stays) ``None`` --
+    exactly the state of the entire backlog the first time this field shipped. That episode can
+    never hit the cheap pre-check (it requires ``tags_input_fingerprint is not None``), so it
+    falls through to the storage-fetch path, discovers nothing changed via the
+    ``tags_spec_hash == projection_hash`` short-circuit, and used to ``continue`` right there
+    without ever recording the fingerprint -- silently repeating the full storage-fetch-and-hash
+    cost for the entire legacy backlog on *every* run forever, not just once. This is what kept
+    the scheduled `tag` workflow timing out even after the pre-check was added. The mid-tier
+    short-circuit must backfill the fingerprint before continuing so only THIS run pays the
+    storage cost and every run after it uses the cheap pre-check."""
+    from citypods.stages import TagsStage
+
+    ep = _ep("g1")
+    ep.links = {"agenda_text_artifact_key": "documents/x-tx/uid-g1/agenda_text-abc123"}
+    ep.transcript_key = "transcripts/x-tx/uid-g1-asr-deadbeef.txt"
+    ep.transcript_format = "txt"
+
+    ctx = _ctx(tmp_path)
+    ctx.storage.put_file(
+        ep.links["agenda_text_artifact_key"],
+        _write_temp(tmp_path, "agenda.txt", b"Agenda item: housing plan"),
+        "text/plain",
+    )
+    ctx.storage.put_file(
+        ep.transcript_key,
+        _write_temp(tmp_path, "transcript.txt", b"discussion of the housing plan"),
+        "text/plain",
+    )
+    ctx.tag_backend = None
+
+    # Simulate a pre-existing resolved episode: run once to get a real terminal tags_spec_hash,
+    # then wipe the fingerprint back to None as if this episode predates the field entirely.
+    TagsStage().process(None, _city(), [ep], ctx)
+    assert ep.tags_spec_hash is not None
+    ep.tags_input_fingerprint = None
+
+    backfill_run = TagsStage().process(None, _city(), [ep], ctx)
+    assert backfill_run.reused == 0  # not the cheap pre-check -- this run still pays storage
+    assert backfill_run.ran == 1  # backfilled the fingerprint, so counted as a mutation
+    assert ep.tags_input_fingerprint is not None
+
+    class _CountingStorage:
+        def __init__(self, inner):
+            self._inner = inner
+            self.reads = 0
+
+        def exists(self, key):
+            self.reads += 1
+            return self._inner.exists(key)
+
+        def get_file(self, key, local_path):
+            self.reads += 1
+            return self._inner.get_file(key, local_path)
+
+    counting = _CountingStorage(ctx.storage)
+    ctx.storage = counting
+
+    steady_state_run = TagsStage().process(None, _city(), [ep], ctx)
+    assert steady_state_run.reused == 1
+    assert steady_state_run.ran == 0
+    assert counting.reads == 0
+
+
 def _write_temp(tmp_path, name, content: bytes):
     path = tmp_path / "_uploads" / name
     path.parent.mkdir(parents=True, exist_ok=True)

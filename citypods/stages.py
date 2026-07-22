@@ -594,7 +594,18 @@ class TagsStage:
                 admission_policy=admission_policy,
             )
             if ep.tags_spec_hash == projection_hash and (not chapters or ep.chapter_tags):
-                stats.reused += 1
+                # Backfill the cheap fingerprint so the pre-check above can short-circuit this
+                # episode next run without the storage fetch just paid for above. Without this,
+                # every episode that was already fully resolved *before* tags_input_fingerprint
+                # existed (i.e. the entire pre-existing backlog on the first run after it was
+                # added) hits this branch, not the pre-check, forever -- it's a terminal state
+                # (tags_spec_hash already equals this run's full projection_hash) exactly like the
+                # bottom-of-loop `fingerprint_after` case, just reached without a diff to persist.
+                if ep.tags_input_fingerprint != cheap_fingerprint:
+                    ep.tags_input_fingerprint = cheap_fingerprint
+                    stats.ran += 1
+                else:
+                    stats.reused += 1
                 continue
 
             rule_tags = tag_episode(titles + "\n" + agenda_text, transcript_text, taxonomy)
