@@ -26,14 +26,16 @@ NOW = datetime(2026, 7, 22, 12, 0, tzinfo=UTC)
 
 
 def _legacy_issue(*, rows=None, first_seen=None, sub_issues=None):
-    rows = rows or {
-        "city-a-board": {
-            "severity": "warn",
-            "count": 1,
-            "example": "newest episode is 90d old; typical cadence ~14d",
+    if rows is None:
+        rows = {
+            "city-a-board": {
+                "severity": "warn",
+                "count": 1,
+                "example": "newest episode is 90d old; typical cadence ~14d",
+            }
         }
-    }
-    first_seen = first_seen or {"city-a-board": "2026-07-01T03:10:59+00:00"}
+    if first_seen is None:
+        first_seen = {"city-a-board": "2026-07-01T03:10:59+00:00"}
     state = json.dumps({"check": "stale", "first_seen": first_seen, "rows": rows})
     return {
         "number": 774,
@@ -45,7 +47,7 @@ def _legacy_issue(*, rows=None, first_seen=None, sub_issues=None):
         ),
         "state": "OPEN",
         "labels": [{"name": "signal:feed-health"}],
-        "subIssues": sub_issues or [],
+        "subIssues": [] if sub_issues is None else sub_issues,
     }
 
 
@@ -83,6 +85,13 @@ def test_plan_rejects_rows_without_matching_first_seen():
         mod._migration_plan(issue, contexts=_contexts(), now=NOW)
 
 
+def test_plan_rejects_explicitly_empty_legacy_state():
+    issue = _legacy_issue(rows={}, first_seen={})
+
+    with pytest.raises(RuntimeError, match="has no parseable stale rows"):
+        mod._migration_plan(issue, contexts=_contexts(), now=NOW)
+
+
 def test_apply_creates_and_attaches_children_before_editing_parent():
     plan = mod._migration_plan(_legacy_issue(), contexts=_contexts(), now=NOW)
     calls = []
@@ -93,10 +102,13 @@ def test_apply_creates_and_attaches_children_before_editing_parent():
             return "https://github.com/test/repo/issues/1001\n"
         return ""
 
+    def fake_attach(**kwargs):
+        calls.append(("attach", kwargs["parent"], kwargs["child"]))
+
     empty_catalog = audit._StaleCatalog([], {}, {}, {})
     with mock.patch.object(mod, "_open_stale_catalog", return_value=empty_catalog):
         with mock.patch.object(mod, "_gh", side_effect=fake_gh):
-            with mock.patch.object(mod, "_attach_sub_issue") as attach:
+            with mock.patch.object(mod, "_attach_sub_issue", side_effect=fake_attach) as attach:
                 mod._apply_plan(
                     plan,
                     github_repo="test/repo",
@@ -106,8 +118,28 @@ def test_apply_creates_and_attaches_children_before_editing_parent():
 
     attach.assert_called_once_with(github_repo="test/repo", parent=774, child=1001)
     create_index = next(i for i, call in enumerate(calls) if call[:2] == ("issue", "create"))
+    attach_index = next(i for i, call in enumerate(calls) if call[0] == "attach")
     edit_index = next(i for i, call in enumerate(calls) if call[:2] == ("issue", "edit"))
-    assert create_index < edit_index
+    assert create_index < attach_index < edit_index
+
+
+def test_dry_run_performs_no_github_mutations():
+    issue = _legacy_issue()
+    plan = mod._migration_plan(issue, contexts=_contexts(), now=NOW)
+    empty_catalog = audit._StaleCatalog([], {}, {}, {})
+
+    with mock.patch.object(mod, "_open_stale_catalog", return_value=empty_catalog):
+        with mock.patch.object(mod, "_gh") as gh:
+            with mock.patch.object(mod, "_attach_sub_issue") as attach:
+                mod._apply_plan(
+                    plan,
+                    github_repo="test/repo",
+                    issue=issue,
+                    dry_run=True,
+                )
+
+    gh.assert_not_called()
+    attach.assert_not_called()
 
 
 def test_apply_resumes_existing_unattached_child_without_duplicate():
