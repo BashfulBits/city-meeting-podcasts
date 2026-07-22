@@ -72,6 +72,8 @@ def test_stale_commands_are_authorized_review_prs_from_fresh_main():
     )
     assert prepare["env"]["EVENT_PATH"] == "${{ github.event_path }}"
     assert "scripts/stale_commands.py" in prepare["run"]
+    assert "collaborators/$ACTOR/permission" in prepare["run"]
+    assert "--permission actor-permission.json" in prepare["run"]
     assert "github.event.comment.body" not in prepare["run"]
 
     publish = next(
@@ -84,6 +86,18 @@ def test_stale_commands_are_authorized_review_prs_from_fresh_main():
     assert "git push --force-with-lease" in run
     assert "HEAD:$BRANCH" in run
     assert "HEAD:main" not in run
+
+
+def test_issue_command_workflows_share_exact_repository_permission_gate():
+    for workflow_file, job_name, script in (
+        ("stale-commands.yml", "lifecycle-pr", "scripts/stale_commands.py"),
+        ("r12-commands.yml", "command", "scripts/r12_commands.py"),
+    ):
+        _wf, job = _job(workflow_file, job_name)
+        command_step = next(step for step in job["steps"] if script in str(step.get("run", "")))
+        run = command_step["run"]
+        assert "collaborators/$ACTOR/permission" in run
+        assert "--permission actor-permission.json" in run
 
 
 # H6b split the combined enrich into two sharded, lane-pinned workflows.

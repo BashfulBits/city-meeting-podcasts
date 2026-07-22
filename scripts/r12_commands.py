@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from citypods.discovery.render import evidence_digest, iter_evidence_markers
+from citypods.github_permissions import require_repository_write
 
 MARKER = "citypods:r12:command"
 BOT_LOGIN = "github-actions[bot]"
@@ -193,10 +194,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--issue", required=True)
     parser.add_argument("--comments", required=True)
     parser.add_argument("--command", required=True)
+    parser.add_argument("--permission", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     issue = json.loads(Path(args.issue).read_text())
     comments = json.loads(Path(args.comments).read_text())
+    permission = json.loads(Path(args.permission).read_text())
+    if not isinstance(permission, dict):
+        raise CommandError("the permission payload must be a JSON object")
+    require_repository_write(permission)
     result = parse_command(issue, comments, args.command)
     Path(args.out).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return 0

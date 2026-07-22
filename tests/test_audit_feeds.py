@@ -653,7 +653,8 @@ def test_stale_cohort_documents_exact_resolution_commands_and_approval_flow():
     assert '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]' in body
     assert '/stale dormant --reason "..." [--evidence URL]' in body
     assert '/stale retire --reason "..." [--evidence URL]' in body
-    assert "Only repository collaborators may invoke these commands" in body
+    assert '/stale activate --reason "..." [--evidence URL]' in body
+    assert "repository write, maintain, or admin permission" in body
     assert "creates or updates a validated lifecycle YAML review PR" in body
     assert "Merging that PR is the human approval" in body
     assert "applicable feed YAML" in body
@@ -670,12 +671,23 @@ def test_stale_child_documents_exact_resolution_commands():
     assert '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]' in body
     assert '/stale dormant --reason "..." [--evidence URL]' in body
     assert '/stale retire --reason "..." [--evidence URL]' in body
-    assert "Only repository collaborators may invoke these commands" in body
+    assert '/stale activate --reason "..." [--evidence URL]' not in body
+    assert "repository write, maintain, or admin permission" in body
     assert "creates or updates a validated lifecycle YAML review PR" in body
     assert "Merging that PR is the human approval" in body
     assert "applicable feed YAML" in body
     assert "config/feeds/cityA.yml" in body
     assert "closes the child automatically" in body
+    assert "Provider source responded:** yes" in body
+
+
+def test_dormant_resumed_child_offers_actionable_activate_pr_command():
+    body = _stale_child(check="dormant-resumed")["body"]
+
+    assert '/stale activate --reason "..." [--evidence URL]' in body
+    assert "/stale pause" not in body
+    assert "removes the dormant lifecycle block" in body
+    assert "may close after the recent-publication window expires" in body
 
 
 def test_stale_cohort_refreshes_guidance_and_preserves_maintainer_notes():
@@ -846,6 +858,10 @@ def test_stale_incident_stays_open_when_provider_audit_is_inconclusive():
     )
 
     assert not any(call[:2] == ("issue", "close") for call in calls)
+    edit = next(call for call in calls if call[:3] == ("issue", "edit", "91"))
+    body = edit[edit.index("--body") + 1]
+    assert "Provider source responded:** no" in body
+    assert "newest episode is 90d old" in body
 
 
 def test_lifecycle_disposition_closes_stale_incident_despite_failed_poll():

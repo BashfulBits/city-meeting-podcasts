@@ -32,12 +32,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           issue=${{ github.event.issue.number }}
-          gh api "repos/${{ github.repository }}/issues/$issue" > issue.json
-          gh api "repos/${{ github.repository }}/issues/$issue/comments?per_page=100" > comments.json
+          gh api "repos/$REPOSITORY/issues/$issue" > issue.json
+          gh api "repos/$REPOSITORY/issues/$issue/comments?per_page=100" > comments.json
+          if ! gh api "repos/$REPOSITORY/collaborators/$ACTOR/permission" > actor-permission.json; then
+            echo '{"permission":"none"}' > actor-permission.json
+          fi
           python scripts/r12_commands.py --issue issue.json --comments comments.json \
-            --command "$COMMENT_BODY" --out command.json
+            --command "$COMMENT_BODY" --permission actor-permission.json --out command.json
           jq -r '.add_labels[]?' command.json | while read -r label; do
             gh issue edit "$issue" --add-label "$label"
           done

@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Dormant-resumption review is now actionable and issue commands verify real repository
+  permission.** A `dormant-resumed` child offers `/stale activate`, which creates a review PR that
+  removes the dormant lifecycle block and restores normal freshness monitoring; an unhandled child
+  may still age out after the recent-publication window. Stale lifecycle children now show whether
+  the provider fetch responded on the current conclusive/inconclusive audit. `/stale` and `/r12`
+  command workflows share one fail-closed permission policy backed by GitHub's repository-permission
+  endpoint and require write, maintain, or admin access instead of trusting comment association.
+  No pipeline version or artifact backfill is involved.
+
 - **Stale-cohort parents now document the complete operator workflow.** The generated parent and each
   child show the exact `/stale pause`, `/stale dormant`, and `/stale retire` syntax, collaborator-only
   authorization, review-PR approval semantics, manual feed-YAML source-repair/provider-migration path,

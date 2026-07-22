@@ -21,14 +21,14 @@ import yaml
 from yaml.nodes import MappingNode, ScalarNode
 
 from citypods.config import load_city_configs, load_site_config
+from citypods.github_permissions import require_repository_write
 from citypods.security import SecurityError, validate_source_url
 
-AUTHORIZED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 INCIDENT_RE = re.compile(
     r"<!-- citypods:stale-incident:v1 check=(stale|dormant-resumed) "
     r"slug=([a-z0-9]+(?:-[a-z0-9]+)*) incident=(\S+) parent=(\d+) -->"
 )
-ALLOWED_ACTIONS = frozenset({"pause", "dormant", "retire"})
+ALLOWED_ACTIONS = frozenset({"activate", "pause", "dormant", "retire"})
 MAX_REASON_CHARS = 500
 MAX_EVIDENCE_CHARS = 2048
 
@@ -63,7 +63,7 @@ def parse_command(command_text: str, *, today: date | None = None) -> StaleComma
     except ValueError as exc:
         raise CommandError("invalid command quoting") from exc
     if len(parts) < 2 or parts[0] != "/stale" or parts[1] not in ALLOWED_ACTIONS:
-        raise CommandError("expected `/stale pause|dormant|retire`")
+        raise CommandError("expected `/stale activate|pause|dormant|retire`")
     action = parts[1]
     values: dict[str, str] = {}
     index = 2
@@ -111,7 +111,12 @@ def parse_command(command_text: str, *, today: date | None = None) -> StaleComma
         except SecurityError as exc:
             raise CommandError(f"--evidence must be a valid HTTPS URL: {exc}") from exc
 
-    status = {"pause": "paused", "dormant": "dormant", "retire": "retired"}[action]
+    status = {
+        "activate": "active",
+        "pause": "paused",
+        "dormant": "dormant",
+        "retire": "retired",
+    }[action]
     return StaleCommand(status, reason, recheck_after, evidence_url)
 
 
@@ -124,14 +129,11 @@ def _label_names(issue: dict[str, Any]) -> set[str]:
     return names
 
 
-def _resolve_incident(event: dict[str, Any]) -> tuple[int, str]:
+def _resolve_incident(event: dict[str, Any]) -> tuple[int, str, str]:
     issue = event.get("issue") or {}
     comment = event.get("comment") or {}
     if not isinstance(issue, dict) or not isinstance(comment, dict):
         raise CommandError("the event has no valid issue or comment payload")
-    association = str(comment.get("author_association") or "")
-    if association not in AUTHORIZED_ASSOCIATIONS:
-        raise CommandError("only repository collaborators may use /stale commands")
     if issue.get("pull_request") is not None:
         raise CommandError("/stale commands apply only to generated child issues")
     if str(issue.get("state") or "").lower() != "open":
@@ -147,7 +149,7 @@ def _resolve_incident(event: dict[str, Any]) -> tuple[int, str]:
         raise CommandError("the event has no valid issue number") from exc
     if issue_number < 1:
         raise CommandError("the event has no valid issue number")
-    return issue_number, match.group(2)
+    return issue_number, match.group(2), match.group(1)
 
 
 def _lifecycle_block(command: StaleCommand) -> str:
@@ -179,7 +181,9 @@ def apply_lifecycle(path: Path, command: StaleCommand) -> bool:
         raise CommandError(f"{path} contains duplicate lifecycle keys")
 
     lines = original.splitlines(keepends=True)
-    block = _lifecycle_block(command).splitlines(keepends=True)
+    block = (
+        [] if command.status == "active" else _lifecycle_block(command).splitlines(keepends=True)
+    )
     if lifecycle_entries:
         key, value = lifecycle_entries[0]
         start = key.start_mark.line
@@ -197,15 +201,22 @@ def apply_lifecycle(path: Path, command: StaleCommand) -> bool:
 
 
 def process_event(
-    event: dict[str, Any], *, repo_root: Path, today: date | None = None
+    event: dict[str, Any],
+    *,
+    repo_root: Path,
+    permission: dict[str, Any],
+    today: date | None = None,
 ) -> dict[str, Any]:
     """Validate an issue-comment event, edit its feed YAML, and return the PR plan."""
-    issue_number, slug = _resolve_incident(event)
+    require_repository_write(permission)
+    issue_number, slug, check = _resolve_incident(event)
     comment = event.get("comment") or {}
     actor = str((comment.get("user") or {}).get("login") or "")
     if not actor or not re.fullmatch(r"[A-Za-z0-9-]+", actor):
         raise CommandError("the event has no valid comment author")
     command = parse_command(str(comment.get("body") or ""), today=today)
+    if command.status == "active" and check != "dormant-resumed":
+        raise CommandError("`/stale activate` applies only to dormant-resumed incidents")
     config_path = Path("config") / "feeds" / f"{slug}.yml"
     target = (repo_root / config_path).resolve()
     feeds_root = (repo_root / "config" / "feeds").resolve()
@@ -216,7 +227,12 @@ def process_event(
     site_config = load_site_config(repo_root / "config" / "site_config.yml")
     load_city_configs(repo_root / "config", site_config.get("defaults", {}))
 
-    command_name = {"paused": "pause", "dormant": "dormant", "retired": "retire"}[command.status]
+    command_name = {
+        "active": "activate",
+        "paused": "pause",
+        "dormant": "dormant",
+        "retired": "retire",
+    }[command.status]
     marker = f"<!-- citypods:stale-disposition:v1 issue={issue_number} slug={slug} -->"
     details = [
         f"- Feed: `{slug}`",
@@ -266,6 +282,7 @@ def _write_result(path: Path, result: dict[str, Any]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True, help="GitHub issue_comment event JSON")
+    parser.add_argument("--permission", required=True, help="GitHub repository permission JSON")
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
@@ -275,7 +292,14 @@ def main(argv: list[str] | None = None) -> int:
         event = json.loads(Path(args.event).read_text())
         if not isinstance(event, dict):
             raise CommandError("the event payload must be a JSON object")
-        result = process_event(event, repo_root=Path(args.repo_root).resolve())
+        permission = json.loads(Path(args.permission).read_text())
+        if not isinstance(permission, dict):
+            raise CommandError("the permission payload must be a JSON object")
+        result = process_event(
+            event,
+            repo_root=Path(args.repo_root).resolve(),
+            permission=permission,
+        )
     except (CommandError, json.JSONDecodeError, OSError, ValueError, yaml.YAMLError) as exc:
         _write_result(
             out,
