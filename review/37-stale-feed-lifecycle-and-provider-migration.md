@@ -1,7 +1,12 @@
 # review/37 — Stale-feed lifecycle and provider migration
 
-**Maturity: L3 (development-ready) · Phase H / H4 operational hardening · approved 2026-07-21 ·
-umbrella [GH#970](https://github.com/BashfulBits/city-meeting-podcasts/issues/970)**
+**Maturity: Frozen — implemented in PRs
+[#976](https://github.com/BashfulBits/city-meeting-podcasts/pull/976),
+[#977](https://github.com/BashfulBits/city-meeting-podcasts/pull/977),
+[#978](https://github.com/BashfulBits/city-meeting-podcasts/pull/978), and
+[#990](https://github.com/BashfulBits/city-meeting-podcasts/pull/990) · shipped 2026-07-22 · Phase H / H4
+operational hardening · umbrella
+[GH#970](https://github.com/BashfulBits/city-meeting-podcasts/issues/970)**
 
 ## 1. Problem and outcome
 
@@ -168,16 +173,21 @@ remains open until a later audit passes.
    marker-owned stale issue remains open, stale cohort creation is gated so #975 can preserve GH#774's
    first-seen history without duplicate incidents; dormant-resumed incidents are not gated.
 4. **[GH#974](https://github.com/BashfulBits/city-meeting-podcasts/issues/974) — `/stale` command PR
-   automation (implemented in the current change).** A deny-by-default workflow admits only
+   automation (shipped in [PR #978](https://github.com/BashfulBits/city-meeting-podcasts/pull/978)).** A deny-by-default workflow admits only
    collaborator-or-higher issue comments, while the Python handler independently verifies the actor,
    open feed-health child label, versioned incident marker, exact feed path, strict command grammar,
    future pause date, reason, and schema-valid HTTPS evidence URL. It edits from fresh `main`, validates the
    full catalog plus focused config/command tests, and creates or updates the deterministic
    `chore/stale-<issue>-lifecycle` branch and one review PR. Equivalent reruns reuse the unchanged remote
    branch; no path pushes to `main`, and issue feedback keeps the incident open pending merge + audit.
-5. **[GH#975](https://github.com/BashfulBits/city-meeting-podcasts/issues/975) — production rollout.**
-   Convert GH#774 into the first cohort, create/link one child per current row, preserve `first_seen`,
-   triage all children, and verify parent closure.
+5. **[GH#975](https://github.com/BashfulBits/city-meeting-podcasts/issues/975) — production rollout
+   (shipped in [PR #990](https://github.com/BashfulBits/city-meeting-podcasts/pull/990)).** A dedicated
+   dry-run-first migration validates a one-to-one row/date/config plan, creates and attaches children
+   before changing the parent marker, and resumes safely after a partial failure. On 2026-07-22 it
+   converted all 11 GH#774 rows to native children #979–#989 with exact `first_seen` preservation,
+   feed-YAML links, lifecycle/source guidance, labels, and Operations Project fields. The normal audit
+   owns evidence refresh and closure; the children now own human triage, and GH#774 closes when the
+   last incident resolves.
 
 Slices 1 and 2 are independent foundations. Slice 3 may build alongside them but cannot close children
 from lifecycle state until Slice 2 lands. Slice 4 depends on Slice 2's schema. Slice 5 is last.
@@ -196,10 +206,14 @@ from lifecycle state until Slice 2 lands. Slice 4 depends on Slice 2's schema. S
   command→YAML output are tested.
 - GH#774 migration preserves every currently affected slug and its original `first_seen` value.
 
-## 7. Shipping contract
+## 7. Implementation record
 
-This design changes architecture and operations but not audio bytes. No pipeline version is bumped and
-there is no audio/ASR backfill. On final merge: mark the review/11 row Shipped with PR links, add a
-CHANGELOG entry explicitly stating the no-backfill story, update ARCHITECTURE from planned to current,
-freeze this breakout with the implementing PRs, move the ROADMAP item to Recently shipped, and close or
-narrow GH#970–#975.
+PRs #976–#978 shipped the provider-migration, lifecycle, native-incident, and maintainer-command
+foundations. PR #990 completed the production rollout and froze this design. The live migration preserved
+every legacy GH#774 slug and timestamp, attached children #979–#989 before converting the parent, and
+placed the cohort in the Operations Project. Focused tests cover create/update, conclusive recovery,
+committed-disposition closure, parent closure, rollover, strict command authorization/parsing, both
+provider migration shapes, and interruption-safe legacy conversion.
+
+This changed architecture and operations but not audio bytes. No pipeline version was bumped and no
+audio, transcript, feed, or derived-artifact backfill was triggered.
