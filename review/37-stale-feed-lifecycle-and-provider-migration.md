@@ -159,7 +159,7 @@ remains open until a later audit passes.
    execution.** Parse/validate the four states; apply poll and stale gates; render retired history;
    emit dormant-resumed findings.
 3. **[GH#973](https://github.com/BashfulBits/city-meeting-podcasts/issues/973) — bounded native
-   sub-issue cohorts (implemented in the current change).** Replace consolidated stale reconciliation
+   sub-issue cohorts (shipped in [PR #977](https://github.com/BashfulBits/city-meeting-podcasts/pull/977)).** Replace consolidated stale reconciliation
    while leaving unrelated check reconciliation unchanged; preserve first-seen history and human text.
    The reconciler indexes marker-owned open and closed incident history, attaches each new child through
    GitHub's native sub-issue API, rolls over at 50 total children, and edits only generated sections.
@@ -168,8 +168,13 @@ remains open until a later audit passes.
    marker-owned stale issue remains open, stale cohort creation is gated so #975 can preserve GH#774's
    first-seen history without duplicate incidents; dormant-resumed incidents are not gated.
 4. **[GH#974](https://github.com/BashfulBits/city-meeting-podcasts/issues/974) — `/stale` command PR
-   automation.** Authorized comment trigger, parser, fresh-main branch/PR generation, config validation,
-   idempotency, and issue feedback.
+   automation (implemented in the current change).** A deny-by-default workflow admits only
+   collaborator-or-higher issue comments, while the Python handler independently verifies the actor,
+   open feed-health child label, versioned incident marker, exact feed path, strict command grammar,
+   future pause date, reason, and schema-valid HTTPS evidence URL. It edits from fresh `main`, validates the
+   full catalog plus focused config/command tests, and creates or updates the deterministic
+   `chore/stale-<issue>-lifecycle` branch and one review PR. Equivalent reruns reuse the unchanged remote
+   branch; no path pushes to `main`, and issue feedback keeps the incident open pending merge + audit.
 5. **[GH#975](https://github.com/BashfulBits/city-meeting-podcasts/issues/975) — production rollout.**
    Convert GH#774 into the first cohort, create/link one child per current row, preserve `first_seen`,
    triage all children, and verify parent closure.

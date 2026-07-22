@@ -1,0 +1,115 @@
+name: Stale-feed lifecycle commands
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: stale-command-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  lifecycle-pr:
+    if: >-
+      ${{ github.event.issue.pull_request == null &&
+        startsWith(github.event.comment.body, '/stale ') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install command dependencies
+        run: pip install -e ".[dev]" -c constraints/dev.txt
+
+      - name: Validate command and prepare YAML
+        id: command
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PATH: ${{ github.event_path }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set +e
+          python scripts/stale_commands.py --event "$EVENT_PATH" --repo-root . \
+            --out stale-command.json
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            jq -r '.comment' stale-command.json > stale-command-comment.md
+            gh issue comment "$ISSUE_NUMBER" --body-file stale-command-comment.md
+            echo "accepted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "accepted=true" >> "$GITHUB_OUTPUT"
+          jq -r '"issue_number=" + (.issue_number | tostring),
+            "branch=" + .branch,
+            "config_path=" + .config_path,
+            "commit_message=" + .commit_message,
+            "pr_title=" + .pr_title' stale-command.json >> "$GITHUB_OUTPUT"
+
+      - name: Open or update lifecycle PR
+        if: steps.command.outputs.accepted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.command.outputs.issue_number }}
+          BRANCH: ${{ steps.command.outputs.branch }}
+          CONFIG_PATH: ${{ steps.command.outputs.config_path }}
+          COMMIT_MESSAGE: ${{ steps.command.outputs.commit_message }}
+          PR_TITLE: ${{ steps.command.outputs.pr_title }}
+        run: |
+          git switch --create "$BRANCH"
+          git add -- "$CONFIG_PATH"
+          git diff --cached --check
+          pytest -q tests/test_config.py tests/test_stale_commands.py
+
+          if git diff --cached --quiet; then
+            jq -r '.issue_comment + " The requested lifecycle is already committed on `main`; no PR is needed."' \
+              stale-command.json > stale-command-comment.md
+            gh issue comment "$ISSUE_NUMBER" --body-file stale-command-comment.md
+            exit 0
+          fi
+
+          remote_exists=false
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"
+            remote_exists=true
+          fi
+          unchanged=false
+          if [ "$remote_exists" = true ] && git diff --quiet "origin/$BRANCH" --; then
+            unchanged=true
+          fi
+          if [ "$unchanged" = false ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "$COMMIT_MESSAGE"
+            gh auth setup-git
+            git push --force-with-lease origin "HEAD:$BRANCH"
+          fi
+
+          jq -r '.pr_body' stale-command.json > stale-command-pr.md
+          pr=$(gh pr list --head "$BRANCH" --base main --state open --json url --jq '.[0].url')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$PR_TITLE" --body-file stale-command-pr.md
+          else
+            pr=$(gh pr create --head "$BRANCH" --base main --title "$PR_TITLE" \
+              --body-file stale-command-pr.md)
+          fi
+          gh pr edit "$pr" --add-label type:operations --add-label area:ops \
+            --milestone "Phase H Complete"
+          jq -r --arg pr "$pr" '.issue_comment + "\n\nMaintainer-review PR: " + $pr' \
+            stale-command.json > stale-command-comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file stale-command-comment.md

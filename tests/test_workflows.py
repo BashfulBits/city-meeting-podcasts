@@ -44,6 +44,48 @@ def _step_index(job: dict, needle: str) -> int:
     return -1
 
 
+def test_stale_commands_are_authorized_review_prs_from_fresh_main():
+    wf, job = _job("stale-commands.yml", "lifecycle-pr")
+    assert set(_on(wf)) == {"issue_comment"}
+    assert wf["permissions"] == {}
+    assert wf["concurrency"] == {
+        "group": "stale-command-${{ github.event.issue.number }}",
+        "cancel-in-progress": False,
+    }
+    condition = job["if"]
+    assert "OWNER" in condition and "MEMBER" in condition and "COLLABORATOR" in condition
+    assert "github.event.issue.pull_request == null" in condition
+    assert "startsWith(github.event.comment.body, '/stale ')" in condition
+    assert job["permissions"] == {
+        "contents": "write",
+        "issues": "write",
+        "pull-requests": "write",
+    }
+
+    checkout = next(step for step in job["steps"] if "actions/checkout@" in step.get("uses", ""))
+    assert checkout["with"]["ref"] == "main"
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["persist-credentials"] is False
+
+    prepare = next(
+        step for step in job["steps"] if step.get("name") == "Validate command and prepare YAML"
+    )
+    assert prepare["env"]["EVENT_PATH"] == "${{ github.event_path }}"
+    assert "scripts/stale_commands.py" in prepare["run"]
+    assert "github.event.comment.body" not in prepare["run"]
+
+    publish = next(
+        step for step in job["steps"] if step.get("name") == "Open or update lifecycle PR"
+    )
+    run = publish["run"]
+    assert "pytest -q tests/test_config.py tests/test_stale_commands.py" in run
+    assert "gh pr list --head" in run
+    assert "gh pr create --head" in run
+    assert "git push --force-with-lease" in run
+    assert "HEAD:$BRANCH" in run
+    assert "HEAD:main" not in run
+
+
 # H6b split the combined enrich into two sharded, lane-pinned workflows.
 # Third element is the job name within the workflow file (audio.yml has a wait-for-contracts
 # pre-job so the heavy job must be addressed by name, not by position).
