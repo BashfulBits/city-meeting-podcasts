@@ -1,8 +1,11 @@
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
+from citypods import cli
 from citypods.migration import compare_provider_migration
 from citypods.models import City, Episode
-from citypods.records import assign_uids
+from citypods.providers import ProviderError
+from citypods.records import assign_uids, save_records
 
 
 def _city(**kwargs):
@@ -91,3 +94,28 @@ def test_override_must_target_archive_and_present_candidate_guid():
 
     assert not report.ready
     assert len(report.invalid_overrides) == 2
+
+
+def test_migration_cli_reports_provider_failure_as_blocked(monkeypatch, tmp_path, capsys):
+    city = _city()
+    save_records(tmp_path, city.source_id, {"0123456789abcdef": {"uid": "0123456789abcdef"}})
+
+    class FailingProvider:
+        def fetch_episodes(self, _source):
+            raise ProviderError("candidate endpoint unavailable")
+
+    monkeypatch.setattr(cli, "load_site_config", lambda _path: {})
+    monkeypatch.setattr(cli, "load_city_configs", lambda _path, _defaults: [city])
+    monkeypatch.setattr(cli, "get_provider", lambda _name: FailingProvider())
+    args = SimpleNamespace(
+        cutover="2026-07-10",
+        site_config="unused.yml",
+        config_dir="unused",
+        city=city.slug,
+        state_dir=str(tmp_path),
+        output_dir="docs",
+        json=False,
+    )
+
+    assert cli._migrate_source_report(args) == 2
+    assert "candidate endpoint unavailable" in capsys.readouterr().err

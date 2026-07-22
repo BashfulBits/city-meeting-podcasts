@@ -9,6 +9,7 @@ from citypods.audit import (
     ArchiveDiff,
     Finding,
     aggregate_view_cap_findings,
+    audit_all,
     audit_city,
     check_dead_audio_aggregate,
     check_deferred_audio_aggregate,
@@ -562,6 +563,18 @@ def test_audit_city_review37_lifecycle_suppresses_stale():
         city.lifecycle = lifecycle
         findings = audit_city(city, provider=_FakeProvider(eps), now=NOW)
         assert not any(f.check == "stale" for f in findings)
+
+
+def test_audit_all_retired_feed_never_resolves_provider(monkeypatch, tmp_path):
+    city = _city()
+    city.lifecycle = FeedLifecycle(status="retired", reason="body dissolved")
+
+    def fail_provider_lookup(_name):
+        raise AssertionError("retired feed must not resolve or fetch its provider")
+
+    monkeypatch.setattr("citypods.providers.get_provider", fail_provider_lookup)
+
+    assert audit_all([city], site_config={}, output_dir=tmp_path, now=NOW) == []
 
 
 def test_audit_city_expired_pause_resumes_stale_check():

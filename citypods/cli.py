@@ -9,7 +9,7 @@ import sys
 
 from citypods.bodies import is_excluded
 from citypods.config import filter_city_configs, load_city_configs, load_site_config
-from citypods.providers import get_provider
+from citypods.providers import ProviderError, get_provider
 from citypods.run import build, install_signal_handlers, interrupt_requested
 
 
@@ -573,11 +573,11 @@ def _migrate_source_report(args) -> int:
         )
         return 2
 
-    episodes = get_provider(city.provider).fetch_episodes(city.source)
     try:
+        episodes = get_provider(city.provider).fetch_episodes(city.source)
         assign_uids(city, episodes)
         report = compare_provider_migration(city, episodes, archive, cutover=cutover)
-    except ValueError as exc:
+    except (ProviderError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
