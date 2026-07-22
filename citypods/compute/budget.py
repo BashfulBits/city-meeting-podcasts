@@ -135,16 +135,26 @@ class Budget:
     runtime_estimates: dict[str, RuntimeEstimate] = field(default_factory=dict)
 
     def _cycle_matches(self, existing: str, target: str) -> bool:
-        if existing == target:
-            return True
-        # Legacy ledgers stored only YYYY-MM. Treat the migrated day-1 provider-cycle key as the
-        # same cycle so the first read under the new schema does not zero live state.
-        return len(existing) == 7 and target == f"{existing}-01"
+        return existing == target
 
     def _ledger(self, backend: str, *, cycle: str | None = None) -> BackendLedger:
+        """Fetch *backend*'s ledger, zeroing it if it belongs to a different cycle than
+        *target_cycle*.
+
+        A **missing/blank** ``cycle_key`` is deliberately treated as stale, not as "trust it, it's
+        current" — a brand-new ``BackendLedger()`` has ``used_units == 0`` so zeroing it is a no-op,
+        but a backend rarely touched by real dispatch (Modal's even-day/4h+-only schedule; Beam
+        going a stretch with no claims) can carry a nonzero ``used_units`` inherited from *before*
+        cycle-keyed ledgers existed (schema v2's plain ``used_gpu_seconds``, silently reinterpreted
+        as dollars by the v3 migration's ``used_units`` field bridge in ``from_dict``). Skipping
+        the reset just because ``cycle_key`` was blank let exactly that kind of fossil survive
+        every read indefinitely (observed: Modal frozen at ``$17810.2``, Beam at ``$75.9`` — both
+        far past their ``$24`` cap, silently blocking all real dispatch to both backends since the
+        v3 migration, because ``available()`` sees ``used_units`` alone dwarf ``cap`` and refuses
+        every estimate no matter how small)."""
         led = self.backends.setdefault(backend, BackendLedger())
         target_cycle = cycle or self.month
-        if led.cycle_key and not self._cycle_matches(led.cycle_key, target_cycle):
+        if not self._cycle_matches(led.cycle_key, target_cycle):
             led.used_units = 0.0
             led.inflight = {}
         led.cycle_key = target_cycle

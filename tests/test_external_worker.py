@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 import citypods.compute.external_worker as ew
-from citypods.compute.budget import Budget, month_key
+from citypods.compute.budget import Budget, cycle_key, month_key
 from citypods.compute.external_worker import (
     ExternalTranscribeWorker,
     ExternalWorkerConfig,
@@ -226,7 +226,10 @@ def test_effective_max_claims_paces_against_remaining_budget(tmp_path, monkeypat
     }
     worker.storage = SimpleNamespace(cas_capable=True, get_bytes=lambda key: None)
     budget = Budget(month="2026-07")
-    budget.reserve("modal:old", "modal", 180.0)
+    # Reserve under the same provider-cycle key a real claim would use (rollover_day_of_month
+    # defaults to 1 above), not the bare month key — a bare-month reservation is legacy fossil
+    # data and must not be mistaken for this cycle's usage (see budget.py's _cycle_matches).
+    budget.reserve("modal:old", "modal", 180.0, cycle=cycle_key(rollover_day_of_month=1))
     monkeypatch.setattr(ew, "load_budget_cas", lambda storage: (budget, None))
     monkeypatch.setattr(ew, "load_worker_telemetry", lambda storage: {"samples": []})
     monkeypatch.setattr(worker, "_remaining_run_slots", lambda now=None: 2)

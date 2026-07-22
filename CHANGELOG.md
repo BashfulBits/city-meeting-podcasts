@@ -225,6 +225,23 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Compute-budget stale-cycle reset now actually fires (previous fix didn't take).** The prior
+  "ASR worker report no longer prints stale compute-budget totals" fix (below) added a reset check
+  but the check itself had two holes that let both Modal and Beam's fossils survive it untouched:
+  (1) `Budget._ledger` skipped the reset entirely whenever a backend's persisted `cycle_key` was
+  blank — true for any ledger untouched since before day-keyed cycles existed, whose `used_units`
+  can still carry a schema-v2 `used_gpu_seconds` total silently reinterpreted as dollars by the v3
+  migration; (2) the legacy `"YYYY-MM"` compat added by that same v3 migration matched *any* read
+  in the same calendar month as the persisted bare-month key, not just the one-time migration read
+  it was meant for, so a backend untouched since before the migration kept re-validating as
+  "current" all month long. Together these left Modal frozen at `$17810.2` and Beam at `$75.9`
+  used — both far past their `$24` cap — since the migration, silently blocking all real dispatch
+  to both (`available()` never saw room). Both holes are fixed: a blank `cycle_key` now resets like
+  any other mismatch (harmless for a genuinely fresh ledger, since `used_units` is already `0`
+  there), and the legacy month-key compat is gone now that the migration it bridged is long past.
+  `external_worker.py`'s `_effective_max_claims` had the same blank-`cycle_key` hole duplicated
+  inline; it now delegates to `Budget.current_ledger` instead of re-implementing the check.
+
 - **The daily `tag.yml` workflow no longer reliably burns its full 25-minute job timeout and gets
   hard-cancelled with nothing persisted.** A scheduled run was observed spending ~14 of its 25
   minutes in a per-episode audio-duration ffprobe/heal pass

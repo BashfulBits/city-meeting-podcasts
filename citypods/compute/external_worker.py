@@ -1083,14 +1083,8 @@ class ExternalTranscribeWorker:
             return hard_cap
         budget, _etag = load_budget_cas(self.storage)
         budget.roll_month()
-        ledger = budget.backends.get(self.config.backend)
         cycle = self._budget_cycle_key(policy)
-        if ledger is None:
-            used_units = 0.0
-        elif ledger.cycle_key and not budget._cycle_matches(ledger.cycle_key, cycle):
-            used_units = 0.0
-        else:
-            used_units = ledger.used_units
+        used_units = budget.current_ledger(self.config.backend, cycle=cycle).used_units
         remaining_dollars = max(0.0, policy.budget.spendable_dollars - used_units)
         if remaining_dollars <= 0:
             return 0

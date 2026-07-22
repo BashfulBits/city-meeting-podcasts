@@ -272,14 +272,21 @@ class TestBudget:
         assert led.used_units == 90
         assert led.inflight == {"modal:1": 90}
 
-    def test_cycle_key_migrates_legacy_month_key_without_reset(self):
+    def test_cycle_key_resets_legacy_bare_month_key(self):
+        # A ledger last touched before the provider-cycle (day-keyed) schema existed persists a
+        # bare "YYYY-MM" cycle_key forever if never touched again (Modal/Beam's rare-dispatch
+        # schedule) — silently reinterpreting old used_gpu_seconds totals as dollars and refusing
+        # to ever reset them was exactly the production bug (observed: Modal frozen at $17810.2,
+        # Beam at $75.9, both permanently over their $24 cap). A bare month key must reset like any
+        # other stale cycle, not be grandfathered in as "already current."
         b = Budget(month="2026-07")
         b.reserve("modal:1", "modal", 90)
         assert b.backends["modal"].cycle_key == "2026-07"
 
         b.available("modal", cap=1000, max_inflight=8, est=0, cycle="2026-07-01")
 
-        assert b.backends["modal"].used_gpu_seconds == 90
+        assert b.backends["modal"].used_gpu_seconds == 0
+        assert b.backends["modal"].inflight == {}
         assert b.backends["modal"].cycle_key == "2026-07-01"
 
     def test_persistence_round_trips(self, tmp_path):
