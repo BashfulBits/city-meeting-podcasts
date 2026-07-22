@@ -647,6 +647,57 @@ def _stale_catalog(parent, children):
     )
 
 
+def test_stale_cohort_documents_exact_resolution_commands_and_approval_flow():
+    body = _mod._render_cohort_body(total=3, open_count=2)
+
+    assert '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]' in body
+    assert '/stale dormant --reason "..." [--evidence URL]' in body
+    assert '/stale retire --reason "..." [--evidence URL]' in body
+    assert "creates or updates a validated lifecycle YAML review PR" in body
+    assert "Merging that PR is the human approval" in body
+    assert "applicable feed YAML" in body
+    assert "closes the child automatically" in body
+
+
+def test_stale_child_documents_exact_resolution_commands():
+    body = _stale_child()["body"]
+
+    assert '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]' in body
+    assert '/stale dormant --reason "..." [--evidence URL]' in body
+    assert '/stale retire --reason "..." [--evidence URL]' in body
+    assert "Merging that PR is the human approval" in body
+
+
+def test_stale_cohort_refreshes_guidance_and_preserves_maintainer_notes():
+    parent = _stale_parent()
+    parent["body"] = """<!-- citypods:stale-cohort:v1 -->
+
+<!-- citypods:generated:start -->
+## Review progress
+
+- **Open incidents:** 1
+- **Cohort capacity used:** 1 / 50
+<!-- citypods:generated:end -->
+
+## Maintainer notes
+
+Keep this migration note.
+"""
+    child = _stale_child()
+    finding = _finding(
+        slug="cityA",
+        check="stale",
+        msg="newest episode is 90d old; typical cadence ~14d",
+    )
+
+    calls = _run_reconcile([finding], {}, stale_catalog=_stale_catalog(parent, [child]), now=_NOW)
+
+    edit = next(call for call in calls if call[:3] == ("issue", "edit", "90"))
+    body = edit[edit.index("--body") + 1]
+    assert '/stale pause --until YYYY-MM-DD --reason "..." [--evidence URL]' in body
+    assert "Keep this migration note." in body
+
+
 def test_open_stale_catalog_indexes_open_children_and_closed_history():
     parent = _stale_parent()
     open_child = _stale_child()

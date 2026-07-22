@@ -17,6 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Stale-cohort parents now document the complete operator workflow.** The generated parent and each
+  child show the exact `/stale pause`, `/stale dormant`, and `/stale retire` syntax, collaborator-only
+  authorization, review-PR approval semantics, manual feed-YAML source-repair/provider-migration path,
+  and automatic recovery closure. Because this guidance lives inside the automation-owned generated
+  section, future audits keep it current without overwriting maintainer notes. No pipeline version or
+  artifact backfill is involved.
+
 - **Stale feeds now have a complete lifecycle instead of one permanent warning table (H4,
   GH#970–#975).** Optional stable `source_id` and reviewed UID overrides preserve the append-only
   archive and provider-independent episode identity across both historical-copy and forward-only
