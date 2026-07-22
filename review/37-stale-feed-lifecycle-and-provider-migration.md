@@ -159,8 +159,14 @@ remains open until a later audit passes.
    execution.** Parse/validate the four states; apply poll and stale gates; render retired history;
    emit dormant-resumed findings.
 3. **[GH#973](https://github.com/BashfulBits/city-meeting-podcasts/issues/973) — bounded native
-   sub-issue cohorts.** Replace consolidated stale reconciliation while leaving unrelated check
-   reconciliation unchanged; preserve first-seen history and human text.
+   sub-issue cohorts (implemented in the current change).** Replace consolidated stale reconciliation
+   while leaving unrelated check reconciliation unchanged; preserve first-seen history and human text.
+   The reconciler indexes marker-owned open and closed incident history, attaches each new child through
+   GitHub's native sub-issue API, rolls over at 50 total children, and edits only generated sections.
+   Recovery closure requires a conclusive fetch; provider-unreachable and hard-empty active audits leave
+   the child open, while a committed lifecycle disposition may close it independently. While the legacy
+   marker-owned stale issue remains open, stale cohort creation is gated so #975 can preserve GH#774's
+   first-seen history without duplicate incidents; dormant-resumed incidents are not gated.
 4. **[GH#974](https://github.com/BashfulBits/city-meeting-podcasts/issues/974) — `/stale` command PR
    automation.** Authorized comment trigger, parser, fresh-main branch/PR generation, config validation,
    idempotency, and issue feedback.

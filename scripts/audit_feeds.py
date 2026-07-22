@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -61,10 +62,19 @@ TITLE_PREFIX = "[feed-health]"
 MARKER = "<!-- citypods:feed-health -->"
 _KEY_RE = re.compile(r"<!-- citypods:feed-health:key=(\S+) -->")
 _STATE_RE = re.compile(r"<!-- citypods:feed-health:state\n(.*?)\n-->", re.DOTALL)
+_STALE_COHORT_MARKER = "<!-- citypods:stale-cohort:v1 -->"
+_STALE_INCIDENT_RE = re.compile(
+    r"<!-- citypods:stale-incident:v1 check=(\S+) slug=(\S+) incident=(\S+) parent=(\d+) -->"
+)
+_STALE_STATE_RE = re.compile(r"<!-- citypods:stale-state\n(.*?)\n-->", re.DOTALL)
+_GENERATED_START = "<!-- citypods:generated:start -->"
+_GENERATED_END = "<!-- citypods:generated:end -->"
 
 # Checks that stay on the legacy one-issue-per-(slug, check) model. Every other check is
 # consolidated into one issue per check, covering every affected feed. See the module docstring.
 _PER_SLUG_CHECKS = frozenset({"meetings-url-dead", "meetings-url-changed"})
+_LIFECYCLE_INCIDENT_CHECKS = frozenset({"stale", "dormant-resumed"})
+_STALE_COHORT_CAP = 50
 _DEAD_MEETINGS_URL_STATUSES = frozenset({404, 410, 451})
 
 # How many affected feeds get a full row before the table is truncated with a "+N more" note.
@@ -131,6 +141,12 @@ _GUIDANCE: dict[str, str] = {
         "**Resolution:** check the city's public meeting calendar for a real gap. If meetings "
         "are happening but not appearing here, check the provider config for a stale view or "
         "filter."
+    ),
+    "dormant-resumed": (
+        "**What this means:** a feed committed as `dormant` has published recently.\n\n"
+        "**Resolution:** verify whether regular meetings have resumed. If so, open a YAML PR "
+        "that returns the feed lifecycle to `active`; otherwise record the evidence in this "
+        "incident and leave the durable lifecycle unchanged."
     ),
     "rehost-backlog": (
         "**What this means:** the feed has HLS episodes but none have been hosted, even though "
@@ -482,6 +498,85 @@ def _label_names(issue: dict) -> set[str]:
     return names
 
 
+@dataclass
+class _StaleCatalog:
+    """All lifecycle cohort/incident issues, including closed history for rollover links."""
+
+    open_parents: list[dict]
+    open_children: dict[tuple[str, str], dict]
+    history: dict[tuple[str, str], list[dict]]
+    children_by_parent: dict[int, list[dict]]
+
+
+def _open_stale_catalog() -> _StaleCatalog:
+    """Load lifecycle issues separately from the legacy feed-health key namespace."""
+    out = _gh(
+        "issue",
+        "list",
+        "--label",
+        "signal:feed-health",
+        "--state",
+        "all",
+        "--json",
+        "number,title,body,labels,state,url",
+        "--limit",
+        "1000",
+    )
+    issues = json.loads(out or "[]")
+    open_parents: list[dict] = []
+    open_children: dict[tuple[str, str], dict] = {}
+    history: dict[tuple[str, str], list[dict]] = {}
+    children_by_parent: dict[int, list[dict]] = {}
+    for issue in issues:
+        body = issue.get("body") or ""
+        is_open = str(issue.get("state") or "").lower() == "open"
+        if _STALE_COHORT_MARKER in body:
+            if is_open:
+                open_parents.append(issue)
+            continue
+        match = _STALE_INCIDENT_RE.search(body)
+        if not match:
+            continue
+        check, slug, incident_id, parent_raw = match.groups()
+        item = {
+            **issue,
+            "check": check,
+            "slug": slug,
+            "incident_id": incident_id,
+            "parent": int(parent_raw),
+        }
+        key = (check, slug)
+        history.setdefault(key, []).append(item)
+        children_by_parent.setdefault(int(parent_raw), []).append(item)
+        if is_open:
+            open_children[key] = item
+    open_parents.sort(key=lambda issue: int(issue["number"]))
+    for issues_for_key in history.values():
+        issues_for_key.sort(key=lambda issue: int(issue["number"]))
+    return _StaleCatalog(open_parents, open_children, history, children_by_parent)
+
+
+def _parse_stale_state(body: str) -> dict:
+    match = _STALE_STATE_RE.search(body or "")
+    if not match:
+        return {}
+    try:
+        state = json.loads(match.group(1))
+    except (TypeError, ValueError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def _replace_generated(body: str, generated: str) -> str:
+    """Replace only the automation-owned section, preserving maintainer notes verbatim."""
+    start = body.find(_GENERATED_START)
+    end = body.find(_GENERATED_END)
+    if start < 0 or end < start:
+        return generated + "\n\n### Maintainer notes\n\n"
+    end += len(_GENERATED_END)
+    return body[:start] + generated + body[end:]
+
+
 def _is_obsolete_meetings_url_issue(issue: dict, check_name: str) -> bool:
     if check_name != "meetings-url-dead":
         return False
@@ -513,13 +608,15 @@ class _FeedContext:
     city_config_url: str | None = None
     meetings_url: str | None = None
     source_url: str | None = None
+    lifecycle_status: str = "active"
+    checks_staleness: bool = True
 
 
 def _group_by_check(findings: list[Finding]) -> dict[str, dict[str, _FeedRow]]:
     """Group consolidated-model findings into ``{check: {slug: _FeedRow}}``."""
     by_check: dict[str, dict[str, list[Finding]]] = {}
     for f in findings:
-        if f.check in _PER_SLUG_CHECKS:
+        if f.check in _PER_SLUG_CHECKS or f.check in _LIFECYCLE_INCIDENT_CHECKS:
             continue
         by_check.setdefault(f.check, {}).setdefault(f.slug, []).append(f)
     result: dict[str, dict[str, _FeedRow]] = {}
@@ -619,18 +716,159 @@ def _first_source_url(source: dict) -> str | None:
     return next(iter(iter_source_urls(source)), None)
 
 
-def _feed_context(city, *, github_repo: str | None) -> _FeedContext:
+def _feed_context(city, *, github_repo: str | None, now: datetime | None = None) -> _FeedContext:
     entity = getattr(city, "city_entity", None)
     city_slug = entity or city.slug
     source = getattr(city, "source", {}) or {}
     meetings_url = getattr(city, "meetings_url", None)
     city_website = getattr(city, "city_website", None)
+    lifecycle = getattr(city, "lifecycle", None)
+    now = now or datetime.now(UTC)
     return _FeedContext(
         city=city_slug,
         feed_config_url=_blob_url(github_repo, f"config/feeds/{city.slug}.yml"),
         city_config_url=_blob_url(github_repo, f"config/cities/{entity}.yml") if entity else None,
         meetings_url=meetings_url or city_website,
         source_url=_first_source_url(source),
+        lifecycle_status=getattr(lifecycle, "status", "active"),
+        checks_staleness=(
+            lifecycle.checks_staleness(now.date()) if lifecycle is not None else True
+        ),
+    )
+
+
+def _incident_title(check: str, slug: str, incident_id: str) -> str:
+    label = "stale feed" if check == "stale" else "dormant feed resumed"
+    return f"{TITLE_PREFIX} {label}: {slug} ({incident_id})"
+
+
+def _cohort_title(now: datetime, *, total: int, open_count: int) -> str:
+    return f"{TITLE_PREFIX} stale review cohort {now:%Y-%m-%d}: {open_count} open / {total} total"
+
+
+def _render_cohort_body(*, total: int, open_count: int) -> str:
+    generated = "\n".join(
+        [
+            _GENERATED_START,
+            "## Review progress",
+            "",
+            f"- **Open incidents:** {open_count}",
+            f"- **Total incidents:** {total} / {_STALE_COHORT_CAP}",
+            "",
+            "Each native sub-issue represents one feed incident. Resolve it through observed "
+            "recovery, a linked source repair/migration PR, or a merged lifecycle YAML PR.",
+            _GENERATED_END,
+        ]
+    )
+    return f"{_STALE_COHORT_MARKER}\n\n{generated}\n\n### Maintainer notes\n\n"
+
+
+def _render_incident_body(
+    *,
+    check: str,
+    slug: str,
+    incident_id: str,
+    parent: int,
+    row: _FeedRow,
+    context: _FeedContext | None,
+    prior_state: dict,
+    prior_incidents: list[dict],
+    now: datetime,
+) -> str:
+    first_seen = prior_state.get("first_seen") or now.isoformat()
+    evidence_changed = any(
+        prior_state.get(key) != value
+        for key, value in {
+            "severity": row.severity,
+            "count": row.count,
+            "example": row.example,
+        }.items()
+    )
+    last_observed = (
+        now.isoformat()
+        if evidence_changed or not prior_state.get("last_observed")
+        else prior_state["last_observed"]
+    )
+    state = json.dumps(
+        {
+            "check": check,
+            "slug": slug,
+            "incident_id": incident_id,
+            "first_seen": first_seen,
+            "last_observed": last_observed,
+            "severity": row.severity,
+            "count": row.count,
+            "example": row.example,
+        },
+        sort_keys=True,
+    ).replace("-->", "--\\u003e")
+    marker = (
+        f"<!-- citypods:stale-incident:v1 check={check} slug={slug} "
+        f"incident={incident_id} parent={parent} -->"
+    )
+    generated = [
+        _GENERATED_START,
+        "## Current audit evidence",
+        "",
+        f"- **Feed:** `{slug}`",
+        f"- **Check:** `{check}`",
+        f"- **First observed:** {first_seen[:10]}",
+        f"- **Last material observation:** {last_observed[:10]}",
+        f"- **Severity:** `{row.severity}`",
+        f"- **Finding count:** {row.count}",
+        f"- **Evidence:** {row.example}",
+        "",
+        _guidance_for(check),
+        "",
+        "## Investigation links",
+        "",
+    ]
+    links: list[str] = []
+    if context and context.feed_config_url:
+        links.append(f"[applicable feed YAML]({context.feed_config_url})")
+    else:
+        links.append(f"`config/feeds/{slug}.yml`")
+    if context and context.city_config_url:
+        links.append(f"[city YAML]({context.city_config_url})")
+    if context and context.meetings_url:
+        links.append(f"[city meetings page]({context.meetings_url})")
+    if context and context.source_url:
+        links.append(f"[provider source]({context.source_url})")
+    generated.append("- " + ", ".join(links))
+    prior_urls = [issue.get("url") for issue in prior_incidents if issue.get("url")]
+    if prior_urls:
+        generated += ["", "## Prior incidents", ""]
+        generated.extend(f"- {url}" for url in prior_urls)
+    generated += [
+        "",
+        "Repair or migrate the source with a manual PR from the feed-YAML link above. "
+        "Maintainers may also use `/stale pause`, `/stale dormant`, or `/stale retire`; "
+        "those commands create reviewable YAML PRs and do not directly change lifecycle state.",
+        "",
+        f"<!-- citypods:stale-state\n{state}\n-->",
+        _GENERATED_END,
+    ]
+    return f"{marker}\n\n" + "\n".join(generated) + "\n\n### Maintainer notes\n\n"
+
+
+def _created_issue_number(output: str) -> int:
+    match = re.search(r"/issues/(\d+)(?:\s*)$", output.strip())
+    if not match:
+        raise RuntimeError(f"could not parse created issue URL: {output!r}")
+    return int(match.group(1))
+
+
+def _attach_sub_issue(*, github_repo: str, parent: int, child: int) -> None:
+    database_id = _gh("api", f"repos/{github_repo}/issues/{child}", "--jq", ".id").strip()
+    if not database_id.isdigit():
+        raise RuntimeError(f"could not resolve database id for issue #{child}")
+    _gh(
+        "api",
+        "--method",
+        "POST",
+        f"repos/{github_repo}/issues/{parent}/sub_issues",
+        "-F",
+        f"sub_issue_id={database_id}",
     )
 
 
@@ -765,7 +1003,11 @@ def _reconcile_grouped(
     }
     created = updated = closed = 0
 
-    all_checks = set(wanted) | {key for key in existing if not _is_per_slug_key(key)}
+    all_checks = set(wanted) | {
+        key
+        for key in existing
+        if not _is_per_slug_key(key) and key not in _LIFECYCLE_INCIDENT_CHECKS
+    }
     for check in sorted(all_checks):
         key = _issue_key("", check)
         rows = wanted.get(check, {})
@@ -897,6 +1139,292 @@ def _reconcile_grouped(
                 for lbl in sorted(to_remove):
                     label_args += ["--remove-label", lbl]
                 _gh("issue", "edit", num, *label_args)
+        updated += 1
+
+    return created, updated, closed
+
+
+def _group_lifecycle_incidents(findings: list[Finding]) -> dict[tuple[str, str], _FeedRow]:
+    grouped: dict[tuple[str, str], list[Finding]] = {}
+    for finding in findings:
+        if finding.check in _LIFECYCLE_INCIDENT_CHECKS:
+            grouped.setdefault((finding.check, finding.slug), []).append(finding)
+    rows: dict[tuple[str, str], _FeedRow] = {}
+    for key, group in grouped.items():
+        example = group[0].message
+        if len(example) > _MAX_EXAMPLE_CHARS:
+            example = example[: _MAX_EXAMPLE_CHARS - 1] + "…"
+        rows[key] = _FeedRow(
+            slug=key[1],
+            count=len(group),
+            severity=ERROR if any(item.severity == ERROR for item in group) else group[0].severity,
+            example=example,
+        )
+    return rows
+
+
+def _cohort_date(issue: dict, fallback: datetime) -> datetime:
+    match = re.search(r"stale review cohort (\d{4}-\d{2}-\d{2})", issue.get("title") or "")
+    if not match:
+        return fallback
+    try:
+        return datetime.fromisoformat(match.group(1)).replace(tzinfo=UTC)
+    except ValueError:
+        return fallback
+
+
+def _reconcile_stale_incidents(
+    findings: list[Finding],
+    *,
+    dry_run: bool,
+    audited_slugs: set[str] | None,
+    feed_context: Mapping[str, _FeedContext] | None,
+    catalog: _StaleCatalog,
+    now: datetime,
+    github_repo: str | None,
+    suppressed_checks: set[str] | None = None,
+) -> tuple[int, int, int]:
+    """Reconcile lifecycle findings as capped cohort parents with native child issues."""
+    wanted = _group_lifecycle_incidents(findings)
+    suppressed_checks = suppressed_checks or set()
+    wanted = {key: row for key, row in wanted.items() if key[0] not in suppressed_checks}
+    findings_by_slug: dict[str, list[Finding]] = {}
+    for finding in findings:
+        findings_by_slug.setdefault(finding.slug, []).append(finding)
+    created = updated = closed = 0
+
+    # Recovery or a committed lifecycle disposition removes the finding. Unlike meetings-url
+    # issues, lifecycle children auto-close even though they begin with human-verification.
+    for key, issue in list(catalog.open_children.items()):
+        if key[0] in suppressed_checks:
+            continue
+        if audited_slugs is not None and key[1] not in audited_slugs:
+            continue
+        if key in wanted:
+            continue
+        context = (feed_context or {}).get(key[1])
+        slug_findings = findings_by_slug.get(key[1], [])
+        audit_inconclusive = any(
+            finding.check == "unreachable"
+            or (finding.check == "empty" and finding.severity == ERROR)
+            for finding in slug_findings
+        )
+        if key[0] == "stale":
+            disposition_suppresses = context is not None and not context.checks_staleness
+        else:
+            disposition_suppresses = context is not None and context.lifecycle_status != "dormant"
+        if audit_inconclusive and not disposition_suppresses:
+            continue
+        if dry_run:
+            print(f"CLOSE   {issue.get('title', key)}")
+        else:
+            _gh(
+                "issue",
+                "close",
+                str(issue["number"]),
+                "--comment",
+                "✅ Resolved — the feed recovered or its committed lifecycle now suppresses "
+                "this incident.",
+            )
+        issue["state"] = "CLOSED"
+        del catalog.open_children[key]
+        closed += 1
+
+    # Refresh material evidence on existing incidents without touching maintainer notes.
+    for key, row in wanted.items():
+        issue = catalog.open_children.get(key)
+        if issue is None:
+            continue
+        prior_body = issue.get("body") or ""
+        prior_state = _parse_stale_state(prior_body)
+        prior_incidents = [
+            prior
+            for prior in catalog.history.get(key, [])
+            if int(prior["number"]) != int(issue["number"])
+        ]
+        fresh = _render_incident_body(
+            check=key[0],
+            slug=key[1],
+            incident_id=issue["incident_id"],
+            parent=int(issue["parent"]),
+            row=row,
+            context=(feed_context or {}).get(key[1]),
+            prior_state=prior_state,
+            prior_incidents=prior_incidents,
+            now=now,
+        )
+        start = fresh.index(_GENERATED_START)
+        end = fresh.index(_GENERATED_END) + len(_GENERATED_END)
+        body = _replace_generated(prior_body, fresh[start:end])
+        desired_labels = {
+            "signal:feed-health",
+            "type:operations",
+            f"severity:{row.severity}",
+            "needs:human-verification",
+        }
+        current_labels = _label_names(issue)
+        to_add = desired_labels - current_labels
+        to_remove = {
+            label
+            for label in current_labels
+            if label.startswith("severity:") and label not in desired_labels
+        }
+        if body.strip() == prior_body.strip() and not (to_add or to_remove):
+            continue
+        if dry_run:
+            print(f"UPDATE  {issue.get('title', key)}{_label_note(to_add, to_remove)}")
+        else:
+            args = ["issue", "edit", str(issue["number"])]
+            if body.strip() != prior_body.strip():
+                args += ["--body", body]
+            for label in sorted(to_add):
+                args += ["--add-label", label]
+            for label in sorted(to_remove):
+                args += ["--remove-label", label]
+            _gh(*args)
+        issue["body"] = body
+        updated += 1
+
+    def _parent_with_capacity() -> dict | None:
+        for parent in reversed(catalog.open_parents):
+            if len(catalog.children_by_parent.get(int(parent["number"]), [])) < _STALE_COHORT_CAP:
+                return parent
+        return None
+
+    # New finding after recovery becomes a new incident; closed children remain immutable history.
+    for key, row in sorted(wanted.items()):
+        if key in catalog.open_children:
+            continue
+        parent = _parent_with_capacity()
+        if parent is None:
+            if dry_run:
+                parent_num = -(len(catalog.open_parents) + 1)
+                print(f"CREATE  {_cohort_title(now, total=0, open_count=0)}")
+            else:
+                if not github_repo:
+                    raise RuntimeError("github_repo is required to attach native stale sub-issues")
+                output = _gh(
+                    "issue",
+                    "create",
+                    "--title",
+                    _cohort_title(now, total=0, open_count=0),
+                    "--body",
+                    _render_cohort_body(total=0, open_count=0),
+                    "--label",
+                    "signal:feed-health",
+                    "--label",
+                    "type:operations",
+                    "--label",
+                    "severity:warn",
+                )
+                parent_num = _created_issue_number(output)
+            parent = {
+                "number": parent_num,
+                "title": _cohort_title(now, total=0, open_count=0),
+                "body": _render_cohort_body(total=0, open_count=0),
+                "state": "OPEN",
+            }
+            catalog.open_parents.append(parent)
+            catalog.children_by_parent[parent_num] = []
+            created += 1
+
+        prior_incidents = catalog.history.get(key, [])
+        incident_id = f"{now:%Y%m%d}-{len(prior_incidents) + 1}"
+        body = _render_incident_body(
+            check=key[0],
+            slug=key[1],
+            incident_id=incident_id,
+            parent=int(parent["number"]),
+            row=row,
+            context=(feed_context or {}).get(key[1]),
+            prior_state={},
+            prior_incidents=prior_incidents,
+            now=now,
+        )
+        title = _incident_title(key[0], key[1], incident_id)
+        if dry_run:
+            child_num = -(1000 + created)
+            print(f"CREATE  {title}  [native child of #{parent['number']}]")
+        else:
+            output = _gh(
+                "issue",
+                "create",
+                "--title",
+                title,
+                "--body",
+                body,
+                "--label",
+                "signal:feed-health",
+                "--label",
+                "type:operations",
+                "--label",
+                f"severity:{row.severity}",
+                "--label",
+                "needs:human-verification",
+            )
+            child_num = _created_issue_number(output)
+            if not github_repo:
+                raise RuntimeError("github_repo is required to attach native stale sub-issues")
+            _attach_sub_issue(
+                github_repo=github_repo, parent=int(parent["number"]), child=child_num
+            )
+        child = {
+            "number": child_num,
+            "title": title,
+            "body": body,
+            "state": "OPEN",
+            "url": f"https://github.com/{github_repo}/issues/{child_num}" if github_repo else "",
+            "check": key[0],
+            "slug": key[1],
+            "incident_id": incident_id,
+            "parent": int(parent["number"]),
+            "labels": [
+                {"name": "signal:feed-health"},
+                {"name": "type:operations"},
+                {"name": f"severity:{row.severity}"},
+                {"name": "needs:human-verification"},
+            ],
+        }
+        catalog.open_children[key] = child
+        catalog.history.setdefault(key, []).append(child)
+        catalog.children_by_parent[int(parent["number"])].append(child)
+        created += 1
+
+    # Parent progress derives from marker-owned children, and the parent closes only after every
+    # child is closed. Closed parents remain immutable; later incidents use a fresh cohort.
+    for parent in list(catalog.open_parents):
+        parent_num = int(parent["number"])
+        children = catalog.children_by_parent.get(parent_num, [])
+        total = len(children)
+        open_count = sum(str(child.get("state") or "").lower() == "open" for child in children)
+        if total and open_count == 0:
+            if dry_run:
+                print(f"CLOSE   {parent.get('title', parent_num)}")
+            else:
+                _gh(
+                    "issue",
+                    "close",
+                    str(parent_num),
+                    "--comment",
+                    "✅ Cohort complete — every native stale-feed sub-issue is resolved.",
+                )
+            parent["state"] = "CLOSED"
+            catalog.open_parents.remove(parent)
+            closed += 1
+            continue
+        title = _cohort_title(_cohort_date(parent, now), total=total, open_count=open_count)
+        fresh_body = _render_cohort_body(total=total, open_count=open_count)
+        start = fresh_body.index(_GENERATED_START)
+        end = fresh_body.index(_GENERATED_END) + len(_GENERATED_END)
+        body = _replace_generated(parent.get("body") or "", fresh_body[start:end])
+        if title == parent.get("title") and body.strip() == (parent.get("body") or "").strip():
+            continue
+        if dry_run:
+            print(f"UPDATE  {title}")
+        else:
+            _gh("issue", "edit", str(parent_num), "--title", title, "--body", body)
+        parent["title"] = title
+        parent["body"] = body
         updated += 1
 
     return created, updated, closed
@@ -1038,6 +1566,7 @@ def reconcile(
     audited_slugs: set[str] | None = None,
     city_of: Mapping[str, str] | None = None,
     feed_context: Mapping[str, _FeedContext] | None = None,
+    github_repo: str | None = None,
     now: datetime | None = None,
 ) -> int:
     """Reconcile the current findings against open GitHub issues.
@@ -1048,11 +1577,26 @@ def reconcile(
     issues for (``None`` = every feed was evaluated, e.g. an unscoped run)."""
     now = now or datetime.now(UTC)
     city_of = city_of or {}
+    github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
     # _open_issues() is read-only (gh issue list), so it's safe to call in dry-run too -- forcing
     # existing={} there collapsed every UPDATE/CLOSE/SKIP-CLOSE branch into CREATE, making the
     # preview useless for telling a stamping-everything-new run from a real reconcile.
     existing = _open_issues()
+    stale_catalog = _open_stale_catalog()
 
+    c0, u0, cl0 = _reconcile_stale_incidents(
+        findings,
+        dry_run=dry_run,
+        audited_slugs=audited_slugs,
+        feed_context=feed_context,
+        catalog=stale_catalog,
+        now=now,
+        github_repo=github_repo,
+        # GH#975 performs the one-time conversion of legacy GH#774 with its historical
+        # first-seen values. Until that open marker-owned issue is converted/closed, do not
+        # create a duplicate native stale cohort. Dormant-resumed incidents can proceed now.
+        suppressed_checks={"stale"} if _issue_key("", "stale") in existing else set(),
+    )
     c1, u1, cl1 = _reconcile_grouped(
         findings,
         dry_run=dry_run,
@@ -1068,7 +1612,7 @@ def reconcile(
         audited_slugs=audited_slugs,
         existing=existing,
     )
-    created, updated, closed = c1 + c2, u1 + u2, cl1 + cl2
+    created, updated, closed = c0 + c1 + c2, u0 + u1 + u2, cl0 + cl1 + cl2
     print(f"\n{created} created, {updated} updated, {closed} closed.")
     return created + updated  # nonzero exit-ish signal handled by caller if desired
 
@@ -1142,6 +1686,7 @@ def main(argv: list[str] | None = None) -> int:
     state_dir = pull_canonical_state(site_config, output_dir)
 
     timeline_diagnostics: list[dict] | None = [] if args.timeline_diagnostics else None
+    now = datetime.now(UTC)
     findings = audit_all(
         cities,
         site_config=site_config,
@@ -1153,6 +1698,7 @@ def main(argv: list[str] | None = None) -> int:
         timeline_repair_min_delta=args.timeline_repair_min_delta,
         timeline_repair_cohort=args.timeline_repair_cohort,
         timeline_finding_min_delta=args.timeline_finding_min_delta,
+        now=now,
     )
     if args.timeline_diagnostics and timeline_diagnostics is not None:
         path = Path(args.timeline_diagnostics)
@@ -1174,13 +1720,15 @@ def main(argv: list[str] | None = None) -> int:
     audited_slugs = {c.slug for c in cities} if args.city else None
     city_of = {c.slug: (c.city_entity or c.slug) for c in cities}
     github_repo = site_config.get("github_repo")
-    feed_context = {c.slug: _feed_context(c, github_repo=github_repo) for c in cities}
+    feed_context = {c.slug: _feed_context(c, github_repo=github_repo, now=now) for c in cities}
     reconcile(
         findings,
         dry_run=args.dry_run,
         audited_slugs=audited_slugs,
         city_of=city_of,
         feed_context=feed_context,
+        github_repo=github_repo,
+        now=now,
     )
     return 0
 

@@ -37,6 +37,7 @@ _parse_state_rows = _mod._parse_state_rows
 _parse_prior_rows = _mod._parse_prior_rows
 _FeedRow = _mod._FeedRow
 _FeedContext = _mod._FeedContext
+_StaleCatalog = _mod._StaleCatalog
 
 _NOW = datetime(2026, 6, 30, tzinfo=UTC)
 
@@ -111,12 +112,29 @@ def _per_slug_issue(
     }
 
 
-def _run_reconcile(findings, existing_issues, **kwargs):
+def _empty_stale_catalog():
+    return _StaleCatalog(open_parents=[], open_children={}, history={}, children_by_parent={})
+
+
+def _run_reconcile(findings, existing_issues, *, stale_catalog=None, **kwargs):
     """Run reconcile with _gh and _open_issues both mocked; return list of gh call arg tuples."""
     calls: list[tuple] = []
+    next_issue = iter(range(1000, 2000))
+
+    def _fake_gh(*args, **_kwargs):
+        calls.append(args)
+        if args[:2] == ("issue", "create"):
+            return f"https://github.com/test/repo/issues/{next(next_issue)}\n"
+        if args and args[0] == "api" and "--jq" in args:
+            return "12345\n"
+        return ""
+
     with mock.patch.object(_mod, "_open_issues", return_value=existing_issues):
-        with mock.patch.object(_mod, "_gh", side_effect=lambda *a, **kw: calls.append(a) or ""):
-            reconcile(findings, dry_run=False, **kwargs)
+        with mock.patch.object(
+            _mod, "_open_stale_catalog", return_value=stale_catalog or _empty_stale_catalog()
+        ):
+            with mock.patch.object(_mod, "_gh", side_effect=_fake_gh):
+                reconcile(findings, dry_run=False, github_repo="test/repo", **kwargs)
     return calls
 
 
@@ -158,6 +176,14 @@ def test_group_by_check_groups_multiple_findings_per_slug_and_maxes_severity():
 
 def test_group_by_check_excludes_per_slug_checks():
     findings = [_finding(slug="cityA", check="meetings-url-dead")]
+    assert _group_by_check(findings) == {}
+
+
+def test_group_by_check_excludes_lifecycle_incident_checks():
+    findings = [
+        _finding(slug="cityA", check="stale"),
+        _finding(slug="cityB", check="dormant-resumed"),
+    ]
     assert _group_by_check(findings) == {}
 
 
@@ -517,7 +543,8 @@ def test_state_comment_contains_message_and_severity():
 def test_reconcile_dry_run_create_printed(capsys):
     f = _finding(slug="cityA", check="drift", msg="zero episodes")
     with mock.patch.object(_mod, "_open_issues", return_value={}):
-        reconcile([f], dry_run=True, now=_NOW)
+        with mock.patch.object(_mod, "_open_stale_catalog", return_value=_empty_stale_catalog()):
+            reconcile([f], dry_run=True, now=_NOW)
     out = capsys.readouterr().out
     assert "CREATE" in out
     assert "drift" in out
@@ -526,9 +553,300 @@ def test_reconcile_dry_run_create_printed(capsys):
 
 def test_reconcile_dry_run_no_issues_prints_summary(capsys):
     with mock.patch.object(_mod, "_open_issues", return_value={}):
-        reconcile([], dry_run=True, now=_NOW)
+        with mock.patch.object(_mod, "_open_stale_catalog", return_value=_empty_stale_catalog()):
+            reconcile([], dry_run=True, now=_NOW)
     out = capsys.readouterr().out
     assert "0 created, 0 updated, 0 closed." in out
+
+
+# ---------------------------------------------------------------------------
+# reconcile — lifecycle incidents as bounded native sub-issue cohorts
+# ---------------------------------------------------------------------------
+
+
+def _stale_parent(number=90, *, children=1, open_count=1, now=_NOW):
+    return {
+        "number": number,
+        "title": _mod._cohort_title(now, total=children, open_count=open_count),
+        "body": _mod._render_cohort_body(total=children, open_count=open_count),
+        "state": "OPEN",
+    }
+
+
+def _stale_child(
+    *,
+    slug="cityA",
+    check="stale",
+    number=91,
+    parent=90,
+    incident_id="20260630-1",
+    message="newest episode is 90d old; typical cadence ~14d",
+    state="OPEN",
+    notes="",
+    context=None,
+):
+    row = _FeedRow(slug=slug, count=1, severity=WARN, example=message)
+    body = _mod._render_incident_body(
+        check=check,
+        slug=slug,
+        incident_id=incident_id,
+        parent=parent,
+        row=row,
+        context=context,
+        prior_state={},
+        prior_incidents=[],
+        now=_NOW,
+    )
+    if notes:
+        body += notes
+    return {
+        "number": number,
+        "title": _mod._incident_title(check, slug, incident_id),
+        "body": body,
+        "labels": [
+            {"name": "signal:feed-health"},
+            {"name": "type:operations"},
+            {"name": "severity:warn"},
+            {"name": "needs:human-verification"},
+        ],
+        "state": state,
+        "url": f"https://github.com/test/repo/issues/{number}",
+        "check": check,
+        "slug": slug,
+        "incident_id": incident_id,
+        "parent": parent,
+    }
+
+
+def _stale_catalog(parent, children):
+    history = {}
+    by_parent = {int(parent["number"]): list(children)}
+    open_children = {}
+    for child in children:
+        key = (child["check"], child["slug"])
+        history.setdefault(key, []).append(child)
+        if str(child["state"]).lower() == "open":
+            open_children[key] = child
+    return _StaleCatalog(
+        open_parents=[parent],
+        open_children=open_children,
+        history=history,
+        children_by_parent=by_parent,
+    )
+
+
+def test_open_stale_catalog_indexes_open_children_and_closed_history():
+    parent = _stale_parent()
+    open_child = _stale_child()
+    closed_child = _stale_child(number=88, state="CLOSED", incident_id="20260501-1")
+    payload = _mod.json.dumps([parent, closed_child, open_child])
+
+    with mock.patch.object(_mod, "_gh", return_value=payload):
+        catalog = _mod._open_stale_catalog()
+
+    assert [issue["number"] for issue in catalog.open_parents] == [90]
+    assert catalog.open_children[("stale", "cityA")]["number"] == 91
+    assert [issue["number"] for issue in catalog.history[("stale", "cityA")]] == [88, 91]
+    assert [issue["number"] for issue in catalog.children_by_parent[90]] == [88, 91]
+
+
+def test_stale_incident_creates_parent_child_and_native_relationship():
+    finding = _finding(
+        slug="cityA",
+        check="stale",
+        msg="newest episode is 90d old; typical cadence ~14d",
+    )
+    context = _FeedContext(
+        city="cityA",
+        feed_config_url="https://github.com/test/repo/blob/main/config/feeds/cityA.yml",
+        meetings_url="https://city.example/meetings",
+        source_url="https://provider.example/archive",
+    )
+
+    calls = _run_reconcile(
+        [finding],
+        {},
+        stale_catalog=_empty_stale_catalog(),
+        now=_NOW,
+        feed_context={"cityA": context},
+    )
+
+    creates = [call for call in calls if call[:2] == ("issue", "create")]
+    assert len(creates) == 2
+    child_create = creates[1]
+    body = child_create[child_create.index("--body") + 1]
+    assert "applicable feed YAML" in body
+    assert "config/feeds/cityA.yml" in body
+    assert any(call[:3] == ("api", "--method", "POST") for call in calls)
+
+
+def test_open_legacy_stale_issue_defers_native_cohort_until_rollout_slice():
+    finding = _finding(slug="cityA", check="stale", msg="newest episode is 90d old")
+    legacy = _grouped_issue(
+        "stale",
+        first_seen={"cityA": _NOW.isoformat()},
+        rows={"cityA": _FeedRow("cityA", 1, WARN, finding.message)},
+    )
+
+    calls = _run_reconcile(
+        [finding],
+        {"stale": legacy},
+        stale_catalog=_empty_stale_catalog(),
+        now=_NOW,
+    )
+
+    assert not calls, "GH#975 owns conversion of the open legacy stale issue"
+
+
+def test_stale_incident_unchanged_is_idempotent():
+    parent = _stale_parent()
+    child = _stale_child()
+    finding = _finding(
+        slug="cityA",
+        check="stale",
+        msg="newest episode is 90d old; typical cadence ~14d",
+    )
+
+    calls = _run_reconcile([finding], {}, stale_catalog=_stale_catalog(parent, [child]), now=_NOW)
+
+    assert not calls
+
+
+def test_stale_incident_material_update_preserves_maintainer_notes():
+    parent = _stale_parent()
+    child = _stale_child(notes="Human note: verified calendar manually.\n")
+    finding = _finding(
+        slug="cityA",
+        check="stale",
+        msg="newest episode is 120d old; typical cadence ~14d",
+    )
+
+    calls = _run_reconcile([finding], {}, stale_catalog=_stale_catalog(parent, [child]), now=_NOW)
+
+    edit = next(call for call in calls if call[:2] == ("issue", "edit") and "--body" in call)
+    body = edit[edit.index("--body") + 1]
+    assert "120d old" in body
+    assert "Human note: verified calendar manually." in body
+
+
+def test_stale_recovery_closes_child_and_completed_parent_despite_human_label():
+    parent = _stale_parent()
+    child = _stale_child()
+
+    calls = _run_reconcile([], {}, stale_catalog=_stale_catalog(parent, [child]), now=_NOW)
+
+    closes = [call for call in calls if call[:2] == ("issue", "close")]
+    assert [call[2] for call in closes] == ["91", "90"]
+
+
+def test_stale_incident_stays_open_when_provider_audit_is_inconclusive():
+    parent = _stale_parent()
+    child = _stale_child()
+    context = _FeedContext(city="cityA", lifecycle_status="active", checks_staleness=True)
+
+    calls = _run_reconcile(
+        [_finding(slug="cityA", check="unreachable", sev=ERROR, msg="provider timed out")],
+        {},
+        stale_catalog=_stale_catalog(parent, [child]),
+        now=_NOW,
+        feed_context={"cityA": context},
+    )
+
+    assert not any(call[:2] == ("issue", "close") for call in calls)
+
+
+def test_lifecycle_disposition_closes_stale_incident_despite_failed_poll():
+    parent = _stale_parent()
+    child = _stale_child()
+    context = _FeedContext(city="cityA", lifecycle_status="dormant", checks_staleness=False)
+
+    calls = _run_reconcile(
+        [_finding(slug="cityA", check="unreachable", sev=ERROR, msg="provider timed out")],
+        {},
+        stale_catalog=_stale_catalog(parent, [child]),
+        now=_NOW,
+        feed_context={"cityA": context},
+    )
+
+    closes = [call for call in calls if call[:2] == ("issue", "close")]
+    assert [call[2] for call in closes] == ["91", "90"]
+
+
+def test_dormant_resumed_incident_stays_open_when_recheck_is_inconclusive():
+    parent = _stale_parent()
+    child = _stale_child(check="dormant-resumed")
+    context = _FeedContext(city="cityA", lifecycle_status="dormant", checks_staleness=False)
+
+    calls = _run_reconcile(
+        [_finding(slug="cityA", check="unreachable", sev=ERROR, msg="provider timed out")],
+        {},
+        stale_catalog=_stale_catalog(parent, [child]),
+        now=_NOW,
+        feed_context={"cityA": context},
+    )
+
+    assert not any(call[:2] == ("issue", "close") for call in calls)
+
+
+def test_stale_cohort_rolls_over_after_fifty_total_children():
+    parent = _stale_parent(number=90, children=50, open_count=1)
+    children = [
+        _stale_child(
+            slug=f"old-{index}",
+            number=100 + index,
+            parent=90,
+            state="OPEN" if index == 0 else "CLOSED",
+        )
+        for index in range(50)
+    ]
+    finding = _finding(slug="cityA", check="stale", msg="new stale feed")
+
+    calls = _run_reconcile(
+        [finding],
+        {},
+        stale_catalog=_stale_catalog(parent, children),
+        audited_slugs={"cityA"},
+        now=_NOW,
+    )
+
+    creates = [call for call in calls if call[:2] == ("issue", "create")]
+    assert len(creates) == 2, "full cohort requires one new parent and one child"
+
+
+def test_stale_scoped_run_does_not_close_out_of_scope_child():
+    parent = _stale_parent()
+    child = _stale_child(slug="other-city")
+
+    calls = _run_reconcile(
+        [],
+        {},
+        stale_catalog=_stale_catalog(parent, [child]),
+        audited_slugs={"cityA"},
+        now=_NOW,
+    )
+
+    assert not calls
+
+
+def test_stale_recurrence_links_prior_closed_incident():
+    parent = _stale_parent(number=90, children=2, open_count=1)
+    closed_prior = _stale_child(state="CLOSED", number=91)
+    open_other = _stale_child(slug="other-city", number=92)
+    catalog = _stale_catalog(parent, [closed_prior, open_other])
+    finding = _finding(slug="cityA", check="stale", msg="stale again")
+
+    calls = _run_reconcile(
+        [finding],
+        {},
+        stale_catalog=catalog,
+        audited_slugs={"cityA"},
+        now=_NOW,
+    )
+
+    child_create = [call for call in calls if call[:2] == ("issue", "create")][0]
+    body = child_create[child_create.index("--body") + 1]
+    assert "Prior incidents" in body
+    assert "https://github.com/test/repo/issues/91" in body
 
 
 # ---------------------------------------------------------------------------
