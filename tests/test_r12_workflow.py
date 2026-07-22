@@ -15,7 +15,13 @@ from citypods.discovery.models import (
 )
 from citypods.discovery.render import evidence_digest
 from scripts.r12_batch import BatchError, apply_evidence
-from scripts.r12_commands import BOT_LOGIN, CommandError, parse_command
+from scripts.r12_commands import (
+    AUTHORIZATION_DENIED_REPLY,
+    BOT_LOGIN,
+    CommandError,
+    main,
+    parse_command,
+)
 from scripts.r12_discussion_intake import issue_payload
 from scripts.r12_issue_state import state
 from scripts.r12_notify import notify, parse_origin
@@ -105,6 +111,61 @@ def test_recheck_clears_more_information_hold():
 
     assert result["add_labels"] == ["r12:recheck", "needs:discovery"]
     assert "needs:more-information" in result["remove_labels"]
+
+
+def test_command_cli_turns_expected_permission_denial_into_feedback(tmp_path):
+    issue = tmp_path / "issue.json"
+    comments = tmp_path / "comments.json"
+    permission = tmp_path / "permission.json"
+    output = tmp_path / "output.json"
+    issue.write_text("{}")
+    comments.write_text("[]")
+    permission.write_text('{"permission":"read"}')
+
+    assert (
+        main(
+            [
+                "--issue",
+                str(issue),
+                "--comments",
+                str(comments),
+                "--command",
+                "/r12 batch",
+                "--permission",
+                str(permission),
+                "--out",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == {"comment": AUTHORIZATION_DENIED_REPLY}
+
+
+def test_command_cli_rejects_malformed_permission_payload(tmp_path):
+    issue = tmp_path / "issue.json"
+    comments = tmp_path / "comments.json"
+    permission = tmp_path / "permission.json"
+    output = tmp_path / "output.json"
+    issue.write_text("{}")
+    comments.write_text("[]")
+    permission.write_text("[]")
+
+    with pytest.raises(CommandError, match="JSON object"):
+        main(
+            [
+                "--issue",
+                str(issue),
+                "--comments",
+                str(comments),
+                "--command",
+                "/r12 batch",
+                "--permission",
+                str(permission),
+                "--out",
+                str(output),
+            ]
+        )
 
 
 def test_auxiliary_batch_preserves_existing_yaml_bytes(tmp_path):

@@ -24,7 +24,9 @@ Phase R (Research-Tool Surface)._
   the provider fetch responded on the current conclusive/inconclusive audit. `/stale` and `/r12`
   command workflows share one fail-closed permission policy backed by GitHub's repository-permission
   endpoint and require write, maintain, or admin access instead of trusting comment association.
-  No pipeline version or artifact backfill is involved.
+  Expected `/r12` authorization denials post generic issue feedback as a successful no-op, while
+  malformed permission data and unexpected errors still fail the workflow. No pipeline version or
+  artifact backfill is involved.
 
 - **Stale-cohort parents now document the complete operator workflow.** The generated parent and each
   child show the exact `/stale pause`, `/stale dormant`, and `/stale retire` syntax, collaborator-only

@@ -15,10 +15,14 @@ from pathlib import Path
 from typing import Any
 
 from citypods.discovery.render import evidence_digest, iter_evidence_markers
-from citypods.github_permissions import require_repository_write
+from citypods.github_permissions import RepositoryPermissionError, require_repository_write
 
 MARKER = "citypods:r12:command"
 BOT_LOGIN = "github-actions[bot]"
+AUTHORIZATION_DENIED_REPLY = (
+    "This command was not accepted. R12 maintainer commands require repository write, "
+    "maintain, or admin permission."
+)
 
 
 class CommandError(ValueError):
@@ -202,8 +206,14 @@ def main(argv: list[str] | None = None) -> int:
     permission = json.loads(Path(args.permission).read_text())
     if not isinstance(permission, dict):
         raise CommandError("the permission payload must be a JSON object")
-    require_repository_write(permission)
-    result = parse_command(issue, comments, args.command)
+    try:
+        require_repository_write(permission)
+    except RepositoryPermissionError:
+        # Expected authorization denials are a successful no-op so the workflow can post useful
+        # feedback. Malformed payloads and unexpected errors still propagate and fail the run.
+        result = {"comment": AUTHORIZATION_DENIED_REPLY}
+    else:
+        result = parse_command(issue, comments, args.command)
     Path(args.out).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return 0
 
