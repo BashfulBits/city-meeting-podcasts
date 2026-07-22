@@ -572,7 +572,9 @@ def _replace_generated(body: str, generated: str) -> str:
     start = body.find(_GENERATED_START)
     end = body.find(_GENERATED_END)
     if start < 0 or end < start:
-        return generated + "\n\n### Maintainer notes\n\n"
+        # Fail toward duplication, never data loss: a maintainer may have accidentally edited or
+        # removed a marker, but their unparseable prior text must survive the next reconciliation.
+        return generated + "\n\n### Maintainer notes\n\n" + body
     end += len(_GENERATED_END)
     return body[:start] + generated + body[end:]
 
@@ -1345,6 +1347,10 @@ def _reconcile_stale_incidents(
         if dry_run:
             child_num = -(1000 + created)
             print(f"CREATE  {title}  [native child of #{parent['number']}]")
+        elif not github_repo:
+            # Validate before creating anything: otherwise an existing parent with capacity can
+            # leave behind a child that failed before its native relationship was attached.
+            raise RuntimeError("github_repo is required to attach native stale sub-issues")
         else:
             output = _gh(
                 "issue",
@@ -1363,8 +1369,6 @@ def _reconcile_stale_incidents(
                 "needs:human-verification",
             )
             child_num = _created_issue_number(output)
-            if not github_repo:
-                raise RuntimeError("github_repo is required to attach native stale sub-issues")
             _attach_sub_issue(
                 github_repo=github_repo, parent=int(parent["number"]), child=child_num
             )

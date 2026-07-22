@@ -9,6 +9,8 @@ import unittest.mock as mock
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from citypods.audit import ERROR, WARN, Finding
 
 # Load audit_feeds from scripts/ without making it a package. Registering it in sys.modules
@@ -460,6 +462,16 @@ def test_render_state_block_escapes_html_comment_terminator_in_example():
     assert recovered["cityA"].example == "broke here --> oops"
 
 
+def test_replace_generated_preserves_unparseable_prior_body():
+    prior = "<!-- citypods:generated:start -->\nHuman note after a deleted end marker"
+    generated = "<!-- citypods:generated:start -->\nnew evidence\n<!-- citypods:generated:end -->"
+
+    body = _mod._replace_generated(prior, generated)
+
+    assert body.startswith(generated)
+    assert prior in body
+
+
 def test_parse_prior_rows_recovers_slug_count_and_example():
     rows = {"cityA": _FeedRow(slug="cityA", count=3, severity=WARN, example="some example")}
     first_seen = {"cityA": _NOW.isoformat()}
@@ -678,6 +690,26 @@ def test_stale_incident_creates_parent_child_and_native_relationship():
     assert "applicable feed YAML" in body
     assert "config/feeds/cityA.yml" in body
     assert any(call[:3] == ("api", "--method", "POST") for call in calls)
+
+
+def test_stale_child_requires_repository_before_issue_creation():
+    parent = _stale_parent(children=0, open_count=0)
+    catalog = _stale_catalog(parent, [])
+    finding = _finding(slug="cityA", check="stale", msg="newest episode is 90d old")
+
+    with mock.patch.object(_mod, "_gh") as gh:
+        with pytest.raises(RuntimeError, match="github_repo is required"):
+            _mod._reconcile_stale_incidents(
+                [finding],
+                dry_run=False,
+                audited_slugs=None,
+                feed_context=None,
+                catalog=catalog,
+                now=_NOW,
+                github_repo=None,
+            )
+
+    gh.assert_not_called()
 
 
 def test_open_legacy_stale_issue_defers_native_cohort_until_rollout_slice():
