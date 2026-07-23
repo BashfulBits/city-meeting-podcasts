@@ -38,16 +38,19 @@ def _fallback_urls(url: str) -> list[str]:
     return [url]
 
 
-def _download_with_fallback(url: str, destination: Path, *, timeout_seconds: float) -> str:
-    """``_download`` across ``_fallback_urls(url)`` in order. Only a connectivity/HTTP failure
-    (``URLError``, which ``HTTPError`` subclasses) advances to the next candidate -- a successful
-    download that fails its checksum is a real integrity problem, not an availability one, and
-    must surface as that mismatch rather than silently retrying a different URL."""
+def _download_with_fallback(
+    url: str, destination: Path, *, timeout_seconds: float
+) -> tuple[str, str]:
+    """``_download`` across ``_fallback_urls(url)`` in order, returning ``(digest, actual_url)``
+    for the candidate that supplied the archive. Only a connectivity/HTTP failure (``URLError``,
+    which ``HTTPError`` subclasses) advances to the next candidate -- a successful download that
+    fails its checksum is a real integrity problem, not an availability one, and must surface as
+    that mismatch rather than silently retrying a different URL."""
     candidates = _fallback_urls(url)
     last_error: urllib.error.URLError | None = None
     for candidate in candidates:
         try:
-            return _download(candidate, destination, timeout_seconds=timeout_seconds)
+            return _download(candidate, destination, timeout_seconds=timeout_seconds), candidate
         except urllib.error.URLError as exc:
             last_error = exc
     assert last_error is not None  # candidates is never empty
@@ -77,7 +80,9 @@ def install(
 
     with tempfile.TemporaryDirectory(prefix="citypods_ffmpeg_") as tmp:
         archive_path = Path(tmp) / "ffmpeg.tar.xz"
-        actual = _download_with_fallback(url, archive_path, timeout_seconds=timeout_seconds)
+        actual, actual_url = _download_with_fallback(
+            url, archive_path, timeout_seconds=timeout_seconds
+        )
         if actual != expected:
             raise RuntimeError(
                 f"ffmpeg archive checksum mismatch: expected {expected}, downloaded {actual}"
@@ -120,7 +125,7 @@ def install(
         shutil.move(str(staged), str(bin_dir))
         shutil.move(str(Path(tmp) / "LICENSE.ffmpeg.txt"), install_dir / "LICENSE.ffmpeg.txt")
         (install_dir / "SOURCE.txt").write_text(
-            f"{url}\nsha256:{expected}\n",
+            f"{actual_url}\nsha256:{expected}\n",
             encoding="utf-8",
         )
         marker.write_text(expected + "\n", encoding="utf-8")

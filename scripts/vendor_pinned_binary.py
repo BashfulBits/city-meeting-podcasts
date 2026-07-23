@@ -32,6 +32,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from citypods.security import validate_source_url  # noqa: E402
 from citypods.storage.s3 import b2_from_env  # noqa: E402
 from scripts._pinned_fetch import download_first_success  # noqa: E402
 
@@ -46,9 +47,19 @@ def vendor(
     timeout_seconds: float = 300,
 ) -> tuple[str, str]:
     """Download, verify, and upload. Returns ``(public_url, sha256)``."""
+    for candidate in source_urls:
+        validate_source_url(candidate, resolve=True)
+
     storage = b2_from_env()
     if storage is None:
         raise RuntimeError("B2 storage is not configured (see citypods.storage.s3.b2_from_env)")
+
+    key = f"deps/{name}/{version}/{filename}"
+    if storage.exists(key):
+        raise RuntimeError(
+            f"{key} already exists in B2 -- vendored dependency objects are immutable; use a new "
+            "version (or filename) instead of overwriting one that may already be in use"
+        )
 
     with tempfile.TemporaryDirectory(prefix="citypods_vendor_") as tmp:
         local_path = Path(tmp) / filename
@@ -63,7 +74,6 @@ def vendor(
                     f"(from {source_url})"
                 )
 
-        key = f"deps/{name}/{version}/{filename}"
         public_url = storage.put_file(key, local_path, "application/octet-stream")
 
     return public_url, digest

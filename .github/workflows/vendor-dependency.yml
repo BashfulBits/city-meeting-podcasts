@@ -76,7 +76,7 @@ jobs:
           ARGS=(--name "$DEP_NAME" --version "$DEP_VERSION" --filename "$DEP_FILENAME")
           while read -r url; do
             [ -n "$url" ] && ARGS+=(--source-url "$url")
-          done < <(printf '%s' "$SOURCE_URLS" | tr ',' '\n')
+          done < <(printf '%s\n' "$SOURCE_URLS" | tr ',' '\n')
           if [ -n "$EXPECTED_SHA256" ]; then
             ARGS+=(--expected-sha256 "$EXPECTED_SHA256")
           fi

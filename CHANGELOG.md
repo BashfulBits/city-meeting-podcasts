@@ -28,15 +28,23 @@ Phase R (Research-Tool Surface)._
   design — not a one-off fluke. Switched to johnvansickle.com's per-version archives, which keep
   every past release available indefinitely (the standard long-lived static-ffmpeg source used
   broadly across the ecosystem), landing on `7.1.5` (the current release at that source; `7.1.4`
-  is no longer published there either). The new SHA256 was obtained by letting the pipeline's own
-  checksum-mismatch error report the real downloaded digest (not copied from a third party) —
-  `scripts/install_static_ffmpeg.py` already refuses to proceed on a mismatch. Also updates the
-  Renovate custom regex manager (`.github/renovate.json5`) to match the new URL shape and track
-  real upstream `FFmpeg/FFmpeg` tags as the "is there a newer release" source of truth (the old
-  regex was BtbN-URL-shaped and would have silently stopped matching anything). Licensing note:
-  johnvansickle's build is GPL (vs. BtbN's LGPL variant we'd used); citypods only invokes
-  `ffmpeg`/`ffprobe` as a subprocess, never links against them, so this doesn't change citypods'
-  own licensing obligations. Per the `review/22` contract, this is *not* a no-op re-pin (the
+  is no longer published there either). The new SHA256 is a trust-on-first-use pin, not an
+  independently verified one: it was read back from the pipeline's own checksum-mismatch error
+  after a real download (johnvansickle does not publish its own checksums/signatures to verify
+  against). `scripts/install_static_ffmpeg.py` refuses to proceed if a *later* download doesn't
+  match this exact digest, which catches drift after the fact but doesn't authenticate the initial
+  pin. Also updates the Renovate custom regex manager (`.github/renovate.json5`) to match the new
+  URL shape and track real upstream `FFmpeg/FFmpeg` tags as the "is there a newer release" source
+  of truth (the old regex was BtbN-URL-shaped and would have silently stopped matching anything).
+  Licensing note: johnvansickle's build is GPLv3 (vs. BtbN's LGPL variant previously used).
+  citypods only invokes `ffmpeg`/`ffprobe` as a subprocess, never linking against them, so
+  citypods' own source isn't brought under GPL/LGPL copyleft — but that's a separate question from
+  GPLv3's *distribution* obligations for the binary itself: `audio-runner-image.yml` publishes a
+  GHCR image containing this GPL binary, which is a conveyance under GPLv3 and needs its own
+  accompanying source offer/notice, not yet added here. The self-hosted follow-up described below
+  resolves this by vendoring BtbN's LGPL build instead of johnvansickle's GPL one, sidestepping the
+  distribution question for the new pin rather than adding GPL notices to a pin being replaced
+  anyway. Per the `review/22` contract, this is *not* a no-op re-pin (the
   version genuinely moved, forced by source availability) — deferred to `dep-bump-smoke`'s
   automated per-source before/after comparison (triggered via the `output-affecting` label) rather
   than speculatively bumping `AUDIO_PIPELINE_VERSION` without evidence of actual output drift.

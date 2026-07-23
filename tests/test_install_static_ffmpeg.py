@@ -111,7 +111,9 @@ def test_install_falls_back_to_old_releases_when_releases_404s(tmp_path, monkeyp
     install(url=releases_url, sha256=digest, install_dir=tmp_path / "runtime")
 
     assert attempted == [releases_url, old_releases_url]
-    assert (tmp_path / "runtime" / "bin" / "ffmpeg").read_text() == "fake ffmpeg\n"
+    runtime = tmp_path / "runtime"
+    assert (runtime / "bin" / "ffmpeg").read_text() == "fake ffmpeg\n"
+    assert (runtime / "SOURCE.txt").read_text(encoding="utf-8").splitlines()[0] == old_releases_url
 
 
 def test_install_does_not_fall_back_on_checksum_mismatch(tmp_path, monkeypatch):
