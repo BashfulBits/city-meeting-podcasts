@@ -477,11 +477,15 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
     assert ledger.cost_used == pytest.approx(80 * 0.14e-6 + 20 * 0.28e-6)
 
 
-def test_structured_job_uses_instructor_json_schema_mode_for_gemini():
-    """Gemini keeps Instructor's native JSON_SCHEMA mode (unlike DeepSeek's prompt-embedded
-    JSON mode below) -- citypods/llm_compat_probe.py's subtractive bisection against the live
-    API found the actual native-mode rejection is narrower than "the whole schema," so only the
-    offending keywords need to drop out; see the constraint-stripping test below."""
+def test_structured_job_uses_native_json_schema_mode_for_gemini():
+    """Gemini gets native JSON_SCHEMA mode via a direct LiteLLM call (unlike DeepSeek's
+    prompt-embedded JSON mode below), bypassing Instructor entirely -- Instructor's own
+    (provider, mode) compatibility table has no ``(Provider.GEMINI, Mode.JSON_SCHEMA)`` entry in
+    the pinned release, so routing this through ``instructor.from_litellm()`` fails before any
+    request reaches Gemini regardless of LiteLLM's version. citypods/llm_compat_probe.py's
+    subtractive bisection against the live API found the actual native-mode rejection is narrower
+    than "the whole schema," so only the offending keywords need to drop out; see the
+    constraint-stripping test below."""
     calls = []
 
     def completion(**kwargs):
@@ -537,6 +541,49 @@ def test_gemini_structured_request_relaxes_constraint_keywords_only():
     full_schema = ConstrainedOutput.model_json_schema()
     assert full_schema["properties"]["value"]["minLength"] == 1
     assert full_schema["properties"]["count"]["maximum"] == 100
+
+
+def test_gemini_structured_retries_once_on_invalid_reply_then_succeeds():
+    """Gemini's direct native-schema path replicates Instructor's own "one bounded corrective
+    retry" contract by hand: an invalid first reply gets fed back as validation feedback, and a
+    valid second reply completes normally -- no runtime fallback to a different mode, just the
+    same retry-with-feedback loop every other provider gets via Instructor."""
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return structured_response("not valid json")
+        return structured_response('{"value":"ok"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), completion=completion
+    )
+    result = backend.run_inference(job(content="meeting text", structured_output="test-output"))
+
+    assert len(calls) == 2
+    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
+    # The retry's messages include the first (invalid) reply and corrective feedback, not just
+    # the original prompt repeated verbatim.
+    retry_messages = calls[1]["messages"]
+    assert retry_messages[-2] == {"role": "assistant", "content": "not valid json"}
+    assert retry_messages[-1]["role"] == "user"
+
+
+def test_gemini_structured_defers_after_exhausting_the_one_retry():
+    """Two invalid replies in a row (the original attempt plus the one retry) is a
+    ``LLMStructuredOutputError`` -- same outcome and same safe, content-free error message
+    Instructor's ``InstructorRetryException`` produces for every other provider, so the caller's
+    defer-and-retry-next-run handling needs no Gemini-specific branch."""
+
+    def completion(**kwargs):
+        return structured_response("still not valid json")
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), completion=completion
+    )
+    with pytest.raises(LLMStructuredOutputError, match="failed Pydantic validation"):
+        backend.run_inference(job(content="meeting text", structured_output="test-output"))
 
 
 def test_strip_schema_keys_removes_matching_keys_at_every_depth():
