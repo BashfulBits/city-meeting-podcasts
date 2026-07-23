@@ -398,6 +398,15 @@ class StageContext:
     # so the two ASR models never co-load in one runner. The pass selection lives in run.py; this
     # field tells TranscriptStage which ASR model path to take.
     lane: str | None = None
+    # Run-scoped signal that the LLM tag backend has no dispatch capacity left this run (its
+    # daily/per-minute provider quota is spent -- the first dispatch that comes back deferred sets
+    # it). ``TagsStage`` reads it to stop RE-FETCHING agenda/transcript text for the large backlog
+    # of episodes whose rules tags are already computed and cached and that only await a (now
+    # unavailable) LLM tag: those defer in memory, untouched, and are retried on a later run once
+    # quota frees. New/changed episodes still fetch, since they need the text for their rules tags.
+    # One Event per build, shared across the global queue's per-episode ``process()`` calls; a
+    # monotonic ``set()`` that is safe to race under the worker threads.
+    tag_llm_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
 
 
 @dataclass
@@ -533,37 +542,47 @@ class TagsStage:
                 prompt_version=TAG_PROMPT_VERSION,
                 admission_policy=admission_policy,
             )
-            # Fast pre-check: if nothing this episode's tagging actually depends on has moved since
-            # the last run that fully resolved it (content-addressed artifact keys, chapter
-            # boundaries, taxonomy/tagger/LLM config, admission policy -- see
-            # tag_input_fingerprint), the full recipe hash below would recompute to exactly the
-            # same value. Skip the storage fetch (agenda/transcript text) and the SHA-hash
-            # bookkeeping entirely rather than paying for both on every run just to re-derive
-            # "nothing changed" for the whole backlog.
+            # ---- In-memory triage, BEFORE any storage fetch -----------------------------------
+            # Everything needed to decide what to do with this episode is already in the loaded
+            # record + the storage-free `tag_input_fingerprint`. The two agenda/transcript fetches
+            # below are the real cost of walking this lane's ~backlog-sized queue, so we classify
+            # first and only fetch for episodes that will actually be tagged this run.
             has_chapters = bool(episode_served_chapters(ep))
-            if (
+            inputs_unchanged = (
                 ep.tags_input_fingerprint is not None
                 and ep.tags_input_fingerprint == cheap_fingerprint
                 and ep.tags_spec_hash is not None
                 and (not has_chapters or ep.chapter_tags)
-            ):
+            )
+            # Whether this episode still wants a *new* LLM tag is decidable purely in memory: for
+            # unchanged inputs a set `tags_llm_recipe_hash` means the LLM tag is already current;
+            # `None` means it never resolved (dispatched-and-deferred, quota-parked, or errored).
+            # Rules tags don't need the LLM, so an LLM-disabled run is never "pending".
+            llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
+
+            if inputs_unchanged and not llm_pending:
+                # Fully resolved for the current inputs (or LLM disabled). Nothing to do -- skip
+                # WITHOUT any storage fetch. This is the steady state for the whole catalog and has
+                # to stay an in-memory O(1) check, never a storage round trip.
                 stats.reused += 1
                 continue
 
-            # Wall-clock budget gate, BEFORE the storage fetch below. The only other stop() check
-            # sits at the LLM-dispatch point further down -- but that is well past the two per-
-            # episode storage round trips (`episode_tag_inputs` + `chapter_tag_inputs`), which are
-            # the real cost of walking this lane's whole backlog. Most of that backlog is episodes
-            # that need an LLM tag but are parked behind the daily provider quota, so they never
-            # reach a terminal state, never get a cached fingerprint, and are re-fetched on every
-            # run. Without a gate here, once the budget is spent stop() stops new LLM calls but the
-            # fetch-walk grinds on through thousands of remaining episodes until GitHub's hard job
-            # timeout kills the run mid-pass -- exactly the observed 25-minute cancellation, ~8
-            # minutes of it *after* the graceful stop had already fired. Deferring here (no fetch,
-            # no mutation -- the episode is retried next run) lets the pass drain cheaply and reach
-            # its end-of-run persist with margin to spare.
             if ctx.stop is not None and ctx.stop():
+                # Wall-clock budget spent: defer everything still outstanding WITHOUT fetching
+                # (untouched, retried next run) so the pass drains cheaply to its end-of-run
+                # persist instead of grinding the backlog's fetches into GitHub's hard job timeout.
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
+                continue
+
+            if inputs_unchanged and llm_pending and ctx.tag_llm_dispatch_exhausted.is_set():
+                # Rules tags are already computed and cached (the fingerprint matches); only the
+                # quota-limited LLM tag is outstanding, and the backend has already reported it has
+                # no dispatch capacity left this run. Re-fetching the agenda/transcript text just to
+                # re-attempt a dispatch that will only defer again is the whole-backlog waste this
+                # redesign removes: defer in memory, untouched, and retry on a later run once quota
+                # frees. (A new/changed episode -- `not inputs_unchanged` -- still falls through to
+                # fetch, because it needs the text to compute its rules tags regardless of the LLM.)
+                stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                 continue
 
             titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
@@ -725,6 +744,12 @@ class TagsStage:
                             stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
                             candidate_tags = []
                             completed_llm_recipe = None
+                            # The backend accepted the request but had no capacity to complete it
+                            # (daily/per-minute quota spent), so it handed back a deferred handle.
+                            # Signal the rest of this run's episodes not to re-fetch their text
+                            # merely to re-attempt a dispatch that will also just defer -- see the
+                            # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
+                            ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
@@ -791,12 +816,16 @@ class TagsStage:
                 ]
                 final_hash = projection_hash
 
-            # Only a terminal result for THIS run's inputs (LLM resolved or disabled -- exactly the
-            # existing `tags_spec_hash == projection_hash` reuse condition above) is safe to mark
-            # reusable via the cheap fingerprint next run. Leaving it unset (None) whenever an LLM
-            # dispatch is still outstanding (deferred/quota-stopped/errored) means next run's
-            # pre-check misses and retries the dispatch instead of wrongly caching "nothing to do".
-            fingerprint_after = cheap_fingerprint if final_hash == projection_hash else None
+            # Cache the input fingerprint whenever this run captured the current inputs -- INCLUDING
+            # when the LLM dispatch is still pending (`final_hash == rules_hash`, not
+            # `projection_hash`). This is the crux of the no-re-fetch redesign: the next run's
+            # in-memory triage recognises the inputs as unchanged and, seeing `tags_llm_recipe_hash`
+            # still `None`, decides *from memory + remaining quota* whether to re-attempt the LLM --
+            # instead of re-fetching agenda/transcript text just to rediscover "still pending",
+            # which is what made the entire quota-parked backlog re-fetch every single run.
+            # `tags_llm_recipe_hash` (set only on a resolved LLM tag) stays the sole "LLM done"
+            # signal, so caching the fingerprint here never makes a pending episode look resolved.
+            fingerprint_after = cheap_fingerprint
             if (
                 ep.tags != final_tags
                 or ep.chapter_tags != chapter_annotations

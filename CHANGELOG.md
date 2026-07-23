@@ -362,6 +362,30 @@ Phase R (Research-Tool Surface)._
   through a multi-thousand-episode untagged backlog is inherently many runs — the fix makes each run
   fast, bounded, and green, spending its budget newest-first, not a single run tag everything.
 
+- **The `tag` lane no longer re-fetches the entire backlog's agenda/transcript text every run — it
+  triages in memory first and fetches only episodes it will actually tag.** The timeout fixes above
+  made the run *bounded*, but it was still doing the wrong work: a live run spent its whole budget
+  re-reading agenda + transcript text for ~13k episodes and made no visible tag progress. The reason
+  was structural — `tags_input_fingerprint`, the storage-free "have these inputs changed?" proxy, was
+  cached only after a **fully resolved** LLM tag. With the provider quota far below the backlog size,
+  virtually every episode was permanently non-terminal, so the cheap pre-check never matched and each
+  episode fell through to the two-round-trip storage fetch, every run, purely to re-derive "still
+  waiting on the LLM." `TagsStage` now decides what to do for each episode **entirely from the record
+  already in memory** before any fetch: (1) inputs unchanged **and** an LLM tag already resolved (or
+  LLM disabled) → *done*, skip with no fetch; (2) inputs unchanged, rules tags cached, only the
+  quota-limited LLM tag outstanding, and the backend already out of dispatch capacity this run →
+  *defer with no fetch*, retried when quota frees; (3) new/changed inputs, or capacity still available
+  → fetch and tag. The enabling change: the input fingerprint is now cached as soon as a run captures
+  an episode's inputs — **including while its LLM dispatch is still pending** (`tags_llm_recipe_hash`
+  stays the sole "LLM resolved" signal, so a pending episode is never mistaken for done). A new
+  run-scoped `StageContext.tag_llm_dispatch_exhausted` event, set the first time a dispatch comes back
+  deferred, is what lets case (2) skip the fetch. Net effect: once warm, a run does an in-memory scan
+  of the catalog and fetches only the handful of episodes it will actually tag (new meetings + up to
+  the remaining quota, newest-first), instead of thousands of storage round trips. (Raising the
+  deliberately-conservative 20/day route ceiling toward the real free-tier quotas, and adding a second
+  Gemini route, is a separate follow-up — this change is what makes that quota actually reachable
+  within the job.)
+
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
   the CLI's `--lane` choices, `LANE_STAGES` (which stages a lane runs), and
