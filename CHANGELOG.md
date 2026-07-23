@@ -17,6 +17,23 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Gemini structured-output calls now use native JSON-schema mode via a direct LiteLLM call,
+  bypassing Instructor entirely for `gemini/*` routes.** The `litellm` bump below did not fix the
+  `Mode Mode.JSON_SCHEMA is not registered for provider Provider.OPENAI` error: two live `tag.yml`
+  runs on two different `litellm` versions (`1.83.0` and, after the bump, `1.95.0.dev1`) produced the
+  *identical* error, including the identical "available modes" list — `Provider.GEMINI` and
+  `Provider.VERTEXAI` have no `Mode.JSON_SCHEMA` entry at all in `instructor==1.15.4` (confirmed its
+  own latest release), only `MD_JSON`/`TOOLS`. This is Instructor's own (provider, mode)
+  compatibility gate, not a LiteLLM provider-auto-detection bug — no LiteLLM version changes it.
+  Gemini's REST API genuinely supports native schema-constrained JSON (`responseJsonSchema`,
+  confirmed against the live API by `citypods/llm_compat_probe.py`'s `_native()` check, which calls
+  it directly with no LiteLLM/Instructor involved), so rather than switch to a different Instructor
+  mode or add runtime fallback/re-probing logic, `LiteLLMBackend._run_gemini_structured_direct()`
+  (`citypods/compute/llm.py`) calls `litellm.completion()` directly with the same OpenAI-shaped
+  `response_format` LiteLLM already translates into Gemini's native mechanism, and replicates
+  Instructor's own "parse, validate, one corrective retry on failure" contract by hand. Every other
+  route (DeepSeek, Mistral) is unaffected — still routed through Instructor exactly as before.
+
 - **`push_state()` (the tag lane's finalization-tail write) now uploads across a bounded worker pool
   instead of one file at a time.** A real `tag.yml` run — with the finalization-tail logging below
   already in place — was caught pushing only 1,503 of 3,554 state files (42%) serially in the ~9
