@@ -17,6 +17,33 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Static ffmpeg switched from BtbN/FFmpeg-Builds to johnvansickle.com; `7.1.4` → `7.1.5`
+  (output-affecting, smoke-gated — see `review/22`).** `audio-runner-image.yml` (and every other
+  workflow sharing the same `FFMPEG_URL`/`FFMPEG_SHA256` pin: `audio.yml`, `asr.yml`, `ci.yml`,
+  `dep-bump-smoke.yml`, `duration-normalize.yml`, `granicus-probe.yml`) started failing with
+  `HTTP Error 404: Not Found` downloading the pinned BtbN release asset
+  (`autobuild-2026-06-18-14-21`) — BtbN only retains a rolling ~1-month window of dated autobuild
+  tags and had pruned it. Re-pinning the *same* BtbN build wasn't possible (the exact asset is
+  gone), and BtbN's rolling retention means any tag pinned there will eventually 404 again by
+  design — not a one-off fluke. Switched to johnvansickle.com's per-version archives, which keep
+  every past release available indefinitely (the standard long-lived static-ffmpeg source used
+  broadly across the ecosystem), landing on `7.1.5` (the current release at that source; `7.1.4`
+  is no longer published there either). The new SHA256 was obtained by letting the pipeline's own
+  checksum-mismatch error report the real downloaded digest (not copied from a third party) —
+  `scripts/install_static_ffmpeg.py` already refuses to proceed on a mismatch. Also updates the
+  Renovate custom regex manager (`.github/renovate.json5`) to match the new URL shape and track
+  real upstream `FFmpeg/FFmpeg` tags as the "is there a newer release" source of truth (the old
+  regex was BtbN-URL-shaped and would have silently stopped matching anything). Licensing note:
+  johnvansickle's build is GPL (vs. BtbN's LGPL variant we'd used); citypods only invokes
+  `ffmpeg`/`ffprobe` as a subprocess, never links against them, so this doesn't change citypods'
+  own licensing obligations. Per the `review/22` contract, this is *not* a no-op re-pin (the
+  version genuinely moved, forced by source availability) — deferred to `dep-bump-smoke`'s
+  automated per-source before/after comparison (triggered via the `output-affecting` label) rather
+  than speculatively bumping `AUDIO_PIPELINE_VERSION` without evidence of actual output drift.
+  Longer-term: self-hosting the ~103 MB tarball behind the existing Cloudflare-fronted
+  `B2_PUBLIC_BASE_URL`/`R2_PUBLIC_BASE_URL` pattern (already used for hosted audio) would remove
+  the third-party-availability dependency entirely; not done here, left for a follow-up.
+
 - **`litellm` bumped to `1.95.0.dev1` (pre-release), and `instructor`'s `[litellm]` extra dropped, to
   unblock `gemini-3.5-flash-lite`.** A real manually-triggered `tag.yml` run showed the second Gemini
   route added below got **zero** live requests despite `gemini-3.1-flash-lite` repeatedly hitting its

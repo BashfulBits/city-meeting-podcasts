@@ -73,15 +73,22 @@
   customManagers: [
     {
       // Static ffmpeg build (URL + SHA256) — output-affecting; monthly, smoke-gated.
-      // BtbN nightly tags are date-shaped, so this surfaces the pin for review rather
-      // than fully automating the bump; the human ticks the Dashboard box.
+      // Source switched from BtbN's rolling autobuild releases (retention ~1 month —
+      // BtbN prunes old dated tags, which 404'd in production) to johnvansickle's
+      // per-version archives (kept indefinitely). Version tracking now points at the
+      // real upstream FFmpeg/FFmpeg tags (e.g. "n7.1.5") as the source of truth for
+      // "is there a newer release," independent of where the binary is actually
+      // fetched from; extractVersionTemplate strips the tag's "n" prefix to compare
+      // against johnvansickle's plain "7.1.5"-style version in the URL. The human
+      // still ticks the Dashboard box (dependencyDashboardApproval above).
       customType: "regex",
       managerFilePatterns: ["/^\\.github/workflows/.*\\.yml$/"],
       matchStrings: [
-        "FFMPEG_URL:\\s*\\S+/(?<currentValue>autobuild-[0-9-]+)/\\S+\\n\\s*FFMPEG_SHA256:\\s*(?<currentDigest>[a-f0-9]+)",
+        "FFMPEG_URL:\\s*\\S+/ffmpeg-(?<currentValue>[0-9.]+)-amd64-static\\.tar\\.xz\\n\\s*FFMPEG_SHA256:\\s*(?<currentDigest>[a-f0-9]+)",
       ],
-      depNameTemplate: "BtbN/FFmpeg-Builds",
-      datasourceTemplate: "github-releases",
+      depNameTemplate: "FFmpeg/FFmpeg",
+      datasourceTemplate: "github-tags",
+      extractVersionTemplate: "^n?(?<version>.*)$",
     },
     {
       // Hugging Face Whisper model revisions (GH#498). Requires the huggingface
