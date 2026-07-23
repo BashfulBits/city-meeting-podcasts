@@ -574,6 +574,50 @@ def test_tags_stage_backfills_fingerprint_for_pre_existing_resolved_episode(tmp_
     assert counting.reads == 0
 
 
+def test_tags_stage_defers_without_storage_fetch_once_budget_spent(tmp_path):
+    """Once the wall-clock ``stop()`` window is spent, an unresolved episode must be deferred
+    *before* the agenda/transcript storage fetch, not after. The only other stop() check sits past
+    those two per-episode round trips, so without this gate a spent budget still let the pass grind
+    through the whole backlog's fetches until GitHub's hard job timeout cancelled the run mid-pass
+    (~8 minutes of it after the graceful stop had already fired). A deferred episode is untouched,
+    so it retries next run."""
+    from citypods.stages import TagsStage
+
+    ep = _ep("g1")
+    ep.links = {"agenda_text_artifact_key": "documents/x-tx/uid-g1/agenda_text-abc123"}
+    ep.transcript_key = "transcripts/x-tx/uid-g1-asr-deadbeef.txt"
+    ep.transcript_format = "txt"
+    # Unresolved: no cached fingerprint, so the cheap pre-check can't short-circuit it — exactly
+    # the backlog episodes that were being re-fetched every run.
+    assert ep.tags_input_fingerprint is None
+
+    class _CountingStorage:
+        def __init__(self, inner):
+            self._inner = inner
+            self.reads = 0
+
+        def exists(self, key):
+            self.reads += 1
+            return self._inner.exists(key)
+
+        def get_file(self, key, local_path):
+            self.reads += 1
+            return self._inner.get_file(key, local_path)
+
+    ctx = _ctx(tmp_path, stop=_stop_after(0))  # stop() True from the very first check
+    ctx.storage = _CountingStorage(ctx.storage)
+
+    stats = TagsStage().process(None, _city(), [ep], ctx)
+
+    # Deferred (skipped, grouped under the budget-stop reason) with no storage access and no
+    # mutation to the episode's tag state.
+    assert stats.defer_reasons.get("tag-budget-stop") == 1
+    assert stats.skipped == 1
+    assert stats.ran == 0
+    assert ctx.storage.reads == 0
+    assert ep.tags == [] and ep.tags_spec_hash is None and ep.tags_input_fingerprint is None
+
+
 def _write_temp(tmp_path, name, content: bytes):
     path = tmp_path / "_uploads" / name
     path.parent.mkdir(parents=True, exist_ok=True)

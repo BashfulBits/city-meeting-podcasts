@@ -550,6 +550,22 @@ class TagsStage:
                 stats.reused += 1
                 continue
 
+            # Wall-clock budget gate, BEFORE the storage fetch below. The only other stop() check
+            # sits at the LLM-dispatch point further down -- but that is well past the two per-
+            # episode storage round trips (`episode_tag_inputs` + `chapter_tag_inputs`), which are
+            # the real cost of walking this lane's whole backlog. Most of that backlog is episodes
+            # that need an LLM tag but are parked behind the daily provider quota, so they never
+            # reach a terminal state, never get a cached fingerprint, and are re-fetched on every
+            # run. Without a gate here, once the budget is spent stop() stops new LLM calls but the
+            # fetch-walk grinds on through thousands of remaining episodes until GitHub's hard job
+            # timeout kills the run mid-pass -- exactly the observed 25-minute cancellation, ~8
+            # minutes of it *after* the graceful stop had already fired. Deferring here (no fetch,
+            # no mutation -- the episode is retried next run) lets the pass drain cheaply and reach
+            # its end-of-run persist with margin to spare.
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
+                continue
+
             titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
             chapters = chapter_tag_inputs(ep, ctx.storage)
             chapter_fingerprint = [

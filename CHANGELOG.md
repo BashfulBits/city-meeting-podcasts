@@ -343,6 +343,25 @@ Phase R (Research-Tool Surface)._
   counts against the window and a slow start can never again outlast the hard cap — it yields and
   persists (via the existing mid-run checkpoints) instead of being SIGKILLed.
 
+- **`TagsStage` now honours the wall-clock budget *before* its per-episode storage fetch, so a spent
+  budget actually ends the pass instead of grinding the whole backlog to a hard-cancel.** With the
+  restore fixed and the graceful stop finally firing (both above), a run *still* burned to GitHub's
+  25-minute hard cancel — ~8 minutes of it **after** `stop: wall-clock window spent` had already
+  printed. The cause: `stop()` was only checked at the LLM-dispatch point, which sits *past* the two
+  per-episode storage round trips (`episode_tag_inputs` + `chapter_tag_inputs`). Those fetches — not
+  the LLM calls — are the real cost of walking this lane's backlog, and most of that backlog is
+  episodes that need a tag but are parked behind the daily provider quota, so they never reach a
+  terminal state, never cache a `tags_input_fingerprint`, and are re-fetched on *every* run. A spent
+  budget stopped new LLM calls but let the fetch-walk grind on through thousands of remaining
+  episodes until the job was killed mid-pass, with essentially no tagging accomplished. `TagsStage`
+  now checks `ctx.stop()` at the top of each episode, right after the cheap fingerprint pre-check and
+  **before** the storage fetch: once the window is spent, every remaining episode is deferred
+  untouched (retried next run) and the pass drains in seconds to its end-of-run persist. Non-time-
+  bounded runs (`ctx.stop is None`, e.g. local `all` builds) are unaffected. Note the separate,
+  non-timeout throughput limit this exposes: with the provider capped at ~20 tag calls/day, working
+  through a multi-thousand-episode untagged backlog is inherently many runs — the fix makes each run
+  fast, bounded, and green, spending its budget newest-first, not a single run tag everything.
+
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
   the CLI's `--lane` choices, `LANE_STAGES` (which stages a lane runs), and
