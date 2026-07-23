@@ -134,7 +134,7 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
         return sum(1 for got in pool.map(_restore_one, keys) if got)
 
 
-def push_state(storage, state_dir: Path, *, only_prefixes=None) -> int:
+def push_state(storage, state_dir: Path, *, only_prefixes=None, log=None) -> int:
     """Upload state files under ``state_dir`` to the bucket's ``state/`` prefix.
     Returns the number of files pushed. No-op for backends without sync support.
 
@@ -144,14 +144,21 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None) -> int:
     sources, so it must push back **only** the ``source_key``s it owns — e.g.
     ``only_prefixes=["sources/<key>/"]`` — or it would re-upload its now-stale copy of a sibling
     shard's record (the cross-shard clobber, review/12 §H6). ``None`` (default) pushes the whole
-    snapshot, which is correct for the single-writer (unsharded enrich) case."""
+    snapshot, which is correct for the single-writer (unsharded enrich) case.
+
+    Logs a start count and one line per file (``log``, default ``print(..., flush=True)``): this
+    is the run's last write before it's considered durably persisted, and it used to be a silent
+    black box — a slow or stuck upload here was indistinguishable from any other cause of a run
+    running out of wall-clock budget (issue: the tag lane's finalization tail gave no visibility
+    into what it was doing before GitHub's hard job timeout cancelled it mid-persist)."""
     if not _supported(storage) or not hasattr(storage, "put_file"):
         return 0
+    emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
     if not state_dir.exists():
         return 0
     prefixes = tuple(only_prefixes) if only_prefixes is not None else None
-    pushed = 0
+    candidates = []
     for path in sorted(state_dir.rglob("*")):
         if not path.is_file() or path.suffix not in _SUFFIXES:
             continue
@@ -160,7 +167,14 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None) -> int:
             continue
         if _is_cas_managed(storage, f"{STATE_PREFIX}/{rel}"):  # CAS-managed on R2; never bulk-push
             continue
-        storage.put_file(f"{STATE_PREFIX}/{rel}", path, "application/json")
+        candidates.append(rel)
+    if not candidates:
+        return 0
+    emit(f"state: pushing {len(candidates)} file(s) to durable storage")
+    pushed = 0
+    for rel in candidates:
+        emit(f"state: pushing {rel}")
+        storage.put_file(f"{STATE_PREFIX}/{rel}", state_dir / rel, "application/json")
         pushed += 1
     return pushed
 
@@ -561,7 +575,12 @@ def push_transcript_quality_rollups_merged(
 
 
 def reconcile_state(
-    storage, state_dir: Path, *, min_age_days: float = RECONCILE_MIN_AGE_DAYS, full_run: bool = True
+    storage,
+    state_dir: Path,
+    *,
+    min_age_days: float = RECONCILE_MIN_AGE_DAYS,
+    full_run: bool = True,
+    log=None,
 ) -> int:
     """Delete remote ``state/`` objects that no longer have a local counterpart (age-guarded).
 
@@ -581,8 +600,10 @@ def reconcile_state(
         return 0
     if not _supported(storage) or not hasattr(storage, "delete"):
         return 0
+    emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
     cutoff = datetime.now(UTC) - timedelta(days=min_age_days)
+    emit("state: reconciling remote state (listing objects)")
     deleted = 0
     for key, last_modified in storage.list_objects(f"{STATE_PREFIX}/"):
         rel = key[len(STATE_PREFIX) + 1 :]
@@ -594,6 +615,7 @@ def reconcile_state(
             continue  # still has a local counterpart — canonical, keep it
         if last_modified is not None and last_modified > cutoff:
             continue  # too young to be safely reaped (just-written, not yet local)
+        emit(f"state: reclaiming stale {key}")
         storage.delete(key)
         deleted += 1
     return deleted

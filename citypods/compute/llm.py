@@ -43,7 +43,7 @@ from citypods.compute.llm_policy import (
     LLMRequestPolicy,
     estimate_tokens,
 )
-from citypods.compute.llm_scheduler import select_and_reserve, select_route
+from citypods.compute.llm_scheduler import SelectionResult, select_and_reserve, select_route
 from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 
@@ -295,6 +295,11 @@ def _priced_actual(
     except (TypeError, ValueError):
         pass
     return actual_tokens, actual_tokens * (input_per_token + output_per_token)
+
+
+def _format_rejected(rejected: tuple[tuple[str, str], ...]) -> str:
+    """Render a ``SelectionResult.rejected`` list as a short, log-friendly summary."""
+    return ", ".join(f"{model}: {reason}" for model, reason in rejected) or "no allowed route"
 
 
 def _is_rate_limited(exc: BaseException) -> bool:
@@ -643,6 +648,12 @@ class LiteLLMBackend(Backend):
 
         def _rate_limited(retry_after: float | None) -> JobHandle:
             until = datetime.now(UTC) + timedelta(seconds=retry_after or _DEFAULT_BLOCK_SECONDS)
+            print(
+                f"llm rate limit: 429 from model={resolved_model} "
+                f"(retry_after={retry_after if retry_after is not None else 'unspecified'}s), "
+                f"blocked until {until.isoformat()}",
+                flush=True,
+            )
             block_route_until(self.storage, resolved_model, until, route=route)
             settle_route_reservation(self.storage, owner, resolved_model, route=route)
             return self._deferred_handle(job, structured, messages, policy)
@@ -780,11 +791,25 @@ class LiteLLMBackend(Backend):
             result = self._run_policy_job(job, policy, structured, messages)
             if isinstance(result, JobResult) or policy.deadline_at is None:
                 return result
-            available_now, retry_at = self._next_dispatch_eligibility(policy, structured, messages)
-            if not available_now:
-                wait = _pacing_wait_seconds(retry_at, policy.deadline_at, self._now())
+            selection = self._next_dispatch_eligibility(policy, structured, messages)
+            if selection.model is None:
+                wait = _pacing_wait_seconds(selection.retry_at, policy.deadline_at, self._now())
                 if wait is None:
-                    return result  # daily quota spent, or won't free up before the deadline
+                    # Daily quota spent on every allowed route, or the soonest one to free up
+                    # would do so after the run's own deadline -- give up pacing and let the
+                    # caller's deferred handle stand (retried by the sweep / a later run).
+                    print(
+                        f"llm rate limit: {job.task} recipe={job.recipe_hash[:12]} giving up -- "
+                        f"no allowed route frees up before the deadline "
+                        f"({_format_rejected(selection.rejected)})",
+                        flush=True,
+                    )
+                    return result
+                print(
+                    f"llm rate limit: {job.task} recipe={job.recipe_hash[:12]} pacing "
+                    f"{wait:.0f}s ({_format_rejected(selection.rejected)})",
+                    flush=True,
+                )
                 self._sleep(max(wait, _PACING_MIN_SLEEP_SECONDS))
             else:
                 # A route freed up between the deferral and this check (the minute rolled). Retry
@@ -796,16 +821,17 @@ class LiteLLMBackend(Backend):
         policy: LLMRequestPolicy,
         structured: tuple[str, ResponseModel] | None,
         messages: list[dict[str, Any]],
-    ) -> tuple[bool, datetime | None]:
-        """Read-only probe of the freshest ledger: ``(available_now, earliest_retry_at)``.
+    ) -> SelectionResult:
+        """Read-only probe of the freshest ledger: which route (if any) is eligible right now.
 
-        ``available_now`` is True when some allowed route can be reserved right now (so a paced
-        caller should retry immediately). Otherwise ``earliest_retry_at`` is when the soonest
-        allowed route is predicted to free up (``None`` if none ever will -- no eligible route)."""
+        ``.model`` is set when some allowed route can be reserved right now (so a paced caller
+        should retry immediately). Otherwise ``.retry_at`` is when the soonest allowed route is
+        predicted to free up (``None`` if none ever will -- no eligible route), and ``.rejected``
+        names why each allowed route was passed over (pacing log visibility)."""
         ledger, _ = load_llm_budget_cas(self.storage)
         max_provider_attempts = 2 if structured else 1
         per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
-        selection = select_route(
+        return select_route(
             policy,
             routes=ROUTES,
             ledger=ledger,
@@ -814,7 +840,6 @@ class LiteLLMBackend(Backend):
             requests=max_provider_attempts,
             now=self._now(),
         )
-        return selection.model is not None, selection.retry_at
 
     def _reconcile_deferred(self, handle: JobHandle) -> JobResult | None:
         """Retry a deferred handle: re-run the same gates fresh, complete if eligible now, or
