@@ -108,10 +108,8 @@ jsonschema==4.26.0
     # via litellm
 jsonschema-specifications==2025.9.1
     # via jsonschema
-litellm==1.83.0
-    # via
-    #   citypods (pyproject.toml)
-    #   instructor
+litellm==1.95.0.dev1
+    # via citypods (pyproject.toml)
 markdown-it-py==4.2.0
     # via rich
 markupsafe==3.0.3

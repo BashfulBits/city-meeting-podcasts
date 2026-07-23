@@ -2200,6 +2200,14 @@ def _build_impl(
     # run, ``reused`` already up to date, ``queued`` deferred by budget (remaining backlog), plus
     # error count and a few sample messages so a re-host that triggers but fails downstream is
     # visible rather than hiding behind the feed-level "0 errors" line.
+    # flush=True throughout this block (and the finalization steps below it): unlike almost every
+    # other print in this module, these previously omitted it. stdout is block-buffered (not
+    # line-buffered) when redirected in CI, so unflushed output sits in memory until the buffer
+    # fills or the process exits cleanly -- and is silently DISCARDED on a hard kill (a GitHub
+    # Actions job timeout SIGKILLs, it doesn't wait for a clean exit). That's exactly what made a
+    # real tag-lane run's finalization tail (this block through push_state/reconcile_state below)
+    # look like a silent ~7.5-minute hang with no trailing output before the job was cancelled --
+    # the work may well have been happening, just never made it to the log.
     for name, t in sorted(pipeline.stage_totals.items()):
         if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
             continue
@@ -2210,7 +2218,8 @@ def _build_impl(
             ran += f" ({t['encoded']} encoded, {t['credited']} credited)"
         print(
             f"{name}: {ran}, {t['reused']} reused, {t['backlog']} queued, "
-            f"{t['errors']} errors ({t['seconds']:.0f}s)"
+            f"{t['errors']} errors ({t['seconds']:.0f}s)",
+            flush=True,
         )
         migration_total = (
             t.get("asr_migration_copied", 0)
@@ -2224,10 +2233,11 @@ def _build_impl(
                 f"{t['asr_migration_copied']} copied, "
                 f"{t['asr_migration_already_present']} already-present, "
                 f"{t['asr_migration_missing']} missing, "
-                f"{t['asr_migration_regenerated']} regenerated"
+                f"{t['asr_migration_regenerated']} regenerated",
+                flush=True,
             )
         for msg in t["error_samples"]:
-            print(f"    ! {msg}")
+            print(f"    ! {msg}", flush=True)
         if t.get("defer_reasons"):
             reasons = ", ".join(
                 f"{reason}={count}"
@@ -2235,11 +2245,11 @@ def _build_impl(
                     t["defer_reasons"].items(), key=lambda item: (-item[1], item[0])
                 )
             )
-            print(f"    queued: {reasons}")
+            print(f"    queued: {reasons}", flush=True)
         for msg in t.get("defer_samples", []):
-            print(f"    queued sample: {msg}")
+            print(f"    queued sample: {msg}", flush=True)
         if t.get("rate_limited"):
-            print(f"    ! throttle: {t['rate_limited']} 403/429 errors (GH#300)")
+            print(f"    ! throttle: {t['rate_limited']} 403/429 errors (GH#300)", flush=True)
     for domain, values in sorted(provider_rate_limit_telemetry.items()):
         if values.get("lease_acquisitions"):
             print(
@@ -2247,7 +2257,8 @@ def _build_impl(
                 f"{values.get('lease_wait_seconds', 0):.1f}s wait "
                 f"(max {values.get('lease_max_wait_seconds', 0):.1f}s), "
                 f"{values.get('stale_leases_reaped', 0)} stale reaped, "
-                f"{values.get('lease_renewals', 0)} renewals"
+                f"{values.get('lease_renewals', 0)} renewals",
+                flush=True,
             )
         # Granicus Worker fallback usage (GH#337): direct-403 → authenticated Cloudflare egress.
         # These per-tenant counts are the post-activation evaluation signal — successes ≈ attempts
@@ -2257,14 +2268,18 @@ def _build_impl(
                 f"provider {domain} granicus worker fallback: "
                 f"{values.get('worker_fallback_attempts', 0)} attempts, "
                 f"{values.get('worker_fallback_successes', 0)} ok, "
-                f"{values.get('worker_fallback_failures', 0)} failed"
+                f"{values.get('worker_fallback_failures', 0)} failed",
+                flush=True,
             )
 
     # Why the run ended (time-bounded phases only). "completed within the window" means all due
     # work finished; otherwise this names the trigger that wrapped it up (wall-clock vs a queued
     # build), so a regressed graceful yield is visible at a glance rather than silent (issue #63).
     if stop is not None:
-        print(f"run end: {stop.fired_reason or 'completed within the window (no stop triggered)'}")
+        print(
+            f"run end: {stop.fired_reason or 'completed within the window (no stop triggered)'}",
+            flush=True,
+        )
 
     if not dry_run:
         # Preserve the pre-search behavior: a later static-render error must not discard the
@@ -2369,6 +2384,7 @@ def _build_impl(
                 _history_window_min = float(defaults.get("asr_backstop_minutes", 350))
                 _history_safety = 1.0
             _window = _history_window_min * 60 * _history_safety
+            print("finalize: recording run history", flush=True)
             _record_run_history(
                 state_dir,
                 results,
@@ -2402,6 +2418,7 @@ def _build_impl(
             # substrate. Derived fresh from the just-updated records (hybrid model); ordered by
             # the configured policy. statesync picks up state/work.json automatically.
             if not dry_run:
+                print("finalize: rebuilding work manifest", flush=True)
                 _city_by_source: dict[str, City] = {}
                 for c in cities:
                     _city_by_source.setdefault(source_key(c), c)
@@ -2417,6 +2434,7 @@ def _build_impl(
                 # reset them to ``queued``), and flush the budget ledger as the run's final write.
                 if isinstance(compute_backend, DispatchCoordinator):
                     _manifest = overlay_leases(_manifest, compute_backend.live_leases())
+                    print("finalize: flushing compute budget ledger", flush=True)
                     compute_backend.flush()
                 save_manifest(state_dir, _manifest)
         # Persist the updated record store + cache back to durable storage. The bucket — not
@@ -2456,6 +2474,7 @@ def _build_impl(
                     storage,
                     state_dir,
                     only_prefixes=[f"{RUN_EVENTS_DIR_NAME}/"],
+                    log=lambda msg: print(msg, flush=True),
                 )
                 pushed += push_asr_runtime_log_merged(
                     storage,
@@ -2470,14 +2489,16 @@ def _build_impl(
                     log=lambda msg: print(msg, flush=True),
                 )
             else:
-                pushed = push_state(storage, state_dir)
+                pushed = push_state(storage, state_dir, log=lambda msg: print(msg, flush=True))
             if pushed:
-                print(f"state: pushed {pushed} file(s) to durable storage")
+                print(f"state: pushed {pushed} file(s) to durable storage", flush=True)
             # Reap remote state objects with no local counterpart (e.g. records orphaned by a
             # source edit that changed source_key) so they don't leak or pin orphaned audio.
-            reclaimed = reconcile_state(storage, state_dir, full_run=not scoped)
+            reclaimed = reconcile_state(
+                storage, state_dir, full_run=not scoped, log=lambda msg: print(msg, flush=True)
+            )
             if reclaimed:
-                print(f"state: reclaimed {reclaimed} stale remote file(s)")
+                print(f"state: reclaimed {reclaimed} stale remote file(s)", flush=True)
         if (
             asr_abandoned_event is not None
             and asr_abandoned_event.is_set()

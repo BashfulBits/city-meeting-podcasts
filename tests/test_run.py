@@ -1994,7 +1994,7 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
         captured["owned_uids"] = owned_uids
         return len(captured["owned"])
 
-    def _push(_storage, _state_dir, *, only_prefixes=None):
+    def _push(_storage, _state_dir, *, only_prefixes=None, log=None):
         captured["only_prefixes"] = only_prefixes  # the run_events-only push
         return 0
 

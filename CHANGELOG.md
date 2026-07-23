@@ -17,6 +17,44 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **`litellm` bumped to `1.95.0.dev1` (pre-release), and `instructor`'s `[litellm]` extra dropped, to
+  unblock `gemini-3.5-flash-lite`.** A real manually-triggered `tag.yml` run showed the second Gemini
+  route added below got **zero** live requests despite `gemini-3.1-flash-lite` repeatedly hitting its
+  15 rpm cap — the smoking gun was a captured error: `Mode Mode.JSON_SCHEMA is not registered for
+  provider Provider.OPENAI`. Root cause: `litellm==1.83.0` (the prior pin) doesn't recognize
+  `gemini-3.5-flash-lite` in its model registry, so its provider auto-detection fell through to a
+  generic default (`Provider.OPENAI`) and Instructor rejected the `(mode, provider)` pair before any
+  request reached Gemini — every dispatch attempt onto the second route failed client-side and landed
+  in the error count instead of contributing throughput. Confirmed via litellm's own upstream history
+  (`BerriAI/litellm@59ebe043c2`, "day-0 pricing for gemini-3.6-flash and gemini-3.5-flash-lite",
+  2026-07-21): no *stable* litellm release contains this fix yet (`v1.93.0`, 2026-07-19, predates it
+  by two days), so `pyproject.toml`'s floor is pinned to the first pre-release that has it
+  (`litellm>=1.94.0rc3` — a prerelease lower bound opts pip-compile into prerelease space for just
+  this package per PEP 440, without a blanket `--pre`). That floor conflicted with
+  `instructor==1.15.4` (its own latest release)'s `[litellm]` extra, which caps `litellm<=1.83.7`;
+  since `litellm` is already declared as our own top-level dependency, the extra was redundant and got
+  dropped instead of blocking the bump. Revisit and relax the floor once litellm cuts a stable release
+  containing the fix.
+
+- **The tag lane's finalization tail (per-stage tally through `push_state`/`reconcile_state`) now
+  flushes its output and logs LLM rate-limit pacing/429s.** The same manually-triggered run above
+  showed the job's `stop()` budget tripping correctly and the dispatch loop winding down cleanly
+  (`tags: 142 ran, 708 reused, 15034 queued, 5 errors`), then **7.5 minutes of complete silence**
+  before GitHub's `timeout-minutes: 25` hard-cancelled the job with no trailing output — no
+  `run end:`, no `state: pushed N file(s)`, nothing. Root cause: unlike almost every other `print()`
+  in `run.py`, this block never passed `flush=True`; stdout is block-buffered (not line-buffered)
+  when redirected in CI, so the unflushed output sat in memory and was silently discarded when the
+  job was SIGKILLed, making genuine (possibly slow) finalization work indistinguishable from an
+  actual hang. Fixed: `flush=True` throughout the tally/finalization block plus a print at each major
+  step (run history, manifest rebuild, budget flush, state push, state reconcile);
+  `push_state()`/`reconcile_state()` (`citypods/statesync.py`) take an optional `log` callback
+  (matching `push_records_merged`'s existing pattern) and report a start count plus one line per
+  file/reclaim instead of running silent end-to-end. Separately, the paced LLM dispatch loop
+  (`LiteLLMBackend._run_policy_job_paced`) now logs when it's rate-limited (which route(s) were
+  rejected and why, and whether it's waiting or giving up) and when a live `429` blocks a route —
+  both were previously invisible, matching the "3 flash lite: 0 requests" / "3.1 flash lite: 15/min
+  cap reached" confusion this same run surfaced on the Gemini side.
+
 - **The `tag` lane's `tag.yml` job logs are no longer silent.** Diagnosing why a real scheduled run
   made almost no live LLM calls required inferring everything from external evidence (the provider's
   own request log, wall-clock timing) and could not be read from the GitHub Actions log at all —
