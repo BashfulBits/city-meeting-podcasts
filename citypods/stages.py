@@ -730,6 +730,27 @@ class TagsStage:
                     candidate_tags = []
                     completed_llm_recipe = None
                 else:
+                    # Peek the deferred registry for THIS exact recipe before dispatching.
+                    # `LiteLLMBackend.run_inference` short-circuits to an existing registry entry
+                    # for `recipe_hash` before ever running the live pacing/quota check (so a
+                    # concurrent/prior call for the same recipe can't double-reserve quota) -- so a
+                    # still-pending entry found here means the call below is *guaranteed* to return
+                    # that same stale handle rather than a fresh live check. A stale pending record
+                    # just means the daily deferred sweep hasn't reconciled it yet; it says nothing
+                    # about whether quota is available right now. Only a dispatch that had NO
+                    # pre-existing cached entry can tell us anything about current capacity, so only
+                    # that case is allowed to set `tag_llm_dispatch_exhausted` below.
+                    backend_storage = getattr(ctx.tag_backend, "storage", None)
+                    had_cached_pending = False
+                    if backend_storage is not None and getattr(
+                        backend_storage, "cas_capable", False
+                    ):
+                        from citypods.compute.base import JobHandle
+                        from citypods.compute.llm_deferred import look_up_deferred
+
+                        had_cached_pending = isinstance(
+                            look_up_deferred(backend_storage, llm_recipe), JobHandle
+                        )
                     try:
                         (
                             suggestions,
@@ -754,12 +775,14 @@ class TagsStage:
                             stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
                             candidate_tags = []
                             completed_llm_recipe = None
-                            # The backend accepted the request but had no capacity to complete it
-                            # (daily/per-minute quota spent), so it handed back a deferred handle.
-                            # Signal the rest of this run's episodes not to re-fetch their text
-                            # merely to re-attempt a dispatch that will also just defer -- see the
-                            # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
-                            ctx.tag_llm_dispatch_exhausted.set()
+                            if not had_cached_pending:
+                                # A fresh dispatch attempt (no pre-existing registry entry) came
+                                # back deferred -- the live pacing loop genuinely found no eligible
+                                # route before the run's deadline. Signal the rest of this run's
+                                # episodes not to re-fetch their text merely to re-attempt a
+                                # dispatch that will also just defer -- see the in-memory triage's
+                                # `tag_llm_dispatch_exhausted` gate above.
+                                ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to

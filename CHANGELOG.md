@@ -401,13 +401,15 @@ Phase R (Research-Tool Surface)._
   → fetch and tag. The enabling change: the input fingerprint is now cached as soon as a run captures
   an episode's inputs — **including while its LLM dispatch is still pending** (`tags_llm_recipe_hash`
   stays the sole "LLM resolved" signal, so a pending episode is never mistaken for done). A new
-  run-scoped `StageContext.tag_llm_dispatch_exhausted` event, set the first time a dispatch comes back
-  deferred, is what lets case (2) skip the fetch. Net effect: once warm, a run does an in-memory scan
-  of the catalog and fetches only the handful of episodes it will actually tag (new meetings + up to
-  the remaining quota, newest-first), instead of thousands of storage round trips. (Raising the
-  deliberately-conservative 20/day route ceiling toward the real free-tier quotas, and adding a second
-  Gemini route, is a separate follow-up — this change is what makes that quota actually reachable
-  within the job.)
+  run-scoped `StageContext.tag_llm_dispatch_exhausted` event, set the first time a *fresh* dispatch
+  attempt comes back deferred, is what lets case (2) skip the fetch — gated on a pre-dispatch peek at
+  the deferred registry so a stale, still-pending entry left over from a prior run (the daily deferred
+  sweep just hasn't reconciled it yet) is never mistaken for live quota exhaustion and doesn't
+  prematurely skip the rest of the backlog. Net effect: once warm, a run does an in-memory scan of the
+  catalog and fetches only the handful of episodes it will actually tag (new meetings + up to the
+  remaining quota, newest-first), instead of thousands of storage round trips. This in-memory triage
+  is also what makes the quota/routing work above actually reachable within the job — the wasted
+  fetches, not tag throughput, were the bottleneck.
 
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —
