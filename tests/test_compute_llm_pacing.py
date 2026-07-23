@@ -16,6 +16,7 @@ from citypods.compute.llm import (
     _pacing_wait_seconds,
 )
 from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy
+from citypods.compute.llm_scheduler import SelectionResult
 
 _T0 = datetime(2026, 7, 23, 0, 0, 30, tzinfo=UTC)  # 30s into a minute
 
@@ -48,7 +49,9 @@ class _PacingBackend(LiteLLMBackend):
         return self._outcomes.pop(0)
 
     def _next_dispatch_eligibility(self, policy, structured, messages):
-        return self._eligibility.pop(0)
+        available_now, retry_at = self._eligibility.pop(0)
+        model = "gemini/gemini-3.1-flash-lite" if available_now else None
+        return SelectionResult(model, None, "stub", (), retry_at=retry_at)
 
     def _sleep(self, seconds):
         self.slept.append(seconds)
@@ -112,7 +115,9 @@ def test_waits_out_a_full_minute_window_then_resolves():
             return _result() if self._clock >= reset else _handle()
 
         def _next_dispatch_eligibility(self, policy, structured, messages):
-            return (self._clock >= reset, None if self._clock >= reset else reset)
+            available = self._clock >= reset
+            model = "gemini/gemini-3.1-flash-lite" if available else None
+            return SelectionResult(model, None, "stub", (), retry_at=None if available else reset)
 
     backend = _ClockDriven(outcomes=[], eligibility=[])
     policy = LLMRequestPolicy(
