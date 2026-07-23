@@ -58,7 +58,14 @@ asr = [
 wer = ["jiwer>=3.0"]
 llm = [
     "pydantic>=2.8",                # task-owned structured-output contracts
-    "litellm>=1.74",                # provider-neutral model routing
+    # gemini-3.5-flash-lite support (day-0 pricing/provider registration) landed in litellm main
+    # 2026-07-21 (BerriAI/litellm@59ebe043c2) but no *stable* release contains it yet as of
+    # 2026-07-23 -- v1.93.0 (2026-07-19) predates the fix. Floor pinned to the first pre-release
+    # that has it (1.94.0rc3, 2026-07-22) rather than the usual abstract >= so pip-compile resolves
+    # into prerelease space for just this package (PEP 440: a prerelease lower bound opts a
+    # requirement into prereleases without a blanket --pre). Revisit and relax once litellm cuts a
+    # stable release containing this commit.
+    "litellm>=1.94.0rc3",            # provider-neutral model routing
     "instructor[litellm]>=1.15",    # Pydantic structured outputs and bounded validation retries
 ]
 dev = ["pytest>=8.0", "ruff>=0.6", "boto3>=1.34", "pip-tools>=7.4"]
