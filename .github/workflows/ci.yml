@@ -21,11 +21,11 @@ jobs:
     env:
       # Same checksum-pinned build audio.yml's host fallback uses (citypods-audio-runner:py312-
       # ffmpeg71-v1) -- NOT `apt-get install ffmpeg`, which on ubuntu-latest (24.04 "noble") resolves
-      # to 6.1.1, a full major version behind the 7.1.4 production actually renders audio with.
+      # to 6.1.1, a full major version behind the 7.1.5 production actually renders audio with.
       # Real-ffmpeg integration tests (shutil.which("ffmpeg")-gated) exist to prove behavior against
       # the binary that runs in production; testing a different major version would defeat that.
-      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-18-14-21/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-lgpl-7.1.tar.xz
-      FFMPEG_SHA256: bf89442300107bc9c73d4ffb80c1e4482bbde205903fe0f9e3d1de55e6d1140e
+      FFMPEG_URL: https://johnvansickle.com/ffmpeg/releases/ffmpeg-7.1.5-amd64-static.tar.xz
+      FFMPEG_SHA256: 16f2f146fe7eba1857f522619efa36babcbc500e9698ad72f0f30501acaa80bb
       FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ env.FFMPEG_DIR }}
-          key: ffmpeg-static-linux64-7.1.4-v1
+          key: ffmpeg-static-linux64-7.1.5-v1
 
       - name: Install pinned ffmpeg (matches production's audio.yml pin)
         run: |
