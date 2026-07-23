@@ -270,12 +270,7 @@ total on `/admin/status`.
   `summarize`, `tag`, and `soundbite-select` verbs. Direct calls use LiteLLM's provider translation;
   rate-limited calls enqueue the same OpenAI-shaped payload through `workers/llm-dispatch-proxy` and
   reconcile its completed response into the normal `JobResult` shape. Provider API keys remain in
-  environment/secret storage and are never persisted in catalog records or logs. **Structured output**
-  (`_run_structured_direct`) uses Instructor for typed parsing + one corrective retry on every route
-  *except* Gemini, whose native schema-constrained JSON mode Instructor's pinned release has no
-  `(Provider.GEMINI, Mode.JSON_SCHEMA)` entry for — `gemini/*` routes call LiteLLM directly with the
-  same native `response_format` and replicate Instructor's parse/validate/retry contract by hand
-  (`_run_gemini_structured_direct`).
+  environment/secret storage and are never persisted in catalog records or logs.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue. Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending
   requests; a per-minute Cron Trigger claims one ready request with an R2 conditional write, reserves a

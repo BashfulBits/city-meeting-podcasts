@@ -175,12 +175,7 @@ def _native(model: str, schema: dict[str, Any], api_key: str) -> dict[str, Any]:
 
 
 def _litellm(model: str, mode: str) -> dict[str, Any]:
-    """Exercise Instructor's own ``from_litellm()`` + ``Mode.JSON_SCHEMA`` path directly, without
-    printing its request/response objects. Kept as a standing regression probe: this is the path
-    the production code stopped using (Instructor's pinned-release compatibility table has no
-    ``(Provider.GEMINI, Mode.JSON_SCHEMA)`` entry, confirmed failing against two live runs on two
-    different LiteLLM versions) -- a green result here would mean Instructor added support and the
-    bypass in ``_run_gemini_structured_direct`` could be reconsidered."""
+    """Exercise Instructor without printing its request/response objects."""
     from instructor import Mode
 
     contract = ensure_llm_contract()
@@ -206,12 +201,12 @@ def _litellm(model: str, mode: str) -> dict[str, Any]:
 
 
 def _litellm_backend_fix(model: str) -> dict[str, Any]:
-    """Exercise the actual production path -- LiteLLMBackend._run_structured_direct(), which for
-    a ``gemini/*`` route now dispatches straight to ``_run_gemini_structured_direct`` (LiteLLM
-    called directly with native json_schema mode, Instructor bypassed entirely -- see that
-    method's docstring for why). This is the exact method llm_tag_suggestions() calls in
-    production; a green result here is evidence the real path works against the live API, not
-    just evidence the unit tests' fake completion function accepts what we send it."""
+    """Exercise the actual production fix path -- LiteLLMBackend._run_structured_direct(),
+    which applies _gemini_schema_safe_model() for a Gemini route -- rather than reimplementing
+    the Instructor call the way `_litellm()` above does. This is the exact method
+    llm_tag_suggestions() calls in production; a green result here is evidence the real fix
+    works against the live API, not just evidence the unit tests' fake completion function
+    accepts what we send it."""
     contract = ensure_llm_contract()
     backend = LiteLLMBackend(LLMBackendConfig(model=f"gemini/{model}"))
     job = InferenceJob(task="tag", inputs={"content": PROMPT}, recipe_hash="probe")
