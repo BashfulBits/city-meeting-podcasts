@@ -17,6 +17,45 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The `tag` lane's `tag.yml` job logs are no longer silent.** Diagnosing why a real scheduled run
+  made almost no live LLM calls required inferring everything from external evidence (the provider's
+  own request log, wall-clock timing) and could not be read from the GitHub Actions log at all —
+  `run_stages()` was called with `quiet=True` for every lane in the global queue's per-episode
+  invocation, since audio/ASR's much larger passes would otherwise emit thousands of "ran=0 reused=1"
+  lines. The `tag` lane now passes `quiet=False` (`quiet=ctx.lane != "tag"` in `_run_for`), so it logs
+  a `[enrich] stage start/done ... ran=X reused=Y queued=Z errors=W` line per episode; other lanes are
+  unaffected. This does add real volume to the tag lane's own log (its backlog is large too), but
+  visibility into what's actually happening matters more than log size while this lane's throughput is
+  still being tuned.
+
+- **`TagsStage` no longer re-parses the taxonomy YAML and calibration-state JSON from local disk on
+  every episode — it loads each at most once per run.** A real scheduled `tag.yml` run with every
+  prior fix in place (parallel state restore, budget-gated fetch, in-memory triage, quota pacing)
+  still made only 2 live LLM calls across a ~13k-episode backlog before exhausting its wall-clock
+  budget — essentially no tagging. Root cause: the global queue invokes `TagsStage.process()` once
+  **per episode**, and it re-read + re-parsed `config/taxonomy.yml` (`yaml.safe_load`) and
+  `llm_evaluation.json` (calibration state) at the top of every single call, even for episodes that
+  hit the new no-fetch triage fast paths. Measured against the real taxonomy file: ~28ms/call —
+  ~6.3 minutes of pure YAML parsing alone across the backlog, before `taxonomy_from_dict`
+  construction, the evaluation-state JSON parse, or the admission-policy hash, and before dispatch
+  logic ever ran for most episodes. Both are read-only, unchanged loads for the whole run, so they're
+  now cached on `StageContext.tag_taxonomy_cache` (the same `ctx` object is shared across every
+  per-episode call in one build) — a load failure is cached too, so a broken taxonomy/state file
+  still reports on every call without re-attempting the same failing read thousands of times.
+  Measured effect: ~28ms/call → ~0.6ms/call (cache hit) for the fixed per-call cost, ~48x; projected
+  total for a 13k-episode backlog drops from minutes to under 8 seconds. Two follow-up fixes from
+  code review, both real: (1) `yaml.YAMLError` is not a `ValueError` subclass, and PyYAML is
+  documented to leak raw `ValueError`/`KeyError`/`IndexError` for some malformed explicit-tag
+  scalars instead of wrapping them — the original `except (OSError, ValueError)` around
+  `load_taxonomy()` missed all of these, so a genuinely corrupt `taxonomy.yml` would propagate
+  uncaught instead of degrading gracefully via the new cached-error path; broadened to catch all of
+  them. (2) The global queue calls `TagsStage.process()` from a worker thread pool sharing one
+  `ctx`, and the cache bundle is written as three separate, non-atomic dict assignments — a second
+  thread could observe `evaluation_state` already cached but `admission_policy` not yet written and
+  KeyError, or (the case a barrier-synchronized regression test actually reproduces) every
+  concurrently-arriving thread could see an empty cache at once and each perform its own duplicate
+  load. Both check-then-populate paths are now serialized under a new `tag_taxonomy_cache_lock`.
+
 - **LLM topic tagging now drives its real free-tier throughput: a second Gemini route, the true
   per-model quotas, and within-run rate pacing.** Three connected changes on top of the tag lane's
   in-memory triage. (1) **Two routes.** `gemini/gemini-3.5-flash-lite` joins `gemini-3.1-flash-lite`

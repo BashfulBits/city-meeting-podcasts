@@ -698,6 +698,154 @@ def test_tags_stage_pending_episode_skips_fetch_when_llm_quota_exhausted(tmp_pat
     assert ctx.storage.reads == 0  # the whole point: no heavy fetch
 
 
+def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeypatch):
+    """A real scheduled tag run showed only 2 live LLM calls across a 13k-episode backlog before
+    exhausting its wall-clock budget. Root cause: TagsStage.process() is invoked once PER EPISODE
+    by the global queue, and it re-read + re-parsed the taxonomy YAML and calibration-state JSON
+    from local disk on every single call -- ~28ms/call for a real ~17KB taxonomy alone, ~6 minutes
+    of pure YAML parsing across the backlog before dispatch logic ever ran. Both are read-only for
+    the whole run, so they must load at most once per `ctx` (the same object across every
+    per-episode call in one build), cached on `ctx.tag_taxonomy_cache`."""
+    import json
+
+    import citypods.llm_evaluation as eval_mod
+    import citypods.tags as tags_mod
+    from citypods.stages import TagsStage
+
+    load_taxonomy_calls = {"n": 0}
+    real_load_taxonomy = tags_mod.load_taxonomy
+
+    def _counting_load_taxonomy(*a, **k):
+        load_taxonomy_calls["n"] += 1
+        return real_load_taxonomy(*a, **k)
+
+    monkeypatch.setattr(tags_mod, "load_taxonomy", _counting_load_taxonomy)
+
+    load_state_calls = {"n": 0}
+    real_load_state = eval_mod.load_state
+
+    def _counting_load_state(*a, **k):
+        load_state_calls["n"] += 1
+        return real_load_state(*a, **k)
+
+    monkeypatch.setattr(eval_mod, "load_state", _counting_load_state)
+
+    eval_state_path = tmp_path / "llm_evaluation.json"
+    eval_state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
+
+    ctx = _ctx(tmp_path)
+    ctx.llm_evaluation_state_path = eval_state_path
+    stage = TagsStage()  # one instance, one ctx -- mirrors the global queue reusing both
+
+    eps = [_ep("g1"), _ep("g2"), _ep("g3")]
+    for ep in eps:
+        stage.process(None, _city(), [ep], ctx)
+
+    assert load_taxonomy_calls["n"] == 1, f"loaded taxonomy {load_taxonomy_calls['n']}x, want 1"
+    assert load_state_calls["n"] == 1, f"loaded eval state {load_state_calls['n']}x, want 1"
+
+    # A fresh ctx (a different run/build) must NOT share the cache -- the cache lives on ctx, and
+    # ctx is constructed fresh per build, so this is the natural boundary, not a special case to
+    # maintain by hand.
+    ctx2 = _ctx(tmp_path)
+    ctx2.llm_evaluation_state_path = eval_state_path
+    stage.process(None, _city(), [_ep("g4")], ctx2)
+    assert load_taxonomy_calls["n"] == 2
+    assert load_state_calls["n"] == 2
+
+
+def test_tags_stage_caches_malformed_evaluation_config_as_eval_error(tmp_path):
+    """`config_from_mapping()` and `policy_fingerprint()` run inside the same cache-populate block
+    as `load_state()`, so a malformed `tagging.evaluation` config (e.g. a non-numeric
+    `minimum_reviews`) must degrade the same way a corrupt state file already does: cached once as
+    `eval_error` and reported cheaply on every subsequent call, not re-raised uncaught out of every
+    one of this run's per-episode process() calls."""
+    from citypods.stages import TagsStage
+
+    ctx = _ctx(tmp_path)
+    ctx.llm_evaluation_config = {"minimum_reviews": "not-a-number"}
+
+    stats = TagsStage().process(None, _city(), [_ep("g1")], ctx)
+
+    assert "eval_error" in ctx.tag_taxonomy_cache
+    assert stats.errors and "LLM evaluation state unavailable" in stats.errors[0]
+
+    # Cached, not re-raised: a second call with the same broken ctx reports the same error again
+    # instead of blowing up.
+    stats2 = TagsStage().process(None, _city(), [_ep("g2")], ctx)
+    assert stats2.errors and "LLM evaluation state unavailable" in stats2.errors[0]
+
+
+def test_tags_stage_cache_population_is_atomic_under_concurrent_workers(tmp_path, monkeypatch):
+    """The global queue calls TagsStage.process() from a worker thread pool, all sharing one
+    `ctx`. The cache bundle (taxonomy, evaluation_config, evaluation_state, admission_policy) is
+    written as three separate, non-atomic dict assignments -- without a lock, one thread could
+    write `evaluation_state` and then be preempted before writing `admission_policy`; a second
+    thread arriving in that window would see `evaluation_state` already cached, skip
+    initialization entirely, and KeyError reading `cache["admission_policy"]`. An injected delay
+    between those two writes widens that window so the race would be near-certain to reproduce
+    without `tag_taxonomy_cache_lock` serializing the whole check-then-populate sequence."""
+    import json
+    import threading
+    import time
+
+    import citypods.llm_evaluation as eval_mod
+    import citypods.tags as tags_mod
+    from citypods.stages import TagsStage
+
+    load_taxonomy_calls = {"n": 0}
+    real_load_taxonomy = tags_mod.load_taxonomy
+
+    def _slow_load_taxonomy(*a, **k):
+        load_taxonomy_calls["n"] += 1
+        result = real_load_taxonomy(*a, **k)
+        time.sleep(0.02)  # widen the window between the taxonomy and eval-state cache writes
+        return result
+
+    monkeypatch.setattr(tags_mod, "load_taxonomy", _slow_load_taxonomy)
+
+    load_state_calls = {"n": 0}
+    real_load_state = eval_mod.load_state
+
+    def _slow_load_state(*a, **k):
+        load_state_calls["n"] += 1
+        result = real_load_state(*a, **k)
+        time.sleep(0.02)  # widen the window between the eval-state and admission-policy writes
+        return result
+
+    monkeypatch.setattr(eval_mod, "load_state", _slow_load_state)
+
+    eval_state_path = tmp_path / "llm_evaluation.json"
+    eval_state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
+
+    ctx = _ctx(tmp_path)
+    ctx.llm_evaluation_state_path = eval_state_path
+    stage = TagsStage()
+
+    n_threads = 12
+    errors: list[BaseException] = []
+    errors_lock = threading.Lock()
+    barrier = threading.Barrier(n_threads)
+
+    def _worker(i):
+        barrier.wait()  # line every thread up to hit process() at the same instant
+        try:
+            stage.process(None, _city(), [_ep(f"g{i}")], ctx)
+        except BaseException as exc:  # noqa: BLE001 -- capture from a worker thread to re-raise
+            with errors_lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=_worker, args=(i,)) for i in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert not errors, f"worker thread(s) raised: {errors}"
+    assert load_taxonomy_calls["n"] == 1, f"loaded taxonomy {load_taxonomy_calls['n']}x, want 1"
+    assert load_state_calls["n"] == 1, f"loaded eval state {load_state_calls['n']}x, want 1"
+
+
 def test_tags_stage_pending_episode_still_attempts_when_quota_available(tmp_path):
     """The flip side: while the backend still has capacity (exhaustion flag unset), a pending
     episode must NOT be skipped -- it proceeds to fetch and re-attempt the LLM. Proven by the

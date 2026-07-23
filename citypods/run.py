@@ -1321,7 +1321,17 @@ def _run_enrich_global_queue(
         key, ep = item
         st = prepared[key]
         try:
-            stats = run_stages(st["provider"], st["city"], [ep], stages, ctx, quiet=True)
+            # `quiet=True` (the audio/ASR default) is right for those lanes' much larger passes --
+            # this is called once per *episode*, and thousands of "ran=0 reused=1" lines would
+            # drown the log. The `tag` lane is the opposite problem: its GH Actions logs were
+            # completely silent (quiet=True everywhere) while investigating why a run made almost
+            # no live LLM calls, with no way to see per-episode ran/reused/deferred/error counts
+            # without external evidence (the provider's own request log). Its own backlog is large
+            # too, but visibility into what's actually happening matters more here than log size
+            # while this lane's throughput is still being tuned.
+            stats = run_stages(
+                st["provider"], st["city"], [ep], stages, ctx, quiet=ctx.lane != "tag"
+            )
             pipeline.accumulate_stats(stats)
             return stats
         except Exception as exc:  # noqa: BLE001 — one bad episode must not abort the pass
