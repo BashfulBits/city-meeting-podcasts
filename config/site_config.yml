@@ -24,6 +24,13 @@ city_discovery:
 tagging:
   enabled: true
   llm_model: "gemini/gemini-3.1-flash-lite"
+  # Routes the scheduler may draw on, primary (== llm_model) first. The extra models are
+  # independent free-tier quota pools the run spills onto for throughput once the primary's
+  # per-minute/daily window fills (~1000 tags/day, 30 rpm combined). llm_model stays the stable
+  # recipe/calibration route; each candidate still records the model that actually answered.
+  llm_models:
+    - "gemini/gemini-3.1-flash-lite"
+    - "gemini/gemini-3.5-flash-lite"
   # direct | dispatch. Gemini's transport under R13's scheduler is "direct" (review/33 §7 — its
   # free tier doesn't need the Mistral Worker's async pacing); "dispatch" is for a route that
   # actually needs LLM_DISPATCH_URL configured (environment-only), which this route does not.

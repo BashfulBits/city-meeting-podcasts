@@ -19,6 +19,7 @@ import json
 import math
 import os
 import sys
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -30,6 +31,7 @@ import requests
 from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult, Task
 from citypods.compute.llm_budget import (
     block_route_until,
+    load_llm_budget_cas,
     release_route_reservation,
     settle_route_reservation,
 )
@@ -41,7 +43,7 @@ from citypods.compute.llm_policy import (
     LLMRequestPolicy,
     estimate_tokens,
 )
-from citypods.compute.llm_scheduler import select_and_reserve
+from citypods.compute.llm_scheduler import select_and_reserve, select_route
 from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 
@@ -72,6 +74,7 @@ SUPPORTED_MODELS = frozenset(
     {
         "gemini/gemini-3-flash-preview",
         "gemini/gemini-3.1-flash-lite",
+        "gemini/gemini-3.5-flash-lite",
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
         "mistral/mistral-large-latest",
@@ -82,6 +85,33 @@ SUPPORTED_MODELS = frozenset(
 # Fallback backoff when a 429 carries no parseable Retry-After hint.
 _DEFAULT_BLOCK_SECONDS = 60.0
 _SAFE_DIAGNOSTICS_ENV = "LLM_SAFE_DIAGNOSTICS"
+
+# Longest single sleep the pacing loop takes between capacity re-checks. A per-minute window
+# rollover is <=60s away, so this only bounds responsiveness (it re-checks the deadline and the
+# freshest ledger this often); the loop keeps sleeping until a route frees or the deadline passes.
+_PACING_POLL_CAP_SECONDS = 10.0
+# Tiny floor so an "eligible now, but the reserve just lost a race" retry can't hot-spin the CPU.
+_PACING_MIN_SLEEP_SECONDS = 0.2
+
+
+def _pacing_wait_seconds(
+    retry_at: datetime | None, deadline_at: datetime | None, now: datetime
+) -> float | None:
+    """How long to sleep before re-checking dispatch capacity, or ``None`` to give up pacing.
+
+    ``None`` when nothing will free up (``retry_at is None``) or when the soonest a route frees up
+    is at/after the run's ``deadline_at`` (a daily-quota reset hours away, vs a ~15-minute job
+    budget) -- in that case the caller returns the deferred handle for the sweep or a future run.
+    A single wait is capped at ``_PACING_POLL_CAP_SECONDS`` so the loop re-reads the freshest
+    ledger and re-checks the deadline regularly rather than blindly sleeping a whole minute."""
+    if retry_at is None:
+        return None
+    if deadline_at is not None and retry_at >= deadline_at:
+        return None
+    wait = (retry_at - now).total_seconds()
+    if wait <= 0:
+        return 0.0
+    return min(wait, _PACING_POLL_CAP_SECONDS)
 
 
 class LLMBackendError(RuntimeError):
@@ -179,6 +209,13 @@ class LLMBackendConfig:
     dispatch_url: str | None = None
     dispatch_auth_token: str | None = None
     timeout_seconds: float = 30.0
+    # Extra routes a policy-bearing call may spill onto once ``model``'s own per-minute/daily quota
+    # window fills -- e.g. tagging pins ``gemini-3.1-flash-lite`` as the recipe/calibration route
+    # but lets the scheduler also draw on ``gemini-3.5-flash-lite``'s independent free-tier pool for
+    # throughput. Empty (default) keeps the historical single-route behavior. ``model`` stays the
+    # stable route string for recipe hashing/calibration; each candidate still records the model
+    # that actually answered.
+    additional_models: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> LLMBackendConfig:
@@ -323,6 +360,9 @@ class LiteLLMBackend(Backend):
         self.config = config or LLMBackendConfig.from_env()
         if self.config.model not in SUPPORTED_MODELS:
             raise ValueError(f"unsupported LLM model route: {self.config.model!r}")
+        unsupported_extra = [m for m in self.config.additional_models if m not in SUPPORTED_MODELS]
+        if unsupported_extra:
+            raise ValueError(f"unsupported additional LLM model route(s): {unsupported_extra!r}")
         if self.config.mode not in {"direct", "dispatch"}:
             raise ValueError("LLM mode must be 'direct' or 'dispatch'")
         if self.config.mode == "dispatch" and not self.config.dispatch_url:
@@ -550,7 +590,7 @@ class LiteLLMBackend(Backend):
             return existing
 
         messages = _messages(job)
-        result = self._run_policy_job(job, policy, structured, messages)
+        result = self._run_policy_job_paced(job, policy, structured, messages)
         # Cache the outcome either way: a completed result means a *later* call with the same
         # recipe_hash never has to pay for a real provider call again; a deferred handle means
         # the sweep (or a later call) can pick up exactly where this one left off.
@@ -708,6 +748,74 @@ class LiteLLMBackend(Backend):
         )
         return result
 
+    # Overridable for deterministic tests (no real wall-clock sleeps / clock).
+    _sleep = staticmethod(time.sleep)
+
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now(UTC)
+
+    def _run_policy_job_paced(
+        self,
+        job: InferenceJob,
+        policy: LLMRequestPolicy,
+        structured: tuple[str, ResponseModel] | None,
+        messages: list[dict[str, Any]],
+    ) -> JobResult | JobHandle:
+        """`_run_policy_job` with within-run rate pacing.
+
+        A single logical dispatch that can't be placed *right now* only because a route's per-minute
+        window is momentarily full (RPM/TPM), or because a real 429 briefly blocked it, is not
+        given up on: this waits until a route is predicted to free up and retries, so one run drains
+        its full *daily* quota across successive minute windows instead of bursting one window's
+        worth (~RPM) and stopping. It gives up (returns the deferred handle for the sweep / a later
+        run) only when nothing frees up before ``policy.deadline_at`` -- i.e. the daily quota is
+        genuinely spent, or the run's own wall-clock budget would elapse first. With no
+        ``deadline_at`` set there is nothing to pace against, so it behaves exactly like the
+        unpaced path (one attempt, then defer). Reservations are settled/released inside each
+        ``_run_policy_job`` attempt exactly as before; no intermediate deferred record is written
+        between retries (the caller writes only the final outcome), so a paced retry never leaves a
+        stale pending handle behind."""
+        while True:
+            result = self._run_policy_job(job, policy, structured, messages)
+            if isinstance(result, JobResult) or policy.deadline_at is None:
+                return result
+            available_now, retry_at = self._next_dispatch_eligibility(policy, structured, messages)
+            if not available_now:
+                wait = _pacing_wait_seconds(retry_at, policy.deadline_at, self._now())
+                if wait is None:
+                    return result  # daily quota spent, or won't free up before the deadline
+                self._sleep(max(wait, _PACING_MIN_SLEEP_SECONDS))
+            else:
+                # A route freed up between the deferral and this check (the minute rolled). Retry
+                # immediately, but with a tiny floor so a persistent reserve race can't hot-spin.
+                self._sleep(_PACING_MIN_SLEEP_SECONDS)
+
+    def _next_dispatch_eligibility(
+        self,
+        policy: LLMRequestPolicy,
+        structured: tuple[str, ResponseModel] | None,
+        messages: list[dict[str, Any]],
+    ) -> tuple[bool, datetime | None]:
+        """Read-only probe of the freshest ledger: ``(available_now, earliest_retry_at)``.
+
+        ``available_now`` is True when some allowed route can be reserved right now (so a paced
+        caller should retry immediately). Otherwise ``earliest_retry_at`` is when the soonest
+        allowed route is predicted to free up (``None`` if none ever will -- no eligible route)."""
+        ledger, _ = load_llm_budget_cas(self.storage)
+        max_provider_attempts = 2 if structured else 1
+        per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
+        selection = select_route(
+            policy,
+            routes=ROUTES,
+            ledger=ledger,
+            available_transports=self._available_transports(),
+            estimated_tokens=per_attempt_tokens * max_provider_attempts,
+            requests=max_provider_attempts,
+            now=self._now(),
+        )
+        return selection.model is not None, selection.retry_at
+
     def _reconcile_deferred(self, handle: JobHandle) -> JobResult | None:
         """Retry a deferred handle: re-run the same gates fresh, complete if eligible now, or
         return another deferred handle (persisted back to the registry either way)."""
@@ -721,7 +829,7 @@ class LiteLLMBackend(Backend):
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
         structured = self._response_model(job)
-        result = self._run_policy_job(job, deferred.policy, structured, messages)
+        result = self._run_policy_job_paced(job, deferred.policy, structured, messages)
         write_deferred(self.storage, handle.recipe_hash, result)
         return None if isinstance(result, JobHandle) else result
 

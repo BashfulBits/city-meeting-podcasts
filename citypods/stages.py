@@ -407,6 +407,12 @@ class StageContext:
     # One Event per build, shared across the global queue's per-episode ``process()`` calls; a
     # monotonic ``set()`` that is safe to race under the worker threads.
     tag_llm_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
+    # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at`` so it
+    # can pace within-run rate limits: it waits out a full per-minute window (draining the daily
+    # quota across successive minutes) but never past this, so it gives up cleanly before the tag
+    # lane's own wall-clock ``stop()`` budget elapses. ``None`` (default / non-tag lanes) disables
+    # pacing -- a single dispatch attempt then defer, the pre-pacing behavior.
+    tag_llm_deadline: datetime | None = None
 
 
 @dataclass
@@ -739,6 +745,10 @@ class TagsStage:
                             recipe_hash=llm_recipe,
                             chapter_inputs=chapters,
                             agenda_documents=agenda_document_context(ep),
+                            # Let the scheduler pace within-run rate limits up to the tag lane's
+                            # wall-clock budget, so a run drains its full daily quota across minute
+                            # windows instead of bursting one window and stopping.
+                            deadline_at=ctx.tag_llm_deadline,
                         )
                         if dispatched:
                             stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)

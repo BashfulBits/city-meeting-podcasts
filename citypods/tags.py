@@ -679,24 +679,24 @@ def llm_tag_suggestions(
     ]
     inputs: dict[str, Any] = {"messages": messages, "structured_output": LLM_CONTRACT}
     backend_storage = getattr(backend, "storage", None)
-    backend_model = getattr(getattr(backend, "config", None), "model", None)
+    backend_config = getattr(backend, "config", None)
+    backend_model = getattr(backend_config, "model", None)
     if backend_model and getattr(backend_storage, "cas_capable", False):
-        # Pin the scheduler to exactly the one model R5 is calibrated against
-        # (config/site_config.yml's tagging.llm_model): the calibration matrix and fallback
-        # config (review/35) are keyed to one exact provider/model route, and letting the
-        # scheduler roam across models would fragment calibration across separately-unreviewed
-        # routes instead of deepening review of the one route R5 was designed around. This also
-        # matches review/34 §7's production/tournament split -- production always runs the
-        # current champion for a verb, one call per episode; comparing multiple models is the
-        # (separate, still-unbuilt) tournament's job, never this per-episode dispatch. Still gains
-        # real value from the R13 scheduler even pinned: CAS-safe quota accounting across
-        # concurrent shards and a clean deferral (a JobHandle, retried on this stage's own next
-        # scheduled run) instead of a raw provider error. Omitted entirely when the backend's
-        # storage isn't CAS-capable (e.g. local dev/dry runs with no R2 configured), so tagging
-        # keeps working there exactly as it did before R13 rather than failing for lack of
-        # scheduler storage.
+        # Allow the scheduler exactly the calibrated tag route(s): the primary ``model`` plus any
+        # ``additional_models`` (config's ``tagging.llm_models``). Production tags one call per
+        # episode; the extra routes exist only so a run can spill onto a second model's INDEPENDENT
+        # free-tier quota pool once the primary's per-minute/daily window fills -- pure throughput,
+        # not a model comparison (that stays the tournament's job, review/34 §7). ``model`` remains
+        # the single stable route string for the recipe hash and calibration matrix key; each
+        # candidate still records the model that actually answered (``resolved_model`` below), so
+        # calibration is keyed on real usage without fragmenting the cache. The scheduler still
+        # gives CAS-safe cross-shard quota accounting and a clean deferral (a JobHandle, retried by
+        # the deferred sweep / this stage's next run) instead of a raw provider error. Omitted when
+        # storage isn't CAS-capable (local dev/dry runs), so tagging works there as it did pre-R13.
+        additional = tuple(getattr(backend_config, "additional_models", ()) or ())
+        allowed_models = (backend_model, *(m for m in additional if m != backend_model))
         inputs["llm_policy"] = LLMRequestPolicy(
-            allowed_models=(backend_model,),
+            allowed_models=allowed_models,
             allow_paid=allow_paid,
             purpose=purpose,
             deadline_at=deadline_at,

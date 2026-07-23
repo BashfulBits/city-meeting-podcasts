@@ -17,6 +17,29 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM topic tagging now drives its real free-tier throughput: a second Gemini route, the true
+  per-model quotas, and within-run rate pacing.** Three connected changes on top of the tag lane's
+  in-memory triage. (1) **Two routes.** `gemini/gemini-3.5-flash-lite` joins `gemini-3.1-flash-lite`
+  in the route table (each an independent free-tier pool: 500 req/day, 15 rpm, 250k tpm), and the
+  tag policy now allows both (`tagging.llm_models`, primary first) so a run spills onto the second
+  model once the first's window fills — ~1000 tags/day at ~30 rpm combined. The primary stays the
+  single stable route string for the recipe hash and calibration key; each candidate still records
+  the model that actually answered, so calibration keys on real usage without fragmenting the cache.
+  (2) **Real quotas.** `gemini-3.1-flash-lite` is raised from its initial `rpd=20`/`rpm=10` safety
+  ceiling to the real `rpd=500`/`rpm=15`/`tpm=250k`. (3) **Within-run pacing.** The scheduler
+  (`select_route`) now reports `retry_at` — the soonest an allowed route frees up (per-minute
+  rollover, daily reset, or the end of a real-429 block) — and `LiteLLMBackend._run_policy_job_paced`
+  waits that out and retries, bounded by the request's `deadline_at`, so a run **drains its full
+  daily quota across successive minute windows** instead of bursting one window's ~15 and stopping.
+  It respects a token-per-minute (or request-per-minute) limit and a real `429` identically: both
+  surface as a near-future `retry_at`, so the loop backs off and retries at the next reset; it only
+  gives up (deferring to the sweep / a later run) when the sole remaining reset is a daily one past
+  the run's wall-clock budget. The tag lane passes that budget through as `ctx.tag_llm_deadline`
+  (`StageContext`), a UTC twin of its graceful-yield deadline. Pacing is gated on `deadline_at`, so
+  any caller without one (discovery) keeps the exact single-attempt-then-defer behavior; the LLM
+  tournament, which already sets a 20-minute deadline, now paces within it too. Reservations still
+  settle/release per attempt and no intermediate deferred record is written between paced retries.
+
 - **Dormant-resumption review is now actionable and issue commands verify real repository
   permission.** A `dormant-resumed` child offers `/stale activate`, which creates a review PR that
   removes the dormant lifecycle block and restores normal freshness monitoring; an unhandled child

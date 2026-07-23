@@ -31,6 +31,13 @@ class SelectionResult:
     # owner uniqueness depends on the *selected* route's transport (see `select_and_reserve`),
     # which isn't known until selection completes.
     owner: str | None = None
+    # When nothing was selectable *now*, the earliest UTC time an allowed route is predicted to
+    # become eligible again (the soonest per-minute window rollover, daily quota reset, or the end
+    # of a real-429 block across the allowed routes), or `None` if nothing will free up. A pacing
+    # caller (see `LiteLLMBackend._run_policy_job`) sleeps until this instead of deferring to a
+    # future run, so a single run can drain its full daily quota across successive minute windows
+    # rather than bursting one window's worth and stopping. `None` when a route *was* selected.
+    retry_at: datetime | None = None
 
 
 def _window_bounds(window, now: datetime) -> tuple[datetime, datetime] | None:
@@ -145,6 +152,13 @@ def select_route(
     rejected: list[tuple[str, str]] = []
     candidates: list[tuple[LLMRoute, float, datetime]] = []
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
+    # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
+    # only *temporarily* unavailable -- per-minute window full, daily quota spent, or under a real
+    # 429 block -- is predicted to free up again. A pacing caller sleeps until this rather than
+    # deferring the whole request to a future run. Off-peak (discount-window) waits are excluded:
+    # a route gated only on a price window is available *now*, just not at its cheapest, so pacing
+    # against it would stall a free request for a discount it doesn't need.
+    retry_ats: list[datetime] = []
 
     for model, route in sorted(routes.items()):
         if route.transport not in available_transports:
@@ -169,6 +183,7 @@ def select_route(
             if route_ledger is None:
                 route_ledger = ledger._ledger(model, now, route=route)
             predicted = _next_quota_reset(route, route_ledger, now)
+            retry_ats.append(predicted)
             reason = "quota or budget exhausted"
             if policy.deadline_at is not None and predicted > policy.deadline_at:
                 rejected.append((model, f"deadline gate: next eligibility {predicted.isoformat()}"))
@@ -190,7 +205,9 @@ def select_route(
 
     if not candidates:
         reason = "no configured LLM route is eligible right now"
-        return SelectionResult(None, None, reason, tuple(rejected))
+        return SelectionResult(
+            None, None, reason, tuple(rejected), retry_at=min(retry_ats, default=None)
+        )
     route, _, predicted = min(
         candidates,
         key=lambda item: (not item[0].free, item[1], item[2], item[0].model),
@@ -288,7 +305,9 @@ def select_and_reserve(
             )
         except CASConflict:
             sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
-    return SelectionResult(None, None, last_selection.reason, last_selection.rejected)
+    return SelectionResult(
+        None, None, last_selection.reason, last_selection.rejected, retry_at=last_selection.retry_at
+    )
 
 
 __all__ = ["SelectionResult", "select_and_reserve", "select_route"]

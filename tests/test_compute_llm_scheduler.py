@@ -139,6 +139,64 @@ def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
     assert ("mistral/mistral-large-latest", "transport gate") in result.rejected
 
 
+def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():
+    """Pacing signal: with the per-minute window full but the daily quota still open, `retry_at`
+    is the next minute boundary -- the paced caller waits that out and keeps dispatching, draining
+    the daily quota across successive minutes instead of stopping at the first RPM burst."""
+    budget = LLMBudget()
+    model = "gemini/gemini-3.1-flash-lite"
+    route = ROUTES[model]
+    led = budget._ledger(model, NOW, route=route)
+    led.requests_minute = route.quota.rpm  # this minute is spent; the day still has room
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(model,)),
+        routes=ROUTES,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model is None
+    assert result.retry_at == NOW.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
+
+def test_retry_at_is_none_when_a_route_is_available_now():
+    result = select_route(
+        LLMRequestPolicy(allowed_models=("gemini/gemini-3.1-flash-lite",)),
+        routes=ROUTES,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model == "gemini/gemini-3.1-flash-lite"
+    assert result.retry_at is None
+
+
+def test_retry_at_spans_to_the_second_route_when_the_first_is_daily_exhausted():
+    """With both flash-lite routes allowed, a run that has spent 3.1's whole day but not 3.5's
+    still gets an immediate selection (3.5), so throughput spills across the two independent pools
+    rather than deferring."""
+    budget = LLMBudget()
+    spent = "gemini/gemini-3.1-flash-lite"
+    led = budget._ledger(spent, NOW, route=ROUTES[spent])
+    led.requests_day = ROUTES[spent].quota.rpd  # 3.1 fully spent for the day
+
+    result = select_route(
+        LLMRequestPolicy(
+            allowed_models=("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+        ),
+        routes=ROUTES,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model == "gemini/gemini-3.5-flash-lite"
+    assert result.retry_at is None
+
+
 def test_a_caller_reaching_both_transports_can_select_either():
     """The sweep (and any caller configured with a dispatch Worker) can reach both -- this is
     what lets a single backend instance service pending records regardless of which provider

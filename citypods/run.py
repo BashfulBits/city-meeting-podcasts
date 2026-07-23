@@ -1636,9 +1636,19 @@ def _build_impl(
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
+            primary_model = str(tagging_config.get("llm_model", "gemini/gemini-3-flash-preview"))
+            # Extra routes the scheduler may spill onto for throughput once the primary's own
+            # per-minute/daily quota window fills (each is an independent free-tier pool). Config's
+            # `tagging.llm_models` lists every route to draw on, primary first; anything after the
+            # primary becomes `additional_models`. Absent/legacy config keeps the single-route
+            # behavior. The primary stays the stable recipe/calibration route (see
+            # llm_tag_suggestions).
+            configured_models = [str(m) for m in (tagging_config.get("llm_models") or [])]
+            additional_models = tuple(m for m in configured_models if m != primary_model)
             tag_backend = LiteLLMBackend(
                 LLMBackendConfig(
-                    model=str(tagging_config.get("llm_model", "gemini/gemini-3-flash-preview")),
+                    model=primary_model,
+                    additional_models=additional_models,
                     mode=str(tagging_config.get("llm_mode", "direct")),
                     dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
                     dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
@@ -1703,6 +1713,7 @@ def _build_impl(
     deadline: float | None = None
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
+    tag_llm_deadline = None  # UTC datetime; set for the `tag` lane so the LLM scheduler can pace
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
@@ -1743,6 +1754,14 @@ def _build_impl(
             remaining_secs = max(0.0, tag_deadline_secs - (time.monotonic() - enrich_phase_start))
             deadline = (time.monotonic() + remaining_secs) if tag_window_min > 0 else None
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            if tag_window_min > 0:
+                # Wall-clock (UTC) twin of the monotonic `deadline` above: the LLM tag scheduler
+                # needs an absolute datetime as its `deadline_at` to pace within-run rate limits
+                # (wait out a per-minute window, but never past the run's budget). Same remaining
+                # budget, expressed as a clock time.
+                from datetime import UTC, datetime, timedelta
+
+                tag_llm_deadline = datetime.now(UTC) + timedelta(seconds=remaining_secs)
             if tag_window_min > 0:
                 print(
                     f"budget: tag wall-clock window {tag_window_min:.0f}m × {safety} "
@@ -1943,6 +1962,7 @@ def _build_impl(
             else None
         ),
         lane=lane,
+        tag_llm_deadline=tag_llm_deadline,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
