@@ -71,26 +71,6 @@ jobs:
         working-directory: workers/granicus-media-proxy
         run: npm test
 
-  # TEMPORARY diagnostic: BtbN/FFmpeg-Builds' `latest` release asset list, so the pin swap away
-  # from johnvansickle (unreliable — mismatched bytes, then 404s on the identical URL within
-  # minutes) can target a real, current filename instead of guessing. Remove after use.
-  probe-btbn-latest:
-    runs-on: ubuntu-latest
-    steps:
-      - name: List latest release assets
-        run: |
-          curl -sS "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" \
-            -H "Accept: application/vnd.github+json" -o /tmp/release.json
-          python3 -c "
-import json
-d = json.load(open('/tmp/release.json'))
-print('tag_name:', d.get('tag_name'))
-print('published_at:', d.get('published_at'))
-print('message:', d.get('message'))
-for a in d.get('assets') or []:
-    print(a['name'])
-"
-
   # Dependency-pinning policy enforcement (review/22). Keeps pins from rotting.
   deps:
     runs-on: ubuntu-latest
