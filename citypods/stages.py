@@ -288,6 +288,10 @@ class StageContext:
     # reached dispatch -- exactly what a real scheduled run showed (2 live LLM calls total). Same
     # object for the whole run since `ctx` itself is constructed once per build.
     tag_taxonomy_cache: dict[str, Any] = field(default_factory=dict)
+    # Guards check-then-populate access to `tag_taxonomy_cache` across the global queue's worker
+    # thread pool -- see the lock's use in `TagsStage.process()` for why an unguarded cache would
+    # let one thread observe another's partially-written cache bundle.
+    tag_taxonomy_cache_lock: threading.Lock = field(default_factory=threading.Lock)
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
     # EBU R128 loudness normalization (#151). Empty string = disabled.
@@ -494,6 +498,8 @@ class TagsStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
+        import yaml
+
         from citypods.chapters import episode_served_chapters
         from citypods.llm_evaluation import (
             apply_admission,
@@ -524,46 +530,61 @@ class TagsStage:
         # see `StageContext.tag_taxonomy_cache`), not once per episode. A prior failure is cached
         # too (as an error string) so a broken taxonomy/state file reports itself on every call
         # without re-attempting the same failing local-disk read thousands of times.
-        cache = ctx.tag_taxonomy_cache
-        if "taxonomy_error" in cache:
-            stats.errors.append(cache["taxonomy_error"])
-            return stats
-        if "eval_error" in cache:
-            stats.errors.append(cache["eval_error"])
-            return stats
-        if "taxonomy" not in cache:
-            try:
-                cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
-            except (OSError, ValueError) as exc:
-                cache["taxonomy_error"] = f"taxonomy unavailable: {exc}"
+        #
+        # The global queue runs this across a worker thread pool sharing one `ctx`, so the whole
+        # check-then-populate sequence is guarded by `tag_taxonomy_cache_lock`: without it, one
+        # thread's cache writes (three separate dict assignments, not atomic as a group) could be
+        # interleaved with another thread's read of a still-incomplete cache -- e.g. a second
+        # thread seeing `evaluation_state` already written but `admission_policy` not yet, skipping
+        # (re-)population entirely, and then KeyError-ing on the read below. Contention only matters
+        # for the first handful of calls (a warm cache read is a fast, lock-guarded dict lookup).
+        with ctx.tag_taxonomy_cache_lock:
+            cache = ctx.tag_taxonomy_cache
+            if "taxonomy_error" in cache:
                 stats.errors.append(cache["taxonomy_error"])
                 return stats
-        if "evaluation_state" not in cache:
-            evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
-            try:
-                evaluation_state = (
-                    load_state(ctx.llm_evaluation_state_path)
-                    if ctx.llm_evaluation_state_path is not None
-                    else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-                )
-            except ValueError as exc:
-                # load_state() fails closed on a corrupted (not merely missing) state file rather
-                # than silently resetting it -- that protects against this stage's caller later
-                # clobbering real review history via save_state(), but this stage itself only ever
-                # *reads* the file, so degrading tagging for this run (retried next run once the
-                # file is fixed) is the right response here, not crashing the whole city's enrich
-                # pass.
-                cache["eval_error"] = f"LLM evaluation state unavailable: {exc}"
+            if "eval_error" in cache:
                 stats.errors.append(cache["eval_error"])
                 return stats
-            cache["evaluation_config"] = evaluation_config
-            cache["evaluation_state"] = evaluation_state
-            cache["admission_policy"] = policy_fingerprint(evaluation_config, evaluation_state)
+            if "taxonomy" not in cache:
+                try:
+                    cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
+                except (OSError, ValueError, KeyError, IndexError, yaml.YAMLError) as exc:
+                    # yaml.YAMLError (parse/scan errors) is NOT a ValueError subclass, and PyYAML
+                    # is documented to leak raw ValueError/KeyError/IndexError for some malformed
+                    # explicit-tag scalars (e.g. `!!int nope`) instead of wrapping them in
+                    # yaml.YAMLError -- both must be caught here for a genuinely corrupt
+                    # taxonomy.yml to degrade gracefully (cached, reported once) rather than
+                    # propagate uncaught out of every one of this run's per-episode calls.
+                    cache["taxonomy_error"] = f"taxonomy unavailable: {exc}"
+                    stats.errors.append(cache["taxonomy_error"])
+                    return stats
+            if "evaluation_state" not in cache:
+                evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
+                try:
+                    evaluation_state = (
+                        load_state(ctx.llm_evaluation_state_path)
+                        if ctx.llm_evaluation_state_path is not None
+                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+                    )
+                except ValueError as exc:
+                    # load_state() fails closed on a corrupted (not merely missing) state file
+                    # rather than silently resetting it -- that protects against this stage's
+                    # caller later clobbering real review history via save_state(), but this stage
+                    # itself only ever *reads* the file, so degrading tagging for this run (retried
+                    # next run once the file is fixed) is the right response here, not crashing the
+                    # whole city's enrich pass.
+                    cache["eval_error"] = f"LLM evaluation state unavailable: {exc}"
+                    stats.errors.append(cache["eval_error"])
+                    return stats
+                cache["evaluation_config"] = evaluation_config
+                cache["evaluation_state"] = evaluation_state
+                cache["admission_policy"] = policy_fingerprint(evaluation_config, evaluation_state)
 
-        taxonomy = cache["taxonomy"]
-        evaluation_config = cache["evaluation_config"]
-        evaluation_state = cache["evaluation_state"]
-        admission_policy = cache["admission_policy"]
+            taxonomy = cache["taxonomy"]
+            evaluation_config = cache["evaluation_config"]
+            evaluation_state = cache["evaluation_state"]
+            admission_policy = cache["admission_policy"]
 
         for ep in _materialize_set(episodes, city.max_episodes):
             llm_route = (

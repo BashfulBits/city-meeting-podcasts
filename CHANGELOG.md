@@ -32,7 +32,18 @@ Phase R (Research-Tool Surface)._
   per-episode call in one build) — a load failure is cached too, so a broken taxonomy/state file
   still reports on every call without re-attempting the same failing read thousands of times.
   Measured effect: ~28ms/call → ~0.6ms/call (cache hit) for the fixed per-call cost, ~48x; projected
-  total for a 13k-episode backlog drops from minutes to under 8 seconds.
+  total for a 13k-episode backlog drops from minutes to under 8 seconds. Two follow-up fixes from
+  code review, both real: (1) `yaml.YAMLError` is not a `ValueError` subclass, and PyYAML is
+  documented to leak raw `ValueError`/`KeyError`/`IndexError` for some malformed explicit-tag
+  scalars instead of wrapping them — the original `except (OSError, ValueError)` around
+  `load_taxonomy()` missed all of these, so a genuinely corrupt `taxonomy.yml` would propagate
+  uncaught instead of degrading gracefully via the new cached-error path; broadened to catch all of
+  them. (2) The global queue calls `TagsStage.process()` from a worker thread pool sharing one
+  `ctx`, and the cache bundle is written as three separate, non-atomic dict assignments — a second
+  thread could observe `evaluation_state` already cached but `admission_policy` not yet written and
+  KeyError, or (the case a barrier-synchronized regression test actually reproduces) every
+  concurrently-arriving thread could see an empty cache at once and each perform its own duplicate
+  load. Both check-then-populate paths are now serialized under a new `tag_taxonomy_cache_lock`.
 
 - **LLM topic tagging now drives its real free-tier throughput: a second Gemini route, the true
   per-model quotas, and within-run rate pacing.** Three connected changes on top of the tag lane's

@@ -754,6 +754,76 @@ def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeyp
     assert load_state_calls["n"] == 2
 
 
+def test_tags_stage_cache_population_is_atomic_under_concurrent_workers(tmp_path, monkeypatch):
+    """The global queue calls TagsStage.process() from a worker thread pool, all sharing one
+    `ctx`. The cache bundle (taxonomy, evaluation_config, evaluation_state, admission_policy) is
+    written as three separate, non-atomic dict assignments -- without a lock, one thread could
+    write `evaluation_state` and then be preempted before writing `admission_policy`; a second
+    thread arriving in that window would see `evaluation_state` already cached, skip
+    initialization entirely, and KeyError reading `cache["admission_policy"]`. An injected delay
+    between those two writes widens that window so the race would be near-certain to reproduce
+    without `tag_taxonomy_cache_lock` serializing the whole check-then-populate sequence."""
+    import json
+    import threading
+    import time
+
+    import citypods.llm_evaluation as eval_mod
+    import citypods.tags as tags_mod
+    from citypods.stages import TagsStage
+
+    load_taxonomy_calls = {"n": 0}
+    real_load_taxonomy = tags_mod.load_taxonomy
+
+    def _slow_load_taxonomy(*a, **k):
+        load_taxonomy_calls["n"] += 1
+        result = real_load_taxonomy(*a, **k)
+        time.sleep(0.02)  # widen the window between the taxonomy and eval-state cache writes
+        return result
+
+    monkeypatch.setattr(tags_mod, "load_taxonomy", _slow_load_taxonomy)
+
+    load_state_calls = {"n": 0}
+    real_load_state = eval_mod.load_state
+
+    def _slow_load_state(*a, **k):
+        load_state_calls["n"] += 1
+        result = real_load_state(*a, **k)
+        time.sleep(0.02)  # widen the window between the eval-state and admission-policy writes
+        return result
+
+    monkeypatch.setattr(eval_mod, "load_state", _slow_load_state)
+
+    eval_state_path = tmp_path / "llm_evaluation.json"
+    eval_state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
+
+    ctx = _ctx(tmp_path)
+    ctx.llm_evaluation_state_path = eval_state_path
+    stage = TagsStage()
+
+    n_threads = 12
+    errors: list[BaseException] = []
+    errors_lock = threading.Lock()
+    barrier = threading.Barrier(n_threads)
+
+    def _worker(i):
+        barrier.wait()  # line every thread up to hit process() at the same instant
+        try:
+            stage.process(None, _city(), [_ep(f"g{i}")], ctx)
+        except BaseException as exc:  # noqa: BLE001 -- capture from a worker thread to re-raise
+            with errors_lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=_worker, args=(i,)) for i in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert not errors, f"worker thread(s) raised: {errors}"
+    assert load_taxonomy_calls["n"] == 1, f"loaded taxonomy {load_taxonomy_calls['n']}x, want 1"
+    assert load_state_calls["n"] == 1, f"loaded eval state {load_state_calls['n']}x, want 1"
+
+
 def test_tags_stage_pending_episode_still_attempts_when_quota_available(tmp_path):
     """The flip side: while the backend still has capacity (exhaustion flag unset), a pending
     episode must NOT be skipped -- it proceeds to fetch and re-attempt the LLM. Proven by the
