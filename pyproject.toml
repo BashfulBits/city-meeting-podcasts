@@ -66,7 +66,13 @@ llm = [
     # requirement into prereleases without a blanket --pre). Revisit and relax once litellm cuts a
     # stable release containing this commit.
     "litellm>=1.94.0rc3",            # provider-neutral model routing
-    "instructor[litellm]>=1.15",    # Pydantic structured outputs and bounded validation retries
+    # Extra dropped (not just the version): instructor==1.15.4 (its own latest release) pins its
+    # `[litellm]` extra to `litellm<=1.83.7`, which conflicts with the floor above and blocks
+    # pip-compile outright -- there is no newer instructor release with a higher cap. The extra
+    # only pulls in litellm as a convenience; we already declare litellm ourselves above, and
+    # instructor.from_litellm() imports litellm lazily at call time rather than needing the extra
+    # for anything instructor's own code paths do internally.
+    "instructor>=1.15",             # Pydantic structured outputs and bounded validation retries
 ]
 dev = ["pytest>=8.0", "ruff>=0.6", "boto3>=1.34", "pip-tools>=7.4"]
 
