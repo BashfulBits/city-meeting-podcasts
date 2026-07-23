@@ -754,6 +754,28 @@ def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeyp
     assert load_state_calls["n"] == 2
 
 
+def test_tags_stage_caches_malformed_evaluation_config_as_eval_error(tmp_path):
+    """`config_from_mapping()` and `policy_fingerprint()` run inside the same cache-populate block
+    as `load_state()`, so a malformed `tagging.evaluation` config (e.g. a non-numeric
+    `minimum_reviews`) must degrade the same way a corrupt state file already does: cached once as
+    `eval_error` and reported cheaply on every subsequent call, not re-raised uncaught out of every
+    one of this run's per-episode process() calls."""
+    from citypods.stages import TagsStage
+
+    ctx = _ctx(tmp_path)
+    ctx.llm_evaluation_config = {"minimum_reviews": "not-a-number"}
+
+    stats = TagsStage().process(None, _city(), [_ep("g1")], ctx)
+
+    assert "eval_error" in ctx.tag_taxonomy_cache
+    assert stats.errors and "LLM evaluation state unavailable" in stats.errors[0]
+
+    # Cached, not re-raised: a second call with the same broken ctx reports the same error again
+    # instead of blowing up.
+    stats2 = TagsStage().process(None, _city(), [_ep("g2")], ctx)
+    assert stats2.errors and "LLM evaluation state unavailable" in stats2.errors[0]
+
+
 def test_tags_stage_cache_population_is_atomic_under_concurrent_workers(tmp_path, monkeypatch):
     """The global queue calls TagsStage.process() from a worker thread pool, all sharing one
     `ctx`. The cache bundle (taxonomy, evaluation_config, evaluation_state, admission_policy) is
