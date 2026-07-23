@@ -41,21 +41,47 @@ Phase R (Research-Tool Surface)._
   citypods' own source isn't brought under GPL/LGPL copyleft — but that's a separate question from
   GPLv3's *distribution* obligations for the binary itself: `audio-runner-image.yml` publishes a
   GHCR image containing this GPL binary, which is a conveyance under GPLv3 and needs its own
-  accompanying source offer/notice, not yet added here. The self-hosted follow-up described below
-  resolves this by vendoring BtbN's LGPL build instead of johnvansickle's GPL one, sidestepping the
-  distribution question for the new pin rather than adding GPL notices to a pin being replaced
-  anyway. Per the `review/22` contract, this is *not* a no-op re-pin (the
+  accompanying source offer/notice, not yet added here. Resolved below by building ffmpeg from
+  the official upstream source instead of vendoring *any* third-party redistribution — LGPL-only,
+  no GPL notice question to answer. Per the `review/22` contract, this is *not* a no-op re-pin (the
   version genuinely moved, forced by source availability) — deferred to `dep-bump-smoke`'s
   automated per-source before/after comparison (triggered via the `output-affecting` label) rather
   than speculatively bumping `AUDIO_PIPELINE_VERSION` without evidence of actual output drift.
-  Longer-term: self-hosting the ~103 MB tarball behind the existing Cloudflare-fronted
-  `B2_PUBLIC_BASE_URL`/`R2_PUBLIC_BASE_URL` pattern (already used for hosted audio) would remove
-  the third-party-availability dependency entirely; not done here, left for a follow-up.
   `scripts/install_static_ffmpeg.py` now tries the other path (`releases/` ↔ `old-releases/`)
   automatically when the pinned one 404s, so the exact day johnvansickle moves a version doesn't
   need a same-day pin update to keep builds working — only a real download failure (not a
   checksum mismatch, which still fails hard and never silently retries a different URL) triggers
-  the fallback.
+  the fallback. **Superseded within days** (see the next entry): johnvansickle turned out to be
+  just as unreliable as BtbN under this repo's real usage pattern — a verified download, then
+  repeated mismatched-bytes and 404 failures on the identical URL within minutes — so re-pinning
+  to it was never a durable fix, only what unblocked things immediately.
+
+- **Static ffmpeg now built from official upstream source (`github.com/FFmpeg/FFmpeg`) and
+  self-hosted, instead of pinning any third-party redistribution.** Both prior pins in this file
+  (BtbN/FFmpeg-Builds' dated release tags, then johnvansickle.com) were third-party redistributors
+  of ffmpeg builds and both proved unreliable as *ongoing* dependencies — re-pinning to yet another
+  mirror would only relocate the same problem. `scripts/build_ffmpeg_static.sh` clones the
+  requested FFmpeg git tag and configures LGPL-only (no `--enable-gpl`, ever — sidesteps the
+  GPLv3 distribution-notice question raised above entirely, rather than answering it). FFmpeg's
+  native decoders already cover h264/hevc/vp8/vp9/av1/aac/mp3/opus/vorbis/ac3/flac without any
+  external library, which matters because citypods decodes whatever providers serve (Granicus MP4,
+  Swagit HLS/mp4, CivicPlus tokenized HLS) and doesn't control their encoding. Four permissively
+  licensed external libraries widen that further without needing GPL: `libopus`/`libvpx`/`libdav1d`
+  (BSD) and `libmp3lame` (LGPL); network protocol support (`--enable-gnutls`, LGPLv2.1-compatible —
+  `get_or_fetch` in `media.py` feeds ffmpeg remote URLs directly over http/https, so this is
+  load-bearing, not optional) stays on LGPLv2.1 rather than pulling in `--enable-version3` the way
+  OpenSSL ≥3.0 would require. citypods' own encode usage is exactly `-c:a aac` and `-c:a flac`
+  (both native, no external library at all). The enabled-libs list lives in the build script
+  itself, so adding an encode codec is a normal reviewable diff.
+  `.github/workflows/build-ffmpeg.yml` is the dispatch-only "dependency change prep" workflow —
+  build, then `scripts/vendor_pinned_binary.py --local-file` uploads the result to
+  `deps/ffmpeg/<version>/...` in B2, served through the existing Cloudflare-fronted
+  `B2_PUBLIC_BASE_URL` (never the metered B2 API). `vendor_pinned_binary.py` (new, generalized
+  for any future pinned external binary, not ffmpeg-specific) refuses to overwrite an existing
+  `deps/` key — vendored objects are immutable — and gates any `--source-url` fetch through
+  `validate_source_url` (SSRF/private-network guard); `--local-file` skips that gate since it's
+  this job's own build output, not a caller-supplied URL. No workflow fetches from an upstream or
+  mirror host on every run anymore, and no third-party redistributor is a runtime dependency.
 
 - **`litellm` bumped to `1.95.0.dev1` (pre-release), and `instructor`'s `[litellm]` extra dropped, to
   unblock `gemini-3.5-flash-lite`.** A real manually-triggered `tag.yml` run showed the second Gemini

@@ -50,7 +50,7 @@ SUDO=""
 [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 $SUDO apt-get update -qq
 $SUDO apt-get install -y -qq \
-  build-essential yasm nasm pkg-config git zlib1g-dev libssl-dev \
+  build-essential yasm nasm pkg-config git zlib1g-dev libgnutls28-dev \
   libopus-dev libvpx-dev libdav1d-dev libmp3lame-dev
 
 echo "== Cloning FFmpeg ${GIT_TAG} =="
@@ -66,8 +66,10 @@ CONFIGURE_ARGS=(
   --disable-ffplay
   # get_or_fetch() (media.py) feeds ffmpeg remote URLs directly via -i with an
   # http,https,tcp,tls protocol whitelist -- network protocol support (and TLS for https) is
-  # load-bearing, not optional. OpenSSL is Apache-2.0, not GPL.
-  --enable-openssl
+  # load-bearing, not optional. GnuTLS, not OpenSSL: FFmpeg's configure requires
+  # --enable-version3 (LGPLv3+, not the LGPLv2.1+ this script packages) to link OpenSSL >=3.0,
+  # which is what Debian/Ubuntu ship -- GnuTLS's core library is LGPLv2.1+, no version bump needed.
+  --enable-gnutls
 )
 for lib in "${ENABLED_EXTERNAL_LIBS[@]}"; do
   CONFIGURE_ARGS+=("--enable-${lib}")
