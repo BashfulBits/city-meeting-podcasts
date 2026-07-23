@@ -60,6 +60,7 @@ class _PacingBackend(LiteLLMBackend):
 
 # ---- _pacing_wait_seconds ------------------------------------------------------------------
 
+
 def test_pacing_wait_none_when_nothing_frees_up():
     assert _pacing_wait_seconds(None, _T0 + timedelta(minutes=10), _T0) is None
 
@@ -86,6 +87,7 @@ def test_pacing_wait_zero_when_already_due():
 
 
 # ---- the paced loop ------------------------------------------------------------------------
+
 
 def test_no_deadline_is_a_single_attempt_then_defer():
     """Without a deadline there's nothing to pace against: one attempt, return the deferred handle
@@ -160,6 +162,7 @@ def test_retries_immediately_when_a_route_freed_between_checks():
 
 
 # ---- route table -----------------------------------------------------------------------------
+
 
 def test_both_flash_lite_routes_present_with_real_free_tier_quotas():
     for model in ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite"):
