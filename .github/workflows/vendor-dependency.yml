@@ -1,0 +1,83 @@
+name: Vendor pinned dependency
+
+# Fetches a pinned external binary from one or more upstream URLs and re-hosts it in our own B2
+# bucket under deps/<name>/<version>/<filename> (review/22). Generalizes the fix that replaced
+# static ffmpeg's upstream pin -- first BtbN/FFmpeg-Builds' pruned dated release tags, then
+# johnvansickle.com's single-server hosting, which turned out to rate-limit/block the repeated
+# automated requests this repo's workflows make -- so the same pattern covers any future pinned
+# external binary without re-deriving it. Workflow pins then point at the resulting
+# B2_PUBLIC_BASE_URL (our own Cloudflare-fronted domain, so downloads never touch the metered B2
+# API), not an upstream host whose availability we don't control.
+#
+# Dispatch from the Actions tab -> "Vendor pinned dependency" -> Run workflow. Give it one or more
+# source URLs (comma- or newline-separated, tried in order); leave expected_sha256 blank to
+# trust-on-first-use and read the resulting digest back from the job summary to pin going forward.
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Dependency name, e.g. ffmpeg"
+        required: true
+        type: string
+      version:
+        description: "Pinned version, e.g. 7.1.5"
+        required: true
+        type: string
+      filename:
+        description: "Archive filename to store it under, e.g. ffmpeg-7.1.5-amd64-static.tar.xz"
+        required: true
+        type: string
+      source_urls:
+        description: "Source URL(s) to fetch from, comma- or newline-separated, tried in order"
+        required: true
+        type: string
+      expected_sha256:
+        description: "Expected sha256; leave blank to trust-on-first-use and pin the result"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Vendor dependency
+        # B2 write secrets scoped to this step alone (CR-GH-07/CR-GH-23/CR-GH-25) -- checkout and
+        # setup-python don't touch storage. Inputs pass through env, never inline `${{ }}` inside
+        # the shell body, so a free-form input can't splice script text into this step (CR2-GH-07).
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          DEP_NAME: ${{ inputs.name }}
+          DEP_VERSION: ${{ inputs.version }}
+          DEP_FILENAME: ${{ inputs.filename }}
+          SOURCE_URLS: ${{ inputs.source_urls }}
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+        run: |
+          ARGS=(--name "$DEP_NAME" --version "$DEP_VERSION" --filename "$DEP_FILENAME")
+          while read -r url; do
+            [ -n "$url" ] && ARGS+=(--source-url "$url")
+          done < <(printf '%s\n' "$SOURCE_URLS" | tr ',' '\n')
+          if [ -n "$EXPECTED_SHA256" ]; then
+            ARGS+=(--expected-sha256 "$EXPECTED_SHA256")
+          fi
+          PYTHONPATH=. python scripts/vendor_pinned_binary.py "${ARGS[@]}"

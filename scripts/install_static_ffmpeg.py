@@ -9,28 +9,52 @@ SHA-256 must match before the archive is opened.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import shutil
 import stat
+import sys
 import tarfile
 import tempfile
-import urllib.request
+import urllib.error
 from pathlib import Path
 
-CHUNK_SIZE = 1024 * 1024
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts._pinned_fetch import download as _download  # noqa: E402
 
 
-def _download(url: str, destination: Path, *, timeout_seconds: float) -> str:
-    digest = hashlib.sha256()
-    request = urllib.request.Request(url, headers={"User-Agent": "citypods-audio-runner/1"})
-    with (
-        urllib.request.urlopen(request, timeout=timeout_seconds) as response,
-        destination.open("wb") as output,
-    ):
-        while chunk := response.read(CHUNK_SIZE):
-            output.write(chunk)
-            digest.update(chunk)
-    return digest.hexdigest()
+def _fallback_urls(url: str) -> list[str]:
+    """johnvansickle.com moves each release archive from ``releases/`` to ``old-releases/`` under
+    the same filename the moment a newer version supersedes it (undocumented but consistently
+    observed behavior -- see review/22): a URL pinned to whichever path holds it *today* 404s once
+    that happens, which could land between this pin's scheduled monthly review cycles. Try the
+    other path before giving up, so which side of that move we're on doesn't matter. A no-op for
+    any other host."""
+    if "johnvansickle.com/ffmpeg/releases/" in url:
+        return [url, url.replace("/ffmpeg/releases/", "/ffmpeg/old-releases/")]
+    if "johnvansickle.com/ffmpeg/old-releases/" in url:
+        return [url, url.replace("/ffmpeg/old-releases/", "/ffmpeg/releases/")]
+    return [url]
+
+
+def _download_with_fallback(
+    url: str, destination: Path, *, timeout_seconds: float
+) -> tuple[str, str]:
+    """``_download`` across ``_fallback_urls(url)`` in order, returning ``(digest, actual_url)``
+    for the candidate that supplied the archive. Only a connectivity/HTTP failure (``URLError``,
+    which ``HTTPError`` subclasses) advances to the next candidate -- a successful download that
+    fails its checksum is a real integrity problem, not an availability one, and must surface as
+    that mismatch rather than silently retrying a different URL."""
+    candidates = _fallback_urls(url)
+    last_error: urllib.error.URLError | None = None
+    for candidate in candidates:
+        try:
+            return _download(candidate, destination, timeout_seconds=timeout_seconds), candidate
+        except urllib.error.URLError as exc:
+            last_error = exc
+    assert last_error is not None  # candidates is never empty
+    raise last_error
 
 
 def install(
@@ -56,7 +80,9 @@ def install(
 
     with tempfile.TemporaryDirectory(prefix="citypods_ffmpeg_") as tmp:
         archive_path = Path(tmp) / "ffmpeg.tar.xz"
-        actual = _download(url, archive_path, timeout_seconds=timeout_seconds)
+        actual, actual_url = _download_with_fallback(
+            url, archive_path, timeout_seconds=timeout_seconds
+        )
         if actual != expected:
             raise RuntimeError(
                 f"ffmpeg archive checksum mismatch: expected {expected}, downloaded {actual}"
@@ -99,7 +125,7 @@ def install(
         shutil.move(str(staged), str(bin_dir))
         shutil.move(str(Path(tmp) / "LICENSE.ffmpeg.txt"), install_dir / "LICENSE.ffmpeg.txt")
         (install_dir / "SOURCE.txt").write_text(
-            f"{url}\nsha256:{expected}\n",
+            f"{actual_url}\nsha256:{expected}\n",
             encoding="utf-8",
         )
         marker.write_text(expected + "\n", encoding="utf-8")
