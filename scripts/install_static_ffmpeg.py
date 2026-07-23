@@ -14,10 +14,25 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 CHUNK_SIZE = 1024 * 1024
+
+
+def _fallback_urls(url: str) -> list[str]:
+    """johnvansickle.com moves each release archive from ``releases/`` to ``old-releases/`` under
+    the same filename the moment a newer version supersedes it (undocumented but consistently
+    observed behavior -- see review/22): a URL pinned to whichever path holds it *today* 404s once
+    that happens, which could land between this pin's scheduled monthly review cycles. Try the
+    other path before giving up, so which side of that move we're on doesn't matter. A no-op for
+    any other host."""
+    if "johnvansickle.com/ffmpeg/releases/" in url:
+        return [url, url.replace("/ffmpeg/releases/", "/ffmpeg/old-releases/")]
+    if "johnvansickle.com/ffmpeg/old-releases/" in url:
+        return [url, url.replace("/ffmpeg/old-releases/", "/ffmpeg/releases/")]
+    return [url]
 
 
 def _download(url: str, destination: Path, *, timeout_seconds: float) -> str:
@@ -31,6 +46,22 @@ def _download(url: str, destination: Path, *, timeout_seconds: float) -> str:
             output.write(chunk)
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _download_with_fallback(url: str, destination: Path, *, timeout_seconds: float) -> str:
+    """``_download`` across ``_fallback_urls(url)`` in order. Only a connectivity/HTTP failure
+    (``URLError``, which ``HTTPError`` subclasses) advances to the next candidate -- a successful
+    download that fails its checksum is a real integrity problem, not an availability one, and
+    must surface as that mismatch rather than silently retrying a different URL."""
+    candidates = _fallback_urls(url)
+    last_error: urllib.error.URLError | None = None
+    for candidate in candidates:
+        try:
+            return _download(candidate, destination, timeout_seconds=timeout_seconds)
+        except urllib.error.URLError as exc:
+            last_error = exc
+    assert last_error is not None  # candidates is never empty
+    raise last_error
 
 
 def install(
@@ -56,7 +87,7 @@ def install(
 
     with tempfile.TemporaryDirectory(prefix="citypods_ffmpeg_") as tmp:
         archive_path = Path(tmp) / "ffmpeg.tar.xz"
-        actual = _download(url, archive_path, timeout_seconds=timeout_seconds)
+        actual = _download_with_fallback(url, archive_path, timeout_seconds=timeout_seconds)
         if actual != expected:
             raise RuntimeError(
                 f"ffmpeg archive checksum mismatch: expected {expected}, downloaded {actual}"

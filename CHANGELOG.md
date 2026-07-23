@@ -43,6 +43,11 @@ Phase R (Research-Tool Surface)._
   Longer-term: self-hosting the ~103 MB tarball behind the existing Cloudflare-fronted
   `B2_PUBLIC_BASE_URL`/`R2_PUBLIC_BASE_URL` pattern (already used for hosted audio) would remove
   the third-party-availability dependency entirely; not done here, left for a follow-up.
+  `scripts/install_static_ffmpeg.py` now tries the other path (`releases/` ↔ `old-releases/`)
+  automatically when the pinned one 404s, so the exact day johnvansickle moves a version doesn't
+  need a same-day pin update to keep builds working — only a real download failure (not a
+  checksum mismatch, which still fails hard and never silently retries a different URL) triggers
+  the fallback.
 
 - **`litellm` bumped to `1.95.0.dev1` (pre-release), and `instructor`'s `[litellm]` extra dropped, to
   unblock `gemini-3.5-flash-lite`.** A real manually-triggered `tag.yml` run showed the second Gemini
