@@ -1,0 +1,66 @@
+name: Build ffmpeg from source
+
+# The ffmpeg "dependency change prep" workflow: builds a static ffmpeg/ffprobe from the official
+# upstream source (github.com/FFmpeg/FFmpeg -- the same project Renovate's custom manager in
+# .github/renovate.json5 already tracks by tag) and vendors the result into our own B2 bucket, via
+# scripts/build_ffmpeg_static.sh + scripts/vendor_pinned_binary.py --local-file. Dispatch this only
+# when bumping the ffmpeg version; every other workflow just reads the resulting
+# B2_PUBLIC_BASE_URL/deps/ffmpeg/<version>/... URL (review/22) -- no workflow fetches from an
+# upstream/mirror host on every run, and no third-party redistributor (BtbN, johnvansickle) is a
+# runtime dependency at all.
+#
+# Dispatch from the Actions tab -> "Build ffmpeg from source" -> Run workflow, giving it the
+# version to build (e.g. 7.1.5 -> git tag n7.1.5). Read the resulting URL/SHA256 back from the job
+# summary and put them in the FFMPEG_URL/FFMPEG_SHA256 env of the 7 workflows that pin ffmpeg.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "FFmpeg version to build, e.g. 7.1.5 (clones git tag n7.1.5)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Build ffmpeg
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          OUT="/tmp/ffmpeg-build/ffmpeg-${VERSION}-linux64-static.tar.xz"
+          scripts/build_ffmpeg_static.sh "$VERSION" "$OUT"
+          echo "BUILT_ARCHIVE=$OUT" >> "$GITHUB_ENV"
+
+      - name: Vendor to B2
+        # B2 write secrets scoped to this step alone (CR-GH-07/23/25) -- checkout, setup-python,
+        # and the build itself don't touch storage.
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          PYTHONPATH=. python scripts/vendor_pinned_binary.py \
+            --name ffmpeg --version "$VERSION" \
+            --filename "ffmpeg-${VERSION}-linux64-static.tar.xz" \
+            --local-file "$BUILT_ARCHIVE"

@@ -105,6 +105,81 @@ def test_vendor_refuses_to_overwrite_an_existing_key(tmp_path, monkeypatch):
     assert storage.uploads == []
 
 
+# --- --local-file mode: an already-built artifact, not a fetch -- no URL, no SSRF gate ----------
+
+
+def test_vendor_uploads_a_local_file_without_touching_the_ssrf_gate(tmp_path, monkeypatch):
+    built = tmp_path / "ffmpeg-7.1.5-linux64-static.tar.xz"
+    built.write_bytes(b"built by us\n")
+    digest = hashlib.sha256(built.read_bytes()).hexdigest()
+
+    storage = _FakeStorage()
+    monkeypatch.setattr(vendor_mod, "b2_from_env", lambda: storage)
+
+    def _fail_if_called(url, **kwargs):
+        raise AssertionError("validate_source_url should not be called for --local-file")
+
+    monkeypatch.setattr(vendor_mod, "validate_source_url", _fail_if_called)
+
+    public_url, returned_digest = vendor(
+        name="ffmpeg",
+        version="7.1.5",
+        filename="ffmpeg-7.1.5-linux64-static.tar.xz",
+        local_file=built,
+        expected_sha256=None,
+    )
+
+    assert returned_digest == digest
+    assert (
+        public_url
+        == "https://podcasts.example.com/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz"
+    )
+    [(key, content, content_type)] = storage.uploads
+    assert content == b"built by us\n"
+    assert content_type == "application/octet-stream"
+
+
+def test_vendor_local_file_verifies_expected_checksum(tmp_path, monkeypatch):
+    built = tmp_path / "thing-1.0.tar.xz"
+    built.write_bytes(b"built by us\n")
+
+    storage = _FakeStorage()
+    monkeypatch.setattr(vendor_mod, "b2_from_env", lambda: storage)
+
+    with pytest.raises(RuntimeError, match="checksum mismatch"):
+        vendor(
+            name="thing",
+            version="1.0",
+            filename="thing-1.0.tar.xz",
+            local_file=built,
+            expected_sha256="0" * 64,
+        )
+
+    assert storage.uploads == []
+
+
+def test_vendor_rejects_both_source_urls_and_local_file(tmp_path):
+    with pytest.raises(ValueError, match="exactly one of"):
+        vendor(
+            name="thing",
+            version="1.0",
+            filename="thing-1.0.tar.xz",
+            source_urls=["https://example.invalid/thing-1.0.tar.xz"],
+            local_file=tmp_path / "thing-1.0.tar.xz",
+            expected_sha256=None,
+        )
+
+
+def test_vendor_rejects_neither_source_urls_nor_local_file():
+    with pytest.raises(ValueError, match="exactly one of"):
+        vendor(
+            name="thing",
+            version="1.0",
+            filename="thing-1.0.tar.xz",
+            expected_sha256=None,
+        )
+
+
 # --- SSRF gate: every candidate URL must clear validate_source_url before any fetch -------------
 # (_skip_ssrf_gate is not applied here -- these tests exercise the real gate.)
 
