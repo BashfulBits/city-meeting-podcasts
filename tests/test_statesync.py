@@ -797,6 +797,56 @@ def test_pull_state_propagates_non_transient_error(tmp_path, monkeypatch):
         pull_state(bucket, tmp_path / "state")
 
 
+def test_pull_state_downloads_in_parallel(tmp_path):
+    """The durable snapshot is thousands of small latency-bound objects; downloading them one at a
+    time made build start-up dominate the `tag` lane's short job budget (a ~11-minute serial
+    restore of ~3.5k files, ahead of the wall-clock `stop()` window, was cancelling that lane
+    outright). ``pull_state`` must fan the per-object GETs across a pool so independent round trips
+    overlap: a serial restore of N artificially-slowed gets would take ~N*delay, the pool must be a
+    small fraction of that, and peak in-flight concurrency must exceed one."""
+    import threading
+
+    n = 24
+    delay = 0.05
+    live = {"cur": 0, "peak": 0}
+    lock = threading.Lock()
+
+    class _SlowBucket(LocalStorage):
+        def get_file(self, key, local_path) -> bool:
+            with lock:
+                live["cur"] += 1
+                live["peak"] = max(live["peak"], live["cur"])
+            try:
+                time.sleep(delay)
+                return super().get_file(key, local_path)
+            finally:
+                with lock:
+                    live["cur"] -= 1
+
+    bucket = _SlowBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    for i in range(n):
+        _seed_remote(bucket, f"src{i:02d}", {"u": {"uid": f"u{i}"}})
+
+    start = time.monotonic()
+    restored = pull_state(bucket, tmp_path / "state")
+    elapsed = time.monotonic() - start
+
+    assert restored == n
+    # The deterministic proof of overlap: peak in-flight concurrency > 1 can only happen if calls
+    # actually ran concurrently, regardless of CI runner speed/contention.
+    assert live["peak"] > 1, f"pull_state ran serially (peak concurrency {live['peak']})"
+    # A generous, non-flaky backstop against a full regression to serial (which would take
+    # >= n * delay): loose enough to tolerate a heavily contended CI runner's scheduling overhead,
+    # while still failing if pull_state stopped overlapping calls altogether.
+    assert elapsed < (n * delay) * 0.85, (
+        f"pull_state took {elapsed:.2f}s, close to the serial bound {n * delay:.2f}s"
+    )
+    # Every file lands intact — no cross-thread path/content mixups under the fan-out.
+    for i in range(n):
+        path = tmp_path / "state" / "sources" / f"src{i:02d}" / "episodes.json"
+        assert json.loads(path.read_text())["episodes"]["u"]["uid"] == f"u{i}"
+
+
 def test_reconcile_state_skips_cas_managed_budget(tmp_path):
     bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"

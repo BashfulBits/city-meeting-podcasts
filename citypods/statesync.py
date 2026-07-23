@@ -23,10 +23,24 @@ from __future__ import annotations
 
 import json
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 STATE_PREFIX = "state"
+
+# The durable snapshot is a large fan-out of small JSON files (one ``episodes.json`` per source,
+# per-source calendar/run-event sidecars, etc. — thousands of objects on a mature deploy). Each
+# ``get_file`` is a separate, latency-bound round trip to the bucket, so downloading them one at a
+# time is dominated by round-trip latency, not bandwidth. A serial restore of ~3.5k objects took
+# ~11 minutes at build start — nearly half the `tag` lane's 25-minute job budget, and it runs
+# *before* the wall-clock ``stop()`` window even opens, so a slow restore pushed that lane's
+# graceful-yield deadline past GitHub's hard job timeout and the run was cancelled outright with
+# no candidates produced. A bounded worker pool overlaps the latency of independent downloads
+# (each writes its own distinct ``state_dir/rel`` path, so there is no shared mutable state to
+# guard) and collapses that restore to well under a minute. Every lane benefits; the short-budget
+# `tag` lane is the one that was actually failing without it.
+_PULL_STATE_MAX_WORKERS = 16
 
 
 class TransientStateSyncError(RuntimeError):
@@ -85,23 +99,39 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
 
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
-    restored = 0
-    for key, _ in storage.list_objects(f"{STATE_PREFIX}/"):
+
+    # Materialize the key list first (a single paginated LIST), then fan the per-object GETs out
+    # across a bounded pool: the listing is cheap and sequential, the downloads are the expensive,
+    # parallelizable part. Filtering here keeps the pool doing only real work.
+    keys = [
+        key
+        for key, _ in storage.list_objects(f"{STATE_PREFIX}/")
+        if (rel := key[len(STATE_PREFIX) + 1 :])
+        and Path(rel).suffix in _SUFFIXES
+        # CAS-managed on R2; not part of the bulk snapshot.
+        and not _is_cas_managed(storage, key)
+    ]
+    if not keys:
+        return 0
+
+    def _restore_one(key: str) -> bool:
         rel = key[len(STATE_PREFIX) + 1 :]
-        if not rel or Path(rel).suffix not in _SUFFIXES:
-            continue
-        if _is_cas_managed(storage, key):  # CAS-managed on R2; not part of the bulk snapshot
-            continue
         try:
-            got = storage.get_file(key, state_dir / rel)
+            return bool(storage.get_file(key, state_dir / rel))
         except Exception as exc:
             if not is_transient_storage_error(exc):
                 raise
+            # A single key that keeps failing transiently keeps its existing local copy (the
+            # bucket is canonical, so it self-heals next run) rather than aborting the whole
+            # restore — same fail-soft contract as the original serial loop.
             emit(f"state: WARNING transient error restoring {key} ({exc}); keeping local copy")
-            continue
-        if got:
-            restored += 1
-    return restored
+            return False
+
+    workers = min(_PULL_STATE_MAX_WORKERS, len(keys))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # ``map`` re-raises the first non-transient error from any worker (propagating a real 403
+        # to the caller, exactly as the serial loop did), and otherwise yields one bool per key.
+        return sum(1 for got in pool.map(_restore_one, keys) if got)
 
 
 def push_state(storage, state_dir: Path, *, only_prefixes=None) -> int:

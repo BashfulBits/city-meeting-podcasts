@@ -17,6 +17,29 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM topic tagging now drives its real free-tier throughput: a second Gemini route, the true
+  per-model quotas, and within-run rate pacing.** Three connected changes on top of the tag lane's
+  in-memory triage. (1) **Two routes.** `gemini/gemini-3.5-flash-lite` joins `gemini-3.1-flash-lite`
+  in the route table (each an independent free-tier pool: 500 req/day, 15 rpm, 250k tpm), and the
+  tag policy now allows both (`tagging.llm_models`, primary first) so a run spills onto the second
+  model once the first's window fills — ~1000 tags/day at ~30 rpm combined. The primary stays the
+  single stable route string for the recipe hash and calibration key; each candidate still records
+  the model that actually answered, so calibration keys on real usage without fragmenting the cache.
+  (2) **Real quotas.** `gemini-3.1-flash-lite` is raised from its initial `rpd=20`/`rpm=10` safety
+  ceiling to the real `rpd=500`/`rpm=15`/`tpm=250k`. (3) **Within-run pacing.** The scheduler
+  (`select_route`) now reports `retry_at` — the soonest an allowed route frees up (per-minute
+  rollover, daily reset, or the end of a real-429 block) — and `LiteLLMBackend._run_policy_job_paced`
+  waits that out and retries, bounded by the request's `deadline_at`, so a run **drains its full
+  daily quota across successive minute windows** instead of bursting one window's ~15 and stopping.
+  It respects a token-per-minute (or request-per-minute) limit and a real `429` identically: both
+  surface as a near-future `retry_at`, so the loop backs off and retries at the next reset; it only
+  gives up (deferring to the sweep / a later run) when the sole remaining reset is a daily one past
+  the run's wall-clock budget. The tag lane passes that budget through as `ctx.tag_llm_deadline`
+  (`StageContext`), a UTC twin of its graceful-yield deadline. Pacing is gated on `deadline_at`, so
+  any caller without one (discovery) keeps the exact single-attempt-then-defer behavior; the LLM
+  tournament, which already sets a 20-minute deadline, now paces within it too. Reservations still
+  settle/release per attempt and no intermediate deferred record is written between paced retries.
+
 - **Dormant-resumption review is now actionable and issue commands verify real repository
   permission.** A `dormant-resumed` child offers `/stale activate`, which creates a review PR that
   removes the dormant lifecycle block and restores normal freshness monitoring; an unhandled child
@@ -320,6 +343,73 @@ Phase R (Research-Tool Surface)._
   covers, just reached without a `tags`/`tags_spec_hash` diff to persist alongside it. Only the
   run that first sees a given legacy episode still pays the storage cost; every run after that
   hits the cheap pre-check like the rest of the backlog.
+
+- **The `tag.yml` timeout is finally root-caused: durable-state restore, not per-episode tagging,
+  was eating the budget.** Both fixes above optimized the per-episode tagging loop — work that only
+  begins *after* build start-up. A run with all of them still burned the full 25 minutes and was
+  hard-cancelled. The job logs showed why: **~11 minutes of silence at the very start**, before the
+  first line of output, restoring the durable state snapshot from the bucket. `pull_state()`
+  downloaded every one of ~3,500 small state objects (`state/sources/<src>/episodes.json` and
+  sidecars) **serially** — one latency-bound round trip each — and this runs *before* the
+  wall-clock `stop()` window even opens. At ~44% of the `tag` lane's 25-minute job spent before any
+  tagging, and with the graceful-yield deadline anchored *after* the restore, a slow restore
+  (11 min vs the prior run's 9) slid that deadline past GitHub's hard job timeout and the run was
+  cancelled outright with no candidates produced. The 4h audio/ASR lanes pay the same restore cost
+  but hide it inside a 240-minute budget (and warm an `actions/cache` state blob the `tag` lane
+  never had). Fixed at the source: `pull_state()` now fans the per-object downloads across a bounded
+  thread pool (`_PULL_STATE_MAX_WORKERS`), overlapping their latency and collapsing the ~11-minute
+  restore to well under a minute — every lane benefits, the short-budget `tag` lane most. The
+  listing, CAS-managed-key skip, and per-key transient-error fail-soft (`is_transient_storage_error`
+  keeps its existing local copy and continues; a real error still propagates) are all preserved. As
+  belt-and-suspenders, the `tag` lane's graceful-yield deadline is now anchored to a wall-clock mark
+  captured *before* the restore (`enrich_phase_start`) and clamped at `>= 0`, so start-up time
+  counts against the window and a slow start can never again outlast the hard cap — it yields and
+  persists (via the existing mid-run checkpoints) instead of being SIGKILLed.
+
+- **`TagsStage` now honours the wall-clock budget *before* its per-episode storage fetch, so a spent
+  budget actually ends the pass instead of grinding the whole backlog to a hard-cancel.** With the
+  restore fixed and the graceful stop finally firing (both above), a run *still* burned to GitHub's
+  25-minute hard cancel — ~8 minutes of it **after** `stop: wall-clock window spent` had already
+  printed. The cause: `stop()` was only checked at the LLM-dispatch point, which sits *past* the two
+  per-episode storage round trips (`episode_tag_inputs` + `chapter_tag_inputs`). Those fetches — not
+  the LLM calls — are the real cost of walking this lane's backlog, and most of that backlog is
+  episodes that need a tag but are parked behind the daily provider quota, so they never reach a
+  terminal state, never cache a `tags_input_fingerprint`, and are re-fetched on *every* run. A spent
+  budget stopped new LLM calls but let the fetch-walk grind on through thousands of remaining
+  episodes until the job was killed mid-pass, with essentially no tagging accomplished. `TagsStage`
+  now checks `ctx.stop()` at the top of each episode, right after the cheap fingerprint pre-check and
+  **before** the storage fetch: once the window is spent, every remaining episode is deferred
+  untouched (retried next run) and the pass drains in seconds to its end-of-run persist. Non-time-
+  bounded runs (`ctx.stop is None`, e.g. local `all` builds) are unaffected. Note the separate,
+  non-timeout throughput limit this exposes: with the provider capped at ~20 tag calls/day, working
+  through a multi-thousand-episode untagged backlog is inherently many runs — the fix makes each run
+  fast, bounded, and green, spending its budget newest-first, not a single run tag everything.
+
+- **The `tag` lane no longer re-fetches the entire backlog's agenda/transcript text every run — it
+  triages in memory first and fetches only episodes it will actually tag.** The timeout fixes above
+  made the run *bounded*, but it was still doing the wrong work: a live run spent its whole budget
+  re-reading agenda + transcript text for ~13k episodes and made no visible tag progress. The reason
+  was structural — `tags_input_fingerprint`, the storage-free "have these inputs changed?" proxy, was
+  cached only after a **fully resolved** LLM tag. With the provider quota far below the backlog size,
+  virtually every episode was permanently non-terminal, so the cheap pre-check never matched and each
+  episode fell through to the two-round-trip storage fetch, every run, purely to re-derive "still
+  waiting on the LLM." `TagsStage` now decides what to do for each episode **entirely from the record
+  already in memory** before any fetch: (1) inputs unchanged **and** an LLM tag already resolved (or
+  LLM disabled) → *done*, skip with no fetch; (2) inputs unchanged, rules tags cached, only the
+  quota-limited LLM tag outstanding, and the backend already out of dispatch capacity this run →
+  *defer with no fetch*, retried when quota frees; (3) new/changed inputs, or capacity still available
+  → fetch and tag. The enabling change: the input fingerprint is now cached as soon as a run captures
+  an episode's inputs — **including while its LLM dispatch is still pending** (`tags_llm_recipe_hash`
+  stays the sole "LLM resolved" signal, so a pending episode is never mistaken for done). A new
+  run-scoped `StageContext.tag_llm_dispatch_exhausted` event, set the first time a *fresh* dispatch
+  attempt comes back deferred, is what lets case (2) skip the fetch — gated on a pre-dispatch peek at
+  the deferred registry so a stale, still-pending entry left over from a prior run (the daily deferred
+  sweep just hasn't reconciled it yet) is never mistaken for live quota exhaustion and doesn't
+  prematurely skip the rest of the backlog. Net effect: once warm, a run does an in-memory scan of the
+  catalog and fetches only the handful of episodes it will actually tag (new meetings + up to the
+  remaining quota, newest-first), instead of thousands of storage round trips. This in-memory triage
+  is also what makes the quota/routing work above actually reachable within the job — the wasted
+  fetches, not tag throughput, were the bottleneck.
 
 - **The daily `tag.yml` workflow (`enrich --lane tag`) no longer fails immediately with
   "unknown lane 'tag'".** The `"tag"` lane was already fully wired everywhere it needed to be —

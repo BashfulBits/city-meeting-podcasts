@@ -92,9 +92,21 @@ ROUTES: dict[str, LLMRoute] = {
         model="gemini/gemini-3.1-flash-lite",
         transport="direct",
         free=True,
-        # Deliberately far below the provider allowance: this is the explicit initial R5 /
-        # tournament safety ceiling, counted as real provider attempts by the scheduler.
-        quota=QuotaPolicy(rpm=10, rpd=20, tpm=250_000, reset_timezone="America/Los_Angeles"),
+        # Real free-tier allowance for this route (raised from the initial rpd=20 safety ceiling
+        # now that the tag lane paces within its per-minute budget rather than bursting and
+        # stopping). Paired with `gemini-3.5-flash-lite` below, which has its own independent
+        # free-tier pool, so tagging can draw on ~2x these numbers across the two routes.
+        quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
+        pricing=PricingPolicy(),
+    ),
+    "gemini/gemini-3.5-flash-lite": LLMRoute(
+        model="gemini/gemini-3.5-flash-lite",
+        transport="direct",
+        free=True,
+        # Independent free-tier pool from 3.1-flash-lite (separate model = separate provider quota),
+        # so the tag lane can spill onto it once 3.1's per-minute/day window fills -- ~1000 tags/day
+        # combined at 30 rpm across the two.
+        quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
         pricing=PricingPolicy(),
     ),
     "deepseek/deepseek-v4-flash": LLMRoute(

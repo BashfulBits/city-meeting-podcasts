@@ -574,6 +574,245 @@ def test_tags_stage_backfills_fingerprint_for_pre_existing_resolved_episode(tmp_
     assert counting.reads == 0
 
 
+def test_tags_stage_defers_without_storage_fetch_once_budget_spent(tmp_path):
+    """Once the wall-clock ``stop()`` window is spent, an unresolved episode must be deferred
+    *before* the agenda/transcript storage fetch, not after. The only other stop() check sits past
+    those two per-episode round trips, so without this gate a spent budget still let the pass grind
+    through the whole backlog's fetches until GitHub's hard job timeout cancelled the run mid-pass
+    (~8 minutes of it after the graceful stop had already fired). A deferred episode is untouched,
+    so it retries next run."""
+    from citypods.stages import TagsStage
+
+    ep = _ep("g1")
+    ep.links = {"agenda_text_artifact_key": "documents/x-tx/uid-g1/agenda_text-abc123"}
+    ep.transcript_key = "transcripts/x-tx/uid-g1-asr-deadbeef.txt"
+    ep.transcript_format = "txt"
+    # Unresolved: no cached fingerprint, so the cheap pre-check can't short-circuit it — exactly
+    # the backlog episodes that were being re-fetched every run.
+    assert ep.tags_input_fingerprint is None
+
+    class _CountingStorage:
+        def __init__(self, inner):
+            self._inner = inner
+            self.reads = 0
+
+        def exists(self, key):
+            self.reads += 1
+            return self._inner.exists(key)
+
+        def get_file(self, key, local_path):
+            self.reads += 1
+            return self._inner.get_file(key, local_path)
+
+    ctx = _ctx(tmp_path, stop=_stop_after(0))  # stop() True from the very first check
+    ctx.storage = _CountingStorage(ctx.storage)
+
+    stats = TagsStage().process(None, _city(), [ep], ctx)
+
+    # Deferred (skipped, grouped under the budget-stop reason) with no storage access and no
+    # mutation to the episode's tag state.
+    assert stats.defer_reasons.get("tag-budget-stop") == 1
+    assert stats.skipped == 1
+    assert stats.ran == 0
+    assert ctx.storage.reads == 0
+    assert ep.tags == [] and ep.tags_spec_hash is None and ep.tags_input_fingerprint is None
+
+
+class _FakeTagBackend:
+    """A stand-in LLM tag backend: real enough for TagsStage to treat the run as LLM-enabled and
+    to compute a matching `llm_route`, without pulling in the live provider machinery. Its dispatch
+    path is never reached by the triage tests below (they short-circuit before any backend call)."""
+
+    name = "litellm"
+
+    class config:  # noqa: N801 — mirrors the real backend's `.config.model` attribute shape
+        model = "gemini/gemini-3.1-flash-lite"
+
+    storage = None
+
+
+def _mark_pending(ep, ctx, taxonomy):
+    """Put ``ep`` into the 'rules tagged, LLM still pending, inputs unchanged' state a real run
+    leaves behind: a cached input fingerprint that matches the current inputs, a set spec hash, and
+    no resolved LLM recipe hash. Computed with the exact inputs TagsStage.process derives so the
+    triage's cheap pre-check recognises the episode as unchanged."""
+    from citypods.llm_evaluation import config_from_mapping, policy_fingerprint
+    from citypods.tags import TAG_PROMPT_VERSION, tag_input_fingerprint
+
+    route = f"{ctx.tag_backend.name}:{ctx.tag_backend.config.model}"
+    admission = policy_fingerprint(
+        config_from_mapping(ctx.llm_evaluation_config),
+        {"version": 1, "reviews": {}, "matrix": [], "trend": []},
+    )
+    ep.tags_input_fingerprint = tag_input_fingerprint(
+        ep,
+        taxonomy,
+        llm_enabled=True,
+        llm_route=route,
+        prompt_version=TAG_PROMPT_VERSION,
+        admission_policy=admission,
+    )
+    ep.tags_spec_hash = "rules-only-hash"  # a real rules_hash; not equal to projection_hash
+    ep.tags_llm_recipe_hash = None  # LLM tag never resolved -> still "pending"
+
+
+class _CountingStorage:
+    def __init__(self, inner):
+        self._inner = inner
+        self.reads = 0
+
+    def exists(self, key):
+        self.reads += 1
+        return self._inner.exists(key)
+
+    def get_file(self, key, local_path):
+        self.reads += 1
+        return self._inner.get_file(key, local_path)
+
+
+def test_tags_stage_pending_episode_skips_fetch_when_llm_quota_exhausted(tmp_path):
+    """The core no-re-fetch behavior. A backlog episode whose rules tags are already cached and
+    that only awaits a quota-limited LLM tag ('pending') must NOT re-fetch its agenda/transcript
+    text once the backend has reported it is out of dispatch capacity for the run. It defers in
+    memory, untouched, and is retried on a later run once quota frees -- instead of paying two
+    storage round trips on every run just to re-discover 'still pending' (what made the whole
+    backlog re-fetch and the job time out)."""
+    from citypods.stages import TagsStage
+    from citypods.tags import load_taxonomy
+
+    ep = _ep("g1")
+    ep.links = {"agenda_text_artifact_key": "documents/x-tx/uid-g1/agenda_text-abc123"}
+    ep.transcript_key = "transcripts/x-tx/uid-g1-asr-deadbeef.txt"
+    ep.transcript_format = "txt"
+
+    ctx = _ctx(tmp_path)
+    ctx.tag_backend = _FakeTagBackend()
+    _mark_pending(ep, ctx, load_taxonomy(ctx.taxonomy_path))
+    ctx.tag_llm_dispatch_exhausted.set()  # backend already out of capacity this run
+    ctx.storage = _CountingStorage(ctx.storage)
+
+    stats = TagsStage().process(None, _city(), [ep], ctx)
+
+    assert stats.defer_reasons.get("tag-llm-no-quota") == 1
+    assert stats.skipped == 1 and stats.ran == 0
+    assert ctx.storage.reads == 0  # the whole point: no heavy fetch
+
+
+def test_tags_stage_pending_episode_still_attempts_when_quota_available(tmp_path):
+    """The flip side: while the backend still has capacity (exhaustion flag unset), a pending
+    episode must NOT be skipped -- it proceeds to fetch and re-attempt the LLM. Proven by the
+    storage read: the triage did not short-circuit at the no-quota gate."""
+    from citypods.stages import TagsStage
+    from citypods.tags import load_taxonomy
+
+    ep = _ep("g1")
+    ep.links = {"agenda_text_artifact_key": "documents/x-tx/uid-g1/agenda_text-abc123"}
+    ep.transcript_key = "transcripts/x-tx/uid-g1-asr-deadbeef.txt"
+    ep.transcript_format = "txt"
+
+    ctx = _ctx(tmp_path)
+    ctx.storage.put_file(
+        ep.links["agenda_text_artifact_key"],
+        _write_temp(tmp_path, "agenda.txt", b"Agenda item: housing plan"),
+        "text/plain",
+    )
+    ctx.storage.put_file(
+        ep.transcript_key,
+        _write_temp(tmp_path, "transcript.txt", b"discussion of the housing plan"),
+        "text/plain",
+    )
+    ctx.tag_backend = _FakeTagBackend()
+    _mark_pending(ep, ctx, load_taxonomy(ctx.taxonomy_path))
+    assert not ctx.tag_llm_dispatch_exhausted.is_set()  # capacity available
+    ctx.storage = _CountingStorage(ctx.storage)
+
+    # The real dispatch machinery (pydantic/instructor) isn't installed here, so the LLM attempt
+    # raises and is caught as an item-local error -- but only AFTER the fetch, which is what we
+    # assert: the episode was NOT skipped by the no-quota gate.
+    TagsStage().process(None, _city(), [ep], ctx)
+    assert ctx.storage.reads > 0
+
+
+def test_tag_dispatch_sets_exhausted_flag_only_for_a_fresh_attempt(tmp_path, monkeypatch):
+    """A ``dispatched=True`` result can come from ``LiteLLMBackend.run_inference``'s own cache
+    short-circuit -- an existing, still-pending deferred-registry entry for this exact recipe,
+    meaning only that the daily deferred sweep hasn't reconciled it yet -- rather than a fresh,
+    live pacing attempt discovering no quota is available right now. Only the fresh-attempt case
+    may set ``ctx.tag_llm_dispatch_exhausted``: a cache hit says nothing about current capacity,
+    and treating it as exhaustion would prematurely skip-with-no-fetch the rest of the run's
+    backlog even while real quota is sitting unused."""
+    import citypods.compute.llm_deferred as llm_deferred_mod
+    import citypods.tags as tags_mod
+    from citypods.compute.base import InferenceJob, JobHandle
+    from citypods.stages import TagsStage
+    from tests._cas_fake import MemStorage
+
+    # llm_tag_suggestions() registers the real Instructor/Pydantic response contract before ever
+    # reaching the backend call; irrelevant to the JobHandle branch under test here (the contract
+    # is only consumed on a resolved result, not a deferred one), so stub it to isolate this test
+    # from that unrelated dependency.
+    monkeypatch.setattr(tags_mod, "ensure_llm_contract", lambda: None)
+
+    class _DispatchingBackend:
+        """Always returns a deferred JobHandle -- stands in for either a genuinely quota-exhausted
+        live attempt or a cache short-circuit; TagsStage must tell them apart via the pre-dispatch
+        peek, not via this return value alone."""
+
+        name = "litellm"
+
+        class config:
+            model = "gemini/gemini-3.1-flash-lite"
+
+        def __init__(self, storage):
+            self.storage = storage
+
+        def run_inference(self, job: InferenceJob):
+            return JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="litellm",
+                ref=f"deferred:{job.recipe_hash}",
+            )
+
+    def _episode_with_content(guid):
+        ep = _ep(guid)
+        ep.links = {"agenda_text_artifact_key": f"documents/x-tx/uid-{guid}/agenda_text-abc"}
+        ep.transcript_key = f"transcripts/x-tx/uid-{guid}-asr-deadbeef.txt"
+        ep.transcript_format = "txt"
+        return ep
+
+    def _ctx_with_backend(guid):
+        ctx = _ctx(tmp_path)
+        ctx.storage.put_file(
+            f"documents/x-tx/uid-{guid}/agenda_text-abc",
+            _write_temp(tmp_path, f"agenda-{guid}.txt", b"Agenda item: housing plan"),
+            "text/plain",
+        )
+        ctx.storage.put_file(
+            f"transcripts/x-tx/uid-{guid}-asr-deadbeef.txt",
+            _write_temp(tmp_path, f"transcript-{guid}.txt", b"discussion of the housing plan"),
+            "text/plain",
+        )
+        ctx.tag_backend = _DispatchingBackend(MemStorage())
+        return ctx
+
+    # Case 1: no pre-existing registry entry -> this dispatch is a genuinely fresh, live attempt.
+    ctx_fresh = _ctx_with_backend("fresh")
+    TagsStage().process(None, _city(), [_episode_with_content("fresh")], ctx_fresh)
+    assert ctx_fresh.tag_llm_dispatch_exhausted.is_set()
+
+    # Case 2: look_up_deferred reports an existing pending entry for whatever recipe is queried --
+    # simulating run_inference's own cache short-circuit having already fired inside
+    # llm_tag_suggestions -- so this dispatch is a stale poll, not a live quota check.
+    def _always_pending(storage, recipe_hash):
+        return JobHandle(task="tag", recipe_hash=recipe_hash, backend="litellm", ref="deferred:x")
+
+    monkeypatch.setattr(llm_deferred_mod, "look_up_deferred", _always_pending)
+    ctx_cached = _ctx_with_backend("cached")
+    TagsStage().process(None, _city(), [_episode_with_content("cached")], ctx_cached)
+    assert not ctx_cached.tag_llm_dispatch_exhausted.is_set()
+
+
 def _write_temp(tmp_path, name, content: bytes):
     path = tmp_path / "_uploads" / name
     path.parent.mkdir(parents=True, exist_ok=True)
