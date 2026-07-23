@@ -17,6 +17,23 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **`TagsStage` no longer re-parses the taxonomy YAML and calibration-state JSON from local disk on
+  every episode — it loads each at most once per run.** A real scheduled `tag.yml` run with every
+  prior fix in place (parallel state restore, budget-gated fetch, in-memory triage, quota pacing)
+  still made only 2 live LLM calls across a ~13k-episode backlog before exhausting its wall-clock
+  budget — essentially no tagging. Root cause: the global queue invokes `TagsStage.process()` once
+  **per episode**, and it re-read + re-parsed `config/taxonomy.yml` (`yaml.safe_load`) and
+  `llm_evaluation.json` (calibration state) at the top of every single call, even for episodes that
+  hit the new no-fetch triage fast paths. Measured against the real taxonomy file: ~28ms/call —
+  ~6.3 minutes of pure YAML parsing alone across the backlog, before `taxonomy_from_dict`
+  construction, the evaluation-state JSON parse, or the admission-policy hash, and before dispatch
+  logic ever ran for most episodes. Both are read-only, unchanged loads for the whole run, so they're
+  now cached on `StageContext.tag_taxonomy_cache` (the same `ctx` object is shared across every
+  per-episode call in one build) — a load failure is cached too, so a broken taxonomy/state file
+  still reports on every call without re-attempting the same failing read thousands of times.
+  Measured effect: ~28ms/call → ~0.6ms/call (cache hit) for the fixed per-call cost, ~48x; projected
+  total for a 13k-episode backlog drops from minutes to under 8 seconds.
+
 - **LLM topic tagging now drives its real free-tier throughput: a second Gemini route, the true
   per-model quotas, and within-run rate pacing.** Three connected changes on top of the tag lane's
   in-memory triage. (1) **Two routes.** `gemini/gemini-3.5-flash-lite` joins `gemini-3.1-flash-lite`

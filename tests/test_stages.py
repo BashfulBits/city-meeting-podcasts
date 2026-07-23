@@ -698,6 +698,62 @@ def test_tags_stage_pending_episode_skips_fetch_when_llm_quota_exhausted(tmp_pat
     assert ctx.storage.reads == 0  # the whole point: no heavy fetch
 
 
+def test_tags_stage_loads_taxonomy_and_eval_state_once_per_run(tmp_path, monkeypatch):
+    """A real scheduled tag run showed only 2 live LLM calls across a 13k-episode backlog before
+    exhausting its wall-clock budget. Root cause: TagsStage.process() is invoked once PER EPISODE
+    by the global queue, and it re-read + re-parsed the taxonomy YAML and calibration-state JSON
+    from local disk on every single call -- ~28ms/call for a real ~17KB taxonomy alone, ~6 minutes
+    of pure YAML parsing across the backlog before dispatch logic ever ran. Both are read-only for
+    the whole run, so they must load at most once per `ctx` (the same object across every
+    per-episode call in one build), cached on `ctx.tag_taxonomy_cache`."""
+    import json
+
+    import citypods.llm_evaluation as eval_mod
+    import citypods.tags as tags_mod
+    from citypods.stages import TagsStage
+
+    load_taxonomy_calls = {"n": 0}
+    real_load_taxonomy = tags_mod.load_taxonomy
+
+    def _counting_load_taxonomy(*a, **k):
+        load_taxonomy_calls["n"] += 1
+        return real_load_taxonomy(*a, **k)
+
+    monkeypatch.setattr(tags_mod, "load_taxonomy", _counting_load_taxonomy)
+
+    load_state_calls = {"n": 0}
+    real_load_state = eval_mod.load_state
+
+    def _counting_load_state(*a, **k):
+        load_state_calls["n"] += 1
+        return real_load_state(*a, **k)
+
+    monkeypatch.setattr(eval_mod, "load_state", _counting_load_state)
+
+    eval_state_path = tmp_path / "llm_evaluation.json"
+    eval_state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
+
+    ctx = _ctx(tmp_path)
+    ctx.llm_evaluation_state_path = eval_state_path
+    stage = TagsStage()  # one instance, one ctx -- mirrors the global queue reusing both
+
+    eps = [_ep("g1"), _ep("g2"), _ep("g3")]
+    for ep in eps:
+        stage.process(None, _city(), [ep], ctx)
+
+    assert load_taxonomy_calls["n"] == 1, f"loaded taxonomy {load_taxonomy_calls['n']}x, want 1"
+    assert load_state_calls["n"] == 1, f"loaded eval state {load_state_calls['n']}x, want 1"
+
+    # A fresh ctx (a different run/build) must NOT share the cache -- the cache lives on ctx, and
+    # ctx is constructed fresh per build, so this is the natural boundary, not a special case to
+    # maintain by hand.
+    ctx2 = _ctx(tmp_path)
+    ctx2.llm_evaluation_state_path = eval_state_path
+    stage.process(None, _city(), [_ep("g4")], ctx2)
+    assert load_taxonomy_calls["n"] == 2
+    assert load_state_calls["n"] == 2
+
+
 def test_tags_stage_pending_episode_still_attempts_when_quota_available(tmp_path):
     """The flip side: while the backend still has capacity (exhaustion flag unset), a pending
     episode must NOT be skipped -- it proceeds to fetch and re-attempt the LLM. Proven by the
