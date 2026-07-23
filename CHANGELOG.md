@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The `tag` lane's `tag.yml` job logs are no longer silent.** Diagnosing why a real scheduled run
+  made almost no live LLM calls required inferring everything from external evidence (the provider's
+  own request log, wall-clock timing) and could not be read from the GitHub Actions log at all —
+  `run_stages()` was called with `quiet=True` for every lane in the global queue's per-episode
+  invocation, since audio/ASR's much larger passes would otherwise emit thousands of "ran=0 reused=1"
+  lines. The `tag` lane now passes `quiet=False` (`quiet=ctx.lane != "tag"` in `_run_for`), so it logs
+  a `[enrich] stage start/done ... ran=X reused=Y queued=Z errors=W` line per episode; other lanes are
+  unaffected. This does add real volume to the tag lane's own log (its backlog is large too), but
+  visibility into what's actually happening matters more than log size while this lane's throughput is
+  still being tuned.
+
 - **`TagsStage` no longer re-parses the taxonomy YAML and calibration-state JSON from local disk on
   every episode — it loads each at most once per run.** A real scheduled `tag.yml` run with every
   prior fix in place (parallel state restore, budget-gated fetch, in-memory triage, quota pacing)
