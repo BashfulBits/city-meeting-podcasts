@@ -832,8 +832,13 @@ def test_pull_state_downloads_in_parallel(tmp_path):
     elapsed = time.monotonic() - start
 
     assert restored == n
+    # The deterministic proof of overlap: peak in-flight concurrency > 1 can only happen if calls
+    # actually ran concurrently, regardless of CI runner speed/contention.
     assert live["peak"] > 1, f"pull_state ran serially (peak concurrency {live['peak']})"
-    assert elapsed < (n * delay) * 0.5, (
+    # A generous, non-flaky backstop against a full regression to serial (which would take
+    # >= n * delay): loose enough to tolerate a heavily contended CI runner's scheduling overhead,
+    # while still failing if pull_state stopped overlapping calls altogether.
+    assert elapsed < (n * delay) * 0.85, (
         f"pull_state took {elapsed:.2f}s, close to the serial bound {n * delay:.2f}s"
     )
     # Every file lands intact — no cross-thread path/content mixups under the fan-out.
