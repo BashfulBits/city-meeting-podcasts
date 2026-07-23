@@ -9,16 +9,19 @@ SHA-256 must match before the archive is opened.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import shutil
 import stat
+import sys
 import tarfile
 import tempfile
 import urllib.error
-import urllib.request
 from pathlib import Path
 
-CHUNK_SIZE = 1024 * 1024
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts._pinned_fetch import download as _download  # noqa: E402
 
 
 def _fallback_urls(url: str) -> list[str]:
@@ -33,19 +36,6 @@ def _fallback_urls(url: str) -> list[str]:
     if "johnvansickle.com/ffmpeg/old-releases/" in url:
         return [url, url.replace("/ffmpeg/old-releases/", "/ffmpeg/releases/")]
     return [url]
-
-
-def _download(url: str, destination: Path, *, timeout_seconds: float) -> str:
-    digest = hashlib.sha256()
-    request = urllib.request.Request(url, headers={"User-Agent": "citypods-audio-runner/1"})
-    with (
-        urllib.request.urlopen(request, timeout=timeout_seconds) as response,
-        destination.open("wb") as output,
-    ):
-        while chunk := response.read(CHUNK_SIZE):
-            output.write(chunk)
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _download_with_fallback(url: str, destination: Path, *, timeout_seconds: float) -> str:
