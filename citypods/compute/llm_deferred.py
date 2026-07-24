@@ -106,6 +106,15 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 model=data.get("model"),
             )
         if status == "pending":
+            # `None` for a record predating this field; a non-negative int for a real one. Any
+            # other persisted shape (a corrupt write, or a future format this code doesn't know
+            # about) isolates the whole record as corrupt rather than letting a bad value reach
+            # ledger settlement math.
+            attempted_requests = data.get("attempted_requests")
+            if attempted_requests is not None and (
+                type(attempted_requests) is not int or attempted_requests < 0
+            ):
+                return None
             deferred = None
             if "messages" in data and "policy" in data:
                 deferred = DeferredLLMRequest(
@@ -121,7 +130,7 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 owner=data.get("owner"),
                 input_per_token=data.get("input_per_token"),
                 output_per_token=data.get("output_per_token"),
-                attempted_requests=data.get("attempted_requests"),
+                attempted_requests=attempted_requests,
                 deferred_request=deferred,
             )
     except (LookupError, TypeError, ValueError):
