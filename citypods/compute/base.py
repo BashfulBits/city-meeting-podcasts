@@ -107,6 +107,12 @@ class JobHandle:
     # eventual reconciliation, however rare that drift is in practice).
     input_per_token: float | None = None
     output_per_token: float | None = None
+    # ``attempted_requests`` (R13, additive/optional): how many real provider requests this
+    # dispatch attempt already made before returning this handle (submitting a job is itself one
+    # attempt, distinct from any polls that follow). Snapshotted so a later ``reconcile()`` can
+    # settle the reservation to the real count instead of leaving it frozen at the worst-case
+    # estimate reserved at dispatch time. ``None`` for every non-LLM dispatch backend.
+    attempted_requests: int | None = None
     # ``deferred_request`` (R13, additive/optional): opaque to this generic contract by design --
     # it is never read or written here, only carried. A backend that produces a handle representing
     # "not eligible yet, but here's everything needed to retry, no remote submission happened" (the

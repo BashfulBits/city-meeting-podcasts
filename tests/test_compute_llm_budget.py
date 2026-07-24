@@ -60,6 +60,36 @@ def test_reserve_settle_and_release_round_trip():
     assert ledger.cost_used == pytest.approx(0.1)
 
 
+def test_settle_corrects_unused_worst_case_request_reservation():
+    budget = LLMBudget()
+    budget.reserve(
+        "owner-structured",
+        ROUTE.model,
+        route=ROUTE,
+        requests=2,
+        tokens=40,
+        cost=0.2,
+        now=NOW,
+    )
+
+    budget.settle(
+        "owner-structured",
+        ROUTE.model,
+        route=ROUTE,
+        now=NOW,
+        actual_requests=1,
+        actual_tokens=20,
+        actual_cost=0.1,
+    )
+
+    ledger = budget.routes[ROUTE.model]
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 1
+    assert ledger.requests_day == 1
+    assert ledger.tokens_minute == 20
+    assert ledger.cost_used == pytest.approx(0.1)
+
+
 def test_daily_cost_cap_rolls_over_and_never_exceeds_its_limit():
     route = LLMRoute(
         model="paid/daily-capped",

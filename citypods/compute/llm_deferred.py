@@ -81,6 +81,7 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
         "owner": result.owner,
         "input_per_token": result.input_per_token,
         "output_per_token": result.output_per_token,
+        "attempted_requests": result.attempted_requests,
     }
     deferred = result.deferred_request
     if isinstance(deferred, DeferredLLMRequest):
@@ -105,6 +106,15 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 model=data.get("model"),
             )
         if status == "pending":
+            # `None` for a record predating this field; a non-negative int for a real one. Any
+            # other persisted shape (a corrupt write, or a future format this code doesn't know
+            # about) isolates the whole record as corrupt rather than letting a bad value reach
+            # ledger settlement math.
+            attempted_requests = data.get("attempted_requests")
+            if attempted_requests is not None and (
+                type(attempted_requests) is not int or attempted_requests < 0
+            ):
+                return None
             deferred = None
             if "messages" in data and "policy" in data:
                 deferred = DeferredLLMRequest(
@@ -120,6 +130,7 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 owner=data.get("owner"),
                 input_per_token=data.get("input_per_token"),
                 output_per_token=data.get("output_per_token"),
+                attempted_requests=attempted_requests,
                 deferred_request=deferred,
             )
     except (LookupError, TypeError, ValueError):
@@ -179,17 +190,41 @@ def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
     return _decode_record(_read_json(storage, deferred_key(recipe_hash)))
 
 
-def list_pending_deferred(storage) -> list[JobHandle]:
-    """Every currently-pending record in the registry -- what the sweep processes."""
-    pending: list[JobHandle] = []
-    for key, _ in storage.list_objects(DEFERRED_PREFIX):
+def iter_pending_deferred(storage):
+    """Yield currently-pending records one at a time, oldest-first.
+
+    The sweep may stop early -- its own wall-clock deadline passes, or a signal requests a
+    graceful stop -- before reaching the end of a large registry. Streaming means whatever it
+    never reaches is never read at all. It does *not* avoid the read for a record the sweep does
+    reach and then skips (e.g. one sharing an already-proven-exhausted route pool with an earlier
+    record) -- each yielded record has already had its body fetched by the time the caller can
+    check that; only the reconcile *attempt* is what such a skip avoids, not this read.
+
+    ``storage.list_objects`` hands back each key's ``last_modified`` for free (no per-object
+    read), so the listing -- cheap key/timestamp pairs, not record bodies -- is sorted by it
+    before any body is downloaded. A record's ``last_modified`` moves forward every time it's
+    rewritten (e.g. a prior sweep's own retry), so this is "least recently touched", not strictly
+    "oldest created" -- but it's a free proxy for which records have been waiting longest without a
+    successful attempt, which is a better spend of a capacity-limited run than the arbitrary
+    listing order (typically lexicographic by key) the un-sorted stream would otherwise process in.
+    A missing/``None`` timestamp sorts last rather than raising.
+    """
+    listing = sorted(
+        storage.list_objects(DEFERRED_PREFIX),
+        key=lambda item: (item[1] is None, item[1]),
+    )
+    for key, _ in listing:
         data = _read_json(storage, key)
         if not isinstance(data, Mapping) or data.get("status") != "pending":
             continue
         decoded = _decode_record(data)
         if isinstance(decoded, JobHandle):
-            pending.append(decoded)
-    return pending
+            yield decoded
+
+
+def list_pending_deferred(storage) -> list[JobHandle]:
+    """Every currently-pending record in the registry -- what the sweep processes."""
+    return list(iter_pending_deferred(storage))
 
 
 def prune_expired_deferred(
@@ -264,6 +299,7 @@ __all__ = [
     "deferred_key",
     "list_pending_deferred",
     "look_up_deferred",
+    "iter_pending_deferred",
     "prune_expired_deferred",
     "write_deferred",
 ]

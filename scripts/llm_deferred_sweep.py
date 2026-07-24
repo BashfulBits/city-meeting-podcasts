@@ -26,8 +26,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
-from citypods.compute.llm_deferred import list_pending_deferred, prune_expired_deferred
-from citypods.compute.llm_policy import DeferredLLMRequest
+from citypods.compute.llm_deferred import (
+    iter_pending_deferred,
+    list_pending_deferred,
+    prune_expired_deferred,
+)
+from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest
 from citypods.config import load_site_config
 from citypods.storage import make_storage
 
@@ -68,6 +72,29 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
             policy=replace(deferred.policy, deadline_at=deadline_at),
         ),
     )
+
+
+def _capacity_signature(handle) -> tuple | None:
+    """The resolved route pool a record draws capacity from, or ``None`` for a real dispatch poll
+    (nothing to skip ahead on -- it's not re-running ``select_route`` at all, just checking on
+    work already submitted to a Worker).
+
+    Keyed on *what ``select_route`` actually evaluates* -- the candidate model set and the paid
+    gate -- not on which feature/purpose produced the record. Two different callers (e.g. two
+    structured-output features) sharing the exact same ``allowed_models`` draw on the exact same
+    underlying provider quota pools, so once one has proven that pool exhausted for the rest of
+    this sweep, the other's backlog can skip ahead too instead of independently re-discovering the
+    identical answer. ``allowed_models=None`` means "every configured route", so it's normalized
+    to the full set rather than left as a distinct one-off signature.
+    """
+    deferred = handle.deferred_request
+    if not isinstance(deferred, DeferredLLMRequest):
+        return None
+    policy = deferred.policy
+    models = (
+        frozenset(policy.allowed_models) if policy.allowed_models is not None else frozenset(ROUTES)
+    )
+    return (models, policy.allow_paid)
 
 
 def _register_known_contracts() -> None:
@@ -131,12 +158,20 @@ def main(argv: list[str] | None = None) -> int:
     still_pending = 0
     failed = 0
     seen_pending: set[str] = set()
+    exhausted_capacity: set[tuple] = set()
+    # Per-pool tally, purely for the end-of-run breakdown below -- visibility into which route
+    # pool (if any) is the sweep's actual bottleneck, without persisting a separate index that
+    # could drift out of sync with the registry itself.
+    skipped_by_pool: dict[tuple, int] = {}
 
     if datetime.now(UTC) < deadline_at:
-        pending = list_pending_deferred(storage)
-        for handle in pending:
+        for handle in iter_pending_deferred(storage):
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
+            signature = _capacity_signature(handle)
+            if signature in exhausted_capacity:
+                skipped_by_pool[signature] = skipped_by_pool.get(signature, 0) + 1
+                continue
             seen_pending.add(handle.recipe_hash)
             try:
                 result = backend.reconcile(_with_sweep_deadline(handle, deadline_at))
@@ -146,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             if result is None:
                 still_pending += 1
+                if signature is not None:
+                    exhausted_capacity.add(signature)
             else:
                 completed += 1
             if stop_state.requested:
@@ -163,6 +200,14 @@ def main(argv: list[str] | None = None) -> int:
         f"{still_pending} still pending observations, {failed} failed, {pruned} pruned, "
         f"{remaining} remaining"
     )
+    for signature, skipped in sorted(skipped_by_pool.items(), key=lambda item: -item[1]):
+        models, allow_paid = signature
+        pool = ",".join(sorted(models)) or "(none)"
+        print(
+            f"llm-deferred-sweep: pool [{pool}] (allow_paid={allow_paid}) exhausted -- "
+            f"{skipped} further record(s) skipped without a reconcile attempt",
+            file=sys.stderr,
+        )
     if stop_state.requested:
         print("llm-deferred-sweep: graceful stop requested; finished work has been persisted")
     return 0

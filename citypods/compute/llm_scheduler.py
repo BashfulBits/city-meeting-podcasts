@@ -112,6 +112,21 @@ def _estimated_cost(route: LLMRoute, estimated_tokens: int, now: datetime) -> fl
     )
 
 
+def _utilization(route: LLMRoute, ledger_entry) -> float:
+    """Fraction of quota already spent on this route's tightest capped axis (0 = empty, 1 = at
+    the cap). Used as a tie-break among otherwise-equal candidates so load spreads across routes
+    with independent quota pools (e.g. two free same-cost models) instead of always favoring
+    whichever sorts first alphabetically -- a route that's already 80% through its per-minute or
+    per-day window loses the tie to one that's mostly idle, and the preference flips back once
+    usage evens out. Uncapped axes (``None``) don't contribute -- there's nothing to be full of."""
+    fractions = []
+    if route.quota.rpm:
+        fractions.append(ledger_entry.requests_minute / route.quota.rpm)
+    if route.quota.rpd:
+        fractions.append(ledger_entry.requests_day / route.quota.rpd)
+    return max(fractions, default=0.0)
+
+
 def _owner_for(recipe_hash: str, route: LLMRoute) -> str:
     """Owner uniqueness depends on the *selected* route's transport, not a single rule for both:
     - `mistral-dispatch`: the Worker dedupes on `idempotency-key: recipe_hash`, so a retry before
@@ -150,7 +165,7 @@ def select_route(
     corrective retry can send a second request (see ``llm.py``'s ``run_inference``) -- not just 1.
     """
     rejected: list[tuple[str, str]] = []
-    candidates: list[tuple[LLMRoute, float, datetime]] = []
+    candidates: list[tuple[LLMRoute, float, datetime, float]] = []
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
     # only *temporarily* unavailable -- per-minute window full, daily quota spent, or under a real
@@ -201,20 +216,23 @@ def select_route(
             ):
                 rejected.append((model, f"off-peak gate: waits until {window_end.isoformat()}"))
                 continue
-        candidates.append((route, cost, predicted))
+        # Already fetched (and, if needed, window-rolled) by the `ledger.available(...)` check
+        # above, which internally calls the same `_ledger()` -- this is that same entry, not a
+        # second lookup.
+        candidates.append((route, cost, predicted, _utilization(route, ledger.routes[model])))
 
     if not candidates:
         reason = "no configured LLM route is eligible right now"
         return SelectionResult(
             None, None, reason, tuple(rejected), retry_at=min(retry_ats, default=None)
         )
-    route, _, predicted = min(
+    route, _, predicted, _ = min(
         candidates,
-        key=lambda item: (not item[0].free, item[1], item[2], item[0].model),
+        key=lambda item: (not item[0].free, item[1], item[3], item[2], item[0].model),
     )
     rejected.extend(
         (candidate.model, "lower-ranked eligible route")
-        for candidate, _, _ in candidates
+        for candidate, _, _, _ in candidates
         if candidate.model != route.model
     )
     return SelectionResult(route.model, route, "selected eligible route", tuple(rejected))

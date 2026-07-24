@@ -171,6 +171,7 @@ class LLMBudget:
         *,
         route: LLMRoute,
         now: datetime,
+        actual_requests: int | None = None,
         actual_tokens: int | None = None,
         actual_cost: float | None = None,
     ) -> None:
@@ -178,6 +179,16 @@ class LLMBudget:
         reservation = led.inflight.pop(owner, None)
         if reservation is None:
             return
+        if actual_requests is not None and led.requests_minute_key == reservation.minute_key:
+            led.requests_minute = max(
+                0, led.requests_minute + actual_requests - reservation.requests
+            )
+        if (
+            actual_requests is not None
+            and route.quota.rpd is not None
+            and led.requests_day_key == reservation.day_key
+        ):
+            led.requests_day = max(0, led.requests_day + actual_requests - reservation.requests)
         if actual_tokens is not None and led.requests_minute_key == reservation.minute_key:
             led.tokens_minute = max(0, led.tokens_minute + actual_tokens - reservation.tokens)
         if actual_cost is not None and led.cost_cycle_key == reservation.cost_cycle_key:
@@ -361,6 +372,7 @@ def settle_route_reservation(
     now: datetime | None = None,
     actual_tokens: int | None = None,
     actual_cost: float | None = None,
+    actual_requests: int | None = None,
     max_attempts: int = 8,
     base_sleep: float = 0.05,
     max_sleep: float = 1.0,
@@ -374,6 +386,7 @@ def settle_route_reservation(
             model,
             route=route,
             now=attempt_now,
+            actual_requests=actual_requests,
             actual_tokens=actual_tokens,
             actual_cost=actual_cost,
         ),

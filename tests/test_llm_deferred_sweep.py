@@ -41,6 +41,7 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
 
     handles = [_handle("recipe-1"), _handle("recipe-2"), _handle("recipe-3")]
+    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
     monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: handles)
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 2)
 
@@ -68,6 +69,123 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert "1 failed" in out.out
     assert "2 pruned" in out.out
     assert "recipe-3" in out.err
+
+
+def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 0)
+    monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: [])
+
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+    )
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"recipe-{idx}",
+            backend="litellm",
+            ref=f"deferred:recipe-{idx}",
+            structured_output="topic-tags",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},), policy=policy
+            ),
+        )
+        for idx in range(3)
+    ]
+    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
+
+    reconciled = []
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, handle):
+            reconciled.append(handle.recipe_hash)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert reconciled == ["recipe-0"]
+    out = capsys.readouterr()
+    assert "1 still pending observations" in out.out
+    assert "2 further record(s) skipped" in out.err
+
+
+def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(monkeypatch):
+    """The capacity-exhaustion cache is keyed on the resolved route pool, not on
+    (task, structured_output, purpose) -- a second feature drawing on the exact same
+    ``allowed_models`` must benefit from the first feature's already-proven exhaustion instead of
+    independently re-discovering it record by record."""
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 0)
+    monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: [])
+
+    shared_models = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+
+    def _handle_for(recipe_hash, *, task, structured_output, purpose):
+        policy = LLMRequestPolicy(allowed_models=shared_models, purpose=purpose)
+        return JobHandle(
+            task=task,
+            recipe_hash=recipe_hash,
+            backend="litellm",
+            ref=f"deferred:{recipe_hash}",
+            structured_output=structured_output,
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},), policy=policy
+            ),
+        )
+
+    handles = [
+        _handle_for("recipe-tag", task="tag", structured_output="topic-tags", purpose="topic-tags"),
+        _handle_for(
+            "recipe-classify",
+            task="classify",
+            structured_output="civic-platforms",
+            purpose="civic-platforms",
+        ),
+    ]
+    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
+
+    reconciled = []
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, handle):
+            reconciled.append(handle.recipe_hash)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    # Only the first record (whichever feature it came from) pays for discovering the pool is
+    # exhausted -- the second is skipped purely on the shared route pool, despite its different
+    # task/structured_output/purpose.
+    assert reconciled == ["recipe-tag"]
+
+
+def test_capacity_signature_normalizes_none_allowed_models_to_every_route():
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="recipe-1",
+        backend="litellm",
+        ref="deferred:recipe-1",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "meeting text"},),
+            policy=LLMRequestPolicy(allowed_models=None),
+        ),
+    )
+    from citypods.compute.llm_policy import ROUTES
+
+    signature = llm_deferred_sweep._capacity_signature(handle)
+    assert signature == (frozenset(ROUTES), False)
 
 
 def test_sweep_overrides_stale_deferred_deadline_for_retries():

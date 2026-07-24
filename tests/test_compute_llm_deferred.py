@@ -5,6 +5,7 @@ from citypods.compute.llm_deferred import (
     DEFAULT_TTL_DAYS,
     DEFERRED_PREFIX,
     deferred_key,
+    iter_pending_deferred,
     list_pending_deferred,
     look_up_deferred,
     prune_expired_deferred,
@@ -91,6 +92,45 @@ def test_a_completed_record_is_never_downgraded_back_to_pending():
     found = look_up_deferred(storage, "recipe-1")
     assert isinstance(found, JobResult)
     assert found.output == {"done": True}
+
+
+def test_iter_pending_deferred_yields_oldest_last_modified_first():
+    """Ordering follows ``last_modified`` (free from the listing, no body read needed), not the
+    backend's raw listing order (typically lexicographic by key) -- otherwise a capacity-limited
+    run spends its budget on an arbitrary subset instead of whichever records have gone longest
+    without a successful attempt."""
+    recipe_hashes_oldest_to_newest = ["z-record", "m-record", "a-record"]
+    timestamps = {
+        "z-record": datetime(2026, 1, 1, tzinfo=UTC),
+        "m-record": datetime(2026, 3, 1, tzinfo=UTC),
+        "a-record": datetime(2026, 6, 1, tzinfo=UTC),
+    }
+
+    class _ReorderedStorage(MemStorage):
+        def list_objects(self, prefix=""):
+            for recipe_hash, ts in timestamps.items():
+                key = deferred_key(recipe_hash)
+                if key.startswith(prefix):
+                    yield key, ts
+
+    storage = _ReorderedStorage()
+    for recipe_hash in timestamps:
+        write_deferred(
+            storage,
+            recipe_hash,
+            JobHandle(
+                task="tag",
+                recipe_hash=recipe_hash,
+                backend="litellm",
+                ref=f"deferred:{recipe_hash}",
+                deferred_request=DeferredLLMRequest(
+                    messages=({"role": "user", "content": "hi"},), policy=LLMRequestPolicy()
+                ),
+            ),
+        )
+
+    ordered = [handle.recipe_hash for handle in iter_pending_deferred(storage)]
+    assert ordered == recipe_hashes_oldest_to_newest
 
 
 def test_list_pending_deferred_returns_only_pending_records():
@@ -281,6 +321,51 @@ def test_list_pending_deferred_skips_malformed_records_rather_than_aborting():
 
     pending = list_pending_deferred(storage)
     assert {handle.recipe_hash for handle in pending} == {"good-1"}
+
+
+def test_list_pending_deferred_rejects_a_corrupt_attempted_requests_value():
+    """A non-negative int (or absent, for a record predating this field) is the only shape
+    `attempted_requests` may take -- a string, bool, or negative value must isolate the whole
+    record as corrupt rather than reach ledger settlement math (CodeRabbit, PR #1007)."""
+    storage = MemStorage()
+    for recipe_hash, bad_value in (
+        ("bad-string", "two"),
+        ("bad-bool", True),
+        ("bad-negative", -1),
+    ):
+        _write_raw(
+            storage,
+            recipe_hash,
+            {
+                "status": "pending",
+                "task": "tag",
+                "recipe_hash": recipe_hash,
+                "backend": "litellm",
+                "ref": f"deferred:{recipe_hash}",
+                "attempted_requests": bad_value,
+            },
+        )
+    write_deferred(
+        storage,
+        "good-1",
+        JobHandle(
+            task="tag",
+            recipe_hash="good-1",
+            backend="litellm",
+            ref="deferred:good-1",
+            attempted_requests=0,
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},), policy=LLMRequestPolicy()
+            ),
+        ),
+        now=NOW,
+    )
+
+    pending = {handle.recipe_hash: handle for handle in list_pending_deferred(storage)}
+    # 0 is a legitimate (falsy but valid) attempted_requests value -- e.g. a request rejected as
+    # already-over-quota on its very first attempt -- and must round-trip, not be treated as absent.
+    assert set(pending) == {"good-1"}
+    assert pending["good-1"].attempted_requests == 0
 
 
 def _write_raw(storage: MemStorage, recipe_hash: str, record: dict) -> None:

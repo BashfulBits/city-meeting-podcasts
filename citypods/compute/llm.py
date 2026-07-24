@@ -814,13 +814,20 @@ class LiteLLMBackend(Backend):
         owner = selection.owner
         assert owner is not None  # always set when a route was selected
         attempted = False
+        attempted_requests = 0
 
         def _cleanup() -> None:
             if attempted:
                 # The call reached the provider (or the Worker's queue) regardless of outcome, so
                 # its rate-limit slot is genuinely spent -- settle (keep it charged), never
                 # release. See review/33 §10.2.
-                settle_route_reservation(self.storage, owner, resolved_model, route=route)
+                settle_route_reservation(
+                    self.storage,
+                    owner,
+                    resolved_model,
+                    route=route,
+                    actual_requests=max(attempted_requests, 1),
+                )
             else:
                 release_route_reservation(self.storage, owner, resolved_model, route=route)
 
@@ -833,7 +840,20 @@ class LiteLLMBackend(Backend):
                 flush=True,
             )
             block_route_until(self.storage, resolved_model, until, route=route)
-            settle_route_reservation(self.storage, owner, resolved_model, route=route)
+            settle_route_reservation(
+                self.storage,
+                owner,
+                resolved_model,
+                route=route,
+                # The most recent attempt is the one that got rejected as already-over-quota --
+                # it never reached the model, so it shouldn't count against our own proactive
+                # ledger (`block_route_until` above is what actually stops us re-hammering this
+                # route; the request counters aren't load-bearing for that). Any *earlier* attempt
+                # within this same call (e.g. a structured retry's first pass, which got a real
+                # response that merely failed validation) did reach the provider and stays
+                # charged -- so subtract exactly the rejected attempt, not the whole count.
+                actual_requests=max(attempted_requests - 1, 0),
+            )
             return self._deferred_handle(job, structured, messages, policy)
 
         try:
@@ -842,8 +862,9 @@ class LiteLLMBackend(Backend):
                     completion_fn = self._completion_fn()
 
                     def guarded_completion(**kwargs):
-                        nonlocal attempted
+                        nonlocal attempted, attempted_requests
                         attempted = True
+                        attempted_requests += 1
                         return completion_fn(**kwargs)
 
                     result = self._run_structured_direct(
@@ -856,6 +877,7 @@ class LiteLLMBackend(Backend):
                     payload = self._payload(job, resolved_model=resolved_model)
                     completion_fn = self._completion_fn()
                     attempted = True
+                    attempted_requests += 1
                     response = completion_fn(**payload)
                     result = JobResult(
                         task=job.task,
@@ -871,6 +893,7 @@ class LiteLLMBackend(Backend):
                     headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
                 headers["idempotency-key"] = job.recipe_hash
                 attempted = True
+                attempted_requests += 1
                 response = self._session.post(
                     urljoin(self.config.dispatch_url.rstrip("/") + "/", "v1/chat/completions"),
                     json=payload,
@@ -908,6 +931,7 @@ class LiteLLMBackend(Backend):
                         owner=owner,
                         input_per_token=route.pricing.input_per_token,
                         output_per_token=route.pricing.output_per_token,
+                        attempted_requests=attempted_requests,
                     )
                 elif response.status_code == 429:
                     return _rate_limited(_retry_after_seconds(response))
@@ -934,6 +958,7 @@ class LiteLLMBackend(Backend):
             route=route,
             actual_tokens=actual_tokens,
             actual_cost=actual_cost,
+            actual_requests=max(attempted_requests, 1),
         )
         return result
 
@@ -1175,6 +1200,10 @@ class LiteLLMBackend(Backend):
                     route=route,
                     actual_tokens=actual_tokens,
                     actual_cost=actual_cost,
+                    # `None` for a handle written before this field existed -- `settle()` leaves
+                    # the request count untouched rather than guessing, same as it already does
+                    # for `actual_tokens`/`actual_cost` on an unpriced legacy handle.
+                    actual_requests=handle.attempted_requests,
                 )
                 write_deferred(self.storage, handle.recipe_hash, result)
         return result
