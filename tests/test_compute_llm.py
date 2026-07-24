@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import traceback
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +15,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMStructuredOutputError,
     _gemini_schema_safe_model,
+    _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
     _safe_structured_failure_diagnostic,
@@ -297,6 +298,44 @@ def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     assert ledger.inflight == {}
     assert ledger.requests_minute == 0
     assert ledger.blocked_until != ""
+
+
+def test_pacing_wait_seconds_gives_up_when_nothing_will_ever_free_up():
+    now = datetime(2026, 7, 16, 12, tzinfo=UTC)
+    assert _pacing_wait_seconds(None, now + timedelta(hours=1), now) is None
+
+
+def test_pacing_wait_seconds_gives_up_when_the_soonest_reset_is_at_or_past_the_deadline():
+    now = datetime(2026, 7, 16, 12, tzinfo=UTC)
+    deadline = now + timedelta(minutes=5)
+    assert _pacing_wait_seconds(deadline, deadline, now) is None
+    assert _pacing_wait_seconds(deadline + timedelta(seconds=1), deadline, now) is None
+
+
+def test_pacing_wait_seconds_waits_out_a_retry_at_within_the_deadline():
+    now = datetime(2026, 7, 16, 12, tzinfo=UTC)
+    deadline = now + timedelta(hours=1)
+    assert _pacing_wait_seconds(now + timedelta(seconds=5), deadline, now) == 5.0
+    # Capped so the caller re-reads the freshest ledger regularly rather than sleeping the whole
+    # remaining wait (still well within the deadline) in one call.
+    assert _pacing_wait_seconds(now + timedelta(minutes=30), deadline, now) == 10.0
+
+
+def test_pacing_wait_seconds_has_no_independent_defense_against_a_past_retry_at():
+    """`_pacing_wait_seconds` only gives up via `retry_at is None` or `retry_at >= deadline_at` --
+    it has no separate rule for "retry_at is in the past". This is the exact shape of the bug
+    fixed in `_next_quota_reset` (a stale `blocked_until`, or the earlier unconditional
+    "next minute" candidate): if the route-selection layer ever again hands this function a
+    `retry_at` that's before `now` while `deadline_at` is still ahead, this function will not
+    catch it -- it returns `0.0` (busy-retry, not give-up) exactly like a legitimately-imminent
+    reset would. Correctness here rests entirely on `select_route`/`_next_quota_reset` upstream
+    only ever producing a `retry_at` that is genuinely in the future or at/after the deadline --
+    this test pins that as documented, load-bearing behavior rather than something a future
+    change to this function could quietly assume away."""
+    now = datetime(2026, 7, 16, 12, tzinfo=UTC)
+    stale_past = now - timedelta(hours=2)
+    deadline = now + timedelta(hours=1)
+    assert _pacing_wait_seconds(stale_past, deadline, now) == 0.0
 
 
 def test_reconcile_settles_actual_requests_after_a_202_dispatch():

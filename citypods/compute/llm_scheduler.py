@@ -100,6 +100,14 @@ def _next_quota_reset(
     few seconds for the rest of the day instead of correctly giving up until the real reset --
     for a caller that never gives up on `None` (`LiteLLMBackend._run_policy_job_paced`), that can
     burn its *entire* deadline on one route, never reaching whatever else was queued behind it.
+
+    Same reasoning applies to ``blocked_until``: it only ever moves forward (`LLMBudget.block()`
+    extends it, never clears it), so a route blocked by an *earlier* real 429 keeps a stale
+    timestamp in the ledger long after that block itself expired. `available()` already treats a
+    block as in effect only while ``now < blocked_until`` (see its own check) -- this function must
+    agree, or a past `blocked_until` wins `min()` over the real (future) axis reset the same way an
+    unconditional "next minute" used to, reintroducing the identical busy-retry-forever failure
+    mode this function exists to prevent.
     """
     resets: list[datetime] = []
     quota = route.quota
@@ -115,7 +123,9 @@ def _next_quota_reset(
         tomorrow = local.date() + timedelta(days=1)
         resets.append(datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC))
     if ledger.blocked_until:
-        resets.append(datetime.fromisoformat(ledger.blocked_until))
+        blocked_until = datetime.fromisoformat(ledger.blocked_until)
+        if now.astimezone(UTC) < blocked_until:
+            resets.append(blocked_until)
     if not resets:
         # available() failed on an axis this function doesn't model precisely (a cost cap,
         # concurrency) -- fall back to the one-minute guess this function used to make

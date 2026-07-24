@@ -51,6 +51,29 @@ Phase R (Research-Tool Surface)._
   it. `_next_quota_reset` now only offers a reset-time candidate for the axis (RPM/TPM/RPD/a
   reactive block) actually responsible for the current `available()` failure.
 
+- **The `_next_quota_reset` fix above was incomplete: a stale `blocked_until` timestamp reproduced
+  the identical busy-retry-forever symptom it was meant to fix, confirmed live on the very next
+  sweep run after that fix merged.** `LLMBudget.block()` only ever extends `blocked_until` forward
+  and never clears it, so a route blocked earlier by a real 429 keeps that (now past) timestamp in
+  its ledger entry long after the block itself expired. `_next_quota_reset` added it to the reset
+  candidates unconditionally, so once the daily quota was *also* exhausted, the stale past
+  timestamp always won `min()` over the correctly-computed future "tomorrow" reset -- `retry_at`
+  came back in the past, `_pacing_wait_seconds` computed `wait <= 0` and returned `0.0` rather than
+  giving up, and the pacing loop spun forever. `_next_quota_reset` now mirrors the same in-effect
+  check `LLMBudget.available()` already uses (`now < blocked_until`) before offering it as a
+  candidate at all. Traced the full pacing chain to confirm no other axis can reintroduce the same
+  failure: `_pacing_wait_seconds` itself has no independent defense against a past `retry_at` --
+  it gives up only on `retry_at is None` or `retry_at >= deadline_at`, so correctness rests
+  entirely on `select_route`/`_next_quota_reset` upstream never handing it a stale one. Pinned
+  that contract with direct unit tests on `_pacing_wait_seconds` (give-up, wait-and-cap, and a
+  test documenting the no-independent-defense behavior explicitly) so a future change to either
+  layer can't quietly reintroduce this. The two remaining unmodeled axes in `available()` --
+  `concurrency` and `cost_cap`/`daily_cost_cap` -- fall back to `_next_quota_reset`'s "next
+  minute" guess, which is wrong but always future, so it can busy-retry wastefully until the
+  deadline but cannot reproduce this specific 0-wait infinite-loop failure mode; left as a known,
+  lower-severity gap (only `daily_cost_cap` is currently configured on any route, and only under
+  `allow_paid=True` with a `deadline_at` set).
+
 - **`llm-deferred-sweep.yml` now gives the deferred LLM tag backlog a long graceful drain window
   instead of a short hard cancel.** The GitHub Actions job timeout is 240 minutes, and the backing
   script gets an explicit 235-minute internal wall-clock budget; deferred-direct retries use that
