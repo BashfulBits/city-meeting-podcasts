@@ -2,8 +2,13 @@ name: LLM topic tags
 
 # R5's bounded producer.  This lane is deliberately separate from Audio and ASR: topic tags
 # only read already-persisted meeting material, and a quota deferral is normal rather than a
-# workflow failure.  Flash-Lite is pinned in site_config.yml and the CAS scheduler limits it to
-# 20 provider attempts per Pacific calendar day.
+# workflow failure.  Routes are pinned in site_config.yml's `tagging.llm_models` (currently two
+# independent Flash-Lite free-tier pools); each route's real rpm/rpd/tpm ceiling lives in
+# `ROUTES` (citypods/compute/llm_policy.py), which the scheduler paces within and drains across
+# the run instead of bursting one window and stopping. Don't restate a specific attempts/day
+# number here -- it drifts out of sync with those two files (this comment previously said "20
+# provider attempts/day", true only of the original single-route rpd=20 safety ceiling before the
+# real free-tier numbers and the second route were confirmed).
 on:
   schedule:
     - cron: "15 18 * * *" # after Gemini's Pacific daily reset, allowing for cron jitter
