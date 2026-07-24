@@ -8,10 +8,9 @@
 # noble and Debian bookworm ship different SONAMEs for some of those libraries (e.g. noble's
 # libvpx9/libdav1d7 vs. bookworm's libvpx7/libdav1d6), so a bookworm base can't load this binary
 # -- the base here has to match the build host, not just be "a recent Debian-family image".
-# TODO: pin by digest once resolved from a real build log (review/22 base-image-immutability
-# convention) -- Docker Hub isn't reachable from the sandbox this was authored in to look it up
-# ahead of time.
-FROM ubuntu:24.04
+# Digest resolved from a real audio-runner-image.yml dispatch's build provenance (run 30064762550)
+# -- Docker Hub isn't reachable from the sandbox this was authored in to look it up ahead of time.
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 
 ARG FFMPEG_URL
 ARG FFMPEG_SHA256

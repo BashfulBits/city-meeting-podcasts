@@ -121,9 +121,13 @@ Phase R (Research-Tool Surface)._
   as a sibling module, and the Dockerfile only ever `COPY`'d the single file, not the `scripts/`
   directory it depends on — `ModuleNotFoundError: No module named 'scripts'`, since this is the
   first dispatch to ever get past the checksum/404 failures that blocked every earlier one before
-  reaching this step. Fixed by copying the whole `scripts/` directory in. The base image is
-  temporarily unpinned by digest pending a clean dispatch's log output (`review/22`'s
-  base-image-immutability convention still applies — a follow-up will pin it once resolved).
+  reaching this step. Fixed by copying the whole `scripts/` directory in. A clean re-dispatch
+  (run `30064762550`) then built and smoke-tested successfully — `ffmpeg -version`/
+  `ffprobe -version` printed real output (proving the SONAME fix: a mismatch would have failed to
+  load the binary at all, not just warned) and `python -c "import boto3, citypods"` succeeded.
+  The base image is now pinned to the exact digest that dispatch resolved
+  (`ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90`, read
+  from that build's provenance metadata — `review/22`'s base-image-immutability convention).
   Not an `AUDIO_PIPELINE_VERSION` bump: same ffmpeg version, same build flags/codecs as already
   shipped: only *how* its external libraries are linked (and therefore which container they run
   in) changed, not what bytes a correctly-running binary produces — CI's `dep-bump-smoke` table
