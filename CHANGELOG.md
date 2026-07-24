@@ -22,9 +22,9 @@ Phase R (Research-Tool Surface)._
   script gets an explicit 235-minute internal wall-clock budget; deferred-direct retries use that
   sweep deadline (not the stale short deadline from the original tag lane) so they can pace through
   provider minute windows and stop only after the remaining pending items cannot fit before the
-  deadline. The sweep records each completed result as `backend.reconcile()` returns, handles
-  SIGTERM/SIGINT by summarizing rather than starting more work, and still prunes expired registry
-  records at the end.
+  deadline. The sweep records each completed result as `backend.reconcile()` returns, treats
+  SIGTERM/SIGINT as a signal-safe stop flag checked between records (rather than interrupting a
+  storage write), and still prunes expired registry records at the end.
 
 - **Gemini structured-output calls now use native JSON-schema mode via a direct LiteLLM call,
   bypassing Instructor entirely for `gemini/*` routes.** The `litellm` bump below did not fix the

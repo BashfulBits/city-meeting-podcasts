@@ -32,16 +32,21 @@ from citypods.config import load_site_config
 from citypods.storage import make_storage
 
 
-class _StopRequested(Exception):
-    """Raised by signal handlers so the sweep can summarize and exit before a hard kill."""
+class _StopState:
+    """Signal-safe stop flag checked between reconciliation attempts."""
+
+    requested = False
 
 
-def _install_signal_handlers() -> None:
+def _install_signal_handlers() -> _StopState:
+    stop_state = _StopState()
+
     def _request_stop(_signum, _frame):
-        raise _StopRequested
+        stop_state.requested = True
 
     signal.signal(signal.SIGINT, _request_stop)
     signal.signal(signal.SIGTERM, _request_stop)
+    return stop_state
 
 
 def _with_sweep_deadline(handle, deadline_at: datetime):
@@ -120,32 +125,21 @@ def main(argv: list[str] | None = None) -> int:
     backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
     _register_known_contracts()
 
-    _install_signal_handlers()
+    stop_state = _install_signal_handlers()
     deadline_at = datetime.now(UTC) + timedelta(minutes=args.run_time_budget_minutes)
     completed = 0
     still_pending = 0
     failed = 0
     seen_pending: set[str] = set()
-    completed_hashes: set[str] = set()
-    stop_requested = False
 
-    while datetime.now(UTC) < deadline_at:
+    if datetime.now(UTC) < deadline_at:
         pending = list_pending_deferred(storage)
-        if not pending:
-            break
-        pass_completed = 0
         for handle in pending:
-            if datetime.now(UTC) >= deadline_at:
-                stop_requested = True
+            if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
-            if handle.recipe_hash in completed_hashes:
-                continue
             seen_pending.add(handle.recipe_hash)
             try:
                 result = backend.reconcile(_with_sweep_deadline(handle, deadline_at))
-            except _StopRequested:
-                stop_requested = True
-                break
             except Exception as exc:  # noqa: BLE001 -- one bad record must not abort the sweep
                 failed += 1
                 print(f"llm-deferred-sweep: {handle.recipe_hash} failed: {exc}", file=sys.stderr)
@@ -154,16 +148,13 @@ def main(argv: list[str] | None = None) -> int:
                 still_pending += 1
             else:
                 completed += 1
-                pass_completed += 1
-                completed_hashes.add(handle.recipe_hash)
+            if stop_state.requested:
+                break
 
-        if stop_requested:
-            break
-        # Each handle in the snapshot has now either completed, remained genuinely pending, failed
-        # independently, or paced until no allowed route could fit before the sweep deadline. A
-        # second immediate pass would only re-poll/re-log the same remaining handles; the next
-        # scheduled run gets a fresh registry snapshot.
-        break
+    # Each handle in the snapshot has now either completed, remained genuinely pending, failed
+    # independently, or paced until no allowed route could fit before the sweep deadline. A second
+    # immediate pass would only re-poll/re-log the same remaining handles; the next scheduled run
+    # gets a fresh registry snapshot.
 
     pruned = prune_expired_deferred(storage)
     remaining = len(list_pending_deferred(storage))
@@ -172,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         f"{still_pending} still pending observations, {failed} failed, {pruned} pruned, "
         f"{remaining} remaining"
     )
-    if stop_requested:
+    if stop_state.requested:
         print("llm-deferred-sweep: graceful stop requested; finished work has been persisted")
     return 0
 
