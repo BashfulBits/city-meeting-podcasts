@@ -14,7 +14,6 @@ from citypods.compute.llm_budget import (
     LLM_BUDGET_STATE_KEY,
     LLMBudget,
     load_llm_budget_cas,
-    minute_key,
     serialize_llm_budget,
 )
 from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, LLMRoute
@@ -87,21 +86,43 @@ def _next_discount_window_end(route: LLMRoute, now: datetime) -> datetime | None
     return min((end for _, end in candidates), default=None)
 
 
-def _next_quota_reset(route: LLMRoute, ledger, now: datetime) -> datetime:
+def _next_quota_reset(
+    route: LLMRoute, ledger, now: datetime, *, requests: int, tokens: int
+) -> datetime:
+    """The soonest time an axis actually keeping ``model`` unavailable right now will reset.
+
+    Only offers a candidate for an axis genuinely responsible for the current ``available()``
+    failure -- checking ``ledger.requests_minute_key == minute_key(now)`` (true on nearly every
+    call, since merely checking availability stamps that key for the rest of the minute)
+    previously offered "next minute" as a candidate unconditionally, even when RPM/TPM were
+    nowhere near their cap and the real blocker was RPD. `min()` would then pick that bogus
+    near-immediate time over the real tomorrow reset, so a paced caller would busy-retry every
+    few seconds for the rest of the day instead of correctly giving up until the real reset --
+    for a caller that never gives up on `None` (`LiteLLMBackend._run_policy_job_paced`), that can
+    burn its *entire* deadline on one route, never reaching whatever else was queued behind it.
+    """
     resets: list[datetime] = []
     quota = route.quota
-    if quota.rpm is not None or quota.tpm is not None:
-        if ledger.requests_minute_key == minute_key(now):
-            current = now.astimezone(UTC)
-            resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
-    if quota.rpd is not None:
+    per_minute_binding = (
+        quota.rpm is not None and ledger.requests_minute + requests > quota.rpm
+    ) or (quota.tpm is not None and ledger.tokens_minute + tokens > quota.tpm)
+    if per_minute_binding:
+        current = now.astimezone(UTC)
+        resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
+    if quota.rpd is not None and ledger.requests_day + requests > quota.rpd:
         zone = ZoneInfo(quota.reset_timezone)
         local = now.astimezone(zone)
         tomorrow = local.date() + timedelta(days=1)
         resets.append(datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC))
     if ledger.blocked_until:
         resets.append(datetime.fromisoformat(ledger.blocked_until))
-    return min(resets, default=now)
+    if not resets:
+        # available() failed on an axis this function doesn't model precisely (a cost cap,
+        # concurrency) -- fall back to the one-minute guess this function used to make
+        # unconditionally, rather than `now`, which would reintroduce the same busy-retry this
+        # fix exists to prevent for the axes it does model.
+        resets.append(now.astimezone(UTC).replace(second=0, microsecond=0) + timedelta(minutes=1))
+    return min(resets)
 
 
 def _estimated_cost(route: LLMRoute, estimated_tokens: int, now: datetime) -> float:
@@ -197,7 +218,9 @@ def select_route(
             route_ledger = ledger.routes.get(model)
             if route_ledger is None:
                 route_ledger = ledger._ledger(model, now, route=route)
-            predicted = _next_quota_reset(route, route_ledger, now)
+            predicted = _next_quota_reset(
+                route, route_ledger, now, requests=requests, tokens=estimated_tokens
+            )
             retry_ats.append(predicted)
             reason = "quota or budget exhausted"
             if policy.deadline_at is not None and predicted > policy.deadline_at:
