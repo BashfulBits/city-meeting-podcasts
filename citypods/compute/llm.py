@@ -845,7 +845,14 @@ class LiteLLMBackend(Backend):
                 owner,
                 resolved_model,
                 route=route,
-                actual_requests=max(attempted_requests, 1),
+                # The most recent attempt is the one that got rejected as already-over-quota --
+                # it never reached the model, so it shouldn't count against our own proactive
+                # ledger (`block_route_until` above is what actually stops us re-hammering this
+                # route; the request counters aren't load-bearing for that). Any *earlier* attempt
+                # within this same call (e.g. a structured retry's first pass, which got a real
+                # response that merely failed validation) did reach the provider and stays
+                # charged -- so subtract exactly the rejected attempt, not the whole count.
+                actual_requests=max(attempted_requests - 1, 0),
             )
             return self._deferred_handle(job, structured, messages, policy)
 
@@ -924,6 +931,7 @@ class LiteLLMBackend(Backend):
                         owner=owner,
                         input_per_token=route.pricing.input_per_token,
                         output_per_token=route.pricing.output_per_token,
+                        attempted_requests=attempted_requests,
                     )
                 elif response.status_code == 429:
                     return _rate_limited(_retry_after_seconds(response))
@@ -1192,6 +1200,10 @@ class LiteLLMBackend(Backend):
                     route=route,
                     actual_tokens=actual_tokens,
                     actual_cost=actual_cost,
+                    # `None` for a handle written before this field existed -- `settle()` leaves
+                    # the request count untouched rather than guessing, same as it already does
+                    # for `actual_tokens`/`actual_cost` on an unpriced legacy handle.
+                    actual_requests=handle.attempted_requests,
                 )
                 write_deferred(self.storage, handle.recipe_hash, result)
         return result

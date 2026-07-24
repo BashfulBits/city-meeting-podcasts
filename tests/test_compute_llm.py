@@ -252,9 +252,10 @@ def test_direct_mode_429_defers_and_blocks_the_route_reactively():
     budget, _ = load_llm_budget_cas(storage)
     ledger = budget.routes["gemini/gemini-3-flash-preview"]
     assert ledger.inflight == {}
-    # The attempted request still counts (the provider's own counter already moved) -- only
-    # release, never settle, would have undercounted it.
-    assert ledger.requests_minute == 1
+    # The rejected attempt never reached the model -- it doesn't count against our own
+    # proactive ledger. `blocked_until` (not the request counters) is what stops an immediate
+    # retry from hammering straight back into the same 429.
+    assert ledger.requests_minute == 0
     assert ledger.blocked_until != ""
 
 
@@ -294,8 +295,61 @@ def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     budget, _ = load_llm_budget_cas(storage)
     ledger = budget.routes["mistral/mistral-large-latest"]
     assert ledger.inflight == {}
-    assert ledger.requests_minute == 1
+    assert ledger.requests_minute == 0
     assert ledger.blocked_until != ""
+
+
+def test_reconcile_settles_actual_requests_after_a_202_dispatch():
+    """A structured dispatch call reserves the worst case (2, matching a direct route's possible
+    corrective retry) even though the dispatch transport is always exactly one real POST -- the
+    202 branch returns a ``JobHandle`` before anything is settled, deliberately leaving the
+    reservation inflight until ``reconcile()`` observes the Worker's terminal response. That later
+    settle must still correct the reservation down to the one real attempt, not leave it frozen at
+    2 forever because the attempt count never reached the handle (CodeRabbit, PR #1007)."""
+
+    class Response:
+        def __init__(self, status, body, headers=None):
+            self.status_code = status
+            self._body = body
+            self.headers = headers or {}
+
+        def json(self):
+            return self._body
+
+    class Session:
+        def post(self, url, **kwargs):
+            return Response(202, {"id": "chatcmpl-1"}, {"location": "/v1/requests/chatcmpl-1"})
+
+        def get(self, url, **kwargs):
+            return Response(200, {"choices": [{"message": {"content": '{"value":"ok"}'}}]})
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-latest",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+        storage=storage,
+    )
+    handle = backend.run_inference(
+        job(
+            content="meeting text",
+            structured_output="test-output",
+            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",)),
+        )
+    )
+    assert isinstance(handle, JobHandle)
+    assert handle.attempted_requests == 1
+
+    result = backend.reconcile(handle)
+
+    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["mistral/mistral-large-latest"]
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 1
 
 
 def test_usage_tokens_returns_none_not_zero_for_missing_or_invalid_usage():
@@ -630,6 +684,47 @@ def test_gemini_structured_retry_settles_combined_usage_from_both_attempts():
     ledger = budget.routes["gemini/gemini-3-flash-preview"]
     assert ledger.inflight == {}
     assert ledger.tokens_minute == 80
+
+
+def test_gemini_structured_429_on_retry_still_bills_the_real_first_attempt():
+    """A rejected retry doesn't erase the call's earlier real usage: only the specific attempt
+    that hit the 429 is excluded from settlement, not the whole call (contrast with the
+    single-attempt 429 tests, which settle to 0 because their one and only attempt was the
+    rejected one)."""
+
+    class RateLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "30"}
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return structured_response("not valid json")
+        raise RateLimited("rate limited")
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    result = backend.run_inference(
+        job(
+            content="meeting text",
+            structured_output="test-output",
+            llm_policy=LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
+        )
+    )
+
+    assert len(calls) == 2
+    assert isinstance(result, JobHandle)
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    # The first attempt reached the provider and got a real (if invalid) response -- it stays
+    # charged. Only the second, rejected-as-429 attempt is excluded.
+    assert ledger.requests_minute == 1
 
 
 def test_strip_schema_keys_removes_matching_keys_at_every_depth():

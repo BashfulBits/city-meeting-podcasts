@@ -197,6 +197,46 @@ def test_retry_at_spans_to_the_second_route_when_the_first_is_daily_exhausted():
     assert result.retry_at is None
 
 
+def test_ranking_prefers_the_less_utilized_of_two_free_equal_cost_routes():
+    """Two free, equally-costed, simultaneously-eligible routes (the two flash-lite pools) must
+    not always resolve to whichever sorts first alphabetically -- 3.1 winning every tie regardless
+    of how close it is to its own RPM/RPD ceiling is exactly why 3.5's independent quota pool sat
+    almost entirely unused in practice. Once 3.1 has *some* usage and 3.5 has none, 3.5 should win
+    the tie so load actually spreads across both pools instead of serializing through one."""
+    budget = LLMBudget()
+    busier = "gemini/gemini-3.1-flash-lite"
+    led = budget._ledger(busier, NOW, route=ROUTES[busier])
+    led.requests_minute = 5  # 5 of 15 rpm used -- well short of exhausted, just busier
+
+    result = select_route(
+        LLMRequestPolicy(
+            allowed_models=("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+        ),
+        routes=ROUTES,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model == "gemini/gemini-3.5-flash-lite"
+
+
+def test_ranking_falls_back_to_model_name_when_utilization_ties():
+    """With both flash-lite pools equally (un)used, selection is still deterministic -- the
+    model-name comparison remains the final tie-break once cost and utilization agree."""
+    result = select_route(
+        LLMRequestPolicy(
+            allowed_models=("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+        ),
+        routes=ROUTES,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model == "gemini/gemini-3.1-flash-lite"
+
+
 def test_a_caller_reaching_both_transports_can_select_either():
     """The sweep (and any caller configured with a dispatch Worker) can reach both -- this is
     what lets a single backend instance service pending records regardless of which provider

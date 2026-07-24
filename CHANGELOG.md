@@ -17,6 +17,24 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The LLM scheduler now spreads load across equally-eligible free routes instead of always
+  favoring whichever sorts first alphabetically, and the deferred sweep's ledger accounting and
+  ordering got a further round of fixes.** `select_route` picks among tied free/equal-cost/
+  simultaneously-eligible candidates by *current utilization* (remaining RPM/RPD headroom on
+  whichever axis is tightest), not just model name -- previously `gemini-3.1-flash-lite` won
+  every tie against `gemini-3.5-flash-lite` regardless of how close it was to its own ceiling, so
+  the second route's independent free-tier pool sat almost entirely unused. A rejected (429)
+  attempt no longer counts against the proactive request ledger -- only the specific attempt that
+  was turned away is excluded from settlement, not the whole call, so a structured retry's real
+  first attempt (which reached the model and merely failed validation) still stays billed. The
+  deferred sweep's capacity-exhaustion cache is now keyed on the resolved candidate route pool
+  (the model set + paid gate `select_route` actually evaluates) instead of
+  `(task, structured_output, purpose)`, so two different features drawing on the same underlying
+  quota pools benefit from a single exhaustion determination instead of each independently
+  re-discovering it. The registry stream is now ordered oldest-`last_modified`-first (free from
+  the listing, no extra reads) instead of arbitrary key order, and the sweep logs a per-pool
+  breakdown of how many records were skipped once a pool proved exhausted.
+
 - **`llm-deferred-sweep.yml` now gives the deferred LLM tag backlog a long graceful drain window
   instead of a short hard cancel.** The GitHub Actions job timeout is 240 minutes, and the backing
   script gets an explicit 235-minute internal wall-clock budget; deferred-direct retries use that
@@ -24,11 +42,15 @@ Phase R (Research-Tool Surface)._
   provider minute windows and stop only after the remaining pending items cannot fit before the
   deadline. The sweep records each completed result as `backend.reconcile()` returns, treats
   SIGTERM/SIGINT as a signal-safe stop flag checked between records (rather than interrupting a
-  storage write), streams pending records so it can stop downloading same-capacity records once a
-  cohort cannot fit, and still prunes expired registry records at the end. The LLM quota ledger also
-  settles structured calls back from their worst-case two-request reservation to the actual request
-  count on success, so proactive daily accounting no longer reports route exhaustion at roughly half
-  of the provider dashboard's request allowance when most calls succeed on the first attempt.
+  storage write), streams pending records rather than materializing the whole registry, and once a
+  cohort of same-capacity records proves it can't fit, skips further *reconcile attempts* for the
+  rest of that cohort (each record is still read from storage to check which cohort it belongs to
+  -- see above for the follow-up that keys that skip on the resolved route pool rather than the
+  originating feature -- reconciliation, not the read, is what's avoided), and still prunes expired
+  registry records at the end. The LLM quota ledger also settles structured calls back from their
+  worst-case two-request reservation to the actual request count on success, so proactive daily
+  accounting no longer reports route exhaustion at roughly half of the provider dashboard's request
+  allowance when most calls succeed on the first attempt.
 
 - **Gemini structured-output calls now use native JSON-schema mode via a direct LiteLLM call,
   bypassing Instructor entirely for `gemini/*` routes.** The `litellm` bump below did not fix the

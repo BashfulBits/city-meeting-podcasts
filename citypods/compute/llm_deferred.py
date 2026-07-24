@@ -81,6 +81,7 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
         "owner": result.owner,
         "input_per_token": result.input_per_token,
         "output_per_token": result.output_per_token,
+        "attempted_requests": result.attempted_requests,
     }
     deferred = result.deferred_request
     if isinstance(deferred, DeferredLLMRequest):
@@ -120,6 +121,7 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 owner=data.get("owner"),
                 input_per_token=data.get("input_per_token"),
                 output_per_token=data.get("output_per_token"),
+                attempted_requests=data.get("attempted_requests"),
                 deferred_request=deferred,
             )
     except (LookupError, TypeError, ValueError):
@@ -180,13 +182,29 @@ def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
 
 
 def iter_pending_deferred(storage):
-    """Yield currently-pending records one at a time.
+    """Yield currently-pending records one at a time, oldest-first.
 
-    The deferred sweep may discover after one record that a whole policy cohort cannot fit before
-    the run deadline. Streaming keeps it from downloading and decoding the rest of the registry
-    before it can make that stop decision.
+    The sweep may stop early -- its own wall-clock deadline passes, or a signal requests a
+    graceful stop -- before reaching the end of a large registry. Streaming means whatever it
+    never reaches is never read at all. It does *not* avoid the read for a record the sweep does
+    reach and then skips (e.g. one sharing an already-proven-exhausted route pool with an earlier
+    record) -- each yielded record has already had its body fetched by the time the caller can
+    check that; only the reconcile *attempt* is what such a skip avoids, not this read.
+
+    ``storage.list_objects`` hands back each key's ``last_modified`` for free (no per-object
+    read), so the listing -- cheap key/timestamp pairs, not record bodies -- is sorted by it
+    before any body is downloaded. A record's ``last_modified`` moves forward every time it's
+    rewritten (e.g. a prior sweep's own retry), so this is "least recently touched", not strictly
+    "oldest created" -- but it's a free proxy for which records have been waiting longest without a
+    successful attempt, which is a better spend of a capacity-limited run than the arbitrary
+    listing order (typically lexicographic by key) the un-sorted stream would otherwise process in.
+    A missing/``None`` timestamp sorts last rather than raising.
     """
-    for key, _ in storage.list_objects(DEFERRED_PREFIX):
+    listing = sorted(
+        storage.list_objects(DEFERRED_PREFIX),
+        key=lambda item: (item[1] is None, item[1]),
+    )
+    for key, _ in listing:
         data = _read_json(storage, key)
         if not isinstance(data, Mapping) or data.get("status") != "pending":
             continue
