@@ -1,23 +1,27 @@
 #!/usr/bin/env python
-"""Diagnose the Swagit list-page 403/503/504 storm seen in Audio #257/#258.
+"""Diagnose the Swagit list-page 403/503/504 storm seen in Audio #257/#258 and the same-day
+LLM tag-lane enrich (``citypods.cli enrich --lane tag``), where every one of 5 Swagit-hosted
+cities (Addison, Austin, Dallas, Denton, Waco) failed with a plain HTTP 403 -- most on a single,
+unpaginated request -- while every non-Swagit city in the same job built fine.
 
 Swagit is Granicus-owned (``citypods/providers/swagit.py``), and the failure signature —
-escalating 5xx into a blanket 403 across unrelated tenants in the same run — matches the
-already-diagnosed Granicus media 403 (GH#300/#353): a paired test proved that cause was shared
-GitHub-runner egress-IP reputation, not request shape or our own concurrency, and was fixed with
-an authenticated Cloudflare Worker fallback (``workers/granicus-media-proxy``).
+provider-specific, not request-shape- or burst-specific — matches the already-diagnosed Granicus
+media 403 (GH#300/#353): a paired test proved that cause was shared GitHub-runner egress-IP
+reputation, not request shape or our own concurrency, and was fixed with an authenticated
+Cloudflare Worker fallback (``workers/granicus-media-proxy``).
 
 This probe targets the *list/archive page* fetch (``SwagitProvider.fetch_episodes``), which is
-where #257/#258 actually failed — a different host class (``<tenant>.new.swagit.com``) than the
-media CDN (``archive-video.granicus.com``) the existing Granicus probes exercise, and not yet
-covered by the Worker fallback or by ``provider_distributed_leases``/telemetry.
+where #257/#258 and the tag-lane run actually failed — a different host class
+(``<tenant>.new.swagit.com``) than the media CDN (``archive-video.granicus.com``) the existing
+Granicus probes exercise, and not yet covered by the Worker fallback or by
+``provider_distributed_leases``/telemetry.
 
 Run the exact same script from two vantage points and compare the JSON outputs:
 
   * **locally** (or any non-Actions network) — a clean run here while GitHub Actions gets
     403/5xx is the same signal that isolated the Granicus cause to egress reputation.
-  * **from a GitHub-hosted runner** (e.g. ``workflow_dispatch``, once wired up) — for the other
-    half of the pair.
+  * **from a GitHub-hosted runner** (``.github/workflows/swagit-probe.yml``, ``workflow_dispatch``)
+    — for the other half of the pair.
 
 It also doubles as a way to test candidate fixes *before* changing production config:
 ``--pages`` reproduces Austin's real pagination burst, ``--inter-request-delay`` previews the
@@ -47,12 +51,17 @@ from citypods.security import validate_source_url
 
 ALLOWED_HOSTS = ("*.swagit.com",)
 
-# Real, currently-configured list_urls (config/feeds/*.yml) for the three tenants that failed in
-# Audio #257/#258 — not synthetic URLs, so a probe result is directly comparable to those runs.
+# Real, currently-configured list_urls (config/feeds/*.yml) for the five tenants seen failing
+# with HTTP 403/503/504 -- three in Audio #257/#258, plus Addison and Waco in the same-day LLM
+# tag-lane enrich (citypods.cli enrich --lane tag), where every Swagit city failed and every
+# non-Swagit city (Granicus, CivicPlus, CivicEngage) built fine. Not synthetic URLs, so a probe
+# result is directly comparable to those runs.
 DEFAULT_TENANT_URLS = {
+    "addison": "https://addisontx.new.swagit.com/views/128",
     "austin": "https://austintx.new.swagit.com/views/117/city-council-meetings",
     "dallas": "https://dallastx.new.swagit.com/views/default/city-council",
     "denton": "https://dentontx.new.swagit.com/views/5",
+    "waco": "https://wacotx.new.swagit.com/views/851",
 }
 
 # Headers worth keeping in full: cheap WAF/edge fingerprints without echoing anything sensitive
@@ -219,7 +228,8 @@ def main() -> int:
         action="append",
         dest="tenants",
         choices=sorted(DEFAULT_TENANT_URLS),
-        help="Repeatable; default is all three tenants that failed in Audio #257/#258.",
+        help="Repeatable; default is all five tenants confirmed failing (Audio #257/#258 plus "
+        "the LLM tag-lane enrich).",
     )
     parser.add_argument(
         "--pages",

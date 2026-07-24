@@ -41,7 +41,7 @@ def test_outcome_classification(status_code, make_exc, expected):
 def test_default_tenant_urls_are_real_swagit_hosts():
     # Real config/feeds list_urls (not synthetic), so a probe result is directly comparable to
     # the Audio #257/#258 failures rather than testing an endpoint production never touches.
-    assert set(probe.DEFAULT_TENANT_URLS) == {"austin", "dallas", "denton"}
+    assert set(probe.DEFAULT_TENANT_URLS) == {"addison", "austin", "dallas", "denton", "waco"}
     for url in probe.DEFAULT_TENANT_URLS.values():
         assert url.startswith("https://")
         assert (urlsplit(url).hostname or "").endswith(".swagit.com")

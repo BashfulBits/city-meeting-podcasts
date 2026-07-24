@@ -1,0 +1,98 @@
+name: Swagit probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: "Tags this run's vantage point in the output JSON"
+        type: string
+        default: "gh-actions"
+      tenants:
+        description: "Comma-separated tenants (blank = all 5: addison,austin,dallas,denton,waco)"
+        type: string
+        default: ""
+      pages:
+        description: "Sequential archive pages to fetch per tenant, back-to-back"
+        type: number
+        default: 1
+      inter_request_delay:
+        description: "Seconds to sleep between requests within one tenant's page sequence"
+        type: number
+        default: 0
+      concurrent_tenants:
+        description: "Fetch all selected tenants' page sequences in parallel threads"
+        type: boolean
+        default: false
+      host_cap:
+        description: "Process-local swagit.com concurrency cap to apply (0 = unset/unlimited)"
+        type: number
+        default: 0
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # Share Audio's workflow-level queue, same courtesy as granicus-probe.yml: a probe result is
+  # only clean evidence if it isn't also absorbing concurrent load from a live Audio shard hitting
+  # the same swagit.com/granicus.com edge.
+  group: audio
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e . -c constraints/prod.txt
+      - name: Require isolated Audio state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ACTIVE=$(gh run list --workflow audio.yml --status in_progress --json databaseId --limit 5)
+          QUEUED=$(gh run list --workflow audio.yml --status queued --json databaseId --limit 5)
+          if [[ "${ACTIVE}" != "[]" || "${QUEUED}" != "[]" ]]; then
+            echo "::error title=Probe isolation unavailable::Audio is active or queued."
+            exit 1
+          fi
+          echo "No active or queued Audio run."
+      - name: Run Swagit transport probe
+        env:
+          # label/tenants are free-form string inputs; pass through env rather than inlining in
+          # `run:` shell text (same reasoning as granicus-probe.yml's `durations` input) -- the
+          # other inputs on this step are GitHub-validated `number`/`boolean`, which can't carry
+          # shell metacharacters the way a `string` input could.
+          LABEL: ${{ inputs.label }}
+          TENANTS: ${{ inputs.tenants }}
+        run: |
+          args=(--label "${LABEL}" --pages "${{ inputs.pages }}"
+                --inter-request-delay "${{ inputs.inter_request_delay }}"
+                --output swagit-transport-results.json)
+          if [[ -n "${TENANTS}" ]]; then
+            IFS=',' read -ra tenant_list <<< "${TENANTS}"
+            for tenant in "${tenant_list[@]}"; do
+              args+=(--tenant "${tenant}")
+            done
+          fi
+          if [[ "${{ inputs.concurrent_tenants }}" == "true" ]]; then
+            args+=(--concurrent-tenants)
+          fi
+          if [[ "${{ inputs.host_cap }}" -gt 0 ]]; then
+            args+=(--host-cap "${{ inputs.host_cap }}")
+          fi
+          PYTHONPATH=. python scripts/probe_swagit_transport.py "${args[@]}"
+      - name: Upload probe results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: swagit-probe-results
+          path: swagit-transport-results.json
+          if-no-files-found: warn
