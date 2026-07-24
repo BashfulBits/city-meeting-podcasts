@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **`llm-deferred-sweep.yml` now gives the deferred LLM tag backlog a long graceful drain window
+  instead of a short hard cancel.** The GitHub Actions job timeout is 240 minutes, and the backing
+  script gets an explicit 235-minute internal wall-clock budget; deferred-direct retries use that
+  sweep deadline (not the stale short deadline from the original tag lane) so they can pace through
+  provider minute windows and stop only after the remaining pending items cannot fit before the
+  deadline. The sweep records each completed result as `backend.reconcile()` returns, handles
+  SIGTERM/SIGINT by summarizing rather than starting more work, and still prunes expired registry
+  records at the end.
+
 - **Gemini structured-output calls now use native JSON-schema mode via a direct LiteLLM call,
   bypassing Instructor entirely for `gemini/*` routes.** The `litellm` bump below did not fix the
   `Mode Mode.JSON_SCHEMA is not registered for provider Provider.OPENAI` error: two live `tag.yml`

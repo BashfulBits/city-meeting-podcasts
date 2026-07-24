@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
 from scripts import llm_deferred_sweep
 
 
@@ -60,9 +62,29 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
 
     assert llm_deferred_sweep.main([]) == 0
     out = capsys.readouterr()
-    assert "3 pending" in out.out
+    assert "3 pending seen" in out.out
     assert "1 completed" in out.out
-    assert "1 still pending" in out.out
+    assert "1 still pending observations" in out.out
     assert "1 failed" in out.out
     assert "2 pruned" in out.out
     assert "recipe-3" in out.err
+
+
+def test_sweep_overrides_stale_deferred_deadline_for_retries():
+    original = _handle("recipe-deadline")
+    old_deadline = datetime(2026, 1, 1, tzinfo=UTC)
+    sweep_deadline = datetime(2026, 7, 24, 12, tzinfo=UTC)
+    original = JobHandle(
+        **{
+            **original.__dict__,
+            "deferred_request": DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},),
+                policy=LLMRequestPolicy(deadline_at=old_deadline),
+            ),
+        }
+    )
+
+    updated = llm_deferred_sweep._with_sweep_deadline(original, sweep_deadline)
+
+    assert updated.deferred_request.policy.deadline_at == sweep_deadline
+    assert original.deferred_request.policy.deadline_at == old_deadline
