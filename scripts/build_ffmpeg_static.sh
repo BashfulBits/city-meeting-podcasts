@@ -26,6 +26,15 @@
 # to ENABLED_EXTERNAL_LIBS below, which is a normal, reviewable diff in this file -- that's the
 # "register the dependency" contract for this build.
 #
+# NOT fully static: FFmpeg's own libraries (libavcodec etc.) are statically linked into
+# ffmpeg/ffprobe (--enable-static --disable-shared), but the external libraries above link
+# dynamically. A first attempt at fully static linking (--pkg-config-flags="--static") failed
+# configure on gnutls specifically -- `pkg-config --exists gnutls` succeeds, but
+# `pkg-config --static --exists gnutls` doesn't, because gnutls's static dependency chain
+# (nettle/hogweed/gmp/p11-kit/tasn1/idn2/unistring) isn't fully resolvable via Ubuntu's apt
+# packages. Wherever this binary is installed needs the matching runtime packages present:
+#   apt-get install libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+#
 # Usage:
 #   scripts/build_ffmpeg_static.sh <version e.g. 7.1.5> <output tar.xz path>
 #
@@ -57,8 +66,18 @@ echo "== Cloning FFmpeg ${GIT_TAG} =="
 git clone --branch "$GIT_TAG" --depth 1 https://github.com/FFmpeg/FFmpeg.git "$WORK_DIR/ffmpeg-src"
 cd "$WORK_DIR/ffmpeg-src"
 
+# CI runners (actions/setup-python in particular) can point PKG_CONFIG_PATH at a
+# toolchain-specific directory; pkg-config still falls back to its compiled-in default search
+# path, but make the actual apt package install location explicit so this doesn't depend on that.
+export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
+echo "== pkg-config sanity check =="
+pkg-config --exists gnutls && echo "gnutls: found ($(pkg-config --modversion gnutls))" || {
+  echo "gnutls: NOT found by pkg-config"
+  echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+  find / -xdev -name 'gnutls.pc' 2>/dev/null || true
+}
+
 CONFIGURE_ARGS=(
-  --pkg-config-flags="--static"
   --enable-static
   --disable-shared
   --disable-doc

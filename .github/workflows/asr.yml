@@ -37,8 +37,7 @@ jobs:
     env:
       # ASR keeps Whisper weights in the existing Actions-cache/B2 cascade, but uses the same
       # checksum-pinned ffmpeg runtime as Audio instead of depending on Ubuntu package mirrors.
-      FFMPEG_URL: https://johnvansickle.com/ffmpeg/releases/ffmpeg-7.1.5-amd64-static.tar.xz
-      FFMPEG_SHA256: 16f2f146fe7eba1857f522619efa36babcbc500e9698ad72f0f30501acaa80bb
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
       FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -58,10 +57,18 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ env.FFMPEG_DIR }}
-          key: ffmpeg-static-linux64-7.1.5-v1
+          key: ffmpeg-static-linux64-7.1.5-v2
 
       - name: Install verified static ffmpeg
+        # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
+        # upstream/mirror host. FFMPEG_URL built from the B2 secret rather than hardcoded so it's
+        # not duplicated across the 7 workflows that pin ffmpeg (review/22).
+        env:
+          FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
           timeout 300 python scripts/install_static_ffmpeg.py \
             --url "${FFMPEG_URL}" \
             --sha256 "${FFMPEG_SHA256}" \
