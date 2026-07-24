@@ -86,8 +86,18 @@ def _next_discount_window_end(route: LLMRoute, now: datetime) -> datetime | None
     return min((end for _, end in candidates), default=None)
 
 
+def _next_local_midnight(reset_timezone: str, now: datetime) -> datetime:
+    """The start of the next calendar day in ``reset_timezone``, as a UTC instant -- shared by
+    every axis in ``_next_quota_reset`` that resets on that same daily boundary (RPD, and the
+    route's ``daily_cost_cap``), so the two can't drift out of sync with each other."""
+    zone = ZoneInfo(reset_timezone)
+    local = now.astimezone(zone)
+    tomorrow = local.date() + timedelta(days=1)
+    return datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC)
+
+
 def _next_quota_reset(
-    route: LLMRoute, ledger, now: datetime, *, requests: int, tokens: int
+    route: LLMRoute, ledger, now: datetime, *, requests: int, tokens: int, cost: float
 ) -> datetime:
     """The soonest time an axis actually keeping ``model`` unavailable right now will reset.
 
@@ -108,9 +118,14 @@ def _next_quota_reset(
     agree, or a past `blocked_until` wins `min()` over the real (future) axis reset the same way an
     unconditional "next minute" used to, reintroducing the identical busy-retry-forever failure
     mode this function exists to prevent.
+
+    And again for ``pricing.daily_cost_cap``: it resets on the same daily boundary as RPD
+    (``daily_reset_key`` in ``llm_budget.py``'s ``_ledger()``), so it gets the same real reset-time
+    treatment rather than falling into the imprecise fallback below.
     """
     resets: list[datetime] = []
     quota = route.quota
+    pricing = route.pricing
     per_minute_binding = (
         quota.rpm is not None and ledger.requests_minute + requests > quota.rpm
     ) or (quota.tpm is not None and ledger.tokens_minute + tokens > quota.tpm)
@@ -118,19 +133,23 @@ def _next_quota_reset(
         current = now.astimezone(UTC)
         resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
     if quota.rpd is not None and ledger.requests_day + requests > quota.rpd:
-        zone = ZoneInfo(quota.reset_timezone)
-        local = now.astimezone(zone)
-        tomorrow = local.date() + timedelta(days=1)
-        resets.append(datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC))
+        resets.append(_next_local_midnight(quota.reset_timezone, now))
+    if pricing.daily_cost_cap is not None and ledger.cost_day_used + cost > pricing.daily_cost_cap:
+        resets.append(_next_local_midnight(quota.reset_timezone, now))
     if ledger.blocked_until:
         blocked_until = datetime.fromisoformat(ledger.blocked_until)
         if now.astimezone(UTC) < blocked_until:
             resets.append(blocked_until)
     if not resets:
-        # available() failed on an axis this function doesn't model precisely (a cost cap,
-        # concurrency) -- fall back to the one-minute guess this function used to make
-        # unconditionally, rather than `now`, which would reintroduce the same busy-retry this
-        # fix exists to prevent for the axes it does model.
+        # available() failed on an axis this function doesn't model a precise reset for:
+        # `concurrency` (an in-flight slot frees on an arbitrary future settle/release, not a
+        # clock boundary -- there is no reset time to compute, and polling periodically really is
+        # the correct strategy here, not an approximation of one) or the monthly `cost_cap` (no
+        # route configures one today, so there's nothing live to get right; add a real prediction
+        # -- mirroring `citypods.compute.budget.cycle_key`'s rollover-day anchor -- if that
+        # changes). Falls back to the one-minute guess this function used to make unconditionally
+        # for every axis, rather than `now`, which would reintroduce the same busy-retry this
+        # function exists to prevent for the axes it does model precisely.
         resets.append(now.astimezone(UTC).replace(second=0, microsecond=0) + timedelta(minutes=1))
     return min(resets)
 
@@ -229,7 +248,7 @@ def select_route(
             if route_ledger is None:
                 route_ledger = ledger._ledger(model, now, route=route)
             predicted = _next_quota_reset(
-                route, route_ledger, now, requests=requests, tokens=estimated_tokens
+                route, route_ledger, now, requests=requests, tokens=estimated_tokens, cost=cost
             )
             retry_ats.append(predicted)
             reason = "quota or budget exhausted"
