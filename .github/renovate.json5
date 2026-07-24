@@ -59,9 +59,10 @@
       schedule: ["at any time"], // approval is the gate, not a cadence
     },
     {
-      // The custom-regex + Dockerfile output-affecting pins: base image digest, the
-      // ffmpeg build, and the HF model revisions. Separate rule so these actually
-      // reach the approval lane (matchers of different types are AND-ed together).
+      // The custom-regex + Dockerfile output-affecting pins: base image digest and the
+      // HF model revisions (static ffmpeg is no longer Renovate-tracked — see the
+      // customManagers comment below). Separate rule so these actually reach the
+      // approval lane (matchers of different types are AND-ed together).
       matchManagers: ["custom.regex", "dockerfile"],
       groupName: "output-affecting: image/ffmpeg/model (needs approval + smoke)",
       dependencyDashboardApproval: true,
@@ -70,26 +71,16 @@
       schedule: ["at any time"],
     },
   ],
+  // Static ffmpeg (FFMPEG_SHA256 in the 7 workflows that pin it, plus the version embedded in the
+  // deps/ffmpeg/<version>/... B2 key) is no longer Renovate-tracked here. It's self-built from
+  // github.com/FFmpeg/FFmpeg source and vendored into our own B2 bucket
+  // (scripts/build_ffmpeg_static.sh, .github/workflows/build-ffmpeg.yml) rather than fetched from
+  // an upstream/mirror release URL on every run — a regex bump against a URL pattern doesn't apply
+  // anymore, and Renovate can't run the build+vendor step itself. Bumping the version is manual:
+  // dispatch build-ffmpeg.yml with the new version, then update the 7 workflows' FFMPEG_SHA256 and
+  // the "7.1.5" path segment in their FFMPEG_URL to match (still output-affecting, still
+  // smoke-gated — review/22).
   customManagers: [
-    {
-      // Static ffmpeg build (URL + SHA256) — output-affecting; monthly, smoke-gated.
-      // Source switched from BtbN's rolling autobuild releases (retention ~1 month —
-      // BtbN prunes old dated tags, which 404'd in production) to johnvansickle's
-      // per-version archives (kept indefinitely). Version tracking now points at the
-      // real upstream FFmpeg/FFmpeg tags (e.g. "n7.1.5") as the source of truth for
-      // "is there a newer release," independent of where the binary is actually
-      // fetched from; extractVersionTemplate strips the tag's "n" prefix to compare
-      // against johnvansickle's plain "7.1.5"-style version in the URL. The human
-      // still ticks the Dashboard box (dependencyDashboardApproval above).
-      customType: "regex",
-      managerFilePatterns: ["/^\\.github/workflows/.*\\.yml$/"],
-      matchStrings: [
-        "FFMPEG_URL:\\s*\\S+/ffmpeg-(?<currentValue>[0-9.]+)-amd64-static\\.tar\\.xz\\n\\s*FFMPEG_SHA256:\\s*(?<currentDigest>[a-f0-9]+)",
-      ],
-      depNameTemplate: "FFmpeg/FFmpeg",
-      datasourceTemplate: "github-tags",
-      extractVersionTemplate: "^n?(?<version>.*)$",
-    },
     {
       // Hugging Face Whisper model revisions (GH#498). Requires the huggingface
       // datasource; output-affecting → Dashboard approval.

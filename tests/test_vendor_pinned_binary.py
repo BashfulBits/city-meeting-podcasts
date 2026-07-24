@@ -6,6 +6,7 @@ import pytest
 
 import scripts.vendor_pinned_binary as vendor_mod
 from citypods.security import SecurityError
+from citypods.security import validate_source_url as real_validate_source_url
 from scripts.vendor_pinned_binary import vendor
 
 
@@ -192,6 +193,10 @@ def test_vendor_rejects_non_https_source_url(tmp_path, monkeypatch):
         called = True
         return None
 
+    # The module-level _skip_ssrf_gate fixture is autouse, so it stubs out
+    # validate_source_url for every test in this file by default -- restore the real one here,
+    # since this test exists specifically to exercise it.
+    monkeypatch.setattr(vendor_mod, "validate_source_url", real_validate_source_url)
     monkeypatch.setattr(vendor_mod, "b2_from_env", _fail_if_called)
 
     with pytest.raises(SecurityError, match="https only"):

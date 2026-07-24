@@ -83,6 +83,60 @@ Phase R (Research-Tool Surface)._
   this job's own build output, not a caller-supplied URL. No workflow fetches from an upstream or
   mirror host on every run anymore, and no third-party redistributor is a runtime dependency.
 
+- **Self-built ffmpeg `7.1.5` vendored to B2 and wired into all seven consuming workflows;
+  external codec/TLS libraries link dynamically instead of statically.** `build-ffmpeg.yml`'s
+  first real dispatch failed configure twice before producing a working archive: first with
+  `PKG_CONFIG_PATH` not covering apt's `.pc` location (`actions/setup-python` overrides it),
+  then — after that fix — with the same `gnutls not found using pkg-config` error even though a
+  bare `pkg-config --exists gnutls` succeeded, because `--pkg-config-flags="--static"` makes
+  configure query gnutls with `--static`, which additionally requires gnutls's entire transitive
+  dependency chain (nettle/hogweed/gmp/p11-kit/tasn1/idn2/unistring) to resolve statically — at
+  least one link in that chain doesn't, via Ubuntu's apt packages. Fix: drop
+  `--pkg-config-flags="--static"` entirely. FFmpeg's own libraries (libavcodec etc.) still link
+  statically (`--enable-static --disable-shared`); the external codec/TLS libraries (gnutls,
+  opus, vpx, dav1d, mp3lame) now link dynamically, so wherever the binary runs needs the matching
+  runtime (non-`-dev`) packages installed alongside it — a real, permanent change to the
+  deployment story, not a workaround to later undo. The third dispatch succeeded
+  (`sha256=30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d`, uploaded to
+  `deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz` in B2), and that pin now replaces the
+  prior johnvansickle URL/SHA256 in `ci.yml`, `asr.yml`, `audio.yml`, `audio-runner-image.yml`,
+  `dep-bump-smoke.yml`, `duration-normalize.yml`, and `granicus-probe.yml`, each building
+  `FFMPEG_URL` from the `B2_PUBLIC_BASE_URL` secret at the step that needs it (CR-GH-07/23/25 —
+  secrets scoped to the consuming step, not the whole job) rather than hardcoding the CDN domain
+  the secret happens to hold. This dynamic-linking switch is a **permanent deployment contract**,
+  not a one-off fixup: every place this ffmpeg binary runs must have the matching runtime
+  (non-`-dev`) packages installed, forever, not just at the moment of this pin's introduction.
+  `.github/audio-runner/Dockerfile`'s base image was switched from the official
+  `python:3.12-slim-bookworm` to `ubuntu:24.04` for exactly this reason: CodeRabbit caught (PR
+  #1003 review) that the bookworm image's `libvpx7`/`libdav1d6` packages ship different SONAMEs
+  (`libvpx.so.7`/`libdav1d.so.6`) than what the binary is actually linked against
+  (`libvpx.so.9`/`libdav1d.so.7`, from Ubuntu noble — the `ubuntu-latest` distro
+  `build-ffmpeg.yml` builds on) — the binary would fail to load in the container, not just warn.
+  Matching the base image to the build host, rather than publishing a second Debian-targeted
+  archive, keeps this to one ffmpeg build/pin shared by every consumer (GH Actions host-fallback
+  paths already run on noble). A real `audio-runner-image.yml` dispatch against this change
+  confirmed the noble packages install cleanly (Docker Hub pulls aren't reachable from the
+  sandbox this was authored in, so this couldn't be checked ahead of time) but surfaced a second,
+  unrelated bug on the same dispatch: `install_static_ffmpeg.py` imports `scripts._pinned_fetch`
+  as a sibling module, and the Dockerfile only ever `COPY`'d the single file, not the `scripts/`
+  directory it depends on — `ModuleNotFoundError: No module named 'scripts'`, since this is the
+  first dispatch to ever get past the checksum/404 failures that blocked every earlier one before
+  reaching this step. Fixed by copying the whole `scripts/` directory in. A clean re-dispatch
+  (run `30064762550`) then built and smoke-tested successfully — `ffmpeg -version`/
+  `ffprobe -version` printed real output (proving the SONAME fix: a mismatch would have failed to
+  load the binary at all, not just warned) and `python -c "import boto3, citypods"` succeeded.
+  The base image is now pinned to the exact digest that dispatch resolved
+  (`ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90`, read
+  from that build's provenance metadata — `review/22`'s base-image-immutability convention).
+  Not an `AUDIO_PIPELINE_VERSION` bump: same ffmpeg version, same build flags/codecs as already
+  shipped: only *how* its external libraries are linked (and therefore which container they run
+  in) changed, not what bytes a correctly-running binary produces — CI's `dep-bump-smoke` table
+  is expected to show no diffs, which is itself part of what closes this out.
+  `.github/renovate.json5`'s ffmpeg-specific custom regex manager was removed (a URL-pattern
+  version bump doesn't apply to a self-built, vendored pin — bumping now means dispatching
+  `build-ffmpeg.yml` and manually updating the seven workflows' `FFMPEG_SHA256` and `FFMPEG_URL`
+  version segment, still smoke-gated per `review/22`).
+
 - **`litellm` bumped to `1.95.0.dev1` (pre-release), and `instructor`'s `[litellm]` extra dropped, to
   unblock `gemini-3.5-flash-lite`.** A real manually-triggered `tag.yml` run showed the second Gemini
   route added below got **zero** live requests despite `gemini-3.1-flash-lite` repeatedly hitting its
