@@ -245,6 +245,33 @@ def test_retry_at_honors_a_still_active_blocked_until():
     assert result.retry_at == NOW + timedelta(minutes=5)
 
 
+def test_retry_at_is_tomorrows_reset_when_only_the_daily_cost_cap_is_exhausted():
+    """`daily_cost_cap` resets on the same daily boundary as RPD (`daily_reset_key` in
+    `llm_budget.py`'s `_ledger()`) -- `_next_quota_reset` must predict tomorrow's reset for it
+    too, not fall into the imprecise one-minute fallback reserved for axes it can't model
+    (concurrency, the currently-unused monthly `cost_cap`)."""
+    budget = LLMBudget()
+    model = "deepseek/deepseek-v4-flash"
+    route = ROUTES[model]
+    led = budget._ledger(model, NOW, route=route)
+    led.cost_day_used = route.pricing.daily_cost_cap  # today's $ cap is fully spent
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
+        routes=ROUTES,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+
+    assert result.model is None
+    zone = ZoneInfo(route.quota.reset_timezone)
+    tomorrow = NOW.astimezone(zone).date() + timedelta(days=1)
+    expected = datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC)
+    assert result.retry_at == expected
+
+
 def test_retry_at_is_none_when_a_route_is_available_now():
     result = select_route(
         LLMRequestPolicy(allowed_models=("gemini/gemini-3.1-flash-lite",)),

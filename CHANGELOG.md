@@ -67,12 +67,16 @@ Phase R (Research-Tool Surface)._
   entirely on `select_route`/`_next_quota_reset` upstream never handing it a stale one. Pinned
   that contract with direct unit tests on `_pacing_wait_seconds` (give-up, wait-and-cap, and a
   test documenting the no-independent-defense behavior explicitly) so a future change to either
-  layer can't quietly reintroduce this. The two remaining unmodeled axes in `available()` --
-  `concurrency` and `cost_cap`/`daily_cost_cap` -- fall back to `_next_quota_reset`'s "next
-  minute" guess, which is wrong but always future, so it can busy-retry wastefully until the
-  deadline but cannot reproduce this specific 0-wait infinite-loop failure mode; left as a known,
-  lower-severity gap (only `daily_cost_cap` is currently configured on any route, and only under
-  `allow_paid=True` with a `deadline_at` set).
+  layer can't quietly reintroduce this. Of the two remaining unmodeled axes in `available()`,
+  `daily_cost_cap` (live today on `deepseek/deepseek-v4-flash`'s $0.10/day cap) now gets the same
+  real reset-time treatment as RPD -- it resets on the identical daily boundary
+  (`daily_reset_key`), so `_next_quota_reset` predicts tomorrow's reset for it too instead of
+  falling into the "next minute" fallback (extracted the shared "next local midnight" computation
+  into `_next_local_midnight` so RPD and `daily_cost_cap` can't drift out of sync with each
+  other). `concurrency` and the monthly `cost_cap` are left on the fallback: `concurrency` frees on
+  an arbitrary future settle/release rather than a clock boundary, so there is no reset time to
+  compute -- periodic polling *is* the correct strategy there, not an approximation of one; the
+  monthly `cost_cap` has no route configuring it today, so there's nothing live to get right yet.
 
 - **`llm-deferred-sweep.yml` now gives the deferred LLM tag backlog a long graceful drain window
   instead of a short hard cancel.** The GitHub Actions job timeout is 240 minutes, and the backing
