@@ -61,7 +61,18 @@ Phase R (Research-Tool Surface)._
   came back in the past, `_pacing_wait_seconds` computed `wait <= 0` and returned `0.0` rather than
   giving up, and the pacing loop spun forever. `_next_quota_reset` now mirrors the same in-effect
   check `LLMBudget.available()` already uses (`now < blocked_until`) before offering it as a
-  candidate at all.
+  candidate at all. Traced the full pacing chain to confirm no other axis can reintroduce the same
+  failure: `_pacing_wait_seconds` itself has no independent defense against a past `retry_at` --
+  it gives up only on `retry_at is None` or `retry_at >= deadline_at`, so correctness rests
+  entirely on `select_route`/`_next_quota_reset` upstream never handing it a stale one. Pinned
+  that contract with direct unit tests on `_pacing_wait_seconds` (give-up, wait-and-cap, and a
+  test documenting the no-independent-defense behavior explicitly) so a future change to either
+  layer can't quietly reintroduce this. The two remaining unmodeled axes in `available()` --
+  `concurrency` and `cost_cap`/`daily_cost_cap` -- fall back to `_next_quota_reset`'s "next
+  minute" guess, which is wrong but always future, so it can busy-retry wastefully until the
+  deadline but cannot reproduce this specific 0-wait infinite-loop failure mode; left as a known,
+  lower-severity gap (only `daily_cost_cap` is currently configured on any route, and only under
+  `allow_paid=True` with a `deadline_at` set).
 
 - **`llm-deferred-sweep.yml` now gives the deferred LLM tag backlog a long graceful drain window
   instead of a short hard cancel.** The GitHub Actions job timeout is 240 minutes, and the backing
