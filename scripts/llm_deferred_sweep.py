@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
@@ -57,6 +58,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", default="output")
     args = parser.parse_args(argv)
 
+    # Anchored here, before the (occasionally slow) storage setup/list below, same reasoning as
+    # the tag lane's own deadline (citypods/run.py): counting startup against the window guarantees
+    # the graceful stop below fires before GitHub's job `timeout-minutes` hard-cancels the process.
+    start = time.monotonic()
+
     site_config = load_site_config(args.site_config)
     storage = make_storage(site_config, "", Path(args.output_dir))
     if storage is None or not getattr(storage, "cas_capable", False):
@@ -65,6 +71,11 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 0
+
+    defaults = site_config.get("defaults", {}) if isinstance(site_config, dict) else {}
+    safety = float(defaults.get("budget_safety", 0.85))
+    window_min = float(defaults.get("sweep_run_time_budget_minutes", 40))
+    deadline = start + window_min * 60 * safety if window_min > 0 else None
 
     # A backend able to reach every transport a pending record might need: `dispatch_url` (from
     # LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN) makes mistral-dispatch reachable alongside direct,
@@ -75,10 +86,30 @@ def main(argv: list[str] | None = None) -> int:
     _register_known_contracts()
 
     pending = list_pending_deferred(storage)
+    if deadline is not None:
+        print(
+            f"llm-deferred-sweep: {len(pending)} pending, budget {window_min:.0f}m x {safety}",
+            flush=True,
+        )
     completed = 0
     still_pending = 0
     failed = 0
-    for handle in pending:
+    skipped = 0
+    for index, handle in enumerate(pending):
+        if deadline is not None and time.monotonic() >= deadline:
+            # A single reconcile() can legitimately take minutes (real API round trip, litellm's
+            # own retry-on-503, Instructor's corrective retry on a bad structured response) --
+            # there is no mid-record checkpoint to yield at, so the budget is only checked between
+            # records. Whatever's left just stays "pending" untouched (retried next sweep, or by a
+            # later tag/discovery run for the same recipe_hash) instead of the process running
+            # past `timeout-minutes` and getting SIGKILLed with no summary at all.
+            skipped = len(pending) - index
+            print(
+                f"llm-deferred-sweep: stopping early, budget spent -- {skipped} record(s) left "
+                "pending for the next sweep",
+                flush=True,
+            )
+            break
         try:
             result = backend.reconcile(handle)
         except Exception as exc:  # noqa: BLE001 -- one bad record must not abort the sweep
@@ -87,13 +118,17 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if result is None:
             still_pending += 1
+            print(f"llm-deferred-sweep: {handle.recipe_hash} still pending", flush=True)
         else:
             completed += 1
+            print(f"llm-deferred-sweep: {handle.recipe_hash} completed", flush=True)
 
     pruned = prune_expired_deferred(storage)
     print(
         f"llm-deferred-sweep: {len(pending)} pending, {completed} completed, "
-        f"{still_pending} still pending, {failed} failed, {pruned} pruned"
+        f"{still_pending} still pending, {failed} failed, {skipped} skipped (budget), "
+        f"{pruned} pruned",
+        flush=True,
     )
     return 0
 

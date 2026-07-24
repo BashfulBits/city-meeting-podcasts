@@ -155,6 +155,17 @@ defaults:
   # nothing persisted instead of yielding gracefully. Window = tag_run_time_budget_minutes ×
   # budget_safety; keep it comfortably under the job's `timeout-minutes` (leaves ~10m tail here).
   tag_run_time_budget_minutes: 18
+  # `llm-deferred-sweep.yml` (scripts/llm_deferred_sweep.py) reconciles whatever's sitting in the
+  # deferred-request registry -- each `reconcile()` is a real, possibly-retried API call (litellm's
+  # own retry-on-503 plus Instructor's corrective retry on a bad structured response), not a cheap
+  # in-memory check, so this can't reuse `tag_run_time_budget_minutes`. Sized for the real worst
+  # case, not the old fixed job timeout: at rpm=15 per route across the two Flash-Lite routes
+  # (citypods/compute/llm_policy.py ROUTES), draining up to rpd=500 pending records on ONE route
+  # alone takes ~33min even with per-minute pacing perfectly saturated -- a run genuinely needing
+  # that long is normal throughput, not a hang. Window = sweep_run_time_budget_minutes × budget_safety;
+  # keep it comfortably under the job's `timeout-minutes` (llm-deferred-sweep.yml) so the loop
+  # yields between records (see the per-record time check) instead of the job being hard-cancelled.
+  sweep_run_time_budget_minutes: 45
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC
