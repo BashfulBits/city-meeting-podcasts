@@ -580,7 +580,7 @@ def ensure_llm_contract():
 
     from pydantic import BaseModel, ConfigDict, Field
 
-    from citypods.compute.structured import register_response_model
+    from citypods.compute.structured import register_response_model, response_model
 
     class Evidence(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -611,6 +611,11 @@ def ensure_llm_contract():
         model = Response
         register_response_model(LLM_CONTRACT, model)
         ensure_llm_contract.model = model
+    else:
+        try:
+            response_model(LLM_CONTRACT)
+        except ValueError:
+            register_response_model(LLM_CONTRACT, model)
     return model
 
 
