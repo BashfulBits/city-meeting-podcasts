@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from citypods.compute.llm_budget import LLMBudget, load_llm_budget_cas, mutate_llm_budget
 from citypods.compute.llm_policy import (
@@ -159,6 +160,37 @@ def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():
     )
     assert result.model is None
     assert result.retry_at == NOW.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
+
+def test_retry_at_is_tomorrows_reset_when_only_the_daily_quota_is_exhausted():
+    """The inverse of the per-minute case above: with RPM/TPM completely fresh this minute and
+    only RPD exhausted, `retry_at` must be tomorrow's reset, not a bogus "next minute" guess.
+    Before this fix, `_next_quota_reset` offered next-minute unconditionally whenever the
+    ledger's minute window had merely been touched (true on nearly every check, since checking
+    availability itself stamps that key) -- so a route genuinely exhausted for the whole day
+    would mispredict retry_at as seconds away, and `_run_policy_job_paced` (which never gives up
+    on a non-None retry_at) would busy-retry every few seconds for the rest of its deadline
+    instead of correctly recognizing the day is spent."""
+    budget = LLMBudget()
+    model = "gemini/gemini-3.1-flash-lite"
+    route = ROUTES[model]
+    led = budget._ledger(model, NOW, route=route)
+    led.requests_day = route.quota.rpd  # today's quota is fully spent; this minute is untouched
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(model,)),
+        routes=ROUTES,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+
+    assert result.model is None
+    zone = ZoneInfo(route.quota.reset_timezone)
+    tomorrow = NOW.astimezone(zone).date() + timedelta(days=1)
+    expected = datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC)
+    assert result.retry_at == expected
 
 
 def test_retry_at_is_none_when_a_route_is_available_now():

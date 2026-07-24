@@ -35,6 +35,22 @@ Phase R (Research-Tool Surface)._
   the listing, no extra reads) instead of arbitrary key order, and the sweep logs a per-pool
   breakdown of how many records were skipped once a pool proved exhausted.
 
+### Fixed
+
+- **`select_route`'s pacing retry-time prediction could busy-retry a genuinely daily-exhausted
+  route for hours instead of correctly waiting for the real reset, discovered live in the first
+  production run of the deferred-sweep changes above.** `_next_quota_reset` offered "next minute"
+  as a candidate reset time whenever the ledger's per-minute window had merely been *checked*
+  during the current minute -- true on nearly every call, since checking availability itself
+  stamps that key -- regardless of whether RPM/TPM were anywhere near their cap. When the real
+  (and only) blocker was the daily quota, `min()` still picked that bogus near-immediate time over
+  the correct tomorrow reset, so `LiteLLMBackend._run_policy_job_paced` (which never gives up on a
+  non-`None` `retry_at`) would sleep ~0s, recheck, see the same "exhausted" result, and repeat --
+  burning the caller's entire deadline on one route (observed live as an unbroken stream of
+  `llm rate limit: ... pacing 0s` log lines) instead of reaching whatever else was queued behind
+  it. `_next_quota_reset` now only offers a reset-time candidate for the axis (RPM/TPM/RPD/a
+  reactive block) actually responsible for the current `available()` failure.
+
 - **`llm-deferred-sweep.yml` now gives the deferred LLM tag backlog a long graceful drain window
   instead of a short hard cancel.** The GitHub Actions job timeout is 240 minutes, and the backing
   script gets an explicit 235-minute internal wall-clock budget; deferred-direct retries use that
