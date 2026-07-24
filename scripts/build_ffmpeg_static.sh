@@ -57,6 +57,17 @@ echo "== Cloning FFmpeg ${GIT_TAG} =="
 git clone --branch "$GIT_TAG" --depth 1 https://github.com/FFmpeg/FFmpeg.git "$WORK_DIR/ffmpeg-src"
 cd "$WORK_DIR/ffmpeg-src"
 
+# CI runners (actions/setup-python in particular) can point PKG_CONFIG_PATH at a
+# toolchain-specific directory; pkg-config still falls back to its compiled-in default search
+# path, but make the actual apt package install location explicit so this doesn't depend on that.
+export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
+echo "== pkg-config sanity check =="
+pkg-config --exists gnutls && echo "gnutls: found ($(pkg-config --modversion gnutls))" || {
+  echo "gnutls: NOT found by pkg-config"
+  echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+  find / -xdev -name 'gnutls.pc' 2>/dev/null || true
+}
+
 CONFIGURE_ARGS=(
   --pkg-config-flags="--static"
   --enable-static
