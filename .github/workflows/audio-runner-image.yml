@@ -23,8 +23,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1
-  FFMPEG_URL: https://johnvansickle.com/ffmpeg/releases/ffmpeg-7.1.5-amd64-static.tar.xz
-  FFMPEG_SHA256: 16f2f146fe7eba1857f522619efa36babcbc500e9698ad72f0f30501acaa80bb
+  FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
 
 jobs:
   build:
@@ -56,7 +55,7 @@ jobs:
           load: ${{ github.ref != 'refs/heads/main' }}
           tags: ${{ env.IMAGE }}
           build-args: |
-            FFMPEG_URL=${{ env.FFMPEG_URL }}
+            FFMPEG_URL=${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
             FFMPEG_SHA256=${{ env.FFMPEG_SHA256 }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

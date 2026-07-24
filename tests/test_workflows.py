@@ -503,21 +503,26 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     image = env["AUDIO_RUNNER_IMAGE"]
     assert image.startswith("ghcr.io/bashfulbits/citypods-audio-runner:")
     assert not image.endswith(":latest")
-    assert env["FFMPEG_URL"].startswith(
-        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-"
-    )
     assert len(env["FFMPEG_SHA256"]) == 64
     assert wf["permissions"]["packages"] == "read"
 
     select = next(s for s in job["steps"] if s.get("name") == "Select audio runtime")
+    # Self-built ffmpeg (scripts/build_ffmpeg_static.sh) vendored to our own B2 bucket, not
+    # fetched from an upstream/mirror host (review/22). FFMPEG_URL is built from the B2 secret,
+    # scoped to this step since it's the only one that needs it.
+    assert select["env"]["FFMPEG_URL"] == (
+        "${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz"
+    )
     assert 'timeout 300 docker pull "${AUDIO_RUNNER_IMAGE}"' in select["run"]
     assert "import boto3, citypods" in select["run"]
     assert "timeout 300 python scripts/install_static_ffmpeg.py" in select["run"]
     assert '--sha256 "${FFMPEG_SHA256}"' in select["run"]
     assert '"${FFMPEG_FALLBACK_DIR}/bin/ffprobe" -version' in select["run"]
+    # Runtime (non -dev) packages for the codec/TLS libraries build_ffmpeg_static.sh links
+    # dynamically -- only needed on the host fallback path, not the container path.
+    assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in select["run"]
 
     runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
-    assert "apt-get" not in runs
     assert "docker run --rm --init" in runs
     assert "python -m citypods.cli enrich --lane audio" in runs
     audio_step = next(s for s in job["steps"] if "citypods enrich" in str(s.get("run", "")))
@@ -544,38 +549,50 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
     assert build["with"]["push"] == "${{ github.ref == 'refs/heads/main' }}"
     assert build["with"]["platforms"] == "linux/amd64"
     assert build["with"]["file"] == ".github/audio-runner/Dockerfile"
-    assert "FFMPEG_SHA256=" in build["with"]["build-args"]
+    build_args = build["with"]["build-args"]
+    assert "FFMPEG_SHA256=" in build_args
+    assert "FFMPEG_URL=${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/" in build_args
     assert _step_index(job, "ffprobe -version") > _step_index(job, "docker/build-push-action")
 
     _audio_wf, audio_job = _job("audio.yml", job_name="audio")
-    assert audio_job["env"]["FFMPEG_URL"] == wf["env"]["FFMPEG_URL"]
+    select = next(s for s in audio_job["steps"] if s.get("name") == "Select audio runtime")
+    # Self-built ffmpeg (scripts/build_ffmpeg_static.sh) vendored to our own B2 bucket, not
+    # fetched from an upstream/mirror host -- same pin everywhere (review/22). Here it's inlined
+    # directly into build-args (single-job workflow) rather than cross-referenced via an env var
+    # the way the shell-script consumers do it, so check it's a substring, not an exact env match.
+    assert select["env"]["FFMPEG_URL"] in build_args
     assert audio_job["env"]["FFMPEG_SHA256"] == wf["env"]["FFMPEG_SHA256"]
 
     dockerfile = (
         Path(__file__).resolve().parents[1] / ".github" / "audio-runner" / "Dockerfile"
     ).read_text()
     assert "python:3.12-slim-bookworm@sha256:" in dockerfile
-    assert "apt-get" not in dockerfile
+    # Runtime (non -dev) packages for build_ffmpeg_static.sh's dynamically-linked codec/TLS
+    # libs -- not apt-get-installed ffmpeg itself.
+    assert "libgnutls30 libopus0 libvpx7 libdav1d6 libmp3lame0" in dockerfile
+    assert "apt-get install -y ffmpeg" not in dockerfile
 
 
 def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
     _wf, job = _job("asr.yml", job_name="asr")
     env = job["env"]
-    image_wf, _image_job = _job("audio-runner-image.yml", job_name="build")
+    image_wf, image_job = _job("audio-runner-image.yml", job_name="build")
+    build = next(s for s in image_job["steps"] if "docker/build-push-action" in s.get("uses", ""))
 
-    assert env["FFMPEG_URL"] == image_wf["env"]["FFMPEG_URL"]
     assert env["FFMPEG_SHA256"] == image_wf["env"]["FFMPEG_SHA256"]
     assert len(env["FFMPEG_SHA256"]) == 64
 
     install = next(s for s in job["steps"] if s.get("name") == "Install verified static ffmpeg")
     run = install["run"]
+    # Same ffmpeg pin everywhere (review/22).
+    assert install["env"]["FFMPEG_URL"] in build["with"]["build-args"]
     assert "timeout 300 python scripts/install_static_ffmpeg.py" in run
     assert '--sha256 "${FFMPEG_SHA256}"' in run
     assert '"${FFMPEG_DIR}/bin/ffmpeg" -version' in run
     assert '"${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"' in run
+    assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in run
 
     runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
-    assert "apt-get" not in runs
     assert "prepare_whisper.py" in runs
     assert "docker run" not in runs
     assert "faster-whisper-large-v3-turbo" in str(job["steps"])
@@ -903,9 +920,6 @@ def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     assert wf["permissions"] == {"contents": "read"}
     assert wf["concurrency"]["group"] == "audio"
     assert wf["concurrency"]["cancel-in-progress"] is False
-    assert job["env"]["FFMPEG_URL"].startswith(
-        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-"
-    )
     assert len(job["env"]["FFMPEG_SHA256"]) == 64
 
     normalize_step = next(s for s in job["steps"] if s.get("name") == "Normalize durations")
@@ -924,9 +938,15 @@ def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     assert step_env["RECORD_UID"] == "${{ inputs.uid }}"
 
     install = next(s for s in job["steps"] if s.get("name") == "Install pinned ffmpeg")
+    # Self-built ffmpeg vendored to our own B2 bucket, not fetched from an upstream/mirror host
+    # (review/22). FFMPEG_URL is built from the B2 secret, scoped to this step.
+    assert install["env"]["FFMPEG_URL"] == (
+        "${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz"
+    )
     assert "python scripts/install_static_ffmpeg.py" in install["run"]
     assert '--sha256 "${FFMPEG_SHA256}"' in install["run"]
     assert '"${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null' in install["run"]
+    assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in install["run"]
 
     upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
     assert upload["if"] == "always()"

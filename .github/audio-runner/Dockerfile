@@ -11,6 +11,14 @@ ENV PATH="/opt/citypods-ffmpeg/bin:${PATH}" \
     PYTHONPATH="/workspace" \
     PYTHONUNBUFFERED="1"
 
+# ffmpeg/ffprobe are self-built (scripts/build_ffmpeg_static.sh) with FFmpeg's own libraries
+# statically linked, but the external codec/TLS libraries link dynamically -- see that script's
+# header comment for why (gnutls's static dependency chain isn't resolvable via apt). These are
+# the matching runtime (non -dev) packages.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libgnutls30 libopus0 libvpx7 libdav1d6 libmp3lame0 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY scripts/install_static_ffmpeg.py /usr/local/bin/install_static_ffmpeg.py
 RUN python /usr/local/bin/install_static_ffmpeg.py \
       --url "${FFMPEG_URL}" \

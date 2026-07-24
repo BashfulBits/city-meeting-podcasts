@@ -83,6 +83,36 @@ Phase R (Research-Tool Surface)._
   this job's own build output, not a caller-supplied URL. No workflow fetches from an upstream or
   mirror host on every run anymore, and no third-party redistributor is a runtime dependency.
 
+- **Self-built ffmpeg `7.1.5` vendored to B2 and wired into all seven consuming workflows;
+  external codec/TLS libraries link dynamically instead of statically.** `build-ffmpeg.yml`'s
+  first real dispatch failed configure twice before producing a working archive: first with
+  `PKG_CONFIG_PATH` not covering apt's `.pc` location (`actions/setup-python` overrides it),
+  then — after that fix — with the same `gnutls not found using pkg-config` error even though a
+  bare `pkg-config --exists gnutls` succeeded, because `--pkg-config-flags="--static"` makes
+  configure query gnutls with `--static`, which additionally requires gnutls's entire transitive
+  dependency chain (nettle/hogweed/gmp/p11-kit/tasn1/idn2/unistring) to resolve statically — at
+  least one link in that chain doesn't, via Ubuntu's apt packages. Fix: drop
+  `--pkg-config-flags="--static"` entirely. FFmpeg's own libraries (libavcodec etc.) still link
+  statically (`--enable-static --disable-shared`); the external codec/TLS libraries (gnutls,
+  opus, vpx, dav1d, mp3lame) now link dynamically, so wherever the binary runs needs the matching
+  runtime (non-`-dev`) packages installed alongside it — a real, permanent change to the
+  deployment story, not a workaround to later undo. The third dispatch succeeded
+  (`sha256=30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d`, uploaded to
+  `deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz` in B2), and that pin now replaces the
+  prior johnvansickle URL/SHA256 in `ci.yml`, `asr.yml`, `audio.yml`, `audio-runner-image.yml`,
+  `dep-bump-smoke.yml`, `duration-normalize.yml`, and `granicus-probe.yml`, each building
+  `FFMPEG_URL` from the `B2_PUBLIC_BASE_URL` secret at the step that needs it (CR-GH-07/23/25 —
+  secrets scoped to the consuming step, not the whole job) rather than hardcoding the CDN domain
+  the secret happens to hold. `.github/audio-runner/Dockerfile` gained a runtime-package install
+  (`libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0` for the Ubuntu-noble build host; the
+  Debian-bookworm base image the Dockerfile itself runs on needs `libvpx7 libdav1d6` instead of
+  `libvpx9 libdav1d7` — SONAME versions differ by distro — pending confirmation from a real
+  `audio-runner-image.yml` dispatch since Docker Hub pulls aren't reachable from this sandbox to
+  verify ahead of time). `.github/renovate.json5`'s ffmpeg-specific custom regex manager was
+  removed (a URL-pattern version bump doesn't apply to a self-built, vendored pin — bumping now
+  means dispatching `build-ffmpeg.yml` and manually updating the seven workflows' `FFMPEG_SHA256`
+  and `FFMPEG_URL` version segment, still smoke-gated per `review/22`).
+
 - **`litellm` bumped to `1.95.0.dev1` (pre-release), and `instructor`'s `[litellm]` extra dropped, to
   unblock `gemini-3.5-flash-lite`.** A real manually-triggered `tag.yml` run showed the second Gemini
   route added below got **zero** live requests despite `gemini-3.1-flash-lite` repeatedly hitting its
