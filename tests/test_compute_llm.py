@@ -51,13 +51,13 @@ def job(task="tag", **inputs):
     return InferenceJob(task=task, inputs=inputs, recipe_hash="recipe-1")
 
 
-def structured_response(content: str):
+def structured_response(content: str, *, usage: dict | None = None):
     message = SimpleNamespace(content=content)
     choice = SimpleNamespace(message=message, finish_reason="stop")
-    return SimpleNamespace(
-        choices=[choice],
-        model_dump=lambda: {"choices": [{"message": {"content": content}}]},
-    )
+    dumped: dict = {"choices": [{"message": {"content": content}}]}
+    if usage is not None:
+        dumped["usage"] = usage
+    return SimpleNamespace(choices=[choice], model_dump=lambda: dumped)
 
 
 def test_safe_structured_failure_diagnostic_has_no_prompt_or_provider_text():
@@ -584,6 +584,52 @@ def test_gemini_structured_defers_after_exhausting_the_one_retry():
     )
     with pytest.raises(LLMStructuredOutputError, match="failed Pydantic validation"):
         backend.run_inference(job(content="meeting text", structured_output="test-output"))
+
+
+def test_gemini_structured_retry_settles_combined_usage_from_both_attempts():
+    """A failed first attempt still reached Gemini and spent real tokens -- settlement must price
+    the SUM of both attempts' usage, not just the successful retry's, or the first attempt's
+    already-spent reservation is silently released back to the ledger (CodeRabbit, PR #1000)."""
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return structured_response(
+                "not valid json",
+                usage={"total_tokens": 50, "prompt_tokens": 40, "completion_tokens": 10},
+            )
+        return structured_response(
+            '{"value":"ok"}',
+            usage={"total_tokens": 30, "prompt_tokens": 20, "completion_tokens": 10},
+        )
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    result = backend.run_inference(
+        job(
+            content="meeting text",
+            structured_output="test-output",
+            llm_policy=LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
+        )
+    )
+
+    assert len(calls) == 2
+    assert isinstance(result, JobResult)
+    # 50 + 30, not just the retry's 30 -- both attempts reached the provider.
+    assert result.output["usage"] == {
+        "total_tokens": 80,
+        "prompt_tokens": 60,
+        "completion_tokens": 20,
+    }
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert ledger.inflight == {}
+    assert ledger.tokens_minute == 80
 
 
 def test_strip_schema_keys_removes_matching_keys_at_every_depth():

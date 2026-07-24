@@ -298,6 +298,31 @@ def _usage_tokens(output: Mapping[str, Any]) -> int | None:
         return None
 
 
+def _sum_usage_fields(first: Any, second: Any) -> dict[str, Any] | None:
+    """Sum two response ``usage`` mappings field-by-field (``total_tokens``/``prompt_tokens``/
+    ``completion_tokens``) -- for combining a failed first structured-output attempt's real
+    provider usage with a successful retry's, so settlement prices the true combined cost
+    instead of only the final attempt's (see ``_run_gemini_structured_direct``). Returns
+    ``second`` unchanged if either side isn't a usable mapping, and bails out (returns ``second``
+    unmerged) on the first field that doesn't parse as a number rather than guess -- an
+    under-priced retry is a smaller, already-accepted imprecision (``_usage_tokens`` above treats
+    missing usage as "keep the estimate"); a wrongly-combined total would be a new one."""
+    if not isinstance(second, Mapping):
+        return None
+    if not isinstance(first, Mapping):
+        return dict(second)
+    merged: dict[str, Any] = dict(second)
+    for key in ("total_tokens", "prompt_tokens", "completion_tokens"):
+        a, b = first.get(key), second.get(key)
+        if a is None and b is None:
+            continue
+        try:
+            merged[key] = int(a or 0) + int(b or 0)
+        except (TypeError, ValueError):
+            return dict(second)
+    return merged
+
+
 def _priced_actual(
     output: Mapping[str, Any], *, input_per_token: float, output_per_token: float
 ) -> tuple[int | None, float | None]:
@@ -593,6 +618,11 @@ class LiteLLMBackend(Backend):
         replicates Instructor's own contract for every other route: parse, validate against
         ``model``, and on a first failure retry exactly once with the validation error fed back as
         corrective feedback -- the same "one bounded corrective retry" every other provider gets.
+        Both attempts' usage is billed: a first attempt that fails validation still reached
+        Gemini and spent real tokens/quota, so on a retry-then-succeed outcome the returned
+        ``output["usage"]`` is the *sum* of both responses' usage, not just the second's --
+        otherwise ``_run_policy_job()``'s settle step would price only the final attempt and
+        silently release the first attempt's already-spent reservation back to the ledger.
         """
         from pydantic import ValidationError
 
@@ -600,6 +630,7 @@ class LiteLLMBackend(Backend):
         options = self._provider_options(job, resolved_model)
         response_format = self._gemini_response_format(model)
         failed_attempts: list[_FailedAttempt] = []
+        first_attempt_usage: Any = None
         for attempt in range(2):  # original attempt + exactly one corrective retry
             raw = completion(messages=messages, response_format=response_format, **options)
             content = raw.choices[0].message.content
@@ -609,6 +640,13 @@ class LiteLLMBackend(Backend):
             except (json.JSONDecodeError, ValidationError) as exc:
                 failed_attempts.append(_FailedAttempt(exception=exc))
                 if attempt == 0:
+                    # A failed first attempt still reached the provider and consumed real
+                    # tokens; keep its usage so a later successful retry's settlement can bill
+                    # both, not just the retry.
+                    try:
+                        first_attempt_usage = _response_mapping(raw).get("usage")
+                    except LLMBackendError:
+                        first_attempt_usage = None
                     # Feed the invalid reply back as corrective feedback, mirroring Instructor's
                     # own retry contract -- never re-derive the schema, just point at what failed.
                     messages = [
@@ -642,10 +680,15 @@ class LiteLLMBackend(Backend):
                 raise LLMStructuredOutputError(
                     "structured LLM response failed Pydantic validation"
                 ) from None
+            output = _response_mapping(raw)
+            if first_attempt_usage is not None:
+                merged = _sum_usage_fields(first_attempt_usage, output.get("usage"))
+                if merged is not None:
+                    output = {**output, "usage": merged}
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
-                output=_response_mapping(raw),
+                output=output,
                 model=resolved_model,
             )
         raise AssertionError("unreachable: loop always returns or raises")
