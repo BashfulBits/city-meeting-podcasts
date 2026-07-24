@@ -26,7 +26,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
-from citypods.compute.llm_deferred import list_pending_deferred, prune_expired_deferred
+from citypods.compute.llm_deferred import (
+    iter_pending_deferred,
+    list_pending_deferred,
+    prune_expired_deferred,
+)
 from citypods.compute.llm_policy import DeferredLLMRequest
 from citypods.config import load_site_config
 from citypods.storage import make_storage
@@ -67,6 +71,21 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
             messages=deferred.messages,
             policy=replace(deferred.policy, deadline_at=deadline_at),
         ),
+    )
+
+
+def _capacity_signature(handle) -> tuple | None:
+    """The policy cohort that shares scheduler capacity, or ``None`` for real dispatch polls."""
+    deferred = handle.deferred_request
+    if not isinstance(deferred, DeferredLLMRequest):
+        return None
+    policy = deferred.policy
+    return (
+        handle.task,
+        handle.structured_output,
+        policy.allowed_models,
+        policy.allow_paid,
+        policy.purpose,
     )
 
 
@@ -131,12 +150,15 @@ def main(argv: list[str] | None = None) -> int:
     still_pending = 0
     failed = 0
     seen_pending: set[str] = set()
+    exhausted_capacity: set[tuple] = set()
 
     if datetime.now(UTC) < deadline_at:
-        pending = list_pending_deferred(storage)
-        for handle in pending:
+        for handle in iter_pending_deferred(storage):
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
+            signature = _capacity_signature(handle)
+            if signature in exhausted_capacity:
+                continue
             seen_pending.add(handle.recipe_hash)
             try:
                 result = backend.reconcile(_with_sweep_deadline(handle, deadline_at))
@@ -146,6 +168,8 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             if result is None:
                 still_pending += 1
+                if signature is not None:
+                    exhausted_capacity.add(signature)
             else:
                 completed += 1
             if stop_state.requested:

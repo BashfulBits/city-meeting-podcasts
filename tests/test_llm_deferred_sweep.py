@@ -41,6 +41,7 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
 
     handles = [_handle("recipe-1"), _handle("recipe-2"), _handle("recipe-3")]
+    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
     monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: handles)
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 2)
 
@@ -68,6 +69,48 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert "1 failed" in out.out
     assert "2 pruned" in out.out
     assert "recipe-3" in out.err
+
+
+def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 0)
+    monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: [])
+
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+    )
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"recipe-{idx}",
+            backend="litellm",
+            ref=f"deferred:recipe-{idx}",
+            structured_output="topic-tags",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},), policy=policy
+            ),
+        )
+        for idx in range(3)
+    ]
+    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
+
+    reconciled = []
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, handle):
+            reconciled.append(handle.recipe_hash)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert reconciled == ["recipe-0"]
+    assert "1 still pending observations" in capsys.readouterr().out
 
 
 def test_sweep_overrides_stale_deferred_deadline_for_retries():

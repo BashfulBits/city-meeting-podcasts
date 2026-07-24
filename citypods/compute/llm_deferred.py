@@ -179,17 +179,25 @@ def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
     return _decode_record(_read_json(storage, deferred_key(recipe_hash)))
 
 
-def list_pending_deferred(storage) -> list[JobHandle]:
-    """Every currently-pending record in the registry -- what the sweep processes."""
-    pending: list[JobHandle] = []
+def iter_pending_deferred(storage):
+    """Yield currently-pending records one at a time.
+
+    The deferred sweep may discover after one record that a whole policy cohort cannot fit before
+    the run deadline. Streaming keeps it from downloading and decoding the rest of the registry
+    before it can make that stop decision.
+    """
     for key, _ in storage.list_objects(DEFERRED_PREFIX):
         data = _read_json(storage, key)
         if not isinstance(data, Mapping) or data.get("status") != "pending":
             continue
         decoded = _decode_record(data)
         if isinstance(decoded, JobHandle):
-            pending.append(decoded)
-    return pending
+            yield decoded
+
+
+def list_pending_deferred(storage) -> list[JobHandle]:
+    """Every currently-pending record in the registry -- what the sweep processes."""
+    return list(iter_pending_deferred(storage))
 
 
 def prune_expired_deferred(
@@ -264,6 +272,7 @@ __all__ = [
     "deferred_key",
     "list_pending_deferred",
     "look_up_deferred",
+    "iter_pending_deferred",
     "prune_expired_deferred",
     "write_deferred",
 ]

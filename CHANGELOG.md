@@ -24,7 +24,11 @@ Phase R (Research-Tool Surface)._
   provider minute windows and stop only after the remaining pending items cannot fit before the
   deadline. The sweep records each completed result as `backend.reconcile()` returns, treats
   SIGTERM/SIGINT as a signal-safe stop flag checked between records (rather than interrupting a
-  storage write), and still prunes expired registry records at the end.
+  storage write), streams pending records so it can stop downloading same-capacity records once a
+  cohort cannot fit, and still prunes expired registry records at the end. The LLM quota ledger also
+  settles structured calls back from their worst-case two-request reservation to the actual request
+  count on success, so proactive daily accounting no longer reports route exhaustion at roughly half
+  of the provider dashboard's request allowance when most calls succeed on the first attempt.
 
 - **Gemini structured-output calls now use native JSON-schema mode via a direct LiteLLM call,
   bypassing Instructor entirely for `gemini/*` routes.** The `litellm` bump below did not fix the

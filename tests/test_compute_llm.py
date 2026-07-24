@@ -337,7 +337,9 @@ def test_priced_actual_falls_back_to_combined_rate_without_a_split():
 def test_structured_policy_call_reserves_worst_case_two_requests():
     """Instructor's `max_retries=1` can send up to two provider requests for one logical
     dispatch; the ledger must reserve that worst case up front even when only one attempt
-    actually happens, so RPM/RPD/TPM can never be breached by an unlucky retry."""
+    can actually happen, then settle back to the real request count once the call succeeds. That
+    keeps the proactive ledger aligned with provider dashboards instead of halving daily capacity
+    for the common one-attempt success path."""
 
     def completion(**kwargs):
         return structured_response('{"value":"ok"}')
@@ -359,9 +361,7 @@ def test_structured_policy_call_reserves_worst_case_two_requests():
     budget, _ = load_llm_budget_cas(storage)
     ledger = budget.routes["gemini/gemini-3-flash-preview"]
     assert ledger.inflight == {}
-    # The reservation's `requests=2` sticks even after settlement -- only tokens/cost are
-    # corrected to actual, request counts are never walked back down (review/33 §10.2).
-    assert ledger.requests_minute == 2
+    assert ledger.requests_minute == 1
 
 
 def test_second_call_with_the_same_recipe_hash_returns_the_cached_result():

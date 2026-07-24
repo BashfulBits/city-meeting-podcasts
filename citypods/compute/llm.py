@@ -814,13 +814,20 @@ class LiteLLMBackend(Backend):
         owner = selection.owner
         assert owner is not None  # always set when a route was selected
         attempted = False
+        attempted_requests = 0
 
         def _cleanup() -> None:
             if attempted:
                 # The call reached the provider (or the Worker's queue) regardless of outcome, so
                 # its rate-limit slot is genuinely spent -- settle (keep it charged), never
                 # release. See review/33 §10.2.
-                settle_route_reservation(self.storage, owner, resolved_model, route=route)
+                settle_route_reservation(
+                    self.storage,
+                    owner,
+                    resolved_model,
+                    route=route,
+                    actual_requests=max(attempted_requests, 1),
+                )
             else:
                 release_route_reservation(self.storage, owner, resolved_model, route=route)
 
@@ -833,7 +840,13 @@ class LiteLLMBackend(Backend):
                 flush=True,
             )
             block_route_until(self.storage, resolved_model, until, route=route)
-            settle_route_reservation(self.storage, owner, resolved_model, route=route)
+            settle_route_reservation(
+                self.storage,
+                owner,
+                resolved_model,
+                route=route,
+                actual_requests=max(attempted_requests, 1),
+            )
             return self._deferred_handle(job, structured, messages, policy)
 
         try:
@@ -842,8 +855,9 @@ class LiteLLMBackend(Backend):
                     completion_fn = self._completion_fn()
 
                     def guarded_completion(**kwargs):
-                        nonlocal attempted
+                        nonlocal attempted, attempted_requests
                         attempted = True
+                        attempted_requests += 1
                         return completion_fn(**kwargs)
 
                     result = self._run_structured_direct(
@@ -856,6 +870,7 @@ class LiteLLMBackend(Backend):
                     payload = self._payload(job, resolved_model=resolved_model)
                     completion_fn = self._completion_fn()
                     attempted = True
+                    attempted_requests += 1
                     response = completion_fn(**payload)
                     result = JobResult(
                         task=job.task,
@@ -871,6 +886,7 @@ class LiteLLMBackend(Backend):
                     headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
                 headers["idempotency-key"] = job.recipe_hash
                 attempted = True
+                attempted_requests += 1
                 response = self._session.post(
                     urljoin(self.config.dispatch_url.rstrip("/") + "/", "v1/chat/completions"),
                     json=payload,
@@ -934,6 +950,7 @@ class LiteLLMBackend(Backend):
             route=route,
             actual_tokens=actual_tokens,
             actual_cost=actual_cost,
+            actual_requests=max(attempted_requests, 1),
         )
         return result
 
