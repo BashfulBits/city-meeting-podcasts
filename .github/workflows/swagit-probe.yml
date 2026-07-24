@@ -27,6 +27,15 @@ on:
         description: "Process-local swagit.com concurrency cap to apply (0 = unset/unlimited)"
         type: number
         default: 0
+  # A brand-new workflow_dispatch-only workflow can't be dispatched via API/UI until it's reachable
+  # from the default branch -- GitHub 404s the dispatch endpoint until then. This pull_request
+  # trigger gets an immediate GH-hosted-runner sample (the other half of the local/Actions paired
+  # egress-reputation test) without merging anything to main first. Scoped to this workflow's own
+  # files so it doesn't become permanent CI overhead on unrelated PRs.
+  pull_request:
+    paths:
+      - ".github/workflows/swagit-probe.yml"
+      - "scripts/probe_swagit_transport.py"
 
 permissions:
   contents: read
@@ -66,15 +75,21 @@ jobs:
           echo "No active or queued Audio run."
       - name: Run Swagit transport probe
         env:
-          # label/tenants are free-form string inputs; pass through env rather than inlining in
-          # `run:` shell text (same reasoning as granicus-probe.yml's `durations` input) -- the
-          # other inputs on this step are GitHub-validated `number`/`boolean`, which can't carry
-          # shell metacharacters the way a `string` input could.
+          # Routed through env with bash defaults (rather than inlined `${{ inputs.x }}` in `run:`
+          # shell text) for two reasons: label/tenants are free-form strings that shouldn't be
+          # inlined into shell text (same reasoning as granicus-probe.yml's `durations` input),
+          # and *all* of `inputs.*` is unset on the pull_request trigger above (inputs only exist
+          # for workflow_dispatch), so every value needs a same-as-workflow_dispatch-default
+          # fallback to keep a PR-triggered run meaningful.
           LABEL: ${{ inputs.label }}
           TENANTS: ${{ inputs.tenants }}
+          PAGES: ${{ inputs.pages }}
+          INTER_REQUEST_DELAY: ${{ inputs.inter_request_delay }}
+          CONCURRENT_TENANTS: ${{ inputs.concurrent_tenants }}
+          HOST_CAP: ${{ inputs.host_cap }}
         run: |
-          args=(--label "${LABEL}" --pages "${{ inputs.pages }}"
-                --inter-request-delay "${{ inputs.inter_request_delay }}"
+          args=(--label "${LABEL:-gh-actions-pr}" --pages "${PAGES:-1}"
+                --inter-request-delay "${INTER_REQUEST_DELAY:-0}"
                 --output swagit-transport-results.json)
           if [[ -n "${TENANTS}" ]]; then
             IFS=',' read -ra tenant_list <<< "${TENANTS}"
@@ -82,11 +97,11 @@ jobs:
               args+=(--tenant "${tenant}")
             done
           fi
-          if [[ "${{ inputs.concurrent_tenants }}" == "true" ]]; then
+          if [[ "${CONCURRENT_TENANTS}" == "true" ]]; then
             args+=(--concurrent-tenants)
           fi
-          if [[ "${{ inputs.host_cap }}" -gt 0 ]]; then
-            args+=(--host-cap "${{ inputs.host_cap }}")
+          if [[ "${HOST_CAP:-0}" -gt 0 ]]; then
+            args+=(--host-cap "${HOST_CAP}")
           fi
           PYTHONPATH=. python scripts/probe_swagit_transport.py "${args[@]}"
       - name: Upload probe results
