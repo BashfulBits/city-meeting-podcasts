@@ -30,8 +30,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY scripts/install_static_ffmpeg.py /usr/local/bin/install_static_ffmpeg.py
-RUN python /usr/local/bin/install_static_ffmpeg.py \
+# install_static_ffmpeg.py imports scripts._pinned_fetch as a sibling module (it derives its repo
+# root as its own parent's parent, then imports `scripts.*` from there) -- copy the whole
+# directory, not just the one file, so that import resolves inside the image the same way it does
+# when this script runs from a real checkout (e.g. the GH Actions host-fallback path).
+COPY scripts /opt/citypods-src/scripts
+RUN python /opt/citypods-src/scripts/install_static_ffmpeg.py \
       --url "${FFMPEG_URL}" \
       --sha256 "${FFMPEG_SHA256}" \
       --install-dir /opt/citypods-ffmpeg \

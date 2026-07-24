@@ -114,9 +114,15 @@ Phase R (Research-Tool Surface)._
   `build-ffmpeg.yml` builds on) — the binary would fail to load in the container, not just warn.
   Matching the base image to the build host, rather than publishing a second Debian-targeted
   archive, keeps this to one ffmpeg build/pin shared by every consumer (GH Actions host-fallback
-  paths already run on noble). Not independently confirmed by a real `audio-runner-image.yml`
-  dispatch yet (Docker Hub pulls aren't reachable from the sandbox this was authored in); the
-  base image is temporarily unpinned by digest pending that run's log output (`review/22`'s
+  paths already run on noble). A real `audio-runner-image.yml` dispatch against this change
+  confirmed the noble packages install cleanly (Docker Hub pulls aren't reachable from the
+  sandbox this was authored in, so this couldn't be checked ahead of time) but surfaced a second,
+  unrelated bug on the same dispatch: `install_static_ffmpeg.py` imports `scripts._pinned_fetch`
+  as a sibling module, and the Dockerfile only ever `COPY`'d the single file, not the `scripts/`
+  directory it depends on — `ModuleNotFoundError: No module named 'scripts'`, since this is the
+  first dispatch to ever get past the checksum/404 failures that blocked every earlier one before
+  reaching this step. Fixed by copying the whole `scripts/` directory in. The base image is
+  temporarily unpinned by digest pending a clean dispatch's log output (`review/22`'s
   base-image-immutability convention still applies — a follow-up will pin it once resolved).
   Not an `AUDIO_PIPELINE_VERSION` bump: same ffmpeg version, same build flags/codecs as already
   shipped: only *how* its external libraries are linked (and therefore which container they run
