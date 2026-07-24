@@ -51,6 +51,18 @@ Phase R (Research-Tool Surface)._
   it. `_next_quota_reset` now only offers a reset-time candidate for the axis (RPM/TPM/RPD/a
   reactive block) actually responsible for the current `available()` failure.
 
+- **The `_next_quota_reset` fix above was incomplete: a stale `blocked_until` timestamp reproduced
+  the identical busy-retry-forever symptom it was meant to fix, confirmed live on the very next
+  sweep run after that fix merged.** `LLMBudget.block()` only ever extends `blocked_until` forward
+  and never clears it, so a route blocked earlier by a real 429 keeps that (now past) timestamp in
+  its ledger entry long after the block itself expired. `_next_quota_reset` added it to the reset
+  candidates unconditionally, so once the daily quota was *also* exhausted, the stale past
+  timestamp always won `min()` over the correctly-computed future "tomorrow" reset -- `retry_at`
+  came back in the past, `_pacing_wait_seconds` computed `wait <= 0` and returned `0.0` rather than
+  giving up, and the pacing loop spun forever. `_next_quota_reset` now mirrors the same in-effect
+  check `LLMBudget.available()` already uses (`now < blocked_until`) before offering it as a
+  candidate at all.
+
 - **`llm-deferred-sweep.yml` now gives the deferred LLM tag backlog a long graceful drain window
   instead of a short hard cancel.** The GitHub Actions job timeout is 240 minutes, and the backing
   script gets an explicit 235-minute internal wall-clock budget; deferred-direct retries use that

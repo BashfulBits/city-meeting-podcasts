@@ -193,6 +193,58 @@ def test_retry_at_is_tomorrows_reset_when_only_the_daily_quota_is_exhausted():
     assert result.retry_at == expected
 
 
+def test_retry_at_ignores_a_stale_blocked_until_and_falls_back_to_the_daily_reset():
+    """`blocked_until` only ever moves forward (`LLMBudget.block()` extends it, never clears it),
+    so a route that was 429-blocked earlier today still carries that (now past) timestamp in its
+    ledger entry long after the block itself expired. Before this fix, `_next_quota_reset` added
+    it to the reset candidates unconditionally, and a past timestamp always wins `min()` over a
+    correctly-computed future "tomorrow" RPD reset -- reproducing the exact same busy-retry-forever
+    failure mode the "next minute" fix above addressed, just via a different unconditional axis."""
+    budget = LLMBudget()
+    model = "gemini/gemini-3.1-flash-lite"
+    route = ROUTES[model]
+    led = budget._ledger(model, NOW, route=route)
+    led.requests_day = route.quota.rpd  # today's quota is fully spent
+    led.blocked_until = (NOW - timedelta(hours=2)).isoformat()  # stale: expired 2h ago
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(model,)),
+        routes=ROUTES,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+
+    assert result.model is None
+    zone = ZoneInfo(route.quota.reset_timezone)
+    tomorrow = NOW.astimezone(zone).date() + timedelta(days=1)
+    expected = datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC)
+    assert result.retry_at == expected
+
+
+def test_retry_at_honors_a_still_active_blocked_until():
+    """The inverse: a `blocked_until` still in the future *is* a real constraint and must still
+    win when it's the soonest reset -- this fix must not stop honoring genuine, active blocks."""
+    budget = LLMBudget()
+    model = "gemini/gemini-3.1-flash-lite"
+    route = ROUTES[model]
+    led = budget._ledger(model, NOW, route=route)
+    led.blocked_until = (NOW + timedelta(minutes=5)).isoformat()
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(model,)),
+        routes=ROUTES,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+
+    assert result.model is None
+    assert result.retry_at == NOW + timedelta(minutes=5)
+
+
 def test_retry_at_is_none_when_a_route_is_available_now():
     result = select_route(
         LLMRequestPolicy(allowed_models=("gemini/gemini-3.1-flash-lite",)),
