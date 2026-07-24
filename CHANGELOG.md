@@ -17,6 +17,45 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Gemini structured-output calls now use native JSON-schema mode via a direct LiteLLM call,
+  bypassing Instructor entirely for `gemini/*` routes.** The `litellm` bump below did not fix the
+  `Mode Mode.JSON_SCHEMA is not registered for provider Provider.OPENAI` error: two live `tag.yml`
+  runs on two different `litellm` versions (`1.83.0` and, after the bump, `1.95.0.dev1`) produced the
+  *identical* error, including the identical "available modes" list — `Provider.GEMINI` and
+  `Provider.VERTEXAI` have no `Mode.JSON_SCHEMA` entry at all in `instructor==1.15.4` (confirmed its
+  own latest release), only `MD_JSON`/`TOOLS`. This is Instructor's own (provider, mode)
+  compatibility gate, not a LiteLLM provider-auto-detection bug — no LiteLLM version changes it.
+  Gemini's REST API genuinely supports native schema-constrained JSON (`responseJsonSchema`,
+  confirmed against the live API by `citypods/llm_compat_probe.py`'s `_native()` check, which calls
+  it directly with no LiteLLM/Instructor involved), so rather than switch to a different Instructor
+  mode or add runtime fallback/re-probing logic, `LiteLLMBackend._run_gemini_structured_direct()`
+  (`citypods/compute/llm.py`) calls `litellm.completion()` directly with the same OpenAI-shaped
+  `response_format` LiteLLM already translates into Gemini's native mechanism, and replicates
+  Instructor's own "parse, validate, one corrective retry on failure" contract by hand. Every other
+  route (DeepSeek, Mistral) is unaffected — still routed through Instructor exactly as before.
+
+- **`push_state()` (the tag lane's finalization-tail write) now uploads across a bounded worker pool
+  instead of one file at a time.** A real `tag.yml` run — with the finalization-tail logging below
+  already in place — was caught pushing only 1,503 of 3,554 state files (42%) serially in the ~9
+  minutes of tail budget it had left before GitHub's `timeout-minutes: 25` hard-cancelled it
+  mid-upload; the pass itself had finished cleanly (`run end: wall-clock window spent`) well inside
+  its own deadline. Same latency-bound-not-bandwidth-bound cost `pull_state()` was already fixed on
+  the download side (`_PULL_STATE_MAX_WORKERS`, ~11 min serial → well under a minute parallelized, for
+  the same ~3.5k-object scale) — `push_state()` just never got the symmetric fix. Renamed the shared
+  constant to `_STATE_SYNC_MAX_WORKERS` and applied the same `ThreadPoolExecutor(max_workers=16)`
+  pattern to the upload side (`citypods/statesync.py`); each upload writes its own distinct remote
+  key, so there's no shared mutable state to guard, same as the restore side.
+
+- **`TagsStage`'s live LLM dispatch call now registers with `PROGRESS`, the process-wide
+  stall-diagnostic registry `citypods.run`'s heartbeat already reads every tick.** Every other
+  lane's heavy per-item work (`TimelineStage`, ASR, audio-encode) already tracks itself this way;
+  the tag lane's dispatch call (which can pace/sleep waiting out a per-minute quota window) never
+  did, so the heartbeat printed `active work: no tracked work active` for the tag lane's entire run
+  regardless of whether a real dispatch was in flight — making a genuinely slow-but-healthy pass
+  indistinguishable from a stuck one in the GitHub Actions log. `llm_tag_suggestions()`'s call site in
+  `TagsStage.process()` (`citypods/stages.py`) now wraps that one call in
+  `PROGRESS.track(source=city.slug, uid=episode_uid, phase="tag-llm-dispatch")`.
+
 - **Static ffmpeg switched from BtbN/FFmpeg-Builds to johnvansickle.com; `7.1.4` → `7.1.5`
   (output-affecting, smoke-gated — see `review/22`).** `audio-runner-image.yml` (and every other
   workflow sharing the same `FFMPEG_URL`/`FFMPEG_SHA256` pin: `audio.yml`, `asr.yml`, `ci.yml`,

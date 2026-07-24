@@ -122,6 +122,29 @@ class LLMStructuredOutputError(LLMBackendError):
     """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
 
 
+@dataclass(frozen=True)
+class _FailedAttempt:
+    """One failed structured-output attempt, in Instructor's own ``failed_attempts`` shape --
+    used to describe a Gemini native-schema retry exhaustion (see
+    ``_GeminiStructuredRetryExhausted``) through the same diagnostic function Instructor's own
+    ``InstructorRetryException`` already uses, without special-casing which path raised it."""
+
+    exception: BaseException
+
+
+class _GeminiStructuredRetryExhausted(RuntimeError):
+    """Gemini's native-schema reply failed local Pydantic validation on both the original attempt
+    and the one corrective retry -- the direct-call twin of Instructor's
+    ``InstructorRetryException`` (see ``_run_gemini_structured_direct``). Carries the same
+    ``failed_attempts``/``n_attempts`` shape so ``_safe_structured_failure_diagnostic`` needs no
+    branch for which path failed."""
+
+    def __init__(self, failed_attempts: list[_FailedAttempt]):
+        super().__init__("Gemini structured response failed schema validation after 1 retry")
+        self.failed_attempts = tuple(failed_attempts)
+        self.n_attempts = len(self.failed_attempts)
+
+
 def _safe_structured_failure_diagnostic(
     exc: BaseException, job: InferenceJob, model: ResponseModel, resolved_model: str
 ) -> dict[str, Any]:
@@ -130,6 +153,9 @@ def _safe_structured_failure_diagnostic(
     Never include messages, headers, credentials, response bodies, or provider exception text:
     any of those can contain meeting material. The schema summary is intentionally boolean/count
     only, enough to distinguish a provider-schema rejection from an ordinary malformed reply.
+    Shared by both structured-output paths (Instructor's ``InstructorRetryException`` for non-
+    Gemini routes, ``_GeminiStructuredRetryExhausted`` for Gemini's direct native-schema path) --
+    both expose the same ``failed_attempts``/``n_attempts`` shape.
     """
     schema = model.model_json_schema()
     raw = json.dumps(schema, sort_keys=True)
@@ -139,7 +165,7 @@ def _safe_structured_failure_diagnostic(
         "event": "llm_structured_output_failure",
         "model": resolved_model,
         "task": job.task,
-        "instructor_attempts": int(getattr(exc, "n_attempts", 0) or 0),
+        "attempts": int(getattr(exc, "n_attempts", 0) or 0),
         "provider_exception_type": type(last).__name__,
         "provider_status": getattr(last, "status_code", None),
         "input_characters": sum(len(str(message.get("content", ""))) for message in _messages(job)),
@@ -270,6 +296,31 @@ def _usage_tokens(output: Mapping[str, Any]) -> int | None:
         return value if value >= 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def _sum_usage_fields(first: Any, second: Any) -> dict[str, Any] | None:
+    """Sum two response ``usage`` mappings field-by-field (``total_tokens``/``prompt_tokens``/
+    ``completion_tokens``) -- for combining a failed first structured-output attempt's real
+    provider usage with a successful retry's, so settlement prices the true combined cost
+    instead of only the final attempt's (see ``_run_gemini_structured_direct``). Returns
+    ``second`` unchanged if either side isn't a usable mapping, and bails out (returns ``second``
+    unmerged) on the first field that doesn't parse as a number rather than guess -- an
+    under-priced retry is a smaller, already-accepted imprecision (``_usage_tokens`` above treats
+    missing usage as "keep the estimate"); a wrongly-combined total would be a new one."""
+    if not isinstance(second, Mapping):
+        return None
+    if not isinstance(first, Mapping):
+        return dict(second)
+    merged: dict[str, Any] = dict(second)
+    for key in ("total_tokens", "prompt_tokens", "completion_tokens"):
+        a, b = first.get(key), second.get(key)
+        if a is None and b is None:
+            continue
+        try:
+            merged[key] = int(a or 0) + int(b or 0)
+        except (TypeError, ValueError):
+            return dict(second)
+    return merged
 
 
 def _priced_actual(
@@ -415,20 +466,37 @@ class LiteLLMBackend(Backend):
         return (name, response_model(name)) if name else None
 
     def _instructor_mode(self, resolved_model: str):
-        """Choose Instructor's provider-neutral structured-output mode for this route."""
+        """Choose Instructor's provider-neutral structured-output mode for this route.
+
+        Only reached for non-Gemini routes: Gemini never goes through Instructor at all --
+        ``_run_gemini_structured_direct`` calls LiteLLM directly with native JSON-schema mode,
+        because Instructor's own (provider, mode) compatibility table (pinned instructor==1.15.4,
+        its latest release) has no ``(Provider.GEMINI, Mode.JSON_SCHEMA)`` entry -- only
+        MD_JSON/TOOLS -- regardless of which LiteLLM version resolves the provider correctly.
+        Confirmed against two live runs on two different LiteLLM versions: both failed identically
+        (`Mode Mode.JSON_SCHEMA is not registered for provider Provider.OPENAI`), so this isn't a
+        provider-auto-detection bug LiteLLM can fix -- it's Instructor's own gate.
+        """
         try:
             from instructor import Mode
         except ImportError as exc:
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
         # DeepSeek public chat supports only valid-JSON mode.  Instructor includes the Pydantic
         # schema in the prompt and supplies its field-specific validation feedback on a retry.
-        # Gemini keeps native JSON_SCHEMA mode -- see _gemini_schema_safe_model() for why its
-        # request schema needs one targeted adjustment first.
         return Mode.JSON if resolved_model.startswith("deepseek/") else Mode.JSON_SCHEMA
 
-    def _structured_output_model(self, model: ResponseModel, resolved_model: str) -> ResponseModel:
-        """The Pydantic contract Instructor should build a request schema from for this route."""
-        return _gemini_schema_safe_model(model) if resolved_model.startswith("gemini/") else model
+    def _gemini_response_format(self, model: ResponseModel) -> dict[str, Any]:
+        """The OpenAI-shaped ``response_format`` LiteLLM translates into Gemini's native
+        ``responseJsonSchema``/``responseMimeType`` -- confirmed against the live API by
+        ``citypods/llm_compat_probe.py``'s ``_native()`` check, which hits Gemini's REST endpoint
+        directly with the same shape, bypassing LiteLLM/Instructor entirely. Used by both
+        ``_run_gemini_structured_direct`` (the direct transport) and ``_dispatch_response_format``
+        (the R10 dispatch Worker, in case a Gemini route is ever configured for dispatch mode)."""
+        safe_model = _gemini_schema_safe_model(model)
+        return {
+            "type": "json_schema",
+            "json_schema": {"name": model.__name__, "schema": safe_model.model_json_schema()},
+        }
 
     def _provider_options(self, job: InferenceJob, resolved_model: str) -> dict[str, Any]:
         options: dict[str, Any] = {"model": resolved_model}
@@ -440,9 +508,11 @@ class LiteLLMBackend(Backend):
     def _dispatch_response_format(
         self, model: ResponseModel, resolved_model: str
     ) -> Mapping[str, Any]:
-        """Serialize the same Pydantic contract used by Instructor for the R10 queue."""
+        """Serialize the request-format contract used by the direct transports for the R10 queue."""
         if resolved_model.startswith("deepseek/"):
             return {"type": "json_object"}
+        if resolved_model.startswith("gemini/"):
+            return self._gemini_response_format(model)
         return {
             "type": "json_schema",
             "json_schema": {"name": model.__name__, "schema": model.model_json_schema()},
@@ -474,7 +544,17 @@ class LiteLLMBackend(Backend):
         resolved_model: str,
         completion: Callable[..., Any] | None = None,
     ) -> JobResult:
-        """Use Instructor for typed parsing and exactly one validation-feedback retry."""
+        """Dispatch to whichever structured-output path this route actually works with.
+
+        Gemini uses its own native-schema path (bypasses Instructor entirely -- see
+        ``_run_gemini_structured_direct``); every other supported route (DeepSeek, Mistral) keeps
+        using Instructor for typed parsing and one validation-feedback retry, unchanged.
+        """
+        completion_fn = completion if completion is not None else self._completion_fn()
+        if resolved_model.startswith("gemini/"):
+            return self._run_gemini_structured_direct(
+                job, model, resolved_model=resolved_model, completion=completion_fn
+            )
         try:
             import instructor
             from instructor.core.exceptions import InstructorRetryException
@@ -482,10 +562,10 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
         try:
             typed, raw = instructor.from_litellm(
-                completion if completion is not None else self._completion_fn(),
+                completion_fn,
                 mode=self._instructor_mode(resolved_model),
             ).create_with_completion(
-                response_model=self._structured_output_model(model, resolved_model),
+                response_model=model,
                 messages=_messages(job),
                 max_retries=1,
                 **self._provider_options(job, resolved_model),
@@ -514,6 +594,104 @@ class LiteLLMBackend(Backend):
             output=_response_mapping(raw),
             model=resolved_model,
         )
+
+    def _run_gemini_structured_direct(
+        self,
+        job: InferenceJob,
+        model: ResponseModel,
+        *,
+        resolved_model: str,
+        completion: Callable[..., Any],
+    ) -> JobResult:
+        """Gemini's REST API natively supports schema-constrained JSON output
+        (``responseJsonSchema``) -- confirmed against the live API by
+        ``citypods/llm_compat_probe.py``. Routing that through ``instructor.from_litellm()``
+        doesn't reach it: Instructor's own (provider, mode) compatibility table (pinned
+        instructor==1.15.4, confirmed its latest release) has no entry for
+        ``(Provider.GEMINI, Mode.JSON_SCHEMA)`` -- only MD_JSON/TOOLS -- so it rejects the call
+        before any request reaches Gemini. That's independent of LiteLLM's provider
+        auto-detection: two live runs on two different LiteLLM versions both failed with the
+        identical error. Rather than switch away from native schema mode (Gemini genuinely
+        supports it) or add runtime fallback/re-probing logic, this calls LiteLLM directly with
+        the same OpenAI-shaped ``response_format`` LiteLLM already translates into Gemini's native
+        mechanism (``_gemini_response_format``, also used by the R10 dispatch payload), and
+        replicates Instructor's own contract for every other route: parse, validate against
+        ``model``, and on a first failure retry exactly once with the validation error fed back as
+        corrective feedback -- the same "one bounded corrective retry" every other provider gets.
+        Both attempts' usage is billed: a first attempt that fails validation still reached
+        Gemini and spent real tokens/quota, so on a retry-then-succeed outcome the returned
+        ``output["usage"]`` is the *sum* of both responses' usage, not just the second's --
+        otherwise ``_run_policy_job()``'s settle step would price only the final attempt and
+        silently release the first attempt's already-spent reservation back to the ledger.
+        """
+        from pydantic import ValidationError
+
+        messages = list(_messages(job))
+        options = self._provider_options(job, resolved_model)
+        response_format = self._gemini_response_format(model)
+        failed_attempts: list[_FailedAttempt] = []
+        first_attempt_usage: Any = None
+        for attempt in range(2):  # original attempt + exactly one corrective retry
+            raw = completion(messages=messages, response_format=response_format, **options)
+            content = raw.choices[0].message.content
+            try:
+                parsed = json.loads(content)
+                model.model_validate(parsed)
+            except (json.JSONDecodeError, ValidationError) as exc:
+                failed_attempts.append(_FailedAttempt(exception=exc))
+                if attempt == 0:
+                    # A failed first attempt still reached the provider and consumed real
+                    # tokens; keep its usage so a later successful retry's settlement can bill
+                    # both, not just the retry.
+                    try:
+                        first_attempt_usage = _response_mapping(raw).get("usage")
+                    except LLMBackendError:
+                        first_attempt_usage = None
+                    # Feed the invalid reply back as corrective feedback, mirroring Instructor's
+                    # own retry contract -- never re-derive the schema, just point at what failed.
+                    messages = [
+                        *messages,
+                        {"role": "assistant", "content": content},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Your last reply was not valid JSON matching the required schema "
+                                f"({exc}). Reply again with corrected JSON only."
+                            ),
+                        },
+                    ]
+                    continue
+                if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
+                    print(
+                        "llm-safe-diagnostic: "
+                        + json.dumps(
+                            _safe_structured_failure_diagnostic(
+                                _GeminiStructuredRetryExhausted(failed_attempts),
+                                job,
+                                model,
+                                resolved_model,
+                            ),
+                            sort_keys=True,
+                        ),
+                        file=sys.stderr,
+                    )
+                # Do not expose model text or validation feedback in workflow logs.  The caller
+                # safely defers and will obtain fresh evidence on its next scheduled run.
+                raise LLMStructuredOutputError(
+                    "structured LLM response failed Pydantic validation"
+                ) from None
+            output = _response_mapping(raw)
+            if first_attempt_usage is not None:
+                merged = _sum_usage_fields(first_attempt_usage, output.get("usage"))
+                if merged is not None:
+                    output = {**output, "usage": merged}
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output=output,
+                model=resolved_model,
+            )
+        raise AssertionError("unreachable: loop always returns or raises")
 
     @staticmethod
     def _structured_content(output: Mapping[str, Any]) -> str:

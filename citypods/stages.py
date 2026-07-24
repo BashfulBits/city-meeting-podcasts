@@ -810,25 +810,38 @@ class TagsStage:
                             look_up_deferred(backend_storage, llm_recipe), JobHandle
                         )
                     try:
-                        (
-                            suggestions,
-                            chapter_suggestions,
-                            dispatched,
-                            resolved_model,
-                        ) = llm_tag_suggestions(
-                            ctx.tag_backend,
-                            taxonomy=taxonomy,
-                            agenda_item_titles=titles,
-                            agenda_text=agenda_text,
-                            transcript_text=transcript_text,
-                            recipe_hash=llm_recipe,
-                            chapter_inputs=chapters,
-                            agenda_documents=agenda_document_context(ep),
-                            # Let the scheduler pace within-run rate limits up to the tag lane's
-                            # wall-clock budget, so a run drains its full daily quota across minute
-                            # windows instead of bursting one window and stopping.
-                            deadline_at=ctx.tag_llm_deadline,
-                        )
+                        # The tag lane's heartbeat prints PROGRESS's snapshot on every tick
+                        # ("active work: ..."), but until now nothing in this stage ever
+                        # registered with it -- a real live dispatch (which can pace/sleep inside
+                        # `llm_tag_suggestions` while waiting out a per-minute quota window) was
+                        # indistinguishable from a genuinely stuck run: both showed "no tracked
+                        # work active" for the heartbeat's whole run. This is the one call in the
+                        # tag lane actually worth tracking (network round trip + pacing waits).
+                        with PROGRESS.track(
+                            source=city.slug,
+                            uid=str(ep.uid or ep.guid),
+                            phase="tag-llm-dispatch",
+                        ):
+                            (
+                                suggestions,
+                                chapter_suggestions,
+                                dispatched,
+                                resolved_model,
+                            ) = llm_tag_suggestions(
+                                ctx.tag_backend,
+                                taxonomy=taxonomy,
+                                agenda_item_titles=titles,
+                                agenda_text=agenda_text,
+                                transcript_text=transcript_text,
+                                recipe_hash=llm_recipe,
+                                chapter_inputs=chapters,
+                                agenda_documents=agenda_document_context(ep),
+                                # Let the scheduler pace within-run rate limits up to the tag
+                                # lane's wall-clock budget, so a run drains its full daily quota
+                                # across minute windows instead of bursting one window and
+                                # stopping.
+                                deadline_at=ctx.tag_llm_deadline,
+                            )
                         if dispatched:
                             stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
                             candidate_tags = []

@@ -30,17 +30,21 @@ from pathlib import Path
 STATE_PREFIX = "state"
 
 # The durable snapshot is a large fan-out of small JSON files (one ``episodes.json`` per source,
-# per-source calendar/run-event sidecars, etc. — thousands of objects on a mature deploy). Each
-# ``get_file`` is a separate, latency-bound round trip to the bucket, so downloading them one at a
-# time is dominated by round-trip latency, not bandwidth. A serial restore of ~3.5k objects took
-# ~11 minutes at build start — nearly half the `tag` lane's 25-minute job budget, and it runs
-# *before* the wall-clock ``stop()`` window even opens, so a slow restore pushed that lane's
-# graceful-yield deadline past GitHub's hard job timeout and the run was cancelled outright with
-# no candidates produced. A bounded worker pool overlaps the latency of independent downloads
-# (each writes its own distinct ``state_dir/rel`` path, so there is no shared mutable state to
-# guard) and collapses that restore to well under a minute. Every lane benefits; the short-budget
-# `tag` lane is the one that was actually failing without it.
-_PULL_STATE_MAX_WORKERS = 16
+# per-source calendar/run-event sidecars, etc. — thousands of objects on a mature deploy: 3,554 as
+# of the `tag` lane's last observed run). Each ``get_file``/``put_file`` is a separate, latency-
+# bound round trip to the bucket, so transferring them one at a time is dominated by round-trip
+# latency, not bandwidth. A serial *restore* of ~3.5k objects took ~11 minutes at build start —
+# nearly half the `tag` lane's 25-minute job budget, and it runs *before* the wall-clock ``stop()``
+# window even opens, so a slow restore pushed that lane's graceful-yield deadline past GitHub's
+# hard job timeout and the run was cancelled outright with no candidates produced. A bounded worker
+# pool overlaps the latency of independent transfers (each reads/writes its own distinct
+# ``state_dir/rel`` path, so there is no shared mutable state to guard) and collapses that restore
+# to well under a minute. The symmetric *push* at the end of a run paid the identical serial cost
+# uncaught for longer: it wasn't logged at all until a later fix added per-file visibility, at
+# which point a real run was caught pushing only 1,503 of 3,554 files (42%) in the ~9 minutes of
+# tail budget it had left before GitHub's hard timeout killed it mid-upload. Same fix, same pool,
+# both directions.
+_STATE_SYNC_MAX_WORKERS = 16
 
 
 class TransientStateSyncError(RuntimeError):
@@ -127,7 +131,7 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
             emit(f"state: WARNING transient error restoring {key} ({exc}); keeping local copy")
             return False
 
-    workers = min(_PULL_STATE_MAX_WORKERS, len(keys))
+    workers = min(_STATE_SYNC_MAX_WORKERS, len(keys))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         # ``map`` re-raises the first non-transient error from any worker (propagating a real 403
         # to the caller, exactly as the serial loop did), and otherwise yields one bool per key.
@@ -150,7 +154,14 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, log=None) -> int
     is the run's last write before it's considered durably persisted, and it used to be a silent
     black box — a slow or stuck upload here was indistinguishable from any other cause of a run
     running out of wall-clock budget (issue: the tag lane's finalization tail gave no visibility
-    into what it was doing before GitHub's hard job timeout cancelled it mid-persist)."""
+    into what it was doing before GitHub's hard job timeout cancelled it mid-persist).
+
+    Uploads run across a bounded worker pool (mirroring ``pull_state``'s parallel restore, same
+    ``_STATE_SYNC_MAX_WORKERS``): a real `tag` lane run was caught pushing only 1,503 of 3,554
+    files serially in the ~9 minutes of tail budget it had before GitHub's hard job timeout killed
+    it mid-upload — the identical latency-bound-not-bandwidth-bound cost ``pull_state`` was already
+    fixed on the download side. Each upload writes its own distinct remote key, so there is no
+    shared mutable state to guard."""
     if not _supported(storage) or not hasattr(storage, "put_file"):
         return 0
     emit = log or (lambda msg: print(msg, flush=True))
@@ -171,12 +182,18 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, log=None) -> int
     if not candidates:
         return 0
     emit(f"state: pushing {len(candidates)} file(s) to durable storage")
-    pushed = 0
-    for rel in candidates:
+
+    def _push_one(rel: str) -> bool:
         emit(f"state: pushing {rel}")
         storage.put_file(f"{STATE_PREFIX}/{rel}", state_dir / rel, "application/json")
-        pushed += 1
-    return pushed
+        return True
+
+    workers = min(_STATE_SYNC_MAX_WORKERS, len(candidates))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # ``map`` re-raises the first error from any worker (matching the serial loop's contract:
+        # an upload failure is not transient-tolerant here the way a restore's is, since a partial
+        # push must not be silently reported as complete).
+        return sum(1 for ok in pool.map(_push_one, candidates) if ok)
 
 
 def fetch_remote_records(storage, src_key: str) -> dict | None:
